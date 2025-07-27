@@ -134,17 +134,25 @@ def scrape_all_races():
                 venue_code = venue_map.get(venue_slug, venue_slug.upper())
                 venue_name = venue_name_map.get(venue_code, venue_slug.replace('-', ' ').title())
                 
-                # Generate estimated race time based on race number
-                base_hour = 13  # 1 PM
-                total_minutes = ((int(race_number) - 1) * 25)
+                # Generate more realistic estimated race time based on race number
+                # Greyhound races typically start around 6 PM and run every 20-25 minutes
+                base_hour = 18  # 6 PM start (more realistic for greyhound racing)
+                total_minutes = ((int(race_number) - 1) * 22)  # 22 minutes between races
                 hour = base_hour + (total_minutes // 60)
                 minute = total_minutes % 60
+                
+                # Ensure we don't go past midnight
+                if hour >= 24:
+                    hour = 23
+                    minute = 59
                 
                 # Convert to 12-hour format
                 if hour > 12:
                     race_time = f'{hour - 12}:{minute:02d} PM'
                 elif hour == 12:
                     race_time = f'12:{minute:02d} PM'
+                elif hour == 0:
+                    race_time = f'12:{minute:02d} AM'
                 else:
                     race_time = f'{hour}:{minute:02d} AM'
                 
