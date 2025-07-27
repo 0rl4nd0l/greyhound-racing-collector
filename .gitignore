@@ -104,6 +104,12 @@ tmp/
 *.pkl
 *.joblib
 models/
+comprehensive_trained_models/
+comprehensive_model_results/
+ml_backtesting_results/
+feature_analysis_results/
+automated_backtesting_results/
+feature_importance_backups/
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints
@@ -116,3 +122,24 @@ models/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# Project-specific large data directories
+/form_guides/downloaded/
+/enhanced_expert_data/
+/gpt_enhanced_predictions/
+/unified_prediction_cache/
+/databases/
+/backup_before_cleanup/
+/cleanup_archive/
+/consolidated_data/
+/integrated_form_data/
+/processed_races/
+/quarantine/
+/system_analysis/
+/sportsbook_implementations/
+
+# Report and analysis files
+*.json
+!package.json
+!requirements.json
+!config.json.example

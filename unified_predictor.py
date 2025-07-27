@@ -281,7 +281,7 @@ class UnifiedPredictor:
     def __init__(self, config: Optional[UnifiedPredictorConfig] = None):
         self.config = config or UnifiedPredictorConfig()
         self.cache = PredictionCache(
-            self.config.enable_caching, 
+            self.config.enable_caching,
             self.config.cache_duration_minutes
         )
         
@@ -289,13 +289,24 @@ class UnifiedPredictor:
         self.predictors = {}
         self._initialize_predictors()
         
+        # Model registry integration
+        self.model_registry = None
+        self.best_model = None
+        self.best_model_scaler = None
+        self.best_model_metadata = None
+        self.model_last_check = 0
+        self.model_check_interval = 60  # Check for model updates every 60 seconds
+        
+        self._initialize_model_registry()
+        
         # Performance tracking
         self.prediction_stats = {
             'total_predictions': 0,
             'cache_hits': 0,
             'method_usage': {method: 0 for method in self.config.prediction_methods},
             'average_time': 0.0,
-            'success_rate': 0.0
+            'success_rate': 0.0,
+            'model_updates': 0
         }
         
         logger.info(f"🚀 Unified Predictor initialized with {len(self.predictors)} active methods")

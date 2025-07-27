@@ -1,0 +1,15 @@
+# Automated Git Backup Schedule for Greyhound Racing Collector
+# 
+# This crontab runs automated backups:
+# - Every 6 hours during active development
+# - Daily full backup with branch creation
+# - Cleanup old backup branches weekly
+
+# Hourly backup during active hours (9 AM to 11 PM)
+0 9-23/6 * * * /Users/orlandolee/greyhound_racing_collector/git_backup.sh hourly >> /Users/orlandolee/greyhound_racing_collector/logs/cron_backup.log 2>&1
+
+# Daily backup at 2 AM (creates backup branch)
+0 2 * * * /Users/orlandolee/greyhound_racing_collector/git_backup.sh daily >> /Users/orlandolee/greyhound_racing_collector/logs/cron_backup.log 2>&1
+
+# Additional evening backup at 10 PM
+0 22 * * * /Users/orlandolee/greyhound_racing_collector/git_backup.sh scheduled >> /Users/orlandolee/greyhound_racing_collector/logs/cron_backup.log 2>&1

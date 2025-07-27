@@ -1147,6 +1147,34 @@ class ComprehensivePredictionPipeline:
                 'risk_factors': ['Insufficient data for analysis']
             }
     
+    def _json_safe_serializer(self, obj):
+        """Safe JSON serializer that handles NaN and other problematic values"""
+        import math
+        import numpy as np
+        
+        # Handle NaN values
+        if isinstance(obj, float) and (math.isnan(obj) or obj != obj):  # NaN check
+            return None
+        if isinstance(obj, np.floating) and np.isnan(obj):
+            return None
+        if str(obj) == 'nan' or str(obj).lower() == 'nan':
+            return None
+            
+        # Handle infinity values
+        if isinstance(obj, (float, int)) and math.isinf(obj):
+            return None
+            
+        # Convert numpy types to native Python types
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj) if not np.isnan(obj) else None
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+            
+        # Default string conversion for other types
+        return str(obj)
+    
     def _get_prediction_methods_used(self):
         """Get list of prediction methods that were used"""
         methods = ['traditional']  # Always available
@@ -1216,7 +1244,7 @@ class ComprehensivePredictionPipeline:
 
             # Save new prediction
             with open(filepath, 'w') as f:
-                json.dump(prediction_results, f, indent=2, default=str)
+                json.dump(prediction_results, f, indent=2, default=self._json_safe_serializer)
             
             print(f"💾 Prediction results saved to: {filepath}")
             

@@ -86,29 +86,31 @@ class UpcomingRaceBrowser:
         return races
     
     def get_races_for_date(self, date):
-        """Get races for a specific date from CSV files in upcoming_races directory"""
+        """Get races for a specific date by scraping live data from thedogs.com"""
         date_str = date.strftime('%Y-%m-%d')
         
-        print(f"🔍 Checking races for {date_str}...")
+        print(f"🔍 Scraping live races for {date_str}...")
         
         try:
             races = []
             
-            # Look for CSV files in upcoming_races directory that match the date
-            if os.path.exists(self.upcoming_dir):
-                for filename in os.listdir(self.upcoming_dir):
-                    if filename.endswith('.csv') and date_str in filename:
-                        race_info = self.extract_race_info_from_csv_filename(filename, date_str)
-                        if race_info:
-                            races.append(race_info)
+            # First check if we have cached CSV files (backup method)
+            cached_races = self._get_cached_races_for_date(date_str)
+            
+            # Try to scrape live data from thedogs.com
+            live_races = self._scrape_live_races_for_date(date_str)
+            
+            if live_races:
+                print(f"   ✅ Found {len(live_races)} live races for {date_str}")
+                races = live_races
+            elif cached_races:
+                print(f"   📋 Using {len(cached_races)} cached races for {date_str}")
+                races = cached_races
+            else:
+                print(f"   ⚪ No races found for {date_str}")
             
             # Sort by race number
             races.sort(key=lambda x: x.get('race_number', 0))
-            
-            if races:
-                print(f"   ✅ Found {len(races)} races for {date_str}")
-            else:
-                print(f"   ⚪ No races found for {date_str}")
             
             return races
             
@@ -928,6 +930,139 @@ class UpcomingRaceBrowser:
                 continue
         
         return None
+    
+    def _get_cached_races_for_date(self, date_str):
+        """Get races from cached CSV files in upcoming_races directory"""
+        races = []
+        
+        try:
+            if os.path.exists(self.upcoming_dir):
+                for filename in os.listdir(self.upcoming_dir):
+                    if filename.endswith('.csv') and date_str in filename:
+                        race_info = self.extract_race_info_from_csv_filename(filename, date_str)
+                        if race_info:
+                            races.append(race_info)
+        except Exception as e:
+            print(f"   ⚠️ Error reading cached races: {e}")
+        
+        return races
+    
+    def _scrape_live_races_for_date(self, date_str):
+        """Scrape live races from thedogs.com for a specific date"""
+        races = []
+        
+        try:
+            # Format date for URL (thedogs.com uses YYYY-MM-DD format)
+            date_url = f"{self.base_url}/racing/{date_str}"
+            
+            print(f"   🌐 Fetching: {date_url}")
+            response = self.session.get(date_url, timeout=30)
+            
+            if response.status_code != 200:
+                print(f"   ⚠️ Failed to access racing page: {response.status_code}")
+                return races
+            
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Find race links using multiple strategies
+            race_links = self._find_race_links(soup, date_str)
+            
+            if not race_links:
+                print(f"   ⚠️ No race links found on page")
+                return races
+            
+            print(f"   🔍 Found {len(race_links)} potential race links")
+            
+            # Extract race information from each link
+            for link_element, href in race_links:
+                try:
+                    race_info = self.extract_race_info_from_link(link_element, href, date_str)
+                    if race_info:
+                        races.append(race_info)
+                        print(f"     ✅ {race_info['title']}")
+                except Exception as e:
+                    print(f"     ⚠️ Error extracting race from link: {e}")
+                    continue
+            
+        except Exception as e:
+            print(f"   ❌ Error scraping live races: {e}")
+        
+        return races
+    
+    def _find_race_links(self, soup, date_str):
+        """Find race links on the racing page using multiple strategies"""
+        race_links = []
+        
+        # Strategy 1: Look for direct race links with racing pattern
+        race_selectors = [
+            f'a[href*="/racing/"][href*="{date_str}"]',
+            'a[href*="/racing/"]',
+            '.race-link a',
+            '.race-card a',
+            'a[class*="race"]'
+        ]
+        
+        for selector in race_selectors:
+            try:
+                links = soup.select(selector)
+                for link in links:
+                    href = link.get('href')
+                    if href and self._is_valid_race_link(href, date_str):
+                        race_links.append((link, href))
+            except Exception as e:
+                continue
+        
+        # Strategy 2: Look for links that contain race numbers and venue names
+        if not race_links:
+            all_links = soup.find_all('a', href=True)
+            for link in all_links:
+                href = link.get('href')
+                if href and self._is_valid_race_link(href, date_str):
+                    race_links.append((link, href))
+        
+        # Remove duplicates based on href
+        seen_hrefs = set()
+        unique_links = []
+        for link, href in race_links:
+            if href not in seen_hrefs:
+                seen_hrefs.add(href)
+                unique_links.append((link, href))
+        
+        return unique_links
+    
+    def _is_valid_race_link(self, href, date_str):
+        """Check if a link is a valid race link"""
+        try:
+            # Must contain racing path
+            if '/racing/' not in href:
+                return False
+            
+            # Parse URL parts
+            url_parts = href.strip('/').split('/')
+            if 'racing' not in url_parts:
+                return False
+            
+            racing_index = url_parts.index('racing')
+            
+            # Must have at least venue, date, race_number after racing
+            if len(url_parts) <= racing_index + 3:
+                return False
+            
+            # Check if race number is numeric
+            race_number_part = url_parts[racing_index + 3]
+            if not race_number_part.isdigit():
+                return False
+            
+            # Check if date matches (optional - some links might not have date)
+            date_part = url_parts[racing_index + 2]
+            if date_str in href or date_part == date_str.replace('-', '/') or date_part == date_str:
+                return True
+            
+            # Also accept if it's a valid racing URL structure even without exact date match
+            return True
+            
+        except Exception:
+            return False
 
 
 def test_csv_download(race_url=None):

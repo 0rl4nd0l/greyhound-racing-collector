@@ -1,0 +1,500 @@
+{
+  "success": true,
+  "race_info": {
+    "filename": "Race 6 - BAL - 2025-07-26.csv",
+    "filepath": "./upcoming_races/Race 6 - BAL - 2025-07-26.csv",
+    "venue": "BAL",
+    "race_number": "6",
+    "date": "2025-07-26",
+    "distance": "460m",
+    "grade": "Grade Grade 5"
+  },
+  "prediction_timestamp": "2025-07-27T12:31:59.604629",
+  "predictions": [
+    {
+      "dog_name": "OFF THE BEER",
+      "box_number": 7,
+      "prediction_scores": {
+        "ml_system": 0.7332410523828685,
+        "weather_enhanced": 0.5429670433655187,
+        "traditional": 0.7718504348917262,
+        "enhanced_data": 0.5035433783269164
+      },
+      "final_score": 0.6681874823312146,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "ML System: 0.733",
+        "Weather Enhanced: 0.543",
+        "Traditional: 0.772",
+        "Enhanced Data: 0.504"
+      ],
+      "data_quality": 0.5,
+      "historical_stats": {
+        "total_races": 6,
+        "wins": 3,
+        "places": 5,
+        "win_rate": 50.0,
+        "place_rate": 83.3,
+        "consistency": 78.6,
+        "average_position": 2.17,
+        "experience": "Some racing experience",
+        "best_time": "24.28s",
+        "venue_record": "No previous starts at venue",
+        "distance_record": "1 starts at 460m",
+        "grade_record": "No grade data",
+        "recent_form": [
+          1,
+          1,
+          2,
+          1,
+          3
+        ],
+        "recent_activity": {
+          "days_since_last_race": 5,
+          "last_race_date": "2025-07-22",
+          "last_race_position": 1
+        },
+        "strengths": [
+          "Strong winning record",
+          "Consistent place getter",
+          "Consistent performer"
+        ],
+        "risk_factors": [
+          "No previous experience at venue"
+        ]
+      },
+      "predicted_rank": 1
+    },
+    {
+      "dog_name": "KELLY JANE",
+      "box_number": 3,
+      "prediction_scores": {
+        "ml_system": 0.7302503888770127,
+        "weather_enhanced": 0.46755776442115715,
+        "traditional": 0.7231921445512054,
+        "enhanced_data": 0.5031368877021739
+      },
+      "final_score": 0.6353177604776339,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "ML System: 0.730",
+        "Weather Enhanced: 0.468",
+        "Traditional: 0.723",
+        "Enhanced Data: 0.503"
+      ],
+      "data_quality": 0.5,
+      "historical_stats": {
+        "total_races": 7,
+        "wins": 4,
+        "places": 5,
+        "win_rate": 57.1,
+        "place_rate": 71.4,
+        "consistency": 66.1,
+        "average_position": 2.43,
+        "experience": "Some racing experience",
+        "best_time": "24.73s",
+        "venue_record": "No previous starts at venue",
+        "distance_record": "No distance data",
+        "grade_record": "No grade data",
+        "recent_form": [
+          1,
+          1,
+          1,
+          1,
+          3
+        ],
+        "recent_activity": {
+          "days_since_last_race": 7,
+          "last_race_date": "2025-07-20",
+          "last_race_position": 1
+        },
+        "strengths": [
+          "Strong winning record",
+          "Consistent place getter"
+        ],
+        "risk_factors": [
+          "No previous experience at venue"
+        ]
+      },
+      "predicted_rank": 2
+    },
+    {
+      "dog_name": "STAR SIXTY SIX",
+      "box_number": 5,
+      "prediction_scores": {
+        "ml_system": 0.6092815103279161,
+        "weather_enhanced": 0.5018947486060259,
+        "traditional": 0.585023690117422,
+        "enhanced_data": 0.5140065573247711
+      },
+      "final_score": 0.5629441693985001,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "ML System: 0.609",
+        "Weather Enhanced: 0.502",
+        "Traditional: 0.585",
+        "Enhanced Data: 0.514"
+      ],
+      "data_quality": 0.5,
+      "historical_stats": {
+        "total_races": 6,
+        "wins": 0,
+        "places": 2,
+        "win_rate": 0.0,
+        "place_rate": 33.3,
+        "consistency": 77.5,
+        "average_position": 4.5,
+        "experience": "Some racing experience",
+        "best_time": "23.06s",
+        "venue_record": "No previous starts at venue",
+        "distance_record": "1 starts at 460m",
+        "grade_record": "No grade data",
+        "recent_form": [
+          3,
+          3,
+          4,
+          7,
+          6
+        ],
+        "recent_activity": {
+          "days_since_last_race": 11,
+          "last_race_date": "2025-07-16",
+          "last_race_position": 3
+        },
+        "strengths": [
+          "Consistent performer"
+        ],
+        "risk_factors": [
+          "No previous experience at venue"
+        ]
+      },
+      "predicted_rank": 3
+    },
+    {
+      "dog_name": "PERFECT LIAM",
+      "box_number": 8,
+      "prediction_scores": {
+        "ml_system": 0.592224304328093,
+        "weather_enhanced": 0.4977992287623682,
+        "traditional": 0.6041990707836555,
+        "enhanced_data": 0.46160126309022836
+      },
+      "final_score": 0.5547734955307771,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "ML System: 0.592",
+        "Weather Enhanced: 0.498",
+        "Traditional: 0.604",
+        "Enhanced Data: 0.462"
+      ],
+      "data_quality": 0.5,
+      "historical_stats": {
+        "total_races": 6,
+        "wins": 1,
+        "places": 3,
+        "win_rate": 16.7,
+        "place_rate": 50.0,
+        "consistency": 65.3,
+        "average_position": 3.83,
+        "experience": "Some racing experience",
+        "best_time": "22.68s",
+        "venue_record": "No previous starts at venue",
+        "distance_record": "No distance data",
+        "grade_record": "No grade data",
+        "recent_form": [
+          3,
+          4,
+          3,
+          1,
+          7
+        ],
+        "recent_activity": {
+          "days_since_last_race": 11,
+          "last_race_date": "2025-07-16",
+          "last_race_position": "4"
+        },
+        "strengths": [
+          "Good winning ability",
+          "Reasonable place record"
+        ],
+        "risk_factors": [
+          "No previous experience at venue"
+        ]
+      },
+      "predicted_rank": 4
+    },
+    {
+      "dog_name": "MISS GEORGIE LEE",
+      "box_number": 2,
+      "prediction_scores": {
+        "weather_enhanced": 0.5350517337168871,
+        "traditional": 0.5458996919904976,
+        "enhanced_data": 0.5415870739351352
+      },
+      "final_score": 0.5426986354118631,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "Weather Enhanced: 0.535",
+        "Traditional: 0.546",
+        "Enhanced Data: 0.542"
+      ],
+      "data_quality": 0.3,
+      "historical_stats": {
+        "total_races": 5,
+        "wins": 1,
+        "places": 1,
+        "win_rate": 20.0,
+        "place_rate": 20.0,
+        "consistency": 65.6,
+        "average_position": 4.6,
+        "experience": "Some racing experience",
+        "best_time": "22.81s",
+        "venue_record": "No previous starts at venue",
+        "distance_record": "1 starts at 460m",
+        "grade_record": "No grade data",
+        "recent_form": [
+          6,
+          5,
+          6,
+          5,
+          1
+        ],
+        "recent_activity": {
+          "days_since_last_race": 11,
+          "last_race_date": "2025-07-16",
+          "last_race_position": "6"
+        },
+        "strengths": [
+          "Good winning ability"
+        ],
+        "risk_factors": [
+          "Poor recent form",
+          "No previous experience at venue"
+        ]
+      },
+      "predicted_rank": 5
+    },
+    {
+      "dog_name": "MAYFAIR JILL",
+      "box_number": 1,
+      "prediction_scores": {
+        "weather_enhanced": 0.5183629995974403,
+        "traditional": 0.5433141891815859,
+        "enhanced_data": 0.4737833031509012
+      },
+      "final_score": 0.5252748089408337,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "Weather Enhanced: 0.518",
+        "Traditional: 0.543",
+        "Enhanced Data: 0.474"
+      ],
+      "data_quality": 0.3,
+      "historical_stats": {
+        "total_races": 5,
+        "wins": 0,
+        "places": 1,
+        "win_rate": 0.0,
+        "place_rate": 20.0,
+        "consistency": 90.4,
+        "average_position": 4.8,
+        "experience": "Some racing experience",
+        "best_time": "23.16s",
+        "venue_record": "No previous starts at venue",
+        "distance_record": "1 starts at 460m",
+        "grade_record": "No grade data",
+        "recent_form": [
+          5,
+          5,
+          6,
+          5,
+          3
+        ],
+        "recent_activity": {
+          "days_since_last_race": 16,
+          "last_race_date": "2025-07-11",
+          "last_race_position": "5"
+        },
+        "strengths": [
+          "Consistent performer"
+        ],
+        "risk_factors": [
+          "Poor recent form",
+          "No previous experience at venue"
+        ]
+      },
+      "predicted_rank": 6
+    },
+    {
+      "dog_name": "LISBURN",
+      "box_number": 9,
+      "prediction_scores": {
+        "ml_system": 0.48318232473446193,
+        "weather_enhanced": 0.5215723671860374,
+        "traditional": 0.5065954117712799,
+        "enhanced_data": 0.5010099731011293
+      },
+      "final_score": 0.5014675163235709,
+      "confidence_level": "MEDIUM",
+      "reasoning": [
+        "ML System: 0.483",
+        "Weather Enhanced: 0.522",
+        "Traditional: 0.507",
+        "Enhanced Data: 0.501"
+      ],
+      "data_quality": 0.7,
+      "historical_stats": {
+        "total_races": 9,
+        "wins": 0,
+        "places": 0,
+        "win_rate": 0.0,
+        "place_rate": 0.0,
+        "consistency": 96.8,
+        "average_position": 4.89,
+        "experience": "Some racing experience",
+        "best_time": "23.14s",
+        "venue_record": "No previous starts at venue",
+        "distance_record": "No distance data",
+        "grade_record": "No grade data",
+        "recent_form": [
+          5,
+          5,
+          4,
+          5,
+          5
+        ],
+        "recent_activity": {
+          "days_since_last_race": 5,
+          "last_race_date": "2025-07-22",
+          "last_race_position": 5
+        },
+        "strengths": [
+          "Consistent performer"
+        ],
+        "risk_factors": [
+          "No previous experience at venue"
+        ]
+      },
+      "predicted_rank": 7
+    },
+    {
+      "dog_name": "Black Tuxedo",
+      "box_number": 6,
+      "prediction_scores": {
+        "ml_system": 0.44880932871459495,
+        "weather_enhanced": 0.48534720054984143,
+        "traditional": 0.4850500287026923,
+        "enhanced_data": 0.5281459028634334
+      },
+      "final_score": 0.4817243810344435,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "ML System: 0.449",
+        "Weather Enhanced: 0.485",
+        "Traditional: 0.485",
+        "Enhanced Data: 0.528"
+      ],
+      "data_quality": 0.5,
+      "historical_stats": {
+        "total_races": 7,
+        "wins": 0,
+        "places": 1,
+        "win_rate": 0.0,
+        "place_rate": 14.3,
+        "consistency": 77.8,
+        "average_position": 5.33,
+        "experience": "Some racing experience",
+        "best_time": "17.79s",
+        "venue_record": "No previous starts at venue",
+        "distance_record": "1 starts at 460m",
+        "grade_record": "No grade data",
+        "recent_form": [
+          5,
+          5,
+          5,
+          3,
+          6
+        ],
+        "recent_activity": {
+          "days_since_last_race": 9,
+          "last_race_date": "2025-07-18",
+          "last_race_position": NaN
+        },
+        "strengths": [
+          "Consistent performer"
+        ],
+        "risk_factors": [
+          "No previous experience at venue"
+        ]
+      },
+      "predicted_rank": 8
+    },
+    {
+      "dog_name": "FAR OUT SCOUT",
+      "box_number": 4,
+      "prediction_scores": {
+        "ml_system": 0.4966653328631757,
+        "weather_enhanced": 0.5053254236512217,
+        "traditional": 0.3042044810429971,
+        "enhanced_data": 0.5774125439173788
+      },
+      "final_score": 0.44777376967965965,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "ML System: 0.497",
+        "Weather Enhanced: 0.505",
+        "Traditional: 0.304",
+        "Enhanced Data: 0.577"
+      ],
+      "data_quality": 0.5,
+      "historical_stats": {
+        "total_races": 7,
+        "wins": 3,
+        "places": 3,
+        "win_rate": 42.9,
+        "place_rate": 42.9,
+        "consistency": 0.4,
+        "average_position": 4.57,
+        "experience": "Some racing experience",
+        "best_time": "17.75s",
+        "venue_record": "1 starts at BAL",
+        "distance_record": "No distance data",
+        "grade_record": "No grade data",
+        "recent_form": [
+          8,
+          1,
+          6,
+          8,
+          1
+        ],
+        "recent_activity": {
+          "days_since_last_race": 6,
+          "last_race_date": "2025-07-21",
+          "last_race_position": "6"
+        },
+        "strengths": [
+          "Strong winning record",
+          "Reasonable place record"
+        ],
+        "risk_factors": [
+          "Inconsistent form"
+        ]
+      },
+      "predicted_rank": 9
+    }
+  ],
+  "data_quality_summary": {
+    "average_quality": 0.47777777777777775,
+    "dogs_with_good_data": 7,
+    "dogs_with_poor_data": 0,
+    "total_dogs": 9
+  },
+  "prediction_methods_used": [
+    "traditional",
+    "ml_system",
+    "weather_enhanced",
+    "enhanced_data"
+  ],
+  "total_dogs": 45,
+  "dogs_with_quality_data": 7
+}

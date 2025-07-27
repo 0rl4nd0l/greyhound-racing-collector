@@ -2655,7 +2655,7 @@ def api_predict_single_race():
                             'top_pick': top_pick,
                             'top_3': predictions[:3] if predictions else [],
                             'prediction_timestamp': prediction_data.get('prediction_timestamp', ''),
-                            'file_path': expected_pred_filename
+                            'file_path': pred_file_path
                         })
             
             return jsonify({
@@ -5368,11 +5368,11 @@ def api_live_odds_summary():
 def api_today_races_basic():
     """API endpoint to get today's races without fetching odds (fast load)"""
     try:
-        # Use upcoming race browser for fast race listing
+        # Use upcoming race browser for fast race listing with live scraping
         from upcoming_race_browser import UpcomingRaceBrowser
         browser = UpcomingRaceBrowser()
         
-        # Get races for today (this is much faster than odds scraping)
+        # Get races for today with live scraping from thedogs.com
         today_races = browser.get_upcoming_races(days_ahead=1)
         
         # Add time calculations and format for display
