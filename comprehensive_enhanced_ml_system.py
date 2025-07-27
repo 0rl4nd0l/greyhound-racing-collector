@@ -82,9 +82,10 @@ class ComprehensiveEnhancedMLSystem:
         self.results_dir.mkdir(exist_ok=True)
         self.models_dir.mkdir(exist_ok=True)
         
-        # Form guide directories
+        # Form guide directories - use both sources for comprehensive historical data
         self.form_guides_dir = Path('./form_guides')
         self.downloaded_forms_dir = self.form_guides_dir / 'downloaded'
+        self.unprocessed_forms_dir = Path('./unprocessed')  # Primary source with 1,228 files
         
         # Enhanced model configurations with class balancing
         self.base_models = {
@@ -166,9 +167,9 @@ class ComprehensiveEnhancedMLSystem:
             self.imbalanced_models = {}
         
         # Feature importance insights (from previous analysis)
-        self.high_impact_features = ['current_odds_log', 'market_confidence', 'avg_position', 'current_weight', 'place_rate']
+        self.high_impact_features = ['current_odds_log', 'market_confidence', 'avg_position', 'recent_form_avg', 'current_weight', 'place_rate']
         
-        self.stable_features = ['weight_trend', 'track_condition_encoded', 'distance_numeric', 'recent_races_last_30d', 'position_consistency', 'venue_encoded', 'venue_experience', 'avg_time']
+        self.stable_features = ['weight_trend', 'avg_class_rating', 'current_box', 'distance_numeric', 'recent_races_last_30d', 'position_consistency', 'venue_encoded', 'venue_experience']
         
         print("🚀 Comprehensive Enhanced ML Model System Initialized")
     
@@ -178,12 +179,41 @@ class ComprehensiveEnhancedMLSystem:
             print("📊 Loading form guide data from CSV files...")
             
             form_data = {}
-            csv_files = list(self.downloaded_forms_dir.glob('*.csv'))
             
-            print(f"📁 Found {len(csv_files)} form guide files")
+            # Load from both sources for comprehensive historical data
+            csv_files = []
+            
+            # Primary source: unprocessed directory (1,228 files with rich historical data)
+            if self.unprocessed_forms_dir.exists():
+                unprocessed_files = list(self.unprocessed_forms_dir.glob('*.csv'))
+                csv_files.extend(unprocessed_files)
+                print(f"📁 Found {len(unprocessed_files)} files in unprocessed directory")
+            
+            # Secondary source: downloaded directory (backup/additional data)
+            if self.downloaded_forms_dir.exists():
+                downloaded_files = list(self.downloaded_forms_dir.glob('*.csv'))
+                csv_files.extend(downloaded_files)
+                print(f"📁 Found {len(downloaded_files)} files in downloaded directory")
+            
+            print(f"📁 Total: {len(csv_files)} form guide files to process")
+            
+            processed_files = 0
+            skipped_files = 0
             
             for csv_file in csv_files:
                 try:
+                    # First, check if file is actually a CSV (not HTML)
+                    with open(csv_file, 'r', encoding='utf-8', errors='ignore') as f:
+                        first_line = f.readline().strip()
+                        if 'DOCTYPE html' in first_line or '<html>' in first_line:
+                            print(f"⚠️ Skipping HTML file: {csv_file.name}")
+                            skipped_files += 1
+                            continue
+                        if not first_line.startswith('Dog Name'):
+                            print(f"⚠️ Skipping non-standard CSV: {csv_file.name} (starts with: {first_line[:50]}...)")
+                            skipped_files += 1
+                            continue
+                    
                     # Parse race info from filename
                     filename = csv_file.stem
                     parts = filename.split(' - ')
@@ -192,8 +222,14 @@ class ComprehensiveEnhancedMLSystem:
                         venue = parts[1]
                         date_str = parts[2]
                         
-                        # Read the CSV
-                        df = pd.read_csv(csv_file)
+                        # Read the CSV with error handling
+                        df = pd.read_csv(
+                            csv_file,
+                            on_bad_lines='skip',  # Skip problematic lines
+                            encoding='utf-8'
+                        )
+                        
+                        processed_files += 1
                         
                         # Process dogs properly handling blank rows
                         current_dog_name = None
@@ -241,12 +277,40 @@ class ComprehensiveEnhancedMLSystem:
                             
                             # Only add if we have meaningful data (at least place and date)
                             if historical_race['place'] and historical_race['date']:
-                                form_data[current_dog_name].append(historical_race)
+                                # Check for duplicates before adding
+                                race_key = (
+                                    historical_race['date'],
+                                    historical_race['track'],
+                                    historical_race['place'],
+                                    historical_race['box'],
+                                    historical_race['weight'],
+                                    historical_race['distance']
+                                )
+                                
+                                # Check if this exact race already exists for this dog
+                                is_duplicate = False
+                                for existing_race in form_data[current_dog_name]:
+                                    existing_key = (
+                                        existing_race['date'],
+                                        existing_race['track'],
+                                        existing_race['place'],
+                                        existing_race['box'],
+                                        existing_race['weight'],
+                                        existing_race['distance']
+                                    )
+                                    if race_key == existing_key:
+                                        is_duplicate = True
+                                        break
+                                
+                                if not is_duplicate:
+                                    form_data[current_dog_name].append(historical_race)
                 
                 except Exception as e:
                     print(f"⚠️ Error processing {csv_file}: {e}")
+                    skipped_files += 1
                     continue
             
+            print(f"✅ Processed {processed_files} files, skipped {skipped_files} problematic files")
             print(f"✅ Loaded form data for {len(form_data)} dogs")
             
             # Print summary statistics
@@ -359,7 +423,8 @@ class ComprehensiveEnhancedMLSystem:
                 ].sort_values('race_date', ascending=False)
                 
                 # Combine both data sources for comprehensive analysis
-                if len(db_historical_data) >= 1 or len(historical_form_data) >= 3:
+                # Reduce requirements - accept dogs with any historical data
+                if len(db_historical_data) >= 1 or len(historical_form_data) >= 1:
                     
                     # DATABASE-BASED FEATURES
                     db_positions = []
@@ -747,9 +812,11 @@ class ComprehensiveEnhancedMLSystem:
     def prepare_comprehensive_features(self, df):
         """Prepare features with intelligent selection based on importance analysis"""
         try:
-            if len(df) < 100:
-                print("❌ Insufficient data for comprehensive training")
+            if len(df) < 30:
+                print(f"❌ Insufficient data for comprehensive training (need at least 30, got {len(df)})")
                 return None, None
+            elif len(df) < 100:
+                print(f"⚠️ Limited training data ({len(df)} samples) - results may be less reliable")
             
             print(f"📊 Preparing comprehensive feature set from {len(df)} records...")
             
@@ -1113,77 +1180,77 @@ class ComprehensiveEnhancedMLSystem:
             )
             results['validation_results'] = validation_results
             
-        # Register the best model with the model registry
-        try:
-            from model_registry import get_model_registry
-            registry = get_model_registry()
-            
-            # Prepare performance metrics
-            performance_metrics = {
-                'accuracy': best_accuracy,
-                'auc': all_results[best_model_name].get('auc', 0.5),
-                'f1_score': 0.0,  # Calculate if available
-                'precision': 0.0,  # Calculate if available
-                'recall': 0.0     # Calculate if available
-            }
-            
-            # Prepare training info
-            training_info = {
-                'training_samples': results['data_summary']['train_samples'],
-                'test_samples': results['data_summary']['test_samples'],
-                'training_duration': 0.0,  # Add timing if available
-                'validation_method': 'time_series_split',
-                'is_ensemble': 'ensemble' in best_model_name.lower(),
-                'ensemble_components': [best_model_name] if 'ensemble' not in best_model_name.lower() else ['RandomForest', 'GradientBoosting', 'LogisticRegression'],
-                'data_quality_score': 0.8,  # Estimate based on comprehensive data
-                'inference_time_ms': 10.0   # Estimate
-            }
-            
-            # Register the model
-            model_id = registry.register_model(
-                model_obj=best_model,
-                scaler_obj=scaler,
-                model_name='comprehensive_enhanced',
-                model_type=best_model_name,
-                performance_metrics=performance_metrics,
-                training_info=training_info,
-                feature_names=feature_columns,
-                hyperparameters={},
-                notes=f"Comprehensive enhanced ML model trained on {results['data_summary']['total_samples']} samples"
-            )
-            
-            print(f"📝 Model registered with ID: {model_id}")
-            
-            # Also save the traditional format for backward compatibility
-            model_file = self.models_dir / f"comprehensive_best_model_{datetime.now().strftime('%Y%m%d')}.joblib"
-            joblib.dump({
-                'model': best_model,
-                'scaler': scaler,
-                'feature_columns': feature_columns,
-                'model_name': best_model_name,
-                'accuracy': best_accuracy,
-                'timestamp': datetime.now().isoformat(),
-                'data_summary': results['data_summary'],
-                'registry_model_id': model_id
-            }, model_file)
-            
-            print(f"💾 Best comprehensive model saved: {model_file}")
-            
-        except Exception as e:
-            print(f"⚠️ Could not register model with registry: {e}")
-            # Fallback to traditional saving
-            model_file = self.models_dir / f"comprehensive_best_model_{datetime.now().strftime('%Y%m%d')}.joblib"
-            joblib.dump({
-                'model': best_model,
-                'scaler': scaler,
-                'feature_columns': feature_columns,
-                'model_name': best_model_name,
-                'accuracy': best_accuracy,
-                'timestamp': datetime.now().isoformat(),
-                'data_summary': results['data_summary']
-            }, model_file)
-            
-            print(f"💾 Best comprehensive model saved: {model_file}")
+            # Register the best model with the model registry
+            try:
+                from model_registry import get_model_registry
+                registry = get_model_registry()
+                
+                # Prepare performance metrics
+                performance_metrics = {
+                    'accuracy': best_accuracy,
+                    'auc': all_results[best_model_name].get('auc', 0.5),
+                    'f1_score': 0.0,  # Calculate if available
+                    'precision': 0.0,  # Calculate if available
+                    'recall': 0.0     # Calculate if available
+                }
+                
+                # Prepare training info
+                training_info = {
+                    'training_samples': results['data_summary']['train_samples'],
+                    'test_samples': results['data_summary']['test_samples'],
+                    'training_duration': 0.0,  # Add timing if available
+                    'validation_method': 'time_series_split',
+                    'is_ensemble': 'ensemble' in best_model_name.lower(),
+                    'ensemble_components': [best_model_name] if 'ensemble' not in best_model_name.lower() else ['RandomForest', 'GradientBoosting', 'LogisticRegression'],
+                    'data_quality_score': 0.8,  # Estimate based on comprehensive data
+                    'inference_time_ms': 10.0   # Estimate
+                }
+                
+                # Register the model
+                model_id = registry.register_model(
+                    model_obj=best_model,
+                    scaler_obj=scaler,
+                    model_name='comprehensive_enhanced',
+                    model_type=best_model_name,
+                    performance_metrics=performance_metrics,
+                    training_info=training_info,
+                    feature_names=feature_columns,
+                    hyperparameters={},
+                    notes=f"Comprehensive enhanced ML model trained on {results['data_summary']['total_samples']} samples"
+                )
+                
+                print(f"📝 Model registered with ID: {model_id}")
+                
+                # Also save the traditional format for backward compatibility
+                model_file = self.models_dir / f"comprehensive_best_model_{datetime.now().strftime('%Y%m%d')}.joblib"
+                joblib.dump({
+                    'model': best_model,
+                    'scaler': scaler,
+                    'feature_columns': feature_columns,
+                    'model_name': best_model_name,
+                    'accuracy': best_accuracy,
+                    'timestamp': datetime.now().isoformat(),
+                    'data_summary': results['data_summary'],
+                    'registry_model_id': model_id
+                }, model_file)
+                
+                print(f"💾 Best comprehensive model saved: {model_file}")
+                
+            except Exception as e:
+                print(f"⚠️ Could not register model with registry: {e}")
+                # Fallback to traditional saving
+                model_file = self.models_dir / f"comprehensive_best_model_{datetime.now().strftime('%Y%m%d')}.joblib"
+                joblib.dump({
+                    'model': best_model,
+                    'scaler': scaler,
+                    'feature_columns': feature_columns,
+                    'model_name': best_model_name,
+                    'accuracy': best_accuracy,
+                    'timestamp': datetime.now().isoformat(),
+                    'data_summary': results['data_summary']
+                }, model_file)
+                
+                print(f"💾 Best comprehensive model saved: {model_file}")
             
             # Save results
             results_file = self.results_dir / f"comprehensive_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"

@@ -311,6 +311,87 @@ class UnifiedPredictor:
         
         logger.info(f"🚀 Unified Predictor initialized with {len(self.predictors)} active methods")
     
+    def _initialize_model_registry(self):
+        """Initialize model registry for dynamic model loading with priority system"""
+        try:
+            self.best_model_info = self._get_latest_best_model()
+            if self.best_model_info:
+                logger.info(f"🎯 Using latest model: {self.best_model_info['name']} (accuracy: {self.best_model_info.get('accuracy', 'N/A')})")
+            self.model_last_check = time.time()
+            
+            logger.debug("Model registry initialized with priority system")
+        except Exception as e:
+            logger.debug(f"Model registry initialization failed: {e}")
+    
+    def _get_latest_best_model(self):
+        """Get the latest and best performing model with priority system"""
+        import glob
+        import joblib
+        
+        try:
+            models_dir = self.config.models_dir
+            if not models_dir.exists():
+                return None
+            
+            # Priority order for model types (highest to lowest)
+            model_priorities = [
+                'comprehensive_best_model_*.joblib',
+                'automated_best_model_*.joblib', 
+                'retrained_model_*.joblib',
+                '*.joblib'
+            ]
+            
+            best_model = None
+            best_accuracy = 0
+            best_priority = 999
+            
+            for priority, pattern in enumerate(model_priorities):
+                model_files = glob.glob(str(models_dir / pattern))
+                
+                for model_file in model_files:
+                    try:
+                        # Load model metadata to check accuracy
+                        model_data = joblib.load(model_file)
+                        
+                        # Extract accuracy from different possible keys
+                        accuracy = 0
+                        if isinstance(model_data, dict):
+                            accuracy = model_data.get('accuracy', 
+                                      model_data.get('test_accuracy',
+                                      model_data.get('cv_accuracy', 0)))
+                        
+                        # Get file modification time for tie-breaking
+                        file_time = os.path.getctime(model_file)
+                        
+                        # Select model based on priority, then accuracy, then recency
+                        if (priority < best_priority or 
+                            (priority == best_priority and accuracy > best_accuracy) or
+                            (priority == best_priority and accuracy == best_accuracy and 
+                             (best_model is None or file_time > os.path.getctime(best_model)))):
+                            
+                            best_model = model_file
+                            best_accuracy = accuracy
+                            best_priority = priority
+                            
+                    except Exception as e:
+                        logger.debug(f"Error loading model {model_file}: {e}")
+                        continue
+            
+            if best_model:
+                return {
+                    'path': best_model,
+                    'name': os.path.basename(best_model),
+                    'accuracy': best_accuracy,
+                    'priority': best_priority,
+                    'timestamp': datetime.fromtimestamp(os.path.getctime(best_model)).isoformat()
+                }
+            
+            return None
+            
+        except Exception as e:
+            logger.warning(f"Error finding latest model: {e}")
+            return None
+    
     def _initialize_predictors(self):
         """Initialize available prediction components"""
         
@@ -494,7 +575,13 @@ class UnifiedPredictor:
                 if 'error' not in gpt_enhancement:
                     prediction_result['gpt_enhancement'] = gpt_enhancement
                     prediction_result['enhanced_with_gpt'] = True
-                    logger.info("✅ GPT enhancement applied")
+                    
+                    # Use the properly merged predictions that preserve ML scores
+                    if 'merged_predictions' in gpt_enhancement and gpt_enhancement['merged_predictions']:
+                        prediction_result['predictions'] = gpt_enhancement['merged_predictions']
+                        logger.info("✅ GPT enhancement applied with merged predictions")
+                    else:
+                        logger.info("✅ GPT enhancement applied")
                 else:
                     logger.warning(f"⚠️ GPT enhancement failed: {gpt_enhancement['error']}")
                     prediction_result['enhanced_with_gpt'] = False
@@ -643,16 +730,10 @@ class UnifiedPredictor:
                     else:
                         box_number = None
                     
-                    # Try to get box number from BOX column if available
+                    # For upcoming races, NEVER use BOX column as it contains historical data
+                    # Only rely on prefix parsing (e.g., "1. Dog Name" -> box 1)
                     if box_number is None:
-                        box_from_col = row.get('BOX', row.get('Box', None))
-                        if box_from_col is not None:
-                            try:
-                                box_number = int(box_from_col)
-                            except (ValueError, TypeError):
-                                box_number = len(dogs) + 1  # Default sequential
-                    
-                    if box_number is None:
+                        # If prefix parsing failed, use sequential numbering as fallback
                         box_number = len(dogs) + 1  # Default sequential
                     
                     dogs.append({

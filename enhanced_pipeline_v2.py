@@ -41,6 +41,8 @@ except ImportError as e:
 class EnhancedPipelineV2:
     def __init__(self, db_path="greyhound_racing_data.db"):
         self.db_path = db_path
+        self.last_model_check = None
+        self._model_reload_check_interval = 300  # Check every 5 minutes
         
         # Initialize components if available
         self.feature_engineer = None
@@ -58,6 +60,8 @@ class EnhancedPipelineV2:
             try:
                 self.ml_system = AdvancedMLSystemV2()
                 logger.info("✅ Advanced ML System V2 initialized")
+                # Check for model updates on initialization
+                self._check_for_model_updates()
             except Exception as e:
                 logger.warning(f"ML system initialization failed: {e}")
         
@@ -72,6 +76,9 @@ class EnhancedPipelineV2:
         """Main prediction method for race file"""
         try:
             logger.info(f"🚀 Enhanced Pipeline V2 processing: {os.path.basename(race_file_path)}")
+            
+            # Check for model updates periodically
+            self._check_for_model_updates()
             
             # Step 1: Load race file and basic processing
             race_df = self._load_race_file(race_file_path)
@@ -278,18 +285,38 @@ class EnhancedPipelineV2:
     
     def _generate_prediction_score(self, features: dict, dog_name: str) -> float:
         """Generate prediction score using ML system if available"""
+        heuristic_score = self._generate_heuristic_score(features, dog_name)
+        
         if self.ml_system and features:
             try:
                 # Use ensemble prediction if models are trained
                 if hasattr(self.ml_system, 'models') and self.ml_system.models:
-                    score = self.ml_system.predict_with_ensemble(features)
-                    logger.debug(f"ML ensemble score for {dog_name}: {score:.3f}")
-                    return score
+                    ml_score = self.ml_system.predict_with_ensemble(features)
+                    logger.debug(f"ML ensemble score for {dog_name}: {ml_score:.3f}")
+                    
+                    # Quality check: if ML score is uniform/too low, prefer heuristic
+                    # Only reject if score is extremely low (like 0.05) or truly uniform
+                    if ml_score < 0.06 or (hasattr(self, '_last_ml_scores') and 
+                                           len(self._last_ml_scores) >= 3 and
+                                           len(set([round(s, 3) for s in self._last_ml_scores[-3:]])) == 1):
+                        logger.warning(f"ML score appears uniform/poor for {dog_name} (score: {ml_score:.4f}), using heuristic")
+                        return heuristic_score
+                    
+                    # Track ML scores for uniform detection
+                    if not hasattr(self, '_last_ml_scores'):
+                        self._last_ml_scores = []
+                    self._last_ml_scores.append(ml_score)
+                    if len(self._last_ml_scores) > 10:
+                        self._last_ml_scores = self._last_ml_scores[-10:]  # Keep last 10
+                    
+                    # Blend ML and heuristic scores for better differentiation
+                    blended_score = (ml_score * 0.7) + (heuristic_score * 0.3)
+                    return blended_score
             except Exception as e:
                 logger.warning(f"Error generating ML prediction for {dog_name}: {e}")
         
         # Fallback: heuristic-based scoring
-        return self._generate_heuristic_score(features, dog_name)
+        return heuristic_score
     
     def _generate_heuristic_score(self, features: dict, dog_name: str) -> float:
         """Generate heuristic-based prediction score with enhanced differentiation"""
@@ -364,11 +391,10 @@ class EnhancedPipelineV2:
         data_quality = features.get('data_quality', 0.5)
         base_score *= (0.85 + 0.30 * data_quality)
         
-        # Controlled randomness with seed based on dog name for consistency
-        import random
-        random.seed(hash(dog_name) % 2147483647)  # Consistent seed per dog
-        base_score += random.uniform(-0.08, 0.08)
-        random.seed()  # Reset to random seed
+        # Apply small variance based on dog name hash for consistent differentiation
+        name_hash = hash(dog_name) % 1000
+        name_factor = (name_hash / 1000 - 0.5) * 0.06  # Range: -0.03 to +0.03
+        base_score += name_factor
         
         return max(0.05, min(0.95, base_score))
     
@@ -586,6 +612,77 @@ class EnhancedPipelineV2:
             logger.warning(f"Error extracting features from historical data: {e}")
         
         return features
+    
+    def _check_for_model_updates(self):
+        """Check for model updates periodically and reload if needed"""
+        try:
+            # Only check if enough time has passed
+            if (self.last_model_check and 
+                (datetime.now() - self.last_model_check).total_seconds() < self._model_reload_check_interval):
+                return
+            
+            self.last_model_check = datetime.now()
+            
+            # Check for reload signal file
+            reload_signal_path = Path('./model_reload_signal.json')
+            if reload_signal_path.exists():
+                try:
+                    with open(reload_signal_path, 'r') as f:
+                        reload_info = json.load(f)
+                    
+                    model_id = reload_info.get('model_id')
+                    if model_id:
+                        logger.info(f"🔄 Model reload signal detected: {model_id}")
+                        
+                        # Reload ML system to get the new model
+                        if self.ml_system:
+                            logger.info("🔄 Reloading ML system to pick up new model...")
+                            
+                            # Force reload by calling auto-load again
+                            self.ml_system._auto_load_models()
+                            
+                            logger.info("✅ ML system reloaded successfully")
+                        
+                        # Remove the signal file
+                        reload_signal_path.unlink()
+                        logger.info("🗑️ Reload signal file removed")
+                    
+                except Exception as e:
+                    logger.warning(f"Error processing reload signal: {e}")
+                    # Remove corrupted signal file
+                    try:
+                        reload_signal_path.unlink()
+                    except:
+                        pass
+            
+            # Also check model status file for information
+            status_path = Path('./current_model_status.json')
+            if status_path.exists():
+                try:
+                    with open(status_path, 'r') as f:
+                        status_info = json.load(f)
+                    
+                    current_model_id = status_info.get('current_model_id')
+                    if current_model_id and not hasattr(self, '_last_known_model_id'):
+                        # First time seeing this status
+                        self._last_known_model_id = current_model_id
+                        logger.debug(f"📊 Current model status: {current_model_id}")
+                    elif current_model_id and current_model_id != getattr(self, '_last_known_model_id', None):
+                        # Model has changed
+                        logger.info(f"🔄 Model change detected: {self._last_known_model_id} -> {current_model_id}")
+                        self._last_known_model_id = current_model_id
+                        
+                        # Force reload of ML system
+                        if self.ml_system:
+                            self.ml_system._auto_load_models()
+                    
+                except Exception as e:
+                    logger.debug(f"Could not read model status file: {e}")
+            
+            logger.debug("✓ Model update check completed")
+            
+        except Exception as e:
+            logger.warning(f"Error checking for model updates: {e}")
     
     def _error_response(self, error_message: str) -> dict:
         """Generate error response"""

@@ -73,17 +73,127 @@ class UpcomingRaceBrowser:
         
         print(f"🔍 Fetching upcoming races for the next {days_ahead} days...")
         
+        # Prioritize live scraping for real race times
         for i in range(days_ahead + 1):  # Include today
             check_date = today + timedelta(days=i)
-            date_races = self.get_races_for_date(check_date)
-            races.extend(date_races)
+            date_str = check_date.strftime('%Y-%m-%d')
             
-            # Add small delay between date requests
-            if i < days_ahead:
-                time.sleep(random.uniform(0.5, 1.5))
+            try:
+                # Always try to scrape live data first for real times
+                print(f"   🌐 Scraping live data for {date_str} to get real race times...")
+                date_races = self.get_races_for_date(check_date)
+                
+                if date_races:
+                    races.extend(date_races)
+                    print(f"   ✅ Found {len(date_races)} live races for {date_str}")
+                else:
+                    # Fallback to cached races if live scraping fails
+                    cached_races = self._get_cached_races_for_date(date_str)
+                    if cached_races:
+                        print(f"   📋 Fallback: Using {len(cached_races)} cached races for {date_str}")
+                        races.extend(cached_races)
+                    else:
+                        print(f"   ⚪ No races found for {date_str}")
+                
+                # Rate limiting for respectful scraping
+                if i < days_ahead:
+                    time.sleep(0.5)  # Slightly longer delay for live scraping
+                    
+            except Exception as e:
+                print(f"   ⚠️ Error scraping {date_str}: {e}")
+                # Fallback to cached data on error
+                cached_races = self._get_cached_races_for_date(date_str)
+                if cached_races:
+                    print(f"   📋 Error fallback: Using {len(cached_races)} cached races for {date_str}")
+                    races.extend(cached_races)
+                continue
         
-        print(f"✅ Found {len(races)} upcoming races")
-        return races
+        # Sort races chronologically by date and time 
+        def parse_race_time(race):
+            """Parse race time for sorting"""
+            date_str = race.get('date', '9999-12-31')  # Default to far future for missing dates
+            time_str = race.get('race_time', '11:59 PM')  # Default to late time
+            race_num = int(race.get('race_number', 999))  # Use race number as tiebreaker
+            
+            # Convert time to 24-hour format for proper sorting
+            try:
+                # Clean up time string
+                clean_time = time_str.strip().upper()
+                
+                if 'PM' in clean_time:
+                    time_part = clean_time.replace(' PM', '').replace('PM', '')
+                    hour, minute = time_part.split(':')
+                    hour = int(hour)
+                    minute = int(minute)
+                    # Convert PM to 24-hour format
+                    if hour != 12:
+                        hour += 12
+                elif 'AM' in clean_time:
+                    time_part = clean_time.replace(' AM', '').replace('AM', '')
+                    hour, minute = time_part.split(':')
+                    hour = int(hour)
+                    minute = int(minute)
+                    # Convert 12 AM to 0 (midnight)
+                    if hour == 12:
+                        hour = 0
+                else:
+                    # Fallback: estimate based on race number (races typically start at 1 PM, 25 min apart)
+                    base_minutes = 13 * 60  # 1 PM in minutes from midnight
+                    total_minutes_from_midnight = base_minutes + ((race_num - 1) * 25)
+                    hour = total_minutes_from_midnight // 60
+                    minute = total_minutes_from_midnight % 60
+                    
+                # Create sortable time string: YYYY-MM-DD HH:MM:RR (RR = race number for tiebreaker)
+                return f"{date_str} {hour:02d}:{minute:02d}:{race_num:03d}"
+            except Exception as e:
+                # Fallback for unparseable times - use race number estimate
+                base_minutes = 13 * 60  # 1 PM in minutes from midnight
+                total_minutes_from_midnight = base_minutes + ((race_num - 1) * 25)
+                hour = total_minutes_from_midnight // 60
+                minute = total_minutes_from_midnight % 60
+                return f"{date_str} {hour:02d}:{minute:02d}:{race_num:03d}"
+        
+        # Sort races by parsed time
+        races.sort(key=parse_race_time)
+        
+        # Filter out past races (races that have already started)
+        now = datetime.now()
+        current_time = now.time()
+        current_date = now.date().strftime('%Y-%m-%d')
+        
+        future_races = []
+        for race in races:
+            race_date = race.get('date', '')
+            race_time_str = race.get('race_time', '')
+            
+            # Only filter for today's races
+            if race_date == current_date and race_time_str:
+                try:
+                    # Parse race time
+                    clean_time = race_time_str.strip().upper()
+                    if 'PM' in clean_time or 'AM' in clean_time:
+                        race_time_obj = datetime.strptime(clean_time, '%I:%M %p').time()
+                        
+                        # Add 30 minute buffer (race might still be running)
+                        race_end_time = datetime.combine(now.date(), race_time_obj) + timedelta(minutes=30)
+                        
+                        # Only include if race hasn't finished yet
+                        if datetime.combine(now.date(), current_time) < race_end_time:
+                            future_races.append(race)
+                        else:
+                            print(f"   ⏰ Skipping past race: {race.get('title', 'Unknown')} at {race_time_str}")
+                    else:
+                        # If we can't parse time, include it to be safe
+                        future_races.append(race)
+                except Exception as e:
+                    # If time parsing fails, include the race to be safe
+                    future_races.append(race)
+            else:
+                # Include races from other dates
+                future_races.append(race)
+        
+        print(f"✅ Found {len(future_races)} upcoming races (filtered past races, sorted by time)")
+        return future_races
     
     def get_races_for_date(self, date):
         """Get races for a specific date by scraping live data from thedogs.com"""
@@ -94,23 +204,79 @@ class UpcomingRaceBrowser:
         try:
             races = []
             
-            # First check if we have cached CSV files (backup method)
+            # First get cached CSV files (these are confirmed races) - PRIORITIZE THESE
             cached_races = self._get_cached_races_for_date(date_str)
+            if cached_races:
+                print(f"   📋 Found {len(cached_races)} cached races for {date_str}")
+                races.extend(cached_races)
+                print(f"   ✅ Added {len(cached_races)} cached races to results")
+                
+                # For cached races, try to enhance with live times from individual race pages
+                print(f"   🔄 Enhancing cached races with live times...")
+                for i, cached_race in enumerate(cached_races[:5]):  # Limit to first 5 for performance
+                    if not cached_race.get('race_time') or cached_race.get('race_time') in ['1:00 PM', '1:25 PM', '1:50 PM']:
+                        # These look like estimated times, try to get real times
+                        real_race_time = self._scrape_race_time_from_page(cached_race['url'])
+                        if real_race_time:
+                            cached_race['race_time'] = real_race_time
+                            cached_race['time_source'] = 'live_scraped'
+                            print(f"     ✅ Updated {cached_race['title']} with real time: {real_race_time}")
             
-            # Try to scrape live data from thedogs.com
+            # Try to scrape live data from main racing page (add to cached races)
             live_races = self._scrape_live_races_for_date(date_str)
-            
             if live_races:
-                print(f"   ✅ Found {len(live_races)} live races for {date_str}")
-                races = live_races
-            elif cached_races:
-                print(f"   📋 Using {len(cached_races)} cached races for {date_str}")
-                races = cached_races
-            else:
+                print(f"   🌐 Found {len(live_races)} live races from main page for {date_str}")
+                
+                # Only add live races that aren't already in cached races
+                existing_race_keys = set()
+                for race in races:
+                    race_key = f"{race.get('venue', '')}_{race.get('race_number', '')}_{race.get('date', '')}"
+                    existing_race_keys.add(race_key)
+                
+                added_live_count = 0
+                for live_race in live_races:
+                    race_key = f"{live_race.get('venue', '')}_{live_race.get('race_number', '')}_{live_race.get('date', '')}"
+                    if race_key not in existing_race_keys:
+                        races.append(live_race)
+                        existing_race_keys.add(race_key)
+                        added_live_count += 1
+                
+                print(f"   ➕ Added {added_live_count} additional live races to cached races")
+            
+            print(f"   📊 Total races found: {len(races)} (Cached: {len(cached_races)}, Live: {len(live_races) if live_races else 0})")
+            
+            # If we have cached races but main page didn't find all venues, 
+            # try to get live times for cached races
+            if cached_races and len(live_races) < len(cached_races):
+                print(f"   🔄 Enhancing cached races with live times...")
+                for cached_race in cached_races:
+                    # Find if this race already has live data
+                    found_live = False
+                    for race in races:
+                        if (race.get('venue') == cached_race.get('venue') and 
+                            race.get('race_number') == cached_race.get('race_number') and
+                            race.get('time_source') == 'live_scraped'):
+                            found_live = True
+                            break
+                    
+                    # If no live data found, try to get real race time
+                    if not found_live:
+                        real_race_time = self._scrape_race_time_from_page(cached_race['url'])
+                        if real_race_time:
+                            # Update the cached race with real time
+                            for race in races:
+                                if (race.get('venue') == cached_race.get('venue') and 
+                                    race.get('race_number') == cached_race.get('race_number')):
+                                    race['race_time'] = real_race_time
+                                    race['time_source'] = 'live_scraped'
+                                    print(f"     ✅ Updated {race['title']} with real time: {real_race_time}")
+                                    break
+            
+            if not races:
                 print(f"   ⚪ No races found for {date_str}")
             
-            # Sort by race number
-            races.sort(key=lambda x: x.get('race_number', 0))
+            # Sort by race number within each venue
+            races.sort(key=lambda x: (x.get('venue', ''), int(x.get('race_number', 0))))
             
             return races
             
@@ -506,7 +672,12 @@ class UpcomingRaceBrowser:
             # Get race page
             response = self.session.get(race_url, timeout=30)
             
-            if response.status_code != 200:
+            if response.status_code == 404:
+                return {
+                    'success': False,
+                    'error': 'Race page not found (404). Please check the race URL or try again later.'
+                }
+            elif response.status_code != 200:
                 return {
                     'success': False,
                     'error': f'Failed to access race page: {response.status_code}'
@@ -623,12 +794,18 @@ class UpcomingRaceBrowser:
                     racing_index = url_parts.index('racing')
                     if len(url_parts) > racing_index + 3:
                         venue_slug = url_parts[racing_index + 1]
-                        date = url_parts[racing_index + 2]
+                        url_date = url_parts[racing_index + 2]
                         if not race_number:
                             race_number = url_parts[racing_index + 3]
                         
                         # Map venue slug to code
                         venue = self.venue_map.get(venue_slug, venue_slug.upper())
+                        
+                        # Convert date from YYYY-MM-DD to YYYY-MM-DD for consistency
+                        if url_date and re.match(r'\d{4}-\d{2}-\d{2}', url_date):
+                            date = url_date  # Keep as YYYY-MM-DD format
+                        else:
+                            date = url_date
                 except ValueError:
                     pass
             
@@ -656,7 +833,7 @@ class UpcomingRaceBrowser:
                         else:
                             date_obj = datetime.strptime(date_str.strip(), '%d %B %Y')
                         
-                        date = date_obj.strftime('%d %B %Y')
+                        date = date_obj.strftime('%Y-%m-%d')  # Keep consistent YYYY-MM-DD format
                         break
                     except ValueError:
                         continue
@@ -947,8 +1124,157 @@ class UpcomingRaceBrowser:
         
         return races
     
+    def _scrape_race_time_from_page(self, race_url):
+        """Scrape actual race time from individual race page"""
+        try:
+            print(f"     🕐 Scraping race time from: {race_url}")
+            response = self.session.get(race_url, timeout=15)
+            
+            if response.status_code != 200:
+                print(f"     ⚠️ Failed to access race page: {response.status_code}")
+                return None
+            
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Multiple strategies to find race time
+            race_time = None
+            
+            # Strategy 1: Look for common race time selectors
+            time_selectors = [
+                '.race-time',
+                '.start-time', 
+                '.race-start-time',
+                '[class*="time"]',
+                '[class*="start"]'
+            ]
+            
+            for selector in time_selectors:
+                elements = soup.select(selector)
+                for element in elements:
+                    text = element.get_text(strip=True)
+                    # Look for time patterns in the text
+                    time_match = re.search(r'(\d{1,2}:\d{2}\s*(?:AM|PM))', text, re.I)
+                    if time_match:
+                        race_time = time_match.group(1)
+                        print(f"     ✅ Found race time: {race_time} (from {selector})")
+                        return race_time
+            
+            # Strategy 2: Search entire page text for time patterns
+            page_text = soup.get_text()
+            
+            # Look for structured data or JSON with race times
+            json_patterns = [
+                r'"startTime"\s*:\s*"([^"]+)"',
+                r'"raceTime"\s*:\s*"([^"]+)"',
+                r'"time"\s*:\s*"([^"]+)"',
+                r'"start"\s*:\s*"([^"]+)"'
+            ]
+            
+            for pattern in json_patterns:
+                matches = re.findall(pattern, page_text, re.I)
+                for match in matches:
+                    # Try to parse as time
+                    time_match = re.search(r'(\d{1,2}:\d{2}\s*(?:AM|PM))', match, re.I)
+                    if time_match:
+                        race_time = time_match.group(1)
+                        print(f"     ✅ Found race time: {race_time} (from JSON data)")
+                        return race_time
+            
+            # Enhanced time patterns for various formats
+            time_patterns = [
+                # Standard patterns
+                r'Start[:\s]*(\d{1,2}:\d{2}\s*(?:AM|PM))',
+                r'Time[:\s]*(\d{1,2}:\d{2}\s*(?:AM|PM))',
+                r'Race\s*Time[:\s]*(\d{1,2}:\d{2}\s*(?:AM|PM))',
+                
+                # More flexible patterns
+                r'(\d{1,2}:\d{2}\s*(?:AM|PM))(?:\s*(?:AEDT|AEST|EST|EDT))?',
+                r'(?:at|@)\s*(\d{1,2}:\d{2}\s*(?:AM|PM))',
+                r'(?:starts?|begins?)\s*(?:at)?\s*(\d{1,2}:\d{2}\s*(?:AM|PM))',
+                
+                # 24-hour format patterns
+                r'(\d{2}:\d{2})(?:\s*hrs?)?',
+                r'Start[:\s]*(\d{2}:\d{2})',
+                r'Time[:\s]*(\d{2}:\d{2})',
+                
+                # Look for times in specific contexts
+                r'Post\s*Time[:\s]*(\d{1,2}:\d{2}\s*(?:AM|PM))',
+                r'Jump\s*Time[:\s]*(\d{1,2}:\d{2}\s*(?:AM|PM))',
+                r'Off\s*Time[:\s]*(\d{1,2}:\d{2}\s*(?:AM|PM))'
+            ]
+            
+            for pattern in time_patterns:
+                matches = re.findall(pattern, page_text, re.I)
+                if matches:
+                    # Take the first reasonable match
+                    for match in matches:
+                        match = match.strip()
+                        
+                        # Try to validate and format the time
+                        try:
+                            # Handle AM/PM format
+                            if re.search(r'(AM|PM)', match, re.I):
+                                time_obj = datetime.strptime(match.upper(), '%I:%M %p')
+                                hour = time_obj.hour
+                                # Race times typically between 8 AM and 11 PM
+                                if 8 <= hour <= 23:
+                                    race_time = match.upper()
+                                    print(f"     ✅ Found race time: {race_time} (from page text - AM/PM)")
+                                    return race_time
+                            
+                            # Handle 24-hour format
+                            elif re.match(r'^\d{2}:\d{2}$', match):
+                                hour, minute = map(int, match.split(':'))
+                                if 8 <= hour <= 23:  # Reasonable race hours
+                                    # Convert to 12-hour format
+                                    time_obj = datetime.strptime(match, '%H:%M')
+                                    formatted_time = time_obj.strftime('%I:%M %p').lstrip('0')
+                                    print(f"     ✅ Found race time: {formatted_time} (from page text - 24hr)")
+                                    return formatted_time
+                                    
+                        except ValueError:
+                            continue
+                            
+            # Strategy 2.5: Look for times in script tags or data attributes
+            script_tags = soup.find_all('script')
+            for script in script_tags:
+                script_text = script.get_text()
+                # Look for time data in JavaScript
+                js_time_patterns = [
+                    r'startTime["\']?\s*[=:]\s*["\']([^"\')]+)["\']',
+                    r'raceTime["\']?\s*[=:]\s*["\']([^"\')]+)["\']',
+                    r'time["\']?\s*[=:]\s*["\']([^"\')]+)["\']',
+                ]
+                
+                for pattern in js_time_patterns:
+                    matches = re.findall(pattern, script_text, re.I)
+                    for match in matches:
+                        time_match = re.search(r'(\d{1,2}:\d{2}\s*(?:AM|PM))', match, re.I)
+                        if time_match:
+                            race_time = time_match.group(1)
+                            print(f"     ✅ Found race time: {race_time} (from JavaScript)")
+                            return race_time
+            
+            # Strategy 3: Look in meta tags or structured data
+            meta_elements = soup.find_all('meta')
+            for meta in meta_elements:
+                content = meta.get('content', '')
+                if content:
+                    time_match = re.search(r'(\d{1,2}:\d{2}\s*(?:AM|PM))', content, re.I)
+                    if time_match:
+                        race_time = time_match.group(1)
+                        print(f"     ✅ Found race time: {race_time} (from meta tag)")
+                        return race_time
+            
+            print(f"     ⚠️ No race time found on page")
+            return None
+            
+        except Exception as e:
+            print(f"     ❌ Error scraping race time: {e}")
+            return None
+    
     def _scrape_live_races_for_date(self, date_str):
-        """Scrape live races from thedogs.com for a specific date"""
+        """Scrape live races from thedogs.com for a specific date (optimized)"""
         races = []
         
         try:
@@ -956,7 +1282,8 @@ class UpcomingRaceBrowser:
             date_url = f"{self.base_url}/racing/{date_str}"
             
             print(f"   🌐 Fetching: {date_url}")
-            response = self.session.get(date_url, timeout=30)
+            # Reduced timeout for faster failure
+            response = self.session.get(date_url, timeout=10)
             
             if response.status_code != 200:
                 print(f"   ⚠️ Failed to access racing page: {response.status_code}")
@@ -964,8 +1291,8 @@ class UpcomingRaceBrowser:
             
             soup = BeautifulSoup(response.content, 'html.parser')
             
-            # Find race links using multiple strategies
-            race_links = self._find_race_links(soup, date_str)
+            # Find race links using optimized strategy
+            race_links = self._find_race_links_fast(soup, date_str)
             
             if not race_links:
                 print(f"   ⚠️ No race links found on page")
@@ -973,13 +1300,28 @@ class UpcomingRaceBrowser:
             
             print(f"   🔍 Found {len(race_links)} potential race links")
             
-            # Extract race information from each link
-            for link_element, href in race_links:
+            # Extract race information from each link and scrape real times
+            for link_element, href in race_links:  # Process ALL race links to find all venues
                 try:
                     race_info = self.extract_race_info_from_link(link_element, href, date_str)
                     if race_info:
+                        # Try to get real race time from individual race page
+                        real_race_time = self._scrape_race_time_from_page(race_info['url'])
+                        
+                        if real_race_time:
+                            race_info['race_time'] = real_race_time
+                            race_info['time_source'] = 'live_scraped'
+                            print(f"     ✅ {race_info['title']} at {real_race_time} (REAL TIME)")
+                        else:
+                            # Fallback to estimated time if scraping fails
+                            race_info['time_source'] = 'estimated'
+                            print(f"     📅 {race_info['title']} at {race_info.get('race_time', 'TBA')} (estimated)")
+                        
                         races.append(race_info)
-                        print(f"     ✅ {race_info['title']}")
+                        
+                        # Small delay between requests to be respectful
+                        time.sleep(0.2)
+                        
                 except Exception as e:
                     print(f"     ⚠️ Error extracting race from link: {e}")
                     continue
@@ -988,6 +1330,41 @@ class UpcomingRaceBrowser:
             print(f"   ❌ Error scraping live races: {e}")
         
         return races
+    
+    def _find_race_links_fast(self, soup, date_str):
+        """Find race links on the racing page using optimized strategy"""
+        race_links = []
+        
+        # Strategy 1: Look for direct race links with racing pattern (fastest)
+        race_selectors = [
+            f'a[href*="/racing/"][href*="{date_str}"]',
+            'a[href*="/racing/"]'
+        ]
+        
+        for selector in race_selectors:
+            try:
+                links = soup.select(selector)
+                for link in links:
+                    href = link.get('href')
+                    if href and self._is_valid_race_link(href, date_str):
+                        race_links.append((link, href))
+                        # Remove the limit to find ALL venues, not just first 10
+                        # if len(race_links) >= 10:  # Limit for performance
+                        #     break
+                if race_links:
+                    break  # Use first successful selector
+            except Exception as e:
+                continue
+        
+        # Remove duplicates based on href
+        seen_hrefs = set()
+        unique_links = []
+        for link, href in race_links:
+            if href not in seen_hrefs:
+                seen_hrefs.add(href)
+                unique_links.append((link, href))
+        
+        return unique_links
     
     def _find_race_links(self, soup, date_str):
         """Find race links on the racing page using multiple strategies"""

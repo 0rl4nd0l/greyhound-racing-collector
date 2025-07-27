@@ -58,8 +58,9 @@ class FormGuideCsvScraper:
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         })
         
-        # Venue mapping
+        # Comprehensive venue mapping for all Australian greyhound tracks
         self.venue_map = {
+            # Major metropolitan tracks
             'angle-park': 'AP_K',
             'sandown': 'SAN',
             'warrnambool': 'WAR',
@@ -73,14 +74,104 @@ class FormGuideCsvScraper:
             'albion-park': 'APWE',
             'cannington': 'CANN',
             'the-meadows': 'MEA',
+            'meadows': 'MEA',
             'healesville': 'HEA',
             'sale': 'SAL',
             'richmond': 'RICH',
+            'richmond-straight': 'RICH_S',
             'murray-bridge': 'MURR',
             'gawler': 'GAWL',
             'mount-gambier': 'MOUNT',
             'northam': 'NOR',
-            'mandurah': 'MAND'
+            'mandurah': 'MAND',
+            
+            # NSW tracks
+            'the-gardens': 'GARD',
+            'casino': 'CAS',
+            'wagga': 'WAG',
+            'goulburn': 'GOUL',
+            'taree': 'TAR',
+            'dubbo': 'DUB',
+            'grafton': 'GRAF',
+            'broken-hill': 'BH',
+            'lismore': 'LIS',
+            'nowra': 'NOW',
+            'temora': 'TEM',
+            'young': 'YOU',
+            'orange': 'ORA',
+            'mudgee': 'MUD',
+            'cowra': 'COW',
+            'bathurst': 'BAT',
+            'katoomba': 'KAT',
+            'wollongong': 'WOL',
+            'ingle-farm': 'INF',
+            'bulli': 'BUL',
+            'raymond-terrace': 'RAY',
+            
+            # QLD tracks
+            'ladbrokes-q1-lakeside': 'Q1L',
+            'ladbrokes-q-straight': 'QST',
+            'townsville': 'TWN',
+            'capalaba': 'CAP',
+            'ipswich': 'IPS',
+            'rockhampton': 'ROCK',
+            'bundaberg': 'BUN',
+            'cairns': 'CAI',
+            'mackay': 'MAC',
+            'toowoomba': 'TOO',
+            'gold-coast': 'GC',
+            'caloundra': 'CAL',
+            'maroochy': 'MAR',
+            
+            # VIC tracks
+            'shepparton': 'SHEP',
+            'warragul': 'WRGL',
+            'cranbourne': 'CRAN',
+            'moe': 'MOE',
+            'pakenham': 'PAK',
+            'colac': 'COL',
+            'hamilton': 'HAM',
+            'portland': 'PORT',
+            'ararat': 'ARA',
+            'stawell': 'STA',
+            'swan-hill': 'SH',
+            'mildura': 'MIL',
+            'echuca': 'ECH',
+            'seymour': 'SEY',
+            'kilmore': 'KIL',
+            'wodonga': 'WOD',
+            'wodonga-gvgrc': 'WOD_G',
+            
+            # SA tracks
+            'virginia': 'VIR',
+            'strathalbyn': 'STR',
+            'whyalla': 'WHY',
+            'port-augusta': 'PA',
+            'port-pirie': 'PP',
+            'glenelg': 'GLE',
+            
+            # WA tracks
+            'albany': 'ALB',
+            'geraldton': 'GER',
+            'kalgoorlie': 'KAL',
+            'bunbury': 'BUNB',
+            'esperance': 'ESP',
+            'broome': 'BRO',
+            'karratha': 'KAR',
+            'port-hedland': 'PH',
+            'kununurra': 'KUN',
+            
+            # TAS tracks
+            'hobart': 'HOB',
+            'launceston': 'LAU',
+            'devonport': 'DEV',
+            
+            # NT tracks
+            'darwin': 'DAR',
+            'alice-springs': 'AS',
+            
+            # ACT tracks
+            'canberra': 'CANB'
         }
         
         print("🏁 Form Guide CSV Scraper initialized")
@@ -376,8 +467,45 @@ class FormGuideCsvScraper:
         
         return sorted(dates, reverse=True)
     
+    def is_valid_race_url(self, url, date_str):
+        """Validate if a URL is a proper race URL with extractable race number"""
+        if not url or date_str not in url:
+            return False
+        
+        # Check URL structure
+        parts = url.split('/')
+        if len(parts) < 7:  # Need at least: https://www.thedogs.com.au/racing/venue/date/race_num/
+            return False
+        
+        # Find numeric race number in URL parts
+        race_number = None
+        for i, part in enumerate(parts):
+            if part.isdigit() and i > 4:  # Skip domain parts
+                race_number = part
+                break
+        
+        if not race_number:
+            return False
+        
+        # Check if venue is in our mapping
+        venue_found = False
+        for venue_key in self.venue_map.keys():
+            if venue_key in url:
+                venue_found = True
+                break
+        
+        if not venue_found:
+            # Still valid if we can't map venue, but less reliable
+            pass
+        
+        # Exclude trial URLs unless they have proper race structure
+        if '?trial=true' in url and '/racing/' not in url:
+            return False
+        
+        return True
+
     def find_race_urls(self, date):
-        """Find race URLs for a specific date"""
+        """Find race URLs for a specific date with improved filtering"""
         date_str = date.strftime('%Y-%m-%d')
         base_url = f"{self.base_url}/racing/{date_str}"
         
@@ -392,37 +520,54 @@ class FormGuideCsvScraper:
             
             soup = BeautifulSoup(response.content, 'html.parser')
             
-            # Find race links
+            # Find all links that might be race links
+            all_links = soup.find_all('a', href=True)
             race_links = []
             
-            # Look for race links in various formats
-            selectors = [
-                'a[href*="/racing/"]',
-                'a[href*="{date_str}"]'.format(date_str=date_str),
-                '.race-link',
-                '.race-card a'
-            ]
+            for link in all_links:
+                href = link.get('href')
+                if not href:
+                    continue
+                
+                # Make URL absolute if needed
+                if href.startswith('/'):
+                    full_url = f"{self.base_url}{href}"
+                elif href.startswith('http'):
+                    full_url = href
+                else:
+                    continue
+                
+                # Apply validation filters
+                if self.is_valid_race_url(full_url, date_str):
+                    race_links.append(full_url)
             
-            for selector in selectors:
-                links = soup.select(selector)
-                for link in links:
-                    href = link.get('href')
-                    if href and date_str in href and href.count('/') >= 4:
-                        # Extract race number from URL
-                        parts = href.split('/')
-                        if len(parts) >= 5 and parts[-2].isdigit():
-                            full_url = href if href.startswith('http') else f"{self.base_url}{href}"
-                            race_links.append(full_url)
+            # Remove duplicates while preserving order
+            seen = set()
+            unique_links = []
+            for url in race_links:
+                if url not in seen:
+                    seen.add(url)
+                    unique_links.append(url)
             
-            # Remove duplicates
-            unique_links = list(set(race_links))
+            # Filter out non-race URLs (venue-only URLs)
+            filtered_links = []
+            for url in unique_links:
+                # Skip URLs that don't have a race number (venue-only pages)
+                if '?trial=' in url and url.split('?')[0].endswith(date_str):
+                    continue  # Skip venue-only trial pages
+                filtered_links.append(url)
             
-            if unique_links:
-                print(f"   ✅ Found {len(unique_links)} race URLs for {date_str}")
+            if filtered_links:
+                print(f"   ✅ Found {len(filtered_links)} valid race URLs for {date_str}")
+                # Show sample URLs for debugging
+                if len(filtered_links) > 3:
+                    print(f"   📋 Sample URLs: {filtered_links[:3]}")
+                else:
+                    print(f"   📋 All URLs: {filtered_links}")
             else:
-                print(f"   ⚪ No races found for {date_str}")
+                print(f"   ⚪ No valid race URLs found for {date_str}")
             
-            return unique_links
+            return filtered_links
             
         except Exception as e:
             print(f"   ❌ Error checking {date_str}: {e}")
@@ -562,7 +707,7 @@ class FormGuideCsvScraper:
             return None
     
     def find_csv_download_link(self, soup, race_url):
-        """Find CSV download link on the page using expert-form method"""
+        """Find CSV download link on the page using improved expert-form method"""
         # Try the expert-form page method
         # Remove query parameters and add expert-form
         base_race_url = race_url.split('?')[0]  # Remove ?trial=false etc.
@@ -578,47 +723,33 @@ class FormGuideCsvScraper:
                 
             expert_soup = BeautifulSoup(response.content, 'html.parser')
             
-            # Step 2: Find the form with CSV export capability
+            # Step 2: Find the form with CSV export capability (enhanced detection)
             form = None
+            csv_button_found = False
+            
+            # Look for forms with CSV export capability
             for f in expert_soup.find_all('form'):
-                if f.find('input', {'name': 'export_csv'}) or f.find('button', {'name': 'export_csv'}):
+                # Check for export_csv input/button
+                csv_input = f.find('input', {'name': 'export_csv'})
+                csv_button = f.find('button', {'name': 'export_csv'})
+                
+                # Also check for buttons with CSV text
+                csv_text_buttons = f.find_all('button', string=lambda text: text and 'csv' in text.lower())
+                csv_value_buttons = f.find_all('button', {'value': lambda val: val and 'csv' in val.lower()})
+                
+                if csv_input or csv_button or csv_text_buttons or csv_value_buttons:
                     form = f
+                    csv_button_found = True
+                    print(f"   ✅ Found CSV export form with button/input")
                     break
             
             if not form:
                 print(f"   ⚠️ No CSV export form found on expert-form page")
                 return None
-                
-            print(f"   ✅ Found CSV export form")
             
-            # Step 3: Extract form data
+            # Step 3: Extract form data and action
             form_action = form.get('action')
             form_method = form.get('method', 'GET').upper()
-            
-            # Build form data
-            form_data = {}
-            
-            # Get all form inputs
-            for input_elem in form.find_all(['input', 'select', 'textarea']):
-                name = input_elem.get('name')
-                if name:
-                    input_type = input_elem.get('type', 'text')
-                    
-                    if input_type == 'checkbox':
-                        if input_elem.get('checked'):
-                            form_data[name] = input_elem.get('value', 'on')
-                    elif input_type == 'radio':
-                        if input_elem.get('checked'):
-                            form_data[name] = input_elem.get('value', '')
-                    elif input_type == 'submit':
-                        pass
-                    elif input_type == 'hidden':
-                        form_data[name] = input_elem.get('value', '')
-                    else:
-                        form_data[name] = input_elem.get('value', '')
-            
-            # Add the CSV export parameter
-            form_data['export_csv'] = 'true'
             
             # Determine the target URL
             if form_action:
@@ -627,28 +758,91 @@ class FormGuideCsvScraper:
                 elif form_action.startswith('http'):
                     target_url = form_action
                 else:
-                    target_url = f"{self.base_url}/{form_action}"
+                    # Relative URL - construct based on expert form page
+                    target_url = f"{'/'.join(expert_form_url.split('/')[:-1])}/{form_action}"
             else:
+                # No action specified - use the expert form URL itself
                 target_url = expert_form_url
             
-            print(f"   🔗 Submitting form to: {target_url}")
+            print(f"   🎯 Form action: {form_action or 'None (using current URL)'}")
+            print(f"   🔗 Target URL: {target_url}")
             
-            # Step 4: Submit the form to get the download URL
+            # Build form data
+            form_data = {}
+            
+            # Get all form inputs with their current values
+            for input_elem in form.find_all(['input', 'select', 'textarea']):
+                name = input_elem.get('name')
+                if not name:
+                    continue
+                    
+                input_type = input_elem.get('type', 'text').lower()
+                
+                if input_type == 'checkbox':
+                    if input_elem.get('checked'):
+                        form_data[name] = input_elem.get('value', 'on')
+                elif input_type == 'radio':
+                    if input_elem.get('checked'):
+                        form_data[name] = input_elem.get('value', '')
+                elif input_type in ['submit', 'button']:
+                    # Skip submit buttons unless they're the CSV export button
+                    if name == 'export_csv':
+                        form_data[name] = input_elem.get('value', 'Export CSV')
+                elif input_type == 'hidden':
+                    form_data[name] = input_elem.get('value', '')
+                else:
+                    # Text, email, etc. - use existing value or empty string
+                    form_data[name] = input_elem.get('value', '')
+            
+            # Ensure CSV export is requested
+            if 'export_csv' not in form_data:
+                form_data['export_csv'] = 'Export CSV'
+            
+            print(f"   📋 Form data keys: {list(form_data.keys())}")
+            
+            # Step 4: Submit the form to get CSV data or download URL
+            print(f"   📤 Submitting form ({form_method}) to: {target_url}")
+            
             if form_method == 'POST':
-                form_response = self.session.post(target_url, data=form_data, timeout=10)
+                form_response = self.session.post(target_url, data=form_data, timeout=15)
             else:
-                form_response = self.session.get(target_url, params=form_data, timeout=10)
+                form_response = self.session.get(target_url, params=form_data, timeout=15)
             
             if form_response.status_code == 200:
-                # The response should contain the actual download URL
-                download_url = form_response.text.strip()
+                content_type = form_response.headers.get('content-type', '').lower()
+                content = form_response.text.strip()
                 
-                if download_url.startswith('http'):
-                    print(f"   ✅ Got CSV download URL: {download_url}")
-                    return download_url
-                else:
-                    print(f"   ⚠️ Unexpected response: {download_url[:100]}")
-                    return None
+                # Check if we got CSV data directly
+                if 'csv' in content_type or 'text/plain' in content_type:
+                    # Response is CSV data - check if it looks valid
+                    if content and len(content.split('\n')) > 1:
+                        lines = content.split('\n')
+                        first_line = lines[0].lower()
+                        if any(header in first_line for header in ['dog', 'name', 'runner', 'placing']):
+                            print(f"   ✅ Got CSV data directly ({len(lines)} lines)")
+                            return f"data:{content}"  # Special marker for direct data
+                
+                # Check if response contains a download URL
+                if content.startswith('http'):
+                    print(f"   ✅ Got CSV download URL: {content}")
+                    return content
+                
+                # Check if response is HTML with a download link
+                if '<' in content and '>' in content:
+                    response_soup = BeautifulSoup(content, 'html.parser')
+                    csv_links = response_soup.find_all('a', href=True)
+                    for link in csv_links:
+                        href = link.get('href')
+                        if href and ('csv' in href.lower() or 'export' in href.lower()):
+                            if href.startswith('/'):
+                                href = f"{self.base_url}{href}"
+                            elif not href.startswith('http'):
+                                href = f"{self.base_url}/{href}"
+                            print(f"   ✅ Found CSV link in response: {href}")
+                            return href
+                
+                print(f"   ⚠️ Unexpected response format ({len(content)} chars): {content[:100]}")
+                return None
             else:
                 print(f"   ❌ Form submission failed: {form_response.status_code}")
                 return None
@@ -680,42 +874,32 @@ class FormGuideCsvScraper:
                     elif not href.startswith('http'):
                         href = f"{self.base_url}/{href}"
                     
+                    print(f"   🔍 Found potential CSV link: {href}")
                     return href
-        
-        # Try constructing common CSV URLs
-        common_patterns = [
-            f"{race_url}/csv",
-            f"{race_url}/export",
-            f"{race_url}/download",
-            f"{race_url}.csv",
-            f"{race_url}/form-guide.csv"
-        ]
-        
-        for pattern in common_patterns:
-            try:
-                response = self.session.head(pattern, timeout=10)
-                if response.status_code == 200:
-                    content_type = response.headers.get('content-type', '').lower()
-                    if 'csv' in content_type or 'text' in content_type:
-                        return pattern
-            except:
-                continue
         
         return None
     
-    def download_csv_file(self, csv_url, filename):
-        """Download the CSV file"""
+    def download_csv_file(self, csv_url_or_data, filename):
+        """Download the CSV file or handle direct CSV data"""
         try:
-            print(f"   📥 Downloading: {filename}")
+            print(f"   📥 Processing CSV for: {filename}")
             
-            response = self.session.get(csv_url, timeout=30)
+            # Check if we have direct CSV data (marked with 'data:' prefix)
+            if csv_url_or_data.startswith('data:'):
+                content = csv_url_or_data[5:]  # Remove 'data:' prefix
+                print(f"   📋 Using direct CSV data ({len(content.split('\n'))} lines)")
+            else:
+                # Download from URL
+                print(f"   🌍 Downloading from URL: {csv_url_or_data}")
+                response = self.session.get(csv_url_or_data, timeout=30)
+                
+                if response.status_code != 200:
+                    print(f"   ❌ Failed to download CSV: {response.status_code}")
+                    return False
+                
+                content = response.text
             
-            if response.status_code != 200:
-                print(f"   ❌ Failed to download CSV: {response.status_code}")
-                return False
-            
-            # Check if content looks like CSV
-            content = response.text
+            # Validate content
             if not content.strip():
                 print(f"   ❌ Empty CSV content")
                 return False
@@ -723,14 +907,17 @@ class FormGuideCsvScraper:
             # Basic CSV validation
             lines = content.strip().split('\n')
             if len(lines) < 2:
-                print(f"   ❌ CSV has insufficient data")
+                print(f"   ❌ CSV has insufficient data ({len(lines)} lines)")
                 return False
             
             # Check for expected headers
             first_line = lines[0].lower()
-            if not any(header in first_line for header in ['dog name', 'dog', 'runner', 'name']):
-                print(f"   ❌ CSV doesn't appear to be a form guide")
-                return False
+            expected_headers = ['dog name', 'dog', 'runner', 'name', 'placing', 'box']
+            if not any(header in first_line for header in expected_headers):
+                print(f"   ⚠️ CSV may not be a form guide (first line: {first_line[:100]})")
+                # Continue anyway as format might be different but still valid
+            else:
+                print(f"   ✅ CSV appears to be valid form guide data")
             
             # Save to download directory first (for backup/tracking)
             download_filepath = os.path.join(self.download_dir, filename)
@@ -757,12 +944,12 @@ class FormGuideCsvScraper:
                 except ValueError:
                     pass  # Skip if date parsing fails
             
-            print(f"   ✅ Successfully downloaded and moved to unprocessed: {filename}")
+            print(f"   ✅ Successfully saved CSV data to: {filename} ({len(lines)} lines)")
             
             return True
             
         except Exception as e:
-            print(f"   ❌ Error downloading CSV: {e}")
+            print(f"   ❌ Error processing CSV data: {e}")
             return False
     
     def run_scraper(self):

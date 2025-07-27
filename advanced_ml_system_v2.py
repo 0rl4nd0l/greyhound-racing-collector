@@ -209,50 +209,49 @@ class AdvancedMLSystemV2:
         if not self.models:
             return 0.5  # Default probability
         
-        # Get the first model to determine expected feature names and order
-        first_model = list(self.models.values())[0]
+        # Determine expected features based on model setup
+        expected_features = self._model_feature_columns if hasattr(self, '_model_feature_columns') else [
+            'weighted_recent_form', 'speed_trend', 'speed_consistency', 'venue_win_rate',
+            'venue_avg_position', 'venue_experience', 'distance_win_rate', 'distance_avg_time',
+            'box_position_win_rate', 'box_position_avg', 'recent_momentum', 'competitive_level',
+            'position_consistency', 'top_3_rate', 'break_quality'
+        ]
         
-        # Try to get feature names from model if available
-        if hasattr(first_model, 'feature_names_in_'):
-            expected_features = list(first_model.feature_names_in_)
-            # Only show debug info once per session
-            if not hasattr(self, '_debug_shown'):
-                print(f"🔍 ML Model expects {len(expected_features)} features: {expected_features}")
-                self._debug_shown = True
+        # Only show debug info once per session
+        if not hasattr(self, '_debug_shown'):
+            print(f"🔍 ML Model expects {len(expected_features)} features")
+            self._debug_shown = True
+        
+        # Attempt to map enhanced features to the expected feature set
+        if hasattr(self, '_model_feature_columns'):
+            mapped_features = self._map_enhanced_to_comprehensive_features(features_dict)
         else:
-            # Fallback to a reasonable feature order
-            expected_features = [
-                'weighted_recent_form', 'speed_trend', 'speed_consistency', 'venue_win_rate',
-                'venue_avg_position', 'venue_experience', 'distance_win_rate', 'distance_avg_time',
-                'box_position_win_rate', 'box_position_avg', 'recent_momentum', 'competitive_level',
-                'position_consistency', 'top_3_rate', 'break_quality'
-            ]
-            if not hasattr(self, '_debug_shown'):
-                print(f"🔍 Using fallback features: {len(expected_features)} features")
-                self._debug_shown = True
-        
+            mapped_features = features_dict
+
         # Create feature vector with EXACT ordering and naming the model expects
         feature_values = []
         missing_features = []
-        
+
         for feature_name in expected_features:
-            if feature_name in features_dict:
-                value = features_dict[feature_name]
+            if feature_name in mapped_features:
+                value = mapped_features[feature_name]
                 feature_values.append(float(value))  # Ensure numeric
             else:
-                feature_values.append(0.0)  # Default value for missing features
+                value = 0.0  # Default for missing features
+                feature_values.append(value)
                 missing_features.append(feature_name)
-        
-        if missing_features:
+
+        if missing_features and not hasattr(self, '_missing_warned'):
             print(f"⚠️ Missing features (defaulting to 0.0): {missing_features}")
-        
+            self._missing_warned = True
+
         if not feature_values:
             return 0.5  # No valid features
-        
+
         # Create DataFrame with EXACT feature names and order the model expects
         import pandas as pd
         feature_df = pd.DataFrame([feature_values], columns=expected_features)
-        
+
         # Ensure feature names are properly set for sklearn compatibility
         feature_df.columns = expected_features
         
@@ -437,8 +436,179 @@ class AdvancedMLSystemV2:
         
         return min(0.95, max(0.3, final_confidence))
     
+    def _map_enhanced_to_comprehensive_features(self, enhanced_features):
+        """Map Enhanced Pipeline V2 features to comprehensive model features"""
+        mapped = {}
+        
+        # Direct mappings
+        if 'box_number' in enhanced_features:
+            mapped['current_box'] = enhanced_features['box_number']
+            
+        # Statistical features
+        if 'weighted_recent_form' in enhanced_features:
+            # Lower form score is better (1-6 scale)
+            form_val = enhanced_features['weighted_recent_form']
+            if form_val <= 6:  # Valid form score
+                mapped['recent_form_avg'] = form_val
+                mapped['avg_position'] = form_val  # Approximate
+                mapped['long_term_form_trend'] = max(0, 3 - form_val)  # Convert to trend
+            else:
+                mapped['recent_form_avg'] = 5.0
+                mapped['avg_position'] = 5.0
+                mapped['long_term_form_trend'] = 0
+        
+        if 'venue_win_rate' in enhanced_features:
+            mapped['win_rate'] = enhanced_features['venue_win_rate']
+            mapped['place_rate'] = enhanced_features['venue_win_rate'] * 2.5  # Estimate
+        
+        if 'venue_experience' in enhanced_features:
+            mapped['venue_experience'] = enhanced_features['venue_experience']
+            mapped['grade_experience'] = enhanced_features['venue_experience']  # Approximate
+        
+        if 'speed_consistency' in enhanced_features:
+            mapped['time_consistency'] = enhanced_features['speed_consistency']
+            mapped['position_consistency'] = enhanced_features['speed_consistency']
+        
+        if 'speed_trend' in enhanced_features:
+            mapped['time_improvement_trend'] = enhanced_features['speed_trend']
+        
+        if 'distance_avg_time' in enhanced_features:
+            mapped['avg_time'] = enhanced_features['distance_avg_time']
+            mapped['best_time'] = enhanced_features['distance_avg_time'] * 0.95  # Estimate
+        
+        if 'distance_win_rate' in enhanced_features:
+            mapped['distance_specialization'] = enhanced_features['distance_win_rate']
+        
+        if 'box_position_win_rate' in enhanced_features:
+            mapped['box_win_rate'] = enhanced_features['box_position_win_rate']
+        
+        # Enhanced mapping for traditional score features
+        form_score = enhanced_features.get('weighted_recent_form', 5.0)
+        data_quality = enhanced_features.get('data_quality', 0.5)
+        
+        # Traditional scores (scale 0-1, higher is better)
+        base_score = max(0, 1 - (form_score / 6))  # Convert 1-6 form to 0-1 score
+        mapped['traditional_overall_score'] = base_score * data_quality
+        mapped['traditional_performance_score'] = base_score * 0.9
+        mapped['traditional_form_score'] = base_score
+        mapped['traditional_consistency_score'] = enhanced_features.get('speed_consistency', 0.5)
+        mapped['traditional_confidence_level'] = data_quality
+        mapped['traditional_class_score'] = enhanced_features.get('competitive_level', 0.5) / 10
+        mapped['traditional_fitness_score'] = max(0, 1 - abs(enhanced_features.get('speed_trend', 0)))
+        mapped['traditional_experience_score'] = min(1, enhanced_features.get('venue_experience', 0) / 10)
+        mapped['traditional_trainer_score'] = enhanced_features.get('trainer_impact', 0.5)
+        mapped['traditional_track_condition_score'] = 0.7  # Default
+        mapped['traditional_distance_score'] = enhanced_features.get('distance_win_rate', 0.5)
+        
+        # Weight features (defaults)
+        mapped['current_weight'] = 30.0  # Typical weight
+        mapped['avg_weight'] = 30.0
+        mapped['weight_consistency'] = 0.8
+        mapped['weight_vs_avg'] = 0.0
+        
+        # Weather features (defaults)
+        mapped['temperature'] = 20.0
+        mapped['humidity'] = 60.0
+        mapped['wind_speed'] = 5.0
+        mapped['pressure'] = 1013.25
+        mapped['weather_adjustment_factor'] = 1.0
+        
+        # Weather categorical features (defaults to optimal conditions)
+        mapped['weather_clear'] = 1
+        mapped['weather_cloudy'] = 0
+        mapped['weather_rain'] = 0
+        mapped['weather_fog'] = 0
+        mapped['temp_optimal'] = 1
+        mapped['temp_cold'] = 0
+        mapped['temp_cool'] = 0
+        mapped['temp_warm'] = 0
+        mapped['temp_hot'] = 0
+        mapped['wind_light'] = 1
+        mapped['wind_calm'] = 0
+        mapped['wind_moderate'] = 0
+        mapped['wind_strong'] = 0
+        mapped['humidity_normal'] = 1
+        mapped['humidity_low'] = 0
+        mapped['humidity_high'] = 0
+        
+        # Experience and performance features
+        mapped['weather_experience_count'] = 5
+        mapped['weather_performance'] = 0.6
+        mapped['days_since_last'] = 14  # Default
+        mapped['competition_strength'] = enhanced_features.get('competitive_level', 5.0)
+        mapped['field_size'] = 8  # Typical field size
+        mapped['historical_races_count'] = max(1, enhanced_features.get('venue_experience', 1))
+        
+        # Encoded features (defaults)
+        mapped['venue_encoded'] = 1
+        mapped['track_condition_encoded'] = 1
+        mapped['grade_encoded'] = 5
+        mapped['distance_numeric'] = 500  # Typical distance
+        
+        # Fitness and key factors
+        mapped['fitness_score'] = max(0, 1 - abs(enhanced_features.get('speed_trend', 0)))
+        mapped['traditional_key_factors_count'] = 3
+        mapped['traditional_risk_factors_count'] = 1
+        
+        # Market confidence (convert from form)
+        if 'weighted_recent_form' in enhanced_features:
+            form_val = enhanced_features['weighted_recent_form']
+            mapped['market_confidence'] = max(0.1, 1 - (form_val / 6))  # Better form = higher confidence
+        else:
+            mapped['market_confidence'] = 0.5
+        
+        # Current odds (estimated from form and other factors)
+        market_conf = mapped.get('market_confidence', 0.5)
+        mapped['current_odds_log'] = np.log(max(1.5, 10 - (market_conf * 8)))
+        
+        return mapped
+    
     def _auto_load_models(self):
-        """Automatically load the most recent trained models if available"""
+        """Automatically load the best trained model from the model registry"""
+        try:
+            from model_registry import get_model_registry
+            
+            # Get the global model registry
+            registry = get_model_registry()
+            
+            # Try to get the best model from registry
+            best_model_result = registry.get_best_model()
+            if best_model_result:
+                model, scaler, metadata = best_model_result
+                
+                print(f"📂 Auto-loading best model from registry: {metadata.model_id}")
+                print(f"   📊 Performance: Acc={metadata.accuracy:.3f}, AUC={metadata.auc:.3f}, F1={metadata.f1_score:.3f}")
+                print(f"   🔄 Training: {metadata.training_timestamp[:10]} ({metadata.training_samples:,} samples)")
+                
+                # Set up the model in ensemble format
+                model_name = metadata.model_name or 'registry_model'
+                self.models = {model_name: model}
+                self.model_weights = {model_name: 1.0}
+                self.scaler = scaler
+                
+                # Store expected feature columns for proper mapping
+                if metadata.feature_names:
+                    self._model_feature_columns = metadata.feature_names
+                
+                # Store metadata for reference
+                self._current_model_metadata = metadata
+                
+                print(f"✅ Registry model loaded successfully: {model_name}")
+                return
+            
+            print("⚠️ No models found in registry, falling back to legacy loading...")
+            
+        except ImportError:
+            print("⚠️ Model registry not available, using legacy model loading...")
+        except Exception as e:
+            print(f"⚠️ Error loading from model registry: {e}")
+            print("   Falling back to legacy model loading...")
+        
+        # Fallback to legacy loading
+        self._legacy_auto_load_models()
+    
+    def _legacy_auto_load_models(self):
+        """Legacy model loading method as fallback"""
         import os
         import glob
         
@@ -447,15 +617,30 @@ class AdvancedMLSystemV2:
         if os.path.exists(model_dir):
             model_files = glob.glob(os.path.join(model_dir, "*.joblib"))
             if model_files:
-                # Get the most recent model
-                latest_model = max(model_files, key=os.path.getctime)
+                # Prefer comprehensive models with more features
+                best_model = None
+                max_features = 0
+                
+                for model_file in model_files:
+                    try:
+                        model_data = joblib.load(model_file)
+                        if 'feature_columns' in model_data:
+                            num_features = len(model_data['feature_columns'])
+                            if num_features > max_features:
+                                max_features = num_features
+                                best_model = model_file
+                    except:
+                        continue
+                
+                # If no model with feature_columns found, use most recent
+                latest_model = best_model if best_model else max(model_files, key=os.path.getctime)
                 
                 try:
                     model_data = joblib.load(latest_model)
                     
                     # Convert single comprehensive model to ensemble format
                     if isinstance(model_data, dict) and 'model' in model_data:
-                        print(f"📂 Auto-loading trained model: {os.path.basename(latest_model)}")
+                        print(f"📂 Legacy loading trained model: {os.path.basename(latest_model)}")
                         
                         # Create ensemble from single model by using it as the primary model
                         model_name = model_data.get('model_name', 'comprehensive_model')
@@ -468,7 +653,11 @@ class AdvancedMLSystemV2:
                         if 'scaler' in model_data:
                             self.scaler = model_data['scaler']
                         
-                        print(f"✅ Loaded model: {model_name} (accuracy: {model_data.get('accuracy', 'N/A'):.3f})")
+                        # Store expected feature columns for proper mapping
+                        if 'feature_columns' in model_data:
+                            self._model_feature_columns = model_data['feature_columns']
+                        
+                        print(f"✅ Legacy model loaded: {model_name} (accuracy: {model_data.get('accuracy', 'N/A'):.3f})")
                         return
                         
                 except Exception as e:

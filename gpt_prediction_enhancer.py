@@ -86,6 +86,8 @@ class GPTPredictionEnhancer:
                 enhanced_predictions = self.gpt_analyzer.enhance_predictions_with_gpt(
                     existing_predictions['predictions'], race_context
                 )
+                # Store the base ML predictions for merging later
+                enhanced_predictions['base_predictions'] = existing_predictions['predictions']
             
             # 3. Generate betting strategy
             betting_strategy = {}
@@ -106,7 +108,14 @@ class GPTPredictionEnhancer:
                     time_period_days=60
                 )
             
-            # 5. Compile comprehensive analysis
+            # 5. Compile comprehensive analysis with enhanced predictions that preserve ML scores
+            # Create enhanced predictions that merge GPT insights with original ML scores
+            final_enhanced_predictions = self._merge_gpt_with_ml_predictions(
+                existing_predictions.get('predictions', []) if existing_predictions else [],
+                race_analysis,
+                enhanced_predictions
+            )
+            
             comprehensive_analysis = {
                 "race_info": {
                     "venue": race_context.venue,
@@ -121,6 +130,7 @@ class GPTPredictionEnhancer:
                 "enhanced_ml_predictions": enhanced_predictions,
                 "betting_strategy": betting_strategy,
                 "pattern_analysis": pattern_analysis,
+                "merged_predictions": final_enhanced_predictions,  # The properly merged predictions
                 "analysis_summary": self._create_analysis_summary(
                     race_analysis, enhanced_predictions, betting_strategy
                 ),
@@ -583,6 +593,99 @@ class GPTPredictionEnhancer:
                     recommendations[current_section].append(line)
         
         return recommendations
+    
+    def _merge_gpt_with_ml_predictions(self, ml_predictions: List[Dict], 
+                                     gpt_race_analysis: Dict, 
+                                     gpt_enhanced_predictions: Dict) -> List[Dict]:
+        """Merge GPT insights with ML predictions while preserving original scores"""
+        if not ml_predictions:
+            return []
+        
+        merged_predictions = []
+        
+        # Extract GPT finishing order if available
+        gpt_order = []
+        try:
+            if 'raw_analysis' in gpt_race_analysis:
+                import re
+                # Try to extract predicted order from GPT analysis
+                analysis_text = gpt_race_analysis['raw_analysis']
+                # Look for order patterns in the JSON-like structure
+                order_match = re.search(r'"order":\s*\[(.*?)\]', analysis_text, re.DOTALL)
+                if order_match:
+                    order_text = order_match.group(1)
+                    # Extract dog names from the order
+                    dog_names = re.findall(r'"([^"]+)"', order_text)
+                    gpt_order = dog_names
+        except Exception as e:
+            logger.warning(f"Could not extract GPT order: {e}")
+        
+        # Create mapping of dog names to GPT order positions
+        gpt_order_map = {}
+        for i, dog_name in enumerate(gpt_order):
+            gpt_order_map[dog_name.upper()] = i + 1
+        
+        # Process each ML prediction
+        for ml_pred in ml_predictions:
+            merged_pred = ml_pred.copy()  # Start with ML prediction
+            
+            dog_name = ml_pred.get('dog_name', '').upper()
+            
+            # Add GPT insights while preserving ML scores
+            gpt_insights = {
+                'gpt_predicted_position': gpt_order_map.get(dog_name),
+                'gpt_analysis_available': 'error' not in gpt_race_analysis,
+                'gpt_confidence': gpt_race_analysis.get('analysis_confidence', 0),
+            }
+            
+            # Preserve original ML scores but add GPT context
+            original_final_score = ml_pred.get('final_score', ml_pred.get('prediction_score', 0.5))
+            original_confidence = ml_pred.get('confidence_level', 'LOW')
+            
+            # Adjust confidence based on GPT agreement
+            enhanced_confidence = original_confidence
+            if gpt_insights['gpt_predicted_position']:
+                ml_rank = ml_pred.get('predicted_rank', 999)
+                gpt_rank = gpt_insights['gpt_predicted_position']
+                
+                # If GPT and ML agree on top positions, increase confidence
+                if ml_rank <= 3 and gpt_rank <= 3:
+                    if original_confidence == 'LOW':
+                        enhanced_confidence = 'MEDIUM'
+                    elif original_confidence == 'MEDIUM':
+                        enhanced_confidence = 'HIGH'
+                elif abs(ml_rank - gpt_rank) > 3:
+                    # Large disagreement - might lower confidence
+                    if original_confidence == 'HIGH':
+                        enhanced_confidence = 'MEDIUM'
+            
+            # Update the prediction with enhanced information
+            merged_pred.update({
+                'final_score': original_final_score,  # Preserve original ML score
+                'prediction_score': original_final_score,  # Ensure consistency
+                'confidence_level': enhanced_confidence,  # Enhanced confidence
+                'gpt_insights': gpt_insights,
+                'enhanced_with_gpt': True,
+                'original_ml_confidence': original_confidence
+            })
+            
+            # Add GPT reasoning to existing reasoning
+            if 'reasoning' in merged_pred:
+                if gpt_insights['gpt_predicted_position']:
+                    merged_pred['reasoning'].append(
+                        f"GPT Predicted Position: {gpt_insights['gpt_predicted_position']}"
+                    )
+            
+            merged_predictions.append(merged_pred)
+        
+        # Sort by original final_score to maintain ML-based ranking
+        merged_predictions.sort(key=lambda x: x.get('final_score', 0), reverse=True)
+        
+        # Update predicted ranks
+        for i, pred in enumerate(merged_predictions):
+            pred['predicted_rank'] = i + 1
+        
+        return merged_predictions
     
     def _save_enhanced_analysis(self, analysis: Dict, race_id: str):
         """Save enhanced analysis to file"""

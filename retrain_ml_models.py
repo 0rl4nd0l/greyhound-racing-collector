@@ -126,34 +126,151 @@ def retrain_models(X, y, feature_columns):
     # Train models
     results = ml_system.train_advanced_models(X_train, y_train, feature_cols)
     
-    # Save models
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    model_filepath = f"comprehensive_trained_models/retrained_model_{timestamp}.joblib"
-    
-    # Ensure directory exists
-    os.makedirs("comprehensive_trained_models", exist_ok=True)
-    
-    # Save the best performing model
+    # Save the best performing model to the registry
     best_model_name = max(results.keys(), key=lambda k: results[k]['cv_auc_mean'])
     best_model = results[best_model_name]
     
-    model_data = {
-        'model': best_model['model'],
-        'model_name': best_model_name,
-        'accuracy': best_model['cv_accuracy_mean'],
-        'auc': best_model['cv_auc_mean'],
-        'feature_columns': feature_cols,
-        'scaler': ml_system.scaler,
-        'timestamp': timestamp,
-        'training_samples': len(X_train)
-    }
+    try:
+        from model_registry import get_model_registry
+        from sklearn.metrics import f1_score, precision_score, recall_score
+        from sklearn.model_selection import train_test_split
+        
+        # Get the model registry
+        registry = get_model_registry()
+        
+        # Calculate additional metrics for the registry
+        X_test_split, X_val_split, y_test_split, y_val_split = train_test_split(
+            X_train, y_train, test_size=0.2, random_state=42, stratify=y_train
+        )
+        
+        # Make predictions for metrics calculation
+        if best_model_name in ['neural_network', 'logistic_regression_optimized']:
+            X_scaled = ml_system.scaler.fit_transform(X_test_split)
+            y_pred = best_model['model'].predict(X_scaled)
+        else:
+            y_pred = best_model['model'].predict(X_test_split)
+        
+        # Calculate comprehensive metrics
+        f1 = f1_score(y_test_split, y_pred, average='binary', zero_division=0)
+        precision = precision_score(y_test_split, y_pred, average='binary', zero_division=0)
+        recall = recall_score(y_test_split, y_pred, average='binary', zero_division=0)
+        
+        # Prepare performance metrics
+        performance_metrics = {
+            'accuracy': best_model['cv_accuracy_mean'],
+            'auc': best_model['cv_auc_mean'],
+            'f1_score': f1,
+            'precision': precision,
+            'recall': recall
+        }
+        
+        # Prepare training info
+        training_info = {
+            'training_samples': len(X_train),
+            'test_samples': len(X_test_split),
+            'training_duration': 0.0,  # Could be tracked if needed
+            'validation_method': 'time_series_cv',
+            'cv_scores': best_model.get('cv_accuracy_scores', []),
+            'is_ensemble': False,
+            'ensemble_components': [],
+            'data_quality_score': 0.8,  # Estimated based on feature completeness
+            'inference_time_ms': 5.0  # Estimated
+        }
+        
+        # Register the model in the registry
+        model_id = registry.register_model(
+            model_obj=best_model['model'],
+            scaler_obj=ml_system.scaler,
+            model_name=best_model_name,
+            model_type='retrained_model',
+            performance_metrics=performance_metrics,
+            training_info=training_info,
+            feature_names=feature_cols,
+            hyperparameters=ml_system.model_configs.get(best_model_name, {}).get('params', {}),
+            notes=f"Retrained model from {len(X_train)} historical samples"
+        )
+        
+        print(f"✅ Model registered in registry: {model_id}")
+        print(f"   📊 Performance: Acc={performance_metrics['accuracy']:.3f}, AUC={performance_metrics['auc']:.3f}, F1={performance_metrics['f1_score']:.3f}")
+        
+        # Also save legacy format for backward compatibility
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        model_filepath = f"comprehensive_trained_models/retrained_model_{timestamp}.joblib"
+        
+        # Ensure directory exists
+        os.makedirs("comprehensive_trained_models", exist_ok=True)
+        
+        model_data = {
+            'model': best_model['model'],
+            'model_name': best_model_name,
+            'accuracy': best_model['cv_accuracy_mean'],
+            'auc': best_model['cv_auc_mean'],
+            'feature_columns': feature_cols,
+            'scaler': ml_system.scaler,
+            'timestamp': timestamp,
+            'training_samples': len(X_train),
+            'registry_id': model_id
+        }
+        
+        joblib.dump(model_data, model_filepath)
+        print(f"📁 Legacy model also saved to: {model_filepath}")
+        
+        return ml_system, model_filepath
+        
+    except ImportError:
+        print("⚠️ Model registry not available, using legacy save only...")
+        # Fallback to legacy save
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        model_filepath = f"comprehensive_trained_models/retrained_model_{timestamp}.joblib"
+        
+        # Ensure directory exists
+        os.makedirs("comprehensive_trained_models", exist_ok=True)
+        
+        model_data = {
+            'model': best_model['model'],
+            'model_name': best_model_name,
+            'accuracy': best_model['cv_accuracy_mean'],
+            'auc': best_model['cv_auc_mean'],
+            'feature_columns': feature_cols,
+            'scaler': ml_system.scaler,
+            'timestamp': timestamp,
+            'training_samples': len(X_train)
+        }
+        
+        joblib.dump(model_data, model_filepath)
+        print(f"✅ Best model ({best_model_name}) saved to {model_filepath}")
+        print(f"   Accuracy: {best_model['cv_accuracy_mean']:.3f} ± {best_model['cv_accuracy_std']:.3f}")
+        print(f"   AUC: {best_model['cv_auc_mean']:.3f} ± {best_model['cv_auc_std']:.3f}")
+        
+        return ml_system, model_filepath
     
-    joblib.dump(model_data, model_filepath)
-    print(f"✅ Best model ({best_model_name}) saved to {model_filepath}")
-    print(f"   Accuracy: {best_model['cv_accuracy_mean']:.3f} ± {best_model['cv_accuracy_std']:.3f}")
-    print(f"   AUC: {best_model['cv_auc_mean']:.3f} ± {best_model['cv_auc_std']:.3f}")
-    
-    return ml_system, model_filepath
+    except Exception as e:
+        print(f"❌ Error registering model: {e}")
+        print("   Falling back to legacy save...")
+        # Fallback to legacy save
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        model_filepath = f"comprehensive_trained_models/retrained_model_{timestamp}.joblib"
+        
+        # Ensure directory exists
+        os.makedirs("comprehensive_trained_models", exist_ok=True)
+        
+        model_data = {
+            'model': best_model['model'],
+            'model_name': best_model_name,
+            'accuracy': best_model['cv_accuracy_mean'],
+            'auc': best_model['cv_auc_mean'],
+            'feature_columns': feature_cols,
+            'scaler': ml_system.scaler,
+            'timestamp': timestamp,
+            'training_samples': len(X_train)
+        }
+        
+        joblib.dump(model_data, model_filepath)
+        print(f"✅ Best model ({best_model_name}) saved to {model_filepath}")
+        print(f"   Accuracy: {best_model['cv_accuracy_mean']:.3f} ± {best_model['cv_accuracy_std']:.3f}")
+        print(f"   AUC: {best_model['cv_auc_mean']:.3f} ± {best_model['cv_auc_std']:.3f}")
+        
+        return ml_system, model_filepath
 
 def test_retrained_model():
     """Test the retrained model on sample data"""

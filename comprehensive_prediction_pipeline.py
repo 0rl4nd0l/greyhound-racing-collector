@@ -38,6 +38,7 @@ except ImportError as e:
 
 try:
     from enhanced_data_integration import EnhancedDataIntegrator
+    from sportsbet_race_time_scraper import SportsbetRaceTimeScraper
     ENHANCED_DATA_AVAILABLE = True
 except ImportError as e:
     print(f"⚠️ Enhanced Data Integration not available: {e}")
@@ -78,6 +79,7 @@ class ComprehensivePredictionPipeline:
         self.ml_system = None
         self.enhanced_integrator = None
         self.weather_predictor = None
+        self.race_time_scraper = None
         self.form_scraper = None
         self.processor = None
         self.gpt_enhancer = None
@@ -100,6 +102,14 @@ class ComprehensivePredictionPipeline:
             except Exception as e:
                 print(f"⚠️ ML System initialization failed: {e}")
                 
+        # Initialize Sportsbet race time scraper
+        try:
+            self.race_time_scraper = SportsbetRaceTimeScraper()
+            print("✅ Sportsbet Race Time Scraper initialized")
+        except Exception as e:
+            print(f"⚠️ Sportsbet Race Time Scraper initialization failed: {e}")
+        
+
         if ENHANCED_DATA_AVAILABLE:
             try:
                 self.enhanced_integrator = EnhancedDataIntegrator()
@@ -147,6 +157,17 @@ class ComprehensivePredictionPipeline:
         
         print(f"  Overall: {available_systems}/5 systems available")
     
+    def update_race_times(self):
+        """Update race times using Sportsbet race time scraper"""
+        if self.race_time_scraper:
+            try:
+                updated_times = self.race_time_scraper.scrape_race_times()
+                if updated_times:
+                    print("✅ Race times updated successfully")
+            except Exception as e:
+                print(f"❌ Error updating race times: {e}")
+
+
     def validate_race_file(self, race_file_path):
         """Validate race file and check data quality"""
         try:
@@ -239,8 +260,8 @@ class ComprehensivePredictionPipeline:
                 except Exception as e:
                     print(f"⚠️ Race file form data extraction failed for {dog_name}: {e}")
             
-            # Get additional form guide data from external files if race file data is insufficient
-            if len(dog_data['form_guide_data']) < 3 and self.ml_system:
+            # Always get additional form guide data from external files to maximize data availability
+            if self.ml_system:
                 try:
                     form_data = self.ml_system.load_form_guide_data()
                     
@@ -256,11 +277,45 @@ class ComprehensivePredictionPipeline:
                             print(f"✅ External form guide data found for '{test_name}': {len(form_guide_matches)} races")
                             break
                     
-                    # Combine with race file data if both exist
+                    # Combine with race file data if both exist, with deduplication
                     if form_guide_matches:
                         existing_races = len(dog_data['form_guide_data'])
-                        dog_data['form_guide_data'].extend(form_guide_matches)
-                        print(f"✅ Combined form data for {dog_name}: {existing_races} (race file) + {len(form_guide_matches)} (external) = {len(dog_data['form_guide_data'])} total")
+                        
+                        # Deduplicate before adding
+                        deduplicated_matches = []
+                        for new_race in form_guide_matches:
+                            # Create unique race key
+                            new_race_key = (
+                                new_race.get('date', ''),
+                                new_race.get('track', ''),
+                                new_race.get('place', ''),
+                                new_race.get('box', ''),
+                                new_race.get('weight', ''),
+                                new_race.get('distance', '')
+                            )
+                            
+                            # Check if this race already exists
+                            is_duplicate = False
+                            for existing_race in dog_data['form_guide_data']:
+                                existing_key = (
+                                    existing_race.get('date', ''),
+                                    existing_race.get('track', ''),
+                                    existing_race.get('place', ''),
+                                    existing_race.get('box', ''),
+                                    existing_race.get('weight', ''),
+                                    existing_race.get('distance', '')
+                                )
+                                if new_race_key == existing_key:
+                                    is_duplicate = True
+                                    break
+                            
+                            if not is_duplicate:
+                                deduplicated_matches.append(new_race)
+                        
+                        dog_data['form_guide_data'].extend(deduplicated_matches)
+                        duplicates_removed = len(form_guide_matches) - len(deduplicated_matches)
+                        
+                        print(f"✅ Combined form data for {dog_name}: {existing_races} (race file) + {len(deduplicated_matches)} (external, {duplicates_removed} duplicates removed) = {len(dog_data['form_guide_data'])} total")
                     elif not dog_data['form_guide_data']:
                         print(f"🔍 No external form guide data found for {dog_name} (tried: {test_names})")
                         

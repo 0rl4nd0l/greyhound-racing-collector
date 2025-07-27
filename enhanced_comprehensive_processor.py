@@ -778,41 +778,131 @@ class EnhancedComprehensiveProcessor:
             race_number = race_info['race_number']
             venue = race_info['venue']
             
-            # Map venue codes to URL format
+            # Comprehensive venue mapping (code -> URL format)
             venue_map = {
+                # Major metropolitan tracks
+                'AP_K': 'angle-park',
+                'SAN': 'sandown',
+                'WAR': 'warrnambool',
+                'BEN': 'bendigo',
+                'GEE': 'geelong',
+                'BAL': 'ballarat',
+                'HOR': 'horsham',
+                'TRA': 'traralgon',
+                'DAPT': 'dapto',
+                'W_PK': 'wentworth-park',
+                'APWE': 'albion-park',
+                'APTH': 'albion-park',  # Alternative code
+                'CANN': 'cannington',
+                'MEA': 'the-meadows',
                 'HEA': 'healesville',
                 'SAL': 'sale',
-                'SAN': 'sandown',
-                'MEA': 'the-meadows',
-                'WAR': 'warrnambool',
-                'AP_K': 'angle-park',
-                'APTH': 'albion-park',
-                'APWE': 'albion-park',
-                'BAL': 'ballarat',
-                'BEN': 'bendigo',
-                'CANN': 'cannington',
-                'CASO': 'casino',
-                'DAPT': 'dapto',
-                'GEE': 'geelong',
-                'GAWL': 'gawler',
-                'GOSF': 'gosford',
-                'HOR': 'horsham',
-                'MOUNT': 'mount-gambier',
-                'MURR': 'murray-bridge',
                 'RICH': 'richmond',
-                'TRA': 'traralgon',
-                'W_PK': 'wentworth-park',
-                'MAND': 'mandurah',
-                'HOBT': 'hobart',
-                'SHEP': 'shepparton',
-                'WARR': 'warragul',
+                'RICH_S': 'richmond-straight',
+                'MURR': 'murray-bridge',
+                'GAWL': 'gawler',
+                'MOUNT': 'mount-gambier',
                 'NOR': 'northam',
-                'TEMA': 'temora',
-                'GUNN': 'gunnedah',
-                'CAPA': 'capalaba',
+                'MAND': 'mandurah',
+                
+                # NSW tracks
+                'GARD': 'the-gardens',
+                'GRDN': 'the-gardens',  # Alternative code
+                'CAS': 'casino',
+                'CASO': 'casino',  # Alternative code
+                'WAG': 'wagga',
+                'GOUL': 'goulburn',
+                'TAR': 'taree',
+                'DUB': 'dubbo',
+                'GRAF': 'grafton',
+                'BH': 'broken-hill',
+                'LIS': 'lismore',
+                'NOW': 'nowra',
+                'TEM': 'temora',
+                'TEMA': 'temora',  # Alternative code
+                'YOU': 'young',
+                'ORA': 'orange',
+                'MUD': 'mudgee',
+                'COW': 'cowra',
+                'BAT': 'bathurst',
+                'KAT': 'katoomba',
+                'WOL': 'wollongong',
+                'INF': 'ingle-farm',
+                'BUL': 'bulli',
+                'RAY': 'raymond-terrace',
+                
+                # QLD tracks
+                'Q1L': 'ladbrokes-q1-lakeside',
+                'QST': 'ladbrokes-q-straight',
+                'TWN': 'townsville',
+                'CAP': 'capalaba',
+                'CAPA': 'capalaba',  # Alternative code
+                'IPS': 'ipswich',
                 'ROCK': 'rockhampton',
-                'DARW': 'darwin',
-                'GRDN': 'the-gardens'
+                'BUN': 'bundaberg',
+                'CAI': 'cairns',
+                'MAC': 'mackay',
+                'TOO': 'toowoomba',
+                'GC': 'gold-coast',
+                'CAL': 'caloundra',
+                'MAR': 'maroochy',
+                
+                # VIC tracks
+                'SHEP': 'shepparton',
+                'WRGL': 'warragul',
+                'WARR': 'warragul',  # Alternative code
+                'CRAN': 'cranbourne',
+                'MOE': 'moe',
+                'PAK': 'pakenham',
+                'COL': 'colac',
+                'HAM': 'hamilton',
+                'PORT': 'portland',
+                'ARA': 'ararat',
+                'STA': 'stawell',
+                'SH': 'swan-hill',
+                'MIL': 'mildura',
+                'ECH': 'echuca',
+                'SEY': 'seymour',
+                'KIL': 'kilmore',
+                'WOD': 'wodonga',
+                'WOD_G': 'wodonga-gvgrc',
+                
+                # SA tracks
+                'VIR': 'virginia',
+                'STR': 'strathalbyn',
+                'WHY': 'whyalla',
+                'PA': 'port-augusta',
+                'PP': 'port-pirie',
+                'GLE': 'glenelg',
+                
+                # WA tracks
+                'ALB': 'albany',
+                'GER': 'geraldton',
+                'KAL': 'kalgoorlie',
+                'BUNB': 'bunbury',
+                'ESP': 'esperance',
+                'BRO': 'broome',
+                'KAR': 'karratha',
+                'PH': 'port-hedland',
+                'KUN': 'kununurra',
+                
+                # TAS tracks
+                'HOB': 'hobart',
+                'HOBT': 'hobart',  # Alternative code
+                'LAU': 'launceston',
+                'DEV': 'devonport',
+                
+                # NT tracks
+                'DAR': 'darwin',
+                'DARW': 'darwin',  # Alternative code
+                'AS': 'alice-springs',
+                
+                # ACT tracks
+                'CANB': 'canberra',
+                
+                # Legacy codes for compatibility
+                'GOSF': 'gosford',
+                'GUNN': 'gunnedah'
             }
             
             venue_url = venue_map.get(venue)
