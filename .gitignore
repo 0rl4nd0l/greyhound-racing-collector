@@ -1,0 +1,118 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+geckodriver.log
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# CSV data files (keep small examples, ignore large datasets)
+/unprocessed/*.csv
+/processed/*.csv
+/historical_races/*.csv
+/upcoming_races/*.csv
+/predictions/*.csv
+/training_data/
+/data/
+
+# Screenshots and debug files
+screenshots/
+debug/
+*.html
+*.png
+*.jpg
+*.jpeg
+*.gif
+
+# Credentials and sensitive files
+credentials.json
+config.ini
+.env
+*.key
+*.pem
+credentials/
+secrets/
+
+# Selenium drivers
+chromedriver
+geckodriver
+*.exe
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Temporary files
+temp/
+tmp/
+*.tmp
+
+# Model files (can be large)
+*.pkl
+*.joblib
+models/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# pytest
+.pytest_cache/
+.coverage
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
