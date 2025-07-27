@@ -65,7 +65,7 @@ perform_backup() {
     git add .
     
     # Check if there are staged changes
-    if git diff-cached --quiet; then
+    if git diff --cached --quiet; then
         log_message "No staged changes to commit"
         return 0
     fi

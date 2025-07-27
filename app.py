@@ -2080,29 +2080,41 @@ def api_race_files_status():
                                 # Determine if ML was used
                                 ml_used = any(method in ['ml_system', 'enhanced_data', 'weather_enhanced'] for method in prediction_methods) if prediction_methods else False
                                 
-                                # Get analysis version - use same logic as prediction detail API
-                                analysis_version = data.get('analysis_version') or data.get('version') or data.get('model_version')
-                                
-                                # Infer version from prediction methods if not explicitly set (same logic as detail API)
-                                if not analysis_version or analysis_version in ['N/A', 'nan', 'null', 'None', '']:
-                                    if prediction_methods:
-                                        # Check for comprehensive analysis (multiple methods = comprehensive)
-                                        if len(prediction_methods) >= 3:
-                                            analysis_version = 'Comprehensive Analysis v3.0'
-                                        elif 'weather_enhanced' in prediction_methods and 'enhanced_data' in prediction_methods:
-                                            analysis_version = 'Weather Enhanced + ML v2.5'
-                                        elif 'weather_enhanced' in prediction_methods:
-                                            analysis_version = 'Weather Enhanced v2.1'
-                                        elif 'enhanced_data' in prediction_methods and 'ml_system' in prediction_methods:
-                                            analysis_version = 'Enhanced ML System v2.3'
-                                        elif 'enhanced_data' in prediction_methods:
-                                            analysis_version = 'Enhanced Data v2.0'
-                                        elif 'ml_system' in prediction_methods:
-                                            analysis_version = 'ML System v2.0'
-                                        else:
-                                            analysis_version = 'Multi-Method v2.0'
-                                    else:
-                                        analysis_version = 'Standard v1.0'
+                # Get analysis version - use same logic as prediction detail API
+                analysis_version = data.get('analysis_version') or data.get('version') or data.get('model_version')
+                
+                # Infer version from prediction methods if not explicitly set (same logic as detail API)
+                if not analysis_version or analysis_version in ['N/A', 'nan', 'null', 'None', '']:
+                    if prediction_methods:
+                        # Check for unified predictor system first (most advanced)
+                        if any('unified' in str(method).lower() for method in prediction_methods):
+                            # Check for specific unified subsystems
+                            if 'enhanced_pipeline_v2' in prediction_methods:
+                                analysis_version = 'Unified Comprehensive Predictor v4.0 - Enhanced Pipeline V2'
+                            elif any(method in ['unified_comprehensive_pipeline', 'unified_weather_enhanced', 'unified_comprehensive_ml'] for method in prediction_methods):
+                                analysis_version = 'Unified Comprehensive Predictor v4.0'
+                            else:
+                                analysis_version = 'Unified Predictor v3.5'
+                        # Check for enhanced pipeline v2 (second most advanced)
+                        elif 'enhanced_pipeline_v2' in prediction_methods:
+                            analysis_version = 'Enhanced Pipeline v4.0'
+                        # Check for comprehensive analysis (multiple methods = comprehensive)
+                        elif len(prediction_methods) >= 3:
+                            analysis_version = 'Comprehensive Analysis v3.0'
+                        elif 'weather_enhanced' in prediction_methods and 'enhanced_data' in prediction_methods:
+                            analysis_version = 'Weather Enhanced + ML v2.5'
+                        elif 'weather_enhanced' in prediction_methods:
+                            analysis_version = 'Weather Enhanced v2.1'
+                        elif 'enhanced_data' in prediction_methods and 'ml_system' in prediction_methods:
+                            analysis_version = 'Enhanced ML System v2.3'
+                        elif 'enhanced_data' in prediction_methods:
+                            analysis_version = 'Enhanced Data v2.0'
+                        elif 'ml_system' in prediction_methods:
+                            analysis_version = 'ML System v2.0'
+                        else:
+                            analysis_version = 'Multi-Method v2.0'
+                    else:
+                        analysis_version = 'Standard v1.0'
                                 
                                 predictions.append({
                                     'race_id': race_filename.replace('.csv', ''),
@@ -3043,8 +3055,20 @@ def api_prediction_detail(race_name):
         # Infer version from prediction methods if not explicitly set
         if not analysis_version or analysis_version in ['N/A', 'nan', 'null', 'None', '']:
             if prediction_methods:
+                # Check for unified predictor system first (most advanced)
+                if any('unified' in str(method).lower() for method in prediction_methods):
+                    # Check for specific unified subsystems
+                    if 'enhanced_pipeline_v2' in prediction_methods:
+                        analysis_version = 'Unified Comprehensive Predictor v4.0 - Enhanced Pipeline V2'
+                    elif any(method in ['unified_comprehensive_pipeline', 'unified_weather_enhanced', 'unified_comprehensive_ml'] for method in prediction_methods):
+                        analysis_version = 'Unified Comprehensive Predictor v4.0'
+                    else:
+                        analysis_version = 'Unified Predictor v3.5'
+                # Check for enhanced pipeline v2 (second most advanced)
+                elif 'enhanced_pipeline_v2' in prediction_methods:
+                    analysis_version = 'Enhanced Pipeline v4.0'
                 # Check for comprehensive analysis (multiple methods = comprehensive)
-                if len(prediction_methods) >= 3:
+                elif len(prediction_methods) >= 3:
                     analysis_version = 'Comprehensive Analysis v3.0'
                 elif 'weather_enhanced' in prediction_methods and 'enhanced_data' in prediction_methods:
                     analysis_version = 'Weather Enhanced + ML v2.5'
@@ -3063,7 +3087,18 @@ def api_prediction_detail(race_name):
         
         # Determine prediction method name from methods used
         if prediction_methods:
-            if 'weather_enhanced' in prediction_methods and 'enhanced_data' in prediction_methods:
+            # Check for unified predictor system first
+            if any('unified' in str(method).lower() for method in prediction_methods):
+                if 'enhanced_pipeline_v2' in prediction_methods:
+                    method_name = 'Unified Comprehensive Predictor - Enhanced Pipeline V2'
+                elif any(method in ['unified_comprehensive_pipeline', 'unified_weather_enhanced', 'unified_comprehensive_ml'] for method in prediction_methods):
+                    method_name = 'Unified Comprehensive Predictor'
+                else:
+                    method_name = 'Unified Predictor System'
+            # Check for enhanced pipeline v2
+            elif 'enhanced_pipeline_v2' in prediction_methods:
+                method_name = 'Enhanced Pipeline V2'
+            elif 'weather_enhanced' in prediction_methods and 'enhanced_data' in prediction_methods:
                 method_name = 'Weather Enhanced + ML'
             elif 'weather_enhanced' in prediction_methods:
                 method_name = 'Weather Enhanced ML'
