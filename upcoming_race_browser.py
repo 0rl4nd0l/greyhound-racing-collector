@@ -1,0 +1,972 @@
+#!/usr/bin/env python3
+"""
+Upcoming Race Browser for thedogs.com.au
+========================================
+
+This script browses upcoming greyhound races and allows selective downloading
+of form guides for analysis and prediction.
+
+Author: AI Assistant  
+Date: July 23, 2025
+"""
+
+import os
+import sys
+import requests
+import time
+import random
+from datetime import datetime, timedelta
+from bs4 import BeautifulSoup
+import re
+from pathlib import Path
+
+class UpcomingRaceBrowser:
+    def __init__(self):
+        self.base_url = "https://www.thedogs.com.au"
+        self.upcoming_dir = "./upcoming_races"
+        
+        # Create directories
+        os.makedirs(self.upcoming_dir, exist_ok=True)
+        
+        # Setup session
+        self.session = requests.Session()
+        self.session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        })
+        
+        # Venue mapping
+        self.venue_map = {
+            'angle-park': 'AP_K',
+            'sandown': 'SAN',
+            'warrnambool': 'WAR',
+            'bendigo': 'BEN',
+            'geelong': 'GEE',
+            'ballarat': 'BAL',
+            'horsham': 'HOR',
+            'traralgon': 'TRA',
+            'dapto': 'DAPT',
+            'wentworth-park': 'WPK',
+            'albion-park': 'ALBION',
+            'cannington': 'CANN',
+            'the-meadows': 'MEA',
+            'healesville': 'HEA',
+            'sale': 'SAL',
+            'richmond': 'RICH',
+            'murray-bridge': 'MURR',
+            'gawler': 'GAWL',
+            'mount-gambier': 'MOUNT',
+            'northam': 'NOR',
+            'mandurah': 'MAND',
+            'gosford': 'GOSF',
+            'hobart': 'HOBT',
+            'the-gardens': 'GRDN',
+            'darwin': 'DARW'
+        }
+        
+        print("🏁 Upcoming Race Browser initialized")
+        print(f"📂 Upcoming races directory: {self.upcoming_dir}")
+    
+    def get_upcoming_races(self, days_ahead=0):
+        """Get upcoming races for the next specified days"""
+        races = []
+        today = datetime.now().date()
+        
+        print(f"🔍 Fetching upcoming races for the next {days_ahead} days...")
+        
+        for i in range(days_ahead + 1):  # Include today
+            check_date = today + timedelta(days=i)
+            date_races = self.get_races_for_date(check_date)
+            races.extend(date_races)
+            
+            # Add small delay between date requests
+            if i < days_ahead:
+                time.sleep(random.uniform(0.5, 1.5))
+        
+        print(f"✅ Found {len(races)} upcoming races")
+        return races
+    
+    def get_races_for_date(self, date):
+        """Get races for a specific date from CSV files in upcoming_races directory"""
+        date_str = date.strftime('%Y-%m-%d')
+        
+        print(f"🔍 Checking races for {date_str}...")
+        
+        try:
+            races = []
+            
+            # Look for CSV files in upcoming_races directory that match the date
+            if os.path.exists(self.upcoming_dir):
+                for filename in os.listdir(self.upcoming_dir):
+                    if filename.endswith('.csv') and date_str in filename:
+                        race_info = self.extract_race_info_from_csv_filename(filename, date_str)
+                        if race_info:
+                            races.append(race_info)
+            
+            # Sort by race number
+            races.sort(key=lambda x: x.get('race_number', 0))
+            
+            if races:
+                print(f"   ✅ Found {len(races)} races for {date_str}")
+            else:
+                print(f"   ⚪ No races found for {date_str}")
+            
+            return races
+            
+        except Exception as e:
+            print(f"   ❌ Error checking {date_str}: {e}")
+            return []
+    
+    def extract_race_info_from_csv_filename(self, filename, date_str):
+        """Extract race information from CSV filename (e.g., 'Race 1 - BROKEN-HILL - 2025-07-27.csv')"""
+        try:
+            # Pattern: Race {number} - {venue} - {date}.csv
+            pattern = r'Race (\d+) - ([A-Z-]+) - (\d{4}-\d{2}-\d{2})\.csv'
+            match = re.match(pattern, filename)
+            
+            if not match:
+                return None
+            
+            race_number = int(match.group(1))
+            venue_code = match.group(2)
+            file_date = match.group(3)
+            
+            # Map venue code to display name
+            venue_name_map = {
+                'AP_K': 'Angle Park', 'SAN': 'Sandown', 'WAR': 'Warrnambool',
+                'BEN': 'Bendigo', 'GEE': 'Geelong', 'BAL': 'Ballarat',
+                'HOR': 'Horsham', 'TRA': 'Traralgon', 'DAPT': 'Dapto',
+                'WPK': 'Wentworth Park', 'ALBION': 'Albion Park', 'CANN': 'Cannington',
+                'MEA': 'The Meadows', 'HEA': 'Healesville', 'SAL': 'Sale',
+                'RICH': 'Richmond', 'MURR': 'Murray Bridge', 'GAWL': 'Gawler',
+                'MOUNT': 'Mount Gambier', 'NOR': 'Northam', 'MAND': 'Mandurah',
+                'GOSF': 'Gosford', 'HOBT': 'Hobart', 'GRDN': 'The Gardens',
+                'DARW': 'Darwin', 'BROKEN-HILL': 'Broken Hill', 'CAPALABA': 'Capalaba',
+                'TAREE': 'Taree'
+            }
+            
+            venue_name = venue_name_map.get(venue_code, venue_code.replace('-', ' ').title())
+            
+            # Generate estimated race time based on race number
+            # Most races start around 1 PM and run every 25 minutes
+            base_hour = 13  # 1 PM
+            base_minute = 0
+            
+            # Add 25 minutes per race number (typical spacing)
+            total_minutes = base_minute + ((race_number - 1) * 25)
+            hour = base_hour + (total_minutes // 60)
+            minute = total_minutes % 60
+            
+            # Convert to 12-hour format
+            if hour > 12:
+                race_time = f'{hour - 12}:{minute:02d} PM'
+            elif hour == 12:
+                race_time = f'12:{minute:02d} PM'
+            else:
+                race_time = f'{hour}:{minute:02d} AM'
+            
+            # Create race URL (construct from venue mapping)
+            venue_slug = None
+            for slug, code in self.venue_map.items():
+                if code == venue_code:
+                    venue_slug = slug
+                    break
+            
+            if not venue_slug:
+                venue_slug = venue_code.lower().replace('_', '-')
+            
+            race_url = f"{self.base_url}/racing/{venue_slug}/{file_date}/{race_number}"
+            
+            # Try to extract additional info from CSV if it exists
+            csv_path = os.path.join(self.upcoming_dir, filename)
+            distance = None
+            grade = None
+            
+            if os.path.exists(csv_path):
+                try:
+                    import csv
+                    with open(csv_path, 'r') as f:
+                        reader = csv.DictReader(f)
+                        first_row = next(reader, None)
+                        if first_row:
+                            # Try to get distance from DIST column
+                            distance = first_row.get('DIST', None)
+                            # Try to get grade from G column  
+                            grade = first_row.get('G', None)
+                except Exception:
+                    pass
+            
+            return {
+                'date': file_date,
+                'venue': venue_code,
+                'venue_name': venue_name,
+                'race_number': race_number,
+                'race_time': race_time,
+                'distance': distance,
+                'grade': grade,
+                'race_name': None,
+                'url': race_url,
+                'title': f"Race {race_number} - {venue_name} - {file_date}",
+                'description': f"🕐 {race_time} | 🏁 {distance}m | 🏆 {grade}" if distance and grade else f"🕐 {race_time}"
+            }
+            
+        except Exception as e:
+            print(f"   ❌ Error extracting info from {filename}: {e}")
+            return None
+    
+    def extract_race_info_from_element(self, element, date_str):
+        """Extract race information from a DOM element"""
+        try:
+            # Try to find race number, venue, and other details
+            text = element.get_text().strip()
+            
+            # Look for race number pattern
+            race_num_match = re.search(r'race\s*(\d+)', text, re.I)
+            if not race_num_match:
+                return None
+            
+            race_number = race_num_match.group(1)
+            
+            # Look for venue information
+            venue = None
+            venue_text = None
+            
+            # Check for venue in text or nearby elements
+            for venue_key, venue_code in self.venue_map.items():
+                venue_name = venue_key.replace('-', ' ').title()
+                if venue_name.lower() in text.lower() or venue_code in text:
+                    venue = venue_code
+                    venue_text = venue_name
+                    break
+            
+            if not venue:
+                return None
+            
+            # Try to find a link to the race page
+            link_element = element if element.name == 'a' else element.find('a')
+            race_url = None
+            race_name = None
+            
+            if link_element:
+                href = link_element.get('href')
+                if href:
+                    race_url = href if href.startswith('http') else f"{self.base_url}{href}"
+                    # Try to extract race name from URL
+                    url_parts = href.strip('/').split('/')
+                    if len(url_parts) > 4 and 'racing' in url_parts:
+                        try:
+                            racing_index = url_parts.index('racing')
+                            if len(url_parts) > racing_index + 4:
+                                race_name = url_parts[racing_index + 4].replace('-', ' ').title()
+                        except (ValueError, IndexError):
+                            pass
+            
+            if not race_url:
+                # Construct URL based on date, venue, and race number
+                venue_slug = next((k for k, v in self.venue_map.items() if v == venue), venue.lower())
+                race_url = f"{self.base_url}/racing/{venue_slug}/{date_str}/{race_number}"
+            
+            # Enhanced extraction of race details with better patterns
+            race_time = None
+            distance = None
+            grade = None
+            
+            # Look in surrounding elements for more context
+            search_text = text
+            if element.parent:
+                parent_text = element.parent.get_text().strip()
+                search_text = f"{text} {parent_text}"
+            
+            # Extract time with various patterns
+            time_patterns = [
+                r'(\d{1,2}:\d{2}\s*(?:AM|PM))',
+                r'(\d{1,2}:\d{2})',
+                r'Start\s*(\d{1,2}:\d{2})',
+                r'Time\s*(\d{1,2}:\d{2})'
+            ]
+            
+            for pattern in time_patterns:
+                time_match = re.search(pattern, search_text, re.I)
+                if time_match:
+                    race_time = time_match.group(1)
+                    break
+            
+            # Extract distance with various patterns
+            distance_patterns = [
+                r'(\d{3,4})m',
+                r'(\d{3,4})\s*metre',
+                r'Distance[:\s]*(\d{3,4})m?',
+                r'(\d{3,4})\s*meter'
+            ]
+            
+            for pattern in distance_patterns:
+                distance_match = re.search(pattern, search_text, re.I)
+                if distance_match:
+                    distance = distance_match.group(1)
+                    break
+            
+            # Extract grade with comprehensive patterns
+            grade_patterns = [
+                r'(Grade\s*\d+)',
+                r'(G\d+)',
+                r'(Maiden)',
+                r'(Open)',
+                r'(Novice)',
+                r'(Final)',
+                r'(Heat)',
+                r'(Restricted)',
+                r'(Mixed)',
+                r'(Free For All)',
+                r'(Qualifying)',
+                r'(Provincial)',
+                r'(Metropolitan)'
+            ]
+            
+            for pattern in grade_patterns:
+                grade_match = re.search(pattern, search_text, re.I)
+                if grade_match:
+                    grade = grade_match.group(1)
+                    break
+            
+            # Create rich description
+            description_parts = []
+            if race_time:
+                description_parts.append(f"🕐 {race_time}")
+            if distance:
+                description_parts.append(f"🏁 {distance}m")
+            if grade:
+                description_parts.append(f"🏆 {grade}")
+            if race_name:
+                description_parts.append(f"📋 {race_name}")
+            
+            description = ' | '.join(description_parts) if description_parts else text[:100]
+            if len(description) > 100:
+                description = description[:97] + '...'
+            
+            return {
+                'date': date_str,
+                'venue': venue,
+                'venue_name': venue_text,
+                'race_number': race_number,
+                'race_time': race_time,
+                'distance': distance,
+                'grade': grade,
+                'race_name': race_name,
+                'url': race_url,
+                'title': f"Race {race_number} - {venue_text} - {date_str}",
+                'description': description
+            }
+            
+        except Exception as e:
+            return None
+    
+    def extract_race_info_from_link(self, link_element, href, date_str):
+        """Extract race information from a race link"""
+        try:
+            # Parse URL to get venue and race number
+            url_parts = href.strip('/').split('/')
+            if len(url_parts) < 4:
+                return None
+            
+            # URL format: /racing/{venue}/{date}/{race_number}/{optional_race_name}
+            if 'racing' not in url_parts:
+                return None
+            
+            racing_index = url_parts.index('racing')
+            if len(url_parts) <= racing_index + 3:
+                return None
+            
+            venue_slug = url_parts[racing_index + 1]
+            race_date = url_parts[racing_index + 2]
+            race_number = url_parts[racing_index + 3]
+            
+            # Validate race number is numeric
+            if not race_number.isdigit():
+                return None
+            
+            # Map venue slug to venue code
+            venue_code = self.venue_map.get(venue_slug, venue_slug.upper())
+            venue_name = venue_slug.replace('-', ' ').title()
+            
+            # Get link text and surrounding elements for additional information
+            link_text = link_element.get_text().strip()
+            
+            # Try to get race name from URL if available
+            race_name = None
+            if len(url_parts) > racing_index + 4:
+                race_name_part = url_parts[racing_index + 4]
+                # Clean up race name
+                race_name = race_name_part.replace('-', ' ').title()
+            
+            # Look for race conditions in the link text and surrounding elements
+            race_time = None
+            distance = None
+            grade = None
+            
+            # Check parent elements for more detailed race info
+            parent_element = link_element.parent
+            if parent_element:
+                parent_text = parent_element.get_text().strip()
+                combined_text = f"{link_text} {parent_text}"
+            else:
+                combined_text = link_text
+            
+            # Extract time (format like "7:45 PM" or "19:45")
+            time_patterns = [
+                r'(\d{1,2}:\d{2}\s*(?:AM|PM))',
+                r'(\d{1,2}:\d{2})',
+                r'(\d{4})',  # 24-hour format like "1945"
+            ]
+            
+            for pattern in time_patterns:
+                time_match = re.search(pattern, combined_text, re.I)
+                if time_match:
+                    race_time = time_match.group(1)
+                    break
+            
+            # Extract distance (format like "520m", "715m")
+            distance_patterns = [
+                r'(\d{3,4})m',
+                r'(\d{3,4})\s*metre',
+                r'(\d{3,4})\s*meter'
+            ]
+            
+            for pattern in distance_patterns:
+                distance_match = re.search(pattern, combined_text, re.I)
+                if distance_match:
+                    distance = distance_match.group(1)
+                    break
+            
+            # Extract grade (more comprehensive patterns)
+            grade_patterns = [
+                r'(Grade\s*\d+)',
+                r'(G\d+)',
+                r'(Maiden)',
+                r'(Open)',
+                r'(Novice)',
+                r'(Final)',
+                r'(Heat)',
+                r'(Restricted)',
+                r'(Mixed)',
+                r'(Free For All)',
+            ]
+            
+            for pattern in grade_patterns:
+                grade_match = re.search(pattern, combined_text, re.I)
+                if grade_match:
+                    grade = grade_match.group(1)
+                    break
+            
+            # If we didn't find grade in text, try to extract from race name
+            if not grade and race_name:
+                for pattern in grade_patterns:
+                    grade_match = re.search(pattern, race_name, re.I)
+                    if grade_match:
+                        grade = grade_match.group(1)
+                        break
+            
+            race_url = href if href.startswith('http') else f"{self.base_url}{href}"
+            
+            # Create description with available information
+            description_parts = []
+            if race_time:
+                description_parts.append(f"Time: {race_time}")
+            if distance:
+                description_parts.append(f"Distance: {distance}m")
+            if grade:
+                description_parts.append(f"Grade: {grade}")
+            if race_name:
+                description_parts.append(f"Race: {race_name}")
+            
+            description = ' • '.join(description_parts) if description_parts else link_text[:100]
+            
+            return {
+                'date': race_date,
+                'venue': venue_code,
+                'venue_name': venue_name,
+                'race_number': race_number,
+                'race_time': race_time,
+                'distance': distance,
+                'grade': grade,
+                'race_name': race_name,
+                'url': race_url,
+                'title': f"Race {race_number} - {venue_name} - {race_date}",
+                'description': description
+            }
+            
+        except Exception as e:
+            return None
+    
+    def download_race_csv(self, race_url):
+        """Download CSV form guide for a specific race"""
+        try:
+            print(f"🔄 Downloading CSV for: {race_url}")
+            
+            # Get race page
+            response = self.session.get(race_url, timeout=30)
+            
+            if response.status_code != 200:
+                return {
+                    'success': False,
+                    'error': f'Failed to access race page: {response.status_code}'
+                }
+            
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Extract race information for filename
+            race_info = self.extract_detailed_race_info(soup, race_url)
+            
+            if not race_info:
+                return {
+                    'success': False,
+                    'error': 'Could not extract race information'
+                }
+            
+            # Generate filename
+            filename = f"Race {race_info['race_number']} - {race_info['venue']} - {race_info['date']}.csv"
+            filepath = os.path.join(self.upcoming_dir, filename)
+            
+            # Check if already exists
+            if os.path.exists(filepath):
+                return {
+                    'success': False,
+                    'error': f'File already exists: {filename}'
+                }
+            
+            # Find CSV download link
+            csv_info = self.find_csv_download_link(soup, race_url)
+            
+            if not csv_info:
+                return {
+                    'success': False,
+                    'error': 'No CSV download link found'
+                }
+            
+            # Download CSV
+            if isinstance(csv_info, dict) and csv_info.get('type') == 'form_post':
+                # Handle form POST request
+                csv_response = self.session.post(csv_info['url'], data=csv_info['data'], timeout=30)
+            else:
+                # Handle direct URL request
+                csv_url = csv_info if isinstance(csv_info, str) else csv_info.get('url')
+                csv_response = self.session.get(csv_url, timeout=30)
+            
+            if csv_response.status_code != 200:
+                return {
+                    'success': False,
+                    'error': f'Failed to download CSV: {csv_response.status_code}'
+                }
+            
+            # Validate CSV content
+            content = csv_response.text
+            if not content.strip():
+                return {
+                    'success': False,
+                    'error': 'Empty CSV content'
+                }
+            
+            lines = content.strip().split('\n')
+            if len(lines) < 2:
+                return {
+                    'success': False,
+                    'error': 'CSV has insufficient data'
+                }
+            
+            # Check for expected headers
+            first_line = lines[0].lower()
+            if not any(header in first_line for header in ['dog name', 'dog', 'runner', 'name']):
+                return {
+                    'success': False,
+                    'error': 'CSV doesn\'t appear to be a form guide'
+                }
+            
+            # Save file
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(content)
+            
+            print(f"   ✅ Downloaded: {filename}")
+            
+            return {
+                'success': True,
+                'filename': filename,
+                'filepath': filepath
+            }
+            
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f'Error downloading race CSV: {str(e)}'
+            }
+    
+    def extract_detailed_race_info(self, soup, race_url):
+        """Extract detailed race information from race page"""
+        try:
+            race_number = None
+            venue = None
+            date = None
+            
+            # Try to extract from page title or headers
+            title_element = soup.find('title')
+            if title_element:
+                title_text = title_element.get_text()
+                
+                # Look for race number
+                race_match = re.search(r'race\s*(\d+)', title_text, re.I)
+                if race_match:
+                    race_number = race_match.group(1)
+            
+            # Try to extract from URL
+            url_parts = race_url.strip('/').split('/')
+            if len(url_parts) >= 4:
+                try:
+                    racing_index = url_parts.index('racing')
+                    if len(url_parts) > racing_index + 3:
+                        venue_slug = url_parts[racing_index + 1]
+                        date = url_parts[racing_index + 2]
+                        if not race_number:
+                            race_number = url_parts[racing_index + 3]
+                        
+                        # Map venue slug to code
+                        venue = self.venue_map.get(venue_slug, venue_slug.upper())
+                except ValueError:
+                    pass
+            
+            # Try to extract venue from page content
+            if not venue:
+                for element in soup.find_all(['h1', 'h2', 'h3', 'div', 'span']):
+                    text = element.get_text(strip=True)
+                    for venue_key, venue_code in self.venue_map.items():
+                        if venue_key.replace('-', ' ').lower() in text.lower():
+                            venue = venue_code
+                            break
+                    if venue:
+                        break
+            
+            # Try to extract date from page content
+            if not date:
+                date_elements = soup.find_all(string=re.compile(r'\d{1,2}/\d{1,2}/\d{4}|\d{4}-\d{2}-\d{2}|\d{1,2}\s+\w+\s+\d{4}'))
+                for date_str in date_elements:
+                    # Try to parse date
+                    try:
+                        if '/' in date_str:
+                            date_obj = datetime.strptime(date_str.strip(), '%d/%m/%Y')
+                        elif '-' in date_str:
+                            date_obj = datetime.strptime(date_str.strip(), '%Y-%m-%d')
+                        else:
+                            date_obj = datetime.strptime(date_str.strip(), '%d %B %Y')
+                        
+                        date = date_obj.strftime('%d %B %Y')
+                        break
+                    except ValueError:
+                        continue
+            
+            if race_number and venue and date:
+                return {
+                    'race_number': race_number,
+                    'venue': venue,
+                    'date': date
+                }
+            
+            return None
+            
+        except Exception as e:
+            print(f"   ❌ Error extracting race info: {e}")
+            return None
+    
+    def find_csv_download_link(self, soup, race_url):
+        """Find CSV download link on the race page"""
+        try:
+            # Try the expert-form page method first
+            base_race_url = race_url.split('?')[0].rstrip('/')
+            expert_form_url = f"{base_race_url}/expert-form"
+            
+            print(f"   🔍 Trying expert-form URL: {expert_form_url}")
+            response = self.session.get(expert_form_url, timeout=15)
+            
+            if response.status_code == 200:
+                expert_soup = BeautifulSoup(response.content, 'html.parser')
+                
+                # Method 1: Look for direct CSV download links
+                csv_links = expert_soup.find_all('a', href=True)
+                for link in csv_links:
+                    href = link.get('href')
+                    link_text = link.get_text().strip().lower()
+                    
+                    if any(keyword in link_text for keyword in ['csv', 'export', 'download']) or 'csv' in href.lower():
+                        if href.startswith('/'):
+                            csv_url = f"{self.base_url}{href}"
+                        elif href.startswith('http'):
+                            csv_url = href
+                        else:
+                            csv_url = f"{self.base_url}/{href}"
+                        
+                        print(f"   ✅ Found CSV link: {csv_url}")
+                        return csv_url
+                
+                # Method 2: Look for any download buttons or links
+                download_elements = expert_soup.find_all(['a', 'button', 'input'], string=re.compile('download|export|csv', re.I))
+                for element in download_elements:
+                    if element.name == 'a' and element.get('href'):
+                        href = element.get('href')
+                        if href.startswith('/'):
+                            csv_url = f"{self.base_url}{href}"
+                        elif href.startswith('http'):
+                            csv_url = href
+                        else:
+                            csv_url = f"{self.base_url}/{href}"
+                        
+                        print(f"   ✅ Found download link: {csv_url}")
+                        return csv_url
+                
+                # Method 3: Look for forms with CSV export functionality
+                forms = expert_soup.find_all('form')
+                for form in forms:
+                    # Check for CSV export buttons or inputs
+                    csv_elements = form.find_all(['input', 'button'], attrs={
+                        'name': re.compile('csv|export', re.I)
+                    })
+                    
+                    if not csv_elements:
+                        # Also check for elements with CSV in their text or value
+                        csv_elements = form.find_all(['input', 'button'], string=re.compile('csv|export', re.I))
+                    
+                    # Also check for any submit buttons in forms that might export data
+                    if not csv_elements:
+                        submit_buttons = form.find_all(['input', 'button'], attrs={'type': 'submit'})
+                        for btn in submit_buttons:
+                            btn_text = btn.get_text().strip().lower() if btn.get_text() else ''
+                            btn_value = btn.get('value', '').lower()
+                            if any(keyword in f"{btn_text} {btn_value}" for keyword in ['download', 'export', 'csv']):
+                                csv_elements.append(btn)
+                    
+                    if csv_elements:
+                        print(f"   📋 Found form with CSV export elements")
+                        
+                        # Extract form data
+                        form_action = form.get('action', '')
+                        form_method = form.get('method', 'GET').upper()
+                        
+                        form_data = {}
+                        
+                        # Get all form inputs (match the working scraper exactly)
+                        for input_elem in form.find_all(['input', 'select', 'textarea']):
+                            name = input_elem.get('name')
+                            if name:
+                                input_type = input_elem.get('type', 'text')
+                                
+                                if input_type == 'checkbox':
+                                    if input_elem.get('checked'):
+                                        form_data[name] = input_elem.get('value', 'on')
+                                elif input_type == 'radio':
+                                    if input_elem.get('checked'):
+                                        form_data[name] = input_elem.get('value', '')
+                                elif input_type == 'submit':
+                                    pass  # Don't include submit buttons in form data
+                                elif input_type == 'hidden':
+                                    form_data[name] = input_elem.get('value', '')
+                                else:
+                                    form_data[name] = input_elem.get('value', '')
+                        
+                        # Add the CSV export parameter (exactly like working scraper)
+                        form_data['export_csv'] = 'true'
+                        print(f"   📋 Form data prepared: {form_data}")
+                        
+                        # Determine target URL
+                        if form_action:
+                            if form_action.startswith('/'):
+                                target_url = f"{self.base_url}{form_action}"
+                            elif form_action.startswith('http'):
+                                target_url = form_action
+                            else:
+                                target_url = f"{self.base_url}/{form_action}"
+                        else:
+                            target_url = expert_form_url
+                        
+                        print(f"   📤 Submitting form to: {target_url}")
+                        print(f"   📝 Form data: {form_data}")
+                        
+                        # Submit form
+                        try:
+                            if form_method == 'POST':
+                                form_response = self.session.post(target_url, data=form_data, timeout=15)
+                            else:
+                                form_response = self.session.get(target_url, params=form_data, timeout=15)
+                            
+                            if form_response.status_code == 200:
+                                # The response should contain the actual download URL (like the working scraper)
+                                download_url = form_response.text.strip()
+                                
+                                print(f"   📄 Response length: {len(form_response.content)} bytes")
+                                print(f"   📄 Response content: {download_url[:200]}")
+                                
+                                if download_url.startswith('http'):
+                                    print(f"   ✅ Got CSV download URL: {download_url}")
+                                    return download_url
+                                else:
+                                    print(f"   ⚠️ Unexpected response format: {download_url[:100]}")
+                            else:
+                                print(f"   ❌ Form submission failed with status: {form_response.status_code}")
+                        
+                        except Exception as e:
+                            print(f"   ⚠️ Error submitting form: {e}")
+                            continue
+                
+                # Method 4: Look for JavaScript-generated CSV URLs
+                script_tags = expert_soup.find_all('script')
+                for script in script_tags:
+                    script_text = script.get_text()
+                    if 'csv' in script_text.lower():
+                        # Look for URL patterns in JavaScript
+                        url_matches = re.findall(r'["\']([^"\'\n]*csv[^"\'\n]*)["\']', script_text, re.I)
+                        for match in url_matches:
+                            if match.startswith('/'):
+                                csv_url = f"{self.base_url}{match}"
+                            elif match.startswith('http'):
+                                csv_url = match
+                            else:
+                                continue
+                            
+                            print(f"   ✅ Found CSV URL in JavaScript: {csv_url}")
+                            return csv_url
+                
+            else:
+                print(f"   ❌ Expert-form page not accessible: {response.status_code}")
+            
+            # Try direct CSV URLs on expert-form page
+            direct_csv_urls = [
+                f"{expert_form_url}?export=csv",
+                f"{expert_form_url}?format=csv",
+                f"{expert_form_url}?export_csv=1",
+                f"{expert_form_url}?download=csv"
+            ]
+            
+            for csv_url in direct_csv_urls:
+                try:
+                    print(f"   🔍 Trying direct CSV URL: {csv_url}")
+                    response = self.session.get(csv_url, timeout=10)
+                    if response.status_code == 200:
+                        content_type = response.headers.get('content-type', '').lower()
+                        if 'csv' in content_type or ('text' in content_type and len(response.content) > 100):
+                            # Validate it looks like CSV content
+                            content_sample = response.text[:300].lower()
+                            if any(indicator in content_sample for indicator in ['dog name', 'runner', 'barrier', 'trainer', 'box', 'form']) or (',' in content_sample and '\n' in content_sample):
+                                print(f"   ✅ Direct CSV URL worked: {csv_url}")
+                                return csv_url
+                except Exception as e:
+                    print(f"   ⚠️ Error with direct CSV URL {csv_url}: {e}")
+                    continue
+            
+        except Exception as e:
+            print(f"   ⚠️ Error with expert-form method: {e}")
+        
+        # Fallback 1: Look for CSV links on the main race page
+        print(f"   🔍 Checking main race page for CSV links...")
+        main_csv_selectors = [
+            'a[href*="csv"]',
+            'a[href*="export"]', 
+            'a[href*="download"]',
+            '.csv-download',
+            '.export-csv',
+            '.download-csv'
+        ]
+        
+        for selector in main_csv_selectors:
+            elements = soup.select(selector)
+            for element in elements:
+                href = element.get('href')
+                element_text = element.get_text().strip().lower()
+                if href and ('csv' in href.lower() or 'csv' in element_text):
+                    if href.startswith('/'):
+                        href = f"{self.base_url}{href}" 
+                    elif not href.startswith('http'):
+                        href = f"{self.base_url}/{href}"
+                    
+                    print(f"   ✅ Found CSV link on main page: {href}")
+                    return href
+        
+        # Fallback 2: Try direct CSV URLs on the main race page
+        base_race_url = race_url.split('?')[0]  # Remove query parameters
+        direct_main_urls = [
+            f"{base_race_url}?format=csv",
+            f"{base_race_url}?export=csv", 
+            f"{base_race_url}/export/csv",
+            f"{base_race_url}/download/csv",
+            f"{base_race_url}/csv"
+        ]
+        
+        for csv_url in direct_main_urls:
+            try:
+                print(f"   🔍 Trying direct main page CSV URL: {csv_url}")
+                response = self.session.get(csv_url, timeout=10)
+                if response.status_code == 200:
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'csv' in content_type or ('text' in content_type and len(response.content) > 100):
+                        # Validate it looks like CSV content
+                        content_sample = response.text[:300].lower()
+                        if any(indicator in content_sample for indicator in ['dog name', 'runner', 'barrier', 'trainer', 'box', 'form']) or (',' in content_sample and '\n' in content_sample):
+                            print(f"   ✅ Direct main page CSV URL worked: {csv_url}")
+                            return csv_url
+            except Exception as e:
+                continue
+        
+        # Try common CSV URL patterns
+        common_patterns = [
+            f"{race_url}/csv",
+            f"{race_url}/export",
+            f"{race_url}/download",
+            f"{race_url}.csv",
+            f"{race_url}/form-guide.csv"
+        ]
+        
+        for pattern in common_patterns:
+            try:
+                response = self.session.head(pattern, timeout=10)
+                if response.status_code == 200:
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'csv' in content_type or 'text' in content_type:
+                        return pattern
+            except:
+                continue
+        
+        return None
+
+
+def test_csv_download(race_url=None):
+    """Test CSV download for a specific race"""
+    browser = UpcomingRaceBrowser()
+    
+    if not race_url:
+        # Get a test race
+        upcoming_races = browser.get_upcoming_races(days_ahead=1)
+        if not upcoming_races:
+            print("❌ No upcoming races found for testing")
+            return
+        race_url = upcoming_races[0]['url']
+    
+    print(f"🧪 Testing CSV download for: {race_url}")
+    result = browser.download_race_csv(race_url)
+    
+    if result['success']:
+        print(f"✅ Successfully downloaded: {result['filename']}")
+        print(f"📁 File saved to: {result['filepath']}")
+    else:
+        print(f"❌ Download failed: {result['error']}")
+    
+    return result
+
+def main():
+    """Main function for testing"""
+    browser = UpcomingRaceBrowser()
+    upcoming_races = browser.get_upcoming_races(days_ahead=0)
+    
+    print(f"\n🎯 Found {len(upcoming_races)} upcoming races:")
+    for race in upcoming_races[:10]:  # Show first 10
+        print(f"   📅 {race['title']} - {race.get('race_time', 'TBA')}")
+        print(f"   🔗 URL: {race['url']}")
+    
+    if upcoming_races:
+        print(f"\n💡 To download a race, use the Flask app at /upcoming")
+        print(f"💡 To test CSV download: python3 -c 'from upcoming_race_browser import test_csv_download; test_csv_download()'")
+
+
+if __name__ == "__main__":
+    main()
