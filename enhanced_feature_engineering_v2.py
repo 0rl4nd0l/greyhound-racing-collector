@@ -204,6 +204,21 @@ class AdvancedFeatureEngineer:
         # 8. Competitive level analysis
         features['competition_level'] = self._analyze_competition_level(dog_history)
         
+        # 9. Distance-specific performance (required by ML model)
+        distance_features = self._analyze_distance_performance(dog_history, venue)
+        features.update(distance_features)
+        
+        # 10. Box position analysis (required by ML model)
+        box_features = self._analyze_box_performance(dog_history)
+        features.update(box_features)
+        
+        # 11. Momentum and consistency metrics (required by ML model)
+        momentum_features = self._calculate_momentum_metrics(dog_history)
+        features.update(momentum_features)
+        
+        # 12. Break quality assessment (required by ML model)
+        features['break_quality'] = self._assess_break_quality(dog_history)
+        
         return features
     
     def _analyze_grade_progression(self, dog_history):
@@ -331,6 +346,113 @@ class AdvancedFeatureEngineer:
         
         return min(1.0, competition_score)
     
+    def _analyze_distance_performance(self, dog_history, venue):
+        """Analyze performance at specific distances (required by ML model)"""
+        if len(dog_history) < 3:
+            return {'distance_win_rate': 0, 'distance_avg_time': 30.0}
+        
+        # Get most common distance for this dog
+        distance_performance = dog_history.groupby('distance').agg({
+            'finish_position': ['mean', 'count'],
+            'individual_time': 'mean'
+        }).reset_index()
+        
+        if len(distance_performance) > 0:
+            # Find best distance performance
+            best_distance = distance_performance.loc[distance_performance[('finish_position', 'mean')].idxmin()]
+            win_rate = (dog_history[dog_history['distance'] == best_distance['distance']]['finish_position'] == 1).mean()
+            avg_time = dog_history[dog_history['distance'] == best_distance['distance']]['individual_time'].mean()
+            
+            return {
+                'distance_win_rate': win_rate,
+                'distance_avg_time': avg_time if pd.notna(avg_time) else 30.0
+            }
+        
+        return {'distance_win_rate': 0, 'distance_avg_time': 30.0}
+    
+    def _analyze_box_performance(self, dog_history):
+        """Analyze box position performance (required by ML model)"""
+        if len(dog_history) < 3:
+            return {'box_position_win_rate': 0.1, 'box_position_avg': 4.0}
+        
+        # Box performance analysis
+        box_performance = dog_history.groupby('box_number').agg({
+            'finish_position': ['mean', 'count']
+        }).reset_index()
+        
+        if len(box_performance) > 0:
+            # Overall box win rate
+            box_wins = (dog_history['finish_position'] == 1).sum()
+            total_races = len(dog_history)
+            box_win_rate = box_wins / total_races if total_races > 0 else 0.1
+            
+            # Average box position performance
+            avg_position = dog_history['finish_position'].mean()
+            
+            return {
+                'box_position_win_rate': box_win_rate,
+                'box_position_avg': avg_position
+            }
+        
+        return {'box_position_win_rate': 0.1, 'box_position_avg': 4.0}
+    
+    def _calculate_momentum_metrics(self, dog_history):
+        """Calculate momentum and consistency metrics (required by ML model)"""
+        if len(dog_history) < 5:
+            return {
+                'recent_momentum': 0.5,
+                'competitive_level': 0.5,
+                'position_consistency': 0.5,
+                'top_3_rate': 0.3
+            }
+        
+        recent_positions = dog_history['finish_position'].head(10).tolist()
+        
+        # Recent momentum - improving/declining trend
+        if len(recent_positions) >= 3:
+            recent_trend = np.mean(recent_positions[:3]) - np.mean(recent_positions[3:6] if len(recent_positions) > 3 else recent_positions[:3])
+            momentum = max(0, min(1, 0.5 - (recent_trend / 5)))  # Negative trend = positive momentum
+        else:
+            momentum = 0.5
+        
+        # Competitive level based on starting prices
+        if 'starting_price' in dog_history.columns:
+            avg_odds = dog_history['starting_price'].head(10).mean()
+            competitive_level = max(0, min(1, (10 - avg_odds) / 10)) if pd.notna(avg_odds) else 0.5
+        else:
+            competitive_level = 0.5
+        
+        # Position consistency
+        position_std = np.std(recent_positions[:5]) if len(recent_positions) >= 5 else 2.0
+        consistency = max(0, min(1, (3.0 - position_std) / 3.0))
+        
+        # Top 3 rate
+        top_3_count = sum(1 for pos in recent_positions[:10] if pos <= 3)
+        top_3_rate = top_3_count / min(len(recent_positions), 10)
+        
+        return {
+            'recent_momentum': momentum,
+            'competitive_level': competitive_level,
+            'position_consistency': consistency,
+            'top_3_rate': top_3_rate
+        }
+    
+    def _assess_break_quality(self, dog_history):
+        """Assess break quality (required by ML model)"""
+        if len(dog_history) < 3:
+            return 0.5
+        
+        # Use box number as proxy for break quality (inside boxes typically have better breaks)
+        recent_boxes = dog_history['box_number'].head(5).tolist()
+        
+        if recent_boxes:
+            avg_box = np.mean([box for box in recent_boxes if pd.notna(box)])
+            # Convert to 0-1 scale where lower box numbers = better breaks
+            break_quality = max(0, min(1, (5 - avg_box) / 4))
+            return break_quality
+        
+        return 0.5
+    
     def _create_default_features(self):
         """Create default features for dogs with insufficient history"""
         return {
@@ -340,6 +462,15 @@ class AdvancedFeatureEngineer:
             'venue_win_rate': 0,
             'venue_avg_position': 5.0,
             'venue_experience': 0,
+            'distance_win_rate': 0,
+            'distance_avg_time': 30.0,
+            'box_position_win_rate': 0.1,
+            'box_position_avg': 4.0,
+            'recent_momentum': 0.5,
+            'competitive_level': 0.5,
+            'position_consistency': 0.5,
+            'top_3_rate': 0.3,
+            'break_quality': 0.5,
             'grade_trend': 0,
             'current_class_comfort': 0.5,
             'break_impact': 0,
