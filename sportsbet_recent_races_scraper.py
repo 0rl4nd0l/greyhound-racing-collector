@@ -650,7 +650,7 @@ class SportsbetRecentRacesScraper:
         winner_info = {'name': None, 'odds': None, 'margin': None}
         
         try:
-        # Look for winner patterns (enhanced for Sportsbet format)
+            # Look for winner patterns (enhanced for Sportsbet format)
             winner_patterns = [
                 # Direct winner indicators
                 r'\b1\. ([A-Za-z\s\-\']+)',  # "1. Dog Name"

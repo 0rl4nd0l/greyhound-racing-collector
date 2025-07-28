@@ -412,3 +412,70 @@ function showNotification(message, type = 'info') {
     // Use your notification system here
     console.log(`${type.toUpperCase()}: ${message}`);
 }
+
+// Add missing functions
+function predictRace(filename) {
+    fetch('/api/predict_single_race', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            race_filename: filename
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification(`Prediction completed for ${filename}`, 'success');
+            refreshPredictions(); // Refresh the predictions display
+        } else {
+            showNotification(`Prediction failed: ${data.message}`, 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error running prediction:', error);
+        showNotification('Error running prediction: ' + error.message, 'error');
+    });
+}
+
+function showRaceDetails(raceName) {
+    // Implementation for showing race details
+    console.log('Show race details for:', raceName);
+    showNotification(`Viewing details for ${raceName}`, 'info');
+}
+
+function updatePredictionsTableFromRaceFiles(data) {
+    const tbody = document.getElementById('predictions-table-body');
+    tbody.innerHTML = '';
+    
+    const predictedRaces = data.predicted_races || [];
+    
+    if (predictedRaces.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No predictions available</td></tr>';
+        return;
+    }
+    
+    // Display predicted races data
+    predictedRaces.slice(0, 20).forEach(race => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${race.venue || 'N/A'} - ${race.race_date || 'N/A'}</td>
+            <td>${formatTime(race.scheduled_time || 'TBD')}</td>
+            <td>${race.top_pick?.dog_name || 'N/A'}</td>
+            <td>${formatProbability(race.top_pick?.win_probability)}</td>
+            <td>${formatProbability(race.top_pick?.place_probability)}</td>
+            <td>${formatTime(race.predicted_time)}</td>
+            <td>
+                <div class="progress" style="height: 20px;">
+                    <div class="progress-bar bg-success" 
+                         role="progressbar" 
+                         style="width: ${(race.confidence || 0.5) * 100}%">
+                        ${formatProbability(race.confidence || 0.5)}
+                    </div>
+                </div>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}

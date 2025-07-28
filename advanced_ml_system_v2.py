@@ -32,9 +32,21 @@ class AdvancedMLSystemV2:
         self.performance_history = {}
         self.scaler = RobustScaler()
         self._models_freshly_trained = False
+        self._registry_model_loaded = False
+        self._model_feature_columns = None
         
-        # Auto-load trained models if available (unless skipped)
-        if not skip_auto_load:
+        # Initialize model registry integration
+        try:
+            from model_registry import ModelRegistry
+            self.model_registry = ModelRegistry()
+            print("📂 Auto-loading best model from registry: ", end="")
+            self._load_from_registry()
+        except Exception as e:
+            print(f"⚠️ Model registry not available: {e}")
+            self.model_registry = None
+        
+        # Auto-load trained models if available (unless skipped) - fallback for old models
+        if not skip_auto_load and not self._registry_model_loaded:
             self._auto_load_models()
         
         # Advanced model configurations
@@ -641,6 +653,40 @@ class AdvancedMLSystemV2:
         mapped['current_odds_log'] = np.log(max(1.5, 10 - (market_conf * 8)))
         
         return mapped
+    
+    def _load_from_registry(self):
+        """Load the best model from the model registry"""
+        try:
+            best_model_data = self.model_registry.get_best_model()
+            if best_model_data:
+                model, scaler, metadata = best_model_data
+                
+                # Set up the model in ensemble format
+                model_name = metadata.model_name or 'registry_model'
+                self.models = {model_name: model}
+                self.model_weights = {model_name: 1.0}
+                self.scaler = scaler
+                
+                # Store expected feature columns for proper mapping
+                if metadata.feature_names:
+                    self._model_feature_columns = metadata.feature_names
+                
+                # Store metadata for reference
+                self._current_model_metadata = metadata
+                self._registry_model_loaded = True
+                
+                print(f"{metadata.model_name}")
+                print(f"   📊 Performance: Acc={metadata.accuracy:.3f}, AUC={metadata.auc:.3f}, F1={metadata.f1_score:.3f}")
+                print(f"   🔄 Training: {metadata.training_timestamp[:10]} ({metadata.training_samples} samples)")
+                print(f"✅ Registry model loaded successfully: {model_name}")
+                return True
+            
+            print("No models found in registry")
+            return False
+            
+        except Exception as e:
+            print(f"Error loading from registry: {e}")
+            return False
     
     def _auto_load_models(self):
         """Automatically load the best trained model from the model registry"""

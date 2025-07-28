@@ -35,6 +35,19 @@ import hashlib
 # Model registry system
 from model_registry import get_model_registry
 
+# Prediction system imports
+try:
+    from unified_predictor import UnifiedPredictor
+except ImportError:
+    UnifiedPredictor = None
+    print("Warning: UnifiedPredictor not available")
+
+try:
+    from comprehensive_prediction_pipeline import ComprehensivePredictionPipeline
+except ImportError:
+    ComprehensivePredictionPipeline = None
+    print("Warning: ComprehensivePredictionPipeline not available")
+
 # Load environment variables from .env file
 from dotenv import load_dotenv
 load_dotenv()
@@ -56,6 +69,63 @@ app.config['UPLOAD_FOLDER'] = UPCOMING_DIR
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+@app.route('/api/races')
+def api_races():
+    """API endpoint to list all races with details"""
+    conn = db_manager.get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT race_id, venue, race_date, race_name, winner_name FROM race_metadata WHERE winner_name IS NOT NULL")
+    races = cursor.fetchall()
+    conn.close()
+
+    return jsonify([
+        {
+            'race_id': race[0],
+            'venue': race[1],
+            'race_date': race[2],
+            'race_name': race[3],
+            'winner_name': race[4]
+        } for race in races
+    ])
+
+@app.route('/predict', methods=['POST'])
+def predict_basic():
+    """Prediction endpoint that runs unified predictor"""
+    data = request.get_json()
+    if not data or 'race_id' not in data:
+        return jsonify({'error': 'No race data provided'}), 400
+
+    race_id = data['race_id']
+    try:
+        if UnifiedPredictor is None:
+            return jsonify({'error': 'UnifiedPredictor not available'}), 500
+        
+        predictor = UnifiedPredictor()
+        prediction_result = predictor.predict_race_file(race_id)
+        return jsonify(prediction_result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/predict', methods=['POST'])
+def api_predict():
+    """Comprehensive API prediction endpoint"""
+    data = request.get_json()
+    if not data or not isinstance(data.get('race_data'), list):
+        return jsonify({'error': 'Invalid race data provided'}), 400
+
+    try:
+        if ComprehensivePredictionPipeline is None:
+            return jsonify({'error': 'ComprehensivePredictionPipeline not available'}), 500
+        
+        pipeline = ComprehensivePredictionPipeline()
+        results = []
+        for entry in data['race_data']:
+            prediction = pipeline.run_complete_analysis(entry['filename'])
+            results.append(prediction)
+        return jsonify({'predictions': results})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 class DatabaseManager:
     def __init__(self, db_path):
@@ -6124,6 +6194,89 @@ def api_race_odds(race_id):
         return jsonify({
             'success': False,
             'message': f'Error getting race odds: {str(e)}'
+        }), 500
+
+@app.route('/api/predictions/upcoming', methods=['POST'])
+def api_predictions_upcoming():
+    """API endpoint to get predictions for upcoming races based on race IDs"""
+    try:
+        data = request.get_json()
+        if not data or 'race_ids' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'race_ids parameter is required'
+            }), 400
+        
+        race_ids = data['race_ids']
+        prediction_types = data.get('prediction_types', ['win_probability', 'place_probability'])
+        
+        # Get predictions from prediction files
+        predictions_dir = './predictions'
+        predictions_result = {}
+        
+        if os.path.exists(predictions_dir):
+            for race_id in race_ids:
+                race_predictions = {}
+                
+                # Look for prediction files matching this race ID
+                for filename in os.listdir(predictions_dir):
+                    if (filename.startswith('prediction_') or filename.startswith('unified_prediction_')) and filename.endswith('.json'):
+                        try:
+                            file_path = os.path.join(predictions_dir, filename)
+                            with open(file_path, 'r') as f:
+                                pred_data = json.load(f)
+                            
+                            race_info = pred_data.get('race_info', {})
+                            race_filename = race_info.get('filename', '')
+                            
+                            # Check if this prediction file matches the race ID
+                            if race_id in race_filename or race_filename.replace('.csv', '') == race_id:
+                                predictions_list = pred_data.get('predictions', [])
+                                
+                                # Extract predictions for each type requested
+                                for pred_type in prediction_types:
+                                    if pred_type == 'win_probability':
+                                        race_predictions[pred_type] = {
+                                            'predictions': [{
+                                                'box': pred.get('box_number', 'N/A'),
+                                                'dog_name': pred.get('dog_name', 'Unknown'),
+                                                'win_probability': safe_float(pred.get('final_score', 0)),
+                                                'confidence': safe_float(pred.get('final_score', 0))
+                                            } for pred in predictions_list],
+                                            'race_info': race_info
+                                        }
+                                    elif pred_type == 'place_probability':
+                                        race_predictions[pred_type] = {
+                                            'predictions': [{
+                                                'box': pred.get('box_number', 'N/A'),
+                                                'dog_name': pred.get('dog_name', 'Unknown'),
+                                                'place_probability': safe_float(pred.get('final_score', 0)) * 0.7,  # Estimate place prob
+                                                'confidence': safe_float(pred.get('final_score', 0))
+                                            } for pred in predictions_list],
+                                            'race_info': race_info
+                                        }
+                                    elif pred_type == 'race_time':
+                                        race_predictions[pred_type] = {
+                                            'race_time': race_info.get('scheduled_time', 'TBD'),
+                                            'race_info': race_info
+                                        }
+                                break
+                        except Exception as e:
+                            continue
+                
+                if race_predictions:
+                    predictions_result[race_id] = race_predictions
+        
+        return jsonify({
+            'success': True,
+            'predictions': predictions_result,
+            'race_count': len(predictions_result)
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Error getting upcoming predictions: {str(e)}'
         }), 500
 
 @app.route('/api/sportsbet/enhanced_predictions')

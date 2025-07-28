@@ -315,15 +315,37 @@ class EnhancedComprehensiveProcessor:
         """Group dog data by dog name, associating blank rows with previous dog name"""
         dog_groups = []
         current_group = []
+        current_dog_name = None
 
         for index, row in df.iterrows():
-            if pd.notna(row['Dog Name']):
+            dog_name = row['Dog Name']
+            
+            # Check if this is a new dog (not blank and not empty string)
+            if pd.notna(dog_name) and str(dog_name).strip() != '' and str(dog_name).strip() != '""':
+                # Remove number prefix if present (e.g., "1. Dog Name" -> "Dog Name")
+                clean_dog_name = re.sub(r'^\d+\.\s*', '', str(dog_name).strip())
+                
+                # If we have a current group, save it
                 if current_group:
                     dog_groups.append(current_group)
+                
+                # Start new group
                 current_group = [row]
+                current_dog_name = clean_dog_name
+                
+                # Update the row with clean dog name
+                row['Dog Name'] = clean_dog_name
             else:
-                current_group.append(row)
+                # This is a blank row, associate with current dog
+                if current_group:
+                    # Set the dog name for this blank row to match the current dog
+                    row['Dog Name'] = current_dog_name
+                    current_group.append(row)
+                else:
+                    # Skip orphaned blank rows at the beginning
+                    continue
 
+        # Add the last group
         if current_group:
             dog_groups.append(current_group)
 

@@ -346,33 +346,39 @@ class EnhancedPipelineV2:
                 # Use ensemble prediction if models are trained
                 if hasattr(self.ml_system, 'models') and self.ml_system.models:
                     ml_score = self.ml_system.predict_with_ensemble(features)
-                    logger.debug(f"ML ensemble score for {dog_name}: {ml_score:.3f}")
+                    logger.debug(f"ML ensemble score for {dog_name}: {ml_score:.6f}")
                     
-                    # Handle very small ML predictions that are actually valid
-                    # Scale up tiny predictions to usable range
-                    if ml_score < 0.001:
-                        # Very small predictions - likely from over-confident model
-                        scaled_ml_score = 0.1 + (ml_score * 1000)  # Scale to ~0.1 baseline
-                        logger.debug(f"Scaling tiny ML prediction for {dog_name}: {ml_score:.6f} -> {scaled_ml_score:.4f}")
-                        ml_score = min(0.9, scaled_ml_score)
-                    
-                    # Quality check: if ML score is truly uniform, prefer heuristic
-                    if hasattr(self, '_last_ml_scores') and len(self._last_ml_scores) >= 3:
-                        recent_scores = [round(s, 4) for s in self._last_ml_scores[-3:]]
-                        if len(set(recent_scores)) == 1 and ml_score < 0.02:
-                            logger.warning(f"ML score appears uniform for {dog_name} (score: {ml_score:.4f}), using heuristic")
-                            return heuristic_score
-                    
-                    # Track ML scores for uniform detection
+                    # Track ML scores for uniform detection - but don't scale tiny valid predictions
                     if not hasattr(self, '_last_ml_scores'):
                         self._last_ml_scores = []
                     self._last_ml_scores.append(ml_score)
                     if len(self._last_ml_scores) > 10:
                         self._last_ml_scores = self._last_ml_scores[-10:]  # Keep last 10
                     
-                    # Blend ML and heuristic scores for better differentiation
-                    blended_score = (ml_score * 0.7) + (heuristic_score * 0.3)
-                    return blended_score
+                    # Only check for truly problematic predictions (exactly 0.0 or NaN)
+                    if ml_score == 0.0 or np.isnan(ml_score):
+                        logger.warning(f"Invalid ML prediction for {dog_name} (score: {ml_score}), using heuristic")
+                        return heuristic_score
+                    
+                    # Quality check: if ALL recent ML scores are identical, there's an issue
+                    if len(self._last_ml_scores) >= 5:
+                        recent_scores = [round(s, 8) for s in self._last_ml_scores[-5:]]  # Higher precision
+                        if len(set(recent_scores)) == 1 and ml_score < 0.001:
+                            logger.warning(f"ML scores appear identical for {dog_name} (score: {ml_score:.8f}), using blend")
+                            # Still use a blend rather than completely ignoring ML
+                            blended_score = (ml_score * 0.3) + (heuristic_score * 0.7)
+                            return max(0.05, blended_score)  # Ensure minimum
+                    
+                    # For very small but valid predictions, use them but ensure minimum differentiation
+                    if ml_score < 0.01:
+                        # Small valid predictions: blend more heavily with heuristic for differentiation
+                        blended_score = (ml_score * 0.4) + (heuristic_score * 0.6)
+                        logger.debug(f"Small valid ML prediction for {dog_name}: {ml_score:.6f}, blended: {blended_score:.4f}")
+                        return max(0.05, blended_score)
+                    else:
+                        # Normal predictions: standard blend
+                        blended_score = (ml_score * 0.7) + (heuristic_score * 0.3)
+                        return blended_score
             except Exception as e:
                 logger.warning(f"Error generating ML prediction for {dog_name}: {e}")
         
