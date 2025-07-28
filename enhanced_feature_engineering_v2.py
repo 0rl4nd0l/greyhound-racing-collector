@@ -56,8 +56,6 @@ class AdvancedFeatureEngineer:
         WHERE drd.finish_position IS NOT NULL 
             AND drd.finish_position != ''
             AND drd.individual_time IS NOT NULL
-            AND drd.finish_position REGEXP '^[0-9]+$'
-            AND drd.individual_time REGEXP '^[0-9.]+$'
         ORDER BY rm.race_date DESC
         """
         
