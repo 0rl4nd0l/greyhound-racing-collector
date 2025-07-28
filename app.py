@@ -29,7 +29,11 @@ from sportsbet_odds_integrator import SportsbetOddsIntegrator
 from venue_mapping_fix import GreyhoundVenueMapper
 from enhanced_data_integration import EnhancedDataIntegrator
 import pickle
+import logging
 import hashlib
+
+# Model registry system
+from model_registry import get_model_registry
 
 # Load environment variables from .env file
 from dotenv import load_dotenv
@@ -495,6 +499,99 @@ db_manager = DatabaseManager(DATABASE_PATH)
 # Initialize Sportsbet odds integrator
 sportsbet_integrator = SportsbetOddsIntegrator(DATABASE_PATH)
 
+# Configure comprehensive logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('logs/app_debug.log'),
+        logging.StreamHandler()
+    ]
+)
+
+# Create logs directory if it doesn't exist
+os.makedirs('logs', exist_ok=True)
+
+# Model registry debug logging function
+def log_model_registry_debug(message, level="INFO"):
+    """Enhanced logging for model registry operations"""
+    timestamp = datetime.now().isoformat()
+    log_message = f"[MODEL_REGISTRY] {message}"
+    
+    if level == "ERROR":
+        logging.error(log_message)
+    elif level == "WARNING":
+        logging.warning(log_message)
+    elif level == "DEBUG":
+        logging.debug(log_message)
+    else:
+        logging.info(log_message)
+    
+    # Also log to enhanced logger if available
+    try:
+        if level == "ERROR":
+            logger.log_error(log_message, context={'component': 'model_registry'})
+        else:
+            logger.log_system(log_message, level, "MODEL_REGISTRY")
+    except:
+        pass  # Enhanced logger might not be available yet
+
+# Helper function for model predictions
+def get_model_predictions():
+    """Get model predictions for display"""
+    try:
+        log_model_registry_debug("Retrieving model predictions for display", "DEBUG")
+        
+        # Check if model registry is available
+        if model_registry is None:
+            log_model_registry_debug("Model registry not initialized, returning empty predictions", "WARNING")
+            return []
+        
+        # Get all models and their basic info
+        raw_models = model_registry.list_models()
+        log_model_registry_debug(f"Found {len(raw_models)} models in registry", "DEBUG")
+        
+        predictions = []
+        for model in raw_models:
+            try:
+                model_dict = {
+                    'model_id': getattr(model, 'model_id', 'N/A'),
+                    'model_name': getattr(model, 'model_name', 'N/A'),
+                    'model_type': getattr(model, 'model_type', 'N/A'),
+                    'accuracy': getattr(model, 'accuracy', 0.0),
+                    'f1_score': getattr(model, 'f1_score', 0.0),
+                    'precision': getattr(model, 'precision', 0.0),
+                    'recall': getattr(model, 'recall', 0.0),
+                    'is_active': bool(getattr(model, 'is_active', False)),
+                    'last_updated': getattr(model, 'last_updated', 'Unknown'),
+                    'training_samples': getattr(model, 'training_samples', 0),
+                    'features_count': getattr(model, 'features_count', 0)
+                }
+                predictions.append(model_dict)
+                log_model_registry_debug(f"Retrieved data for model: {model_dict['model_name']}", "DEBUG")
+            except Exception as e:
+                log_model_registry_debug(f"Error processing model data: {str(e)}", "ERROR")
+                continue
+        
+        log_model_registry_debug(f"Successfully processed {len(predictions)} model predictions", "INFO")
+        return predictions
+        
+    except Exception as e:
+        log_model_registry_debug(f"Error retrieving model predictions: {str(e)}", "ERROR")
+        return []
+
+# Initialize model registry system with enhanced logging
+log_model_registry_debug("Initializing model registry system...", "INFO")
+try:
+    model_registry = get_model_registry()
+    model_count = len(model_registry.list_models())
+    log_model_registry_debug(f"Model registry initialized successfully: {model_count} models tracked", "INFO")
+    print(f"✅ Model registry initialized successfully: {model_count} models tracked")
+except Exception as e:
+    log_model_registry_debug(f"Model registry initialization failed: {str(e)}", "ERROR")
+    print(f"⚠️  Model registry initialization failed: {e}")
+    model_registry = None
+
 @app.route('/')
 def index():
     """Home page with dashboard overview"""
@@ -533,6 +630,42 @@ def race_detail(race_id):
     return render_template('race_detail.html', race_data=race_data)
 
 
+@app.route('/predictions')
+def predictions():
+    """Predictions page - Display model predictions"""
+    try:
+        # Get model predictions using our new function
+        predictions = get_model_predictions()
+        # Log prediction retrieval
+        logging.info(f"Retrieved {len(predictions)} model predictions")
+        log_model_registry_debug(f"Predictions page loaded with {len(predictions)} models", "INFO")
+        return render_template('predictions.html', predictions=predictions)
+    except Exception as e:
+        # Log any errors
+        logging.error(f"Error loading predictions: {str(e)}")
+        log_model_registry_debug(f"Error loading predictions page: {str(e)}", "ERROR")
+        flash('Error loading predictions', 'error')
+        return redirect(url_for('index'))
+
+@app.route('/monitoring')
+def monitoring():
+    """Monitoring page - Overview of system status and logs"""
+    try:
+        # Log the entry to the monitoring page
+        logging.debug("Accessing monitoring page")
+        # Get model predictions using our new function
+        predictions = get_model_predictions()
+        # Log monitoring access
+        logging.info(f"Monitoring page loaded with {len(predictions)} model predictions")
+        log_model_registry_debug(f"Monitoring page loaded with {len(predictions)} models", "INFO")
+        # Display monitoring details with predictions data
+        return render_template('monitoring.html', predictions=predictions)
+    except Exception as e:
+        logging.error(f"Error accessing monitoring page: {str(e)}")
+        log_model_registry_debug(f"Error loading monitoring page: {str(e)}", "ERROR")
+        flash('Error accessing monitoring page', 'error')
+        return redirect(url_for('index'))
+
 @app.route('/scraping')
 def scraping_status():
     """Scraping status and controls with data processing features"""
@@ -561,6 +694,52 @@ def scraping_status():
 def logs_viewer():
     """System logs viewer"""
     return render_template('logs.html')
+
+@app.route('/model_registry')
+def model_registry_view():
+    """Model Registry Dashboard"""
+    if model_registry is None:
+        flash('Model registry not initialized', 'error')
+        return redirect(url_for('index'))
+    
+    # Get all models and preprocess them for the template
+    raw_models = model_registry.list_models()
+    models = []
+    
+    for model in raw_models:
+        # Create a dict with safe attribute access
+        model_dict = {
+            'model_name': getattr(model, 'model_name', 'N/A'),
+            'model_id': getattr(model, 'model_id', 'N/A'),
+            'model_type': getattr(model, 'model_type', 'N/A'),
+            'accuracy': getattr(model, 'accuracy', 0),
+            'f1_score': getattr(model, 'f1_score', 0),
+            'precision': getattr(model, 'precision', 0),
+            'recall': getattr(model, 'recall', 0),
+            'features_count': getattr(model, 'features_count', 0),
+            'training_samples': getattr(model, 'training_samples', 0),
+            'is_active': bool(getattr(model, 'is_active', False))
+        }
+        models.append(model_dict)
+    
+    # Find best model by highest accuracy
+    best_model = None
+    if models:
+        best_model = max(models, key=lambda x: x['accuracy'])
+    
+    # Count active models
+    active_models = sum(1 for m in models if m['is_active'])
+    
+    # Calculate average accuracy
+    total_accuracy = sum(m['accuracy'] for m in models)
+    avg_accuracy = total_accuracy / len(models) if models else 0
+    
+    return render_template('model_registry.html',
+                          models=models,
+                          model_count=len(models),
+                          active_models=active_models,
+                          avg_accuracy=avg_accuracy,
+                          best_model=best_model)
 
 @app.route('/upload', methods=['GET', 'POST'])
 def upload_file():
@@ -617,6 +796,141 @@ def api_recent_races():
         'count': len(races),
         'timestamp': datetime.now().isoformat()
     })
+
+# Model Registry API Endpoints
+
+@app.route('/api/model_registry/models')
+def api_model_registry_models():
+    """API endpoint to list all models in the registry"""
+    try:
+        if model_registry is None:
+            return jsonify({
+                'success': False,
+                'message': 'Model registry not initialized'
+            }), 500
+        
+        models = model_registry.list_models()
+        
+        return jsonify({
+            'success': True,
+            'models': models,
+            'count': len(models),
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error listing models: {str(e)}'
+        }), 500
+
+@app.route('/api/model_registry/models/<model_id>')
+def api_model_registry_model_detail(model_id):
+    """API endpoint to get detailed information about a specific model"""
+    try:
+        if model_registry is None:
+            return jsonify({
+                'success': False,
+                'message': 'Model registry not initialized'
+            }), 500
+        
+        model_info = model_registry.get_model_info(model_id)
+        
+        if model_info is None:
+            return jsonify({
+                'success': False,
+                'message': f'Model {model_id} not found'
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'model': model_info,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error getting model details: {str(e)}'
+        }), 500
+
+@app.route('/api/model_registry/performance')
+def api_model_registry_performance():
+    """API endpoint to get performance metrics for all models"""
+    try:
+        if model_registry is None:
+            return jsonify({
+                'success': False,
+                'message': 'Model registry not initialized'
+            }), 500
+        
+        # Get all models and calculate performance summary
+        models = model_registry.list_models()
+        
+        # Calculate aggregate metrics
+        total_models = len(models)
+        active_models = sum(1 for m in models if hasattr(m, 'is_active') and m.is_active)
+        
+        # Find best model by highest accuracy
+        best_model = None
+        if models:
+            best_model = max(models, key=lambda x: x.accuracy if hasattr(x, 'accuracy') else 0)
+        
+        # Calculate average metrics
+        accuracies = [m.accuracy for m in models if hasattr(m, 'accuracy')]
+        avg_accuracy = sum(accuracies) / len(accuracies) if accuracies else 0
+        
+        f1_scores = [m.f1_score for m in models if hasattr(m, 'f1_score')]
+        avg_f1 = sum(f1_scores) / len(f1_scores) if f1_scores else 0
+        
+        performance_data = {
+            'total_models': total_models,
+            'active_models': active_models,
+            'avg_accuracy': avg_accuracy,
+            'avg_f1_score': avg_f1,
+            'best_model': best_model.model_id if best_model and hasattr(best_model, 'model_id') else None,
+            'best_accuracy': best_model.accuracy if best_model and hasattr(best_model, 'accuracy') else 0
+        }
+        
+        return jsonify({
+            'success': True,
+            'performance': performance_data,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error getting performance data: {str(e)}'
+        }), 500
+
+@app.route('/api/model_registry/status')
+def api_model_registry_status():
+    """API endpoint to get model registry status"""
+    try:
+        if model_registry is None:
+            return jsonify({
+                'success': False,
+                'message': 'Model registry not initialized',
+                'initialized': False,
+                'model_count': 0
+            })
+        
+        models = model_registry.list_models()
+        
+        return jsonify({
+            'success': True,
+            'initialized': True,
+            'model_count': len(models),
+            'registry_path': model_registry.registry_file if hasattr(model_registry, 'registry_file') else 'Unknown',
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error getting registry status: {str(e)}'
+        }), 500
 
 @app.route('/api/race/<race_id>')
 def api_race_detail(race_id):
@@ -3909,6 +4223,72 @@ _upcoming_races_cache = {
     'timestamp': None,
     'expires_in_minutes': 5  # Cache for 5 minutes
 }
+
+@app.route('/api/upcoming_races_stream')
+def api_upcoming_races_stream():
+    """Streaming API endpoint that returns races as they're discovered"""
+    from flask import Response, copy_current_request_context
+    import json
+    
+    # Get days_ahead parameter before starting the generator
+    days_ahead = request.args.get('days', 1, type=int)
+    
+    @copy_current_request_context
+    def generate_race_stream():
+        try:
+            from upcoming_race_browser import UpcomingRaceBrowser
+            
+            browser = UpcomingRaceBrowser()
+            
+            # Send initial status
+            yield f"data: {json.dumps({'type': 'status', 'message': f'Starting to fetch races for next {days_ahead} days...', 'progress': 0})}\n\n"
+            
+            today = datetime.now().date()
+            all_races = []
+            total_days = days_ahead + 1
+            
+            for i in range(total_days):
+                check_date = today + timedelta(days=i)
+                date_str = check_date.strftime('%Y-%m-%d')
+                progress = int((i / total_days) * 100)
+                
+                # Send progress update
+                yield f"data: {json.dumps({'type': 'progress', 'date': date_str, 'progress': progress, 'message': f'Scanning {date_str}...'})}\n\n"
+                
+                try:
+                    # Get races for this date
+                    date_races = browser.get_races_for_date(check_date)
+                    
+                    if date_races:
+                        # Send each race as it's found
+                        for race in date_races:
+                            race['date'] = date_str  # Ensure date is set
+                            all_races.append(race)
+                            yield f"data: {json.dumps({'type': 'race', 'race': race, 'total_found': len(all_races)})}\n\n"
+                        
+                        # Send date summary
+                        yield f"data: {json.dumps({'type': 'date_complete', 'date': date_str, 'count': len(date_races), 'message': f'Found {len(date_races)} races for {date_str}'})}\n\n"
+                    else:
+                        yield f"data: {json.dumps({'type': 'date_complete', 'date': date_str, 'count': 0, 'message': f'No races found for {date_str}'})}\n\n"
+                
+                except Exception as e:
+                    yield f"data: {json.dumps({'type': 'error', 'date': date_str, 'message': f'Error scanning {date_str}: {str(e)}'})}\n\n"
+            
+            # Final completion message
+            yield f"data: {json.dumps({'type': 'complete', 'total_races': len(all_races), 'message': f'Scan complete! Found {len(all_races)} total races.', 'races': all_races})}\n\n"
+            
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': f'Stream error: {str(e)}'})}\n\n"
+    
+    return Response(
+        generate_race_stream(), 
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*'
+        }
+    )
 
 @app.route('/api/upcoming_races')
 def api_upcoming_races():

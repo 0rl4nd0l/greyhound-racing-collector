@@ -153,8 +153,14 @@ class UpcomingRaceBrowser:
                 minute = total_minutes_from_midnight % 60
                 return f"{date_str} {hour:02d}:{minute:02d}:{race_num:03d}"
         
-        # Sort races by parsed time
-        races.sort(key=parse_race_time)
+        # Sort races by date and correctly parsed race time
+        def parse_race_time_full(race):
+            try:
+                race_datetime_str = f"{race.get('date', '9999-12-31')} {race.get('race_time', '23:59')}:00"
+                return datetime.strptime(race_datetime_str, '%Y-%m-%d %H:%M:%S')
+            except:
+                return datetime.max
+        races.sort(key=parse_race_time_full)
         
         # Filter out past races (races that have already started)
         now = datetime.now()
@@ -194,6 +200,14 @@ class UpcomingRaceBrowser:
         
         print(f"✅ Found {len(future_races)} upcoming races (filtered past races, sorted by time)")
         return future_races
+    
+    def generate_csv_link(self, venue, date, race_number):
+        """Generate CSV download link for given race venue, date, and number"""
+        try:
+            return f"https://www.thedogs.com.au/Racing/{venue}/{date}/{race_number}/Form-Guide"
+        except Exception as e:
+            print(f"❌ Error generating CSV link: {e}")
+            return None
     
     def get_races_for_date(self, date):
         """Get races for a specific date by scraping live data from thedogs.com"""
@@ -1124,11 +1138,41 @@ class UpcomingRaceBrowser:
         
         return races
     
-    def _scrape_race_time_from_page(self, race_url):
+    def _scrape_race_time_from_page(self, race_url, max_retries=3):
         """Scrape actual race time from individual race page"""
         try:
-            print(f"     🕐 Scraping race time from: {race_url}")
-            response = self.session.get(race_url, timeout=15)
+            retry_count = 0
+            while retry_count < max_retries:
+                try:
+                    print(f"     🕐 Scraping race time from: {race_url} (attempt {retry_count + 1})")
+                    response = self.session.get(race_url, timeout=15)
+                    
+                    if response.status_code == 429:  # Too Many Requests
+                        retry_delay = int(response.headers.get('Retry-After', 30))
+                        print(f"     ⏳ Rate limited, waiting {retry_delay} seconds...")
+                        time.sleep(retry_delay)
+                        retry_count += 1
+                        continue
+                        
+                    if response.status_code == 404:
+                        print(f"     ⚠️ Race page not found (404)")
+                        return None
+                        
+                    if response.status_code != 200:
+                        print(f"     ⚠️ Failed to access race page: {response.status_code}")
+                        retry_count += 1
+                        time.sleep(5)  # Wait 5 seconds before retry
+                        continue
+                        
+                    break  # Success - exit retry loop
+                    
+                except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+                    print(f"     ⚠️ Network error: {e}")
+                    if retry_count >= max_retries - 1:
+                        return None
+                    retry_count += 1
+                    time.sleep(5)  # Wait 5 seconds before retry
+                    continue
             
             if response.status_code != 200:
                 print(f"     ⚠️ Failed to access race page: {response.status_code}")
@@ -1300,31 +1344,86 @@ class UpcomingRaceBrowser:
             
             print(f"   🔍 Found {len(race_links)} potential race links")
             
-            # Extract race information from each link and scrape real times
-            for link_element, href in race_links:  # Process ALL race links to find all venues
+            # Group race links by venue for more efficient processing
+            venue_links = {}
+            for link_element, href in race_links:
                 try:
-                    race_info = self.extract_race_info_from_link(link_element, href, date_str)
-                    if race_info:
-                        # Try to get real race time from individual race page
-                        real_race_time = self._scrape_race_time_from_page(race_info['url'])
-                        
-                        if real_race_time:
-                            race_info['race_time'] = real_race_time
-                            race_info['time_source'] = 'live_scraped'
-                            print(f"     ✅ {race_info['title']} at {real_race_time} (REAL TIME)")
-                        else:
-                            # Fallback to estimated time if scraping fails
-                            race_info['time_source'] = 'estimated'
-                            print(f"     📅 {race_info['title']} at {race_info.get('race_time', 'TBA')} (estimated)")
-                        
-                        races.append(race_info)
-                        
-                        # Small delay between requests to be respectful
-                        time.sleep(0.2)
-                        
-                except Exception as e:
-                    print(f"     ⚠️ Error extracting race from link: {e}")
+                    url_parts = href.strip('/').split('/')
+                    racing_index = url_parts.index('racing')
+                    if len(url_parts) > racing_index + 1:
+                        venue = url_parts[racing_index + 1]
+                        if venue not in venue_links:
+                            venue_links[venue] = []
+                        venue_links[venue].append((link_element, href))
+                except (ValueError, IndexError):
                     continue
+            
+            print(f"   📊 Processing races for {len(venue_links)} venues")
+            
+            # Process venues in parallel using up to 3 concurrent threads
+            from concurrent.futures import ThreadPoolExecutor
+            from itertools import chain
+            
+            def process_venue_races(venue_data):
+                venue, links = venue_data
+                venue_races = []
+                print(f"     🏟️ Processing {len(links)} races for {venue}")
+                
+                # Get the first race time to establish pattern
+                first_link = links[0]
+                first_race = self.extract_race_info_from_link(first_link[0], first_link[1], date_str)
+                if first_race:
+                    first_time = self._scrape_race_time_from_page(first_race['url'])
+                    if first_time:
+                        first_race['race_time'] = first_time
+                        first_race['time_source'] = 'live_scraped'
+                        venue_races.append(first_race)
+                        
+                        # Estimate remaining race times (usually 20-25 min apart)
+                        try:
+                            from datetime import datetime, timedelta
+                            base_time = datetime.strptime(first_time, '%I:%M %p')
+                            
+                            # Process remaining races with estimated times
+                            for link_element, href in links[1:]:
+                                race_info = self.extract_race_info_from_link(link_element, href, date_str)
+                                if race_info:
+                                    # Estimate time based on race number difference
+                                    race_num_diff = int(race_info['race_number']) - int(first_race['race_number'])
+                                    estimated_time = base_time + timedelta(minutes=race_num_diff * 22)
+                                    race_info['race_time'] = estimated_time.strftime('%I:%M %p').lstrip('0')
+                                    race_info['time_source'] = 'estimated'
+                                    venue_races.append(race_info)
+                        except Exception as e:
+                            print(f"     ⚠️ Error estimating times for {venue}: {e}")
+                            
+                            # Fallback: Get real times for all races
+                            for link_element, href in links[1:]:
+                                try:
+                                    race_info = self.extract_race_info_from_link(link_element, href, date_str)
+                                    if race_info:
+                                        real_time = self._scrape_race_time_from_page(race_info['url'])
+                                        if real_time:
+                                            race_info['race_time'] = real_time
+                                            race_info['time_source'] = 'live_scraped'
+                                            venue_races.append(race_info)
+                                except Exception as e:
+                                    print(f"     ⚠️ Error processing race: {e}")
+                                time.sleep(0.5 + random.random() * 0.5)
+                return venue_races
+            
+            # Process venues concurrently
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                all_venue_races = list(chain.from_iterable(
+                    executor.map(process_venue_races, venue_links.items())
+                ))
+            
+            races.extend(all_venue_races)
+            
+            # Sort races by venue and race number
+            races.sort(key=lambda x: (x.get('venue', ''), int(x.get('race_number', 0))))
+            
+            print(f"   📊 Found {len(races)} total races across {len(venue_links)} venues")
             
         except Exception as e:
             print(f"   ❌ Error scraping live races: {e}")
@@ -1471,9 +1570,11 @@ def main():
     upcoming_races = browser.get_upcoming_races(days_ahead=0)
     
     print(f"\n🎯 Found {len(upcoming_races)} upcoming races:")
-    for race in upcoming_races[:10]:  # Show first 10
+    # Add links to thedogs.com.au CSV downloads
+    for race in upcoming_races:
+        csv_url = browser.generate_csv_link(race['venue'], race['date'], race['race_number'])
         print(f"   📅 {race['title']} - {race.get('race_time', 'TBA')}")
-        print(f"   🔗 URL: {race['url']}")
+        print(f"   🔗 CSV Download: {csv_url}")
     
     if upcoming_races:
         print(f"\n💡 To download a race, use the Flask app at /upcoming")

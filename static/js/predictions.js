@@ -21,21 +21,39 @@ function initializePredictions() {
 }
 
 function refreshPredictions() {
-    // Load predictions for upcoming races
-    fetch('/api/predictions/upcoming')
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                updateActiveModelInfo(data);
-                updateUpcomingRaces(data);
-                updatePredictionsTable(data);
-                updateCharts(data);
+    // Load race files status and prediction results
+    Promise.allSettled([
+        fetch('/api/race_files_status').then(response => response.json()).catch(e => ({success: false, error: e})),
+        fetch('/api/prediction_results').then(response => response.json()).catch(e => ({success: false, error: e}))
+    ])
+    .then(([raceFilesResult, predictionsResult]) => {
+        const raceFilesData = raceFilesResult.status === 'fulfilled' ? raceFilesResult.value : {success: false};
+        const predictionsData = predictionsResult.status === 'fulfilled' ? predictionsResult.value : {success: false};
+        
+        // Update upcoming races if race files data is available
+        if (raceFilesData.success) {
+            updateUpcomingRaces(raceFilesData);
+        } else {
+            console.warn('Race files data not available:', raceFilesData.error);
+            document.getElementById('upcoming-races-container').innerHTML = '<p class="text-muted">Error loading race data</p>';
+        }
+        
+        // Update predictions table and charts if prediction data is available
+        if (predictionsData.success) {
+            updatePredictionsTable(predictionsData);
+            updateCharts(predictionsData);
+        } else {
+            console.warn('Predictions data not available:', predictionsData.error || predictionsData.message);
+            // Use race files data to show basic prediction table if available
+            if (raceFilesData.success && raceFilesData.predicted_races) {
+                updatePredictionsTableFromRaceFiles(raceFilesData);
+            } else {
+                document.getElementById('predictions-table-body').innerHTML = '<tr><td colspan="7" class="text-center text-muted">No predictions available</td></tr>';
             }
-        })
-        .catch(error => {
-            console.error('Error fetching predictions:', error);
-            showNotification('Error loading predictions data', 'error');
-        });
+            // Clear charts
+            updateCharts({predictions: []});
+        }
+    });
 }
 
 function updateActiveModelInfo(data) {
@@ -66,35 +84,62 @@ function updateActiveModelInfo(data) {
 
 function updateUpcomingRaces(data) {
     const container = document.getElementById('upcoming-races-container');
-    const races = Object.entries(data.predictions);
+    const upcomingRaces = data.unpredicted_races || [];
+    const predictedRaces = data.predicted_races || [];
     
-    if (races.length === 0) {
+    if (upcomingRaces.length === 0 && predictedRaces.length === 0) {
         container.innerHTML = '<p class="text-muted">No upcoming races found</p>';
         return;
     }
     
     let html = '<div class="row g-2">';
-    races.forEach(([raceId, predictions]) => {
-        const raceInfo = getRaceInfo(raceId, predictions);
+    
+    // Show unpredicted races first
+    upcomingRaces.slice(0, 4).forEach(race => {
+        const raceInfo = {
+            venue: race.race_id.replace(/_/g, ' ').toUpperCase(),
+            number: 'TBD',
+            time: 'Awaiting prediction'
+        };
         html += `
             <div class="col-md-6">
-                <div class="card h-100">
+                <div class="card h-100 border-warning">
                     <div class="card-body">
-                        <h6 class="card-title">${raceInfo.venue} - Race ${raceInfo.number}</h6>
+                        <h6 class="card-title">${raceInfo.venue}</h6>
                         <p class="card-text">
-                            <small class="text-muted">Time:</small> ${formatTime(raceInfo.time)}<br>
-                            <small class="text-muted">Predictions:</small> ${Object.keys(predictions).length} available
+                            <small class="text-muted">Status:</small> <span class="badge bg-warning">Pending Prediction</span><br>
+                            <small class="text-muted">File:</small> ${race.filename}
                         </p>
-                        <button class="btn btn-sm btn-outline-primary" onclick="showRacePredictions('${raceId}')">
-                            View Details
+                        <button class="btn btn-sm btn-warning" onclick="predictRace('${race.filename}')">
+                            Run Prediction
                         </button>
                     </div>
                 </div>
             </div>
         `;
     });
-    html += '</div>';
     
+    // Show recent predicted races
+    predictedRaces.slice(0, 4).forEach(race => {
+        html += `
+            <div class="col-md-6">
+                <div class="card h-100 border-success">
+                    <div class="card-body">
+                        <h6 class="card-title">${race.venue} - Race ${race.race_date}</h6>
+                        <p class="card-text">
+                            <small class="text-muted">Top Pick:</small> ${race.top_pick?.dog_name || 'N/A'}<br>
+                            <small class="text-muted">Method:</small> ${race.prediction_method}
+                        </p>
+                        <button class="btn btn-sm btn-success" onclick="showRaceDetails('${race.race_name}')">
+                            View Results
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
     container.innerHTML = html;
 }
 
@@ -102,35 +147,41 @@ function updatePredictionsTable(data) {
     const tbody = document.getElementById('predictions-table-body');
     tbody.innerHTML = '';
     
-    Object.entries(data.predictions).forEach(([raceId, racePredictions]) => {
-        const raceInfo = getRaceInfo(raceId, racePredictions);
+    const predictions = data.predictions || [];
+    
+    if (predictions.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No predictions available</td></tr>';
+        return;
+    }
+    
+    // Take recent predictions and limit to show top runners
+    predictions.slice(0, 20).forEach(race => {
+        const runners = race.predictions || [];
         
-        // Get predictions for each runner
-        Object.entries(racePredictions).forEach(([predType, prediction]) => {
-            if (prediction.predictions) {
-                prediction.predictions.forEach(runnerPred => {
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td>${raceInfo.venue} R${raceInfo.number}</td>
-                        <td>${formatTime(raceInfo.time)}</td>
-                        <td>${runnerPred.dog_name || runnerPred.box}</td>
-                        <td>${formatProbability(runnerPred.win_probability)}</td>
-                        <td>${formatProbability(runnerPred.place_probability)}</td>
-                        <td>${formatTime(runnerPred.predicted_time)}</td>
-                        <td>
-                            <div class="progress" style="height: 20px;">
-                                <div class="progress-bar bg-success" 
-                                     role="progressbar" 
-                                     style="width: ${runnerPred.confidence * 100}%">
-                                    ${formatProbability(runnerPred.confidence)}
-                                </div>
-                            </div>
-                        </td>
-                    `;
-                    tbody.appendChild(tr);
-                });
-            }
-        });
+        // Sort runners by win probability and show top performers
+        runners.sort((a, b) => (b.win_probability || 0) - (a.win_probability || 0))
+               .slice(0, 3) // Show top 3 per race
+               .forEach(runner => {
+                   const tr = document.createElement('tr');
+                   tr.innerHTML = `
+                       <td>${race.venue} - ${race.race_date}</td>
+                       <td>${formatTime(race.scheduled_time || 'TBD')}</td>
+                       <td>${runner.dog_name || `Box ${runner.box || 'N/A'}`}</td>
+                       <td>${formatProbability(runner.win_probability)}</td>
+                       <td>${formatProbability(runner.place_probability)}</td>
+                       <td>${formatTime(runner.predicted_time)}</td>
+                       <td>
+                           <div class="progress" style="height: 20px;">
+                               <div class="progress-bar bg-success" 
+                                    role="progressbar" 
+                                    style="width: ${(runner.confidence || 0) * 100}%">
+                                   ${formatProbability(runner.confidence)}
+                               </div>
+                           </div>
+                       </td>
+                   `;
+                   tbody.appendChild(tr);
+               });
     });
 }
 
@@ -188,23 +239,40 @@ function initializeCharts() {
 }
 
 function updateCharts(data) {
-    // Collect all predictions
+    // Collect all predictions from the race files
     const allPredictions = [];
-    Object.values(data.predictions).forEach(racePredictions => {
-        Object.values(racePredictions).forEach(prediction => {
-            if (prediction.predictions) {
-                allPredictions.push(...prediction.predictions);
+    const predictions = data.predictions || [];
+    
+    predictions.forEach(race => {
+        const runners = race.predictions || [];
+        runners.forEach(runner => {
+            if (runner.win_probability !== undefined) {
+                allPredictions.push({
+                    win_probability: runner.win_probability,
+                    confidence: runner.confidence || 0.5
+                });
             }
         });
     });
     
+    if (allPredictions.length === 0) {
+        // Show empty charts if no data
+        winProbabilityChart.data.labels = [];
+        winProbabilityChart.data.datasets[0].data = [];
+        winProbabilityChart.update();
+        
+        confidenceChart.data.datasets[0].data = [0, 0, 0];
+        confidenceChart.update();
+        return;
+    }
+    
     // Update Win Probability chart
     const winProbs = allPredictions.map(p => p.win_probability).sort((a, b) => a - b);
-    winProbabilityChart.data.labels = winProbs.map((_, i) => `Dog ${i + 1}`);
-    winProbabilityChart.data.datasets[0].data = winProbs;
+    winProbabilityChart.data.labels = winProbs.slice(0, 20).map((_, i) => `Runner ${i + 1}`);
+    winProbabilityChart.data.datasets[0].data = winProbs.slice(0, 20);
     winProbabilityChart.update();
     
-    // Update Confidence chart
+    // Update Confidence chart - use prediction_score as confidence proxy
     const confidenceCounts = [0, 0, 0]; // High, Medium, Low
     allPredictions.forEach(p => {
         if (p.confidence >= 0.7) confidenceCounts[0]++;

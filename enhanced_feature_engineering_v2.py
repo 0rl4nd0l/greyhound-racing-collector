@@ -29,27 +29,65 @@ class AdvancedFeatureEngineer:
         
         query = """
         SELECT 
-            drd.*,
-            rm.venue, rm.track_condition, rm.weather_condition, rm.temperature,
-            rm.distance, rm.grade, rm.race_date, rm.field_size,
-            rm.humidity, rm.wind_speed
+            drd.id,
+            drd.race_id,
+            drd.dog_name,
+            drd.dog_clean_name,
+            CAST(drd.box_number AS INTEGER) as box_number,
+            CAST(drd.finish_position AS INTEGER) as finish_position,
+            drd.trainer_name,
+            CAST(drd.weight AS REAL) as weight,
+            CAST(drd.starting_price AS REAL) as starting_price,
+            CAST(drd.individual_time AS REAL) as individual_time,
+            CAST(drd.speed_rating AS REAL) as speed_rating,
+            drd.recent_form,
+            rm.venue,
+            rm.track_condition,
+            rm.weather_condition,
+            CAST(rm.temperature AS REAL) as temperature,
+            rm.distance,
+            rm.grade,
+            rm.race_date,
+            CAST(rm.field_size AS INTEGER) as field_size,
+            CAST(rm.humidity AS REAL) as humidity,
+            CAST(rm.wind_speed AS REAL) as wind_speed
         FROM dog_race_data drd
         JOIN race_metadata rm ON drd.race_id = rm.race_id
         WHERE drd.finish_position IS NOT NULL 
-        AND drd.finish_position != ''
-        AND drd.individual_time IS NOT NULL
+            AND drd.finish_position != ''
+            AND drd.individual_time IS NOT NULL
+            AND drd.finish_position REGEXP '^[0-9]+$'
+            AND drd.individual_time REGEXP '^[0-9.]+$'
         ORDER BY rm.race_date DESC
         """
         
         df = pd.read_sql_query(query, conn)
         conn.close()
         
+        # Data validation and logging
+        logger.info(f"Loaded {len(df)} historical race entries")
+        logger.debug(f"Sample data types: {df.dtypes}")
+        
         # Clean and convert data types with robust date parsing
         df['race_date'] = pd.to_datetime(df['race_date'], errors='coerce')
-        df['finish_position'] = pd.to_numeric(df['finish_position'], errors='coerce')
-        df['individual_time'] = pd.to_numeric(df['individual_time'], errors='coerce')
-        df['starting_price'] = pd.to_numeric(df['starting_price'], errors='coerce')
-        df['weight'] = pd.to_numeric(df['weight'], errors='coerce')
+        
+        # Ensure numeric columns are properly typed
+        numeric_cols = ['finish_position', 'box_number', 'weight', 'individual_time',
+                       'starting_price', 'speed_rating', 'field_size', 'temperature',
+                       'humidity', 'wind_speed']
+        
+        for col in numeric_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+                null_count = df[col].isnull().sum()
+                if null_count > 0:
+                    logger.warning(f"Column {col} has {null_count} null values after conversion")
+        
+        # Log basic statistics
+        logger.info(f"Data summary:")
+        logger.info(f"  Unique dogs: {df['dog_clean_name'].nunique()}")
+        logger.info(f"  Unique venues: {df['venue'].nunique()}")
+        logger.info(f"  Date range: {df['race_date'].min()} to {df['race_date'].max()}")
         
         return df
     

@@ -86,7 +86,7 @@ class EnhancedPipelineV2:
                 return self._error_response("Could not load race file or file is empty")
             
             # Step 2: Extract participating dogs
-            participating_dogs = self._extract_participating_dogs(race_df)
+            participating_dogs = self._extract_participating_dogs(race_df, race_file_path)
             if not participating_dogs:
                 return self._error_response("No participating dogs found in race file")
             
@@ -175,60 +175,114 @@ class EnhancedPipelineV2:
             logger.error(f"Error loading race file: {e}")
             return None
     
-    def _extract_participating_dogs(self, race_df: pd.DataFrame) -> list:
+    def _extract_participating_dogs(self, race_df: pd.DataFrame, race_file_path: str) -> list:
         """Extract participating dogs from race data with embedded historical data"""
         dogs = []
+        current_dog_data = {}
         current_dog_history = []
-        current_dog_name = None
-        current_box_number = None
         
         try:
+            race_venue = self._extract_venue_from_filename(race_file_path)
+            race_date = self._extract_date_from_filename(race_file_path)
+            
             for idx, row in race_df.iterrows():
                 dog_name_raw = str(row.get('Dog Name', '')).strip()
                 
-                # Check if this is a new dog (has a name) or historical data (nan/empty)
+                # Check if this is a new dog entry
                 if dog_name_raw and dog_name_raw not in ['""', '', 'nan', 'NaN']:
-                    # Save previous dog if we have one
-                    if current_dog_name and current_dog_history:
-                        dogs.append({
-                            'name': current_dog_name,
-                            'box': current_box_number or len(dogs) + 1,
-                            'historical_data': current_dog_history.copy(),
-                            'raw_data': current_dog_history[0] if current_dog_history else {}
-                        })
+                    # Save previous dog if exists
+                    if current_dog_data:
+                        if current_dog_history:
+                            current_dog_data['historical_data'] = current_dog_history
+                        dogs.append(current_dog_data)
                     
                     # Start new dog
-                    current_dog_name = dog_name_raw
-                    current_box_number = None
-                    current_dog_history = []
+                    box_number = None
+                    clean_name = dog_name_raw
                     
-                    # Extract box number from name if present
-                    if '. ' in current_dog_name:
-                        parts = current_dog_name.split('. ', 1)
+                    # Extract box number from name
+                    if '. ' in dog_name_raw:
+                        parts = dog_name_raw.split('. ', 1)
                         if len(parts) == 2:
                             try:
-                                current_box_number = int(parts[0])
-                                current_dog_name = parts[1]
+                                box_number = int(parts[0])
+                                clean_name = parts[1]
                             except ValueError:
                                 pass
                     
-                    # Add this row to history
-                    current_dog_history.append(row.to_dict())
+                    # Convert form guide row to database format
+                    current_dog_data = {
+                        'name': clean_name,
+                        'clean_name': clean_name,
+                        'box': box_number or len(dogs) + 1,
+                        'weight': float(row.get('WGT', 0)) if pd.notna(row.get('WGT')) else None,
+                        'sex': row.get('Sex'),
+                        'recent_form': [],  # Will be populated from history
+                    }
+                    
+                    # Convert current race details
+                    current_race = {
+                        'race_id': f"{race_venue}_{race_date}",
+                        'dog_name': clean_name,
+                        'dog_clean_name': clean_name,
+                        'box_number': box_number,
+                        'finish_position': int(row['PLC']) if pd.notna(row.get('PLC')) else None,
+                        'weight': float(row['WGT']) if pd.notna(row.get('WGT')) else None,
+                        'starting_price': float(row['SP']) if pd.notna(row.get('SP')) else None,
+                        'individual_time': float(row['TIME']) if pd.notna(row.get('TIME')) else None,
+                        'sectional_1st': float(row['1 SEC']) if pd.notna(row.get('1 SEC')) else None,
+                        'margin': row.get('MGN'),
+                        'venue': row.get('TRACK'),
+                        'distance': int(str(row['DIST']).replace('m', '')) if pd.notna(row.get('DIST')) else None,
+                        'grade': row.get('G'),
+                        'race_date': pd.to_datetime(row['DATE']) if pd.notna(row.get('DATE')) else None,
+                    }
+                    
+                    current_dog_history = [current_race]
+                    
+                    # Update recent form
+                    if pd.notna(row.get('PLC')):
+                        current_dog_data['recent_form'].append(int(row['PLC']))
                 
-                elif current_dog_name:  # This is historical data for current dog
-                    current_dog_history.append(row.to_dict())
+                # Add historical race to current dog
+                elif current_dog_data and pd.notna(row.get('PLC')):
+                    historical_race = {
+                        'race_id': f"{row.get('TRACK')}_{row.get('DATE')}",
+                        'dog_name': current_dog_data['name'],
+                        'dog_clean_name': current_dog_data['clean_name'],
+                        'box_number': int(row['BOX']) if pd.notna(row.get('BOX')) else None,
+                        'finish_position': int(row['PLC']) if pd.notna(row.get('PLC')) else None,
+                        'weight': float(row['WGT']) if pd.notna(row.get('WGT')) else None,
+                        'starting_price': float(row['SP']) if pd.notna(row.get('SP')) else None,
+                        'individual_time': float(row['TIME']) if pd.notna(row.get('TIME')) else None,
+                        'sectional_1st': float(row['1 SEC']) if pd.notna(row.get('1 SEC')) else None,
+                        'margin': row.get('MGN'),
+                        'venue': row.get('TRACK'),
+                        'distance': int(str(row['DIST']).replace('m', '')) if pd.notna(row.get('DIST')) else None,
+                        'grade': row.get('G'),
+                        'race_date': pd.to_datetime(row['DATE']) if pd.notna(row.get('DATE')) else None,
+                    }
+                    
+                    current_dog_history.append(historical_race)
+                    if pd.notna(row.get('PLC')):
+                        current_dog_data['recent_form'].append(int(row['PLC']))
             
             # Don't forget the last dog
-            if current_dog_name and current_dog_history:
-                dogs.append({
-                    'name': current_dog_name,
-                    'box': current_box_number or len(dogs) + 1,
-                    'historical_data': current_dog_history.copy(),
-                    'raw_data': current_dog_history[0] if current_dog_history else {}
-                })
+            if current_dog_data:
+                if current_dog_history:
+                    current_dog_data['historical_data'] = current_dog_history
+                dogs.append(current_dog_data)
+            
+            # Truncate recent form to last 5 races
+            for dog in dogs:
+                dog['recent_form'] = dog['recent_form'][:5]
         
         except Exception as e:
             logger.error(f"Error extracting dogs: {e}")
+            logger.error(f"Error details: {str(e.__class__.__name__)}: {str(e)}")
+            import traceback
+            logger.error(f"Stack trace: {traceback.format_exc()}")
+            logger.error(f"Race file path: {race_file_path}")
         
         return dogs
     
@@ -502,16 +556,40 @@ class EnhancedPipelineV2:
             # Convert to DataFrame for easier processing
             df = pd.DataFrame(historical_data)
             
+            # Clean and convert data types - handle both CSV format and database format
+            # Map different possible column names to standard format
+            column_mapping = {
+                'finish_position': 'PLC',
+                'individual_time': 'TIME', 
+                'race_date': 'DATE',
+                'box_number': 'BOX',
+                'distance': 'DIST',
+                'starting_price': 'SP'
+            }
+            
+            # Rename columns if they exist
+            for old_col, new_col in column_mapping.items():
+                if old_col in df.columns and new_col not in df.columns:
+                    df[new_col] = df[old_col]
+            
             # Clean and convert data types
-            df['PLC'] = pd.to_numeric(df['PLC'], errors='coerce')
-            df['TIME'] = pd.to_numeric(df['TIME'], errors='coerce')
-            df['DATE'] = pd.to_datetime(df['DATE'], errors='coerce')
-            df['BOX'] = pd.to_numeric(df['BOX'], errors='coerce')
-            df['DIST'] = pd.to_numeric(df['DIST'], errors='coerce')
-            df['SP'] = pd.to_numeric(df['SP'], errors='coerce')
+            if 'PLC' in df.columns:
+                df['PLC'] = pd.to_numeric(df['PLC'], errors='coerce')
+            if 'TIME' in df.columns:
+                df['TIME'] = pd.to_numeric(df['TIME'], errors='coerce')
+            if 'DATE' in df.columns:
+                df['DATE'] = pd.to_datetime(df['DATE'], errors='coerce')
+            if 'BOX' in df.columns:
+                df['BOX'] = pd.to_numeric(df['BOX'], errors='coerce')
+            if 'DIST' in df.columns:
+                df['DIST'] = pd.to_numeric(df['DIST'], errors='coerce')
+            if 'SP' in df.columns:
+                df['SP'] = pd.to_numeric(df['SP'], errors='coerce')
             
             # Remove rows with missing critical data
-            df = df.dropna(subset=['PLC', 'TIME', 'DATE'])
+            required_cols = [col for col in ['PLC', 'TIME', 'DATE'] if col in df.columns]
+            if required_cols:
+                df = df.dropna(subset=required_cols)
             
             if len(df) == 0:
                 return features

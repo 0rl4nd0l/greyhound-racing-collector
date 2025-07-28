@@ -25,15 +25,17 @@ import warnings
 warnings.filterwarnings('ignore', category=UserWarning, module='sklearn')
 
 class AdvancedMLSystemV2:
-    def __init__(self, db_path="greyhound_racing_data.db"):
+    def __init__(self, db_path="greyhound_racing_data.db", skip_auto_load=False):
         self.db_path = db_path
         self.models = {}
         self.model_weights = {}
         self.performance_history = {}
         self.scaler = RobustScaler()
+        self._models_freshly_trained = False
         
-        # Auto-load trained models if available
-        self._auto_load_models()
+        # Auto-load trained models if available (unless skipped)
+        if not skip_auto_load:
+            self._auto_load_models()
         
         # Advanced model configurations
         self.model_configs = {
@@ -121,7 +123,32 @@ class AdvancedMLSystemV2:
         # Time series split for temporal validation
         tscv = TimeSeriesSplit(n_splits=3)
         
+        # Validate missing features
+        missing_features = [col for col in feature_columns if col not in X.columns]
+        if missing_features:
+            print(f"⚠️ Warning: Missing features detected - {missing_features}")
+
+        # Check for correct feature data types and ranges
+        out_of_range_features = []
+        for col in feature_columns:
+            if col in X.columns:
+                if (X[col] < 0).any() or (X[col] > 1).any():  # Assuming normalized or constrained [0,1] range
+                    out_of_range_features.append(col)
+        if out_of_range_features:
+            print(f"⚠️ Warning: Out-of-range values detected in features - {out_of_range_features}")
+
         results = {}
+        
+        # Fit scaler on all training data once for consistency
+        print("   Fitting scaler on training data...")
+        self.scaler.fit(X)
+        
+        # Print scaler statistics for validation
+        print("   Scaler statistics:")
+        for i, col in enumerate(feature_columns):
+            center = self.scaler.center_[i] if hasattr(self.scaler, 'center_') else 'N/A'
+            scale = self.scaler.scale_[i] if hasattr(self.scaler, 'scale_') else 'N/A'
+            print(f"     {col}: center={center:.4f}, scale={scale:.4f}")
         
         for model_name, config in self.model_configs.items():
             print(f"   Training {model_name}...")
@@ -132,16 +159,28 @@ class AdvancedMLSystemV2:
             # Create model
             model = model_class(**params)
             
-            # Scale features for neural network and logistic regression
-            if model_name in ['neural_network', 'logistic_regression_optimized']:
-                X_scaled = self.scaler.fit_transform(X)
-                X_train = X_scaled
+            # Apply consistent scaling strategy
+            # Scale features for models that benefit from scaling
+            if model_name in ['neural_network', 'logistic_regression_optimized', 'gradient_boosting_optimized']:
+                X_train = self.scaler.transform(X)
+                use_scaling = True
             else:
-                X_train = X
+                X_train = X.values  # Convert to numpy array for consistency
+                use_scaling = False
             
-            # Cross-validation scores
-            cv_scores = cross_val_score(model, X_train, y, cv=tscv, scoring='accuracy')
-            cv_auc_scores = cross_val_score(model, X_train, y, cv=tscv, scoring='roc_auc')
+            # Cross-validation scores with proper scaling
+            if use_scaling:
+                # For scaled models, we need to scale in each CV fold
+                from sklearn.pipeline import Pipeline
+                pipeline = Pipeline([
+                    ('scaler', RobustScaler()),
+                    ('model', model)
+                ])
+                cv_scores = cross_val_score(pipeline, X, y, cv=tscv, scoring='accuracy')
+                cv_auc_scores = cross_val_score(pipeline, X, y, cv=tscv, scoring='roc_auc')
+            else:
+                cv_scores = cross_val_score(model, X_train, y, cv=tscv, scoring='accuracy')
+                cv_auc_scores = cross_val_score(model, X_train, y, cv=tscv, scoring='roc_auc')
             
             # Train final model on all data
             model.fit(X_train, y)
@@ -158,6 +197,7 @@ class AdvancedMLSystemV2:
             
             results[model_name] = {
                 'model': model,
+                'use_scaling': use_scaling,
                 'cv_accuracy_mean': cv_scores.mean(),
                 'cv_accuracy_std': cv_scores.std(),
                 'cv_auc_mean': cv_auc_scores.mean(),
@@ -167,11 +207,28 @@ class AdvancedMLSystemV2:
             
             print(f"     ✅ CV Accuracy: {cv_scores.mean():.4f} ± {cv_scores.std():.4f}")
             print(f"     ✅ CV AUC: {cv_auc_scores.mean():.4f} ± {cv_auc_scores.std():.4f}")
+
+            # Store detailed cross-validation results for further analysis
+            print(f"     📈 Cross-validation detailed results: {cv_scores}")
+            print(f"     📊 AUC scores: {cv_auc_scores}")
         
         # Calculate dynamic weights based on performance
         self.calculate_dynamic_weights(results)
         
         self.models = {name: result['model'] for name, result in results.items()}
+        
+        # Store scaling information for each model
+        self._model_scaling = {name: result['use_scaling'] for name, result in results.items()}
+        
+        # Store feature columns used in training
+        self._model_feature_columns = feature_columns
+        
+        # Mark that we have fresh trained models (not from registry)
+        self._models_freshly_trained = True
+        
+        print(f"\n🎉 Training completed! Ensemble contains {len(self.models)} models.")
+        print(f"📊 Feature columns: {len(feature_columns)}")
+        print(f"🔄 Models override any previously loaded registry models.")
         
         return results
     
@@ -209,36 +266,46 @@ class AdvancedMLSystemV2:
         if not self.models:
             return 0.5  # Default probability
         
-        # Determine expected features based on model setup
-        expected_features = self._model_feature_columns if hasattr(self, '_model_feature_columns') else [
+        # No feature mapping needed since input features match model expectations
+        mapped_features = features_dict
+        
+        # Get expected feature list
+        base_features = [
             'weighted_recent_form', 'speed_trend', 'speed_consistency', 'venue_win_rate',
             'venue_avg_position', 'venue_experience', 'distance_win_rate', 'distance_avg_time',
             'box_position_win_rate', 'box_position_avg', 'recent_momentum', 'competitive_level',
             'position_consistency', 'top_3_rate', 'break_quality'
         ]
         
-        # Only show debug info once per session
+        # Debug feature matching
         if not hasattr(self, '_debug_shown'):
-            print(f"🔍 ML Model expects {len(expected_features)} features")
+            print(f"🔍 ML Model feature validation:")
+            if hasattr(self, '_model_feature_columns'):
+                print(f"   Model-specific features: {self._model_feature_columns}")
+            print(f"   Base features: {base_features}")
+            print(f"   Input features: {sorted(list(features_dict.keys()))}")
             self._debug_shown = True
-        
-        # Attempt to map enhanced features to the expected feature set
-        if hasattr(self, '_model_feature_columns'):
-            mapped_features = self._map_enhanced_to_comprehensive_features(features_dict)
-        else:
-            mapped_features = features_dict
+            
+        # Get expected features and verify
+        expected_features = self._model_feature_columns if hasattr(self, '_model_feature_columns') else base_features
+        if not hasattr(self, '_features_verified'):
+            missing = [f for f in expected_features if f not in mapped_features]
+            if missing:
+                print(f"⚠️ Missing expected features: {missing}")
+                print("   This may impact prediction quality")
+            self._features_verified = True
 
         # Create feature vector with EXACT ordering and naming the model expects
-        feature_values = []
+        feature_values = {}
         missing_features = []
 
         for feature_name in expected_features:
             if feature_name in mapped_features:
                 value = mapped_features[feature_name]
-                feature_values.append(float(value))  # Ensure numeric
+                feature_values[feature_name] = float(value)  # Ensure numeric
             else:
                 value = 0.0  # Default for missing features
-                feature_values.append(value)
+                feature_values[feature_name] = value
                 missing_features.append(feature_name)
 
         if missing_features and not hasattr(self, '_missing_warned'):
@@ -248,12 +315,15 @@ class AdvancedMLSystemV2:
         if not feature_values:
             return 0.5  # No valid features
 
-        # Create DataFrame with EXACT feature names and order the model expects
+        # Create DataFrame with EXACT ordering of features
         import pandas as pd
         feature_df = pd.DataFrame([feature_values], columns=expected_features)
-
-        # Ensure feature names are properly set for sklearn compatibility
-        feature_df.columns = expected_features
+        feature_df = feature_df[expected_features]  # Ensure exact column order
+        
+        # Debug output for feature values
+        print("\n   🔎 Feature values:")
+        for col in expected_features:
+            print(f"     {col}: {feature_df[col].iloc[0]:.4f}")
         
         # Suppress debug output to reduce noise
         # print(f"📊 Feeding {len(feature_values)} features to ML model: {feature_values[:5]}...")  # Show first 5 values for debugging
@@ -264,24 +334,32 @@ class AdvancedMLSystemV2:
             if model_name in self.model_weights:
                 weight = self.model_weights[model_name]
                 
-                # Scale features for neural network and logistic regression
-                if model_name in ['neural_network', 'logistic_regression_optimized']:
+                # Check if this model uses scaling
+                use_scaling = hasattr(self, '_model_scaling') and self._model_scaling.get(model_name, False)
+                
+                if use_scaling:
                     try:
-                        # Use DataFrame directly to preserve feature names
+                        # Scale features and preserve column names
+                        features_scaled = self.scaler.transform(feature_df)
                         features_scaled_df = pd.DataFrame(
-                            self.scaler.transform(feature_df), 
+                            features_scaled,
                             columns=expected_features
                         )
                         pred_proba = model.predict_proba(features_scaled_df)[0, 1]
+                        print(f"   🎯 {model_name}: {pred_proba:.4f} (weight: {weight:.2f}, scaled)")
                     except Exception as e:
+                        print(f"⚠️ Error predicting with {model_name} (scaled): {e}")
                         pred_proba = 0.5
                 else:
                     try:
-                        # Use DataFrame directly to preserve feature names
+                        # Use raw features
                         pred_proba = model.predict_proba(feature_df)[0, 1]
+                        print(f"   🎯 {model_name}: {pred_proba:.4f} (weight: {weight:.2f}, raw)")
                     except Exception as e:
+                        print(f"⚠️ Error predicting with {model_name}: {e}")
                         pred_proba = 0.5
                 
+                print(f"   🎯 {model_name}: {pred_proba:.4f} (weight: {weight:.2f})")
                 weighted_predictions.append(pred_proba * weight)
         
         # Return weighted average
@@ -291,6 +369,7 @@ class AdvancedMLSystemV2:
             data_quality = features_dict.get('data_quality', 0.5)
             adjusted_prediction = final_prediction * (0.7 + 0.3 * data_quality)
             
+            print(f"   📊 Final prediction: {final_prediction:.4f} (adjusted: {adjusted_prediction:.4f})")
             return min(0.95, max(0.05, adjusted_prediction))  # Constrain to reasonable range
         
         return 0.5
@@ -612,72 +691,129 @@ class AdvancedMLSystemV2:
         import os
         import glob
         
-        # Check for comprehensive trained models
+        print("🔍 Searching for trained models...")
+        
+        # Keep track of all candidate models
+        candidate_models = []
+        
+        # Check comprehensive trained models directory
         model_dir = "comprehensive_trained_models"
         if os.path.exists(model_dir):
             model_files = glob.glob(os.path.join(model_dir, "*.joblib"))
-            if model_files:
-                # Prefer comprehensive models with more features
-                best_model = None
-                max_features = 0
-                
-                for model_file in model_files:
-                    try:
-                        model_data = joblib.load(model_file)
-                        if 'feature_columns' in model_data:
-                            num_features = len(model_data['feature_columns'])
-                            if num_features > max_features:
-                                max_features = num_features
-                                best_model = model_file
-                    except:
-                        continue
-                
-                # If no model with feature_columns found, use most recent
-                latest_model = best_model if best_model else max(model_files, key=os.path.getctime)
-                
+            for model_file in model_files:
                 try:
-                    model_data = joblib.load(latest_model)
+                    model_data = joblib.load(model_file)
+                    if not isinstance(model_data, dict):
+                        print(f"⚠️ Skipping {model_file}: Invalid format (not a dictionary)")
+                        continue
                     
-                    # Convert single comprehensive model to ensemble format
-                    if isinstance(model_data, dict) and 'model' in model_data:
-                        print(f"📂 Legacy loading trained model: {os.path.basename(latest_model)}")
+                    # Validate comprehensive model format
+                    if 'model' in model_data:
+                        required_keys = ['model', 'feature_columns']
+                        if not all(key in model_data for key in required_keys):
+                            print(f"⚠️ Skipping {model_file}: Missing required keys {required_keys}")
+                            continue
                         
-                        # Create ensemble from single model by using it as the primary model
-                        model_name = model_data.get('model_name', 'comprehensive_model')
-                        self.models = {model_name: model_data['model']}
+                        candidate_models.append({
+                            'file': model_file,
+                            'type': 'comprehensive',
+                            'data': model_data,
+                            'features': len(model_data['feature_columns']),
+                            'timestamp': os.path.getctime(model_file)
+                        })
+                    # Validate advanced ensemble format
+                    elif 'models' in model_data and 'model_weights' in model_data:
+                        if not model_data['models'] or not isinstance(model_data['models'], dict):
+                            print(f"⚠️ Skipping {model_file}: Invalid or empty models")
+                            continue
                         
-                        # Set equal weights (single model gets full weight)
-                        self.model_weights = {model_name: 1.0}
-                        
-                        # Load scaler if available
-                        if 'scaler' in model_data:
-                            self.scaler = model_data['scaler']
-                        
-                        # Store expected feature columns for proper mapping
-                        if 'feature_columns' in model_data:
-                            self._model_feature_columns = model_data['feature_columns']
-                        
-                        print(f"✅ Legacy model loaded: {model_name} (accuracy: {model_data.get('accuracy', 'N/A'):.3f})")
-                        return
-                        
+                        candidate_models.append({
+                            'file': model_file,
+                            'type': 'ensemble',
+                            'data': model_data,
+                            'features': len(model_data['models']),  # Number of ensemble models
+                            'timestamp': os.path.getctime(model_file)
+                        })
                 except Exception as e:
-                    print(f"⚠️ Warning: Could not load model {latest_model}: {e}")
+                    print(f"⚠️ Could not load {model_file}: {e}")
+                    continue
         
-        # Check for advanced ML system models
+        # Check for advanced ML system models in root directory
         advanced_model_files = glob.glob("advanced_ml_model_*.joblib")
-        if advanced_model_files:
-            latest_advanced = max(advanced_model_files, key=os.path.getctime)
+        for model_file in advanced_model_files:
             try:
-                self.load_models(latest_advanced)
-                return
+                model_data = joblib.load(model_file)
+                if not isinstance(model_data, dict) or 'models' not in model_data:
+                    continue
+                
+                candidate_models.append({
+                    'file': model_file,
+                    'type': 'ensemble',
+                    'data': model_data,
+                    'features': len(model_data['models']),
+                    'timestamp': os.path.getctime(model_file)
+                })
             except Exception as e:
-                print(f"⚠️ Warning: Could not load advanced model {latest_advanced}: {e}")
+                print(f"⚠️ Could not load {model_file}: {e}")
+                continue
         
-        print("🔍 No pre-trained models found - using heuristic predictions")
+        if not candidate_models:
+            print("⚠️ No valid models found - will use heuristic predictions")
+            return
+        
+        # First try models with most features
+        candidate_models.sort(key=lambda x: (-x['features'], -x['timestamp']))  # Most features, then most recent
+        
+        for candidate in candidate_models:
+            try:
+                model_file = candidate['file']
+                model_data = candidate['data']
+                model_type = candidate['type']
+                
+                print(f"📂 Attempting to load: {os.path.basename(model_file)}")
+                print(f"   Type: {model_type}, Features: {candidate['features']}")
+                
+                if model_type == 'comprehensive':
+                    # Convert comprehensive model to ensemble format
+                    model_name = model_data.get('model_name', 'comprehensive_model')
+                    self.models = {model_name: model_data['model']}
+                    self.model_weights = {model_name: 1.0}
+                    self.scaler = model_data.get('scaler', self.scaler)
+                    self._model_feature_columns = model_data['feature_columns']
+                    
+                    accuracy = model_data.get('accuracy', 'N/A')
+                    auc = model_data.get('auc', 'N/A')
+                    print(f"✅ Legacy model loaded: {model_name}")
+                    print(f"   📈 Accuracy: {accuracy}, AUC: {auc}")
+                    return
+                    
+                elif model_type == 'ensemble':
+                    # Load ensemble model components
+                    self.models = model_data['models']
+                    self.model_weights = model_data.get('model_weights', {})
+                    self.scaler = model_data.get('scaler', self.scaler)
+                    self.performance_history = model_data.get('performance_history', {})
+                    
+                    # Ensure weights exist for all models
+                    if not self.model_weights or set(self.model_weights.keys()) != set(self.models.keys()):
+                        print("   ⚠️ Weights missing or mismatched - using equal weights")
+                        weight = 1.0 / len(self.models)
+                        self.model_weights = {name: weight for name in self.models.keys()}
+                    
+                    print(f"✅ Ensemble model loaded with {len(self.models)} sub-models")
+                    print(f"   📊 Models: {list(self.models.keys())}")
+                    print(f"   ⚖️ Weights: {', '.join(f'{k}: {v:.2f}' for k, v in self.model_weights.items())}")
+                    return
+                    
+            except Exception as e:
+                print(f"⚠️ Failed to load {candidate['file']}: {e}")
+                continue
+        
+        print("⚠️ All model loading attempts failed - using heuristic predictions")
 
 def main():
     """Demonstration of advanced ML system"""
-    ml_system = AdvancedMLSystem()
+    ml_system = AdvancedMLSystemV2()
     
     print("🤖 Advanced ML System v2.0 Demonstration")
     print("=" * 50)
