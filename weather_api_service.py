@@ -196,6 +196,26 @@ class BOMWeatherService:
                 longitude=144.2789,
                 bom_station_id='081123',  # Bendigo
                 timezone='Australia/Melbourne'
+            ),
+            'DUBBO': VenueLocation(
+                venue_code='DUB',
+                venue_name='Dubbo',
+                city='Dubbo',
+                state='NSW',
+                latitude=-32.2433,
+                longitude=148.6019,
+                bom_station_id='065070',  # Dubbo Airport AWS
+                timezone='Australia/Sydney'
+            ),
+            'Q1_LAKESIDE': VenueLocation(
+                venue_code='Q1L',
+                venue_name='Ladbrokes Q1 Lakeside',
+                city='Brisbane',
+                state='QLD',
+                latitude=-27.4705,
+                longitude=153.0260,
+                bom_station_id='040913',  # Brisbane Airport
+                timezone='Australia/Brisbane'
             )
             # Add more venues as needed
         }

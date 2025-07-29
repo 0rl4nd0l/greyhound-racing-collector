@@ -5,9 +5,13 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Setup event listeners
     document.getElementById('refresh-predictions-btn').addEventListener('click', refreshPredictions);
+    document.getElementById('run-comprehensive-prediction-btn').addEventListener('click', runComprehensivePrediction);
     
     // Auto-refresh every minute
     setInterval(refreshPredictions, 60000);
+    
+    // Poll processing status every 2 seconds when processing is active
+    startProcessingStatusPolling();
 });
 
 let winProbabilityChart = null;
@@ -283,6 +287,86 @@ function updateCharts(data) {
     confidenceChart.update();
 }
 
+function startProcessingStatusPolling() {
+    setInterval(() => {
+        fetch('/api/processing_status')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    updateProcessingStatus(data);
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching processing status:', error);
+            });
+    }, 2000);
+}
+
+function updateProcessingStatus(statusData) {
+    const progressBar = document.getElementById('progress-bar');
+    const progressPercentage = document.getElementById('progress-percentage');
+    const processingLogs = document.getElementById('processing-logs');
+
+    // Update progress bar
+    progressBar.style.width = `${statusData.progress}%`;
+    progressPercentage.innerText = `${statusData.progress}%`;
+    
+    // Update progress bar color based on status
+    progressBar.className = 'progress-bar';
+    if (statusData.progress === 100) {
+        progressBar.classList.add('bg-success');
+    } else if (statusData.progress > 0) {
+        progressBar.classList.add('bg-primary');
+    }
+
+    // Update logs
+    if (statusData.logs && statusData.logs.length > 0) {
+        processingLogs.innerHTML = '';
+        statusData.logs.forEach(log => {
+            const logEntry = document.createElement('div');
+            logEntry.className = 'mb-1';
+            
+            // Add styling based on log content
+            if (log.includes('ERROR') || log.includes('Error')) {
+                logEntry.className += ' text-danger';
+            } else if (log.includes('WARNING') || log.includes('Warning')) {
+                logEntry.className += ' text-warning';
+            } else if (log.includes('INFO') || log.includes('Starting') || log.includes('Completed')) {
+                logEntry.className += ' text-info';
+            }
+            
+            logEntry.textContent = log;
+            processingLogs.appendChild(logEntry);
+        });
+        
+        // Auto-scroll to bottom
+        processingLogs.scrollTop = processingLogs.scrollHeight;
+    } else if (statusData.progress === 0) {
+        processingLogs.innerHTML = '<div class="text-muted text-center">Ready to process predictions...</div>';
+    }
+}
+
+function runComprehensivePrediction() {
+    fetch('/api/predict', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('Comprehensive prediction started', 'success');
+        } else {
+            showNotification('Failed to start prediction: ' + data.message, 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error starting comprehensive prediction:', error);
+        showNotification('Error starting prediction: ' + error.message, 'error');
+    });
+}
+
 function showRacePredictions(raceId) {
     fetch(`/api/predictions/upcoming`, {
         method: 'POST',
@@ -409,8 +493,12 @@ function formatScore(score) {
 }
 
 function showNotification(message, type = 'info') {
-    // Use your notification system here
-    console.log(`${type.toUpperCase()}: ${message}`);
+    // Use the global showAlert function from base.html
+    if (typeof showAlert === 'function') {
+        showAlert(message, type);
+    } else {
+        console.log(`${type.toUpperCase()}: ${message}`);
+    }
 }
 
 // Add missing functions

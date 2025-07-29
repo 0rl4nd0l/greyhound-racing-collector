@@ -24,7 +24,7 @@ class AdvancedFeatureEngineer:
         self.scaler = RobustScaler()  # More robust to outliers than StandardScaler
         
     def load_comprehensive_data(self):
-        """Load comprehensive historical data for feature engineering"""
+        """Load comprehensive historical data for feature engineering with intelligent missing data handling"""
         conn = sqlite3.connect(self.db_path)
         
         query = """
@@ -33,24 +33,24 @@ class AdvancedFeatureEngineer:
             drd.race_id,
             drd.dog_name,
             drd.dog_clean_name,
-            CAST(drd.box_number AS INTEGER) as box_number,
-            CAST(drd.finish_position AS INTEGER) as finish_position,
+            drd.box_number,
+            drd.finish_position,
             drd.trainer_name,
-            CAST(drd.weight AS REAL) as weight,
-            CAST(drd.starting_price AS REAL) as starting_price,
-            CAST(drd.individual_time AS REAL) as individual_time,
-            CAST(drd.speed_rating AS REAL) as speed_rating,
+            drd.weight,
+            drd.starting_price,
+            drd.individual_time,
+            drd.speed_rating,
             drd.recent_form,
             rm.venue,
             rm.track_condition,
             rm.weather_condition,
-            CAST(rm.temperature AS REAL) as temperature,
+            rm.temperature,
             rm.distance,
             rm.grade,
             rm.race_date,
-            CAST(rm.field_size AS INTEGER) as field_size,
-            CAST(rm.humidity AS REAL) as humidity,
-            CAST(rm.wind_speed AS REAL) as wind_speed
+            rm.field_size,
+            rm.humidity,
+            rm.wind_speed
         FROM dog_race_data drd
         JOIN race_metadata rm ON drd.race_id = rm.race_id
         WHERE drd.finish_position IS NOT NULL 
@@ -66,26 +66,111 @@ class AdvancedFeatureEngineer:
         logger.info(f"Loaded {len(df)} historical race entries")
         logger.debug(f"Sample data types: {df.dtypes}")
         
-        # Clean and convert data types with robust date parsing
+        # Clean and convert data types with robust parsing and intelligent defaults
         df['race_date'] = pd.to_datetime(df['race_date'], errors='coerce')
         
-        # Ensure numeric columns are properly typed
-        numeric_cols = ['finish_position', 'box_number', 'weight', 'individual_time',
-                       'starting_price', 'speed_rating', 'field_size', 'temperature',
-                       'humidity', 'wind_speed']
+        # Handle numeric columns with intelligent defaults
+        numeric_cols_with_defaults = {
+            'box_number': {'default': 4, 'range': (1, 8), 'use_median': False},
+            'finish_position': {'default': None, 'range': (1, 12), 'use_median': False},  # Keep nulls for positions
+            'weight': {'default': 32.0, 'range': (26.0, 38.0), 'use_median': True},  # Tighter weight range
+            'starting_price': {'default': 8.0, 'range': (1.0, 100.0), 'use_median': False},  # Average odds
+            'individual_time': {'default': 30.0, 'range': (26.0, 42.0), 'use_median': True},  # More realistic time range
+            'speed_rating': {'default': None, 'range': (20.0, 90.0), 'use_median': False},  # Allow nulls for recalculation
+            'field_size': {'default': 8, 'range': (6, 12), 'use_median': False},  # Standard field size
+            'temperature': {'default': 18.0, 'range': (-5.0, 45.0), 'use_median': True},  # Melbourne average temp
+            'humidity': {'default': 65.0, 'range': (20.0, 100.0), 'use_median': True},  # Average humidity
+            'wind_speed': {'default': 15.0, 'range': (0.0, 50.0), 'use_median': True}  # Average wind speed
+        }
         
-        for col in numeric_cols:
+        data_quality_report = {}
+        
+        for col, config in numeric_cols_with_defaults.items():
             if col in df.columns:
+                # Convert to numeric, recording null count before conversion
+                original_nulls = df[col].isnull().sum()
                 df[col] = pd.to_numeric(df[col], errors='coerce')
-                null_count = df[col].isnull().sum()
-                if null_count > 0:
-                    logger.warning(f"Column {col} has {null_count} null values after conversion")
+                conversion_nulls = df[col].isnull().sum()
+                
+                # Apply range validation
+                min_val, max_val = config['range']
+                out_of_range = ((df[col] < min_val) | (df[col] > max_val)).sum()
+                
+                # Apply intelligent defaults only where appropriate
+                if config['default'] is not None:
+                    # For critical fields, use defaults for out-of-range values
+                    mask = (df[col].isnull() | (df[col] < min_val) | (df[col] > max_val))
+                    filled_count = mask.sum()
+                    
+                    # Use median for fields that benefit from it, otherwise use default
+                    if config.get('use_median', False) and filled_count > 0:
+                        # Calculate median from valid data only
+                        valid_data = df[col][(df[col] >= min_val) & (df[col] <= max_val)]
+                        if len(valid_data) > 0:
+                            fill_value = valid_data.median()
+                            logger.info(f"  {col}: Using median {fill_value:.2f} instead of default {config['default']}")
+                        else:
+                            fill_value = config['default']
+                            logger.info(f"  {col}: No valid data for median, using default {fill_value}")
+                    else:
+                        fill_value = config['default']
+                    
+                    df.loc[mask, col] = fill_value
+                    
+                    data_quality_report[col] = {
+                        'original_nulls': original_nulls,
+                        'conversion_nulls': conversion_nulls,
+                        'out_of_range': out_of_range,
+                        'filled_with_default': filled_count,
+                        'default_value': config['default']
+                    }
+                else:
+                    # For time and position data, keep nulls but log issues
+                    data_quality_report[col] = {
+                        'original_nulls': original_nulls,
+                        'conversion_nulls': conversion_nulls,
+                        'out_of_range': out_of_range,
+                        'filled_with_default': 0,
+                        'default_value': None
+                    }
         
-        # Log basic statistics
-        logger.info(f"Data summary:")
+        # Log data quality report with reduced verbosity
+        logger.info(f"Data Quality Report:")
+        significant_issues = []
+        for col, report in data_quality_report.items():
+            total_issues = report['conversion_nulls'] + report['out_of_range']
+            if total_issues > 0:
+                percentage = (total_issues / len(df)) * 100
+                if percentage > 5.0:  # Only log if more than 5% of data affected
+                    significant_issues.append(f"{col}: {total_issues} issues ({percentage:.1f}%)")
+                    if report['filled_with_default'] > 0:
+                        logger.info(f"  {col}: Filled {report['filled_with_default']} values with default {report['default_value']}")
+        
+        if significant_issues:
+            logger.warning(f"Significant data quality issues found: {'; '.join(significant_issues)}")
+        else:
+            logger.info(f"Data quality: Good - minimal issues detected")
+        
+        # Additional data cleaning
+        # Remove duplicate entries (same dog, same race)
+        initial_count = len(df)
+        df = df.drop_duplicates(subset=['dog_clean_name', 'race_id'], keep='first')
+        if len(df) < initial_count:
+            logger.info(f"Removed {initial_count - len(df)} duplicate entries")
+        
+        # Remove races with impossible finish positions (> field_size)
+        invalid_positions = df[df['finish_position'] > df['field_size']]
+        if len(invalid_positions) > 0:
+            logger.warning(f"Found {len(invalid_positions)} races with impossible finish positions, removing")
+            df = df[df['finish_position'] <= df['field_size']]
+        
+        # Log final statistics
+        logger.info(f"Final dataset summary:")
+        logger.info(f"  Total race entries: {len(df)}")
         logger.info(f"  Unique dogs: {df['dog_clean_name'].nunique()}")
         logger.info(f"  Unique venues: {df['venue'].nunique()}")
         logger.info(f"  Date range: {df['race_date'].min()} to {df['race_date'].max()}")
+        logger.info(f"  Average field size: {df['field_size'].mean():.1f}")
         
         return df
     

@@ -1,0 +1,686 @@
+2025-07-29 15:49:08,209 - root - INFO - [MODEL_REGISTRY] Initializing model registry system...
+2025-07-29 15:49:08,210 - system - INFO - [MODEL_REGISTRY] [MODEL_REGISTRY] Initializing model registry system...
+2025-07-29 15:49:08,216 - model_registry - INFO - 🗂️  Model Registry initialized: 8 models tracked
+2025-07-29 15:49:08,216 - root - INFO - [MODEL_REGISTRY] Model registry initialized successfully: 8 models tracked
+2025-07-29 15:49:08,216 - system - INFO - [MODEL_REGISTRY] [MODEL_REGISTRY] Model registry initialized successfully: 8 models tracked
+📋 Enhanced Logger initialized - Log directory: logs
+✅ Model registry initialized successfully: 8 models tracked
+ * Serving Flask app 'app'
+ * Debug mode: off
+2025-07-29 15:49:08,291 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://localhost:5002
+2025-07-29 15:49:08,291 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2025-07-29 15:49:19,932 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:49:19] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:49:20,288 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:49:20] "GET /api/race_files_status?t=1753768159903 HTTP/1.1" 200 -
+2025-07-29 15:49:21,737 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:49:21] "GET /api/race_files_status HTTP/1.1" 200 -
+2025-07-29 15:49:22,479 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:49:22] "GET /ml-dashboard HTTP/1.1" 200 -
+2025-07-29 15:49:22,792 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:49:22] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:49:22,807 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:49:22] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2025-07-29 15:49:22,970 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:49:22] "GET /api/race_files_status?t=1753768162773 HTTP/1.1" 200 -
+2025-07-29 15:49:32,245 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:49:32] "GET /api/race_files_status HTTP/1.1" 200 -
+2025-07-29 15:49:44,901 - unified_predictor - INFO - 🔧 Unified Predictor Configuration:
+2025-07-29 15:49:44,901 - unified_predictor - INFO -    Components available: 9/4
+2025-07-29 15:49:44,901 - unified_predictor - INFO -    ✅ unified_system
+2025-07-29 15:49:44,902 - unified_predictor - INFO -    ✅ enhanced_pipeline_v2
+2025-07-29 15:49:44,902 - unified_predictor - INFO -    ✅ enhanced_feature_engineering_v2
+2025-07-29 15:49:44,902 - unified_predictor - INFO -    ✅ advanced_ml_system_v2
+2025-07-29 15:49:44,902 - unified_predictor - INFO -    ✅ data_quality_improver
+2025-07-29 15:49:44,902 - unified_predictor - INFO -    ✅ comprehensive_pipeline
+2025-07-29 15:49:44,902 - unified_predictor - INFO -    ✅ weather_enhanced
+2025-07-29 15:49:44,902 - unified_predictor - INFO -    ✅ comprehensive_ml
+2025-07-29 15:49:44,902 - unified_predictor - INFO -    ✅ gpt_enhancement
+2025-07-29 15:49:44,903 - enhanced_pipeline_v2 - INFO - ✅ Advanced Feature Engineer initialized
+2025-07-29 15:49:44,906 - model_registry - INFO - 🗂️  Model Registry initialized: 8 models tracked
+2025-07-29 15:49:44,945 - enhanced_pipeline_v2 - INFO - ✅ Advanced ML System V2 initialized
+2025-07-29 15:49:44,947 - enhanced_pipeline_v2 - INFO - ✅ Data Quality Improver initialized
+2025-07-29 15:49:44,947 - unified_predictor - INFO - ✅ Enhanced Pipeline V2 initialized
+🔍 Step 1: Enhancing data for Race 10 - LAUNCESTON - 2025-07-28.csv before prediction...
+📋 Loaded 1634 unique races from 1650 files across all directories
+📅 Completed dates (30): ['2025-06-27', '2025-06-28', '2025-06-29', '2025-06-30', '2025-07-01', '2025-07-02', '2025-07-03', '2025-07-04', '2025-07-05', '2025-07-06', '2025-07-07', '2025-07-08', '2025-07-09', '2025-07-10', '2025-07-11', '2025-07-12', '2025-07-13', '2025-07-14', '2025-07-15', '2025-07-16', '2025-07-17', '2025-07-18', '2025-07-19', '2025-07-20', '2025-07-21', '2025-07-22', '2025-07-23', '2025-07-24', '2025-07-25', '2025-07-26']
+   • Directories checked: ./unprocessed, ./form_guides/downloaded, ./form_guides/processed, ./historical_races, ./processed
+🏁 Form Guide CSV Scraper initialized
+📂 Unprocessed directory: ./unprocessed
+📂 Download directory: ./form_guides/downloaded
+🎯 Target: Historical races (previous day or earlier) for training data
+   🔍 Enhancing data for 10 dogs...
+🔍 Checking races for 2025-07-29...
+   ✅ Found 140 valid race URLs for 2025-07-29
+   📋 Sample URLs: ['https://www.thedogs.com.au/racing/grafton/2025-07-29/1/ladbrokes-punter-assist-maiden?trial=false', 'https://www.thedogs.com.au/racing/grafton/2025-07-29/2/valley-protective-services-maiden?trial=false', 'https://www.thedogs.com.au/racing/grafton/2025-07-29/3/ladbrokes-mates-mode-pots-0-2-win?trial=false']
+🔄 Processing: https://www.thedogs.com.au/racing/grafton/2025-07-29/1/ladbrokes-punter-assist-maiden?trial=false
+   ⚪ Skipping future/today race: GRAF Race 1 on 29 July 2025
+🔄 Processing: https://www.thedogs.com.au/racing/grafton/2025-07-29/2/valley-protective-services-maiden?trial=false
+   ⚪ Skipping future/today race: GRAF Race 2 on 29 July 2025
+🔄 Processing: https://www.thedogs.com.au/racing/grafton/2025-07-29/3/ladbrokes-mates-mode-pots-0-2-win?trial=false
+   ⚪ Skipping future/today race: GRAF Race 3 on 29 July 2025
+🔍 Checking races for 2025-07-28...
+   ✅ Found 138 valid race URLs for 2025-07-28
+   📋 Sample URLs: ['https://www.thedogs.com.au/racing/dubbo/2025-07-28/1/choices-flooring-dubbo-maiden?trial=false', 'https://www.thedogs.com.au/racing/dubbo/2025-07-28/2/ladbrokes-odds-surge-maiden?trial=false', 'https://www.thedogs.com.au/racing/dubbo/2025-07-28/3/ladbrokes-punter-assist-maiden?trial=false']
+🔄 Processing: https://www.thedogs.com.au/racing/dubbo/2025-07-28/1/choices-flooring-dubbo-maiden?trial=false
+   ✅ Historical race found: DUB Race 1 on 28 July 2025
+   🔍 Checking expert-form page: https://www.thedogs.com.au/racing/dubbo/2025-07-28/1/choices-flooring-dubbo-maiden/expert-form
+   ✅ Found CSV export form with button/input
+   🎯 Form action: /racing/dubbo/2025-07-28/1/choices-flooring-dubbo-maiden/expert-form
+   🔗 Target URL: https://www.thedogs.com.au/racing/dubbo/2025-07-28/1/choices-flooring-dubbo-maiden/expert-form
+   📋 Form data keys: ['expert_form[starts]', 'expert_form[sort_by]', 'expert_form[sort_dir]', 'export_csv']
+   📤 Submitting form (GET) to: https://www.thedogs.com.au/racing/dubbo/2025-07-28/1/choices-flooring-dubbo-maiden/expert-form
+   ✅ Got CSV download URL: https://www.thedogs.com.au/racing/dubbo/2025-07-28/1/choices-flooring-dubbo-maiden/export-expert-form?sort_by=&sort_dir=&starts=
+   📥 Processing CSV for: Race 1 - DUB - 28 July 2025.csv
+   🌍 Downloading from URL: https://www.thedogs.com.au/racing/dubbo/2025-07-28/1/choices-flooring-dubbo-maiden/export-expert-form?sort_by=&sort_dir=&starts=
+   ✅ CSV appears to be valid form guide data
+   ✅ Successfully saved CSV data to: Race 1 - DUB - 28 July 2025.csv (41 lines)
+🔄 Processing: https://www.thedogs.com.au/racing/dubbo/2025-07-28/2/ladbrokes-odds-surge-maiden?trial=false
+   ✅ Historical race found: DUB Race 2 on 28 July 2025
+   🔍 Checking expert-form page: https://www.thedogs.com.au/racing/dubbo/2025-07-28/2/ladbrokes-odds-surge-maiden/expert-form
+   ✅ Found CSV export form with button/input
+   🎯 Form action: /racing/dubbo/2025-07-28/2/ladbrokes-odds-surge-maiden/expert-form
+   🔗 Target URL: https://www.thedogs.com.au/racing/dubbo/2025-07-28/2/ladbrokes-odds-surge-maiden/expert-form
+   📋 Form data keys: ['expert_form[starts]', 'expert_form[sort_by]', 'expert_form[sort_dir]', 'export_csv']
+   📤 Submitting form (GET) to: https://www.thedogs.com.au/racing/dubbo/2025-07-28/2/ladbrokes-odds-surge-maiden/expert-form
+   ✅ Got CSV download URL: https://www.thedogs.com.au/racing/dubbo/2025-07-28/2/ladbrokes-odds-surge-maiden/export-expert-form?sort_by=&sort_dir=&starts=
+   📥 Processing CSV for: Race 2 - DUB - 28 July 2025.csv
+   🌍 Downloading from URL: https://www.thedogs.com.au/racing/dubbo/2025-07-28/2/ladbrokes-odds-surge-maiden/export-expert-form?sort_by=&sort_dir=&starts=
+   ✅ CSV appears to be valid form guide data
+   ✅ Successfully saved CSV data to: Race 2 - DUB - 28 July 2025.csv (22 lines)
+🔄 Processing: https://www.thedogs.com.au/racing/dubbo/2025-07-28/3/ladbrokes-punter-assist-maiden?trial=false
+   ✅ Historical race found: DUB Race 3 on 28 July 2025
+   🔍 Checking expert-form page: https://www.thedogs.com.au/racing/dubbo/2025-07-28/3/ladbrokes-punter-assist-maiden/expert-form
+   ✅ Found CSV export form with button/input
+   🎯 Form action: /racing/dubbo/2025-07-28/3/ladbrokes-punter-assist-maiden/expert-form
+   🔗 Target URL: https://www.thedogs.com.au/racing/dubbo/2025-07-28/3/ladbrokes-punter-assist-maiden/expert-form
+   📋 Form data keys: ['expert_form[starts]', 'expert_form[sort_by]', 'expert_form[sort_dir]', 'export_csv']
+   📤 Submitting form (GET) to: https://www.thedogs.com.au/racing/dubbo/2025-07-28/3/ladbrokes-punter-assist-maiden/expert-form
+   ✅ Got CSV download URL: https://www.thedogs.com.au/racing/dubbo/2025-07-28/3/ladbrokes-punter-assist-maiden/export-expert-form?sort_by=&sort_dir=&starts=
+   📥 Processing CSV for: Race 3 - DUB - 28 July 2025.csv
+   🌍 Downloading from URL: https://www.thedogs.com.au/racing/dubbo/2025-07-28/3/ladbrokes-punter-assist-maiden/export-expert-form?sort_by=&sort_dir=&starts=
+   ✅ CSV appears to be valid form guide data
+   ✅ Successfully saved CSV data to: Race 3 - DUB - 28 July 2025.csv (40 lines)
+🔍 Checking races for 2025-07-27...
+   ✅ Found 126 valid race URLs for 2025-07-27
+   📋 Sample URLs: ['https://www.thedogs.com.au/racing/richmond/2025-07-27/1/bistro-open-for-dinner-maiden?trial=false', 'https://www.thedogs.com.au/racing/richmond/2025-07-27/2/ladbrokes-same-race-multi-maiden?trial=false', 'https://www.thedogs.com.au/racing/richmond/2025-07-27/3/greyhoundproductsdirect-com-au?trial=false']
+🔄 Processing: https://www.thedogs.com.au/racing/richmond/2025-07-27/1/bistro-open-for-dinner-maiden?trial=false
+   ✅ Historical race found: RICH Race 1 on 27 July 2025
+   ⭕ Race already collected: RICH Race 1 on 27 July 2025
+🔄 Processing: https://www.thedogs.com.au/racing/richmond/2025-07-27/2/ladbrokes-same-race-multi-maiden?trial=false
+   ✅ Historical race found: RICH Race 2 on 27 July 2025
+   ⭕ Race already collected: RICH Race 2 on 27 July 2025
+🔄 Processing: https://www.thedogs.com.au/racing/richmond/2025-07-27/3/greyhoundproductsdirect-com-au?trial=false
+   ✅ Historical race found: RICH Race 3 on 27 July 2025
+   ⭕ Race already collected: RICH Race 3 on 27 July 2025
+   ✅ Data enhancement completed: 3 additional records
+🎯 Step 2: Running unified prediction for Race 10 - LAUNCESTON - 2025-07-28.csv with enhanced dataset...
+📂 Auto-loading best model from registry: gradient_boosting_optimized
+   📊 Performance: Acc=0.988, AUC=1.000, F1=0.889
+   🔄 Training: 2025-07-27 (650 samples)
+✅ Registry model loaded successfully: gradient_boosting_optimized
+🚀 Comprehensive Enhanced ML Model System Initialized
+✅ ML System initialized
+✅ Sportsbet Race Time Scraper initialized
+🔗 Enhanced Data Integrator Initialized
+📊 Enhanced data available: True
+📁 Enhanced CSV files: 116
+📄 Enhanced JSON files: 6536
+✅ Enhanced Data Integrator initialized
+✅ Loaded model: balanced_extra_trees
+📊 Model accuracy: 0.959
+🔧 Features: 66
+🚀 Weather-Enhanced Predictor Initialized
+✅ Comprehensive ML Available: True2025-07-29 15:49:52,783 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:49:52] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:49:53,038 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:49:53] "GET /api/race_files_status HTTP/1.1" 200 -
+2025-07-29 15:49:53,040 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:49:53] "GET /api/race_files_status?t=1753768192773 HTTP/1.1" 200 -
+2025-07-29 15:49:54,087 - weather_service_open_meteo - INFO - Open-Meteo weather database tables initialized successfully
+2025-07-29 15:49:54,087 - unified_predictor - INFO - ✅ Comprehensive Pipeline initialized
+2025-07-29 15:49:54,221 - unified_predictor - INFO - ✅ Weather Enhanced Predictor initialized
+2025-07-29 15:49:54,221 - unified_predictor - INFO - ✅ Comprehensive ML System initialized
+2025-07-29 15:49:57,567 - gpt_prediction_enhancer - INFO - GPT analyzer initialized successfully
+2025-07-29 15:49:57,568 - unified_predictor - INFO - ✅ GPT Enhancement available
+2025-07-29 15:49:58,988 - unified_predictor - INFO - 🎯 Using latest model: comprehensive_best_model_20250727.joblib (accuracy: 0.9594594594594594)
+2025-07-29 15:49:58,988 - unified_predictor - INFO - 🚀 Unified Predictor initialized with 4 active methods
+2025-07-29 15:49:58,989 - unified_predictor - INFO - 🎯 Predicting: Race 10 - LAUNCESTON - 2025-07-28.csv (level: full)
+2025-07-29 15:49:58,992 - unified_predictor - INFO - 🧠 Trying unified system comprehensive prediction...
+2025-07-29 15:49:58,992 - unified_predictor - INFO - 🚀 Starting unified system prediction for: Race 10 - LAUNCESTON - 2025-07-28.csv
+2025-07-29 15:49:59,000 - unified_predictor - WARNING - Error getting database history for BLACKWOOD ECHO: name 'sqlite3' is not defined
+2025-07-29 15:49:59,001 - unified_predictor - WARNING - Error getting database history for LONELY HUNTER: name 'sqlite3' is not defined
+2025-07-29 15:49:59,002 - unified_predictor - WARNING - Error getting database history for BILLIE BENSON: name 'sqlite3' is not defined
+2025-07-29 15:49:59,003 - unified_predictor - WARNING - Error getting database history for POLARISED: name 'sqlite3' is not defined
+2025-07-29 15:49:59,005 - unified_predictor - WARNING - Error getting database history for BUCKLE UP WYSTAN: name 'sqlite3' is not defined
+2025-07-29 15:49:59,007 - unified_predictor - WARNING - Error getting database history for WHITE CLOUD: name 'sqlite3' is not defined
+2025-07-29 15:49:59,008 - unified_predictor - WARNING - Error getting database history for ANNDAR DIVA: name 'sqlite3' is not defined
+2025-07-29 15:49:59,009 - unified_predictor - WARNING - Error getting database history for DREAM ONCE: name 'sqlite3' is not defined
+2025-07-29 15:49:59,010 - unified_predictor - WARNING - Error getting database history for JUST LIKE COMET: name 'sqlite3' is not defined
+2025-07-29 15:49:59,011 - unified_predictor - WARNING - Error getting database history for GET ON BOARD: name 'sqlite3' is not defined
+2025-07-29 15:49:59,011 - unified_predictor - INFO - 📊 Processing 10 dogs with unified system
+
+✅ Trained Model Loaded: True
+🌤️ Weather integration: ENABLED
+✅ Weather Predictor initialized
+📋 Loaded 1637 unique races from 1656 files across all directories
+📅 Completed dates (30): ['2025-06-27', '2025-06-28', '2025-06-29', '2025-06-30', '2025-07-01', '2025-07-02', '2025-07-03', '2025-07-04', '2025-07-05', '2025-07-06', '2025-07-07', '2025-07-08', '2025-07-09', '2025-07-10', '2025-07-11', '2025-07-12', '2025-07-13', '2025-07-14', '2025-07-15', '2025-07-16', '2025-07-17', '2025-07-18', '2025-07-19', '2025-07-20', '2025-07-21', '2025-07-22', '2025-07-23', '2025-07-24', '2025-07-25', '2025-07-26']
+   • Directories checked: ./unprocessed, ./form_guides/downloaded, ./form_guides/processed, ./historical_races, ./processed
+🏁 Form Guide CSV Scraper initialized
+📂 Unprocessed directory: ./unprocessed
+📂 Download directory: ./form_guides/downloaded
+🎯 Target: Historical races (previous day or earlier) for training data
+✅ Form Scraper initialized
+Database initialized successfully.
+✅ Enhanced database initialized
+🔧 Attempting to initialize ChromeDriver...
+✅ Chrome driver initialized
+✅ Weather service initialized successfully
+🚀 Enhanced Comprehensive Processor Initialized (fast mode)
+✅ Selenium Available: True
+✅ BeautifulSoup Available: True
+✅ Scikit-learn Available: True
+⚙️ Processing Mode: fast
+📦 Batch Size: 50
+✅ Processor initialized
+🚀 Comprehensive Prediction Pipeline Initialized
+
+🔧 System Status:
+  ML System: ✅
+  Enhanced Data: ✅
+  Weather Predictor: ✅
+  Form Scraper: ✅
+  Processor: ✅
+  Overall: 5/5 systems available
+✅ Loaded model: balanced_extra_trees
+📊 Model accuracy: 0.959
+🔧 Features: 66
+🚀 Weather-Enhanced Predictor Initialized
+✅ Comprehensive ML Available: True
+✅ Trained Model Loaded: True
+🌤️ Weather integration: ENABLED
+🚀 Comprehensive Enhanced ML Model System Initialized
+   🧠 Using Unified Predictor API with 9/9 components available
+
+   🔎 Feature values:
+     weighted_recent_form: 4.6000
+     speed_trend: -0.0280
+     speed_consistency: 0.1369
+     venue_win_rate: 0.1250
+     venue_avg_position: 4.5000
+     venue_experience: 0.0000
+     distance_win_rate: 0.0000
+     distance_avg_time: 16.4340
+     box_position_win_rate: 0.0000
+     box_position_avg: 6.0000
+     recent_momentum: 0.3000
+     competitive_level: 0.4000
+     position_consistency: 0.3228
+     top_3_rate: 0.6000
+     break_quality: 0.5000
+   🎯 gradient_boosting_optimized: 0.0000 (weight: 1.00, raw)
+   🎯 gradient_boosting_optimized: 0.0000 (weight: 1.00)
+   📊 Final prediction: 0.0000 (adjusted: 0.0000)
+
+   🔎 Feature values:
+     weighted_recent_form: 6.0000
+     speed_trend: -0.0250
+     speed_consistency: 0.2793
+     venue_win_rate: 0.1250
+     venue_avg_position: 4.5000
+     venue_experience: 0.0000
+     distance_win_rate: 0.1250
+     distance_avg_time: 30.0000
+     box_position_win_rate: 0.1250
+     box_position_avg: 4.5000
+     recent_momentum: 0.3000
+     competitive_level: 0.6000
+     position_consistency: 0.3402
+     top_3_rate: 0.2000
+     break_quality: 0.5000
+   🎯 gradient_boosting_optimized: 0.0000 (weight: 1.00, raw)
+   🎯 gradient_boosting_optimized: 0.0000 (weight: 1.00)
+   📊 Final prediction: 0.0000 (adjusted: 0.0000)
+
+   🔎 Feature values:
+     weighted_recent_form: 2.4000
+     speed_trend: 0.2550
+     speed_consistency: 0.4293
+     venue_win_rate: 0.1250
+     venue_avg_position: 4.5000
+     venue_experience: 0.0000
+     distance_win_rate: 0.2000
+     distance_avg_time: 16.5500
+     box_position_win_rate: 0.0000
+     box_position_avg: 4.0000
+     recent_momentum: 0.8000
+     competitive_level: 0.4000
+     position_consistency: 0.3676
+     top_3_rate: 0.8000
+     break_quality: 0.5000
+   🎯 gradient_boosting_optimized: 0.0000 (weight: 1.00, raw)
+   🎯 gradient_boosting_optimized: 0.0000 (weight: 1.00)
+   📊 Final prediction: 0.0000 (adjusted: 0.0000)
+
+   🔎 Feature values:
+     weighted_recent_form: 4.6000
+     speed_trend: -2.7280
+     speed_consistency: 5.2286
+     venue_win_rate: 0.1250
+     venue_avg_position: 4.5000
+     venue_experience: 0.0000
+     distance_win_rate: 0.1250
+     distance_avg_time: 30.0000
+     box_position_win_rate: 0.1250
+     box_position_avg: 4.5000
+     recent_momentum: 0.3000
+     competitive_level: 0.6000
+     position_consistency: 0.4049
+     top_3_rate: 0.2000
+     break_quality: 0.5000
+   🎯 gradient_boosting_optimized: 0.0000 (weight: 1.00, raw)
+   🎯 gradient_boosting_optimized: 0.0000 (weight: 1.00)
+   📊 Final prediction: 0.0000 (adjusted: 0.0000)
+
+   🔎 Feature values:
+     weighted_recent_form: 5.2000
+     speed_trend: 1.4790
+     speed_consistency: 3.8871
+     venue_win_rate: 0.1250
+     venue_avg_position: 4.5000
+     venue_experience: 0.0000
+     distance_win_rate: 0.0000
+     distance_avg_time: 16.8567
+     box_position_win_rate: 0.1250
+     box_position_avg: 4.5000
+     recent_momentum: 0.3000
+     competitive_level: 0.6000
+     position_consistency: 0.3001
+     top_3_rate: 0.2000
+     break_quality: 0.5000
+   🎯 gradient_boosting_optimized: 0.0000 (weight: 1.00, raw)
+   🎯 gradient_boosting_optimized: 0.0000 (weight: 1.00)
+   📊 Final prediction: 0.0000 (adjusted: 0.0000)
+
+   🔎 Feature values:
+     weighted_recent_form: 5.9000
+     speed_trend: -0.0090
+     speed_consistency: 1.5607
+     venue_win_rate: 0.1250
+     venue_avg_position: 4.5000
+     venue_experience: 0.0000
+     distance_win_rate: 0.0000
+     distance_avg_time: 16.7200
+     box_position_win_rate: 0.1250
+     box_position_avg: 4.5000
+     recent_momentum: 0.3000
+     competitive_level: 0.4000
+     position_consistency: 0.3402
+     top_3_rate: 0.2000
+     break_quality: 0.5000
+   🎯 gradient_boosting_optimized: 0.0000 (weight: 1.00, raw)
+   🎯 gradient_boosting_optimized: 0.0000 (weight: 1.00)
+   📊 Final prediction: 0.0000 (adjusted: 0.0000)
+
+   🔎 Feature values:
+     weighted_recent_form: 5.1500
+     speed_trend: -1.7290
+     speed_consistency: 4.7305
+     venue_win_rate: 0.1250
+     venue_avg_position: 4.5000
+     venue_experience: 0.0000
+     distance_win_rate: 0.0000
+     distance_avg_time: 16.5800
+     box_position_win_rate: 0.0000
+     box_position_avg: 4.0000
+     recent_momentum: 0.3000
+     competitive_level: 0.4000
+     position_consistency: 0.4298
+     top_3_rate: 0.2000
+     break_quality: 0.5000
+   🎯 gradient_boosting_optimized: 0.0000 (weight: 1.00, raw)
+   🎯 gradient_boosting_optimized: 0.0000 (weight: 1.00)
+   📊 Final prediction: 0.0000 (adjusted: 0.0000)
+
+   🔎 Feature values:
+     weighted_recent_form: 6.5000
+     speed_trend: -0.2950
+     speed_consistency: 1.3525
+     venue_win_rate: 0.1250
+     venue_avg_position: 4.5000
+     venue_experience: 0.0000
+     distance_win_rate: 0.0000
+     distance_avg_time: 16.8300
+     box_position_win_rate: 0.1250
+     box_position_avg: 4.5000
+     recent_momentum: 0.3000
+     competitive_level: 0.4000
+     position_consistency: 0.4049
+     top_3_rate: 0.0000
+     break_quality: 0.5000
+   🎯 gradient_boosting_optimized: 0.0000 (weight: 1.00, raw)
+   🎯 gradient_boosting_optimized: 0.0000 (weight: 1.00)
+   📊 Final prediction: 0.0000 (adjusted: 0.0000)
+
+   🔎 Feature values:
+     weighted_recent_form: 7.5000
+     speed_trend: 0.0730
+     speed_consistency: 0.1670
+     venue_win_rate: 0.1250
+     venue_avg_position: 4.5000
+     venue_experience: 0.0000
+     distance_win_rate: 0.0000
+     distance_avg_time: 16.9880
+     box_position_win_rate: 0.0000
+     box_position_avg: 5.0000
+     recent_momentum: 0.3000
+     competitive_level: 0.4000
+     position_consistency: 0.4616
+     top_3_rate: 0.0000
+     break_quality: 0.5000
+   🎯 gradient_boosting_optimized: 0.0000 (weight: 1.00, raw)
+   🎯 gradient_boosting_optimized: 0.0000 (weight: 1.00)
+   📊 Final prediction: 0.0000 (adjusted: 0.0000)
+
+   🔎 Feature values:
+     weighted_recent_form: 5.7500
+     speed_trend: 0.0460
+     speed_consistency: 0.1465
+     venue_win_rate: 0.1250
+     venue_avg_position: 4.5000
+     venue_experience: 0.0000
+     distance_win_rate: 0.0000
+     distance_avg_time: 16.4540
+     box_position_win_rate: 0.1250
+     box_position_avg: 4.5000
+     recent_momentum: 0.30002025-07-29 15:49:59,076 - unified_predictor - INFO - ✅ Unified system successful with good quality
+2025-07-29 15:49:59,077 - unified_predictor - INFO - 🤖 Applying GPT enhancement...
+2025-07-29 15:49:59,084 - gpt_prediction_enhancer - INFO - Running GPT analysis for race: LAUNCESTON Race 10
+2025-07-29 15:50:13,572 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-07-29 15:50:19,920 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:50:19] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:50:20,050 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:50:20] "GET /api/race_files_status?t=1753768219904 HTTP/1.1" 200 -
+2025-07-29 15:50:22,779 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:50:22] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:50:22,899 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:50:22] "GET /api/race_files_status?t=1753768222772 HTTP/1.1" 200 -
+2025-07-29 15:50:46,708 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-07-29 15:50:52,783 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:50:52] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:50:53,007 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:50:53] "GET /api/race_files_status?t=1753768252772 HTTP/1.1" 200 -
+2025-07-29 15:51:08,201 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-07-29 15:51:08,204 - gpt_prediction_enhancer - INFO - Saved enhanced analysis to gpt_enhanced_predictions/gpt_enhanced_Race 10 - LAUNCESTON - 2025-07-28.json
+2025-07-29 15:51:08,205 - unified_predictor - INFO - ✅ GPT enhancement applied
+2025-07-29 15:51:08,206 - unified_predictor - INFO - 🏁 Prediction completed in 0.09s using unified_system
+2025-07-29 15:51:08,222 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:51:08] "POST /api/predict_single_race HTTP/1.1" 200 -
+2025-07-29 15:51:13,085 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:51:13] "GET /api/race_files_status?t=1753768272899 HTTP/1.1" 200 -
+2025-07-29 15:51:14,840 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:51:14] "GET /api/race_files_status?t=1753768274751 HTTP/1.1" 200 -
+2025-07-29 15:51:19,914 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:51:19] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:51:19,994 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:51:19] "GET /api/race_files_status?t=1753768279900 HTTP/1.1" 200 -
+2025-07-29 15:51:22,778 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:51:22] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:51:22,881 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:51:22] "GET /api/race_files_status?t=1753768282770 HTTP/1.1" 200 -
+2025-07-29 15:51:45,134 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:51:45] "GET /ml-training HTTP/1.1" 200 -
+2025-07-29 15:51:45,196 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:51:45] "GET /api/training_status HTTP/1.1" 200 -
+2025-07-29 15:51:45,292 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:51:45] "GET /api/training_data_stats HTTP/1.1" 200 -
+2025-07-29 15:51:45,390 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:51:45] "GET /api/model_status HTTP/1.1" 200 -
+2025-07-29 15:51:49,703 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:51:49] "GET / HTTP/1.1" 200 -
+2025-07-29 15:51:49,753 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:51:49] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:51:49,787 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:51:49] "GET /api/stats HTTP/1.1" 200 -
+2025-07-29 15:52:03,941 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:52:03] "GET /api/race_files_status HTTP/1.1" 200 -
+2025-07-29 15:52:18,520 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:52:18] "GET /api/race_files_status HTTP/1.1" 200 -
+2025-07-29 15:52:19,728 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:52:19] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:52:19,774 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:52:19] "GET /api/stats HTTP/1.1" 200 -
+2025-07-29 15:52:19,929 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:52:19] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:52:20,047 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:52:20] "GET /api/race_files_status?t=1753768339907 HTTP/1.1" 200 -
+2025-07-29 15:52:49,727 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:52:49] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:52:49,766 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:52:49] "GET /api/stats HTTP/1.1" 200 -
+2025-07-29 15:53:19,727 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:53:19] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:53:19,765 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:53:19] "GET /api/stats HTTP/1.1" 200 -
+2025-07-29 15:53:19,945 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:53:19] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:53:20,117 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:53:20] "GET /api/race_files_status?t=1753768399908 HTTP/1.1" 200 -
+2025-07-29 15:53:49,726 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:53:49] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:53:49,761 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:53:49] "GET /api/stats HTTP/1.1" 200 -
+2025-07-29 15:54:19,727 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:54:19] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:54:19,750 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:54:19] "GET /api/stats HTTP/1.1" 200 -
+2025-07-29 15:54:19,922 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:54:19] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:54:20,068 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:54:20] "GET /api/race_files_status?t=1753768459902 HTTP/1.1" 200 -
+2025-07-29 15:54:49,722 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:54:49] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:54:49,741 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:54:49] "GET /api/stats HTTP/1.1" 200 -
+2025-07-29 15:55:19,729 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:55:19] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:55:19,773 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:55:19] "GET /api/stats HTTP/1.1" 200 -
+2025-07-29 15:55:19,923 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:55:19] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:55:20,076 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:55:20] "GET /api/race_files_status?t=1753768519903 HTTP/1.1" 200 -
+2025-07-29 15:55:49,728 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:55:49] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:55:49,756 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:55:49] "GET /api/stats HTTP/1.1" 200 -
+2025-07-29 15:56:19,722 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:56:19] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:56:19,751 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:56:19] "GET /api/stats HTTP/1.1" 200 -
+2025-07-29 15:56:19,905 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:56:19] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:56:20,042 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:56:20] "GET /api/race_files_status?t=1753768579894 HTTP/1.1" 200 -
+2025-07-29 15:56:49,720 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:56:49] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:56:49,745 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:56:49] "GET /api/stats HTTP/1.1" 200 -
+2025-07-29 15:57:19,720 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:57:19] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:57:19,748 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:57:19] "GET /api/stats HTTP/1.1" 200 -
+2025-07-29 15:57:20,028 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:57:20] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:57:20,260 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:57:20] "GET /api/race_files_status?t=1753768639901 HTTP/1.1" 200 -
+2025-07-29 15:57:49,720 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:57:49] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:57:49,741 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:57:49] "GET /api/stats HTTP/1.1" 200 -
+2025-07-29 15:58:19,717 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:58:19] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:58:19,736 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:58:19] "GET /api/stats HTTP/1.1" 200 -
+2025-07-29 15:58:19,911 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:58:19] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:58:20,056 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:58:20] "GET /api/race_files_status?t=1753768699893 HTTP/1.1" 200 -
+2025-07-29 15:58:49,721 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:58:49] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:58:49,750 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:58:49] "GET /api/stats HTTP/1.1" 200 -
+2025-07-29 15:59:19,717 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:59:19] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:59:19,739 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:59:19] "GET /api/stats HTTP/1.1" 200 -
+2025-07-29 15:59:19,924 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:59:19] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:59:20,086 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:59:20] "GET /api/race_files_status?t=1753768759891 HTTP/1.1" 200 -
+2025-07-29 15:59:49,719 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:59:49] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 15:59:49,746 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 15:59:49] "GET /api/stats HTTP/1.1" 200 -
+2025-07-29 16:00:19,718 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:00:19] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 16:00:19,754 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:00:19] "GET /api/stats HTTP/1.1" 200 -
+2025-07-29 16:00:19,915 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:00:19] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 16:00:20,038 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:00:20] "GET /api/race_files_status?t=1753768819887 HTTP/1.1" 200 -
+2025-07-29 16:00:49,893 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:00:49] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 16:00:49,925 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:00:49] "GET /api/stats HTTP/1.1" 200 -
+2025-07-29 16:01:19,907 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:01:19] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 16:01:19,914 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:01:19] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 16:01:19,946 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:01:19] "GET /api/stats HTTP/1.1" 200 -
+2025-07-29 16:01:20,033 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:01:20] "GET /api/race_files_status?t=1753768879891 HTTP/1.1" 200 -
+2025-07-29 16:02:19,902 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:02:19] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 16:02:19,909 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:02:19] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 16:02:19,934 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:02:19] "GET /api/stats HTTP/1.1" 200 -
+2025-07-29 16:02:20,028 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:02:20] "GET /api/race_files_status?t=1753768939883 HTTP/1.1" 200 -
+2025-07-29 16:03:19,908 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:03:19] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 16:03:19,917 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:03:19] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 16:03:19,950 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:03:19] "GET /api/stats HTTP/1.1" 200 -
+2025-07-29 16:03:19,988 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:03:19] "GET /api/race_files_status?t=1753768999877 HTTP/1.1" 200 -
+2025-07-29 16:03:33,945 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:03:33] "GET / HTTP/1.1" 200 -
+2025-07-29 16:03:34,000 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:03:34] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 16:03:34,024 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:03:34] "GET /api/stats HTTP/1.1" 200 -
+2025-07-29 16:03:35,015 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:03:35] "GET / HTTP/1.1" 200 -
+2025-07-29 16:03:35,064 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:03:35] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 16:03:35,094 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:03:35] "GET /api/stats HTTP/1.1" 200 -
+2025-07-29 16:03:37,082 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:03:37] "GET /ml-dashboard HTTP/1.1" 200 -
+2025-07-29 16:03:37,137 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:03:37] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 16:03:37,239 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:03:37] "GET /api/race_files_status?t=1753769017113 HTTP/1.1" 200 -
+2025-07-29 16:03:49,757 - unified_predictor - INFO - 🔧 Unified Predictor Configuration:
+2025-07-29 16:03:49,758 - unified_predictor - INFO -    Components available: 9/4
+2025-07-29 16:03:49,758 - unified_predictor - INFO -    ✅ unified_system
+2025-07-29 16:03:49,758 - unified_predictor - INFO -    ✅ enhanced_pipeline_v2
+2025-07-29 16:03:49,758 - unified_predictor - INFO -    ✅ enhanced_feature_engineering_v2
+2025-07-29 16:03:49,758 - unified_predictor - INFO -    ✅ advanced_ml_system_v2
+2025-07-29 16:03:49,758 - unified_predictor - INFO -    ✅ data_quality_improver
+2025-07-29 16:03:49,758 - unified_predictor - INFO -    ✅ comprehensive_pipeline
+2025-07-29 16:03:49,758 - unified_predictor - INFO -    ✅ weather_enhanced
+2025-07-29 16:03:49,758 - unified_predictor - INFO -    ✅ comprehensive_ml
+2025-07-29 16:03:49,759 - unified_predictor - INFO -    ✅ gpt_enhancement
+2025-07-29 16:03:49,759 - enhanced_pipeline_v2 - INFO - ✅ Advanced Feature Engineer initialized
+2025-07-29 16:03:49,761 - model_registry - INFO - 🗂️  Model Registry initialized: 8 models tracked
+2025-07-29 16:03:49,773 - enhanced_pipeline_v2 - INFO - ✅ Advanced ML System V2 initialized
+2025-07-29 16:03:49,774 - enhanced_pipeline_v2 - INFO - ✅ Data Quality Improver initialized
+2025-07-29 16:03:49,775 - unified_predictor - INFO - ✅ Enhanced Pipeline V2 initialized
+2025-07-29 16:03:51,445 - weather_service_open_meteo - INFO - Open-Meteo weather database tables initialized successfully
+2025-07-29 16:03:51,445 - unified_predictor - INFO - ✅ Comprehensive Pipeline initialized
+2025-07-29 16:03:51,704 - unified_predictor - INFO - ✅ Weather Enhanced Predictor initialized
+2025-07-29 16:03:51,704 - unified_predictor - INFO - ✅ Comprehensive ML System initialized
+2025-07-29 16:03:51,717 - gpt_prediction_enhancer - INFO - GPT analyzer initialized successfully
+2025-07-29 16:03:51,717 - unified_predictor - INFO - ✅ GPT Enhancement available
+2025-07-29 16:03:53,143 - unified_predictor - INFO - 🎯 Using latest model: comprehensive_best_model_20250727.joblib (accuracy: 0.9594594594594594)
+2025-07-29 16:03:53,143 - unified_predictor - INFO - 🚀 Unified Predictor initialized with 4 active methods
+2025-07-29 16:03:53,143 - unified_predictor - INFO - 🎯 Predicting: Race 10 - NOWRA - 2025-07-28.csv (level: full)
+2025-07-29 16:03:53,146 - unified_predictor - INFO - 🧠 Trying unified system comprehensive prediction...
+2025-07-29 16:03:53,146 - unified_predictor - INFO - 🚀 Starting unified system prediction for: Race 10 - NOWRA - 2025-07-28.csv
+2025-07-29 16:03:53,151 - unified_predictor - WARNING - Error getting database history for MISS DELGARDO: name 'sqlite3' is not defined
+2025-07-29 16:03:53,152 - unified_predictor - WARNING - Error getting database history for CUMBRIA TESS: name 'sqlite3' is not defined
+2025-07-29 16:03:53,152 - unified_predictor - WARNING - Error getting database history for MYSTERY BAY: name 'sqlite3' is not defined
+2025-07-29 16:03:53,153 - unified_predictor - WARNING - Error getting database history for ALBATROSS MARCH: name 'sqlite3' is not defined
+2025-07-29 16:03:53,153 - unified_predictor - WARNING - Error getting database history for WHERE'S REEF: name 'sqlite3' is not defined
+2025-07-29 16:03:53,154 - unified_predictor - WARNING - Error getting database history for UNCLE WALTER: name 'sqlite3' is not defined
+2025-07-29 16:03:53,155 - unified_predictor - WARNING - Error getting database history for JUST STOP IT: name 'sqlite3' is not defined
+2025-07-29 16:03:53,156 - unified_predictor - WARNING - Error getting database history for WHERE'S DEREK: name 'sqlite3' is not defined
+2025-07-29 16:03:53,156 - unified_predictor - INFO - 📊 Processing 8 dogs with unified system
+
+     competitive_level: 0.6000
+     position_consistency: 0.3676
+     top_3_rate: 0.2000
+     break_quality: 0.5000
+   🎯 gradient_boosting_optimized: 0.0000 (weight: 1.00, raw)
+   🎯 gradient_boosting_optimized: 0.0000 (weight: 1.00)
+   📊 Final prediction: 0.0000 (adjusted: 0.0000)
+   ✅ Unified prediction completed successfully!
+   🔧 Method used: unified_unified_system
+   📊 Predictions generated: 10
+🔍 Step 1: Enhancing data for Race 10 - NOWRA - 2025-07-28.csv before prediction...
+📋 Loaded 1637 unique races from 1656 files across all directories
+📅 Completed dates (30): ['2025-06-27', '2025-06-28', '2025-06-29', '2025-06-30', '2025-07-01', '2025-07-02', '2025-07-03', '2025-07-04', '2025-07-05', '2025-07-06', '2025-07-07', '2025-07-08', '2025-07-09', '2025-07-10', '2025-07-11', '2025-07-12', '2025-07-13', '2025-07-14', '2025-07-15', '2025-07-16', '2025-07-17', '2025-07-18', '2025-07-19', '2025-07-20', '2025-07-21', '2025-07-22', '2025-07-23', '2025-07-24', '2025-07-25', '2025-07-26']
+   • Directories checked: ./unprocessed, ./form_guides/downloaded, ./form_guides/processed, ./historical_races, ./processed
+🏁 Form Guide CSV Scraper initialized
+📂 Unprocessed directory: ./unprocessed
+📂 Download directory: ./form_guides/downloaded
+🎯 Target: Historical races (previous day or earlier) for training data
+   🔍 Enhancing data for 8 dogs...
+🔍 Checking races for 2025-07-29...
+   ✅ Found 145 valid race URLs for 2025-07-29
+   📋 Sample URLs: ['https://www.thedogs.com.au/racing/grafton/2025-07-29/1/ladbrokes-punter-assist-maiden?trial=false', 'https://www.thedogs.com.au/racing/grafton/2025-07-29/2/valley-protective-services-maiden?trial=false', 'https://www.thedogs.com.au/racing/grafton/2025-07-29/3/ladbrokes-mates-mode-pots-0-2-win?trial=false']
+🔄 Processing: https://www.thedogs.com.au/racing/grafton/2025-07-29/1/ladbrokes-punter-assist-maiden?trial=false
+   ⚪ Skipping future/today race: GRAF Race 1 on 29 July 2025
+🔄 Processing: https://www.thedogs.com.au/racing/grafton/2025-07-29/2/valley-protective-services-maiden?trial=false
+   ⚪ Skipping future/today race: GRAF Race 2 on 29 July 2025
+🔄 Processing: https://www.thedogs.com.au/racing/grafton/2025-07-29/3/ladbrokes-mates-mode-pots-0-2-win?trial=false
+   ⚪ Skipping future/today race: GRAF Race 3 on 29 July 2025
+🔍 Checking races for 2025-07-28...
+   ✅ Found 138 valid race URLs for 2025-07-28
+   📋 Sample URLs: ['https://www.thedogs.com.au/racing/dubbo/2025-07-28/1/choices-flooring-dubbo-maiden?trial=false', 'https://www.thedogs.com.au/racing/dubbo/2025-07-28/2/ladbrokes-odds-surge-maiden?trial=false', 'https://www.thedogs.com.au/racing/dubbo/2025-07-28/3/ladbrokes-punter-assist-maiden?trial=false']
+🔄 Processing: https://www.thedogs.com.au/racing/dubbo/2025-07-28/1/choices-flooring-dubbo-maiden?trial=false
+   ✅ Historical race found: DUB Race 1 on 28 July 2025
+   ⭕ Race already collected: DUB Race 1 on 28 July 2025
+🔄 Processing: https://www.thedogs.com.au/racing/dubbo/2025-07-28/2/ladbrokes-odds-surge-maiden?trial=false
+   ✅ Historical race found: DUB Race 2 on 28 July 2025
+   ⭕ Race already collected: DUB Race 2 on 28 July 2025
+🔄 Processing: https://www.thedogs.com.au/racing/dubbo/2025-07-28/3/ladbrokes-punter-assist-maiden?trial=false
+   ✅ Historical race found: DUB Race 3 on 28 July 2025
+   ⭕ Race already collected: DUB Race 3 on 28 July 2025
+🔍 Checking races for 2025-07-27...
+   ✅ Found 126 valid race URLs for 2025-07-27
+   📋 Sample URLs: ['https://www.thedogs.com.au/racing/richmond/2025-07-27/1/bistro-open-for-dinner-maiden?trial=false', 'https://www.thedogs.com.au/racing/richmond/2025-07-27/2/ladbrokes-same-race-multi-maiden?trial=false', 'https://www.thedogs.com.au/racing/richmond/2025-07-27/3/greyhoundproductsdirect-com-au?trial=false']
+🔄 Processing: https://www.thedogs.com.au/racing/richmond/2025-07-27/1/bistro-open-for-dinner-maiden?trial=false
+   ✅ Historical race found: RICH Race 1 on 27 July 2025
+   ⭕ Race already collected: RICH Race 1 on 27 July 2025
+🔄 Processing: https://www.thedogs.com.au/racing/richmond/2025-07-27/2/ladbrokes-same-race-multi-maiden?trial=false
+   ✅ Historical race found: RICH Race 2 on 27 July 2025
+   ⭕ Race already collected: RICH Race 2 on 27 July 2025
+🔄 Processing: https://www.thedogs.com.au/racing/richmond/2025-07-27/3/greyhoundproductsdirect-com-au?trial=false
+   ✅ Historical race found: RICH Race 3 on 27 July 2025
+   ⭕ Race already collected: RICH Race 3 on 27 July 2025
+   ✅ Data enhancement completed: 0 additional records
+🎯 Step 2: Running unified prediction for Race 10 - NOWRA - 2025-07-28.csv with enhanced dataset...
+📂 Auto-loading best model from registry: gradient_boosting_optimized
+   📊 Performance: Acc=0.988, AUC=1.000, F1=0.889
+   🔄 Training: 2025-07-27 (650 samples)
+✅ Registry model loaded successfully: gradient_boosting_optimized
+🚀 Comprehensive Enhanced ML Model System Initialized
+✅ ML System initialized
+✅ Sportsbet Race Time Scraper initialized
+🔗 Enhanced Data Integrator Initialized
+📊 Enhanced data available: True
+📁 Enhanced CSV files: 116
+📄 Enhanced JSON files: 6536
+✅ Enhanced Data Integrator initialized
+✅ Loaded model: balanced_extra_trees
+📊 Model accuracy: 0.959
+🔧 Features: 66
+🚀 Weather-Enhanced Predictor Initialized
+✅ Comprehensive ML Available: True
+✅ Trained Model Loaded: True
+🌤️ Weather integration: ENABLED
+✅ Weather Predictor initialized
+📋 Loaded 1637 unique races from 1656 files across all directories
+📅 Completed dates (30): ['2025-06-27', '2025-06-28', '2025-06-29', '2025-06-30', '2025-07-01', '2025-07-02', '2025-07-03', '2025-07-04', '2025-07-05', '2025-07-06', '2025-07-07', '2025-07-08', '2025-07-09', '2025-07-10', '2025-07-11', '2025-07-12', '2025-07-13', '2025-07-14', '2025-07-15', '2025-07-16', '2025-07-17', '2025-07-18', '2025-07-19', '2025-07-20', '2025-07-21', '2025-07-22', '2025-07-23', '2025-07-24', '2025-07-25', '2025-07-26']
+   • Directories checked: ./unprocessed, ./form_guides/downloaded, ./form_guides/processed, ./historical_races, ./processed
+🏁 Form Guide CSV Scraper initialized
+📂 Unprocessed directory: ./unprocessed
+📂 Download directory: ./form_guides/downloaded
+🎯 Target: Historical races (previous day or earlier) for training data
+✅ Form Scraper initialized
+Database initialized successfully.
+✅ Enhanced database initialized
+🔧 Attempting to initialize ChromeDriver...
+✅ Chrome driver initialized
+✅ Weather service initialized successfully
+🚀 Enhanced Comprehensive Processor Initialized (fast mode)
+✅ Selenium Available: True
+✅ BeautifulSoup Available: True
+✅ Scikit-learn Available: True
+⚙️ Processing Mode: fast
+📦 Batch Size: 50
+✅ Processor initialized
+🚀 Comprehensive Prediction Pipeline Initialized
+
+🔧 System Status:
+  ML System: ✅
+  Enhanced Data: ✅
+  Weather Predictor: ✅
+  Form Scraper: ✅
+  Processor: ✅
+  Overall: 5/5 systems available
+✅ Loaded model: balanced_extra_trees
+📊 Model accuracy: 0.959
+🔧 Features: 66
+🚀 Weather-Enhanced Predictor Initialized
+✅ Comprehensive ML Available: True
+✅ Trained Model Loaded: True
+🌤️ Weather integration: ENABLED
+🚀 Comprehensive Enhanced ML Model System Initialized
+   🧠 Using Unified Predictor API with 9/9 components available
+
+   🔎 Feature values:
+     weighted_recent_form: 5.7000
+     speed_trend: 0.3090
+     speed_consistency: 2.0998
+     venue_win_rate: 0.0000
+     venue_avg_position: 6.0000
+     venue_experience: 2.0000
+     distance_win_rate: 0.0000
+     distance_avg_time: 17.7500
+     box_position_win_rate: 0.1250
+     box_position_avg: 4.5000
+     recent_momentum: 0.3000
+     competitive_level: 0.4000
+     position_consistency: 0.3290
+     top_3_rate: 0.2000
+     break_quality: 0.5000
+   🎯 gradient_boosting_optimized: 0.0000 (weight: 1.00, raw)
+   🎯 gradient_boosting_optimized: 0.0000 (weight: 1.00)
+   📊 Final prediction: 0.0000 (adjusted: 0.0000)
+
+   🔎 Feature values:
+     weighted_recent_form: 4.9500
+     speed_trend: -0.0000
+     speed_consistency: 0.0332
+     venue_win_rate: 0.0000
+     venue_avg_position: 4.20002025-07-29 16:03:53,188 - unified_predictor - INFO - ✅ Unified system successful with good quality
+2025-07-29 16:03:53,188 - unified_predictor - INFO - 🤖 Applying GPT enhancement...
+2025-07-29 16:03:53,194 - gpt_prediction_enhancer - INFO - Running GPT analysis for race: NOWRA Race 10
+2025-07-29 16:04:07,131 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:04:07] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 16:04:07,272 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:04:07] "GET /api/race_files_status?t=1753769047115 HTTP/1.1" 200 -
+2025-07-29 16:04:19,901 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:04:19] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 16:04:19,961 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:04:19] "GET /api/race_files_status?t=1753769059878 HTTP/1.1" 200 -
+2025-07-29 16:04:22,204 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-07-29 16:04:37,126 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:04:37] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 16:04:37,201 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:04:37] "GET /api/race_files_status?t=1753769077115 HTTP/1.1" 200 -
+2025-07-29 16:04:48,629 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-07-29 16:05:07,125 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:05:07] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 16:05:07,259 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:05:07] "GET /api/race_files_status?t=1753769107112 HTTP/1.1" 200 -
+2025-07-29 16:05:19,902 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:05:19] "GET /api/file_stats HTTP/1.1" 200 -
+2025-07-29 16:05:20,018 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:05:20] "GET /api/race_files_status?t=1753769119873 HTTP/1.1" 200 -
+2025-07-29 16:05:22,429 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-07-29 16:05:22,450 - gpt_prediction_enhancer - INFO - Saved enhanced analysis to gpt_enhanced_predictions/gpt_enhanced_Race 10 - NOWRA - 2025-07-28.json
+2025-07-29 16:05:22,450 - unified_predictor - INFO - ✅ GPT enhancement applied
+2025-07-29 16:05:22,453 - unified_predictor - INFO - 🏁 Prediction completed in 0.04s using unified_system
+2025-07-29 16:05:22,468 - werkzeug - INFO - 127.0.0.1 - - [29/Jul/2025 16:05:22] "POST /api/predict_single_race HTTP/1.1" 200 -

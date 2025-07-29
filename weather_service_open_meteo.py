@@ -395,6 +395,24 @@ class OpenMeteoWeatherService:
                 latitude=-32.0167,
                 longitude=115.9333,
                 timezone='Australia/Perth'
+            ),
+            'DUB': VenueLocation(
+                venue_code='DUB',
+                venue_name='Dubbo',
+                city='Dubbo',
+                state='NSW',
+                latitude=-32.2433,
+                longitude=148.6019,
+                timezone='Australia/Sydney'
+            ),
+            'Q1L': VenueLocation(
+                venue_code='Q1L',
+                venue_name='Ladbrokes Q1 Lakeside',
+                city='Brisbane',
+                state='QLD',
+                latitude=-27.4705,
+                longitude=153.0260,
+                timezone='Australia/Brisbane'
             )
         }
         return venues

@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class DatabaseInitializer:
     def __init__(self, base_path):
         self.base_path = Path(base_path)
-        self.db_path = self.base_path / "race_data.db"
+        self.db_path = self.base_path / "greyhound_racing_data.db"
         self.migration_stats = {
             'tables_created': 0,
             'records_imported': 0,

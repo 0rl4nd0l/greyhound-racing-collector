@@ -83,6 +83,13 @@ class GreyhoundVenueMapper:
                 'location': 'NSW',
                 'active': True
             },
+            'DUB': {
+                'official_name': 'Dubbo',
+                'codes': ['DUB', 'dub', 'DUBBO'],
+                'track_codes': ['DUB'],
+                'location': 'NSW',
+                'active': True
+            },
 
             # Victoria (VIC)
             'HEA': {
@@ -211,6 +218,13 @@ class GreyhoundVenueMapper:
                 'official_name': 'Rockhampton',
                 'codes': ['ROCK', 'rock', 'ROCKHAMPTON'],
                 'track_codes': ['ROCK'],
+                'location': 'QLD',
+                'active': True
+            },
+            'Q1L': {
+                'official_name': 'Ladbrokes Q1 Lakeside',
+                'codes': ['Q1L', 'q1l', 'Q1_LAKESIDE', 'LAKESIDE', 'Q1-LAKESIDE'],
+                'track_codes': ['Q1L'],
                 'location': 'QLD',
                 'active': True
             },

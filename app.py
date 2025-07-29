@@ -70,6 +70,473 @@ def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+@app.route('/api/dogs/search')
+def api_dogs_search():
+    """API endpoint to search for dogs"""
+    try:
+        query = request.args.get('q', '').strip()
+        limit = request.args.get('limit', 20, type=int)
+        
+        if not query:
+            return jsonify({
+                'success': False,
+                'message': 'Search query is required'
+            }), 400
+        
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        # Search dogs by name with case-insensitive matching
+        cursor.execute("""
+            SELECT 
+                d.dog_id,
+                d.dog_name,
+                d.total_races,
+                d.total_wins,
+                d.total_places,
+                d.best_time,
+                d.average_position,
+                d.last_race_date,
+                COUNT(dp.performance_id) as actual_races
+            FROM dogs d
+            LEFT JOIN dog_performances dp ON d.dog_name = dp.dog_name
+            WHERE d.dog_name LIKE ? OR d.dog_name LIKE ?
+            GROUP BY d.dog_id, d.dog_name
+            ORDER BY d.total_races DESC, d.total_wins DESC
+            LIMIT ?
+        """, (f'%{query}%', f'{query}%', limit))
+        
+        dogs = cursor.fetchall()
+        conn.close()
+        
+        # Format results
+        results = []
+        for dog in dogs:
+            win_rate = (dog[3] / dog[2] * 100) if dog[2] > 0 else 0
+            place_rate = (dog[4] / dog[2] * 100) if dog[2] > 0 else 0
+            
+            results.append({
+                'dog_id': dog[0],
+                'dog_name': dog[1],
+                'total_races': dog[2],
+                'total_wins': dog[3],
+                'total_places': dog[4],
+                'win_percentage': round(win_rate, 1),
+                'place_percentage': round(place_rate, 1),
+                'best_time': dog[5],
+                'average_position': round(dog[6], 1) if dog[6] else None,
+                'last_race_date': dog[7],
+                'actual_races': dog[8]
+            })
+        
+        return jsonify({
+            'success': True,
+            'dogs': results,
+            'query': query,
+            'count': len(results)
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error searching dogs: {str(e)}'
+        }), 500
+
+@app.route('/api/dogs/<dog_name>/details')
+def api_dog_details(dog_name):
+    """API endpoint to get detailed information about a specific dog"""
+    try:
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        # Get dog basic information
+        cursor.execute("""
+            SELECT 
+                dog_id, dog_name, total_races, total_wins, total_places,
+                best_time, average_position, last_race_date, created_at
+            FROM dogs 
+            WHERE dog_name = ?
+        """, (dog_name,))
+        
+        dog_info = cursor.fetchone()
+        if not dog_info:
+            conn.close()
+            return jsonify({
+                'success': False,
+                'message': 'Dog not found'
+            }), 404
+        
+        # Get recent performances (last 10 races)
+        cursor.execute("""
+            SELECT 
+                dp.race_id,
+                r.race_name,
+                r.venue,
+                r.race_date,
+                r.distance,
+                r.grade,
+                dp.box_number,
+                dp.finish_position,
+                dp.race_time,
+                dp.weight,
+                dp.trainer,
+                dp.odds,
+                dp.margin
+            FROM dog_performances dp
+            JOIN races r ON dp.race_id = r.race_id
+            WHERE dp.dog_name = ?
+            ORDER BY r.race_date DESC
+            LIMIT 10
+        """, (dog_name,))
+        
+        recent_races = cursor.fetchall()
+        
+        # Get performance statistics by venue
+        cursor.execute("""
+            SELECT 
+                r.venue,
+                COUNT(*) as races,
+                SUM(CASE WHEN dp.finish_position = 1 THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN dp.finish_position <= 3 THEN 1 ELSE 0 END) as places,
+                AVG(dp.finish_position) as avg_position,
+                MIN(dp.race_time) as best_time
+            FROM dog_performances dp
+            JOIN races r ON dp.race_id = r.race_id
+            WHERE dp.dog_name = ? AND dp.finish_position IS NOT NULL
+            GROUP BY r.venue
+            ORDER BY races DESC
+        """, (dog_name,))
+        
+        venue_stats = cursor.fetchall()
+        
+        # Get performance by distance
+        cursor.execute("""
+            SELECT 
+                r.distance,
+                COUNT(*) as races,
+                SUM(CASE WHEN dp.finish_position = 1 THEN 1 ELSE 0 END) as wins,
+                AVG(dp.finish_position) as avg_position,
+                MIN(dp.race_time) as best_time
+            FROM dog_performances dp
+            JOIN races r ON dp.race_id = r.race_id
+            WHERE dp.dog_name = ? AND dp.finish_position IS NOT NULL
+            GROUP BY r.distance
+            ORDER BY races DESC
+        """, (dog_name,))
+        
+        distance_stats = cursor.fetchall()
+        
+        conn.close()
+        
+        # Format basic info
+        win_rate = (dog_info[3] / dog_info[2] * 100) if dog_info[2] > 0 else 0
+        place_rate = (dog_info[4] / dog_info[2] * 100) if dog_info[2] > 0 else 0
+        
+        dog_details = {
+            'dog_id': dog_info[0],
+            'dog_name': dog_info[1],
+            'total_races': dog_info[2],
+            'total_wins': dog_info[3],
+            'total_places': dog_info[4],
+            'win_percentage': round(win_rate, 1),
+            'place_percentage': round(place_rate, 1),
+            'best_time': dog_info[5],
+            'average_position': round(dog_info[6], 1) if dog_info[6] else None,
+            'last_race_date': dog_info[7],
+            'created_at': dog_info[8]
+        }
+        
+        # Format recent races
+        recent_performances = []
+        for race in recent_races:
+            recent_performances.append({
+                'race_id': race[0],
+                'race_name': race[1],
+                'venue': race[2],
+                'race_date': race[3],
+                'distance': race[4],
+                'grade': race[5],
+                'box_number': race[6],
+                'finish_position': race[7],
+                'race_time': race[8],
+                'weight': race[9],
+                'trainer': race[10],
+                'odds': race[11],
+                'margin': race[12]
+            })
+        
+        # Format venue statistics
+        venue_performance = []
+        for venue in venue_stats:
+            venue_win_rate = (venue[2] / venue[1] * 100) if venue[1] > 0 else 0
+            venue_place_rate = (venue[3] / venue[1] * 100) if venue[1] > 0 else 0
+            
+            venue_performance.append({
+                'venue': venue[0],
+                'races': venue[1],
+                'wins': venue[2],
+                'places': venue[3],
+                'win_percentage': round(venue_win_rate, 1),
+                'place_percentage': round(venue_place_rate, 1),
+                'average_position': round(venue[4], 1) if venue[4] else None,
+                'best_time': venue[5]
+            })
+        
+        # Format distance statistics
+        distance_performance = []
+        for distance in distance_stats:
+            dist_win_rate = (distance[2] / distance[1] * 100) if distance[1] > 0 else 0
+            
+            distance_performance.append({
+                'distance': distance[0],
+                'races': distance[1],
+                'wins': distance[2],
+                'win_percentage': round(dist_win_rate, 1),
+                'average_position': round(distance[3], 1) if distance[3] else None,
+                'best_time': distance[4]
+            })
+        
+        return jsonify({
+            'success': True,
+            'dog_details': dog_details,
+            'recent_performances': recent_performances,
+            'venue_performance': venue_performance,
+            'distance_performance': distance_performance
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error getting dog details: {str(e)}'
+        }), 500
+
+@app.route('/api/dogs/<dog_name>/form')
+def api_dog_form(dog_name):
+    """API endpoint to get form guide for a specific dog"""
+    try:
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        # Get last 20 performances with more details
+        cursor.execute("""
+            SELECT 
+                dp.race_id,
+                r.race_name,
+                r.venue,
+                r.race_date,
+                r.distance,
+                r.grade,
+                r.track_condition,
+                dp.box_number,
+                dp.finish_position,
+                dp.race_time,
+                dp.weight,
+                dp.trainer,
+                dp.odds,
+                dp.margin,
+                dp.sectional_time,
+                dp.split_times
+            FROM dog_performances dp
+            JOIN races r ON dp.race_id = r.race_id
+            WHERE dp.dog_name = ?
+            ORDER BY r.race_date DESC
+            LIMIT 20
+        """, (dog_name,))
+        
+        form_data = cursor.fetchall()
+        conn.close()
+        
+        # Format form guide
+        form_guide = []
+        for performance in form_data:
+            form_guide.append({
+                'race_id': performance[0],
+                'race_name': performance[1],
+                'venue': performance[2],
+                'race_date': performance[3],
+                'distance': performance[4],
+                'grade': performance[5],
+                'track_condition': performance[6],
+                'box_number': performance[7],
+                'finish_position': performance[8],
+                'race_time': performance[9],
+                'weight': performance[10],
+                'trainer': performance[11],
+                'odds': performance[12],
+                'margin': performance[13],
+                'sectional_time': performance[14],
+                'split_times': performance[15]
+            })
+        
+        # Calculate form trends
+        if len(form_guide) >= 5:
+            recent_positions = [race['finish_position'] for race in form_guide[:5] if race['finish_position']]
+            older_positions = [race['finish_position'] for race in form_guide[5:10] if race['finish_position']]
+            
+            recent_avg = sum(recent_positions) / len(recent_positions) if recent_positions else 0
+            older_avg = sum(older_positions) / len(older_positions) if older_positions else 0
+            
+            form_trend = "Improving" if recent_avg < older_avg else "Declining" if recent_avg > older_avg else "Stable"
+        else:
+            form_trend = "Insufficient data"
+        
+        return jsonify({
+            'success': True,
+            'dog_name': dog_name,
+            'form_guide': form_guide,
+            'form_trend': form_trend,
+            'total_performances': len(form_guide)
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error getting dog form: {str(e)}'
+        }), 500
+
+@app.route('/api/dogs/top_performers')
+def api_top_performers():
+    """API endpoint to get top performing dogs"""
+    try:
+        metric = request.args.get('metric', 'win_rate')  # win_rate, place_rate, total_wins
+        limit = request.args.get('limit', 20, type=int)
+        min_races = request.args.get('min_races', 5, type=int)
+        
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        if metric == 'win_rate':
+            order_by = 'CAST(total_wins AS FLOAT) / total_races DESC'
+        elif metric == 'place_rate':
+            order_by = 'CAST(total_places AS FLOAT) / total_races DESC'
+        elif metric == 'total_wins':
+            order_by = 'total_wins DESC'
+        else:
+            order_by = 'total_races DESC'
+        
+        cursor.execute(f"""
+            SELECT 
+                dog_name,
+                total_races,
+                total_wins,
+                total_places,
+                best_time,
+                average_position,
+                last_race_date
+            FROM dogs 
+            WHERE total_races >= ?
+            ORDER BY {order_by}
+            LIMIT ?
+        """, (min_races, limit))
+        
+        top_dogs = cursor.fetchall()
+        conn.close()
+        
+        # Format results
+        performers = []
+        for dog in top_dogs:
+            win_rate = (dog[2] / dog[1] * 100) if dog[1] > 0 else 0
+            place_rate = (dog[3] / dog[1] * 100) if dog[1] > 0 else 0
+            
+            performers.append({
+                'dog_name': dog[0],
+                'total_races': dog[1],
+                'total_wins': dog[2],
+                'total_places': dog[3],
+                'win_percentage': round(win_rate, 1),
+                'place_percentage': round(place_rate, 1),
+                'best_time': dog[4],
+                'average_position': round(dog[5], 1) if dog[5] else None,
+                'last_race_date': dog[6]
+            })
+        
+        return jsonify({
+            'success': True,
+            'top_performers': performers,
+            'metric': metric,
+            'min_races': min_races,
+            'count': len(performers)
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error getting top performers: {str(e)}'
+        }), 500
+
+
+#!/usr/bin/env python3
+"""
+Greyhound Racing Dashboard
+=========================
+
+Flask web application for monitoring and analyzing greyhound racing data.
+Integrates with the existing data collection and analysis system.
+
+Author: AI Assistant
+Date: July 11, 2025
+"""
+
+import os
+import sqlite3
+import json
+import subprocess
+import sys
+import math
+from datetime import datetime, timedelta
+from pathlib import Path
+from flask import Flask, render_template, jsonify, request, redirect, url_for, flash
+from werkzeug.utils import secure_filename
+import pandas as pd
+import threading
+import time
+from logger import logger
+from enhanced_race_analyzer import EnhancedRaceAnalyzer
+from sportsbet_odds_integrator import SportsbetOddsIntegrator
+from venue_mapping_fix import GreyhoundVenueMapper
+from enhanced_data_integration import EnhancedDataIntegrator
+import pickle
+import logging
+import hashlib
+
+# Model registry system
+from model_registry import get_model_registry
+
+# Prediction system imports
+try:
+    from unified_predictor import UnifiedPredictor
+except ImportError:
+    UnifiedPredictor = None
+    print("Warning: UnifiedPredictor not available")
+
+try:
+    from comprehensive_prediction_pipeline import ComprehensivePredictionPipeline
+except ImportError:
+    ComprehensivePredictionPipeline = None
+    print("Warning: ComprehensivePredictionPipeline not available")
+
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
+
+app = Flask(__name__)
+app.secret_key = 'greyhound_racing_secret_key_2025'
+
+# Configuration
+DATABASE_PATH = 'greyhound_racing_data.db'
+UNPROCESSED_DIR = './unprocessed'
+PROCESSED_DIR = './processed'
+HISTORICAL_DIR = './historical_races'
+UPCOMING_DIR = './upcoming_races'
+
+# Upload configuration
+ALLOWED_EXTENSIONS = {'csv'}
+app.config['UPLOAD_FOLDER'] = UPCOMING_DIR
+
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 @app.route('/api/races')
 def api_races():
     """API endpoint to list all races with details"""
@@ -101,30 +568,156 @@ def predict_basic():
         if UnifiedPredictor is None:
             return jsonify({'error': 'UnifiedPredictor not available'}), 500
         
+        logger.log_process(f"Starting prediction for race ID: {race_id}")
         predictor = UnifiedPredictor()
         prediction_result = predictor.predict_race_file(race_id)
+        logger.log_process(f"Completed prediction for race ID: {race_id}")
         return jsonify(prediction_result)
     except Exception as e:
+        logger.log_error(f"Error during prediction for race ID: {race_id}", error=e)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/predict', methods=['POST'])
 def api_predict():
-    """Comprehensive API prediction endpoint"""
+    """Unified API prediction endpoint"""
     data = request.get_json()
-    if not data or not isinstance(data.get('race_data'), list):
-        return jsonify({'error': 'Invalid race data provided'}), 400
+    
+    # Handle both single race prediction and batch prediction requests
+    if data and data.get('race_filename'):
+        # Single race prediction (from frontend predictRace function)
+        return api_predict_single_race()
+    elif data and isinstance(data.get('race_data'), list):
+        # Batch prediction (from runComprehensivePrediction)
+        return api_predict_batch(data)
+    else:
+        # No specific data provided - run prediction on all upcoming races
+        return api_predict_all_upcoming()
 
+def api_predict_single_race():
+    """Single race prediction using UnifiedPredictor"""
+    data = request.get_json()
+    if not data or 'race_filename' not in data:
+        return jsonify({'error': 'No race filename provided'}), 400
+
+    race_filename = data['race_filename']
+    race_file_path = os.path.join(UPCOMING_DIR, race_filename)
+    
     try:
-        if ComprehensivePredictionPipeline is None:
-            return jsonify({'error': 'ComprehensivePredictionPipeline not available'}), 500
+        if UnifiedPredictor is None:
+            return jsonify({'error': 'UnifiedPredictor not available'}), 500
         
-        pipeline = ComprehensivePredictionPipeline()
-        results = []
-        for entry in data['race_data']:
-            prediction = pipeline.run_complete_analysis(entry['filename'])
-            results.append(prediction)
-        return jsonify({'predictions': results})
+        if not os.path.exists(race_file_path):
+            return jsonify({'error': f'Race file not found: {race_filename}'}), 404
+        
+        logger.log_process(f"Starting unified prediction for race: {race_filename}")
+        predictor = UnifiedPredictor()
+        prediction_result = predictor.predict_race_file(race_file_path, enhancement_level='full')
+        logger.log_process(f"Completed unified prediction for race: {race_filename}")
+        
+        if prediction_result.get('success'):
+            return jsonify({
+                'success': True,
+                'message': f'Prediction completed for {race_filename}',
+                'prediction': prediction_result
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': f'Prediction failed: {prediction_result.get("error", "Unknown error")}'
+            }), 500
+            
     except Exception as e:
+        logger.log_error(f"Error during unified prediction for {race_filename}", error=e)
+        return jsonify({
+            'success': False,
+            'message': f'Prediction error: {str(e)}'
+        }), 500
+
+def api_predict_batch(data):
+    """Batch prediction using UnifiedPredictor"""
+    try:
+        if UnifiedPredictor is None:
+            return jsonify({'error': 'UnifiedPredictor not available'}), 500
+        
+        race_data = data['race_data']
+        # Use the existing processing status system for frontend logging
+        safe_log_to_processing(f"🚀 Starting unified prediction pipeline for {len(race_data)} races", "INFO", 0)
+        
+        predictor = UnifiedPredictor()
+        results = []
+        total_races = len(race_data)
+        
+        for i, entry in enumerate(race_data):
+            progress = int((i / total_races) * 100)
+            filename = entry.get('filename', entry.get('race_filename', str(entry)))
+            safe_log_to_processing(f"📈 Processing race {i+1}/{total_races}: {filename}", "INFO", progress)
+            
+            race_file_path = os.path.join(UPCOMING_DIR, filename)
+            if os.path.exists(race_file_path):
+                prediction = predictor.predict_race_file(race_file_path, enhancement_level='full')
+                results.append(prediction)
+                safe_log_to_processing(f"✅ Completed prediction for race {i+1}/{total_races}: {filename}", "INFO")
+            else:
+                safe_log_to_processing(f"⚠️ Race file not found: {filename}", "WARNING")
+                results.append({'success': False, 'error': f'File not found: {filename}'})
+        
+        safe_log_to_processing(f"🎉 Unified prediction pipeline completed for {len(results)} races", "INFO", 100)
+        
+        return jsonify({
+            'success': True,
+            'predictions': results,
+            'total_processed': len(results),
+            'successful_predictions': sum(1 for r in results if r.get('success'))
+        })
+    except Exception as e:
+        safe_log_to_processing(f"❌ Error in unified prediction pipeline: {str(e)}", "ERROR")
+        return jsonify({'error': str(e)}), 500
+
+def api_predict_all_upcoming():
+    """Predict all upcoming races using UnifiedPredictor"""
+    try:
+        if UnifiedPredictor is None:
+            return jsonify({'error': 'UnifiedPredictor not available'}), 500
+        
+        # Get all CSV files in upcoming_races directory
+        upcoming_files = []
+        if os.path.exists(UPCOMING_DIR):
+            for file in os.listdir(UPCOMING_DIR):
+                if file.endswith('.csv'):
+                    upcoming_files.append(file)
+        
+        if not upcoming_files:
+            return jsonify({
+                'success': True,
+                'message': 'No upcoming races found',
+                'predictions': []
+            })
+        
+        safe_log_to_processing(f"🚀 Starting unified prediction for {len(upcoming_files)} upcoming races", "INFO", 0)
+        
+        predictor = UnifiedPredictor()
+        results = []
+        
+        for i, filename in enumerate(upcoming_files):
+            progress = int((i / len(upcoming_files)) * 100)
+            safe_log_to_processing(f"📈 Processing race {i+1}/{len(upcoming_files)}: {filename}", "INFO", progress)
+            
+            race_file_path = os.path.join(UPCOMING_DIR, filename)
+            prediction = predictor.predict_race_file(race_file_path, enhancement_level='full')
+            results.append(prediction)
+            
+            safe_log_to_processing(f"✅ Completed prediction for race {i+1}/{len(upcoming_files)}: {filename}", "INFO")
+        
+        safe_log_to_processing(f"🎉 Unified prediction completed for {len(results)} races", "INFO", 100)
+        
+        return jsonify({
+            'success': True,
+            'predictions': results,
+            'total_processed': len(results),
+            'successful_predictions': sum(1 for r in results if r.get('success'))
+        })
+    except Exception as e:
+        safe_log_to_processing(f"❌ Error in unified prediction: {str(e)}", "ERROR")
         return jsonify({'error': str(e)}), 500
 
 class DatabaseManager:
@@ -2561,8 +3154,26 @@ def api_race_files_status():
                         print(f"Error processing prediction file {filename}: {e}")
                         continue
         
-        # Sort predictions by timestamp (newest first), then by file modification time
-        predictions.sort(key=lambda x: (x.get('prediction_timestamp', ''), x.get('file_mtime', 0)), reverse=True)
+        # Filter out invalid predictions with "Unknown" or empty venue/race_date
+        valid_predictions = []
+        for pred in predictions:
+            venue = pred.get('venue', '')
+            race_date = pred.get('race_date', '')
+            race_name = pred.get('race_name', '')
+            
+            # Skip predictions with invalid data
+            if (venue in ['Unknown', '', 'N/A', 'nan', 'null'] or 
+                race_date in ['Unknown', '', 'N/A', 'nan', 'null'] or
+                race_name.startswith('manual_test_') or
+                race_name.startswith('ballarat_race_') or
+                'weather_enhanced_Unknown' in pred.get('file_path', '')):
+                continue
+            
+            valid_predictions.append(pred)
+        
+        # Sort valid predictions by timestamp (newest first), then by file modification time
+        valid_predictions.sort(key=lambda x: (x.get('prediction_timestamp', ''), x.get('file_mtime', 0)), reverse=True)
+        predictions = valid_predictions
         
         # Separate predicted and unpredicted races
         unpredicted_races = [
@@ -2797,6 +3408,47 @@ def api_scrape_race_data():
         }), 500
 
 @app.route('/api/predict_single_race', methods=['POST'])
+def api_predict_single_race_standalone():
+    """Standalone API endpoint for single race prediction (for frontend compatibility)"""
+    data = request.get_json()
+    if not data or 'race_filename' not in data:
+        return jsonify({'error': 'No race filename provided'}), 400
+
+    race_filename = data['race_filename']
+    race_file_path = os.path.join(UPCOMING_DIR, race_filename)
+    
+    try:
+        if UnifiedPredictor is None:
+            return jsonify({'error': 'UnifiedPredictor not available'}), 500
+        
+        if not os.path.exists(race_file_path):
+            return jsonify({'error': f'Race file not found: {race_filename}'}), 404
+        
+        logger.log_process(f"Starting unified prediction for race: {race_filename}")
+        predictor = UnifiedPredictor()
+        prediction_result = predictor.predict_race_file(race_file_path, enhancement_level='full')
+        logger.log_process(f"Completed unified prediction for race: {race_filename}")
+        
+        if prediction_result.get('success'):
+            return jsonify({
+                'success': True,
+                'message': f'Prediction completed for {race_filename}',
+                'prediction': prediction_result
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': f'Prediction failed: {prediction_result.get("error", "Unknown error")}'
+            }), 500
+            
+    except Exception as e:
+        logger.log_error(f"Error during unified prediction for {race_filename}", error=e)
+        return jsonify({
+            'success': False,
+            'message': f'Prediction error: {str(e)}'
+        }), 500
+
+@app.route('/api/predict_single_race_enhanced', methods=['POST'])
 def api_predict_single_race():
     """API endpoint to predict a single race file with automatic data enhancement"""
     try:
@@ -7038,6 +7690,11 @@ def api_automation_storage_info():
             'success': False,
             'message': f'Error getting storage info: {str(e)}'
         }), 500
+
+@app.route('/dogs')
+def dogs_analysis():
+    """Dogs analysis and search page"""
+    return render_template('dogs_analysis.html')
 
 @app.route('/api/download_and_predict_race', methods=['POST'])
 def api_download_and_predict_race():

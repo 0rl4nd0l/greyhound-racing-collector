@@ -660,8 +660,10 @@ class EnhancedComprehensiveProcessor:
         patterns = [
             # Pattern 1: "Race_XX_VENUE_YYYY-MM-DD.csv" (current format)
             (r'Race_(\d+)_([A-Z_]+)_(\d{4}-\d{2}-\d{2})\.csv', '%Y-%m-%d'),
-            # Pattern 2: "Race X - VENUE - DATE.csv" (legacy format)
-            (r'Race (\d+) - ([A-Z_]+) - (\d{1,2} \w+ \d{4})\.csv', '%d %B %Y')
+            # Pattern 2: "Race X - VENUE - DD Month YYYY.csv" (legacy format)
+            (r'Race (\d+) - ([A-Z_]+) - (\d{1,2} \w+ \d{4})\.csv', '%d %B %Y'),
+            # Pattern 3: "Race X - VENUE - D Month YYYY.csv" (single digit day)
+            (r'Race (\d+) - ([A-Z_]+) - (\d{1} \w+ \d{4})\.csv', '%d %B %Y')
         ]
         
         race_number = None
@@ -719,7 +721,7 @@ class EnhancedComprehensiveProcessor:
         return None
     
     def scrape_race_results(self, race_info: Dict[str, Any]) -> Dict[str, Any]:
-        """Scrape race results including winners, odds, and track conditions from thedogs.com.au"""
+        """Scrape race results including winners, odds, track conditions, and speed ratings from thedogs.com.au"""
         results = {
             'winner': None,
             'winner_odds': None,
@@ -729,6 +731,7 @@ class EnhancedComprehensiveProcessor:
             'field_size': None,
             'race_time': None,
             'all_results': [],
+            'expert_form_data': {},  # Speed ratings and expert analysis
             'scraped_successfully': False,
             'race_url': None
         }
@@ -780,6 +783,12 @@ class EnhancedComprehensiveProcessor:
             if all_results:
                 results['all_results'] = all_results
                 results['field_size'] = len(all_results)
+            
+            # Extract expert form data including speed ratings
+            expert_form_data = self.extract_expert_form_data(soup, race_url)
+            if expert_form_data:
+                results['expert_form_data'] = expert_form_data
+                print(f"   ✅ Expert form data extracted: {len(expert_form_data)} dogs with ratings")
             
             print(f"   ✅ Race results scraped successfully")
             
@@ -1525,6 +1534,131 @@ class EnhancedComprehensiveProcessor:
         
         return []
     
+    def extract_expert_form_data(self, soup, race_url: str) -> Dict[str, Any]:
+        """Extract expert form data including speed ratings from the race page"""
+        expert_data = {}
+        
+        try:
+            # Try to find expert form tab or section
+            expert_selectors = [
+                '.expert-form',
+                '.form-expert',
+                '[data-tab="expert"]',
+                '[data-tab="form"]',
+                '.expert-analysis',
+                '.speed-ratings',
+                '.ratings-table',
+                '.form-guide-expert'
+            ]
+            
+            expert_section = None
+            for selector in expert_selectors:
+                expert_section = soup.select_one(selector)
+                if expert_section:
+                    print(f"   📊 Found expert form section using: {selector}")
+                    break
+            
+            # If no specific expert section, try to find speed ratings in tables
+                if not expert_section:
+                    print("   ⚠️ No specific expert section found, searching tables for speed ratings...")
+                # Look for tables that might contain speed ratings
+                tables = soup.find_all('table')
+                for table in tables:
+                    headers = [th.get_text(strip=True).lower() for th in table.find_all(['th', 'td'])[:10]]
+                    if any('speed' in header or 'rating' in header for header in headers):
+                        expert_section = table
+                        print(f"   📊 Found speed rating table")
+                        break
+            
+            if expert_section:
+                # Extract speed ratings and other expert data
+                rows = expert_section.find_all('tr')
+                for row in rows[1:]:  # Skip header
+                    cells = row.find_all(['td', 'th'])
+                    if len(cells) >= 2:
+                        try:
+                            # Try to extract dog name and speed rating
+                            dog_name = cells[0].get_text(strip=True) if cells[0] else ''
+                            
+                            # Look for speed rating in subsequent cells
+                            speed_rating = None
+                            for cell in cells[1:]:
+                                cell_text = cell.get_text(strip=True)
+                                # Look for numeric rating (typically 0-100)
+                                if cell_text and cell_text.replace('.', '').isdigit():
+                                    rating_val = float(cell_text)
+                                    if 0 <= rating_val <= 100:
+                                        speed_rating = rating_val
+                                        break
+                            
+                            if dog_name and speed_rating is not None:
+                                clean_name = self.clean_dog_name(dog_name)
+                                expert_data[clean_name] = {
+                                    'speed_rating': speed_rating,
+                                    'expert_analysis': True
+                                }
+                                # Ensure valid dog name format
+                                clean_name = clean_name.title().strip()
+                                print(f"   🎯 Extracted speed rating for {clean_name}: {speed_rating}")
+                        
+                        except Exception as e:
+                            print(f"   ⚠️ Error processing expert form row: {e}")
+                            continue
+            
+            # Alternative: Look for speed ratings in the page text using patterns
+            if not expert_data:
+                # Process text line by line to avoid cross-line matching
+                page_text = soup.get_text()
+                lines = page_text.split('\n')
+                
+                # Look for patterns like "Dog Name: 85" or "Speed: 85" within single lines
+                speed_patterns = [
+                    r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*):\s*(\d{1,3})(?!\d)',  # Dog name: rating (proper case names only)
+                    r'\bSR:\s*(\d{1,3})\s+for\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',  # SR: 85 for Dog Name
+                    r'\bSpeed\s+Rating:\s*(\d{1,3})\s+for\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)'  # Speed Rating: 85 for Dog Name
+                ]
+                
+                for line in lines:
+                    line = line.strip()
+                    if not line:
+                        continue
+                        
+                    for pattern in speed_patterns:
+                        matches = re.findall(pattern, line)
+                        for match in matches:
+                            if isinstance(match, tuple) and len(match) >= 2:
+                                # For patterns where name is first
+                                if pattern.startswith(r'\b([A-Z]'):
+                                    name = match[0].strip()
+                                    rating = match[1]
+                                # For patterns where rating is first (SR: pattern)
+                                else:
+                                    rating = match[0]
+                                    name = match[1].strip()
+                            else:
+                                continue
+                            
+                            try:
+                                rating_val = float(rating.strip())
+                                if 0 <= rating_val <= 100 and len(name) > 3 and not any(char in name for char in ['\n', '\r', '\t']):
+                                    clean_name = self.clean_dog_name(name)
+                                    # Additional validation: clean name should not be too long or contain weird characters
+                                    if len(clean_name) <= 30 and clean_name.replace(' ', '').isalpha():
+                                        expert_data[clean_name] = {
+                                            'speed_rating': rating_val,
+                                            'expert_analysis': True
+                                        }
+                                        print(f"   🎯 Extracted speed rating via pattern for {clean_name}: {rating_val}")
+                            except:
+                                continue
+            
+            print(f"   📊 Total expert form data extracted: {len(expert_data)} entries")
+            return expert_data
+            
+        except Exception as e:
+            print(f"   ❌ Error extracting expert form data: {e}")
+            return {}
+    
     def combine_race_data(self, race_info: Dict[str, Any], race_results: Dict[str, Any]) -> Dict[str, Any]:
         """Combine race info from filename with scraped race results"""
         combined = race_info.copy()
@@ -1856,9 +1990,24 @@ class EnhancedComprehensiveProcessor:
                 dog_data['scraped_race_classification'] = ''
                 dog_data['scraped_raw_result'] = ''
             
-            # Calculate enhanced metrics
+            # Calculate enhanced metrics - use scraped speed rating if available
             dog_data['performance_rating'] = self.calculate_performance_rating(row)
-            dog_data['speed_rating'] = self.calculate_speed_rating(row)
+            
+            # First try to get speed rating from scraped expert form data
+            scraped_speed_rating = None
+            if race_results and race_results.get('expert_form_data'):
+                expert_data = race_results['expert_form_data']
+                clean_name = dog_data['dog_clean_name']
+                if clean_name in expert_data:
+                    scraped_speed_rating = expert_data[clean_name].get('speed_rating')
+                    print(f"   🎯 Using scraped speed rating for {clean_name}: {scraped_speed_rating}")
+            
+            # Use scraped speed rating if available, otherwise calculate from form guide
+            if scraped_speed_rating is not None:
+                dog_data['speed_rating'] = scraped_speed_rating
+            else:
+                dog_data['speed_rating'] = self.calculate_speed_rating(row)
+            
             dog_data['class_rating'] = self.calculate_class_rating(row)
             
             # Calculate win/place probabilities
@@ -2048,21 +2197,35 @@ class EnhancedComprehensiveProcessor:
         return 50.0  # Default rating
     
     def calculate_speed_rating(self, row) -> float:
-        """Calculate speed rating"""
+        """Calculate speed rating with improved logic"""
         try:
             time_str = str(row.get('TIME', ''))
             win_time_str = str(row.get('WIN', ''))
             
+            # Try to calculate relative to winner time first
             if time_str and win_time_str and time_str.replace('.', '').isdigit() and win_time_str.replace('.', '').isdigit():
                 time_val = float(time_str)
                 win_time_val = float(win_time_str)
                 
-                if win_time_val > 0:
-                    # Speed rating relative to winner
-                    return max(0, 100 - ((time_val - win_time_val) * 10))
-        except:
-            pass
-        return 50.0
+                if win_time_val > 0 and 20.0 <= time_val <= 50.0 and 20.0 <= win_time_val <= 50.0:
+                    # Speed rating relative to winner (more realistic range)
+                    rating = max(20, min(90, 100 - ((time_val - win_time_val) * 5)))
+                    return rating
+            
+            # Fallback: Calculate based on absolute time if valid
+            if time_str and time_str.replace('.', '').isdigit():
+                time_val = float(time_str)
+                if 25.0 <= time_val <= 40.0:  # Realistic race time range
+                    # Scale time to rating: 25s = 90 rating, 40s = 30 rating
+                    rating = max(20, min(90, 90 - ((time_val - 25) * 4)))
+                    return rating
+            
+            # No valid data - return None to be handled by data quality logic
+            return None
+            
+        except Exception as e:
+            print(f"Speed rating calculation error: {e}")
+            return None
     
     def calculate_class_rating(self, row) -> float:
         """Calculate class rating based on grade"""

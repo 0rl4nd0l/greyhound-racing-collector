@@ -109,7 +109,7 @@ class DataIntegrityChecker:
         """Check database integrity and consistency"""
         logger.info("🗃️ Checking database integrity...")
         
-        db_path = os.path.join(self.base_path, "databases", "race_data.db")
+        db_path = os.path.join(self.base_path, "greyhound_racing_data.db")
         if not os.path.exists(db_path):
             self.log_issue("MISSING_DATABASE", "Main database file not found")
             return

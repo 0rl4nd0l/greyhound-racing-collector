@@ -20,6 +20,7 @@ Date: July 25, 2025
 import os
 import sys
 import json
+import re
 import numpy as np
 import pandas as pd
 from json_utils import safe_json_dump, safe_mean, safe_correlation, safe_float
@@ -602,42 +603,249 @@ class WeatherEnhancedPredictor:
             return []
     
     def _extract_race_info(self, race_file_path):
-        """Extract race information from file path"""
+        """Extract race information from file path with enhanced parsing"""
         try:
             filename = os.path.basename(race_file_path)
-            # Example: "Race 1 - AP_K - 24 July 2025.csv"
-            parts = filename.replace('.csv', '').split(' - ')
+            print(f"🔍 Parsing filename: {filename}")
             
-            if len(parts) >= 3:
-                race_number = parts[0].replace('Race ', '')
-                venue = parts[1]
-                date_str = parts[2]
-                
-                return {
-                    'filename': filename,
-                    'race_number': race_number,
-                    'venue': venue,
-                    'race_date': date_str,
-                    'filepath': race_file_path
-                }
-            else:
-                return {
-                    'filename': filename,
-                    'race_number': 'Unknown',
-                    'venue': 'Unknown',
-                    'race_date': 'Unknown',
-                    'filepath': race_file_path
-                }
-                
-        except Exception as e:
-            print(f"⚠️ Error extracting race info: {e}")
-            return {
-                'filename': os.path.basename(race_file_path),
-                'race_number': 'Unknown',
-                'venue': 'Unknown',
-                'race_date': 'Unknown',
+            # Initialize with defaults
+            result = {
+                'filename': filename, 
+                'venue': 'UNKNOWN', 
+                'race_number': '0', 
+                'race_date': datetime.now().strftime('%Y-%m-%d'), 
                 'filepath': race_file_path
             }
+
+            # Enhanced parsing patterns with proper group assignments
+            patterns = [
+                # Pattern 1: "Race 5 - GEE - 22 July 2025.csv"
+                {
+                    'pattern': r'Race\s+(\d+)\s*-\s*([A-Z_]+)\s*-\s*(\d{1,2}\s+\w+\s+\d{4})',
+                    'groups': ['race_number', 'venue', 'date_str']
+                },
+                # Pattern 2: "Race_5_GEE_22_July_2025.csv"
+                {
+                    'pattern': r'Race_(\d+)_([A-Z_]+)_(.+)',
+                    'groups': ['race_number', 'venue', 'date_str']
+                },
+                # Pattern 3: "GEE_5_22_July_2025.csv" (venue first)
+                {
+                    'pattern': r'([A-Z_]+)_(\d+)_(.+)',
+                    'groups': ['venue', 'race_number', 'date_str']
+                },
+                # Pattern 4: "gee_2025-07-22_5.csv" (lowercase with ISO date)
+                {
+                    'pattern': r'([a-z]+)_(\d{4}-\d{2}-\d{2})_(\d+)',
+                    'groups': ['venue', 'date_str', 'race_number']
+                },
+                # Pattern 5: "race5_gee_july22.csv"
+                {
+                    'pattern': r'race(\d+)[_-]([a-zA-Z]+)[_-](.+)',
+                    'groups': ['race_number', 'venue', 'date_str']
+                }
+            ]
+            
+            for pattern_config in patterns:
+                match = re.search(pattern_config['pattern'], filename, re.IGNORECASE)
+                if match:
+                    groups = match.groups()
+                    group_names = pattern_config['groups']
+                    
+                    if len(groups) == len(group_names):
+                        parsed_data = {}
+                        for i, group_name in enumerate(group_names):
+                            value = groups[i].strip() if groups[i] else ''
+                            
+                            if group_name == 'venue':
+                                parsed_data['venue'] = self._normalize_venue(value)
+                            elif group_name == 'race_number':
+                                parsed_data['race_number'] = self._parse_race_number(value)
+                            elif group_name == 'date_str':
+                                parsed_data['race_date'] = self._normalize_date(value)
+                        
+                        # Update result with parsed data
+                        result.update(parsed_data)
+                        print(f"✅ Parsed using pattern {pattern_config['pattern'][:30]}...")
+                        print(f"   Venue: {result['venue']}, Race: {result['race_number']}, Date: {result['race_date']}")
+                        break
+
+            # If parsing failed, try content-based extraction
+            if result['venue'] == 'UNKNOWN':
+                print(f"⚠️ Standard parsing failed, trying content-based extraction...")
+                result = self._try_content_based_parsing(race_file_path, result)
+
+            return result
+        except Exception as e:
+            print(f"❌ Error extracting race info: {e}")
+            return {
+                'filename': os.path.basename(race_file_path), 
+                'race_number': '0', 
+                'venue': 'UNKNOWN', 
+                'race_date': datetime.now().strftime('%Y-%m-%d'), 
+                'filepath': race_file_path
+            }
+    
+    def _normalize_venue(self, venue_str):
+        """Normalize venue name to standard format"""
+        if not venue_str:
+            return 'UNKNOWN'
+        
+        venue_clean = venue_str.upper().strip().replace(' ', '_')
+        
+        # Known venue mappings
+        venue_mapping = {
+            'AP_K': 'AP_K', 'ANGLE_PARK': 'AP_K', 'ANGLE': 'AP_K',
+            'GEE': 'GEE', 'GEELONG': 'GEE',
+            'RICH': 'RICH', 'RICHMOND': 'RICH',
+            'DAPT': 'DAPT', 'DAPTO': 'DAPT',
+            'BAL': 'BAL', 'BALLARAT': 'BAL',
+            'BEN': 'BEN', 'BENDIGO': 'BEN',
+            'HEA': 'HEA', 'HEALESVILLE': 'HEA',
+            'WAR': 'WAR', 'WARRNAMBOOL': 'WAR',
+            'SAN': 'SAN', 'SANDOWN': 'SAN',
+            'MOUNT': 'MOUNT', 'MOUNT_GAMBIER': 'MOUNT',
+            'MURR': 'MURR', 'MURRAY_BRIDGE': 'MURR',
+            'SAL': 'SAL', 'SALE': 'SAL',
+            'HOR': 'HOR', 'HORSHAM': 'HOR',
+            'CANN': 'CANN', 'CANNINGTON': 'CANN',
+            'WPK': 'WPK', 'W_PK': 'WPK', 'WENTWORTH_PARK': 'WPK',
+            'MEA': 'MEA', 'THE_MEADOWS': 'MEA', 'MEADOWS': 'MEA',
+            'HOBT': 'HOBT', 'HOBART': 'HOBT',
+            'GOSF': 'GOSF', 'GOSFORD': 'GOSF',
+            'NOR': 'NOR', 'NORTHAM': 'NOR',
+            'MAND': 'MAND', 'MANDURAH': 'MAND',
+            'GAWL': 'GAWL', 'GAWLER': 'GAWL',
+            'TRA': 'TRA', 'TRARALGON': 'TRA',
+            'CASO': 'CASO', 'CASINO': 'CASO',
+            'GRDN': 'GRDN', 'THE_GARDENS': 'GRDN', 'GARDENS': 'GRDN',
+            'DARW': 'DARW', 'DARWIN': 'DARW',
+            'ALBION': 'ALBION', 'ALBION_PARK': 'ALBION'
+        }
+        
+        # Direct mapping
+        if venue_clean in venue_mapping:
+            return venue_mapping[venue_clean]
+        
+        # Try partial matches
+        for key, value in venue_mapping.items():
+            if key in venue_clean or venue_clean in key:
+                return value
+        
+        # Return cleaned version as fallback
+        return venue_clean if len(venue_clean) <= 8 else venue_clean[:8]
+    
+    def _parse_race_number(self, race_str):
+        """Parse race number from string"""
+        if not race_str:
+            return '0'
+        
+        # Extract digits
+        digits = re.findall(r'\d+', str(race_str))
+        if digits:
+            race_num = int(digits[0])
+            if 1 <= race_num <= 20:  # Reasonable race number range
+                return str(race_num)
+        
+        return '0'
+    
+    def _normalize_date(self, date_str):
+        """Normalize date string to YYYY-MM-DD format"""
+        if not date_str:
+            return datetime.now().strftime('%Y-%m-%d')
+        
+        date_clean = str(date_str).strip().replace('_', ' ')
+        
+        # Month name mappings
+        month_mapping = {
+            'jan': '01', 'january': '01',
+            'feb': '02', 'february': '02',
+            'mar': '03', 'march': '03',
+            'apr': '04', 'april': '04',
+            'may': '05',
+            'jun': '06', 'june': '06',
+            'jul': '07', 'july': '07',
+            'aug': '08', 'august': '08',
+            'sep': '09', 'september': '09',
+            'oct': '10', 'october': '10',
+            'nov': '11', 'november': '11',
+            'dec': '12', 'december': '12'
+        }
+        
+        # Try different date patterns
+        date_patterns = [
+            r'(\d{1,2})\s+(\w+)\s+(\d{4})',  # "22 July 2025"
+            r'(\d{4})-(\d{2})-(\d{2})',      # "2025-07-22"
+            r'(\w+)(\d{1,2})',               # "july22"
+            r'(\d{2})(\d{2})(\d{4})',        # "22072025"
+        ]
+        
+        for pattern in date_patterns:
+            match = re.search(pattern, date_clean, re.IGNORECASE)
+            if match:
+                try:
+                    groups = match.groups()
+                    
+                    if pattern == r'(\d{1,2})\s+(\w+)\s+(\d{4})':  # "22 July 2025"
+                        day, month_name, year = groups
+                        month = month_mapping.get(month_name.lower())
+                        if month:
+                            return f"{year}-{month}-{day.zfill(2)}"
+                    
+                    elif pattern == r'(\d{4})-(\d{2})-(\d{2})':  # "2025-07-22"
+                        return f"{groups[0]}-{groups[1]}-{groups[2]}"
+                    
+                    elif pattern == r'(\w+)(\d{1,2})':  # "july22"
+                        month_name, day = groups
+                        month = month_mapping.get(month_name.lower())
+                        if month:
+                            year = datetime.now().year
+                            return f"{year}-{month}-{day.zfill(2)}"
+                    
+                except Exception:
+                    continue
+        
+        # Return current date if all parsing fails
+        return datetime.now().strftime('%Y-%m-%d')
+    
+    def _try_content_based_parsing(self, race_file_path, current_result):
+        """Try to extract race info from CSV content as last resort"""
+        result = current_result.copy()
+        
+        try:
+            # Try to read the CSV file and look for clues
+            df = pd.read_csv(race_file_path, nrows=10)  # Read first 10 rows only
+            
+            # Look for track/venue information in column headers or data
+            for col in df.columns:
+                col_str = str(col).upper()
+                if 'TRACK' in col_str or 'VENUE' in col_str:
+                    unique_values = df[col].dropna().unique()
+                    if len(unique_values) > 0:
+                        venue_candidate = str(unique_values[0]).strip()
+                        normalized_venue = self._normalize_venue(venue_candidate)
+                        if normalized_venue != 'UNKNOWN':
+                            result['venue'] = normalized_venue
+                            print(f"   📍 Found venue in content: {normalized_venue}")
+                            break
+            
+            # Look for race number in data
+            for col in df.columns:
+                col_str = str(col).upper()
+                if 'RACE' in col_str and 'NUMBER' in col_str:
+                    unique_values = df[col].dropna().unique()
+                    if len(unique_values) > 0:
+                        race_num_candidate = str(unique_values[0]).strip()
+                        parsed_race_num = self._parse_race_number(race_num_candidate)
+                        if parsed_race_num != '0':
+                            result['race_number'] = parsed_race_num
+                            print(f"   🏃 Found race number in content: {parsed_race_num}")
+                            break
+                            
+        except Exception as e:
+            print(f"   ⚠️ Content-based parsing failed: {e}")
+        
+        return result
     
     def _create_dog_features(self, dog_info, dog_historical, dog_form_data, race_info):
         """Create features for a single dog using comprehensive feature engineering"""

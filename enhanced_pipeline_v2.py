@@ -11,6 +11,7 @@ import pandas as pd
 import numpy as np
 import os
 import json
+import joblib
 from datetime import datetime
 from pathlib import Path
 
@@ -334,6 +335,21 @@ class EnhancedPipelineV2:
                 features['data_quality'] = 0.5
         else:
             features['data_quality'] = 0.7 if len(embedded_features) > 5 else 0.5  # Higher quality if we have embedded data
+        
+        # Ensure complete alignment with model's required features
+        try:
+            model_file = Path('./comprehensive_trained_models/comprehensive_best_model_20250727.joblib')
+            model_data = joblib.load(model_file)
+            expected_features = model_data['feature_columns']
+            
+            # Initialize missing features with default values
+            for feature_name in expected_features:
+                if feature_name not in features:
+                    features[feature_name] = 0.0  # Default to 0.0 if missing
+            
+            logger.debug(f"Aligned features for {dog_name} with model expectations")
+        except Exception as e:
+            logger.warning(f"Error aligning features with model: {e}")
         
         return features
     

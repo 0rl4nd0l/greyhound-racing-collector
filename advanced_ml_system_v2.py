@@ -20,6 +20,11 @@ import json
 from datetime import datetime, timedelta
 import sqlite3
 import warnings
+import logging
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Suppress sklearn warnings about feature names
 warnings.filterwarnings('ignore', category=UserWarning, module='sklearn')
@@ -289,14 +294,13 @@ class AdvancedMLSystemV2:
             'position_consistency', 'top_3_rate', 'break_quality'
         ]
         
-        # Debug feature matching
-        if not hasattr(self, '_debug_shown'):
-            print(f"🔍 ML Model feature validation:")
+        # Feature validation (reduced verbosity)
+        if not hasattr(self, '_feature_validation_shown'):
+            logger.debug(f"ML Model feature validation:")
             if hasattr(self, '_model_feature_columns'):
-                print(f"   Model-specific features: {self._model_feature_columns}")
-            print(f"   Base features: {base_features}")
-            print(f"   Input features: {sorted(list(features_dict.keys()))}")
-            self._debug_shown = True
+                logger.debug(f"   Model expects: {len(self._model_feature_columns)} features")
+            logger.debug(f"   Input provides: {len(features_dict)} features")
+            self._feature_validation_shown = True
             
         # Get expected features and verify
         expected_features = self._model_feature_columns if hasattr(self, '_model_feature_columns') else base_features
@@ -346,10 +350,10 @@ class AdvancedMLSystemV2:
             if model_name in self.model_weights:
                 weight = self.model_weights[model_name]
                 
-                # Check if this model uses scaling
-                use_scaling = hasattr(self, '_model_scaling') and self._model_scaling.get(model_name, False)
+                # Check if this model uses scaling - for registry models, always use scaling
+                use_scaling = True  # Registry models typically need scaling
                 
-                if use_scaling:
+                if use_scaling and hasattr(self, 'scaler') and self.scaler is not None:
                     try:
                         # Scale features and preserve column names
                         features_scaled = self.scaler.transform(feature_df)
@@ -361,7 +365,13 @@ class AdvancedMLSystemV2:
                         print(f"   🎯 {model_name}: {pred_proba:.4f} (weight: {weight:.2f}, scaled)")
                     except Exception as e:
                         print(f"⚠️ Error predicting with {model_name} (scaled): {e}")
-                        pred_proba = 0.5
+                        # Try without scaling as fallback
+                        try:
+                            pred_proba = model.predict_proba(feature_df)[0, 1]
+                            print(f"   🎯 {model_name}: {pred_proba:.4f} (weight: {weight:.2f}, raw fallback)")
+                        except Exception as e2:
+                            print(f"⚠️ Error predicting with {model_name} (raw fallback): {e2}")
+                            pred_proba = 0.5
                 else:
                     try:
                         # Use raw features
@@ -371,7 +381,6 @@ class AdvancedMLSystemV2:
                         print(f"⚠️ Error predicting with {model_name}: {e}")
                         pred_proba = 0.5
                 
-                print(f"   🎯 {model_name}: {pred_proba:.4f} (weight: {weight:.2f})")
                 weighted_predictions.append(pred_proba * weight)
         
         # Return weighted average
