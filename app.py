@@ -19,12 +19,18 @@ import math
 from datetime import datetime, timedelta
 from pathlib import Path
 from flask import Flask, render_template, jsonify, request, redirect, url_for, flash
+from flask_cors import CORS
 from werkzeug.utils import secure_filename
+try:
+    from tests.integrity_test import run_integrity_test
+except ImportError:
+    def run_integrity_test():
+        return {'status': 'error', 'message': 'Integrity test not available'}
 import pandas as pd
 import threading
 import time
 from logger import logger
-from enhanced_race_analyzer import EnhancedRaceAnalyzer
+from utils.file_naming import build_prediction_filename, extract_race_id_from_csv_filename
 from sportsbet_odds_integrator import SportsbetOddsIntegrator
 from venue_mapping_fix import GreyhoundVenueMapper
 from enhanced_data_integration import EnhancedDataIntegrator
@@ -65,6 +71,11 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = 'greyhound_racing_secret_key_2025'
 
+# Enable CORS for all domains on all routes
+CORS(app, origins="*", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], 
+     allow_headers=["Content-Type", "Authorization", "Access-Control-Allow-Credentials"],
+     supports_credentials=True)
+
 # Configuration
 DATABASE_PATH = 'greyhound_racing_data.db'
 UNPROCESSED_DIR = './unprocessed'
@@ -88,15 +99,14 @@ def api_dogs_search():
         limit = request.args.get('limit', 20, type=int)
         
         if not query:
-            return jsonify({
-                'success': False,
-                'message': 'Search query is required'
-            }), 400
+            return jsonify(logger.create_structured_error(
+                "Search query is required", 
+                error_code="MISSING_QUERY_PARAMETER"
+            )), 400
         
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
         
-        # Search dogs by name with case-insensitive matching
         cursor.execute("""
             SELECT 
                 d.dog_id,
@@ -119,7 +129,6 @@ def api_dogs_search():
         dogs = cursor.fetchall()
         conn.close()
         
-        # Format results
         results = []
         for dog in dogs:
             win_rate = (dog[3] / dog[2] * 100) if dog[2] > 0 else 0
@@ -147,10 +156,11 @@ def api_dogs_search():
         })
         
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Error searching dogs: {str(e)}'
-        }), 500
+        logger.exception("Error searching dogs")
+        return jsonify(logger.create_structured_error(
+            f"Error searching dogs: {str(e)}",
+            error_code="DOG_SEARCH_FAILED"
+        )), 500
 
 @app.route('/api/dogs/<dog_name>/details')
 def api_dog_details(dog_name):
@@ -586,6 +596,199 @@ def api_all_dogs():
         }), 500
 
 
+
+@app.route('/api/races/paginated')
+def api_races_paginated():
+    """API endpoint for interactive races with pagination, search, and runners"""
+    try:
+        # Get parameters
+        page = request.args.get('page', 1, type=int)
+        per_page = min(request.args.get('per_page', 10, type=int), 50)  # Limit to prevent overload
+        sort_by = request.args.get('sort_by', 'race_date')
+        order = request.args.get('order', 'desc')
+        search = request.args.get('search', '').strip()
+        
+        try:
+            conn = db_manager.get_connection()
+            cursor = conn.cursor()
+        except Exception as e:
+            return jsonify({
+                'success': False,
+                'message': f'Database connection error: {str(e)}'
+            }), 500
+        
+        # Calculate offset
+        offset = (page - 1) * per_page
+        
+        # Build base query with search functionality
+        base_query = """
+            SELECT 
+                race_id,
+                venue,
+                race_number,
+                race_date,
+                race_name,
+                grade,
+                distance,
+                field_size,
+                winner_name,
+                winner_odds,
+                winner_margin,
+                url,
+                extraction_timestamp,
+                track_condition
+            FROM race_metadata 
+        """
+        
+        # Add search conditions
+        search_conditions = []
+        search_params = []
+        if search:
+            search_conditions.extend([
+                "venue LIKE ?",
+                "race_name LIKE ?",
+                "grade LIKE ?",
+                "winner_name LIKE ?"
+            ])
+            search_term = f"%{search}%"
+            search_params.extend([search_term, search_term, search_term, search_term])
+        
+        # Build WHERE clause
+        where_clause = ""
+        if search_conditions:
+            where_clause = f"WHERE ({' OR '.join(search_conditions)})"
+        
+        # Build ORDER BY clause
+        sort_options = {
+            'race_date': 'race_date',
+            'venue': 'venue',
+            'confidence': 'extraction_timestamp',  # Use extraction_timestamp as proxy for confidence
+            'grade': 'grade'
+        }
+        order_by = sort_options.get(sort_by, 'race_date')
+        order_direction = 'ASC' if order == 'asc' else 'DESC'
+        
+        # Get total count for pagination
+        count_query = f"SELECT COUNT(*) FROM race_metadata {where_clause}"
+        cursor.execute(count_query, search_params)
+        total_count = cursor.fetchone()[0]
+        
+        # Get races with pagination
+        races_query = f"""
+            {base_query}
+            {where_clause}
+            ORDER BY {order_by} {order_direction}
+            LIMIT ? OFFSET ?
+        """
+        
+        cursor.execute(races_query, search_params + [per_page, offset])
+        races = cursor.fetchall()
+        
+        # Format race results and get runners for each race
+        result_races = []
+        for race in races:
+            race_id = race[0]
+            
+            # Get runners for this race
+            runners_query = """
+                SELECT 
+                    dog_name,
+                    box_number,
+                    finish_position,
+                    individual_time,
+                    weight,
+                    odds_decimal,
+                    margin,
+                    trainer_name
+                FROM dog_race_data 
+                WHERE race_id = ?
+                ORDER BY CAST(box_number AS INTEGER)
+            """
+            cursor.execute(runners_query, (race_id,))
+            runners_data = cursor.fetchall()
+            
+            # Format runners
+            runners = []
+            for runner in runners_data:
+                # Calculate mock probabilities based on odds and historical data
+                odds = runner[5] if runner[5] else 5.0
+                win_prob = min(1.0 / float(odds) if odds > 0 else 0.1, 1.0)
+                place_prob = min(win_prob * 2.5, 1.0)  # Place probability is typically higher
+                confidence = min(win_prob * 0.8 + 0.2, 1.0)  # Base confidence on win probability
+                
+                runners.append({
+                    'dog_name': runner[0] or 'Unknown',
+                    'box_number': runner[1] or 0,
+                    'finish_position': runner[2],
+                    'individual_time': runner[3],
+                    'weight': runner[4],
+                    'odds': f"{float(runner[5]):.2f}" if runner[5] else 'N/A',
+                    'margin': runner[6],
+                    'trainer_name': runner[7],
+                    'win_probability': round(win_prob, 3),
+                    'place_probability': round(place_prob, 3),
+                    'confidence': round(confidence, 3)
+                })
+            
+            # Format extraction timestamp
+            extraction_time = race[12]
+            if extraction_time:
+                try:
+                    dt = datetime.fromisoformat(extraction_time.replace('Z', '+00:00'))
+                    formatted_time = dt.strftime('%Y-%m-%d %H:%M')
+                except:
+                    formatted_time = extraction_time
+            else:
+                formatted_time = 'Unknown'
+            
+            race_url = race[11] if race[11] else db_manager.generate_race_url(race[1], race[3], race[2])
+            
+            result_races.append({
+                'race_id': race[0],
+                'venue': race[1],
+                'race_number': race[2],
+                'race_date': race[3],
+                'race_name': race[4] or f"Race {race[2]}",
+                'grade': race[5],
+                'distance': race[6],
+                'field_size': race[7],
+                'winner_name': race[8],
+                'winner_odds': race[9],
+                'winner_margin': race[10],
+                'url': race_url,
+                'extraction_timestamp': formatted_time,
+                'track_condition': race[13],
+                'runners': runners
+            })
+        
+        conn.close()
+        
+        # Calculate pagination info
+        total_pages = math.ceil(total_count / per_page) if total_count > 0 else 1
+        has_next = page < total_pages
+        has_prev = page > 1
+        
+        return jsonify({
+            'success': True,
+            'races': result_races,
+            'pagination': {
+                'page': page,
+                'per_page': per_page,
+                'total_count': total_count,
+                'total_pages': total_pages,
+                'has_next': has_next,
+                'has_prev': has_prev
+            },
+            'sort_by': sort_by,
+            'order': order,
+            'search': search
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error fetching races: {str(e)}'
+        }), 500
 
 @app.route('/api/races')
 def api_races():
@@ -1202,9 +1405,29 @@ def get_file_stats():
         stats['total_files'] = stats['total_basic_files']
         
     except Exception as e:
-        print(f"Error getting file stats: {e}")
+        logger.exception(f"Error getting file stats: {e}")
     
     return stats
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Return JSON instead of HTML for any other server error."""
+    # Log the exception
+    logger.exception(f"An unhandled exception occurred: {e}")
+    
+    # Prepare JSON response
+    response = {
+        "success": False,
+        "message": "An unexpected server error occurred."
+    }
+    
+    # Add more detail in debug mode
+    if app.debug:
+        response['error'] = str(e)
+        import traceback
+        response['traceback'] = traceback.format_exc()
+        
+    return jsonify(response), 500
 
 # Initialize database manager
 db_manager = DatabaseManager(DATABASE_PATH)
@@ -1497,6 +1720,32 @@ def api_stats():
         'files': file_stats,
         'timestamp': datetime.now().isoformat()
     })
+
+@app.route('/api/system_status')
+def api_system_status():
+    """API endpoint for the real-time monitoring sidebar"""
+    try:
+        # Get logs
+        logs = logger.get_web_logs(limit=50)
+
+        # Get model metrics
+        model_metrics = get_model_predictions()
+
+        # Get database health
+        db_stats = db_manager.get_database_stats()
+
+        return jsonify({
+            'success': True,
+            'logs': logs,
+            'model_metrics': model_metrics,
+            'db_stats': db_stats,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error getting system status: {str(e)}'
+        }), 500
 
 @app.route('/api/recent_races')
 def api_recent_races():
@@ -2279,144 +2528,35 @@ def perform_prediction_background():
     
     with processing_lock:
         processing_status['running'] = True
-        # Keep existing log entries and append new ones
         processing_status['start_time'] = datetime.now()
         processing_status['progress'] = 0
-
+        processing_status['log'] = []
 
     try:
-        safe_log_to_processing("🎯 Starting comprehensive race predictions...", "INFO", 0)
+        safe_log_to_processing("🎯 Starting comprehensive race predictions for all upcoming races...", "INFO", 0)
         
-        processing_status['progress'] = 25
-        
-        # Look for race files in upcoming, unprocessed, and processed directories
-        race_files = []
-        search_dirs = []
-        
-        # Check upcoming_races directory first (highest priority)
-        if os.path.exists(UPCOMING_DIR):
-            upcoming_files = [f for f in os.listdir(UPCOMING_DIR) if f.endswith('.csv') and f != 'README.md']
-            # Sort by modification time (newest first) and add to race_files
-            upcoming_files_with_time = [(f, os.path.getmtime(os.path.join(UPCOMING_DIR, f))) for f in upcoming_files]
-            upcoming_files_with_time.sort(key=lambda x: x[1], reverse=True)  # Sort by modification time, newest first
-            for f, _ in upcoming_files_with_time:
-                race_files.append((f, UPCOMING_DIR))
-        
-        if os.path.exists(UNPROCESSED_DIR):
-            unprocessed_files = [f for f in os.listdir(UNPROCESSED_DIR) if f.endswith('.csv')]
-            for f in unprocessed_files:
-                race_files.append((f, UNPROCESSED_DIR))
-        
-        if os.path.exists(PROCESSED_DIR):
-            for root, dirs, files in os.walk(PROCESSED_DIR):
-                # Sort files by modification time (newest first)
-                files_with_time = [(f, os.path.getmtime(os.path.join(root, f))) for f in files if f.endswith('.csv')]
-                files_with_time.sort(key=lambda x: x[1], reverse=True)
-                # Only take the 5 most recent files across all subdirectories
-                for f, _ in files_with_time[:5]:
-                    race_files.append((f, root))
-        
-        if not race_files:
-            processing_status['log'].append({
-                'timestamp': datetime.now().isoformat(),
-                'message': "⚠️ No race files found for prediction"
-            })
-            processing_status['progress'] = 100
-            return
-        
-        # Get the first file (already sorted by modification time, newest first)
-        latest_race_file, source_dir = race_files[0] if race_files else (None, None)
-        
-        if not latest_race_file:
-            processing_status['log'].append({
-                'timestamp': datetime.now().isoformat(),
-                'message': "⚠️ No race files found for prediction"
-            })
-            processing_status['progress'] = 100
-            return
-        
-        processing_status['log'].append({
-            'timestamp': datetime.now().isoformat(),
-            'message': f"🎯 Running comprehensive predictions for: {latest_race_file}"
-        })
-        
-        processing_status['progress'] = 50
-        
-        race_file_path = os.path.join(source_dir, latest_race_file)
-        result = None
-
-        # Use ML System V3 for predictions (HIGHEST PRIORITY SYSTEM)
-        if ML_SYSTEM_V3_AVAILABLE:
-            try:
-                safe_log_to_processing("🚀 Using ML System V3 (Most Advanced System)", "INFO", 60)
-                
-                # Initialize the prediction pipeline V3
-                pipeline = PredictionPipelineV3()
-                
-                # Run prediction using the new ML system
-                result = pipeline.predict_race(race_file_path)
-                
-            except Exception as v3_error:
-                safe_log_to_processing(f"⚠️ ML System V3 failed: {str(v3_error)}", "WARNING")
-                safe_log_to_processing("🔄 Falling back to Unified Predictor", "INFO", 60)
-                # Fallback to legacy system
-                from unified_predictor import UnifiedPredictor
-                predictor = UnifiedPredictor()
-                result = predictor.predict_race_file(race_file_path, enhancement_level='full')
-        else:
-            safe_log_to_processing("🔄 Using Unified Predictor (Legacy System)", "INFO", 60)
-            # Use legacy system if V3 is not available
-            from unified_predictor import UnifiedPredictor
-            predictor = UnifiedPredictor()
-            result = predictor.predict_race_file(race_file_path, enhancement_level='full')
+        if ComprehensivePredictionPipeline:
+            pipeline = ComprehensivePredictionPipeline()
+            safe_log_to_processing("✅ Comprehensive Prediction Pipeline initialized", "INFO", 10)
             
-        if result and result.get('success'):
-            success = True
-            # Try to capture some prediction output
-            predictions = result.get('predictions', [])
-            for pred in predictions[:5]:  # Show top 5 predictions
-                # Handle different prediction score field names
-                score = pred.get('prediction_score', pred.get('final_score', 0))
-                box_num = pred.get('box_number', pred.get('box', 'N/A'))
-                dog_name = pred.get('dog_name', 'Unknown')
-                
-                processing_status['log'].append({
-                    'timestamp': datetime.now().isoformat(),
-                    'message': f"🎯 {dog_name} (Box {box_num}) - Score: {score:.3f}"
-                })
+            results = pipeline.predict_all_upcoming_races(upcoming_dir=UPCOMING_DIR)
+            
+            if results.get('success'):
+                safe_log_to_processing(f"✅ Batch prediction complete. Processed {results.get('total_races', 0)} races.", "INFO", 100)
+                safe_log_to_processing(f"📈 {results.get('successful_predictions', 0)} of {results.get('total_races', 0)} predictions were successful.", "INFO")
+            else:
+                safe_log_to_processing(f"❌ Batch prediction failed: {results.get('message')}", "ERROR", 100)
         else:
-            success = False
-            processing_status['log'].append({
-                'timestamp': datetime.now().isoformat(),
-                'message': f"❌ Race predictions failed: {result.get('error', 'Unknown error') if result else 'Unknown error'}"
-            })
-        
+            safe_log_to_processing("❌ ComprehensivePredictionPipeline not available.", "ERROR", 100)
+
     except Exception as e:
-        processing_status['log'].append({
-            'timestamp': datetime.now().isoformat(),
-            'message': f"❌ Prediction error: {str(e)}"
-        })
-        success = False
+        safe_log_to_processing(f"❌ Prediction error: {str(e)}", "ERROR")
 
     finally:
-        processing_status['progress'] = 100
-        
-        if success:
-            processing_status['log'].append({
-                'timestamp': datetime.now().isoformat(),
-                'message': "✅ Unified prediction workflow completed successfully!"
-            })
-        else:
-            processing_status['log'].append({
-                'timestamp': datetime.now().isoformat(),
-                'message': "ℹ️ Unified prediction workflow completed with issues"
-            })
-        
-        processing_status['running'] = False
-        processing_status['log'].append({
-            'timestamp': datetime.now().isoformat(),
-            'message': "🏁 Comprehensive prediction task completed"
-        })
+        with processing_lock:
+            processing_status['running'] = False
+            processing_status['progress'] = 100
+            safe_log_to_processing("🏁 Comprehensive prediction task completed", "INFO")
 
 @app.route('/api/process_files', methods=['POST'])
 def api_process_files():
@@ -3500,8 +3640,8 @@ def api_predict_single_race_standalone():
                 os.makedirs(predictions_dir, exist_ok=True)
                 
                 # Generate prediction filename (unified format)
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                prediction_filename = f'unified_prediction_{race_filename.replace(".csv", "")}_{timestamp}.json'
+                race_id = extract_race_id_from_csv_filename(race_filename)
+                prediction_filename = build_prediction_filename(race_id, method="v3")
                 prediction_file_path = os.path.join(predictions_dir, prediction_filename)
                 
                 # Save prediction result
@@ -5011,9 +5151,51 @@ def api_prediction_insights():
             'message': f'Error generating prediction insights: {str(e)}'
         }), 500
 
+@app.route('/api/model/historical_accuracy')
+def api_model_historical_accuracy():
+    """API endpoint for historical model accuracy"""
+    try:
+        conn = db_manager.get_connection()
+        cursor = conn.cursor()
+
+        # Example: Fetch historical accuracy data from a dedicated table or logs
+        # This is a placeholder for your actual data source
+        cursor.execute("""
+            SELECT date(timestamp) as accuracy_date, AVG(accuracy) as avg_accuracy
+            FROM model_performance_history
+            GROUP BY accuracy_date
+            ORDER BY accuracy_date ASC
+            LIMIT 30
+        """)
+        accuracy_data = cursor.fetchall()
+        conn.close()
+
+        # Fallback to dummy data if no historical data is available
+        if not accuracy_data:
+            accuracy_data = [
+                (("2023-01-01", 0.75),
+                 ("2023-01-02", 0.78),
+                 ("2023-01-03", 0.77),
+                 ("2023-01-04", 0.80),
+                 ("2023-01-05", 0.82))
+            ]
+
+        return jsonify({
+            'success': True,
+            'accuracy_data': [{'date': row[0], 'accuracy': row[1]} for row in accuracy_data]
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error getting historical accuracy: {str(e)}'
+        }), 500
+
+
 @app.route('/ml-dashboard')
+@app.route('/ml_dashboard')
 def ml_dashboard():
-    """ML Prediction Dashboard page"""
+    """Machine Learning Dashboard page"""
     return render_template('ml_dashboard.html')
 
 @app.route('/upcoming')
@@ -7778,6 +7960,11 @@ def dogs_analysis():
     """Dogs analysis and search page"""
     return render_template('dogs_analysis.html')
 
+@app.route('/interactive-races')
+def interactive_races():
+    """Interactive race cards with collapsible runners, search, and filtering"""
+    return render_template('interactive_races.html')
+
 @app.route('/api/download_and_predict_race', methods=['POST'])
 def api_download_and_predict_race():
     """API endpoint to download race CSV and run prediction"""
@@ -7961,7 +8148,8 @@ def api_download_and_predict_race():
         
         # Step 4: Try to read prediction results
         race_id = f"{venue.replace(' ', '_')}_{race_number}_{datetime.now().strftime('%Y%m%d')}"
-        prediction_file = f'./predictions/prediction_{race_id}.json'
+        prediction_filename = build_prediction_filename(race_id, datetime.now(), "comprehensive")
+        prediction_file = f'./predictions/{prediction_filename}'
         
         prediction_summary = {
             'total_dogs': 0,
@@ -8015,5 +8203,8 @@ if __name__ == '__main__':
     os.makedirs('./static/css', exist_ok=True)
     os.makedirs('./static/js', exist_ok=True)
  
+    # Run integrity test before starting the app
+    run_integrity_test()
+
     # Run the app with fixed configuration to prevent hanging
     app.run(debug=False, host='localhost', port=5002, use_reloader=False)

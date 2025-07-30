@@ -1,0 +1,205 @@
+{
+  "race_info": {
+    "filename": "Race_08_LADBROKES_2025-07-25.csv",
+    "filepath": "/Users/orlandolee/greyhound_racing_collector/upcoming_races/Race_08_LADBROKES_2025-07-25.csv",
+    "venue": "QST",
+    "race_number": "UNKNOWN",
+    "date": "2025-07-26",
+    "distance": "350m",
+    "grade": "Grade 5"
+  },
+  "predictions": [
+    {
+      "dog_name": "Odds Are Good",
+      "box_number": 1,
+      "prediction_scores": {
+        "traditional": 0.5389344285609162,
+        "enhanced_data": 0.4795591580290024
+      },
+      "final_score": 0.5389344285609162,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "Traditional: 0.539",
+        "Enhanced Data: 0.480"
+      ],
+      "data_quality": 0.0,
+      "predicted_rank": 1,
+      "prediction_score": 0.5389344285609162
+    },
+    {
+      "dog_name": "Maximum Ace",
+      "box_number": 5,
+      "prediction_scores": {
+        "traditional": 0.5319684721195378,
+        "enhanced_data": 0.5393593635864928
+      },
+      "final_score": 0.5319684721195378,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "Traditional: 0.532",
+        "Enhanced Data: 0.539"
+      ],
+      "data_quality": 0.0,
+      "predicted_rank": 2,
+      "prediction_score": 0.5319684721195378
+    },
+    {
+      "dog_name": "Shian Freya",
+      "box_number": 6,
+      "prediction_scores": {
+        "traditional": 0.5256915228420188,
+        "enhanced_data": 0.5409432508051033
+      },
+      "final_score": 0.5256915228420188,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "Traditional: 0.526",
+        "Enhanced Data: 0.541"
+      ],
+      "data_quality": 0.0,
+      "predicted_rank": 3,
+      "prediction_score": 0.5256915228420188
+    },
+    {
+      "dog_name": "Ellie's Lad",
+      "box_number": 4,
+      "prediction_scores": {
+        "traditional": 0.5256759612010663,
+        "enhanced_data": 0.4689449785002344
+      },
+      "final_score": 0.5256759612010663,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "Traditional: 0.526",
+        "Enhanced Data: 0.469"
+      ],
+      "data_quality": 0.0,
+      "predicted_rank": 4,
+      "prediction_score": 0.5256759612010663
+    },
+    {
+      "dog_name": "By A Miracle",
+      "box_number": 7,
+      "prediction_scores": {
+        "traditional": 0.5047617942741534,
+        "enhanced_data": 0.5137458020400002
+      },
+      "final_score": 0.5047617942741534,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "Traditional: 0.505",
+        "Enhanced Data: 0.514"
+      ],
+      "data_quality": 0.0,
+      "predicted_rank": 5,
+      "prediction_score": 0.5047617942741534
+    },
+    {
+      "dog_name": "Here We Go",
+      "box_number": 8,
+      "prediction_scores": {
+        "traditional": 0.49675187237102914,
+        "enhanced_data": 0.5106798364160927
+      },
+      "final_score": 0.49675187237102914,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "Traditional: 0.497",
+        "Enhanced Data: 0.511"
+      ],
+      "data_quality": 0.0,
+      "predicted_rank": 6,
+      "prediction_score": 0.49675187237102914
+    },
+    {
+      "dog_name": "Lone Pilot",
+      "box_number": 3,
+      "prediction_scores": {
+        "traditional": 0.4875730253606773,
+        "enhanced_data": 0.4878248928016049
+      },
+      "final_score": 0.4875730253606773,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "Traditional: 0.488",
+        "Enhanced Data: 0.488"
+      ],
+      "data_quality": 0.0,
+      "predicted_rank": 7,
+      "prediction_score": 0.4875730253606773
+    },
+    {
+      "dog_name": "DAINTREE BLINDER",
+      "box_number": 10,
+      "prediction_scores": {
+        "traditional": 0.48606975391821833,
+        "enhanced_data": 0.5143300249705508
+      },
+      "final_score": 0.48606975391821833,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "Traditional: 0.486",
+        "Enhanced Data: 0.514"
+      ],
+      "data_quality": 0.0,
+      "predicted_rank": 8,
+      "prediction_score": 0.48606975391821833
+    },
+    {
+      "dog_name": "Showtime Donald",
+      "box_number": 2,
+      "prediction_scores": {
+        "traditional": 0.4639198727472549,
+        "enhanced_data": 0.4872785877206586
+      },
+      "final_score": 0.4639198727472549,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "Traditional: 0.464",
+        "Enhanced Data: 0.487"
+      ],
+      "data_quality": 0.0,
+      "predicted_rank": 9,
+      "prediction_score": 0.4639198727472549
+    },
+    {
+      "dog_name": "Alacrity Dave",
+      "box_number": 9,
+      "prediction_scores": {
+        "traditional": 0.4619136366243542,
+        "enhanced_data": 0.46940891664391016
+      },
+      "final_score": 0.46191363662435425,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "Traditional: 0.462",
+        "Enhanced Data: 0.469"
+      ],
+      "data_quality": 0.0,
+      "predicted_rank": 10,
+      "prediction_score": 0.46191363662435425
+    }
+  ],
+  "prediction_method": "comprehensive_pipeline",
+  "prediction_timestamp": "2025-07-26T14:45:32.958186",
+  "prediction_time_seconds": 0.17,
+  "unified_predictor_version": "1.0.0",
+  "top_pick": {
+    "dog_name": "Odds Are Good",
+    "box_number": 1,
+    "prediction_scores": {
+      "traditional": 0.5389344285609162,
+      "enhanced_data": 0.4795591580290024
+    },
+    "final_score": 0.5389344285609162,
+    "confidence_level": "LOW",
+    "reasoning": [
+      "Traditional: 0.539",
+      "Enhanced Data: 0.480"
+    ],
+    "data_quality": 0.0,
+    "predicted_rank": 1,
+    "prediction_score": 0.5389344285609162
+  },
+  "enhanced_with_gpt": false
+}

@@ -274,16 +274,17 @@ class ModelRegistry:
             
             # Calculate scores for all active models
             model_scores = []
+            best_score = -1
+            best_model_id = None
             for model_id, model_data in self.model_index.items():
-                if model_data.get('is_active', True):
+                if isinstance(model_data, dict) and model_data.get('is_active', True):
                     try:
                         metadata = ModelMetadata(**model_data)
                         score = self._calculate_model_score(metadata)
                         model_scores.append((model_id, score, metadata))
-                    except Exception as e:
-                        logger.warning(f"Error calculating score for {model_id}: {e}")
+                    except (TypeError, KeyError) as e:
+                        logger.warning(f"Error loading metadata for {model_id}: {e}")
                         continue
-            
             if not model_scores:
                 return
             
@@ -292,7 +293,8 @@ class ModelRegistry:
             
             # Clear previous best model flags
             for model_id in self.model_index:
-                self.model_index[model_id]['is_best'] = False
+                if isinstance(self.model_index[model_id], dict):
+                    self.model_index[model_id]['is_best'] = False
             
             # Set new best model
             best_model_id, best_score, best_metadata = model_scores[0]
@@ -435,12 +437,16 @@ class ModelRegistry:
         """List all registered models"""
         models = []
         for model_id, model_data in self.model_index.items():
+            if not isinstance(model_data, dict):
+                logger.warning(f"Skipping model with invalid data format: {model_id}")
+                continue
+            
             if active_only and not model_data.get('is_active', True):
                 continue
             try:
                 metadata = ModelMetadata(**model_data)
                 models.append(metadata)
-            except Exception as e:
+            except (TypeError, KeyError) as e:
                 logger.warning(f"Error loading metadata for {model_id}: {e}")
         
         # Sort by composite score
@@ -502,7 +508,7 @@ class ModelRegistry:
     
     def get_registry_stats(self) -> Dict[str, Any]:
         """Get registry statistics"""
-        active_models = [m for m in self.model_index.values() if m.get('is_active', True)]
+        active_models = [m for m in self.model_index.values() if isinstance(m, dict) and m.get('is_active', True)]
         
         if not active_models:
             return {'total_models': 0, 'active_models': 0}

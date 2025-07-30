@@ -167,9 +167,9 @@ class ComprehensiveEnhancedMLSystem:
             self.imbalanced_models = {}
         
         # Feature importance insights (from previous analysis)
-        self.high_impact_features = ['market_confidence', 'recent_form_avg', 'avg_position', 'win_rate', 'place_rate']
+        self.high_impact_features = ['recent_form_avg', 'avg_position']
         
-        self.stable_features = ['field_size', 'current_weight', 'position_consistency', 'avg_weight', 'races_count', 'recent_races_last_30d', 'track_condition_encoded', 'form_trend']
+        self.stable_features = ['box_versatility', 'current_weight', 'position_consistency', 'distance_experience', 'track_condition_encoded', 'form_trend', 'avg_performance_rating', 'distance_numeric']
         
         print("🚀 Comprehensive Enhanced ML Model System Initialized")
     

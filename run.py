@@ -147,32 +147,15 @@ def run_prediction(race_file_path=None):
                 print(f"❌ Prediction failed: {results['error']}")
                 return False
         else:
-            # Find upcoming race files
-            upcoming_dir = Path('./upcoming_races')
-            if upcoming_dir.exists():
-                race_files = list(upcoming_dir.glob('*.csv'))
-                
-                if race_files:
-                    print(f"📁 Found {len(race_files)} race files to predict")
-                    successful = 0
-                    
-                    for race_file in race_files:
-                        print(f"\n🎯 Predicting: {race_file.name}")
-                        results = pipeline.predict_race_file(str(race_file))
-                        
-                        if results['success']:
-                            print(f"✅ Success! Top pick: {results['predictions'][0]['dog_name'] if results['predictions'] else 'None'}")
-                            successful += 1
-                        else:
-                            print(f"❌ Failed: {results['error']}")
-                    
-                    print(f"\n🏁 Prediction summary: {successful}/{len(race_files)} successful")
-                    return successful > 0
-                else:
-                    print("ℹ️ No race files found in upcoming_races directory")
-                    return False
+            # Use batch prediction for all upcoming races
+            results = pipeline.predict_all_upcoming_races(upcoming_dir='./upcoming_races')
+            
+            if results['success']:
+                print(f"✅ Batch prediction completed successfully!")
+                print(f"📊 Processed {results['total_races']} races with {results['successful_predictions']} successful predictions")
+                return results['successful_predictions'] > 0
             else:
-                print("❌ No upcoming_races directory found")
+                print(f"❌ Batch prediction failed: {results.get('message', 'Unknown error')}")
                 return False
                 
     except ImportError as e:

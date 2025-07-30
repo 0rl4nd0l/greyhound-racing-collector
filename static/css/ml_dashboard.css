@@ -1,0 +1,135 @@
+/* Enhanced ML Dashboard Styles */
+
+/* Hover lift effect */
+.hover-lift {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.hover-lift:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+}
+
+/* Large form switch */
+.form-switch-lg .form-check-input {
+    width: 3rem;
+    height: 1.5rem;
+}
+
+/* Prediction cards */
+.prediction-card {
+    transition: all 0.3s ease;
+}
+
+.prediction-card:hover {
+    border-color: var(--primary-color) !important;
+    box-shadow: 0 4px 15px rgba(0, 123, 255, 0.2);
+}
+
+/* Progress bar styling */
+.progress {
+    height: 20px;
+    background-color: #e9ecef;
+    border-radius: 10px;
+}
+
+.progress-bar {
+    border-radius: 10px;
+    transition: width 0.6s ease;
+}
+
+/* Chart containers */
+canvas {
+    max-height: 300px;
+}
+
+/* Responsive enhancements */
+@media (max-width: 768px) {
+    .hover-lift {
+        transform: none;
+    }
+    
+    .hover-lift:hover {
+        transform: none;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+    
+    canvas {
+        max-height: 250px;
+    }
+}
+
+/* Loading states */
+.btn-loading {
+    position: relative;
+    color: transparent !important;
+}
+
+.btn-loading::after {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    top: 50%;
+    left: 50%;
+    margin-left: -8px;
+    margin-top: -8px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: white;
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Enhanced modal styling */
+.modal-xl {
+    max-width: 1200px;
+}
+
+.modal-header.bg-primary {
+    border-bottom: none;
+}
+
+.accordion-button {
+    background-color: #f8f9fa;
+    border: none;
+}
+
+.accordion-button:not(.collapsed) {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.accordion-item {
+    border: 1px solid #dee2e6;
+    margin-bottom: 0.5rem;
+    border-radius: 0.375rem;
+}
+
+/* Badge enhancements */
+.badge {
+    font-size: 0.75em;
+}
+
+/* Table enhancements */
+.table-sm th,
+.table-sm td {
+    padding: 0.5rem;
+}
+
+/* Color coding for performance */
+.bg-success { background-color: #28a745 !important; }
+.bg-warning { background-color: #ffc107 !important; }
+.bg-danger { background-color: #dc3545 !important; }
+.bg-info { background-color: #17a2b8 !important; }
+.bg-primary { background-color: #007bff !important; }
+.bg-secondary { background-color: #6c757d !important; }
+
+/* Racing-specific icons */
+.fa-dog { color: #8B4513; }
+.fa-trophy { color: #FFD700; }
+.fa-flag-checkered { color: #000; }
+.fa-medal { color: #CD7F32; }

@@ -1,0 +1,154 @@
+{
+  "race_info": {
+    "filename": "Race_03_GRDN_2025-07-25.csv",
+    "filepath": "/Users/orlandolee/greyhound_racing_collector/upcoming_races/Race_03_GRDN_2025-07-25.csv",
+    "venue": "GOSFORD",
+    "race_number": "UNKNOWN",
+    "date": "2025-07-26",
+    "distance": "400m",
+    "grade": "Grade M2/M3"
+  },
+  "predictions": [
+    {
+      "dog_name": "Winlock Piper",
+      "box_number": 8,
+      "prediction_scores": {
+        "traditional": 0.5818527537546825,
+        "enhanced_data": 0.4764993335316936
+      },
+      "final_score": 0.5818527537546825,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "Traditional: 0.582",
+        "Enhanced Data: 0.476"
+      ],
+      "data_quality": 0.0,
+      "predicted_rank": 1,
+      "prediction_score": 0.5818527537546825
+    },
+    {
+      "dog_name": "Jet Keen",
+      "box_number": 4,
+      "prediction_scores": {
+        "traditional": 0.5393447052246066,
+        "enhanced_data": 0.5354648313446835
+      },
+      "final_score": 0.5393447052246066,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "Traditional: 0.539",
+        "Enhanced Data: 0.535"
+      ],
+      "data_quality": 0.0,
+      "predicted_rank": 2,
+      "prediction_score": 0.5393447052246066
+    },
+    {
+      "dog_name": "Tilly Robbo",
+      "box_number": 2,
+      "prediction_scores": {
+        "traditional": 0.5384108042442732,
+        "enhanced_data": 0.5057749528065377
+      },
+      "final_score": 0.5384108042442732,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "Traditional: 0.538",
+        "Enhanced Data: 0.506"
+      ],
+      "data_quality": 0.0,
+      "predicted_rank": 3,
+      "prediction_score": 0.5384108042442732
+    },
+    {
+      "dog_name": "Double Polka",
+      "box_number": 7,
+      "prediction_scores": {
+        "traditional": 0.514880772814346,
+        "enhanced_data": 0.5419516711624862
+      },
+      "final_score": 0.514880772814346,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "Traditional: 0.515",
+        "Enhanced Data: 0.542"
+      ],
+      "data_quality": 0.0,
+      "predicted_rank": 4,
+      "prediction_score": 0.514880772814346
+    },
+    {
+      "dog_name": "Four Barrys",
+      "box_number": 3,
+      "prediction_scores": {
+        "traditional": 0.49351431821064434,
+        "enhanced_data": 0.4827632458932943
+      },
+      "final_score": 0.4935143182106444,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "Traditional: 0.494",
+        "Enhanced Data: 0.483"
+      ],
+      "data_quality": 0.0,
+      "predicted_rank": 5,
+      "prediction_score": 0.4935143182106444
+    },
+    {
+      "dog_name": "Jack's Moon",
+      "box_number": 6,
+      "prediction_scores": {
+        "traditional": 0.49052876187559125,
+        "enhanced_data": 0.467072409986194
+      },
+      "final_score": 0.4905287618755913,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "Traditional: 0.491",
+        "Enhanced Data: 0.467"
+      ],
+      "data_quality": 0.0,
+      "predicted_rank": 6,
+      "prediction_score": 0.4905287618755913
+    },
+    {
+      "dog_name": "Winlock Bottles",
+      "box_number": 1,
+      "prediction_scores": {
+        "traditional": 0.48541827368915347,
+        "enhanced_data": 0.5254126889706018
+      },
+      "final_score": 0.4854182736891535,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "Traditional: 0.485",
+        "Enhanced Data: 0.525"
+      ],
+      "data_quality": 0.0,
+      "predicted_rank": 7,
+      "prediction_score": 0.4854182736891535
+    }
+  ],
+  "prediction_method": "comprehensive_pipeline",
+  "prediction_timestamp": "2025-07-26T14:45:34.681607",
+  "prediction_time_seconds": 0.13,
+  "unified_predictor_version": "1.0.0",
+  "top_pick": {
+    "dog_name": "Winlock Piper",
+    "box_number": 8,
+    "prediction_scores": {
+      "traditional": 0.5818527537546825,
+      "enhanced_data": 0.4764993335316936
+    },
+    "final_score": 0.5818527537546825,
+    "confidence_level": "LOW",
+    "reasoning": [
+      "Traditional: 0.582",
+      "Enhanced Data: 0.476"
+    ],
+    "data_quality": 0.0,
+    "predicted_rank": 1,
+    "prediction_score": 0.5818527537546825
+  },
+  "enhanced_with_gpt": false
+}

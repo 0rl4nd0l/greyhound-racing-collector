@@ -131,10 +131,14 @@ class AutomationScheduler:
         )
 
     def run_predictions(self):
-        """Run predictions on upcoming races"""
+        """Run predictions on upcoming races using batch method"""
         upcoming_dir = self.base_dir / "upcoming_races"
-        race_files = list(upcoming_dir.glob("*.csv")) if upcoming_dir.exists() else []
         
+        if not upcoming_dir.exists():
+            self.logger.info("📝 No upcoming_races directory found")
+            return True
+        
+        race_files = list(upcoming_dir.glob("*.csv"))
         # Filter out README files
         race_files = [f for f in race_files if f.name != "README.md"]
         
@@ -142,15 +146,28 @@ class AutomationScheduler:
             self.logger.info("📝 No upcoming races to predict")
             return True
         
-        # Use the unified upcoming race predictor
-        predict_script = "upcoming_race_predictor.py"
-        if not (self.base_dir / predict_script).exists():
-            self.logger.error("Upcoming race predictor script not found")
-            return False
-        
         self.logger.info(f"🎯 Found {len(race_files)} races to predict")
         
-        # Run predictions on each race file
+        # Use comprehensive prediction pipeline with batch method
+        try:
+            # Try to use the comprehensive pipeline batch method first
+            pipeline_script = "comprehensive_prediction_pipeline.py"
+            if (self.base_dir / pipeline_script).exists():
+                return self.run_task(
+                    "Batch Predictions (Comprehensive Pipeline)",
+                    [sys.executable, pipeline_script, "all"],
+                    timeout=900  # 15 minutes for batch processing
+                )
+        except Exception as e:
+            self.logger.warning(f"Comprehensive pipeline failed: {e}")
+        
+        # Fallback to individual predictions using upcoming race predictor
+        predict_script = "upcoming_race_predictor.py"
+        if not (self.base_dir / predict_script).exists():
+            self.logger.error("No prediction scripts found")
+            return False
+        
+        # Run predictions on each race file (limited fallback)
         success_count = 0
         for race_file in race_files[:5]:  # Limit to 5 most recent races
             self.logger.info(f"🏁 Predicting: {race_file.name}")

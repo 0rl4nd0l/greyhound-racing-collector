@@ -1,0 +1,538 @@
+{
+  "success": true,
+  "race_info": {
+    "filename": "Race_11_-_CASO_-_22_July_2025.csv",
+    "filepath": "./upcoming_races/Race_11_-_CASO_-_22_July_2025.csv",
+    "venue": "CASO",
+    "race_number": "11",
+    "date": "22 July 2025",
+    "distance": "300m",
+    "grade": "Grade 5"
+  },
+  "prediction_timestamp": "2025-07-30T19:12:07.850131",
+  "predictions": [
+    {
+      "dog_name": "Cheeky Toni",
+      "box_number": 7,
+      "prediction_scores": {
+        "weather_enhanced": 0.5017985603009895,
+        "traditional": 0.5151482569470855,
+        "enhanced_data": 0.518175402844189
+      },
+      "final_score": 0.51327569290935,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "Weather Enhanced: 0.502",
+        "Traditional: 0.515",
+        "Enhanced Data: 0.518"
+      ],
+      "data_quality": 0.3,
+      "historical_stats": {
+        "total_races": 5,
+        "wins": 0,
+        "places": 2,
+        "win_rate": 0.0,
+        "place_rate": 40.0,
+        "consistency": 65.6,
+        "average_position": 4.6,
+        "experience": "Some racing experience",
+        "best_time": "17.06s",
+        "venue_record": "No previous starts at venue",
+        "distance_record": "5 starts at 300m",
+        "grade_record": "No grade data",
+        "recent_form": [
+          2,
+          6,
+          5,
+          7,
+          3
+        ],
+        "recent_activity": {
+          "days_since_last_race": 13,
+          "last_race_date": "2025-07-17",
+          "last_race_position": "2"
+        },
+        "strengths": [
+          "Reasonable place record"
+        ],
+        "risk_factors": [
+          "No previous experience at venue"
+        ]
+      },
+      "predicted_rank": 1
+    },
+    {
+      "dog_name": "Zora Ville",
+      "box_number": 6,
+      "prediction_scores": {
+        "weather_enhanced": 0.49119954817793177,
+        "traditional": 0.508524471203742,
+        "enhanced_data": 0.532863005173652
+      },
+      "final_score": 0.5086814814772557,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "Weather Enhanced: 0.491",
+        "Traditional: 0.509",
+        "Enhanced Data: 0.533"
+      ],
+      "data_quality": 0.3,
+      "historical_stats": {
+        "total_races": 5,
+        "wins": 0,
+        "places": 0,
+        "win_rate": 0.0,
+        "place_rate": 0.0,
+        "consistency": 86.4,
+        "average_position": 6.2,
+        "experience": "Some racing experience",
+        "best_time": "17.71s",
+        "venue_record": "No previous starts at venue",
+        "distance_record": "1 starts at 300m",
+        "grade_record": "No grade data",
+        "recent_form": [
+          8,
+          7,
+          5,
+          5,
+          6
+        ],
+        "recent_activity": {
+          "days_since_last_race": 15,
+          "last_race_date": "2025-07-15",
+          "last_race_position": "8"
+        },
+        "strengths": [
+          "Consistent performer"
+        ],
+        "risk_factors": [
+          "Poor recent form",
+          "No previous experience at venue"
+        ]
+      },
+      "predicted_rank": 2
+    },
+    {
+      "dog_name": "Wild As",
+      "box_number": 9,
+      "prediction_scores": {
+        "weather_enhanced": 0.5028158497085894,
+        "traditional": 0.5095923154396321,
+        "enhanced_data": 0.5013461609942412
+      },
+      "final_score": 0.507401710104688,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "Weather Enhanced: 0.503",
+        "Traditional: 0.510",
+        "Enhanced Data: 0.501"
+      ],
+      "data_quality": 0.3,
+      "historical_stats": {
+        "total_races": 5,
+        "wins": 0,
+        "places": 0,
+        "win_rate": 0.0,
+        "place_rate": 0.0,
+        "consistency": 77.6,
+        "average_position": 6.6,
+        "experience": "Some racing experience",
+        "best_time": "17.74s",
+        "venue_record": "No previous starts at venue",
+        "distance_record": "1 starts at 300m",
+        "grade_record": "No grade data",
+        "recent_form": [
+          8,
+          8,
+          4,
+          7,
+          6
+        ],
+        "recent_activity": {
+          "days_since_last_race": 27,
+          "last_race_date": "2025-07-03",
+          "last_race_position": "8"
+        },
+        "strengths": [
+          "Consistent performer"
+        ],
+        "risk_factors": [
+          "Poor recent form",
+          "No previous experience at venue"
+        ]
+      },
+      "predicted_rank": 3
+    },
+    {
+      "dog_name": "Crazy Joker",
+      "box_number": 8,
+      "prediction_scores": {
+        "weather_enhanced": 0.4826379563390545,
+        "traditional": 0.5128249072039959,
+        "enhanced_data": 0.5078915855034009
+      },
+      "final_score": 0.5070975367013951,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "Weather Enhanced: 0.483",
+        "Traditional: 0.513",
+        "Enhanced Data: 0.508"
+      ],
+      "data_quality": 0.3,
+      "historical_stats": {
+        "total_races": 5,
+        "wins": 1,
+        "places": 1,
+        "win_rate": 20.0,
+        "place_rate": 20.0,
+        "consistency": 37.6,
+        "average_position": 5.6,
+        "experience": "Some racing experience",
+        "best_time": "20.47s",
+        "venue_record": "No previous starts at venue",
+        "distance_record": "No distance data",
+        "grade_record": "No grade data",
+        "recent_form": [
+          8,
+          7,
+          7,
+          1,
+          5
+        ],
+        "recent_activity": {
+          "days_since_last_race": 13,
+          "last_race_date": "2025-07-17",
+          "last_race_position": "8"
+        },
+        "strengths": [
+          "Good winning ability"
+        ],
+        "risk_factors": [
+          "Inconsistent form",
+          "Poor recent form",
+          "No previous experience at venue"
+        ]
+      },
+      "predicted_rank": 4
+    },
+    {
+      "dog_name": "Go Big Girl",
+      "box_number": 5,
+      "prediction_scores": {
+        "weather_enhanced": 0.505237698665572,
+        "traditional": 0.5051954167450409,
+        "enhanced_data": 0.5074665478738509
+      },
+      "final_score": 0.5054904528465292,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "Weather Enhanced: 0.505",
+        "Traditional: 0.505",
+        "Enhanced Data: 0.507"
+      ],
+      "data_quality": 0.3,
+      "historical_stats": {
+        "total_races": 5,
+        "wins": 0,
+        "places": 1,
+        "win_rate": 0.0,
+        "place_rate": 20.0,
+        "consistency": 78.4,
+        "average_position": 4.8,
+        "experience": "Some racing experience",
+        "best_time": "17.41s",
+        "venue_record": "No previous starts at venue",
+        "distance_record": "3 starts at 300m",
+        "grade_record": "No grade data",
+        "recent_form": [
+          6,
+          3,
+          4,
+          4,
+          7
+        ],
+        "recent_activity": {
+          "days_since_last_race": 13,
+          "last_race_date": "2025-07-17",
+          "last_race_position": "6"
+        },
+        "strengths": [
+          "Consistent performer"
+        ],
+        "risk_factors": [
+          "No previous experience at venue"
+        ]
+      },
+      "predicted_rank": 5
+    },
+    {
+      "dog_name": "Steely Mac",
+      "box_number": 1,
+      "prediction_scores": {
+        "weather_enhanced": 0.49923037887278976,
+        "traditional": 0.49800845979136377,
+        "enhanced_data": 0.5311172566593458
+      },
+      "final_score": 0.5024118710700813,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "Weather Enhanced: 0.499",
+        "Traditional: 0.498",
+        "Enhanced Data: 0.531"
+      ],
+      "data_quality": 0.3,
+      "historical_stats": {
+        "total_races": 5,
+        "wins": 0,
+        "places": 1,
+        "win_rate": 0.0,
+        "place_rate": 20.0,
+        "consistency": 80.0,
+        "average_position": 5.0,
+        "experience": "Some racing experience",
+        "best_time": "17.26s",
+        "venue_record": "No previous starts at venue",
+        "distance_record": "4 starts at 300m",
+        "grade_record": "No grade data",
+        "recent_form": [
+          6,
+          7,
+          3,
+          4,
+          5
+        ],
+        "recent_activity": {
+          "days_since_last_race": 13,
+          "last_race_date": "2025-07-17",
+          "last_race_position": "6"
+        },
+        "strengths": [
+          "Consistent performer"
+        ],
+        "risk_factors": [
+          "Poor recent form",
+          "No previous experience at venue"
+        ]
+      },
+      "predicted_rank": 6
+    },
+    {
+      "dog_name": "Nugget Roberts",
+      "box_number": 2,
+      "prediction_scores": {
+        "weather_enhanced": 0.5098702479018674,
+        "traditional": 0.491820877425564,
+        "enhanced_data": 0.5162258479900629
+      },
+      "final_score": 0.49796506307057997,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "Weather Enhanced: 0.510",
+        "Traditional: 0.492",
+        "Enhanced Data: 0.516"
+      ],
+      "data_quality": 0.3,
+      "historical_stats": {
+        "total_races": 5,
+        "wins": 1,
+        "places": 1,
+        "win_rate": 20.0,
+        "place_rate": 20.0,
+        "consistency": 49.6,
+        "average_position": 4.6,
+        "experience": "Some racing experience",
+        "best_time": "17.16s",
+        "venue_record": "No previous starts at venue",
+        "distance_record": "3 starts at 300m",
+        "grade_record": "No grade data",
+        "recent_form": [
+          4,
+          4,
+          7,
+          7,
+          1
+        ],
+        "recent_activity": {
+          "days_since_last_race": 13,
+          "last_race_date": "2025-07-17",
+          "last_race_position": "4"
+        },
+        "strengths": [
+          "Good winning ability"
+        ],
+        "risk_factors": [
+          "Inconsistent form",
+          "No previous experience at venue"
+        ]
+      },
+      "predicted_rank": 7
+    },
+    {
+      "dog_name": "Champagne Talks",
+      "box_number": 4,
+      "prediction_scores": {
+        "weather_enhanced": 0.5019555258844101,
+        "traditional": 0.4838988711396796,
+        "enhanced_data": 0.5305410609053096
+      },
+      "final_score": 0.4928630903626013,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "Weather Enhanced: 0.502",
+        "Traditional: 0.484",
+        "Enhanced Data: 0.531"
+      ],
+      "data_quality": 0.3,
+      "historical_stats": {
+        "total_races": 5,
+        "wins": 0,
+        "places": 0,
+        "win_rate": 0.0,
+        "place_rate": 0.0,
+        "consistency": 98.4,
+        "average_position": 4.8,
+        "experience": "Some racing experience",
+        "best_time": "17.40s",
+        "venue_record": "No previous starts at venue",
+        "distance_record": "3 starts at 300m",
+        "grade_record": "No grade data",
+        "recent_form": [
+          5,
+          4,
+          5,
+          5,
+          5
+        ],
+        "recent_activity": {
+          "days_since_last_race": 13,
+          "last_race_date": "2025-07-17",
+          "last_race_position": "5"
+        },
+        "strengths": [
+          "Consistent performer"
+        ],
+        "risk_factors": [
+          "No previous experience at venue"
+        ]
+      },
+      "predicted_rank": 8
+    },
+    {
+      "dog_name": "Petite Arma",
+      "box_number": 3,
+      "prediction_scores": {
+        "weather_enhanced": 0.4729875572499058,
+        "traditional": 0.4767495739033142,
+        "enhanced_data": 0.4758215980410522
+      },
+      "final_score": 0.4759961093596345,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "Weather Enhanced: 0.473",
+        "Traditional: 0.477",
+        "Enhanced Data: 0.476"
+      ],
+      "data_quality": 0.3,
+      "historical_stats": {
+        "total_races": 5,
+        "wins": 0,
+        "places": 1,
+        "win_rate": 0.0,
+        "place_rate": 20.0,
+        "consistency": 81.6,
+        "average_position": 5.6,
+        "experience": "Some racing experience",
+        "best_time": "17.45s",
+        "venue_record": "No previous starts at venue",
+        "distance_record": "4 starts at 300m",
+        "grade_record": "No grade data",
+        "recent_form": [
+          3,
+          7,
+          6,
+          6,
+          6
+        ],
+        "recent_activity": {
+          "days_since_last_race": 64,
+          "last_race_date": "2025-05-27",
+          "last_race_position": "3"
+        },
+        "strengths": [
+          "Consistent performer"
+        ],
+        "risk_factors": [
+          "Poor recent form",
+          "No previous experience at venue"
+        ]
+      },
+      "predicted_rank": 9
+    },
+    {
+      "dog_name": "Mum's Bugatti",
+      "box_number": 10,
+      "prediction_scores": {
+        "weather_enhanced": 0.5057008643972083,
+        "traditional": 0.458727906229479,
+        "enhanced_data": 0.48293001313137235
+      },
+      "final_score": 0.4697348704566592,
+      "confidence_level": "LOW",
+      "reasoning": [
+        "Weather Enhanced: 0.506",
+        "Traditional: 0.459",
+        "Enhanced Data: 0.483"
+      ],
+      "data_quality": 0.3,
+      "historical_stats": {
+        "total_races": 5,
+        "wins": 0,
+        "places": 0,
+        "win_rate": 0.0,
+        "place_rate": 0.0,
+        "consistency": 85.6,
+        "average_position": 6.4,
+        "experience": "Some racing experience",
+        "best_time": "17.95s",
+        "venue_record": "No previous starts at venue",
+        "distance_record": "1 starts at 300m",
+        "grade_record": "No grade data",
+        "recent_form": [
+          7,
+          7,
+          5,
+          8,
+          5
+        ],
+        "recent_activity": {
+          "days_since_last_race": 15,
+          "last_race_date": "2025-07-15",
+          "last_race_position": "7"
+        },
+        "strengths": [
+          "Consistent performer"
+        ],
+        "risk_factors": [
+          "Poor recent form",
+          "No previous experience at venue"
+        ]
+      },
+      "predicted_rank": 10
+    }
+  ],
+  "data_quality_summary": {
+    "average_quality": 0.29999999999999993,
+    "dogs_with_good_data": 0,
+    "dogs_with_poor_data": 0,
+    "total_dogs": 10
+  },
+  "prediction_methods_used": [
+    "traditional",
+    "ml_system",
+    "weather_enhanced",
+    "enhanced_data",
+    "gpt_enhanced"
+  ],
+  "total_dogs": 50,
+  "dogs_with_quality_data": 0
+}

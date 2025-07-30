@@ -1,19 +1,11 @@
-/* ML Dashboard Styles */
+@import url('./variables.css');
+
+/* ML Dashboard Styles - Specific Overrides */
 :root {
-    --primary-color: #2c5f2d;
-    --secondary-color: #4caf50;
-    --accent-color: #ff9800;
-    --danger-color: #f44336;
-    --success-color: #4caf50;
-    --warning-color: #ff9800;
     --info-color: #2196f3;
     --dark-bg: #1a1a1a;
-    --card-bg: #ffffff;
-    --border-color: #e0e0e0;
-    --text-color: #333;
-    --text-light: #666;
-    --shadow: 0 2px 10px rgba(0,0,0,0.1);
-    --shadow-hover: 0 4px 20px rgba(0,0,0,0.15);
+    --shadow: var(--shadow-md);
+    --shadow-hover: var(--shadow-lg);
 }
 
 * {
@@ -23,8 +15,8 @@
 }
 
 body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    font-family: var(--font-primary);
+    background: linear-gradient(135deg, var(--neutral-bg) 0%, #c3cfe2 100%);
     color: var(--text-color);
     min-height: 100vh;
 }
@@ -33,7 +25,7 @@ body {
 .navbar {
     background: var(--primary-color);
     color: white;
-    padding: 1rem 2rem;
+    padding: var(--spacing-md) var(--spacing-xl);
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -41,19 +33,19 @@ body {
 }
 
 .nav-brand h1 {
-    font-size: 1.5rem;
-    font-weight: 600;
+    font-size: var(--h3-size);
+    font-weight: var(--font-weight-semibold);
 }
 
 .nav-links {
     display: flex;
-    gap: 2rem;
+    gap: var(--spacing-xl);
 }
 
 .nav-link {
     color: white;
     text-decoration: none;
-    padding: 0.5rem 1rem;
+    padding: var(--spacing-sm) var(--spacing-md);
     border-radius: 20px;
     transition: all 0.3s ease;
 }
@@ -65,7 +57,7 @@ body {
 
 /* Dashboard Container */
 .dashboard-container {
-    padding: 2rem;
+    padding: var(--spacing-xl);
     max-width: 1600px;
     margin: 0 auto;
 }
@@ -74,18 +66,18 @@ body {
 .status-panel {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 1.5rem;
-    margin-bottom: 2rem;
+    gap: var(--spacing-lg);
+    margin-bottom: var(--spacing-xl);
 }
 
 .status-card {
     background: var(--card-bg);
-    padding: 1.5rem;
-    border-radius: 12px;
+    padding: var(--spacing-lg);
+    border-radius: var(--border-radius-lg);
     box-shadow: var(--shadow);
     display: flex;
     align-items: center;
-    gap: 1rem;
+    gap: var(--spacing-md);
     transition: transform 0.2s ease;
 }
 
@@ -107,19 +99,19 @@ body {
 }
 
 .status-info h3 {
-    font-size: 1rem;
+    font-size: var(--body-size);
     color: var(--text-light);
-    margin-bottom: 0.5rem;
+    margin-bottom: var(--spacing-sm);
 }
 
 .status-active {
-    color: var(--success-color);
-    font-weight: 600;
+    color: var(--secondary-color);
+    font-weight: var(--font-weight-semibold);
 }
 
 .status-number {
-    font-size: 1.5rem;
-    font-weight: 700;
+    font-size: var(--h3-size);
+    font-weight: var(--font-weight-bold);
     color: var(--primary-color);
 }
 
@@ -128,7 +120,7 @@ body {
     display: grid;
     grid-template-columns: 2fr 1fr;
     grid-template-rows: auto auto auto;
-    gap: 2rem;
+    gap: var(--spacing-xl);
     grid-template-areas: 
         "live-races ml-insights"
         "live-races value-bets"
@@ -138,9 +130,9 @@ body {
 
 .section {
     background: var(--card-bg);
-    border-radius: 12px;
+    border-radius: var(--border-radius-lg);
     box-shadow: var(--shadow);
-    padding: 1.5rem;
+    padding: var(--spacing-lg);
     transition: box-shadow 0.3s ease;
 }
 
@@ -152,25 +144,25 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1.5rem;
-    padding-bottom: 1rem;
+    margin-bottom: var(--spacing-lg);
+    padding-bottom: var(--spacing-md);
     border-bottom: 2px solid var(--border-color);
 }
 
 .section-header h2 {
     color: var(--primary-color);
-    font-size: 1.3rem;
-    font-weight: 600;
+    font-size: var(--h3-size);
+    font-weight: var(--font-weight-semibold);
 }
 
 .refresh-btn {
     background: var(--secondary-color);
     color: white;
     border: none;
-    padding: 0.5rem 1rem;
+    padding: var(--spacing-sm) var(--spacing-md);
     border-radius: 20px;
     cursor: pointer;
-    font-size: 0.9rem;
+    font-size: var(--small-size);
     transition: all 0.3s ease;
 }
 
@@ -272,17 +264,17 @@ body {
 }
 
 .confidence-high {
-    background: var(--success-color);
+    background: var(--confidence-high);
     color: white;
 }
 
 .confidence-medium {
-    background: var(--warning-color);
+    background: var(--confidence-medium);
     color: white;
 }
 
 .confidence-low {
-    background: var(--danger-color);
+    background: var(--confidence-low);
     color: white;
 }
 
@@ -351,7 +343,7 @@ body {
 }
 
 input:checked + .slider {
-    background-color: var(--success-color);
+    background-color: var(--confidence-high);
 }
 
 input:checked + .slider:before {
@@ -368,7 +360,7 @@ input:checked + .slider:before {
 
 .value-bet-item {
     padding: 0.75rem;
-    border-left: 4px solid var(--success-color);
+    border-left: 4px solid var(--confidence-high);
     background: rgba(76, 175, 80, 0.05);
     border-radius: 0 6px 6px 0;
     display: flex;
@@ -397,7 +389,7 @@ input:checked + .slider:before {
 .value-percentage {
     font-size: 1.1rem;
     font-weight: 700;
-    color: var(--success-color);
+    color: var(--confidence-high);
 }
 
 .recommended-bet {
@@ -503,7 +495,7 @@ input:checked + .slider:before {
 }
 
 .performance-score {
-    background: var(--success-color);
+    background: var(--confidence-high);
     color: white;
     padding: 0.25rem 0.5rem;
     border-radius: 12px;
@@ -667,7 +659,7 @@ input:checked + .slider:before {
 }
 
 .status-online {
-    background-color: var(--success-color);
+    background-color: var(--confidence-high);
     animation: pulse 2s infinite;
 }
 

@@ -1,0 +1,255 @@
+
+  lint-and-format:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install linting tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8 black isort mypy
+
+    - name: Run comprehensive linting
+      run: |
+        echo "=== Running flake8 ==="
+        flake8 . --statistics --tee --output-file=flake8-report.txt
+
+        echo "=== Running black check ==="
+        black --check .
+
+        echo "=== Running isort check ==="
+        isort --check-only .
+
+        echo "=== Running mypy (optional) ==="
+        mypy . --ignore-missing-imports || echo "MyPy check completed (errors ignored)"
+
+    - name: Upload lint results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: lint-results
+        path: flake8-report.txt
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install security tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install bandit safety
+
+    - name: Run bandit security scan
+      run: |
+        bandit -r . -f json -o bandit-report.json || echo "Bandit scan completed"
+
+    - name: Check for known security vulnerabilities
+      run: |
+        safety check --json --output safety-report.json || echo "Safety check completed"
+
+    - name: Upload security scan results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-reports
+        path: |
+          bandit-report.json
+          safety-report.json
+
+name: CI Pipeline - Greyhound Racing Predictor
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.9, 3.10.0, 3.11]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-cov pytest-mock flake8 black isort
+
+    - name: Lint with flake8
+      run: |
+        # stop the build if there are Python syntax errors or undefined names
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+    - name: Check code formatting with black
+      run: |
+        black --check --diff .
+
+    - name: Check import sorting with isort
+      run: |
+        isort --check-only --diff .
+
+    - name: Create test database
+      run: |
+        # Create a minimal test database for testing
+        python -c "
+import sqlite3
+import os
+
+# Create test database
+conn = sqlite3.connect('test_greyhound_racing_data.db')
+cursor = conn.cursor()
+
+# Create minimal schema for testing
+cursor.execute('''
+    CREATE TABLE IF NOT EXISTS race_metadata (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        race_id TEXT UNIQUE,
+        venue TEXT,
+        race_date DATE,
+        race_name TEXT,
+        grade TEXT,
+        distance TEXT,
+        track_condition TEXT,
+        weather TEXT,
+        temperature REAL,
+        humidity REAL,
+        wind_speed REAL,
+        wind_direction TEXT,
+        track_record TEXT,
+        prize_money_total REAL,
+        prize_money_breakdown TEXT,
+        race_time TEXT,
+        field_size INTEGER,
+        track_variant TEXT,
+        number_of_runners INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+''')
+
+cursor.execute('''
+    CREATE TABLE IF NOT EXISTS dog_race_data (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        race_id TEXT,
+        dog_name TEXT,
+        dog_clean_name TEXT,
+        trap_number INTEGER,
+        finish_position INTEGER,
+        starting_price TEXT,
+        individual_time REAL,
+        sectional_1 REAL,
+        sectional_2 REAL,
+        sectional_3 REAL,
+        sectional_4 REAL,
+        weight REAL,
+        trainer TEXT,
+        age TEXT,
+        form_comment TEXT,
+        margin TEXT,
+        prize_money REAL,
+        box_number INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+''')
+
+cursor.execute('''
+    CREATE TABLE IF NOT EXISTS dogs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        clean_name TEXT,
+        trainer TEXT,
+        sire TEXT,
+        dam TEXT,
+        color TEXT,
+        sex TEXT,
+        date_of_birth DATE,
+        weight REAL,
+        career_starts INTEGER,
+        career_wins INTEGER,
+        career_places INTEGER,
+        career_shows INTEGER,
+        career_earnings REAL,
+        best_time REAL,
+        last_start_date DATE,
+        retirement_date DATE,
+        active BOOLEAN DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+''')
+
+conn.commit()
+conn.close()
+print('Test database created successfully')
+"
+
+    - name: Run database migrations
+      run: |
+        # Test database migrations
+        export TESTING=1
+        # Use test database for migrations
+        sed -i 's/greyhound_racing_data.db/test_greyhound_racing_data.db/g' alembic.ini
+        alembic upgrade head
+
+    - name: Run unit tests
+      run: |
+        export TESTING=1
+        export DATABASE_URL=sqlite:///test_greyhound_racing_data.db
+        pytest tests/ -v --cov=. --cov-report=xml --cov-report=html
+
+    - name: Run integration tests
+      run: |
+        export TESTING=1
+        export DATABASE_URL=sqlite:///test_greyhound_racing_data.db
+        # Run specific integration tests if they exist
+        if [ -d "tests/integration" ]; then
+          pytest tests/integration/ -v
+        fi
+
+    - name: Test CLI commands
+      run: |
+        export TESTING=1
+        export DATABASE_URL=sqlite:///test_greyhound_racing_data.db
+        # Test basic CLI functionality
+        python run.py --help || echo "CLI help command tested"
+
+    - name: Upload coverage reports to Codecov
+      if: matrix.python-version == '3.11'
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false

@@ -1,0 +1,98 @@
+/* Interactive Race Cards Styles */
+.races-container { display: flex; flex-wrap: wrap; gap: 1.5rem; }
+.race-card { background: #fff; border-radius: 12px; box-shadow: 0 3px 10px rgba(0,0,0,0.06); margin-bottom: 2rem; width: 100%; transition: box-shadow 0.2s, transform 0.2s; cursor: pointer; flex-basis: calc(33.333% - 1rem); }
+.race-card.expanded { box-shadow: 0 6px 20px rgba(0,123,255,0.16); border-left: 4px solid #007bff; }
+
+.race-card-header { padding: 1rem 1.5rem; background: #f5f7fa; border-radius: 12px 12px 0 0; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+.race-title { font-weight: bold; font-size: 1.25rem; color: #007bff; }
+.race-meta { color: #888; font-size: 0.98rem; }
+.btn-expand { font-size: 1.15rem; background: none; border: none; color: #007bff; transition: color 0.2s; }
+.btn-expand:focus { outline: 2px solid #007bff; outline-offset: 2px; box-shadow: 0 0 0 2px rgba(0,123,255,0.25); }
+.race-card-body { display: none; background: #fff; }
+.race-card.expanded .race-card-body { display: block; border-top: 1px solid #eee; padding: 1rem 1.5rem; }
+
+.runners-list { margin: 0; padding: 0; list-style: none; }
+.runner-entry { padding: 0.7rem 0; border-bottom: 1px solid #eee; display: flex; align-items: center; }
+.runner-entry:last-child { border-bottom: none; }
+.runner-number { width: 2.2em; font-weight: bold; font-size: 1rem; color: #222; text-align: right; flex-shrink: 0; }
+.runner-info { flex: 1 1 auto; margin-left: 1em; }
+.runner-name { font-size: 1.08em; font-weight: 600; color: #1a2e46; margin-bottom: 0.1em; cursor: pointer; }
+.runner-odds { font-size: 0.92em; color: #666; background: #f0f3f9; border-radius: 0.2em; padding: 0.1em 0.5em; margin-left: 0.6em; }
+.win-bar, .place-bar { height: 12px; border-radius: 6px; margin-bottom: 0.2em; }
+.win-bar { background: linear-gradient(90deg, #28a745 40%, #9de67c 100%); }
+.place-bar { background: linear-gradient(90deg, #ffc107 25%, #ffe083 100%); }
+
+.confidence-badge { font-size: 0.9em; font-weight: bold; color: #fff; padding: 0.1em 0.65em; border-radius: 1em; background: #17a2b8; }
+
+.runner-extra {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: 1rem;
+    min-width: 80px;
+    text-align: center;
+}
+
+.bet-suggestion {
+    padding: 0.25em 0.8em;
+    border-radius: 10em;
+    font-size: 0.75rem;
+    font-weight: bold;
+    color: #fff;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border: 1px solid rgba(0,0,0,0.1);
+}
+
+.bet-win {
+    background-color: #dc3545; /* Red for Win */
+    box-shadow: 0 0 10px rgba(220, 53, 69, 0.4);
+}
+
+.bet-place {
+    background-color: #ffc107; /* Amber for Place */
+    color: #212529;
+    box-shadow: 0 0 10px rgba(255, 193, 7, 0.4);
+}
+
+.bet-quinella {
+    background-color: #0d6efd; /* Blue for Quinella */
+    box-shadow: 0 0 10px rgba(13, 110, 253, 0.4);
+}
+
+.bet-trifecta {
+    background-color: #6f42c1; /* Purple for Trifecta */
+    box-shadow: 0 0 10px rgba(111, 66, 193, 0.4);
+}
+
+.exotic-bets {
+    padding: 0.75rem 0;
+    margin-bottom: 0.75rem;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.exotic-bets strong {
+    font-size: 0.9rem;
+    color: #343a40;
+    margin-right: 0.5rem;
+}
+.stats-card { min-height: 120px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); border: none; }
+
+/* Focus / Keyboard accents */
+.race-card-header:focus, .race-card:focus-within { outline: 3px solid #007bff; outline-offset: 2px; }
+
+/* Responsive */
+@media only screen and (max-width: 992px) {
+  .race-card { flex-basis: calc(50% - 1rem); }
+}
+
+@media only screen and (max-width: 767px) {
+  .races-container { flex-direction: column; gap: 0.5rem; }
+  .race-card { flex-basis: 100%; }
+}
+

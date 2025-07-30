@@ -1,0 +1,78 @@
+:root {
+    /* Light Mode Color Palette */
+    --primary-color: #2c5f2d; /* Dark Green */
+    --secondary-color: #4caf50; /* Green */
+    --accent-color: #ff9800; /* Orange */
+    --neutral-bg: #f5f7fa; /* Light Gray */
+    --card-bg: #ffffff; /* White */
+    --text-color: #333333; /* Dark Gray */
+    --text-light: #666666; /* Gray */
+    --border-color: #e0e0e0; /* Light Gray */
+    --danger-color: #f44336; /* Red */
+    --success-color: #28a745; /* Green */
+    --info-color: #17a2b8; /* Blue */
+    --warning-color: #ffc107; /* Yellow */
+
+    /* Confidence Level Colors */
+    --confidence-high: var(--secondary-color);
+    --confidence-medium: var(--accent-color);
+    --confidence-low: var(--danger-color);
+
+    /* Typography */
+    --font-primary: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    --font-weight-light: 300;
+    --font-weight-normal: 400;
+    --font-weight-semibold: 600;
+    --font-weight-bold: 700;
+
+    --h1-size: 2.5rem;
+    --h2-size: 2rem;
+    --h3-size: 1.5rem;
+    --h4-size: 1.2rem;
+    --body-size: 1rem;
+    --small-size: 0.875rem;
+
+    /* Spacing */
+    --spacing-xs: 0.25rem;
+    --spacing-sm: 0.5rem;
+    --spacing-md: 1rem;
+    --spacing-lg: 1.5rem;
+    --spacing-xl: 2rem;
+    --spacing-xxl: 3rem;
+
+    /* Borders and Shadows */
+    --border-radius-sm: 4px;
+    --border-radius-md: 8px;
+    --border-radius-lg: 12px;
+    --shadow-sm: 0 2px 4px rgba(0,0,0,0.05);
+    --shadow-md: 0 4px 6px rgba(0,0,0,0.1);
+    --shadow-lg: 0 10px 15px rgba(0,0,0,0.1);
+
+    /* Breakpoints */
+    --breakpoint-sm: 576px;
+    --breakpoint-md: 768px;
+    --breakpoint-lg: 992px;
+    --breakpoint-xl: 1200px;
+}
+
+/* Dark Mode Color Palette */
+[data-theme="dark"] {
+    --primary-color: #4caf50; /* Brighter Green for dark mode */
+    --secondary-color: #66bb6a; /* Lighter Green */
+    --accent-color: #ff9800; /* Orange stays the same */
+    --neutral-bg: #1a1a1a; /* Dark Gray */
+    --card-bg: #2d2d2d; /* Dark Card Background */
+    --text-color: #e0e0e0; /* Light Gray Text */
+    --text-light: #b0b0b0; /* Medium Gray Text */
+    --border-color: #404040; /* Dark Border */
+    --danger-color: #f44336; /* Red stays the same */
+    --success-color: #4caf50; /* Green */
+    --info-color: #2196f3; /* Brighter Blue */
+    --warning-color: #ff9800; /* Orange */
+    
+    /* Dark mode specific shadows */
+    --shadow-sm: 0 2px 4px rgba(0,0,0,0.3);
+    --shadow-md: 0 4px 6px rgba(0,0,0,0.4);
+    --shadow-lg: 0 10px 15px rgba(0,0,0,0.5);
+}
+

@@ -132,7 +132,8 @@ class EnhancedLogger:
         self.save_web_logs()
     
     def log_error(self, message: str, error: Optional[Exception] = None, context: Optional[Dict] = None):
-        """Log error messages with full context"""
+        """Log error messages with full context and structured JSON format"""
+        import traceback
         timestamp = datetime.now().isoformat()
         
         # Format error message
@@ -143,23 +144,38 @@ class EnhancedLogger:
         # Log to file
         self.error_logger.error(error_msg)
         
+        # Create structured error data
+        error_data = {
+            'timestamp': timestamp,
+            'level': 'ERROR',
+            'message': message,
+            'error': str(error) if error else None,
+            'error_type': type(error).__name__ if error else None,
+            'context': context or {},
+            'stack_trace': None
+        }
+        
+        # Add stack trace for exceptions
+        if error:
+            try:
+                error_data['stack_trace'] = traceback.format_exception(type(error), error, error.__traceback__)
+            except Exception:
+                # Fallback if we can't get the full traceback
+                error_data['stack_trace'] = traceback.format_exc()
+        
         # Add to web logs
         with self.lock:
-            log_entry = {
-                'timestamp': timestamp,
-                'level': 'ERROR',
-                'message': message,
-                'error': str(error) if error else None,
-                'error_type': type(error).__name__ if error else None,
-                'context': context or {}
-            }
-            self.web_logs['errors'].append(log_entry)
+            self.web_logs['errors'].append(error_data)
             
             # Keep only last 500 error entries
             if len(self.web_logs['errors']) > 500:
                 self.web_logs['errors'] = self.web_logs['errors'][-500:]
         
         self.save_web_logs()
+        
+        # Also log exception details for debugging
+        if error:
+            self.error_logger.exception(f"Exception details for: {message}")
     
     def log_system(self, message: str, level: str = "INFO", component: str = "SYSTEM"):
         """Log system-level messages"""
@@ -188,6 +204,14 @@ class EnhancedLogger:
                 self.web_logs['system'] = self.web_logs['system'][-500:]
         
         self.save_web_logs()
+    
+    def warning(self, message: str, context: Optional[Dict] = None):
+        """Log warning messages"""
+        self.log_process(message, level="WARNING", details=context)
+    
+    def info(self, message: str, context: Optional[Dict] = None):
+        """Log info messages"""
+        self.log_process(message, level="INFO", details=context)
     
     def get_web_logs(self, log_type: str = "all", limit: int = 100) -> List[Dict]:
         """Get logs for web display"""
@@ -230,6 +254,34 @@ class EnhancedLogger:
                 }
             }
         return summary
+    
+    def exception(self, message: str, context: Optional[Dict] = None):
+        """Log exception with full stack trace (alias for log_error with current exception)"""
+        import sys
+        exc_info = sys.exc_info()
+        if exc_info[1]:
+            self.log_error(message, error=exc_info[1], context=context)
+        else:
+            self.log_error(message, context=context)
+    
+    def create_structured_error(self, message: str, error_code: str = None, 
+                               additional_data: Optional[Dict] = None) -> Dict[str, Any]:
+        """Create a structured JSON error response for API endpoints"""
+        structured_error = {
+            'success': False,
+            'message': message,
+            'timestamp': datetime.now().isoformat(),
+            'error_code': error_code,
+            'additional_data': additional_data or {}
+        }
+        
+        # Log the structured error
+        self.log_error(f"Structured error created: {message}", context={
+            'error_code': error_code,
+            'additional_data': additional_data
+        })
+        
+        return structured_error
 
 # Global logger instance
 logger = EnhancedLogger()

@@ -203,8 +203,12 @@ class FormGuideCsvScraper:
                 for filename in files:
                     self.existing_files.add(filename)
                     
-                    # Parse race info from filename: "Race {num} - {venue} - {date}.csv"
-                    match = re.match(r'Race (\d+) - ([A-Z_]+) - (\d{1,2} \w+ \d{4})\.csv', filename)
+                    # Try to parse from multiple known filename formats
+                    match = re.match(r'Race (\\d+) - ([A-Z_]+) - (\\d{1,2} \\w+ \\d{4})\\.csv', filename)
+                    if not match:
+                        match = re.match(r'\\w+_Race_(\\d+)_([A-Z_]+)_([\\d-]+)\\.csv', filename)
+                    if not match:
+                        match = re.match(r'Race_(\\d+)_-_([A-Z_]+)_-_([\\d_A-Za-z]+)\\.csv', filename)
                     if match:
                         race_number, venue, date_str = match.groups()
                         try:
