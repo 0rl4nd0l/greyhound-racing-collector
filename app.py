@@ -464,78 +464,108 @@ def api_top_performers():
             'message': f'Error getting top performers: {str(e)}'
         }), 500
 
+@app.route('/api/dogs/all')
+def api_all_dogs():
+    """API endpoint to get all dogs with pagination"""
+    try:
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 50, type=int)
+        sort_by = request.args.get('sort_by', 'total_races')  # total_races, dog_name, total_wins, win_rate
+        order = request.args.get('order', 'desc')  # asc, desc
+        
+        # Validate parameters
+        if per_page > 100:
+            per_page = 100  # Limit to prevent large responses
+        
+        offset = (page - 1) * per_page
+        
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        # Define sort options
+        sort_options = {
+            'total_races': 'total_races',
+            'dog_name': 'dog_name',
+            'total_wins': 'total_wins',
+            'total_places': 'total_places',
+            'win_rate': 'CAST(total_wins AS FLOAT) / total_races',
+            'place_rate': 'CAST(total_places AS FLOAT) / total_races',
+            'average_position': 'average_position',
+            'last_race_date': 'last_race_date'
+        }
+        
+        order_by = sort_options.get(sort_by, 'total_races')
+        order_direction = 'ASC' if order == 'asc' else 'DESC'
+        
+        # Get total count
+        cursor.execute('SELECT COUNT(*) FROM dogs')
+        total_count = cursor.fetchone()[0]
+        
+        # Get dogs with pagination
+        cursor.execute(f"""
+            SELECT 
+                dog_id,
+                dog_name,
+                total_races,
+                total_wins,
+                total_places,
+                best_time,
+                average_position,
+                last_race_date
+            FROM dogs 
+            ORDER BY {order_by} {order_direction}
+            LIMIT ? OFFSET ?
+        """, (per_page, offset))
+        
+        dogs = cursor.fetchall()
+        conn.close()
+        
+        # Format results
+        results = []
+        for dog in dogs:
+            win_rate = (dog[3] / dog[2] * 100) if dog[2] > 0 else 0
+            place_rate = (dog[4] / dog[2] * 100) if dog[2] > 0 else 0
+            
+            results.append({
+                'dog_id': dog[0],
+                'dog_name': dog[1],
+                'total_races': dog[2],
+                'total_wins': dog[3],
+                'total_places': dog[4],
+                'win_percentage': round(win_rate, 1),
+                'place_percentage': round(place_rate, 1),
+                'best_time': dog[5],
+                'average_position': round(dog[6], 1) if dog[6] else None,
+                'last_race_date': dog[7]
+            })
+        
+        # Calculate pagination info
+        total_pages = math.ceil(total_count / per_page)
+        has_next = page < total_pages
+        has_prev = page > 1
+        
+        return jsonify({
+            'success': True,
+            'dogs': results,
+            'pagination': {
+                'page': page,
+                'per_page': per_page,
+                'total_count': total_count,
+                'total_pages': total_pages,
+                'has_next': has_next,
+                'has_prev': has_prev
+            },
+            'sort_by': sort_by,
+            'order': order
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error getting all dogs: {str(e)}'
+        }), 500
 
-#!/usr/bin/env python3
-"""
-Greyhound Racing Dashboard
-=========================
 
-Flask web application for monitoring and analyzing greyhound racing data.
-Integrates with the existing data collection and analysis system.
-
-Author: AI Assistant
-Date: July 11, 2025
-"""
-
-import os
-import sqlite3
-import json
-import subprocess
-import sys
-import math
-from datetime import datetime, timedelta
-from pathlib import Path
-from flask import Flask, render_template, jsonify, request, redirect, url_for, flash
-from werkzeug.utils import secure_filename
-import pandas as pd
-import threading
-import time
-from logger import logger
-from enhanced_race_analyzer import EnhancedRaceAnalyzer
-from sportsbet_odds_integrator import SportsbetOddsIntegrator
-from venue_mapping_fix import GreyhoundVenueMapper
-from enhanced_data_integration import EnhancedDataIntegrator
-import pickle
-import logging
-import hashlib
-
-# Model registry system
-from model_registry import get_model_registry
-
-# Prediction system imports
-try:
-    from unified_predictor import UnifiedPredictor
-except ImportError:
-    UnifiedPredictor = None
-    print("Warning: UnifiedPredictor not available")
-
-try:
-    from comprehensive_prediction_pipeline import ComprehensivePredictionPipeline
-except ImportError:
-    ComprehensivePredictionPipeline = None
-    print("Warning: ComprehensivePredictionPipeline not available")
-
-# Load environment variables from .env file
-from dotenv import load_dotenv
-load_dotenv()
-
-app = Flask(__name__)
-app.secret_key = 'greyhound_racing_secret_key_2025'
-
-# Configuration
-DATABASE_PATH = 'greyhound_racing_data.db'
-UNPROCESSED_DIR = './unprocessed'
-PROCESSED_DIR = './processed'
-HISTORICAL_DIR = './historical_races'
-UPCOMING_DIR = './upcoming_races'
-
-# Upload configuration
-ALLOWED_EXTENSIONS = {'csv'}
-app.config['UPLOAD_FOLDER'] = UPCOMING_DIR
-
-def allowed_file(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 @app.route('/api/races')
 def api_races():

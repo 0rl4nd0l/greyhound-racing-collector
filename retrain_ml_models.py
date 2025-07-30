@@ -30,7 +30,7 @@ def extract_training_data():
         try:
             race_file_path = os.path.join('upcoming_races', race_file)
             race_df = pipeline._load_race_file(race_file_path)
-            dogs = pipeline._extract_participating_dogs(race_df)
+            dogs = pipeline._extract_participating_dogs(race_df, race_file_path)
             
             for dog in dogs:
                 historical_data = dog.get('historical_data', [])

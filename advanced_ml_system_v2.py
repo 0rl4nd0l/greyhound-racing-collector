@@ -283,8 +283,24 @@ class AdvancedMLSystemV2:
         if not self.models:
             return 0.5  # Default probability
         
-        # No feature mapping needed since input features match model expectations
-        mapped_features = features_dict
+        # Feature mapping to match model expectations
+        mapped_features = {
+            'weighted_recent_form': features_dict.get('weighted_recent_form', 0.0),
+            'speed_trend': features_dict.get('speed_trend', 0.0),
+            'speed_consistency': features_dict.get('speed_consistency', 0.0),
+            'venue_win_rate': features_dict.get('venue_win_rate', 0.0),
+            'venue_avg_position': features_dict.get('venue_avg_position', 0.0),
+            'venue_experience': features_dict.get('venue_experience', 0.0),
+            'distance_win_rate': features_dict.get('distance_win_rate', 0.0),
+            'distance_avg_time': features_dict.get('distance_avg_time', 0.0),
+            'box_position_win_rate': features_dict.get('box_win_rate', 0.0), # renamed
+            'box_position_avg': features_dict.get('box_avg_pos', 0.0), # renamed
+            'recent_momentum': features_dict.get('momentum', 0.0), #renamed
+            'competitive_level': features_dict.get('class_level', 0.0), #renamed
+            'position_consistency': features_dict.get('consistency', 0.0), #renamed
+            'top_3_rate': features_dict.get('place_rate', 0.0), #renamed
+            'break_quality': features_dict.get('early_speed', 0.0), #renamed
+        }
         
         # Get expected feature list
         base_features = [

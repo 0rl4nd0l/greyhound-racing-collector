@@ -138,9 +138,13 @@ class EnhancedPipelineV2:
             for i, pred in enumerate(predictions, 1):
                 pred['rank'] = i
             
+            # Validate prediction quality before claiming success
+            quality_issues = self._validate_prediction_quality(predictions)
+            
             # Prepare response
             return {
-                'success': True,
+                'success': len(quality_issues) == 0,
+                'quality_issues': quality_issues if quality_issues else None,
                 'predictions': predictions,
                 'race_info': {
                     'filename': os.path.basename(race_file_path),
@@ -165,12 +169,23 @@ class EnhancedPipelineV2:
     def _load_race_file(self, race_file_path: str) -> pd.DataFrame:
         """Load and parse race file"""
         try:
-            # Auto-detect delimiter
+            # Better delimiter detection
             with open(race_file_path, 'r', encoding='utf-8') as f:
                 first_line = f.readline()
-                delimiter = '|' if '|' in first_line else ','
+                # Count delimiters to choose the most common one
+                comma_count = first_line.count(',')
+                pipe_count = first_line.count('|')
+                
+                if comma_count > pipe_count:
+                    delimiter = ','
+                elif pipe_count > 0:
+                    delimiter = '|'
+                else:
+                    delimiter = ','
             
+            logger.debug(f"Using delimiter '{delimiter}' for race file")
             df = pd.read_csv(race_file_path, delimiter=delimiter)
+            logger.debug(f"Loaded race file with columns: {df.columns.tolist()}")
             return df
         except Exception as e:
             logger.error(f"Error loading race file: {e}")
@@ -219,6 +234,7 @@ class EnhancedPipelineV2:
                         'weight': float(row.get('WGT', 0)) if pd.notna(row.get('WGT')) else None,
                         'sex': row.get('Sex'),
                         'recent_form': [],  # Will be populated from history
+                        'distance': int(str(row['DIST']).replace('m', '')) if pd.notna(row.get('DIST')) else 516,  # Add race distance
                     }
                     
                     # Convert current race details
@@ -299,59 +315,56 @@ class EnhancedPipelineV2:
         embedded_features = self._extract_features_from_historical_data(dog_info, race_file_path)
         features.update(embedded_features)
         
-        # Use feature engineer if available for additional features
-        if self.feature_engineer:
+        # Use feature engineer only if we don't have sufficient meaningful embedded historical data
+        meaningful_features = len([v for v in embedded_features.values() if abs(v) > 1e-6 and v != 0.5])
+        
+        if self.feature_engineer and meaningful_features < 5:  # Reduced threshold to 5 meaningful features
+            logger.info(f"Insufficient embedded data for {dog_name} ({meaningful_features} meaningful features), using advanced feature engineer.")
             try:
-                # Load comprehensive data
                 comprehensive_data = self.feature_engineer.load_comprehensive_data()
-                
-                # Extract venue from filename
                 venue = self._extract_venue_from_filename(race_file_path)
                 race_date = self._extract_date_from_filename(race_file_path)
-                
-                # Generate advanced features (this may override some embedded features)
                 advanced_features = self.feature_engineer.create_advanced_dog_features(
                     comprehensive_data, dog_name, race_date, venue
                 )
                 
-                # Merge advanced features, but prioritize embedded data where available
+                # Only use advanced features to fill gaps in embedded data
                 for key, value in advanced_features.items():
-                    if key not in features or features[key] == 0 or features[key] == 5.0:  # Default values
-                        features[key] = value
+                    if key not in embedded_features or embedded_features[key] == 0.0:
+                        if abs(value) > 1e-6 and value != 0.5:  # Only meaningful advanced values
+                            features[key] = value
                 
-                logger.debug(f"Generated {len(advanced_features)} advanced features for {dog_name}")
+                logger.debug(f"Filled gaps with {len([k for k, v in advanced_features.items() if k in features])} advanced features for {dog_name}")
                 
             except Exception as e:
-                logger.warning(f"Error generating enhanced features for {dog_name}: {e}")
-        
+                logger.warning(f"Error generating advanced features for {dog_name}: {e}")
+        else:
+            logger.info(f"Using {meaningful_features} high-quality embedded features for {dog_name}. Advanced feature engineer skipped.")
+
         # Use data improver if available
         if self.data_improver:
-            try:
-                # Add data quality metrics
-                data_quality = self.data_improver.calculate_data_quality_score(features)
-                features['data_quality'] = data_quality
-            except Exception as e:
-                logger.warning(f"Error calculating data quality: {e}")
-                features['data_quality'] = 0.5
+            features['data_quality'] = self.data_improver.calculate_data_quality_score(features)
         else:
-            features['data_quality'] = 0.7 if len(embedded_features) > 5 else 0.5  # Higher quality if we have embedded data
+            features['data_quality'] = 0.7 if meaningful_features > 5 else 0.5
+
+        # Final alignment to ensure all expected features are present before returning
+        # Only align if the features we have don't match the expected ML model features
+        expected_features = [
+            'weighted_recent_form', 'speed_trend', 'speed_consistency', 'venue_win_rate',
+            'venue_avg_position', 'venue_experience', 'distance_win_rate', 'distance_avg_time',
+            'box_position_win_rate', 'box_position_avg', 'recent_momentum', 'competitive_level',
+            'position_consistency', 'top_3_rate', 'break_quality'
+        ]
         
-        # Ensure complete alignment with model's required features
-        try:
-            model_file = Path('./comprehensive_trained_models/comprehensive_best_model_20250727.joblib')
-            model_data = joblib.load(model_file)
-            expected_features = model_data['feature_columns']
-            
-            # Initialize missing features with default values
-            for feature_name in expected_features:
-                if feature_name not in features:
-                    features[feature_name] = 0.0  # Default to 0.0 if missing
-            
-            logger.debug(f"Aligned features for {dog_name} with model expectations")
-        except Exception as e:
-            logger.warning(f"Error aligning features with model: {e}")
+        model_ready_features = {}
+        for feature_name in expected_features:
+            model_ready_features[feature_name] = features.get(feature_name, 0.0)
         
-        return features
+        # Add any additional features that might be needed but preserve existing values
+        model_ready_features.update({k: v for k, v in features.items() if k not in model_ready_features})
+
+        logger.debug(f"Final aligned features for {dog_name}: {len(model_ready_features)} keys with {len([v for v in model_ready_features.values() if v != 0.0])} non-zero values")
+        return model_ready_features
     
     def _generate_prediction_score(self, features: dict, dog_name: str) -> float:
         """Generate prediction score using ML system if available"""
@@ -512,10 +525,13 @@ class EnhancedPipelineV2:
         """Generate human-readable reasoning for prediction"""
         reasons = []
         
-        if prediction_score > 0.65:
+        # Adjusted thresholds to match realistic score ranges
+        if prediction_score > 0.30:
             reasons.append("Strong prediction based on")
-        elif prediction_score > 0.45:
+        elif prediction_score > 0.20:
             reasons.append("Moderate prediction based on")
+        elif prediction_score > 0.10:
+            reasons.append("Fair prediction based on")
         else:
             reasons.append("Weak prediction based on")
         
@@ -546,17 +562,40 @@ class EnhancedPipelineV2:
         """Extract venue from filename"""
         try:
             basename = os.path.basename(filename)
-            # Try different patterns
-            if ' - ' in basename:
+            
+            # Handle "Race X - VENUE - DATE.csv" format
+            if basename.startswith('Race ') and ' - ' in basename:
                 parts = basename.split(' - ')
-                if len(parts) >= 2:
-                    return parts[1]
+                if len(parts) >= 3:
+                    return parts[1]  # VENUE is the second part
+                elif len(parts) >= 2:
+                    return parts[1]  # Fallback to second part
+            
+            # Handle "VENUE_RACE_DATE.csv" format
             elif '_' in basename:
                 parts = basename.split('_')
                 if len(parts) >= 2:
-                    return parts[1]
+                    # Check if first part looks like a venue (all caps, 3-6 chars)
+                    if parts[0].isupper() and 3 <= len(parts[0]) <= 6:
+                        return parts[0]
+                    # Check if first part is a lowercase venue name
+                    elif parts[0].lower() in ['ballarat', 'geelong', 'warrnambool', 'sandown', 'bendigo', 'horsham', 'murray', 'sale', 'healesville', 'cranbourne', 'wentworth', 'taree', 'richmond', 'dapto', 'newcastle', 'albion']:
+                        return parts[0].upper()
+                    # Check for common abbreviations
+                    elif len(parts[0]) >= 3 and parts[0].isalpha():
+                        return parts[0].upper()
+                    else:
+                        return parts[1]
+            
+            # Try to extract any uppercase venue-like string
+            import re
+            venue_matches = re.findall(r'\b[A-Z]{3,6}\b', basename)
+            if venue_matches:
+                return venue_matches[0]
+            
             return "UNKNOWN"
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Error extracting venue from {filename}: {e}")
             return "UNKNOWN"
     
     def _extract_date_from_filename(self, filename: str) -> str:
@@ -574,176 +613,131 @@ class EnhancedPipelineV2:
             return datetime.now().strftime('%Y-%m-%d')
     
     def _extract_features_from_historical_data(self, dog_info: dict, race_file_path: str) -> dict:
-        """Extract meaningful features from embedded historical race data in CSV"""
-        features = {}
+        """
+        Extracts features from embedded historical data, aligning them precisely with the ML model's expectations.
+        """
+        # These are the 15 features the model was trained on and expects to see.
+        ML_MODEL_FEATURES = [
+            'weighted_recent_form', 'speed_trend', 'speed_consistency', 'venue_win_rate',
+            'venue_avg_position', 'venue_experience', 'distance_win_rate', 'distance_avg_time',
+            'box_position_win_rate', 'box_position_avg', 'recent_momentum', 'competitive_level',
+            'position_consistency', 'top_3_rate', 'break_quality'
+        ]
         
+        # Initialize all expected features to a default of 0.0
+        features = {key: 0.0 for key in ML_MODEL_FEATURES}
+
         try:
             historical_data = dog_info.get('historical_data', [])
             if not historical_data:
+                logger.debug(f"No historical data for {dog_info.get('dog_name')}")
                 return features
-            
-            # Convert to DataFrame for easier processing
+
             df = pd.DataFrame(historical_data)
-            
-            # Clean and convert data types - handle both CSV format and database format
-            # Map different possible column names to standard format
+
+            # --- Data Cleaning and Standardization ---
             column_mapping = {
-                'finish_position': 'PLC',
-                'individual_time': 'TIME', 
-                'race_date': 'DATE',
-                'box_number': 'BOX',
-                'distance': 'DIST',
-                'starting_price': 'SP'
+                'finish_position': 'PLC', 'individual_time': 'TIME', 'race_date': 'DATE',
+                'box_number': 'BOX', 'distance': 'DIST', 'starting_price': 'SP',
+                'track_name': 'TRACK', 'grade': 'GRADE'
             }
+            # Rename columns to a standard format
+            df.rename(columns={k: v for k, v in column_mapping.items() if k in df.columns}, inplace=True)
             
-            # Rename columns if they exist
-            for old_col, new_col in column_mapping.items():
-                if old_col in df.columns and new_col not in df.columns:
-                    df[new_col] = df[old_col]
-            
-            # Clean and convert data types
-            if 'PLC' in df.columns:
-                df['PLC'] = pd.to_numeric(df['PLC'], errors='coerce')
-            if 'TIME' in df.columns:
-                df['TIME'] = pd.to_numeric(df['TIME'], errors='coerce')
-            if 'DATE' in df.columns:
-                df['DATE'] = pd.to_datetime(df['DATE'], errors='coerce')
-            if 'BOX' in df.columns:
-                df['BOX'] = pd.to_numeric(df['BOX'], errors='coerce')
-            if 'DIST' in df.columns:
-                df['DIST'] = pd.to_numeric(df['DIST'], errors='coerce')
-            if 'SP' in df.columns:
-                df['SP'] = pd.to_numeric(df['SP'], errors='coerce')
-            
-            # Remove rows with missing critical data
-            required_cols = [col for col in ['PLC', 'TIME', 'DATE'] if col in df.columns]
-            if required_cols:
-                df = df.dropna(subset=required_cols)
-            
-            if len(df) == 0:
+            # Ensure essential columns exist, otherwise we can't do anything
+            if 'PLC' not in df.columns or 'DATE' not in df.columns:
+                logger.warning("Historical data missing 'PLC' or 'DATE', cannot extract features.")
                 return features
+
+            # Coerce data types, forcing errors to NaT/NaN
+            df['DATE'] = pd.to_datetime(df['DATE'], errors='coerce')
+            df['PLC'] = pd.to_numeric(df['PLC'], errors='coerce')
+            df['TIME'] = pd.to_numeric(df['TIME'], errors='coerce')
+            df['BOX'] = pd.to_numeric(df['BOX'], errors='coerce')
+            df['DIST'] = pd.to_numeric(df['DIST'], errors='coerce')
+
+            # Drop rows where critical data is missing or invalid
+            df.dropna(subset=['DATE', 'PLC'], inplace=True)
+            if df.empty:
+                return features
+
+            # Sort by date to ensure "recent" is correct
+            df.sort_values(by='DATE', ascending=False, inplace=True)
             
-            # Sort by date (most recent first)
-            df = df.sort_values('DATE', ascending=False)
+            recent_races = df.head(10)
+            if recent_races.empty:
+                return features
+
+            # --- Feature Calculation ---
+
+            # 1. Position & Form Features
+            weights = np.linspace(1.0, 0.5, num=len(recent_races)) # More recent races get higher weight
+            features['weighted_recent_form'] = np.average(recent_races['PLC'], weights=weights)
+            features['position_consistency'] = 1.0 / (1.0 + recent_races['PLC'].std()) if len(recent_races) > 1 else 0.5
+            features['top_3_rate'] = (recent_races['PLC'] <= 3).mean()
             
-            # 1. Weighted Recent Form (last 5 races)
-            recent_positions = df['PLC'].head(5).tolist()
-            if recent_positions:
-                weights = [0.4, 0.3, 0.2, 0.1, 0.05][:len(recent_positions)]
-                features['weighted_recent_form'] = sum(pos * weight for pos, weight in zip(recent_positions, weights))
+            # 2. Time-based Features
+            recent_times = recent_races['TIME'].dropna()
+            if len(recent_times) > 1:
+                features['speed_consistency'] = 1.0 / (1.0 + recent_times.std())
+                # Trend: negative slope means faster times (improvement)
+                features['speed_trend'] = -np.polyfit(range(len(recent_times)), recent_times, 1)[0] if len(recent_times) > 2 else 0.0
             
-            # 2. Speed Trend Analysis
-            recent_times = df['TIME'].head(5).dropna()
-            if len(recent_times) >= 3:
-                # Calculate trend (negative = improving times)
-                features['speed_trend'] = np.polyfit(range(len(recent_times)), recent_times, 1)[0]
-                features['speed_consistency'] = recent_times.std()
-            else:
-                features['speed_trend'] = 0
-                features['speed_consistency'] = 0
+            # 3. Venue-specific Features
+            current_venue = self._extract_venue_from_filename(race_file_path).lower()
+            if 'TRACK' in df.columns:
+                venue_data = df[df['TRACK'].str.lower() == current_venue]
+                if not venue_data.empty:
+                    features['venue_experience'] = len(venue_data)
+                    features['venue_win_rate'] = (venue_data['PLC'] == 1).mean()
+                    features['venue_avg_position'] = venue_data['PLC'].mean()
+
+            # 4. Distance-specific Features
+            current_distance = dog_info.get('distance')
+            if current_distance and 'DIST' in df.columns:
+                distance_data = df[df['DIST'] == current_distance]
+                if not distance_data.empty:
+                    features['distance_win_rate'] = (distance_data['PLC'] == 1).mean()
+                    # Use .get() to avoid errors if TIME is all NaN
+                    features['distance_avg_time'] = distance_data['TIME'].mean() if not distance_data['TIME'].dropna().empty else 0.0
+
+            # 5. Box-specific Features
+            current_box = dog_info.get('box')
+            if current_box and 'BOX' in df.columns:
+                box_data = df[df['BOX'] == current_box]
+                if not box_data.empty:
+                    features['box_position_win_rate'] = (box_data['PLC'] == 1).mean()
+                    features['box_position_avg'] = box_data['PLC'].mean()
+
+            # 6. Other Advanced Features
+            if len(df) > 5:
+                # Momentum: Compare last 5 races avg position to the 5 before that
+                last_5_avg = df.head(5)['PLC'].mean()
+                next_5_avg = df.iloc[5:10]['PLC'].mean()
+                if not np.isnan(last_5_avg) and not np.isnan(next_5_avg):
+                    features['recent_momentum'] = next_5_avg - last_5_avg # Negative value is improvement
             
-            # 3. Venue-specific Performance
-            venue = self._extract_venue_from_filename(race_file_path)
+            # Competitive Level: Use grade if available, otherwise default
+            if 'GRADE' in df.columns:
+                 # Simple encoding: higher grade (C1 > C5) is harder. We want higher number for harder race.
+                grade_map = {f'C{i}': i for i in range(1, 10)}
+                features['competitive_level'] = recent_races['GRADE'].map(grade_map).mean()
+
+            # Break Quality: Placeholder, as it's not available in basic data
+            features['break_quality'] = 0.0 
             
-            # Handle venue matching with different possible column names
-            venue_col = None
-            for col in ['TRACK', 'venue']:
-                if col in df.columns:
-                    venue_col = col
-                    break
+            # Replace any NaN/inf values that may have slipped through
+            for key, value in features.items():
+                if pd.isna(value) or np.isinf(value):
+                    features[key] = 0.0
             
-            if venue_col and venue != "UNKNOWN":
-                venue_data = df[df[venue_col].str.contains(venue[:4], case=False, na=False)]
-            else:
-                venue_data = df
-            
-            if len(venue_data) > 0:
-                features['venue_win_rate'] = (venue_data['PLC'] == 1).mean()
-                features['venue_avg_position'] = venue_data['PLC'].mean()
-                features['venue_experience'] = len(venue_data)
-            else:
-                features['venue_win_rate'] = 0
-                features['venue_avg_position'] = 5.0
-                features['venue_experience'] = 0
-            
-            # 4. Distance-specific Performance
-            race_distance = 516  # Default distance, could be extracted from race info
-            distance_data = df[df['DIST'] == race_distance]
-            if len(distance_data) > 0:
-                features['distance_win_rate'] = (distance_data['PLC'] == 1).mean()
-                features['distance_avg_time'] = distance_data['TIME'].mean()
-            else:
-                features['distance_win_rate'] = features.get('venue_win_rate', 0)
-                features['distance_avg_time'] = df['TIME'].mean() if len(df) > 0 else 30.0
-            
-            # 5. Box Position Analysis
-            current_box = dog_info.get('box', 0)
-            similar_box_data = df[df['BOX'] == current_box]
-            if len(similar_box_data) > 0:
-                features['box_position_win_rate'] = (similar_box_data['PLC'] == 1).mean()
-                features['box_position_avg'] = similar_box_data['PLC'].mean()
-            else:
-                # Use general box performance
-                features['box_position_win_rate'] = 0.1  # Default
-                features['box_position_avg'] = 5.0
-            
-            # 6. Recent Performance Momentum
-            if len(df) >= 3:
-                last_3_races = df['PLC'].head(3).tolist()
-                if all(pos <= 3 for pos in last_3_races):  # Consistent top 3
-                    features['recent_momentum'] = 0.8
-                elif all(pos <= 2 for pos in last_3_races[:2]):  # Recent wins/places
-                    features['recent_momentum'] = 0.6
-                else:
-                    features['recent_momentum'] = 0.3
-            else:
-                features['recent_momentum'] = 0.5
-            
-            # 7. Competitive Level (based on starting prices)
-            if 'SP' in df.columns and not df['SP'].isna().all():
-                avg_sp = df['SP'].mean()
-                if avg_sp < 5.0:  # Often favored
-                    features['competitive_level'] = 0.8
-                elif avg_sp < 15.0:  # Sometimes favored
-                    features['competitive_level'] = 0.6
-                else:  # Long shots
-                    features['competitive_level'] = 0.4
-            else:
-                features['competitive_level'] = 0.5
-            
-            # 8. Consistency Metrics
-            if len(df) >= 5:
-                positions = df['PLC'].head(10)
-                features['position_consistency'] = 1.0 / (1.0 + positions.std())  # Lower std = higher consistency
-                features['top_3_rate'] = (positions <= 3).mean()
-            else:
-                features['position_consistency'] = 0.5
-                features['top_3_rate'] = 0.3
-            
-            # 9. Break Patterns (first vs second sectional)
-            # This would need more detailed sectional data, using simplified version
-            features['break_quality'] = 0.5  # Placeholder
-            
-            # 10. Add missing features expected by ML models
-            if len(df) >= 3:
-                recent_positions = df['PLC'].head(5)
-                features['recent_momentum'] = 0.8 if all(pos <= 3 for pos in recent_positions.head(2)) else 0.3
-                features['position_consistency'] = 1.0 / (1.0 + recent_positions.std()) if len(recent_positions) > 1 else 0.5
-                features['top_3_rate'] = (recent_positions <= 3).mean()
-            else:
-                features['recent_momentum'] = 0.5
-                features['position_consistency'] = 0.5
-                features['top_3_rate'] = 0.3
-            
-            # Map competition_level from competitive_level if exists
-            if 'competitive_level' not in features:
-                features['competitive_level'] = features.get('competitive_level', 0.5)
-            
-            logger.debug(f"Extracted {len(features)} features from {len(df)} historical races")
-            
+            logger.debug(f"Extracted {len(features)} named features for {dog_info.get('dog_name')}")
+
         except Exception as e:
-            logger.warning(f"Error extracting features from historical data: {e}")
-        
+            logger.error(f"Error in _extract_features_from_historical_data for {dog_info.get('dog_name')}: {e}", exc_info=True)
+            # Return the default zero-filled dictionary on error
+            return {key: 0.0 for key in ML_MODEL_FEATURES}
+
         return features
     
     def _check_for_model_updates(self):
@@ -816,6 +810,42 @@ class EnhancedPipelineV2:
             
         except Exception as e:
             logger.warning(f"Error checking for model updates: {e}")
+    
+    def _validate_prediction_quality(self, predictions: list) -> list:
+        """Validate prediction quality and return list of issues"""
+        issues = []
+        
+        if not predictions:
+            issues.append("No predictions generated")
+            return issues
+        
+        # Check for uniform/flat predictions
+        scores = [pred['prediction_score'] for pred in predictions]
+        unique_scores = len(set([round(s, 4) for s in scores]))
+        if unique_scores <= 2 and len(predictions) > 2:
+            issues.append(f"Predictions show insufficient variation ({unique_scores} unique scores for {len(predictions)} dogs)")
+        
+        # Check for extremely low prediction scores
+        if max(scores) < 0.05:
+            issues.append(f"All prediction scores extremely low (max: {max(scores):.4f})")
+        
+        # Check minimum score range
+        score_range = max(scores) - min(scores)
+        if score_range < 0.01:
+            issues.append(f"Prediction score range too narrow ({score_range:.4f})")
+        
+        # Check for ML model issues - if we have access to the ML scores during prediction
+        if hasattr(self, '_last_ml_scores') and self._last_ml_scores:
+            recent_ml_scores = self._last_ml_scores[-len(predictions):]
+            if len(set([round(s, 8) for s in recent_ml_scores])) == 1:
+                issues.append(f"ML model returning identical scores ({recent_ml_scores[0]:.8f})")
+        
+        # Check confidence levels - all should not be identical
+        confidence_levels = [pred['confidence_level'] for pred in predictions]
+        if len(set(confidence_levels)) == 1 and len(predictions) > 3:
+            issues.append(f"All predictions have identical confidence level ({confidence_levels[0]})")
+        
+        return issues
     
     def _error_response(self, error_message: str) -> dict:
         """Generate error response"""
