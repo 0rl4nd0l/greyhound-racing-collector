@@ -193,7 +193,8 @@ document.addEventListener('DOMContentLoaded', () => {
             resultDiv.className = `alert ${result.success ? 'alert-success' : 'alert-danger'}`;
             if (result.success) {
                 const topPick = result.prediction.top_pick;
-                resultDiv.innerHTML = `<strong>Race:</strong> ${result.race_id} - <strong>Top Pick:</strong> ${topPick.dog_name} (Win Probability: ${(topPick.win_probability * 100).toFixed(2)}%)`;
+                const winProb = topPick.final_score || topPick.win_probability || 0;
+                resultDiv.innerHTML = `<strong>Race:</strong> ${result.race_id} - <strong>Top Pick:</strong> ${topPick.dog_name} (Win Probability: ${(winProb * 100).toFixed(2)}%)`;
             } else {
                 resultDiv.innerHTML = `<strong>Race:</strong> ${result.race_id} - <strong>Error:</strong> ${result.message}`;
             }

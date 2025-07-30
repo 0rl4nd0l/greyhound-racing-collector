@@ -19,13 +19,22 @@ import numpy as np
 import joblib
 from datetime import datetime
 from pathlib import Path
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, roc_auc_score, classification_report
 from sklearn.pipeline import Pipeline
 import sqlite3
+# Try to import XGBoost, fallback gracefully if not available
+try:
+    import xgboost as xgb
+    XGBOOST_AVAILABLE = True
+except ImportError:
+    XGBOOST_AVAILABLE = False
+    print("⚠️ XGBoost not available, falling back to sklearn models only")
+
+from traditional_analysis import TraditionalRaceAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +44,7 @@ class MLSystemV3:
         self.pipeline = None
         self.feature_columns = []
         self.model_info = {}
+        self.traditional_analyzer = TraditionalRaceAnalyzer(db_path)
         self._try_load_latest_model()
     
     def train_model(self, model_type='gradient_boosting'):
@@ -65,39 +75,66 @@ class MLSystemV3:
         
         # Create model based on type
         if model_type == 'gradient_boosting':
-            model = GradientBoostingClassifier(
-                n_estimators=200,
-                learning_rate=0.1,
-                max_depth=6,
-                random_state=42
-            )
+            model = GradientBoostingClassifier(random_state=42)
+            param_grid = {
+                'model__n_estimators': [100, 200, 300],
+                'model__learning_rate': [0.05, 0.1, 0.2],
+                'model__max_depth': [3, 5, 7]
+            }
+        elif model_type == 'xgboost':
+            if not XGBOOST_AVAILABLE:
+                logger.warning("XGBoost not available, falling back to GradientBoosting")
+                model = GradientBoostingClassifier(random_state=42)
+                param_grid = {
+                    'model__n_estimators': [100, 200, 300],
+                    'model__learning_rate': [0.05, 0.1, 0.2],
+                    'model__max_depth': [3, 5, 7]
+                }
+            else:
+                model = xgb.XGBClassifier(random_state=42, use_label_encoder=False, eval_metric='logloss')
+                param_grid = {
+                    'model__n_estimators': [100, 200, 300],
+                    'model__learning_rate': [0.05, 0.1, 0.2],
+                    'model__max_depth': [3, 5, 7]
+                }
         elif model_type == 'random_forest':
-            model = RandomForestClassifier(
-                n_estimators=200,
-                max_depth=10,
-                min_samples_split=5,
-                min_samples_leaf=2,
-                random_state=42
-            )
+            model = RandomForestClassifier(random_state=42)
+            param_grid = {
+                'model__n_estimators': [100, 200],
+                'model__max_depth': [10, 20],
+                'model__min_samples_split': [2, 5]
+            }
         else:
             model = LogisticRegression(random_state=42, max_iter=1000)
+            param_grid = {
+                'model__C': [0.1, 1, 10]
+            }
         
-        # Create pipeline
-        self.pipeline = Pipeline([
+        # Create and tune pipeline
+        pipeline = Pipeline([
             ('scaler', StandardScaler()),
             ('model', model)
         ])
         
-        # Train model
-        logger.info(f"Training {model_type} model...")
-        self.pipeline.fit(X_train, y_train)
+        grid_search = GridSearchCV(pipeline, param_grid, cv=3, n_jobs=-1, scoring='roc_auc')
+        grid_search.fit(X_train, y_train)
+        
+        self.pipeline = grid_search.best_estimator_
+        logger.info(f"Best parameters for {model_type}: {grid_search.best_params_}")
         
         # Evaluate model
         train_score = self.pipeline.score(X_train, y_train)
         test_score = self.pipeline.score(X_test, y_test)
-        
         y_pred_proba = self.pipeline.predict_proba(X_test)[:, 1]
         roc_auc = roc_auc_score(y_test, y_pred_proba)
+        
+        # Feature importance
+        if hasattr(self.pipeline.named_steps['model'], 'feature_importances_'):
+            importances = self.pipeline.named_steps['model'].feature_importances_
+            feature_importance = sorted(zip(self.feature_columns, importances), key=lambda x: x[1], reverse=True)
+            logger.info("Top 10 Feature Importances:")
+            for feature, importance in feature_importance[:10]:
+                logger.info(f"  {feature}: {importance:.4f}")
         
         logger.info(f"Model Performance:")
         logger.info(f"  Training Accuracy: {train_score:.4f}")
@@ -250,7 +287,43 @@ class MLSystemV3:
         logger.info("Creating comprehensive feature set...")
         
         # Initialize features DataFrame
-        features = pd.DataFrame()
+        features = pd.DataFrame(index=data.index)
+        
+        # Add traditional analysis features
+        try:
+            traditional_features = pd.DataFrame(index=data.index)
+            for idx, row in data.iterrows():
+                try:
+                    dog_factors = self.traditional_analyzer.analyze_dog(row['dog_clean_name'], row.to_dict())
+                    trad_features = self.traditional_analyzer._extract_ml_features(dog_factors, row.to_dict())
+                    for key, value in trad_features.items():
+                        traditional_features.loc[idx, key] = value
+                except Exception as e:
+                    logger.debug(f"Error getting traditional features for {row.get('dog_clean_name', 'unknown')}: {e}")
+                    # Fill with defaults
+                    default_features = {
+                        'traditional_overall_score': 0.35,
+                        'traditional_performance_score': 0.3,
+                        'traditional_form_score': 0.3,
+                        'traditional_class_score': 0.5,
+                        'traditional_consistency_score': 0.3,
+                        'traditional_fitness_score': 0.5,
+                        'traditional_experience_score': 0.2,
+                        'traditional_trainer_score': 0.5,
+                        'traditional_track_condition_score': 0.5,
+                        'traditional_distance_score': 0.5,
+                        'traditional_confidence_level': 0.2,
+                        'traditional_key_factors_count': 0,
+                        'traditional_risk_factors_count': 2
+                    }
+                    for key, value in default_features.items():
+                        traditional_features.loc[idx, key] = value
+            
+            # Fill any remaining NaN values
+            traditional_features = traditional_features.fillna(0.3)
+            features = pd.concat([features, traditional_features], axis=1)
+        except Exception as e:
+            logger.warning(f"Error adding traditional features: {e}. Skipping traditional analysis.")
         
         # Basic performance features
         features['box_number'] = pd.to_numeric(data['box_number'], errors='coerce')
@@ -285,14 +358,19 @@ class MLSystemV3:
         ], axis=1)
         
         # Derived features
-        features['price_rank'] = features['starting_price'].rank(method='dense')
-        features['weight_rank'] = features['weight'].rank(method='dense')
-        features['box_advantage'] = (features['box_number'] <= 3).astype(int)
-        features['is_favorite'] = (features['starting_price'] <= 3.0).astype(int)
+        features['price_rank'] = features['starting_price'].groupby(data['race_id']).rank(method='dense')
+        features['weight_rank'] = features['weight'].groupby(data['race_id']).rank(method='dense')
+        features['time_rank_in_race'] = features['individual_time'].groupby(data['race_id']).rank(method='dense')
+        features['box_advantage'] = (features['box_number'] <= 3).astype(int) - (features['box_number'] >= 6).astype(int)
+        features['is_favorite'] = (features['price_rank'] == 1).astype(int)
         
         # Performance ratios
         features['weight_to_field_ratio'] = features['weight'] / features['field_size']
         features['price_to_field_ratio'] = features['starting_price'] / features['field_size']
+
+        # Interaction features
+        features['box_x_price_rank'] = features['box_number'] * features['price_rank']
+        features['weight_x_box'] = features['weight'] * features['box_number']
         
         # Fill missing values with median/mode
         numeric_cols = features.select_dtypes(include=[np.number]).columns
@@ -312,21 +390,63 @@ class MLSystemV3:
         """Extracts features for a single dog prediction."""
         features = {}
         
-        # Basic features
-        features['box_number'] = dog_data.get('box_number', 4)
-        features['weight'] = dog_data.get('weight', 30.0)
-        features['starting_price'] = dog_data.get('starting_price', 10.0)
-        features['individual_time'] = dog_data.get('individual_time', 30.0)
-        features['field_size'] = dog_data.get('field_size', 8)
-        features['temperature'] = dog_data.get('temperature', 20.0)
-        features['humidity'] = dog_data.get('humidity', 60.0)
-        features['wind_speed'] = dog_data.get('wind_speed', 10.0)
+        # Basic features with proper type conversion
+        features['box_number'] = float(dog_data.get('box_number', 4))
+        features['weight'] = float(dog_data.get('weight', 30.0))
+        
+        # Handle starting_price properly (could be string)
+        starting_price = dog_data.get('starting_price', 10.0)
+        if isinstance(starting_price, str):
+            try:
+                starting_price = float(starting_price.replace('$', '').replace(',', ''))
+            except (ValueError, AttributeError):
+                starting_price = 10.0
+        features['starting_price'] = float(starting_price)
+        
+        # Handle individual_time properly (could be string)
+        individual_time = dog_data.get('individual_time', 30.0)
+        if isinstance(individual_time, str):
+            try:
+                individual_time = float(individual_time)
+            except (ValueError, AttributeError):
+                individual_time = 30.0
+        features['individual_time'] = float(individual_time)
+        
+        features['field_size'] = float(dog_data.get('field_size', 8))
+        features['temperature'] = float(dog_data.get('temperature', 20.0))
+        features['humidity'] = float(dog_data.get('humidity', 60.0))
+        features['wind_speed'] = float(dog_data.get('wind_speed', 10.0))
         
         # Derived features
-        features['price_rank'] = 1  # Would need race context for real rank
-        features['weight_rank'] = 1
-        features['box_advantage'] = int(features['box_number'] <= 3)
-        features['is_favorite'] = int(features['starting_price'] <= 3.0)
+        features['price_rank'] = 1.0  # Would need race context for real rank
+        features['weight_rank'] = 1.0
+        features['box_advantage'] = float(int(features['box_number'] <= 3))
+        features['is_favorite'] = float(int(features['starting_price'] <= 3.0))
+        
+        # Add traditional features
+        try:
+            dog_stats = self.traditional_analyzer.analyze_dog(dog_data['name'], dog_data)
+            traditional_features = self.traditional_analyzer._extract_ml_features(dog_stats, dog_data)
+            features.update(traditional_features)
+        except Exception as e:
+            logger.debug(f"Error getting traditional features for {dog_data.get('name', 'unknown')}: {e}")
+            # Add default traditional features
+            default_traditional = {
+                'traditional_overall_score': 0.35,
+                'traditional_performance_score': 0.3,
+                'traditional_form_score': 0.3,
+                'traditional_class_score': 0.5,
+                'traditional_consistency_score': 0.3,
+                'traditional_fitness_score': 0.5,
+                'traditional_experience_score': 0.2,
+                'traditional_trainer_score': 0.5,
+                'traditional_track_condition_score': 0.5,
+                'traditional_distance_score': 0.5,
+                'traditional_confidence_level': 0.2,
+                'traditional_key_factors_count': 0,
+                'traditional_risk_factors_count': 2
+            }
+            features.update(default_traditional)
         features['weight_to_field_ratio'] = features['weight'] / features['field_size']
         features['price_to_field_ratio'] = features['starting_price'] / features['field_size']
         

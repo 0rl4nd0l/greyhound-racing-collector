@@ -57,7 +57,7 @@ class TraditionalRaceAnalyzer:
     detailed traditional scoring that enriches ML training data.
     """
     
-    def __init__(self, db_path: str = 'greyhound_data.db'):
+    def __init__(self, db_path: str = 'greyhound_racing_data.db'):
         """
         Initialize the traditional race analyzer.
         

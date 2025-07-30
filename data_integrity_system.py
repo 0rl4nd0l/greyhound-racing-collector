@@ -349,6 +349,10 @@ class DataIntegrityManager:
                         if duplicates:
                             report['issues_found'].append(f"Found {len(duplicates)} duplicate groups in {table}")
                             report['statistics'][f'{table}_duplicates'] = len(duplicates)
+                            # Also get detailed records for reporting
+                            detailed_duplicates = self.find_duplicate_records_detail(table, unique_fields)
+                            if detailed_duplicates:
+                                report.setdefault('detailed_duplicates', {}).setdefault(table, []).extend(detailed_duplicates)
             
             # Check 3: One race per dog per day rule
             dog_day_violations = self.find_dog_day_violations()
@@ -427,6 +431,26 @@ class DataIntegrityManager:
             self.logger.error(f"Error finding duplicates in {table_name}: {e}")
             
         return duplicates
+    
+    def find_duplicate_records_detail(self, table_name: str, unique_fields: List[str]) -> List[Dict]:
+        """Find duplicate records based on unique constraint fields and return the full records."""
+        conn = self.connect()
+        
+        # Use pandas to read the table and find duplicates
+        try:
+            df = pd.read_sql_query(f"SELECT * FROM {table_name}", conn)
+            
+            # Find duplicates based on the unique fields
+            duplicate_mask = df.duplicated(subset=unique_fields, keep=False)
+            
+            if duplicate_mask.any():
+                duplicate_df = df[duplicate_mask].sort_values(by=unique_fields)
+                return duplicate_df.to_dict(orient='records')
+            
+        except Exception as e:
+            self.logger.error(f"Error finding detailed duplicates in {table_name}: {e}")
+            
+        return []
     
     def find_dog_day_violations(self) -> List[Dict]:
         """Find violations of the one-race-per-dog-per-day rule"""
@@ -595,9 +619,16 @@ def main():
                 for issue in report['issues_found']:
                     print(f"  - {issue}")
                     
-                print("\n💡 RECOMMENDATIONS:")
+                print("\\n💡 RECOMMENDATIONS:")
                 for rec in report['recommendations']:
                     print(f"  - {rec}")
+
+                if report.get('detailed_duplicates'):
+                    print("\n🔍 DUPLICATE RECORDS DETAILS:")
+                    for table, records in report['detailed_duplicates'].items():
+                        print(f"\n  Table: {table}")
+                        for record in records:
+                            print(f"    - {record}")
             else:
                 print("\n✅ No integrity issues detected!")
                 

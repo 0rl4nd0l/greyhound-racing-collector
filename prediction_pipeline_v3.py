@@ -270,8 +270,8 @@ class PredictionPipelineV3:
     
     def _generate_reasoning(self, ml_result: dict, dog: dict) -> str:
         """Generate human-readable reasoning"""
-        win_prob = ml_result['win_probability']
-        confidence = ml_result['confidence']
+        win_prob = ml_result.get('final_score', ml_result.get('win_probability', 0.0))
+        confidence = ml_result.get('confidence', 0.5)
         
         if win_prob > 0.7:
             strength = "Strong"
@@ -305,7 +305,7 @@ class PredictionPipelineV3:
             return issues
         
         # Check for reasonable prediction spread
-        win_probs = [p['win_probability'] for p in predictions]
+        win_probs = [p.get('final_score', p.get('win_probability', 0.0)) for p in predictions]
         prob_range = max(win_probs) - min(win_probs)
         
         if prob_range < 0.1:
