@@ -107,9 +107,9 @@ def api_dogs_search():
                 d.best_time,
                 d.average_position,
                 d.last_race_date,
-                COUNT(drd.id) as actual_races
+                COUNT(dp.performance_id) as actual_races
             FROM dogs d
-            LEFT JOIN dog_race_data drd ON d.dog_name = drd.dog_name
+            LEFT JOIN dog_performances dp ON d.dog_name = dp.dog_name
             WHERE d.dog_name LIKE ? OR d.dog_name LIKE ?
             GROUP BY d.dog_id, d.dog_name
             ORDER BY d.total_races DESC, d.total_wins DESC
@@ -337,29 +337,29 @@ def api_dog_form(dog_name):
         if '. ' in dog_name and dog_name.split('.')[0].isdigit():
             cleaned_dog_name = dog_name.split('. ', 1)[1]
 
-        # Get last 20 performances with more details from the unified schema
+        # Get last 20 performances with more details
         cursor.execute("""
             SELECT 
-                drd.race_id,
-                rm.race_name,
-                rm.venue,
-                rm.race_date,
-                rm.distance,
-                rm.grade,
-                rm.track_condition,
-                drd.box_number,
-                drd.finish_position,
-                drd.individual_time,
-                drd.weight,
-                drd.trainer_name,
-                drd.odds_decimal,
-                drd.margin,
-                drd.sectional_1st,
-                drd.sectional_2nd
-            FROM dog_race_data drd
-            JOIN race_metadata rm ON drd.race_id = rm.race_id
-            WHERE drd.dog_name = ? OR drd.dog_name LIKE ?
-            ORDER BY rm.race_date DESC
+                dp.race_id,
+                r.race_name,
+                r.venue,
+                r.race_date,
+                r.distance,
+                r.grade,
+                r.track_condition,
+                dp.box_number,
+                dp.finish_position,
+                dp.race_time,
+                dp.weight,
+                dp.trainer,
+                dp.odds,
+                dp.margin,
+                dp.sectional_time,
+                dp.split_times
+            FROM dog_performances dp
+            JOIN races r ON dp.race_id = r.race_id
+            WHERE dp.dog_name = ? OR dp.dog_name LIKE ?
+            ORDER BY r.race_date DESC
             LIMIT 20
         """, (cleaned_dog_name, f"%. {cleaned_dog_name}"))
         

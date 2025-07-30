@@ -44,80 +44,39 @@ class UnifiedDatabaseCreator:
         
         # Create optimized schema
         cursor.executescript("""
-        CREATE TABLE race_metadata (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                race_id TEXT UNIQUE,
-                venue TEXT,
-                race_number INTEGER,
-                race_date DATE,
-                race_name TEXT,
-                grade TEXT,
-                distance TEXT,
-                track_condition TEXT,
-                weather TEXT,
-                temperature REAL,
-                humidity REAL,
-                wind_speed REAL,
-                wind_direction TEXT,
-                track_record TEXT,
-                prize_money_total REAL,
-                prize_money_breakdown TEXT,
-                race_time TEXT,
-                field_size INTEGER,
-                url TEXT,
-                extraction_timestamp DATETIME,
-                data_source TEXT,
-                winner_name TEXT,
-                winner_odds REAL,
-                winner_margin REAL,
-                race_status TEXT,
-                data_quality_note TEXT, actual_field_size INTEGER, scratched_count INTEGER, scratch_rate REAL, box_analysis TEXT, weather_condition TEXT, precipitation REAL, pressure REAL, visibility REAL, weather_location TEXT, weather_timestamp DATETIME, weather_adjustment_factor REAL, sportsbet_url TEXT, venue_slug TEXT,
-                UNIQUE(race_id)
-            );
-        
-        CREATE TABLE dog_race_data(
-            id INT,
-            race_id TEXT,
-            dog_name TEXT,
-            dog_clean_name TEXT,
-            dog_id INT,
-            box_number INT,
-            trainer_name TEXT,
-            trainer_id INT,
-            weight REAL,
-            running_style TEXT,
-            odds_decimal REAL,
-            odds_fractional TEXT,
-            starting_price REAL,
-            individual_time TEXT,
-            sectional_1st TEXT,
-            sectional_2nd TEXT,
-            sectional_3rd TEXT,
-            margin TEXT,
-            beaten_margin REAL,
-            was_scratched NUM,
-            blackbook_link TEXT,
-            extraction_timestamp NUM,
-            data_source TEXT,
-            form_guide_json TEXT,
-            historical_records TEXT,
-            performance_rating REAL,
-            speed_rating REAL,
-            class_rating REAL,
-            recent_form TEXT,
-            win_probability REAL,
-            place_probability REAL,
-            scraped_trainer_name TEXT,
-            scraped_reaction_time TEXT,
-            scraped_nbtt TEXT,
-            scraped_race_classification TEXT,
-            scraped_raw_result TEXT,
-            scraped_finish_position TEXT,
-            best_time REAL,
-            data_quality_note TEXT, 
-            finish_position INTEGER
+        -- Main races table
+        CREATE TABLE races (
+            race_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            race_name TEXT NOT NULL,
+            venue TEXT NOT NULL,
+            race_date DATE NOT NULL,
+            distance INTEGER,
+            grade TEXT,
+            track_condition TEXT,
+            weather TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(race_name, venue, race_date)
         );
-
+        
+        -- Dogs performance table  
+        CREATE TABLE dog_performances (
+            performance_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            race_id INTEGER,
+            dog_name TEXT NOT NULL,
+            box_number INTEGER,
+            finish_position INTEGER,
+            race_time REAL,
+            weight REAL,
+            trainer TEXT,
+            odds TEXT,
+            margin TEXT,
+            sectional_time TEXT,
+            split_times TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (race_id) REFERENCES races (race_id)
+        );
+        
+        -- Dog master table
         CREATE TABLE dogs (
             dog_id INTEGER PRIMARY KEY AUTOINCREMENT,
             dog_name TEXT UNIQUE NOT NULL,
@@ -126,9 +85,59 @@ class UnifiedDatabaseCreator:
             total_places INTEGER DEFAULT 0,
             best_time REAL,
             average_position REAL,
-            last_race_date TEXT,
+            last_race_date DATE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        
+        -- Venue/Track information
+        CREATE TABLE venues (
+            venue_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            venue_code TEXT UNIQUE NOT NULL,
+            venue_name TEXT,
+            track_length INTEGER,
+            track_type TEXT,
+            location TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+        
+        -- Form guide data (historical performance)
+        CREATE TABLE form_guide (
+            form_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            dog_name TEXT NOT NULL,
+            race_date DATE NOT NULL,
+            venue TEXT NOT NULL,
+            distance INTEGER,
+            grade TEXT,
+            box_number INTEGER,
+            finish_position INTEGER,
+            race_time REAL,
+            weight REAL,
+            margin TEXT,
+            odds TEXT,
+            track_condition TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        
+        -- Predictions cache
+        CREATE TABLE predictions (
+            prediction_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            race_id INTEGER,
+            dog_name TEXT NOT NULL,
+            predicted_position INTEGER,
+            confidence_score REAL,
+            win_probability REAL,
+            place_probability REAL,
+            model_version TEXT,
+            prediction_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (race_id) REFERENCES races (race_id)
+        );
+        
+        -- Create indexes for performance
+        CREATE INDEX idx_dog_performances_dog_name ON dog_performances(dog_name);
+        CREATE INDEX idx_dog_performances_race_date ON dog_performances(race_id);
+        CREATE INDEX idx_form_guide_dog_date ON form_guide(dog_name, race_date);
+        CREATE INDEX idx_races_venue_date ON races(venue, race_date);
         """)
         
         conn.commit()
