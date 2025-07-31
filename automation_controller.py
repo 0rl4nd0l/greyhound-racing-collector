@@ -129,17 +129,26 @@ class AutomationController:
 
 
     def run_prediction_generation(self):
-        """Generates predictions for upcoming races."""
-        self.logger.info("--- Starting Prediction Generation ---")
+        """Generates predictions for upcoming races using the live prediction system."""
+        self.logger.info("--- Starting Live Prediction Generation ---")
         
-        success, stdout, stderr = self.run_command(["python", "prediction_orchestrator.py"])
-        
-        if success:
-            self.logger.info("Prediction generation completed successfully.")
-            self.logger.info(f"Output:\n{stdout}")
-        else:
-            self.logger.error("Prediction generation failed.")
-            self.logger.error(f"Stderr: {stderr}")
+        try:
+            from live_prediction_system import LivePredictionSystem
+            live_system = LivePredictionSystem(self.db_path)
+            live_system.run(max_races=3)  # Process up to 3 races
+            self.logger.info("Live prediction generation completed successfully.")
+        except Exception as e:
+            self.logger.error(f"Live prediction generation failed: {e}")
+            # Fallback to the original system
+            self.logger.info("Falling back to original prediction system...")
+            success, stdout, stderr = self.run_command(["python", "prediction_orchestrator.py"])
+            
+            if success:
+                self.logger.info("Fallback prediction generation completed successfully.")
+                self.logger.info(f"Output:\n{stdout}")
+            else:
+                self.logger.error("Fallback prediction generation also failed.")
+                self.logger.error(f"Stderr: {stderr}")
 
 
     def start(self):
