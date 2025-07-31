@@ -248,9 +248,25 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
 
             if (data.success) {
-                showToast(`Successfully processed ${data.total_races || 0} races.`, 'success');
-                displayPredictionResults([data]);
+                // Handle errors from the response
+                if (data.errors && data.errors.length > 0) {
+                    data.errors.forEach(error => {
+                        showToast(error, 'warning');
+                    });
+                }
+                
+                showToast(`Successfully processed ${data.total_races || 0} races. Success: ${data.success_count || 0}, Failed: ${data.failed_count || 0}`, 'success');
+                
+                // Transform the batch response to individual results for display
+                const individualResults = data.predictions || [];
+                displayPredictionResults(individualResults);
             } else {
+                // Handle errors in the response
+                if (data.errors && data.errors.length > 0) {
+                    data.errors.forEach(error => {
+                        showToast(error, 'danger');
+                    });
+                }
                 throw new Error(data.message || 'Unknown error occurred');
             }
         } catch (error) {
@@ -368,20 +384,23 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         
+        // Store results globally for details expansion
+        window.currentPredictionResults = results;
+        
         elements.predictionResultsBody.innerHTML = '';
         
         results.forEach((result, index) => {
             const resultDiv = document.createElement('div');
             resultDiv.className = `alert ${result.success ? 'alert-success' : 'alert-danger'} mb-3`;
             
-            if (result.success && result.prediction) {
-                const prediction = result.prediction;
-                const topPick = prediction.top_pick || prediction.predictions?.[0];
+            if (result.success && result.predictions && result.predictions.length > 0) {
+                const predictions = result.predictions;
+                const topPick = predictions[0]; // First prediction is the top pick
                 
                 if (topPick) {
                     const winProb = topPick.final_score || topPick.win_probability || topPick.confidence || 0;
                     const dogName = topPick.dog_name || topPick.name || 'Unknown';
-                    const raceInfo = result.race_name || result.race_id || `Race ${index + 1}`;
+                    const raceInfo = result.race_filename || result.race_id || `Race ${index + 1}`;
                     
                     resultDiv.innerHTML = `
                         <div class="d-flex justify-content-between align-items-start">
@@ -393,11 +412,11 @@ document.addEventListener('DOMContentLoaded', () => {
                                     <strong>Top Pick:</strong> ${dogName} 
                                     <span class="badge bg-success">${(winProb * 100).toFixed(1)}%</span>
                                 </p>
-                                ${prediction.betting_suggestions ? 
-                                    `<small class="text-muted">
-                                        <i class="fas fa-lightbulb"></i> 
-                                        ${prediction.betting_suggestions.length} betting suggestions available
-                                    </small>` : ''}
+                                <small class="text-muted">
+                                    <i class="fas fa-info-circle"></i> 
+                                    ${predictions.length} dogs analyzed
+                                    ${result.predictor_used ? ` | Predictor: ${result.predictor_used}` : ''}
+                                </small>
                             </div>
                             <button class="btn btn-sm btn-outline-primary" 
                                     onclick="toggleDetails(this, ${index})" 
@@ -414,7 +433,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <h6 class="alert-heading">
                             <i class="fas fa-check-circle"></i> ${result.race_id || `Race ${index + 1}`}
                         </h6>
-                        <p class="mb-0">Prediction completed but no top pick available.</p>
+                        <p class="mb-0">Prediction completed but no predictions available.</p>
                     `;
                 }
             } else {
@@ -469,9 +488,45 @@ document.addEventListener('DOMContentLoaded', () => {
             // Load detailed information if not already loaded
             if (detailsDiv.innerHTML.trim() === '') {
                 detailsDiv.innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin"></i> Loading details...</div>';
-                // Here you could load more detailed prediction information
+                
+                // Get the result data from the current results array
+                const resultIndex = parseInt(index);
+                const currentResults = window.currentPredictionResults || [];
+                const result = currentResults[resultIndex];
+                
                 setTimeout(() => {
-                    detailsDiv.innerHTML = '<p class="text-muted">Detailed prediction analysis would be displayed here.</p>';
+                    if (result && result.predictions && result.predictions.length > 0) {
+                        let detailsHTML = '<div class="row">';
+                        
+                        result.predictions.forEach((prediction, idx) => {
+                            const winProb = prediction.final_score || prediction.win_probability || prediction.confidence || 0;
+                            const dogName = prediction.dog_name || prediction.name || 'Unknown';
+                            const boxNumber = prediction.box_number || prediction.box || 'N/A';
+                            
+                            detailsHTML += `
+                                <div class="col-md-6 mb-2">
+                                    <div class="card card-sm">
+                                        <div class="card-body p-2">
+                                            <h6 class="card-title mb-1">${idx + 1}. ${dogName}</h6>
+                                            <p class="card-text mb-1">
+                                                <small>Box: ${boxNumber} | Confidence: ${(winProb * 100).toFixed(1)}%</small>
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        
+                        detailsHTML += '</div>';
+                        
+                        if (result.message) {
+                            detailsHTML += `<div class="mt-2"><small class="text-muted"><i class="fas fa-info-circle"></i> ${result.message}</small></div>`;
+                        }
+                        
+                        detailsDiv.innerHTML = detailsHTML;
+                    } else {
+                        detailsDiv.innerHTML = '<p class="text-muted">No detailed prediction data available.</p>';
+                    }
                 }, 500);
             }
         }
@@ -527,6 +582,26 @@ document.addEventListener('DOMContentLoaded', function() {
         setupEventListeners();
         loadVenuesAndGrades();
         fetchRaces();
+    }
+
+    // Debounce utility function
+    function debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func(...args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
+    }
+
+    // Fetch races function (placeholder - implement based on your API)
+    async function fetchRaces() {
+        // This function should be implemented to fetch races from your API
+        // For now, it's a placeholder that does nothing
+        console.log('fetchRaces called - implement based on your API requirements');
     }
 
     function setupEventListeners() {

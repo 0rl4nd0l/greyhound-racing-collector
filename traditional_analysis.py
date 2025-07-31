@@ -417,9 +417,10 @@ class TraditionalRaceAnalyzer:
             derived["place_rate"] = stats["place_count"] / races_count
             derived["show_rate"] = stats["show_count"] / races_count
 
-            # Position statistics
+            # Position statistics with decay
             if positions:
-                derived["avg_position"] = np.mean(positions)
+                decay_factor = np.power(0.95, np.arange(len(positions)))
+                derived["avg_position"] = np.average(positions, weights=decay_factor)
                 derived["median_position"] = np.median(positions)
                 derived["position_std"] = np.std(positions)
                 derived["consistency"] = (
@@ -428,10 +429,11 @@ class TraditionalRaceAnalyzer:
                     else 1.0
                 )
 
-                # Recent form (last 6 races)
+                # Recent form (last 6 races) with decay
                 recent_positions = positions[:6] if len(positions) >= 6 else positions
                 if len(recent_positions) >= 3:
-                    derived["recent_avg_position"] = np.mean(recent_positions)
+                    recent_decay = decay_factor[:len(recent_positions)]
+                    derived["recent_avg_position"] = np.average(recent_positions, weights=recent_decay)
                     derived["form_trend"] = self._calculate_form_trend(recent_positions)
                 else:
                     derived["recent_avg_position"] = derived["avg_position"]

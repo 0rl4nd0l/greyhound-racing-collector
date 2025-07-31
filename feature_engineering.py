@@ -186,7 +186,7 @@ class FeatureEngineer:
         return features
 
     def _create_performance_features(self, dog_data):
-        """Create core performance-based features"""
+        """Create core performance-based features with exponential decay weighting"""
         features = {}
 
         # Basic performance metrics
@@ -194,10 +194,12 @@ class FeatureEngineer:
         features["win_rate"] = float(dog_data.get("win_rate", 0.1))
         features["place_rate"] = float(dog_data.get("place_rate", 0.3))
 
-        # Recent form
+        # Recent form with exponential decay weighting
         recent_form = dog_data.get("recent_form", [4, 4, 4])
         if isinstance(recent_form, list) and len(recent_form) > 0:
-            features["recent_form_avg"] = float(np.mean(recent_form))
+            # Apply exponential decay (λ = 0.95) where most recent races have highest weight
+            decay_weights = np.power(0.95, np.arange(len(recent_form)))
+            features["recent_form_avg"] = float(np.average(recent_form, weights=decay_weights))
         else:
             features["recent_form_avg"] = 4.0
 
@@ -213,9 +215,17 @@ class FeatureEngineer:
         )
         features["current_odds_log"] = float(np.log(max(1.1, starting_price)))
 
-        # Time-based performance
-        features["avg_time"] = float(dog_data.get("avg_time", 30.0))
-        features["best_time"] = float(dog_data.get("best_time", 29.0))
+        # Time-based performance with decay-weighted averages
+        time_history = dog_data.get("time_history", [30.0])
+        if isinstance(time_history, list) and len(time_history) > 0:
+            # Apply exponential decay to time history
+            time_decay_weights = np.power(0.95, np.arange(len(time_history)))
+            features["avg_time"] = float(np.average(time_history, weights=time_decay_weights))
+            features["best_time"] = float(min(time_history))
+        else:
+            features["avg_time"] = float(dog_data.get("avg_time", 30.0))
+            features["best_time"] = float(dog_data.get("best_time", 29.0))
+        
         features["time_consistency"] = float(dog_data.get("time_consistency", 0.5))
         features["time_improvement_trend"] = float(
             dog_data.get("time_improvement_trend", 0.0)

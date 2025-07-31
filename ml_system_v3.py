@@ -39,6 +39,14 @@ except ImportError:
 
 from traditional_analysis import TraditionalRaceAnalyzer
 
+# Try to import drift monitor
+try:
+    from drift_monitor import DriftMonitor
+    DRIFT_MONITOR_AVAILABLE = True
+except ImportError:
+    DRIFT_MONITOR_AVAILABLE = False
+    print("⚠️ Drift monitor not available")
+
 # Try to import SHAP explainer
 try:
     from shap_explainer import get_shap_values
@@ -69,6 +77,19 @@ class MLSystemV3:
         self.challenger_pipeline = None
         self.champion_model_info = {}
         self.challenger_model_info = {}
+        
+        # Initialize drift monitor if available
+        if DRIFT_MONITOR_AVAILABLE:
+            try:
+                reference_data = self._load_reference_data()
+                self.drift_monitor = DriftMonitor(reference_data)
+                logger.info("DriftMonitor initialized successfully.")
+            except Exception as e:
+                logger.warning(f"Failed to initialize DriftMonitor: {e}")
+                self.drift_monitor = None
+        else:
+            self.drift_monitor = None
+
         self._try_load_latest_model()
 
     def train_model(self, model_type="gradient_boosting"):
@@ -190,6 +211,47 @@ class MLSystemV3:
 
         return True
 
+    def predict_batch(self, batch_data):
+        """Makes predictions for a batch of dogs with drift monitoring."""
+        if not self.pipeline:
+            logger.warning("No model loaded, cannot make batch predictions.")
+            return []
+        
+        predictions = []
+        batch_features = []
+        
+        # Process each dog in the batch
+        for dog_data in batch_data:
+            prediction = self.predict(dog_data)
+            predictions.append(prediction)
+            
+            # Collect features for batch drift monitoring
+            try:
+                features = self._extract_features_for_prediction(dog_data)
+                features_df = pd.DataFrame([features])
+                features_df = features_df.reindex(columns=self.feature_columns, fill_value=0)
+                batch_features.append(features_df)
+            except Exception as e:
+                logger.warning(f"Failed to extract features for drift monitoring: {e}")
+        
+        # Perform batch drift monitoring if we have features
+        if batch_features and self.drift_monitor is not None:
+            try:
+                # Combine all features into a single DataFrame
+                combined_features = pd.concat(batch_features, ignore_index=True)
+                drift_results = self.drift_monitor.check_for_drift(combined_features)
+                
+                # Log batch-level drift summary
+                if drift_results.get("drift_detected", False):
+                    logger.warning(f"Batch drift detection: {len(drift_results.get('correlation_alerts', []))} correlation alerts, "
+                                 f"{len(drift_results.get('summary', {}).get('high_drift_features', []))} high drift features, "
+                                 f"{len(drift_results.get('summary', {}).get('moderate_drift_features', []))} moderate drift features")
+                    
+            except Exception as e:
+                logger.error(f"Batch drift monitoring failed: {e}")
+        
+        return predictions
+    
     def predict(self, dog_data):
         """Makes a prediction using the trained model with probability calibration."""
         if not self.pipeline:
@@ -278,6 +340,27 @@ class MLSystemV3:
                     "available_models": []
                 }
 
+            # Check for data drift if monitor is available
+            drift_alert = None
+            if self.drift_monitor is not None:
+                try:
+                    drift_results = self.drift_monitor.check_for_drift(features_df)
+                    if drift_results.get("drift_detected", False):
+                        drift_alert = {
+                            "detected": True,
+                            "correlation_alerts": len(drift_results.get("correlation_alerts", [])),
+                            "high_drift_features": drift_results.get("summary", {}).get("high_drift_features", []),
+                            "moderate_drift_features": drift_results.get("summary", {}).get("moderate_drift_features", [])
+                        }
+                        logger.warning(f"Data drift detected: {drift_alert}")
+                    else:
+                        drift_alert = {"detected": False}
+                except Exception as e:
+                    logger.warning(f"Drift monitoring failed: {e}")
+                    drift_alert = {"detected": False, "error": str(e)}
+            else:
+                drift_alert = {"detected": False, "monitor_available": False}
+
             result = {
                 "win_probability": float(calibrated_probs['calibrated_win_prob']),
                 "place_probability": float(calibrated_probs['calibrated_place_prob']),
@@ -289,6 +372,7 @@ class MLSystemV3:
                 "win_calibration_applied": calibrated_probs.get('win_calibration_applied', False),
                 "place_calibration_applied": calibrated_probs.get('place_calibration_applied', False),
                 "explainability": explainability,
+                "drift_alert": drift_alert,
             }
             
             return result
@@ -473,6 +557,13 @@ class MLSystemV3:
 
         # Initialize features DataFrame
         features = pd.DataFrame(index=data.index)
+
+        # Adjust race-level aggregates with decay factor
+        daily_decay = 0.95
+        for idx, row in data.iterrows():
+            days_ago = (datetime.now() - pd.to_datetime(row.race_date)).days
+            decay_weight = daily_decay ** days_ago
+            row['weighted_recent_position'] *= decay_weight  # Example adjustment
 
         # Add traditional analysis features
         try:
@@ -778,6 +869,29 @@ class MLSystemV3:
 
         except Exception as e:
             logger.error(f"Error saving champion model: {e}")
+    
+    def _load_reference_data(self):
+        """Load reference data for drift detection from recent training data."""
+        try:
+            # Load recent data as reference for drift detection
+            reference_data = self._load_comprehensive_data()
+            if reference_data.empty:
+                logger.warning("No reference data available for drift monitoring")
+                return pd.DataFrame()
+            
+            # Create features for drift monitoring (similar to training process)
+            features, _ = self._create_comprehensive_features(reference_data)
+            
+            # Use the most recent 1000 samples as reference (or all if less)
+            if len(features) > 1000:
+                features = features.tail(1000)
+            
+            logger.info(f"Loaded {len(features)} samples as reference data for drift monitoring")
+            return features
+            
+        except Exception as e:
+            logger.error(f"Error loading reference data for drift monitoring: {e}")
+            return pd.DataFrame()
 
 
 # Function for frontend training calls

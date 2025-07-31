@@ -1432,7 +1432,7 @@ def api_predict():
 
 
 def api_predict_single_race():
-    """Single race prediction using UnifiedPredictor"""
+    """Single race prediction using intelligent prediction pipeline"""
     data = request.get_json()
     if not data or "race_filename" not in data:
         return jsonify({"error": "No race filename provided"}), 400
@@ -1441,20 +1441,36 @@ def api_predict_single_race():
     race_file_path = os.path.join(UPCOMING_DIR, race_filename)
 
     try:
-        if UnifiedPredictor is None:
-            return jsonify({"error": "UnifiedPredictor not available"}), 500
-
         if not os.path.exists(race_file_path):
             return jsonify({"error": f"Race file not found: {race_filename}"}), 404
 
-        logger.log_process(f"Starting unified prediction for race: {race_filename}")
-        predictor = UnifiedPredictor()
-        prediction_result = predictor.predict_race_file(
-            race_file_path, enhancement_level="full"
-        )
-        logger.log_process(f"Completed unified prediction for race: {race_filename}")
+        logger.log_process(f"Starting prediction for race: {race_filename}")
 
-        if prediction_result.get("success"):
+        # Initialize prediction
+        prediction_result = None
+
+        # Attempt primary prediction method
+        if PredictionPipelineV3:
+            try:
+                logger.log_process("Using PredictionPipelineV3")
+                pipeline = PredictionPipelineV3()
+                prediction_result = pipeline.predict_race_file(race_file_path, enhancement_level="basic")
+                logger.log_process("PredictionPipelineV3 completed successfully")
+            except Exception as e:
+                logger.log_error(f"PredictionPipelineV3 failed: {e}")
+
+        # Fallback to UnifiedPredictor if primary fails
+        if not prediction_result and UnifiedPredictor:
+            try:
+                logger.log_process("Fallback to UnifiedPredictor")
+                predictor = UnifiedPredictor()
+                prediction_result = predictor.predict_race_file(race_file_path)
+                logger.log_process("UnifiedPredictor completed successfully")
+            except Exception as e:
+                logger.log_error(f"UnifiedPredictor failed: {e}")
+
+        # Return response based on prediction result
+        if prediction_result and prediction_result.get("success"):
             return jsonify(
                 {
                     "success": True,
@@ -1463,24 +1479,12 @@ def api_predict_single_race():
                 }
             )
         else:
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "message": f'Prediction failed: {prediction_result.get("error", "Unknown error")}',
-                    }
-                ),
-                500,
-            )
+            error_message = prediction_result.get("error", "All methods failed") if prediction_result else "No result"
+            return jsonify({"success": False, "message": f"Prediction failed: {error_message}"}), 500
 
     except Exception as e:
-        logger.log_error(
-            f"Error during unified prediction for {race_filename}", error=e
-        )
-        return (
-            jsonify({"success": False, "message": f"Prediction error: {str(e)}"}),
-            500,
-        )
+        logger.log_error(f"Error during prediction for {race_filename}", error=e)
+        return jsonify({"success": False, "message": f"Prediction error: {str(e)}"}), 500
 
 
 def api_predict_batch(data):
@@ -5570,164 +5574,6 @@ def api_predict_all_upcoming_races_enhanced():
             "timestamp": datetime.now().isoformat()
         }), 500
 
-
-
-                if pred_file_path and os.path.exists(pred_file_path):
-                    # Read the prediction data for the specific race
-                    with open(pred_file_path, "r") as f:
-                        prediction_data = json.load(f)
-
-                        # Handle both unified predictor format and legacy format
-                        race_info = prediction_data.get("race_info", {})
-                        race_context = prediction_data.get("race_context", {})
-                        race_summary = prediction_data.get("race_summary", {})
-                        data_quality_summary = prediction_data.get(
-                            "data_quality_summary", {}
-                        )
-
-                        # Extract top pick from predictions (first prediction)
-                        predictions = prediction_data.get("predictions", [])
-                        if predictions:
-                            first_pred = predictions[0]
-                            top_pick = {
-                                "dog_name": first_pred.get("dog_name", "Unknown"),
-                                "clean_name": first_pred.get(
-                                    "dog_name", "Unknown"
-                                ),  # Frontend expects this field
-                                "box_number": first_pred.get("box_number", "N/A"),
-                                "prediction_score": first_pred.get(
-                                    "final_score", 0
-                                ),  # Frontend expects this field name
-                                "confidence_level": first_pred.get(
-                                    "confidence_level", "MEDIUM"
-                                ),
-                                "prediction_scores": first_pred.get(
-                                    "prediction_scores", {}
-                                ),
-                            }
-                        else:
-                            top_pick = {}
-
-                        # Calculate average confidence from predictions
-                        if predictions:
-                            confidence_scores = []
-                            for pred in predictions:
-                                conf_level = pred.get(
-                                    "confidence_level", "UNKNOWN"
-                                ).upper()
-                                if conf_level == "HIGH":
-                                    confidence_scores.append(0.8)
-                                elif conf_level == "MEDIUM":
-                                    confidence_scores.append(0.6)
-                                elif conf_level == "LOW":
-                                    confidence_scores.append(0.4)
-                                else:
-                                    confidence_scores.append(0.5)
-                            avg_confidence = sum(confidence_scores) / len(
-                                confidence_scores
-                            )
-                        else:
-                            avg_confidence = 0
-
-                        prediction_info.update(
-                            {
-                                "race_id": race_filename.replace(".csv", ""),
-                                "race_name": race_filename,
-                                "race_date": race_info.get(
-                                    "date", race_context.get("race_date", "Unknown")
-                                ),
-                                "venue": race_info.get(
-                                    "venue", race_context.get("venue", "Unknown")
-                                ),
-                                "distance": race_info.get(
-                                    "distance", race_context.get("distance", "Unknown")
-                                ),
-                                "total_dogs": data_quality_summary.get(
-                                    "total_dogs",
-                                    prediction_data.get("total_dogs", len(predictions)),
-                                ),
-                                "average_confidence": race_summary.get(
-                                    "average_confidence", avg_confidence
-                                ),
-                                "top_pick": top_pick,
-                                "top_3": predictions[:3] if predictions else [],
-                                "prediction_timestamp": prediction_data.get(
-                                    "prediction_timestamp", ""
-                                ),
-                                "file_path": pred_file_path,
-                            }
-                        )
-
-            return jsonify(
-                {
-                    "success": True,
-                    "message": f"Successfully predicted race: {race_filename}",
-                    "prediction": prediction_info,
-                }
-            )
-        else:
-            # Enhanced error logging and reporting
-
-            # Log the full error for debugging
-            print(f"❌ Prediction failed for {race_filename}:")
-            print(f"   Script: {predict_script}")
-            print(f"   Return code: {result.returncode}")
-            print(f"   STDERR: {result.stderr}")
-            print(f"   STDOUT: {result.stdout}")
-
-            # Try to extract meaningful error message from the output
-            error_message = "Unknown error"
-            if result.stderr:
-                # Look for specific error patterns
-                stderr_lines = result.stderr.strip().split("\n")
-                for line in stderr_lines:
-                    if "Error:" in line or "Exception:" in line or "Traceback" in line:
-                        error_message = line.strip()
-                        break
-                if error_message == "Unknown error" and stderr_lines:
-                    error_message = stderr_lines[
-                        -1
-                    ].strip()  # Last line might have the error
-            elif result.stdout:
-                # Sometimes errors are in stdout
-                stdout_lines = result.stdout.strip().split("\n")
-                for line in stdout_lines:
-                    if "Error:" in line or "Exception:" in line or "❌" in line:
-                        error_message = line.strip()
-                        break
-
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "message": f"Prediction failed: {error_message}",
-                        "error_details": {
-                            "return_code": result.returncode,
-                            "script_used": predict_script,
-                            "stderr_preview": (
-                                result.stderr[:500] if result.stderr else None
-                            ),
-                            "stdout_preview": (
-                                result.stdout[:500] if result.stdout else None
-                            ),
-                        },
-                    }
-                ),
-                500,
-            )
-
-    except subprocess.TimeoutExpired:
-        return (
-            jsonify(
-                {"success": False, "message": "Prediction timed out (5 minute limit)"}
-            ),
-            500,
-        )
-    except Exception as e:
-        return (
-            jsonify({"success": False, "message": f"Error predicting race: {str(e)}"}),
-            500,
-        )
 
 
 @app.route("/api/prediction_results", methods=["GET"])

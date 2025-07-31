@@ -43,6 +43,8 @@ playwright>=1.40.0
 # tensorflow>=2.13.0  # Uncomment if using TensorFlow models
 # torch>=2.0.0  # Uncomment if using PyTorch models
 
+# Drift detection and monitoring
+evidently>=0.2.4
 # Development dependencies (install with: pip install -e .[dev])
 # black>=23.0.0
 # flake8>=6.0.0
