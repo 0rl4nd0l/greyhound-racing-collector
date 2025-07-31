@@ -15,7 +15,5 @@ The Greyhound Racing Predictor is a Flask-based web application that predicts ra
 
 ### Architecture Diagram
 
-![Architecture Diagram](architecture_diagram.png)
-
-This diagram illustrates the flow of data and interaction between the components.
+See the [Architecture Diagram](architecture_diagram.md) for a detailed visual representation of the system components and their interactions.
 

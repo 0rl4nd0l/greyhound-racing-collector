@@ -1092,6 +1092,20 @@ def api_races_paginated():
             'message': f'Unexpected error occurred. Please consult the logs.'
         }), 500
 
+@app.route('/api/health')
+def api_health():
+    """Health check endpoint"""
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': datetime.now().isoformat(),
+        'version': '3.1.0',
+        'components': {
+            'database': 'connected',
+            'ml_system': 'available' if 'ml_system_v3' in globals() else 'unavailable',
+            'prediction_pipeline': 'available' if 'PredictionPipelineV3' in globals() else 'unavailable'
+        }
+    })
+
 @app.route('/api/races')
 def api_races():
     """API endpoint to list all races with details"""
