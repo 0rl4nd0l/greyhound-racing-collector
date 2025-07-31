@@ -79,7 +79,7 @@ The application will be available at `http://127.0.0.1:5000`.
 
 The application provides a comprehensive RESTful API for interacting with the prediction system and its data. Below are the key endpoints.
 
-### Main Prediction Endpoint
+### Main Prediction Endpoints
 
 -   **POST /api/predict_single_race_enhanced**
 
@@ -96,6 +96,60 @@ The application provides a comprehensive RESTful API for interacting with the pr
     **Response**:
 
     -   A detailed JSON object containing the race summary, top picks, and a full list of predictions for each dog with confidence scores and reasoning.
+
+-   **POST /api/predict_all_upcoming_races_enhanced**
+
+    Enhanced endpoint for getting predictions for all upcoming races. This endpoint incorporates improved sanity checking, drift monitoring, exponential decay weighting, and enhanced error handling for more reliable predictions.
+
+    **Request Body** (Optional):
+
+    ```json
+    {
+        "max_races": 5,
+        "skip_sanity_checks": false,
+        "enable_drift_monitoring": true
+    }
+    ```
+
+    **Response**:
+
+    ```json
+    {
+        "status": "success",
+        "total_races": 3,
+        "successful_predictions": 2,
+        "failed_predictions": 1,
+        "processing_time_seconds": 45.2,
+        "drift_warnings": [],
+        "sanity_check_results": {
+            "total_checks": 15,
+            "passed": 14,
+            "failed": 1,
+            "warnings": ["Feature correlation drift detected in traditional_analysis"]
+        },
+        "races": [
+            {
+                "race_filename": "Race 1 - GOSF - 2025-01-15.csv",
+                "status": "success",
+                "prediction": {
+                    "race_summary": {...},
+                    "top_picks": [...],
+                    "predictions": [...]
+                },
+                "confidence_score": 0.87,
+                "drift_score": 0.12,
+                "processing_time_ms": 2340
+            }
+        ]
+    }
+    ```
+
+    **Features**:
+    - Comprehensive sanity checking of all prediction components
+    - Real-time drift monitoring and alerting
+    - Exponential decay weighting for historical data
+    - Enhanced error handling and recovery
+    - Detailed performance metrics and timing information
 
 ### Data Endpoints
 
