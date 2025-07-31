@@ -13,6 +13,7 @@ The Greyhound Racing Predictor is a comprehensive, AI-powered system for analyzi
 - **Comprehensive API**: RESTful API endpoints for predictions, dog statistics, race data, and system management
 - **Automated Data Processing**: Scripts for automated collection, analysis, and processing of racing data
 - **Frontend Integration**: Includes a JavaScript frontend for enhanced user interaction
+- **GPT Enhancement**: AI-powered race analysis using OpenAI GPT-4 for narrative insights and betting strategies
 
 ## Getting Started
 
@@ -57,7 +58,9 @@ The Greyhound Racing Predictor is a comprehensive, AI-powered system for analyzi
   ```bash
   python app.py
   ```
-  The application will be available at `http://127.0.0.1:5000`.
+The application will be available at `http://127.0.0.1:5000`.
+
+- **Dashboard Access**: Visit `/gpt-enhancement` for the GPT Enhancement Dashboard.
 
 - **Data Processing and Predictions:**
   The `run.py` script provides command-line access to core functions:
@@ -104,6 +107,39 @@ The application provides a comprehensive RESTful API for interacting with the pr
 
 -   **GET /api/system_status**: Real-time monitoring of logs, model performance, and database health.
 -   **POST /api/process_data**: Trigger a background task to process all unprocessed data files.
+
+### GPT Enhancement Endpoints
+
+-   **POST /api/gpt/enhance_race**: Enhance a race with GPT analysis
+    ```bash
+    curl -X POST http://127.0.0.1:5000/api/gpt/enhance_race \
+      -H "Content-Type: application/json" \
+      -d '{"race_file_path": "./upcoming_races/Race 1 - GOSF - 2025-07-31.csv"}'
+    ```
+
+-   **GET /api/gpt/daily_insights**: Get GPT daily insights for a specific date
+    ```bash
+    curl "http://127.0.0.1:5000/api/gpt/daily_insights?date=2025-07-31"
+    ```
+
+-   **POST /api/gpt/enhance_multiple**: Enhance multiple races with GPT analysis
+    ```bash
+    curl -X POST http://127.0.0.1:5000/api/gpt/enhance_multiple \
+      -H "Content-Type: application/json" \
+      -d '{"race_files": ["race1.csv", "race2.csv"], "max_races": 3}'
+    ```
+
+-   **POST /api/gpt/comprehensive_report**: Generate comprehensive GPT report
+    ```bash
+    curl -X POST http://127.0.0.1:5000/api/gpt/comprehensive_report \
+      -H "Content-Type: application/json" \
+      -d '{"race_ids": ["race123", "race456"]}'
+    ```
+
+-   **GET /api/gpt/status**: Check GPT integration status
+    ```bash
+    curl "http://127.0.0.1:5000/api/gpt/status"
+    ```
 
 ## Recommendations for Long-Term Stability
 

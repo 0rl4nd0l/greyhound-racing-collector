@@ -10,15 +10,17 @@ Author: AI Assistant
 Date: July 26, 2025
 """
 
-import os
-import sqlite3
-import pandas as pd
 import json
+import os
+import re
+import shutil
+import sqlite3
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-import shutil
-import re
-from collections import defaultdict
+
+import pandas as pd
+
 
 class CSVAuditIntegrator:
     def __init__(self):

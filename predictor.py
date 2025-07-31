@@ -1,6 +1,7 @@
 import os
 from threading import Lock
 
+
 class Predictor:
     """Base Predictor class for strategy pattern."""
 
@@ -9,4 +10,3 @@ class Predictor:
 
     def predict(self, race_file_path):
         raise NotImplementedError("Predict method must be implemented by subclasses")
-

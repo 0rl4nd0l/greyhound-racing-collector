@@ -1,13 +1,15 @@
-
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import json
 import time
 import traceback
+
 from prediction_pipeline_v3 import PredictionPipelineV3
 from unified_predictor import UnifiedPredictor
+
 
 def main():
     results = {}
@@ -55,4 +57,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

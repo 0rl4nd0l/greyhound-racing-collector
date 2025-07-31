@@ -10,27 +10,31 @@ Author: AI Assistant
 Date: July 11, 2025
 """
 
+import json
 import os
-import pandas as pd
-import numpy as np
+import sqlite3
+import warnings
 from datetime import datetime
 from pathlib import Path
-import sqlite3
-import json
+
+import numpy as np
+import pandas as pd
 import requests
-import warnings
+
 warnings.filterwarnings('ignore')
 
 # Advanced ML and analysis libraries
 try:
-    from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, VotingClassifier
-    from sklearn.linear_model import LogisticRegression
-    from sklearn.svm import SVC
-    from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
-    from sklearn.preprocessing import StandardScaler, LabelEncoder
-    from sklearn.impute import SimpleImputer
-    from sklearn.metrics import accuracy_score, classification_report, log_loss
     from sklearn.calibration import CalibratedClassifierCV
+    from sklearn.ensemble import (GradientBoostingClassifier,
+                                  RandomForestClassifier, VotingClassifier)
+    from sklearn.impute import SimpleImputer
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.metrics import accuracy_score, classification_report, log_loss
+    from sklearn.model_selection import (GridSearchCV, cross_val_score,
+                                         train_test_split)
+    from sklearn.preprocessing import LabelEncoder, StandardScaler
+    from sklearn.svm import SVC
     SKLEARN_AVAILABLE = True
 except ImportError:
     SKLEARN_AVAILABLE = False
@@ -1835,7 +1839,7 @@ class UpcomingRacePredictor:
     def extract_race_info(self, filename):
         """Extract race information from filename"""
         import re
-        
+
         # Extract race number, venue, and date
         race_pattern = r'Race\s+(\d+)\s+-\s+([A-Z]+)\s+-\s+(\d{1,2}\s+\w+\s+\d{4})'
         match = re.search(race_pattern, filename, re.IGNORECASE)

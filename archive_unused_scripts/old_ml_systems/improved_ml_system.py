@@ -14,40 +14,41 @@ Author: AI Assistant
 Date: July 25, 2025
 """
 
-import os
-import pandas as pd
-import numpy as np
-import sqlite3
 import json
+import os
+import sqlite3
+import warnings
 from datetime import datetime
 from pathlib import Path
-import warnings
+
+import numpy as np
+import pandas as pd
+
 warnings.filterwarnings('ignore')
 
 # Enhanced ML Libraries for Imbalanced Data
 try:
-    from sklearn.ensemble import (
-        RandomForestClassifier, GradientBoostingClassifier, 
-        VotingClassifier, BaggingClassifier, ExtraTreesClassifier
-    )
-    from sklearn.linear_model import LogisticRegression
-    from sklearn.svm import SVC
-    from sklearn.model_selection import cross_val_score, StratifiedKFold
-    from sklearn.preprocessing import RobustScaler, LabelEncoder
-    from sklearn.impute import KNNImputer
-    from sklearn.metrics import (
-        accuracy_score, roc_auc_score, classification_report, 
-        precision_recall_curve, roc_curve, f1_score,
-        precision_score, recall_score, confusion_matrix
-    )
     from sklearn.calibration import CalibratedClassifierCV
+    from sklearn.ensemble import (BaggingClassifier, ExtraTreesClassifier,
+                                  GradientBoostingClassifier,
+                                  RandomForestClassifier, VotingClassifier)
+    from sklearn.impute import KNNImputer
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.metrics import (accuracy_score, classification_report,
+                                 confusion_matrix, f1_score,
+                                 precision_recall_curve, precision_score,
+                                 recall_score, roc_auc_score, roc_curve)
+    from sklearn.model_selection import StratifiedKFold, cross_val_score
+    from sklearn.preprocessing import LabelEncoder, RobustScaler
+    from sklearn.svm import SVC
     from sklearn.utils.class_weight import compute_class_weight
-    
+
     # Import SMOTE for oversampling
     try:
-        from imblearn.over_sampling import SMOTE, ADASYN
         from imblearn.combine import SMOTETomek
-        from imblearn.ensemble import BalancedRandomForestClassifier, BalancedBaggingClassifier
+        from imblearn.ensemble import (BalancedBaggingClassifier,
+                                       BalancedRandomForestClassifier)
+        from imblearn.over_sampling import ADASYN, SMOTE
         IMBALANCED_LEARN_AVAILABLE = True
     except ImportError:
         print("⚠️ imbalanced-learn not available. Install with: pip install imbalanced-learn")
@@ -133,7 +134,8 @@ class ImprovedMLSystem:
         """Load data from the comprehensive ML system results"""
         try:
             # Import the comprehensive system to get feature-engineered data
-            from comprehensive_enhanced_ml_system import ComprehensiveEnhancedMLSystem
+            from comprehensive_enhanced_ml_system import \
+                ComprehensiveEnhancedMLSystem
             
             comp_system = ComprehensiveEnhancedMLSystem(self.db_path)
             

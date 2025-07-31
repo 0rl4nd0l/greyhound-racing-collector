@@ -8,15 +8,18 @@ This creates a web interface to view current odds and value betting opportunitie
 """
 
 import sqlite3
-import pandas as pd
-from datetime import datetime, timedelta
-import streamlit as st
+import threading
 import time
+from datetime import datetime, timedelta
+from typing import Dict, List
+
+import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from typing import Dict, List
-import threading
+import streamlit as st
+
 from sportsbet_odds_integrator import SportsbetOddsIntegrator
+
 
 class LiveOddsDashboard:
     def __init__(self, db_path="greyhound_racing_data.db"):

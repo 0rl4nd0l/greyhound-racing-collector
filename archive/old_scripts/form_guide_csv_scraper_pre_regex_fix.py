@@ -32,6 +32,7 @@ from bs4 import BeautifulSoup
 import re
 from pathlib import Path
 import sqlite3
+from utils.date_parsing import parse_date_flexible
 
 class FormGuideCsvScraper:
     def __init__(self):
@@ -204,17 +205,16 @@ class FormGuideCsvScraper:
                     self.existing_files.add(filename)
                     
                     # Try to parse from multiple known filename formats
-                    match = re.match(r'Race (\\d+) - ([A-Z_]+) - (\\d{1,2} \\w+ \\d{4})\\.csv', filename)
+                    match = re.match(r'Race (\d+) - ([A-Z_]+) - (\d{1,2} \w+ \d{4})\.csv', filename)
                     if not match:
-                        match = re.match(r'\\w+_Race_(\\d+)_([A-Z_]+)_([\\d-]+)\\.csv', filename)
+                        match = re.match(r'\w+_Race_(\d+)_([A-Z_]+)_([\d-]+)\.csv', filename)
                     if not match:
-                        match = re.match(r'Race_(\\d+)_-_([A-Z_]+)_-_([\\d_A-Za-z]+)\\.csv', filename)
+                        match = re.match(r'Race_(\d+)_-_([A-Z_]+)_-_([\d_A-Za-z]+)\.csv', filename)
                     if match:
                         race_number, venue, date_str = match.groups()
                         try:
-                            # Convert date to standard format
-                            date_obj = datetime.strptime(date_str, '%d %B %Y')
-                            date_formatted = date_obj.strftime('%Y-%m-%d')
+                            # Convert date to standard format using flexible parsing
+                            date_formatted = parse_date_flexible(date_str)
                             
                             # Store race identifier
                             race_id = (date_formatted, venue, race_number)
@@ -286,17 +286,11 @@ class FormGuideCsvScraper:
                     race_date, venue, race_number = row
                     # Convert date format for comparison
                     try:
-                        date_obj = datetime.strptime(race_date, '%Y-%m-%d')
-                        formatted_date = date_obj.strftime('%Y-%m-%d')
+                        # Use flexible date parsing to handle multiple formats
+                        formatted_date = parse_date_flexible(race_date)
                         processed_races.add((formatted_date, venue, str(race_number)))
                     except ValueError:
-                        # Try alternative date format
-                        try:
-                            date_obj = datetime.strptime(race_date, '%d %B %Y')
-                            formatted_date = date_obj.strftime('%Y-%m-%d')
-                            processed_races.add((formatted_date, venue, str(race_number)))
-                        except ValueError:
-                            continue
+                        continue
             else:
                 # Original database - get races from race_results table
                 cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='race_results'")
@@ -603,7 +597,7 @@ class FormGuideCsvScraper:
                 return False
             
             # Check if this is a historical race (previous day or earlier)
-            race_date_formatted = datetime.strptime(race_info['date'], '%d %B %Y').strftime('%Y-%m-%d')
+            race_date_formatted = parse_date_flexible(race_info['date'])
             race_date_obj = datetime.strptime(race_date_formatted, '%Y-%m-%d').date()
             today = datetime.now().date()
             
@@ -945,8 +939,8 @@ class FormGuideCsvScraper:
             if match:
                 race_number, venue, date_str = match.groups()
                 try:
-                    date_obj = datetime.strptime(date_str, '%d %B %Y')
-                    date_formatted = date_obj.strftime('%Y-%m-%d')
+                    # Use flexible date parsing to handle multiple formats
+                    date_formatted = parse_date_flexible(date_str)
                     race_id = (date_formatted, venue, race_number)
                     self.collected_races.add(race_id)
                 except ValueError:

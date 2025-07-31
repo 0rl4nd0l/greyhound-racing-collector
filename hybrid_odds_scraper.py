@@ -11,25 +11,26 @@ Author: Orlando Lee
 Date: July 27, 2025
 """
 
-import sys
-import os
 import logging
+import os
+import sys
 import time
-import pandas as pd
 from datetime import datetime
-from typing import Optional, Dict, Any, Tuple
+from typing import Any, Dict, Optional, Tuple
+
+import pandas as pd
+# Our fallback Selenium scraper (simplified)
+from selenium import webdriver
+from selenium.common.exceptions import NoSuchElementException, TimeoutException
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
 
 # Professional API scraper
 from event_scraper import EventScraper
 from scraper_exception import ScraperException
 
-# Our fallback Selenium scraper (simplified)
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
 class HybridOddsScraper:
     """

@@ -12,21 +12,22 @@ Date: July 11, 2025
 
 import json
 import sqlite3
-import pandas as pd
 from datetime import datetime
+
+import pandas as pd
+
 
 def generate_pipeline_summary():
     """Generate comprehensive pipeline summary report"""
-    
+
     report = {
         "pipeline_overview": {
             "title": "Greyhound Racing Analytics Pipeline",
             "description": "End-to-end data collection, processing, and analysis system",
             "creation_date": datetime.now().isoformat(),
             "version": "1.0",
-            "author": "AI Assistant"
+            "author": "AI Assistant",
         },
-        
         "data_collection": {
             "description": "Comprehensive web scraping of greyhound racing data",
             "sources": [
@@ -34,32 +35,30 @@ def generate_pipeline_summary():
                 "Race times and sectional data",
                 "Trainer and greyhound information",
                 "Betting odds and market data",
-                "Environmental conditions (weather, track conditions)"
+                "Environmental conditions (weather, track conditions)",
             ],
             "time_period": "2022-2025",
             "total_races_scraped": "500+ races",
-            "data_completeness": "Variable by field and year"
+            "data_completeness": "Variable by field and year",
         },
-        
         "data_processing": {
             "database_system": "SQLite",
             "data_enrichment": [
                 "Derived performance metrics",
                 "Relative positioning calculations",
                 "Form analysis indicators",
-                "Market efficiency ratios"
+                "Market efficiency ratios",
             ],
-            "quality_assurance": "Comprehensive data validation and cleaning"
+            "quality_assurance": "Comprehensive data validation and cleaning",
         },
-        
         "analytical_frameworks": {
             "basic_analysis": {
                 "description": "Initial odds and market analysis",
                 "features": [
                     "Win rate analysis by venue",
                     "Trainer performance metrics",
-                    "Basic market efficiency"
-                ]
+                    "Basic market efficiency",
+                ],
             },
             "advanced_analysis": {
                 "description": "Enhanced analysis with sectional times and form",
@@ -67,8 +66,8 @@ def generate_pipeline_summary():
                     "Sectional time analysis",
                     "Running style classification",
                     "Advanced form metrics",
-                    "Weather correlation analysis"
-                ]
+                    "Weather correlation analysis",
+                ],
             },
             "ultra_advanced_analysis": {
                 "description": "Comprehensive analysis with 60+ engineered features",
@@ -76,8 +75,8 @@ def generate_pipeline_summary():
                     "Machine learning predictions",
                     "Feature engineering (60+ variables)",
                     "Cross-validation accuracy: 99.56%",
-                    "Ensemble modeling approach"
-                ]
+                    "Ensemble modeling approach",
+                ],
             },
             "ultimate_analysis": {
                 "description": "Complete analytical system with betting recommendations",
@@ -85,61 +84,57 @@ def generate_pipeline_summary():
                     "Risk management framework",
                     "Betting recommendation engine",
                     "Confidence scoring system",
-                    "Portfolio optimization"
-                ]
-            }
+                    "Portfolio optimization",
+                ],
+            },
         },
-        
         "data_confidence_system": {
             "description": "Novel approach to handle data quality variations",
             "methodology": [
                 "Multi-dimensional confidence scoring",
                 "Weighted analysis based on data completeness",
                 "Reliability grading (A+ through F)",
-                "Confidence-aware predictions"
+                "Confidence-aware predictions",
             ],
             "benefits": [
                 "Reduces impact of incomplete data",
                 "Provides uncertainty quantification",
                 "Enables reliability-based filtering",
-                "Improves analytical robustness"
-            ]
+                "Improves analytical robustness",
+            ],
         },
-        
         "confidence_weighted_analysis": {
             "description": "Ultimate analysis system with confidence weighting",
             "methodology": [
                 "Confidence-weighted statistics",
                 "Reliability-adjusted predictions",
                 "Uncertainty-aware insights",
-                "Robust analytical framework"
+                "Robust analytical framework",
             ],
             "current_results": {
                 "total_high_confidence_records": 559,
                 "mean_confidence_score": "92.6%",
                 "statistically_significant_track_biases": 4,
-                "qualified_trainers": 23
-            }
+                "qualified_trainers": 23,
+            },
         },
-        
         "key_insights": {
             "track_bias": {
                 "finding": "Box 1 at Angle Park shows 36.8% win rate",
                 "confidence": "High (93.2% average data confidence)",
-                "statistical_significance": "Yes"
+                "statistical_significance": "Yes",
             },
             "trainer_performance": {
                 "top_trainer": "Billy Mcgovern (100% win rate)",
                 "sample_size": "5 races",
-                "confidence": "High (92.5% data confidence)"
+                "confidence": "High (92.5% data confidence)",
             },
             "data_quality": {
                 "grade_A_records": "91.4% of analyzed data",
                 "confidence_weighting_impact": "Minimal differences suggest high data quality",
-                "reliability": "High confidence in analytical results"
-            }
+                "reliability": "High confidence in analytical results",
+            },
         },
-        
         "technical_capabilities": {
             "data_storage": "SQLite with optimized schema",
             "processing_power": "Handles 6,800+ race records",
@@ -147,56 +142,54 @@ def generate_pipeline_summary():
                 "Statistical analysis",
                 "Machine learning (Random Forest, Gradient Boosting)",
                 "Time series analysis",
-                "Market efficiency modeling"
+                "Market efficiency modeling",
             ],
             "output_formats": [
                 "JSON insights",
                 "Detailed reports",
                 "Betting recommendations",
-                "Confidence scores"
-            ]
+                "Confidence scores",
+            ],
         },
-        
         "system_benefits": {
             "analytical_depth": "From basic statistics to advanced ML predictions",
             "data_quality_handling": "Robust approach to incomplete data",
             "scalability": "Designed for additional data and features",
             "reliability": "Confidence-weighted results with uncertainty quantification",
-            "actionability": "Betting recommendations with risk management"
+            "actionability": "Betting recommendations with risk management",
         },
-        
         "future_enhancements": {
             "real_time_integration": "Live odds tracking and analysis",
             "advanced_ml": "Deep learning and ensemble methods",
             "visualization": "Interactive dashboards and charts",
             "mobile_interface": "Mobile app for live betting recommendations",
-            "backtesting": "Historical performance validation"
+            "backtesting": "Historical performance validation",
         },
-        
         "conclusion": {
             "summary": "Complete analytical pipeline from data collection to confidence-weighted insights",
             "reliability": "High confidence in results due to data quality controls",
             "actionability": "Ready for practical betting applications",
             "innovation": "Novel confidence-weighting approach for incomplete data",
-            "impact": "Comprehensive system for greyhound racing analytics"
-        }
+            "impact": "Comprehensive system for greyhound racing analytics",
+        },
     }
-    
+
     return report
+
 
 def create_summary_document():
     """Create comprehensive summary document"""
-    
+
     print("🎯 GENERATING COMPREHENSIVE PIPELINE SUMMARY")
     print("=" * 60)
-    
+
     # Generate report
     report = generate_pipeline_summary()
-    
+
     # Save JSON report
-    with open('greyhound_analytics_pipeline_summary.json', 'w') as f:
+    with open("greyhound_analytics_pipeline_summary.json", "w") as f:
         json.dump(report, f, indent=2)
-    
+
     # Create readable markdown summary
     markdown_content = f"""# Greyhound Racing Analytics Pipeline Summary
 
@@ -282,67 +275,69 @@ This pipeline represents a comprehensive solution for greyhound racing analytics
 ---
 *Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*
 """
-    
-    with open('PIPELINE_SUMMARY.md', 'w') as f:
+
+    with open("PIPELINE_SUMMARY.md", "w") as f:
         f.write(markdown_content)
-    
+
     print("✅ Pipeline summary generated!")
     print("📊 Files created:")
     print("   - greyhound_analytics_pipeline_summary.json")
     print("   - PIPELINE_SUMMARY.md")
-    
+
     return report
+
 
 def print_executive_summary():
     """Print executive summary to console"""
-    
+
     print("\n🎯 EXECUTIVE SUMMARY")
     print("=" * 60)
     print("📊 GREYHOUND RACING ANALYTICS PIPELINE")
     print("=" * 60)
-    
+
     print("\n🔍 DATA COLLECTION:")
     print("   • 500+ races scraped from 2022-2025")
     print("   • 6,800+ comprehensive race records")
     print("   • Multi-source data (results, odds, weather, sectionals)")
-    
+
     print("\n📈 ANALYTICAL PROGRESSION:")
     print("   • Basic Analysis: Market efficiency & performance metrics")
     print("   • Advanced Analysis: Sectional times & weather correlation")
     print("   • Ultra-Advanced: 60+ features, 99.56% ML accuracy")
     print("   • Ultimate: Betting recommendations & risk management")
-    
+
     print("\n🎯 INNOVATION - CONFIDENCE-WEIGHTED ANALYSIS:")
     print("   • Novel approach to handle incomplete data")
     print("   • Multi-dimensional confidence scoring")
     print("   • Uncertainty quantification for all results")
     print("   • Robust analytical framework")
-    
+
     print("\n📊 CURRENT RESULTS:")
     print("   • 559 high-confidence records (92.6% average)")
     print("   • 4 statistically significant track biases")
     print("   • 23 qualified trainers identified")
     print("   • Box 1 at Angle Park: 36.8% win rate")
-    
+
     print("\n✅ SYSTEM BENEFITS:")
     print("   • Comprehensive: End-to-end analytical pipeline")
     print("   • Reliable: Confidence-weighted results with uncertainty")
     print("   • Actionable: Betting recommendations with risk management")
     print("   • Scalable: Designed for expansion and real-time data")
-    
+
     print("\n🚀 READY FOR:")
     print("   • Practical betting applications")
     print("   • Real-time odds analysis")
     print("   • Advanced ML integration")
     print("   • Commercial deployment")
-    
+
     print("\n" + "=" * 60)
     print("🏆 PIPELINE COMPLETE - CONFIDENCE-WEIGHTED ANALYTICS READY")
     print("=" * 60)
 
+
 if __name__ == "__main__":
     # Generate comprehensive summary
     report = create_summary_document()
-    
+
     # Print executive summary
     print_executive_summary()

@@ -9,14 +9,16 @@ what additional data fields are available beyond the standard form guide CSV.
 The goal is to identify enrichment opportunities for race and dog data.
 """
 
-import requests
-from bs4 import BeautifulSoup
-import re
 import csv
 import io
-from urllib.parse import urljoin
 import json
+import re
 from datetime import datetime
+from urllib.parse import urljoin
+
+import requests
+from bs4 import BeautifulSoup
+
 
 class ExpertFormInvestigator:
     def __init__(self):

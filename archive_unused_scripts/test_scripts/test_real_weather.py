@@ -10,10 +10,14 @@ Author: AI Assistant
 Date: July 25, 2025
 """
 
-import requests
 import json
 from datetime import datetime
-from weather_api_service import BOMWeatherService, WeatherData, VenueLocation, WeatherCondition
+
+import requests
+
+from weather_api_service import (BOMWeatherService, VenueLocation,
+                                 WeatherCondition, WeatherData)
+
 
 def test_real_bom_api():
     """Test the real BOM API with Melbourne data"""

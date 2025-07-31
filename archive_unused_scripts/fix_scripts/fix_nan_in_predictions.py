@@ -11,12 +11,13 @@ This script:
 Usage: python fix_nan_in_predictions.py
 """
 
-import os
 import json
+import math
+import os
 import re
 import shutil
 from datetime import datetime
-import math
+
 
 def safe_json_value(value):
     """Convert problematic values to JSON-safe equivalents"""

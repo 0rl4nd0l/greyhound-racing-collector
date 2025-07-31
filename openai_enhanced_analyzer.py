@@ -15,21 +15,23 @@ Features:
 - Risk assessment
 """
 
-import os
-import time
 import json
-import sqlite3
-import pandas as pd
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any
-import openai
-from pathlib import Path
 import logging
+import os
+import sqlite3
+import time
 from dataclasses import dataclass
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import openai
+import pandas as pd
 
 # Load environment variables
 try:
     from dotenv import load_dotenv
+
     load_dotenv()  # Load .env file
 except ImportError:
     pass  # dotenv not available, environment variables should be set manually
@@ -38,9 +40,11 @@ except ImportError:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class RaceContext:
     """Container for race context data"""
+
     venue: str
     race_number: int
     race_date: str
@@ -50,9 +54,11 @@ class RaceContext:
     weather: Optional[Dict] = None
     field_size: int = 0
 
+
 @dataclass
 class DogProfile:
     """Container for dog profile data"""
+
     name: str
     box_number: int
     recent_form: List[int]
@@ -62,39 +68,50 @@ class DogProfile:
     trainer: str
     weight: float
     historical_stats: Dict
-    
+
+
 class OpenAIEnhancedAnalyzer:
     """Enhanced analyzer using OpenAI's GPT models for advanced race analysis"""
-    
-    def __init__(self, api_key: Optional[str] = None, database_path: str = "greyhound_racing_data.db"):
+
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        database_path: str = "greyhound_racing_data.db",
+    ):
         # Initialize OpenAI API
-        self.api_key = api_key or os.getenv('OPENAI_API_KEY')
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
-            raise ValueError("OpenAI API key not provided. Set OPENAI_API_KEY environment variable.")
-        
+            raise ValueError(
+                "OpenAI API key not provided. Set OPENAI_API_KEY environment variable."
+            )
+
         # Initialize OpenAI client (v1.0+ format)
         self.client = openai.OpenAI(api_key=self.api_key)
         self.database_path = database_path
-        
+
         # Configuration
         self.model = "gpt-4-turbo-preview"  # Use GPT-4 for best analysis
         self.temperature = 0.3  # Lower temperature for more consistent analysis
         self.max_tokens = 2000
-        
+
         # Check if we should use mock mode
         self.mock_mode = False
-        if not self.api_key or self.api_key.startswith("sk-test") or self.api_key == 'your_openai_api_key_here':
+        if (
+            not self.api_key
+            or self.api_key.startswith("sk-test")
+            or self.api_key == "your_openai_api_key_here"
+        ):
             logger.warning("Using mock OpenAI mode - API key not valid")
             self.mock_mode = True
-        
+
         # Analysis templates
         self.setup_analysis_templates()
-        
+
     def setup_analysis_templates(self):
         """Setup analysis prompt templates for different types of analysis"""
-        
+
         self.templates = {
-            'race_analysis': """
+            "race_analysis": """
 You are an expert greyhound racing analyst with decades of experience. Analyze this race data and provide insights.
 
 RACE CONTEXT:
@@ -122,8 +139,7 @@ Please provide a comprehensive analysis including:
 
 Format your response as structured JSON with clear reasoning.
 """,
-
-            'form_guide_analysis': """
+            "form_guide_analysis": """
 You are analyzing greyhound form guides. Interpret the racing patterns and provide insights.
 
 DOG: {dog_name}
@@ -151,8 +167,7 @@ Analyze this dog's chances considering:
 
 Provide a detailed assessment with confidence rating (1-10).
 """,
-
-            'betting_strategy': """
+            "betting_strategy": """
 You are a professional greyhound racing betting strategist. Given the race analysis and current odds, recommend betting strategies.
 
 RACE ANALYSIS:
@@ -175,8 +190,7 @@ Recommend:
 
 Focus on sustainable, profitable strategies rather than long-shot bets.
 """,
-
-            'weather_impact': """
+            "weather_impact": """
 You are analyzing how weather conditions affect greyhound racing performance.
 
 CURRENT CONDITIONS:
@@ -200,8 +214,7 @@ Analyze:
 
 Provide specific, actionable insights for this race.
 """,
-
-            'risk_assessment': """
+            "risk_assessment": """
 You are conducting risk assessment for greyhound racing predictions.
 
 PREDICTION DATA:
@@ -223,22 +236,28 @@ Assess:
 7. When to avoid betting
 
 Provide a comprehensive risk framework for this race.
-"""
+""",
         }
-    
-    def analyze_race_with_gpt(self, race_context: RaceContext, dogs: List[DogProfile], 
-                             analysis_type: str = 'race_analysis') -> Dict[str, Any]:
+
+    def analyze_race_with_gpt(
+        self,
+        race_context: RaceContext,
+        dogs: List[DogProfile],
+        analysis_type: str = "race_analysis",
+    ) -> Dict[str, Any]:
         """Analyze race using GPT with comprehensive context"""
-        
+
         try:
             # Prepare context data
             dogs_data = self._format_dogs_for_analysis(dogs)
             venue_stats = self._get_venue_historical_stats(race_context.venue)
             weather_data = race_context.weather or {"condition": "Unknown"}
-            
+
             # Select appropriate template
-            template = self.templates.get(analysis_type, self.templates['race_analysis'])
-            
+            template = self.templates.get(
+                analysis_type, self.templates["race_analysis"]
+            )
+
             # Format prompt
             prompt = template.format(
                 venue=race_context.venue,
@@ -249,23 +268,26 @@ Provide a comprehensive risk framework for this race.
                 track_condition=race_context.track_condition,
                 weather=json.dumps(weather_data, indent=2),
                 dogs_data=dogs_data,
-                venue_stats=venue_stats
+                venue_stats=venue_stats,
             )
-            
+
             # Call OpenAI API
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "You are an expert greyhound racing analyst with advanced statistical knowledge and deep understanding of racing dynamics."},
-                    {"role": "user", "content": prompt}
+                    {
+                        "role": "system",
+                        "content": "You are an expert greyhound racing analyst with advanced statistical knowledge and deep understanding of racing dynamics.",
+                    },
+                    {"role": "user", "content": prompt},
                 ],
                 temperature=self.temperature,
-                max_tokens=self.max_tokens
+                max_tokens=self.max_tokens,
             )
-            
+
             # Extract and parse response
             analysis_text = response.choices[0].message.content
-            
+
             # Try to parse as JSON, fallback to text analysis
             try:
                 analysis_data = json.loads(analysis_text)
@@ -273,40 +295,49 @@ Provide a comprehensive risk framework for this race.
                 analysis_data = {
                     "analysis_type": analysis_type,
                     "raw_analysis": analysis_text,
-                    "structured_insights": self._extract_insights_from_text(analysis_text)
+                    "structured_insights": self._extract_insights_from_text(
+                        analysis_text
+                    ),
                 }
-            
+
             # Add metadata
-            analysis_data.update({
-                "timestamp": datetime.now().isoformat(),
-                "model_used": self.model,
-                "race_id": f"{race_context.venue}_{race_context.race_number}_{race_context.race_date}",
-                "analysis_confidence": self._calculate_analysis_confidence(analysis_data),
-                "tokens_used": response.usage.total_tokens
-            })
-            
+            analysis_data.update(
+                {
+                    "timestamp": datetime.now().isoformat(),
+                    "model_used": self.model,
+                    "race_id": f"{race_context.venue}_{race_context.race_number}_{race_context.race_date}",
+                    "analysis_confidence": self._calculate_analysis_confidence(
+                        analysis_data
+                    ),
+                    "tokens_used": response.usage.total_tokens,
+                }
+            )
+
             return analysis_data
-            
+
         except Exception as e:
             logger.error(f"GPT analysis failed: {str(e)}")
             return {
                 "error": str(e),
                 "analysis_type": analysis_type,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
-    
-    def enhance_predictions_with_gpt(self, base_predictions: List[Dict], 
-                                   race_context: RaceContext) -> Dict[str, Any]:
+
+    def enhance_predictions_with_gpt(
+        self, base_predictions: List[Dict], race_context: RaceContext
+    ) -> Dict[str, Any]:
         """Enhance existing ML predictions with GPT insights"""
-        
+
         # Prepare prediction data for GPT analysis
         prediction_summary = {
             "top_3_picks": base_predictions[:3],
             "field_analysis": base_predictions,
-            "prediction_confidence": self._calculate_prediction_confidence(base_predictions),
-            "model_consensus": self._analyze_model_consensus(base_predictions)
+            "prediction_confidence": self._calculate_prediction_confidence(
+                base_predictions
+            ),
+            "model_consensus": self._analyze_model_consensus(base_predictions),
         }
-        
+
         # Create enhanced analysis prompt
         enhancement_prompt = f"""
         Analyze these ML-generated greyhound racing predictions and provide enhanced insights:
@@ -327,80 +358,100 @@ Provide a comprehensive risk framework for this race.
 
         Focus on adding human expertise that complements the quantitative analysis.
         """
-        
+
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "You are validating and enhancing machine learning predictions with expert racing knowledge."},
-                    {"role": "user", "content": enhancement_prompt}
+                    {
+                        "role": "system",
+                        "content": "You are validating and enhancing machine learning predictions with expert racing knowledge.",
+                    },
+                    {"role": "user", "content": enhancement_prompt},
                 ],
                 temperature=0.2,  # Lower temperature for validation
-                max_tokens=1500
+                max_tokens=1500,
             )
-            
+
             enhanced_analysis = response.choices[0].message.content
-            
+
             return {
                 "base_predictions": base_predictions,
                 "gpt_enhancement": enhanced_analysis,
-                "enhanced_insights": self._parse_enhancement_insights(enhanced_analysis),
+                "enhanced_insights": self._parse_enhancement_insights(
+                    enhanced_analysis
+                ),
                 "final_recommendations": self._generate_final_recommendations(
                     base_predictions, enhanced_analysis
                 ),
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
-            
+
         except Exception as e:
             logger.error(f"Prediction enhancement failed: {str(e)}")
             return {
                 "base_predictions": base_predictions,
                 "enhancement_error": str(e),
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
-    
-    def generate_betting_insights(self, race_analysis: Dict, odds_data: List[Dict],
-                                bankroll: float = 1000, risk_tolerance: str = "medium") -> Dict[str, Any]:
+
+    def generate_betting_insights(
+        self,
+        race_analysis: Dict,
+        odds_data: List[Dict],
+        bankroll: float = 1000,
+        risk_tolerance: str = "medium",
+    ) -> Dict[str, Any]:
         """Generate betting strategy using GPT"""
-        
-        betting_prompt = self.templates['betting_strategy'].format(
+
+        betting_prompt = self.templates["betting_strategy"].format(
             race_analysis=json.dumps(race_analysis, indent=2),
             odds_data=json.dumps(odds_data, indent=2),
             risk_tolerance=risk_tolerance,
-            betting_bank=bankroll
+            betting_bank=bankroll,
         )
-        
+
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "You are a professional betting strategist focused on sustainable, profitable approaches."},
-                    {"role": "user", "content": betting_prompt}
+                    {
+                        "role": "system",
+                        "content": "You are a professional betting strategist focused on sustainable, profitable approaches.",
+                    },
+                    {"role": "user", "content": betting_prompt},
                 ],
                 temperature=0.1,  # Very low temperature for betting advice
-                max_tokens=1200
+                max_tokens=1200,
             )
-            
+
             betting_strategy = response.choices[0].message.content
-            
+
             return {
                 "betting_strategy": betting_strategy,
-                "structured_recommendations": self._parse_betting_recommendations(betting_strategy),
-                "risk_assessment": self._assess_betting_risk(betting_strategy, odds_data),
-                "timestamp": datetime.now().isoformat()
+                "structured_recommendations": self._parse_betting_recommendations(
+                    betting_strategy
+                ),
+                "risk_assessment": self._assess_betting_risk(
+                    betting_strategy, odds_data
+                ),
+                "timestamp": datetime.now().isoformat(),
             }
-            
+
         except Exception as e:
             logger.error(f"Betting insight generation failed: {str(e)}")
             return {"error": str(e)}
-    
-    def analyze_historical_patterns(self, venue: str, distance: str, 
-                                  time_period_days: int = 90) -> Dict[str, Any]:
+
+    def analyze_historical_patterns(
+        self, venue: str, distance: str, time_period_days: int = 90
+    ) -> Dict[str, Any]:
         """Use GPT to analyze historical patterns and trends"""
-        
+
         # Get historical data
-        historical_data = self._get_historical_race_data(venue, distance, time_period_days)
-        
+        historical_data = self._get_historical_race_data(
+            venue, distance, time_period_days
+        )
+
         pattern_prompt = f"""
         Analyze these historical greyhound racing patterns for {venue} at {distance}m:
 
@@ -418,20 +469,23 @@ Provide a comprehensive risk framework for this race.
 
         Provide actionable insights for upcoming races at this venue/distance.
         """
-        
+
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "You are analyzing racing patterns to identify profitable trends and insights."},
-                    {"role": "user", "content": pattern_prompt}
+                    {
+                        "role": "system",
+                        "content": "You are analyzing racing patterns to identify profitable trends and insights.",
+                    },
+                    {"role": "user", "content": pattern_prompt},
                 ],
                 temperature=0.2,
-                max_tokens=1500
+                max_tokens=1500,
             )
-            
+
             pattern_analysis = response.choices[0].message.content
-            
+
             return {
                 "venue": venue,
                 "distance": distance,
@@ -439,17 +493,17 @@ Provide a comprehensive risk framework for this race.
                 "pattern_insights": pattern_analysis,
                 "structured_patterns": self._extract_pattern_insights(pattern_analysis),
                 "confidence_score": self._calculate_pattern_confidence(historical_data),
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
-            
+
         except Exception as e:
             logger.error(f"Pattern analysis failed: {str(e)}")
             return {"error": str(e)}
-    
+
     def _format_dogs_for_analysis(self, dogs: List[DogProfile]) -> str:
         """Format dog data for GPT analysis"""
         formatted_dogs = []
-        
+
         for dog in dogs:
             dog_info = f"""
             Dog: {dog.name} (Box {dog.box_number})
@@ -462,9 +516,9 @@ Provide a comprehensive risk framework for this race.
             Historical Stats: {json.dumps(dog.historical_stats, indent=2)}
             """
             formatted_dogs.append(dog_info)
-        
+
         return "\n".join(formatted_dogs)
-    
+
     def _get_venue_historical_stats(self, venue: str) -> str:
         """Get historical statistics for a venue"""
         try:
@@ -478,21 +532,21 @@ Provide a comprehensive risk framework for this race.
             JOIN race_metadata r ON d.race_id = r.race_id
             WHERE r.venue = ? AND individual_time IS NOT NULL
             """
-            
+
             df = pd.read_sql_query(query, conn, params=[venue])
             conn.close()
-            
-            return df.to_json(orient='records')
-            
+
+            return df.to_json(orient="records")
+
         except Exception as e:
             logger.error(f"Error getting venue stats: {e}")
             return "{}"
-    
+
     def _get_historical_race_data(self, venue: str, distance: str, days: int) -> Dict:
         """Get historical race data for pattern analysis"""
         try:
             conn = sqlite3.connect(self.database_path)
-            
+
             # Get recent races at this venue/distance
             query = """
             SELECT r.race_date, r.race_number, r.winner_name, r.winner_odds,
@@ -502,164 +556,193 @@ Provide a comprehensive risk framework for this race.
             WHERE r.venue = ? AND r.distance = ?
             AND date(r.race_date) >= date('now', '-{} days')
             ORDER BY r.race_date DESC
-            """.format(days)
-            
+            """.format(
+                days
+            )
+
             df = pd.read_sql_query(query, conn, params=[venue, distance])
             conn.close()
-            
+
             # Summarize the data
             summary = {
                 "total_races": len(df),
-                "unique_winners": df['winner_name'].nunique(),
-                "avg_winning_odds": df['winner_odds'].mean() if 'winner_odds' in df.columns else 0,
-                "avg_winning_time": df[df['finish_position'] == 1]['individual_time'].mean() if len(df) > 0 else 0
+                "unique_winners": df["winner_name"].nunique(),
+                "avg_winning_odds": (
+                    df["winner_odds"].mean() if "winner_odds" in df.columns else 0
+                ),
+                "avg_winning_time": (
+                    df[df["finish_position"] == 1]["individual_time"].mean()
+                    if len(df) > 0
+                    else 0
+                ),
             }
-            
+
             return summary
-            
+
         except Exception as e:
             logger.error(f"Error getting historical data: {e}")
             return {}
-    
+
     def _extract_insights_from_text(self, text: str) -> List[str]:
         """Extract key insights from unstructured analysis text"""
         # Simple keyword-based insight extraction
         insights = []
-        sentences = text.split('.')
-        
+        sentences = text.split(".")
+
         for sentence in sentences:
             sentence = sentence.strip()
-            if any(keyword in sentence.lower() for keyword in 
-                  ['recommend', 'likely', 'expect', 'should', 'strong', 'weak', 'value']):
+            if any(
+                keyword in sentence.lower()
+                for keyword in [
+                    "recommend",
+                    "likely",
+                    "expect",
+                    "should",
+                    "strong",
+                    "weak",
+                    "value",
+                ]
+            ):
                 if len(sentence) > 20:  # Filter out very short sentences
                     insights.append(sentence)
-        
+
         return insights[:10]  # Limit to top 10 insights
-    
+
     def _calculate_analysis_confidence(self, analysis_data: Dict) -> float:
         """Calculate confidence score for GPT analysis"""
         # Simple confidence calculation based on data completeness and specificity
         base_confidence = 0.7
-        
+
         # Adjust based on analysis detail
-        if isinstance(analysis_data.get('raw_analysis'), str):
-            text_length = len(analysis_data['raw_analysis'])
+        if isinstance(analysis_data.get("raw_analysis"), str):
+            text_length = len(analysis_data["raw_analysis"])
             if text_length > 1000:
                 base_confidence += 0.1
             elif text_length < 500:
                 base_confidence -= 0.1
-        
+
         # Adjust based on structured insights
-        insights_count = len(analysis_data.get('structured_insights', []))
+        insights_count = len(analysis_data.get("structured_insights", []))
         if insights_count > 5:
             base_confidence += 0.1
         elif insights_count < 3:
             base_confidence -= 0.1
-        
+
         return max(0.1, min(0.95, base_confidence))
-    
+
     def _calculate_prediction_confidence(self, predictions: List[Dict]) -> float:
         """Calculate overall confidence in predictions"""
         if not predictions:
             return 0.0
-        
-        scores = [p.get('prediction_score', 0) for p in predictions]
+
+        scores = [p.get("prediction_score", 0) for p in predictions]
         if not scores:
             return 0.0
-        
+
         # Confidence based on score distribution
         top_score = max(scores)
         score_spread = top_score - min(scores)
-        
+
         # Higher spread indicates clearer favorites
         confidence = min(0.95, 0.5 + (score_spread * 0.5))
         return confidence
-    
+
     def _analyze_model_consensus(self, predictions: List[Dict]) -> Dict:
         """Analyze consensus among different prediction factors"""
         consensus_data = {
             "strong_consensus": [],
             "weak_consensus": [],
-            "conflicting_signals": []
+            "conflicting_signals": [],
         }
-        
+
         for pred in predictions[:5]:  # Top 5
-            traditional_score = pred.get('traditional_score', 0)
-            ml_score = pred.get('ml_score', 0)
-            final_score = pred.get('prediction_score', 0)
-            
+            traditional_score = pred.get("traditional_score", 0)
+            ml_score = pred.get("ml_score", 0)
+            final_score = pred.get("prediction_score", 0)
+
             # Analyze consensus
             score_variance = abs(traditional_score - ml_score)
             if score_variance < 0.1:
-                consensus_data["strong_consensus"].append(pred['dog_name'])
+                consensus_data["strong_consensus"].append(pred["dog_name"])
             elif score_variance > 0.3:
-                consensus_data["conflicting_signals"].append(pred['dog_name'])
+                consensus_data["conflicting_signals"].append(pred["dog_name"])
             else:
-                consensus_data["weak_consensus"].append(pred['dog_name'])
-        
+                consensus_data["weak_consensus"].append(pred["dog_name"])
+
         return consensus_data
-    
+
     def _parse_enhancement_insights(self, enhancement_text: str) -> Dict:
         """Parse structured insights from enhancement text"""
         insights = {
             "key_factors": [],
             "risk_warnings": [],
             "value_opportunities": [],
-            "race_narrative": ""
+            "race_narrative": "",
         }
-        
+
         # Simple parsing based on common patterns
-        lines = enhancement_text.split('\n')
+        lines = enhancement_text.split("\n")
         current_section = None
-        
+
         for line in lines:
             line = line.strip()
-            if 'factor' in line.lower() or 'key' in line.lower():
-                current_section = 'key_factors'
-            elif 'risk' in line.lower() or 'warning' in line.lower():
-                current_section = 'risk_warnings'
-            elif 'value' in line.lower() or 'opportunity' in line.lower():
-                current_section = 'value_opportunities'
-            elif 'narrative' in line.lower() or 'story' in line.lower():
-                current_section = 'race_narrative'
-            
-            if current_section and line and not any(word in line.lower() for word in ['analyze', 'provide', 'focus']):
-                if current_section == 'race_narrative':
+            if "factor" in line.lower() or "key" in line.lower():
+                current_section = "key_factors"
+            elif "risk" in line.lower() or "warning" in line.lower():
+                current_section = "risk_warnings"
+            elif "value" in line.lower() or "opportunity" in line.lower():
+                current_section = "value_opportunities"
+            elif "narrative" in line.lower() or "story" in line.lower():
+                current_section = "race_narrative"
+
+            if (
+                current_section
+                and line
+                and not any(
+                    word in line.lower() for word in ["analyze", "provide", "focus"]
+                )
+            ):
+                if current_section == "race_narrative":
                     insights[current_section] += line + " "
                 else:
                     insights[current_section].append(line)
-        
+
         return insights
-    
-    def _generate_final_recommendations(self, base_predictions: List[Dict], 
-                                      enhancement_text: str) -> List[Dict]:
+
+    def _generate_final_recommendations(
+        self, base_predictions: List[Dict], enhancement_text: str
+    ) -> List[Dict]:
         """Generate final recommendations combining ML and GPT insights"""
         recommendations = []
-        
+
         # Enhanced top 3 picks with GPT insights
         for i, pred in enumerate(base_predictions[:3]):
             recommendation = {
                 "rank": i + 1,
-                "dog_name": pred['dog_name'],
-                "ml_score": pred.get('prediction_score', 0),
-                "confidence": pred.get('confidence_level', 'MEDIUM'),
+                "dog_name": pred["dog_name"],
+                "ml_score": pred.get("prediction_score", 0),
+                "confidence": pred.get("confidence_level", "MEDIUM"),
                 "gpt_validation": "See enhancement analysis",
-                "betting_recommendation": self._extract_betting_advice(pred['dog_name'], enhancement_text)
+                "betting_recommendation": self._extract_betting_advice(
+                    pred["dog_name"], enhancement_text
+                ),
             }
             recommendations.append(recommendation)
-        
+
         return recommendations
-    
+
     def _extract_betting_advice(self, dog_name: str, enhancement_text: str) -> str:
         """Extract betting advice for specific dog from enhancement text"""
         # Simple text search for dog-specific advice
-        sentences = enhancement_text.split('.')
+        sentences = enhancement_text.split(".")
         for sentence in sentences:
-            if dog_name.lower() in sentence.lower() and any(word in sentence.lower() 
-                for word in ['bet', 'back', 'value', 'avoid', 'lay']):
+            if dog_name.lower() in sentence.lower() and any(
+                word in sentence.lower()
+                for word in ["bet", "back", "value", "avoid", "lay"]
+            ):
                 return sentence.strip()
         return "Consider based on overall analysis"
-    
+
     def _parse_betting_recommendations(self, betting_text: str) -> Dict:
         """Parse structured betting recommendations"""
         recommendations = {
@@ -667,99 +750,109 @@ Provide a comprehensive risk framework for this race.
             "place_bets": [],
             "exotic_bets": [],
             "lay_bets": [],
-            "avoid": []
+            "avoid": [],
         }
-        
+
         # Simple pattern matching for betting recommendations
-        lines = betting_text.split('\n')
+        lines = betting_text.split("\n")
         for line in lines:
             line = line.strip().lower()
-            if 'win' in line and ('bet' in line or 'back' in line):
+            if "win" in line and ("bet" in line or "back" in line):
                 recommendations["win_bets"].append(line)
-            elif 'place' in line and 'bet' in line:
+            elif "place" in line and "bet" in line:
                 recommendations["place_bets"].append(line)
-            elif any(word in line for word in ['quinella', 'trifecta', 'exacta']):
+            elif any(word in line for word in ["quinella", "trifecta", "exacta"]):
                 recommendations["exotic_bets"].append(line)
-            elif 'lay' in line:
+            elif "lay" in line:
                 recommendations["lay_bets"].append(line)
-            elif 'avoid' in line:
+            elif "avoid" in line:
                 recommendations["avoid"].append(line)
-        
+
         return recommendations
-    
-    def _assess_betting_risk(self, betting_strategy: str, odds_data: List[Dict]) -> Dict:
+
+    def _assess_betting_risk(
+        self, betting_strategy: str, odds_data: List[Dict]
+    ) -> Dict:
         """Assess risk level of betting strategy"""
         risk_assessment = {
             "overall_risk": "MEDIUM",
             "risk_factors": [],
-            "risk_mitigation": []
+            "risk_mitigation": [],
         }
-        
+
         # Analyze risk indicators in strategy text
         strategy_lower = betting_strategy.lower()
-        
+
         # High risk indicators
-        if any(word in strategy_lower for word in ['long shot', 'upset', 'exotic', 'high odds']):
+        if any(
+            word in strategy_lower
+            for word in ["long shot", "upset", "exotic", "high odds"]
+        ):
             risk_assessment["overall_risk"] = "HIGH"
             risk_assessment["risk_factors"].append("High odds selections")
-        
+
         # Low risk indicators
-        if any(word in strategy_lower for word in ['favorite', 'safe', 'conservative', 'place']):
+        if any(
+            word in strategy_lower
+            for word in ["favorite", "safe", "conservative", "place"]
+        ):
             if risk_assessment["overall_risk"] != "HIGH":
                 risk_assessment["overall_risk"] = "LOW"
-        
+
         # Risk mitigation suggestions
-        if 'diversify' in strategy_lower or 'hedge' in strategy_lower:
-            risk_assessment["risk_mitigation"].append("Portfolio diversification recommended")
-        
+        if "diversify" in strategy_lower or "hedge" in strategy_lower:
+            risk_assessment["risk_mitigation"].append(
+                "Portfolio diversification recommended"
+            )
+
         return risk_assessment
-    
+
     def _extract_pattern_insights(self, pattern_text: str) -> Dict:
         """Extract structured insights from pattern analysis"""
         patterns = {
             "seasonal_trends": [],
             "successful_patterns": [],
             "market_inefficiencies": [],
-            "predictive_indicators": []
+            "predictive_indicators": [],
         }
-        
+
         # Parse patterns from text
-        lines = pattern_text.split('\n')
+        lines = pattern_text.split("\n")
         current_category = None
-        
+
         for line in lines:
             line = line.strip()
-            if 'seasonal' in line.lower() or 'temporal' in line.lower():
-                current_category = 'seasonal_trends'
-            elif 'successful' in line.lower() or 'winning' in line.lower():
-                current_category = 'successful_patterns'
-            elif 'inefficien' in line.lower() or 'value' in line.lower():
-                current_category = 'market_inefficiencies'
-            elif 'indicator' in line.lower() or 'predicti' in line.lower():
-                current_category = 'predictive_indicators'
+            if "seasonal" in line.lower() or "temporal" in line.lower():
+                current_category = "seasonal_trends"
+            elif "successful" in line.lower() or "winning" in line.lower():
+                current_category = "successful_patterns"
+            elif "inefficien" in line.lower() or "value" in line.lower():
+                current_category = "market_inefficiencies"
+            elif "indicator" in line.lower() or "predicti" in line.lower():
+                current_category = "predictive_indicators"
             elif current_category and line and len(line) > 10:
                 patterns[current_category].append(line)
-        
+
         return patterns
-    
+
     def _calculate_pattern_confidence(self, historical_data: Dict) -> float:
         """Calculate confidence in pattern analysis based on data quality"""
         base_confidence = 0.6
-        
+
         # Adjust based on data volume
-        total_races = historical_data.get('total_races', 0)
+        total_races = historical_data.get("total_races", 0)
         if total_races > 100:
             base_confidence += 0.2
         elif total_races < 20:
             base_confidence -= 0.2
-        
+
         # Adjust based on data diversity
-        unique_winners = historical_data.get('unique_winners', 0)
+        unique_winners = historical_data.get("unique_winners", 0)
         if unique_winners > 10:
             base_confidence += 0.1
         elif unique_winners < 5:
             base_confidence -= 0.1
-        
+
         return max(0.1, min(0.9, base_confidence))
 
     def save_analysis_to_database(self, analysis_data: Dict, race_id: str):
@@ -767,9 +860,10 @@ Provide a comprehensive risk framework for this race.
         try:
             conn = sqlite3.connect(self.database_path)
             cursor = conn.cursor()
-            
+
             # Create table if it doesn't exist
-            cursor.execute('''
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS gpt_analysis (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     race_id TEXT,
@@ -780,36 +874,41 @@ Provide a comprehensive risk framework for this race.
                     timestamp TEXT,
                     model_used TEXT
                 )
-            ''')
-            
+            """
+            )
+
             # Insert analysis
-            cursor.execute('''
+            cursor.execute(
+                """
                 INSERT INTO gpt_analysis 
                 (race_id, analysis_type, analysis_data, confidence_score, tokens_used, timestamp, model_used)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                race_id,
-                analysis_data.get('analysis_type', 'general'),
-                json.dumps(analysis_data),
-                analysis_data.get('analysis_confidence', 0.5),
-                analysis_data.get('tokens_used', 0),
-                analysis_data.get('timestamp'),
-                analysis_data.get('model_used', self.model)
-            ))
-            
+            """,
+                (
+                    race_id,
+                    analysis_data.get("analysis_type", "general"),
+                    json.dumps(analysis_data),
+                    analysis_data.get("analysis_confidence", 0.5),
+                    analysis_data.get("tokens_used", 0),
+                    analysis_data.get("timestamp"),
+                    analysis_data.get("model_used", self.model),
+                ),
+            )
+
             conn.commit()
             conn.close()
-            
+
             logger.info(f"Saved GPT analysis for race {race_id}")
-            
+
         except Exception as e:
             logger.error(f"Error saving analysis to database: {e}")
+
 
 if __name__ == "__main__":
     # Example usage
     try:
         analyzer = OpenAIEnhancedAnalyzer()
-        
+
         # Example race context
         race_context = RaceContext(
             venue="SANDOWN",
@@ -818,9 +917,9 @@ if __name__ == "__main__":
             distance="515m",
             grade="Grade 5",
             track_condition="Good",
-            weather={"temperature": 18, "condition": "Fine", "wind": "Light"}
+            weather={"temperature": 18, "condition": "Fine", "wind": "Light"},
         )
-        
+
         # Example dogs (would normally come from database)
         dogs = [
             DogProfile(
@@ -832,15 +931,15 @@ if __name__ == "__main__":
                 best_time=29.85,
                 trainer="J. Smith",
                 weight=32.5,
-                historical_stats={"races": 20, "wins": 5, "places": 13}
+                historical_stats={"races": 20, "wins": 5, "places": 13},
             )
         ]
-        
+
         # Run analysis
         print("Running GPT analysis...")
         analysis = analyzer.analyze_race_with_gpt(race_context, dogs)
         print(json.dumps(analysis, indent=2))
-        
+
     except Exception as e:
         print(f"Error: {e}")
         print("Make sure to set your OPENAI_API_KEY environment variable")

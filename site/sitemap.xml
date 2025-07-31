@@ -65,7 +65,31 @@
          <lastmod>2025-07-31</lastmod>
     </url>
     <url>
+         <loc>https://github.com/orlandolee/greyhound_racing_collector/api/authentication/</loc>
+         <lastmod>2025-07-31</lastmod>
+    </url>
+    <url>
          <loc>https://github.com/orlandolee/greyhound_racing_collector/api/endpoints/</loc>
+         <lastmod>2025-07-31</lastmod>
+    </url>
+    <url>
+         <loc>https://github.com/orlandolee/greyhound_racing_collector/api/rate_limiting/</loc>
+         <lastmod>2025-07-31</lastmod>
+    </url>
+    <url>
+         <loc>https://github.com/orlandolee/greyhound_racing_collector/architecture/api_architecture/</loc>
+         <lastmod>2025-07-31</lastmod>
+    </url>
+    <url>
+         <loc>https://github.com/orlandolee/greyhound_racing_collector/architecture/architecture_diagram/</loc>
+         <lastmod>2025-07-31</lastmod>
+    </url>
+    <url>
+         <loc>https://github.com/orlandolee/greyhound_racing_collector/architecture/data_pipeline/</loc>
+         <lastmod>2025-07-31</lastmod>
+    </url>
+    <url>
+         <loc>https://github.com/orlandolee/greyhound_racing_collector/architecture/ml_pipeline/</loc>
          <lastmod>2025-07-31</lastmod>
     </url>
     <url>
@@ -77,11 +101,43 @@
          <lastmod>2025-07-31</lastmod>
     </url>
     <url>
+         <loc>https://github.com/orlandolee/greyhound_racing_collector/data_dictionary/feature_engineering/</loc>
+         <lastmod>2025-07-31</lastmod>
+    </url>
+    <url>
+         <loc>https://github.com/orlandolee/greyhound_racing_collector/data_dictionary/predictions/</loc>
+         <lastmod>2025-07-31</lastmod>
+    </url>
+    <url>
+         <loc>https://github.com/orlandolee/greyhound_racing_collector/development/contributing/</loc>
+         <lastmod>2025-07-31</lastmod>
+    </url>
+    <url>
          <loc>https://github.com/orlandolee/greyhound_racing_collector/development/setup/</loc>
          <lastmod>2025-07-31</lastmod>
     </url>
     <url>
+         <loc>https://github.com/orlandolee/greyhound_racing_collector/development/testing/</loc>
+         <lastmod>2025-07-31</lastmod>
+    </url>
+    <url>
          <loc>https://github.com/orlandolee/greyhound_racing_collector/governance/champion_challenger/</loc>
+         <lastmod>2025-07-31</lastmod>
+    </url>
+    <url>
+         <loc>https://github.com/orlandolee/greyhound_racing_collector/governance/model_registry/</loc>
+         <lastmod>2025-07-31</lastmod>
+    </url>
+    <url>
+         <loc>https://github.com/orlandolee/greyhound_racing_collector/governance/rollback_strategy/</loc>
+         <lastmod>2025-07-31</lastmod>
+    </url>
+    <url>
+         <loc>https://github.com/orlandolee/greyhound_racing_collector/monitoring/alerting/</loc>
+         <lastmod>2025-07-31</lastmod>
+    </url>
+    <url>
+         <loc>https://github.com/orlandolee/greyhound_racing_collector/monitoring/performance/</loc>
          <lastmod>2025-07-31</lastmod>
     </url>
     <url>

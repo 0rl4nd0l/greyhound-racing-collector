@@ -1,5 +1,10 @@
 # Greyhound Predictor Changelog
 
+## [v3.0.1] - 2025-07-31
+
+### Fixed
+-   **Form Guide CSV Scraper**: Fixed regex patterns to correctly recognize race dates and filenames, resolving "Unknown" entries in data processing.
+
 ## [v3.0.0] - 2025-07-26
 
 This major update focuses on a comprehensive refactoring of the entire system, from the database to the prediction pipeline and the Flask API. The primary goals were to unify scattered data sources, improve prediction accuracy, enhance system stability, and provide a more robust and developer-friendly platform.
