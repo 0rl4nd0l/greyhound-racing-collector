@@ -1,5 +1,62 @@
 # Greyhound Predictor Changelog
 
+## [v3.1.1] - 2025-07-31 - Production Readiness & Health Monitoring
+
+### Added
+
+- **Health Check Endpoint**: New `/api/health` endpoint providing comprehensive system monitoring
+  - Database connectivity validation
+  - ML system availability checks
+  - Component-level health diagnostics
+  - Structured JSON response with timestamp, version, and system status
+  - Critical for production deployment and monitoring automation
+
+- **Enhanced Documentation Structure**:
+  - Comprehensive API documentation in `docs/api/endpoints.md`
+  - System architecture diagrams and technical documentation
+  - Database schema reference and field mappings
+  - Development setup guides for new contributors
+  - Governance documentation for model management
+  - Prometheus metrics documentation for monitoring
+
+### Fixed
+
+- **Project Organization**:
+  - Cleaned up deprecated scripts (moved `cleanup_duplicate_predictions.py.disabled` to archive)
+  - Maintained clean root directory structure for better navigation
+  - All test files properly organized in `tests/` directory structure
+
+- **System Monitoring**:
+  - Enhanced error handling and logging throughout the application
+  - Improved system status reporting for operational visibility
+  - Better integration between health checks and system components
+
+### API Contract Changes
+
+- **New Endpoint**: `GET /api/health`
+  ```json
+  {
+    "status": "healthy",
+    "timestamp": "2025-07-31T19:00:00Z",
+    "version": "3.1.1",
+    "components": {
+      "database": "healthy",
+      "ml_system": "available",
+      "weather_service": "operational"
+    }
+  }
+  ```
+
+### Recommendations for Long-term Improvements
+
+- **TypeScript Migration**: Migrate frontend JavaScript to TypeScript for enhanced type safety
+- **Alembic Integration**: Implement database schema versioning with Alembic migrations
+- **Containerization**: Add Docker support for consistent deployment environments
+- **CI/CD Pipeline**: Implement automated testing and deployment workflows
+- **Advanced Monitoring**: Integrate Prometheus metrics and alerting systems
+
+---
+
 ## [v3.1.0] - 2025-07-31 - Critical System Repair
 
 This release addresses critical system failures that emerged after the Warp Terminal reformatting and database unification efforts. The entire prediction pipeline was non-functional due to schema mismatches and broken dependencies.
