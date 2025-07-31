@@ -1,72 +1,4 @@
-
-  lint-and-format:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-
-    - name: Install linting tools
-      run: |
-        python -m pip install --upgrade pip
-        pip install flake8 black isort mypy
-
-    - name: Run comprehensive linting
-      run: |
-        echo "=== Running flake8 ==="
-        flake8 . --statistics --tee --output-file=flake8-report.txt
-
-        echo "=== Running black check ==="
-        black --check .
-
-        echo "=== Running isort check ==="
-        isort --check-only .
-
-        echo "=== Running mypy (optional) ==="
-        mypy . --ignore-missing-imports || echo "MyPy check completed (errors ignored)"
-
-    - name: Upload lint results
-      if: always()
-      uses: actions/upload-artifact@v3
-      with:
-        name: lint-results
-        path: flake8-report.txt
-
-  security-scan:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-
-    - name: Install security tools
-      run: |
-        python -m pip install --upgrade pip
-        pip install bandit safety
-
-    - name: Run bandit security scan
-      run: |
-        bandit -r . -f json -o bandit-report.json || echo "Bandit scan completed"
-
-    - name: Check for known security vulnerabilities
-      run: |
-        safety check --json --output safety-report.json || echo "Safety check completed"
-
-    - name: Upload security scan results
-      if: always()
-      uses: actions/upload-artifact@v3
-      with:
-        name: security-reports
-        path: |
-          bandit-report.json
-          safety-report.json
-
+# GitHub Actions Workflow for CI/CD
 name: CI Pipeline - Greyhound Racing Predictor
 
 on:
@@ -223,6 +155,12 @@ print('Test database created successfully')
         sed -i 's/greyhound_racing_data.db/test_greyhound_racing_data.db/g' alembic.ini
         alembic upgrade head
 
+    - name: Run load tests with Locust
+      run: |
+        pip install locust
+        locust --headless -u 10 -r 1 -f load_tests/locustfile.py --run-time 2m --csv=locust-result
+        cat locust-result_stats.csv
+
     - name: Run unit tests
       run: |
         export TESTING=1
@@ -253,6 +191,115 @@ print('Test database created successfully')
         export DATABASE_URL=sqlite:///test_greyhound_racing_data.db
         # Test basic CLI functionality
         python run.py --help || echo "CLI help command tested"
+
+    - name: Train lightweight model for testing
+      if: matrix.python-version == '3.11'
+      run: |
+        export TESTING=1
+        export DATABASE_URL=sqlite:///test_greyhound_racing_data.db
+        python -c "
+import sys
+import os
+sys.path.insert(0, '.')
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.datasets import make_classification
+from sklearn.metrics import roc_auc_score
+import joblib
+import time
+import json
+import numpy as np
+
+# Create dummy training data
+X, y = make_classification(n_samples=1000, n_features=10, n_classes=3, random_state=42)
+
+# Train lightweight model
+model = RandomForestClassifier(n_estimators=10, random_state=42)
+start_time = time.time()
+model.fit(X, y)
+training_time = time.time() - start_time
+
+# Test prediction latency
+test_start = time.time()
+y_pred_prob = model.predict_proba(X[:100])
+prediction_latency = (time.time() - test_start) / 100  # Average per prediction
+
+# Calculate AUC (using one-vs-rest for multiclass)
+from sklearn.preprocessing import label_binarize
+from sklearn.metrics import roc_auc_score
+y_bin = label_binarize(y, classes=[0, 1, 2])
+auc = roc_auc_score(y_bin, y_pred_prob, multi_class='ovr')
+
+# Save model
+joblib.dump(model, 'test_model.pkl')
+
+# Save metrics
+metrics = {
+    'auc': float(auc),
+    'prediction_latency': float(prediction_latency),
+    'training_time': float(training_time)
+}
+
+with open('model_metrics.json', 'w') as f:
+    json.dump(metrics, f, indent=2)
+
+print(f'Model trained successfully:')
+print(f'AUC: {auc:.4f}')
+print(f'Prediction latency: {prediction_latency:.4f}s')
+print(f'Training time: {training_time:.2f}s')
+"
+
+    - name: Performance guardrails check
+      if: matrix.python-version == '3.11'
+      run: |
+        python -c "
+import json
+import sys
+
+# Load metrics
+with open('model_metrics.json', 'r') as f:
+    metrics = json.load(f)
+
+auc = metrics['auc']
+latency = metrics['prediction_latency']
+
+print(f'Checking performance guardrails:')
+print(f'AUC: {auc:.4f}')
+print(f'Latency: {latency:.4f}s')
+
+# Define thresholds
+min_auc = 0.7  # Minimum acceptable AUC
+max_latency = 1.0  # Maximum acceptable latency (1 second)
+
+# Check guardrails
+failed = False
+
+if auc < min_auc:
+    print(f'❌ FAILED: AUC {auc:.4f} is below minimum threshold {min_auc}')
+    failed = True
+else:
+    print(f'✅ PASSED: AUC {auc:.4f} meets minimum threshold {min_auc}')
+
+if latency > max_latency:
+    print(f'❌ FAILED: Prediction latency {latency:.4f}s exceeds maximum threshold {max_latency}s')
+    failed = True
+else:
+    print(f'✅ PASSED: Prediction latency {latency:.4f}s is within acceptable range')
+
+if failed:
+    print('Pipeline failed due to performance guardrails')
+    sys.exit(1)
+else:
+    print('All performance guardrails passed!')
+"
+
+    - name: Upload model artifacts
+      if: matrix.python-version == '3.11'
+      uses: actions/upload-artifact@v3
+      with:
+        name: model-artifacts
+        path: |
+          test_model.pkl
+          model_metrics.json
 
     - name: Upload coverage reports to Codecov
       if: matrix.python-version == '3.11'

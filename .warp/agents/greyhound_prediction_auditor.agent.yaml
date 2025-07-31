@@ -1,0 +1,43 @@
+name: Greyhound Prediction Auditor
+role: system
+description: >
+  Full-stack Warp Terminal agent for auditing, testing, and maintaining the Flask-based greyhound race prediction system. Responsible for verifying schema consistency, model accuracy, prediction output correctness, betting logic, and test coverage.
+
+entry_point: app.py
+
+memory:
+  context_files:
+    - app.py
+    - run.py
+    - ml_system_v3.py
+    - unified_predictor.py
+    - comprehensive_prediction_pipeline.py
+    - /features/
+    - /tests/
+    - /predictions/
+    - /upcoming_races/
+    - /archive/
+    - schema.sql
+    - CHANGELOG.md
+
+run_commands:
+  - python run.py
+  - pytest tests/
+
+goals:
+  - Trace the full prediction pipeline from input data to prediction JSON
+  - Confirm primary system is PredictionPipelineV3 + MLSystemV3 (NOT UnifiedPredictor)
+  - Validate model outputs: win_prob, place_prob, confidence_score, predicted_rank
+  - Enforce bet thresholds:
+      - Win: win_prob > 0.3
+      - Place: place_prob > 0.5
+      - Quinella: top 2 win_prob > 0.2
+      - NTD: allow place bets only if runners ≥ 8
+  - Validate prediction JSON structure and embed betting suggestions inline
+  - Run Flask test client to verify all /api routes including /predict and /predict_single_race_enhanced
+  - Compare predicted_rank to finish_position from race_metadata and log hit/miss results
+  - Maintain logs of model version, prediction accuracy, and hit rate in logs/
+  - Run schema diff against schema.sql and Alembic migration expectations
+  - Confirm test coverage via /tests/test_flask_api.py and /tests/test_ml_system_v3.py
+  - Archive unused or outdated scripts in /archive/ and keep codebase clean
+

@@ -112,6 +112,9 @@ class OpenAIConnectivityVerifier:
             
         try:
             import openai
+            logger.info(f"Initializing OpenAI client with API key: {self.api_key[:10]}...")
+            logger.info(f"OpenAI version: {openai.__version__}")
+            # Initialize with minimal parameters to avoid any conflicts
             self.client = openai.OpenAI(api_key=self.api_key)
             self.is_mock = False
             logger.info("✅ OpenAI client initialized successfully")
@@ -261,28 +264,28 @@ class EnhancedOpenAIClient:
     def __init__(self, client, retry_function):
         self.client = client
         self._make_api_call_with_retry = retry_function
-        self.chat = EnhancedChat(retry_function)
-        
+        self.chat = self.EnhancedChat(retry_function)
+    
     class EnhancedChat:
         def __init__(self, retry_function):
             self._make_api_call_with_retry = retry_function
-            self.completions = EnhancedCompletions(retry_function)
+            self.completions = EnhancedOpenAIClient.EnhancedCompletions(retry_function)
+    
+    class EnhancedCompletions:
+        def __init__(self, retry_function):
+            self._make_api_call_with_retry = retry_function
             
-        class EnhancedCompletions:
-            def __init__(self, retry_function):
-                self._make_api_call_with_retry = retry_function
-                
-            def create(self, **kwargs):
-                """Create chat completion with automatic retry logic"""
-                messages = kwargs.get('messages', [])
-                max_tokens = kwargs.get('max_tokens', 100)
-                temperature = kwargs.get('temperature', 0.3)
-                
-                return self._make_api_call_with_retry(
-                    messages=messages,
-                    max_tokens=max_tokens,
-                    temperature=temperature
-                )
+        def create(self, **kwargs):
+            """Create chat completion with automatic retry logic"""
+            messages = kwargs.get('messages', [])
+            max_tokens = kwargs.get('max_tokens', 100)
+            temperature = kwargs.get('temperature', 0.3)
+            
+            return self._make_api_call_with_retry(
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature
+            )
 
 
 def main():

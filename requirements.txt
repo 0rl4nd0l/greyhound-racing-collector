@@ -33,6 +33,12 @@ scipy==1.16.1
 pytest>=7.0.0
 pytest-cov>=4.0.0
 
+# Redis for caching and pub/sub
+redis>=5.0.0
+
+# Playwright for fast web scraping
+playwright>=1.40.0
+
 # Optional - for enhanced ML features
 # tensorflow>=2.13.0  # Uncomment if using TensorFlow models
 # torch>=2.0.0  # Uncomment if using PyTorch models

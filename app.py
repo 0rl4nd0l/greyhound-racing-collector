@@ -18,7 +18,7 @@ import sys
 import math
 from datetime import datetime, timedelta
 from pathlib import Path
-from flask import Flask, render_template, jsonify, request, redirect, url_for, flash
+from flask import Flask, render_template, jsonify, request, redirect, url_for, flash, Response, stream_template
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 try:
@@ -47,6 +47,17 @@ except ImportError:
             def __exit__(self, *args): pass
         return DummyTracker()
 
+# Import Strategy Manager for unified prediction pipeline
+try:
+    from prediction_strategy_manager import get_strategy_manager
+    STRATEGY_MANAGER_AVAILABLE = True
+    strategy_manager = get_strategy_manager()  # Initialize strategy manager
+    print("🎯 Strategy Manager available")
+except ImportError:
+    print("⚠️ Strategy Manager not available")
+    STRATEGY_MANAGER_AVAILABLE = False
+    strategy_manager = None
+
 # Import comprehensive form data collector
 try:
     from comprehensive_form_data_collector import ComprehensiveFormDataCollector
@@ -58,7 +69,7 @@ except ImportError as e:
     ComprehensiveFormDataCollector = None
 from utils.file_naming import build_prediction_filename, extract_race_id_from_csv_filename
 from sportsbet_odds_integrator import SportsbetOddsIntegrator
-from venue_mapping_fix import GreyhoundVenueMapper
+# from venue_mapping_fix import GreyhoundVenueMapper  # Module not found
 import pickle
 import logging
 import hashlib
@@ -229,12 +240,31 @@ def api_dog_details(dog_name):
         if '. ' in dog_name and dog_name.split('.')[0].isdigit():
             cleaned_dog_name = dog_name.split('. ', 1)[1]
         
-        # First try to get comprehensive dog profile if available
+        # Get comprehensive form data from the race context if available
         comprehensive_profile = None
         if COMPREHENSIVE_COLLECTOR_AVAILABLE and ComprehensiveFormDataCollector:
             try:
-                collector = ComprehensiveFormDataCollector(DATABASE_PATH)
-                comprehensive_profile = collector.get_dog_comprehensive_profile(cleaned_dog_name)
+                # Check if we have comprehensive data already collected for this dog
+                conn_comp = sqlite3.connect(DATABASE_PATH)
+                cursor_comp = conn_comp.cursor()
+                cursor_comp.execute("SELECT * FROM comprehensive_dog_profiles WHERE dog_name = ?", (cleaned_dog_name,))
+                existing_data = cursor_comp.fetchone()
+                conn_comp.close()
+                
+                if existing_data:
+                    # Parse existing comprehensive data
+                    comprehensive_profile = {
+                        'career_stats': {'total_races': existing_data[2] if len(existing_data) > 2 else 0},
+                        'form_quality_score': existing_data[3] if len(existing_data) > 3 else 0.5,
+                        'track_specialization': {},
+                        'recent_form_rating': 'Available',
+                        'career_phase': 'Active',
+                        'improvement_trends': [],
+                        'consistency_rating': existing_data[4] if len(existing_data) > 4 else 0.5
+                    }
+                    logger.info(f"Using existing comprehensive data for {cleaned_dog_name}")
+                else:
+                    logger.info(f"No comprehensive data found for {cleaned_dog_name} - using basic data only")
             except Exception as e:
                 logger.warning(f"Failed to get comprehensive profile for {cleaned_dog_name}: {e}")
         
@@ -441,12 +471,40 @@ def api_dog_form(dog_name):
         if '. ' in dog_name and dog_name.split('.')[0].isdigit():
             cleaned_dog_name = dog_name.split('. ', 1)[1]
         
-        # Get detailed race history from comprehensive collector if available
+        # Get detailed race history from existing comprehensive data if available
         detailed_race_history = None
-        if COMPREHENSIVE_COLLECTOR_AVAILABLE and ComprehensiveFormDataCollector:
+        if COMPREHENSIVE_COLLECTOR_AVAILABLE:
             try:
-                collector = ComprehensiveFormDataCollector(DATABASE_PATH)
-                detailed_race_history = collector.get_dog_detailed_race_history(cleaned_dog_name, limit=20)
+                # Check if we have detailed race history in comprehensive tables
+                conn_comp = sqlite3.connect(DATABASE_PATH)
+                cursor_comp = conn_comp.cursor()
+                cursor_comp.execute("""
+                    SELECT race_date, venue, distance, finish_position, race_time, 
+                           track_condition, sectional_times, weight
+                    FROM comprehensive_race_history 
+                    WHERE dog_name = ? 
+                    ORDER BY race_date DESC 
+                    LIMIT 20
+                """, (cleaned_dog_name,))
+                history_rows = cursor_comp.fetchall()
+                conn_comp.close()
+                
+                if history_rows:
+                    detailed_race_history = []
+                    for row in history_rows:
+                        detailed_race_history.append({
+                            'race_date': row[0],
+                            'venue': row[1],
+                            'distance': row[2],
+                            'finish_position': row[3],
+                            'race_time': row[4],
+                            'track_condition': row[5],
+                            'sectional_times': json.loads(row[6]) if row[6] else {},
+                            'weight': row[7]
+                        })
+                    logger.info(f"Found {len(detailed_race_history)} detailed races for {cleaned_dog_name}")
+                else:
+                    logger.info(f"No detailed race history found for {cleaned_dog_name}")
             except Exception as e:
                 logger.warning(f"Failed to get detailed race history for {cleaned_dog_name}: {e}")
 
@@ -920,14 +978,23 @@ def api_races_paginated():
                                 decoded_value = value.decode('utf-8')
                                 try:
                                     # Try direct conversion using the target function
-                                    return convert_func(decoded_value)
+                                    converted_result = convert_func(decoded_value)
+                                    # Convert to string first to ensure JSON serialization
+                                    return str(converted_result)
                                 except (ValueError, TypeError, UnicodeDecodeError):
                                     return str(decoded_value)  # Fallback to string conversion if conversion fails, ensuring no bytes propagate
                             except (UnicodeDecodeError, ValueError, TypeError):
-                                return default
-                        return convert_func(value)
+                                return str(default) if default is not None else 'N/A'  # Ensure string return
+                        # Ensure the converted value is JSON serializable
+                        converted = convert_func(value)
+                        if isinstance(converted, (bytes, bytearray)):
+                            return str(converted, 'utf-8') if isinstance(converted, bytes) else str(converted)
+                        return converted  # Return the actual converted value
                     except (ValueError, TypeError, UnicodeDecodeError):
-                        return default
+                        return str(default) if default is not None else 'N/A'  # Ensure string return
+                    except Exception as e:
+                        # Include any additional error handling here
+                        return str(default) if default is not None else 'N/A'
                 
                 runners.append({
                     'dog_name': safe_convert(runner[0], str, 'Unknown'),
@@ -976,20 +1043,20 @@ def api_races_paginated():
             race_url = race[11] if race[11] else db_manager.generate_race_url(race[1], race[3], race[2])
             
             result_races.append({
-                'race_id': race[0],
-                'venue': race[1],
-                'race_number': race[2],
-                'race_date': race[3],
-                'race_name': race[4] or f"Race {race[2]}",
-                'grade': race[5],
-                'distance': race[6],
-                'field_size': race[7],
-                'winner_name': race[8],
-                'winner_odds': race[9],
-                'winner_margin': race[10],
+                'race_id': safe_convert(race[0], str, 'Unknown'),
+                'venue': safe_convert(race[1], str, 'Unknown'),
+                'race_number': safe_convert(race[2], int, 0),
+                'race_date': safe_convert(race[3], str, 'Unknown'),
+                'race_name': safe_convert(race[4], str, f"Race {safe_convert(race[2], str, '0')}"),
+                'grade': safe_convert(race[5], str, 'Unknown'),
+                'distance': safe_convert(race[6], str, 'Unknown'),
+                'field_size': safe_convert(race[7], int, 0),
+                'winner_name': safe_convert(race[8], str, 'Unknown'),
+                'winner_odds': safe_convert(race[9], str, 'N/A'),
+                'winner_margin': safe_convert(race[10], str, 'N/A'),
                 'url': race_url,
                 'extraction_timestamp': formatted_time,
-                'track_condition': race[13],
+                'track_condition': safe_convert(race[13], str, 'Unknown'),
                 'runners': runners
             })
         
@@ -1124,14 +1191,14 @@ def api_predict_single_race():
 def api_predict_batch(data):
     """Batch prediction using UnifiedPredictor"""
     try:
-        if UnifiedPredictor is None:
-            return jsonify({'error': 'UnifiedPredictor not available'}), 500
+        if PredictionPipelineV3 is None:
+            return jsonify({'error': 'PredictionPipelineV3 not available'}), 500
         
         race_data = data['race_data']
         # Use the existing processing status system for frontend logging
-        safe_log_to_processing(f"🚀 Starting unified prediction pipeline for {len(race_data)} races", "INFO", 0)
+        safe_log_to_processing(f"🚀 Starting prediction pipeline for {len(race_data)} races", "INFO", 0)
         
-        predictor = UnifiedPredictor()
+        predictor = PredictionPipelineV3()
         results = []
         total_races = len(race_data)
         
@@ -1164,8 +1231,8 @@ def api_predict_batch(data):
 def api_predict_all_upcoming():
     """Predict all upcoming races using UnifiedPredictor"""
     try:
-        if UnifiedPredictor is None:
-            return jsonify({'error': 'UnifiedPredictor not available'}), 500
+        if PredictionPipelineV3 is None:
+            return jsonify({'error': 'PredictionPipelineV3 not available'}), 500
         
         # Get all CSV files in upcoming_races directory
         upcoming_files = []
@@ -1181,9 +1248,9 @@ def api_predict_all_upcoming():
                 'predictions': []
             })
         
-        safe_log_to_processing(f"🚀 Starting unified prediction for {len(upcoming_files)} upcoming races", "INFO", 0)
+        safe_log_to_processing(f"🚀 Starting prediction for {len(upcoming_files)} upcoming races", "INFO", 0)
         
-        predictor = UnifiedPredictor()
+        predictor = PredictionPipelineV3()
         results = []
         
         for i, filename in enumerate(upcoming_files):
@@ -1817,6 +1884,7 @@ def run_schema_validation_and_healing(db_path, schema_contract_path):
         logger.error(f"Schema Validation Error: {e}")
     finally:
         conn.close()
+@app.route('/')
 def index():
     """Home page with dashboard overview"""
     db_stats = db_manager.get_database_stats()
@@ -4056,6 +4124,122 @@ def api_predict_single_race_standalone():
             'message': f'Prediction error: {str(e)}'
         }), 500
 
+@app.route('/api/predict_stream')
+def api_predict_stream():
+    """SSE streaming endpoint for real-time prediction updates"""
+    try:
+        from flask import Response, copy_current_request_context
+        import json
+        import uuid
+        
+        # Get parameters
+        race_filenames = request.args.getlist('race_files')  # Multiple files support
+        single_race = request.args.get('race_filename')  # Single file support
+        max_workers = request.args.get('max_workers', 3, type=int)
+        
+        # Handle both single and multiple race requests
+        if single_race:
+            race_filenames = [single_race]
+        elif not race_filenames:
+            # If no files specified, get all upcoming races
+            if os.path.exists(UPCOMING_DIR):
+                race_filenames = [f for f in os.listdir(UPCOMING_DIR) if f.endswith('.csv')]
+            else:
+                race_filenames = []
+        
+        if not race_filenames:
+            return jsonify({
+                'success': False,
+                'error': 'No race files found to predict'
+            }), 400
+        
+        # Validate all files exist
+        race_file_paths = []
+        for filename in race_filenames:
+            race_file_path = os.path.join(UPCOMING_DIR, filename)
+            if not os.path.exists(race_file_path):
+                return jsonify({
+                    'success': False,
+                    'error': f'Race file not found: {filename}'
+                }), 404
+            race_file_paths.append(race_file_path)
+        
+        # Get strategy manager
+        if not STRATEGY_MANAGER_AVAILABLE or not strategy_manager:
+            return jsonify({
+                'success': False,
+                'error': 'Strategy Manager not available'
+            }), 500
+        
+        # Generate unique stream ID
+        stream_id = str(uuid.uuid4())
+        
+        @copy_current_request_context
+        def generate_prediction_stream():
+            try:
+                # Send initial status
+                yield f"data: {json.dumps({'type': 'start', 'message': f'Starting predictions for {len(race_file_paths)} races...', 'total_races': len(race_file_paths), 'stream_id': stream_id})}\n\n"
+                
+                # Start streaming predictions
+                strategy_manager.predict_races_streaming(race_file_paths, stream_id, max_workers)
+                
+                # Get the stream queue and send updates
+                stream_queue = strategy_manager._stream_queues.get(stream_id)
+                if not stream_queue:
+                    yield f"data: {json.dumps({'type': 'error', 'message': 'Stream queue not found'})}\n\n"
+                    return
+                
+                completed_races = 0
+                
+                while True:
+                    try:
+                        # Get update from queue with timeout
+                        update = stream_queue.get(timeout=1)
+                        
+                        if update['type'] == 'complete':
+                            # Final completion message
+                            yield f"data: {json.dumps(update)}\n\n"
+                            break
+                        elif update['type'] == 'result':
+                            completed_races += 1
+                            progress = int((completed_races / len(race_file_paths)) * 100)
+                            update['progress'] = progress
+                            yield f"data: {json.dumps(update)}\n\n"
+                        else:
+                            # Start, error, or other event types
+                            yield f"data: {json.dumps(update)}\n\n"
+                            
+                    except queue.Empty:
+                        # Send keepalive
+                        yield f"data: {json.dumps({'type': 'keepalive', 'timestamp': datetime.now().isoformat()})}\n\n"
+                        continue
+                    except Exception as e:
+                        yield f"data: {json.dumps({'type': 'error', 'message': f'Stream error: {str(e)}'})}\n\n"
+                        break
+                
+                # Cleanup
+                strategy_manager.remove_stream_queue(stream_id)
+                
+            except Exception as e:
+                yield f"data: {json.dumps({'type': 'error', 'message': f'Stream setup error: {str(e)}'})}\n\n"
+        
+        return Response(
+            generate_prediction_stream(), 
+            mimetype='text/event-stream',
+            headers={
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Cache-Control'
+            }
+        )
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'SSE endpoint error: {str(e)}'
+        }), 500
+
 @app.route('/api/predict_single_race_enhanced', methods=['POST'])
 def api_predict_single_race():
     """API endpoint to predict a single race file with automatic data enhancement"""
@@ -4518,7 +4702,7 @@ def api_prediction_detail(race_name):
         predictions_dir = './predictions'
         
         # Initialize venue mapper for better historical data lookup
-        GreyhoundVenueMapper()
+        # GreyhoundVenueMapper()  # Module not available
         
         # Try multiple prediction file naming conventions
         prediction_file = None

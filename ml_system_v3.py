@@ -45,6 +45,10 @@ class MLSystemV3:
         self.feature_columns = []
         self.model_info = {}
         self.traditional_analyzer = TraditionalRaceAnalyzer(db_path)
+        self.champion_pipeline = None
+        self.challenger_pipeline = None
+        self.champion_model_info = {}
+        self.challenger_model_info = {}
         self._try_load_latest_model()
     
     def train_model(self, model_type='gradient_boosting'):
@@ -200,6 +204,74 @@ class MLSystemV3:
     def get_model_info(self):
         """Returns information about the current model."""
         return self.model_info
+    
+    def promote_challenger_to_champion(self, performance_threshold=0.02):
+        """Promotes challenger to champion if it outperforms by threshold."""
+        if not self.challenger_pipeline or not self.challenger_model_info:
+            logger.warning("No challenger model available for promotion.")
+            return False
+        
+        # Compare ROC AUC scores
+        challenger_auc = self.challenger_model_info.get('roc_auc', 0)
+        champion_auc = self.champion_model_info.get('roc_auc', 0)
+        
+        improvement = challenger_auc - champion_auc
+        
+        if improvement > performance_threshold:
+            # Backup current champion
+            self._backup_champion_model()
+            
+            # Promote challenger
+            self.champion_pipeline = self.challenger_pipeline
+            self.champion_model_info = self.challenger_model_info.copy()
+            self.pipeline = self.champion_pipeline  # Update main pipeline
+            
+            # Save new champion
+            self._save_champion_model()
+            
+            logger.info(f"🎉 Challenger promoted to champion! ROC AUC improvement: {improvement:.4f}")
+            return True
+        else:
+            logger.info(f"Challenger did not meet promotion threshold. Improvement: {improvement:.4f} < {performance_threshold}")
+            return False
+    
+    def rollback_to_previous_champion(self):
+        """Rollbacks to previous champion model if current performance degrades."""
+        try:
+            backup_path = Path('./ml_models_v3/champion_backup.joblib')
+            if not backup_path.exists():
+                logger.warning("No backup champion model found for rollback.")
+                return False
+            
+            # Load backup champion
+            backup_data = joblib.load(backup_path)
+            self.champion_pipeline = backup_data.get('pipeline')
+            self.champion_model_info = backup_data.get('model_info', {})
+            self.pipeline = self.champion_pipeline  # Update main pipeline
+            
+            logger.info("⚠️ Rolled back to previous champion model due to performance degradation.")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error during rollback: {e}")
+            return False
+    
+    def evaluate_live_performance(self, accuracy_threshold=0.75):
+        """Evaluates live model performance and triggers rollback if needed."""
+        try:
+            # This would typically monitor real predictions vs actual results
+            # For now, we'll use a simplified approach based on model info
+            current_accuracy = self.champion_model_info.get('test_accuracy', 0)
+            
+            if current_accuracy < accuracy_threshold:
+                logger.warning(f"Champion model accuracy {current_accuracy:.3f} below threshold {accuracy_threshold}")
+                return self.rollback_to_previous_champion()
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error evaluating live performance: {e}")
+            return False
 
     def _load_data_from_db(self):
         """Loads the dog race data from the SQLite database using unified schema."""
@@ -510,6 +582,52 @@ class MLSystemV3:
         except Exception as e:
             logger.error(f"Error loading model from {latest_model}: {e}")
             self.pipeline = None
+    
+    def _backup_champion_model(self):
+        """Backs up the current champion model before promotion."""
+        if not self.champion_pipeline:
+            return
+        
+        try:
+            model_dir = Path('./ml_models_v3')
+            model_dir.mkdir(exist_ok=True)
+            backup_path = model_dir / 'champion_backup.joblib'
+            
+            backup_data = {
+                'pipeline': self.champion_pipeline,
+                'feature_columns': self.feature_columns,
+                'model_info': self.champion_model_info,
+                'backed_up_at': datetime.now().isoformat()
+            }
+            
+            joblib.dump(backup_data, backup_path)
+            logger.info(f"Champion model backed up to {backup_path}")
+            
+        except Exception as e:
+            logger.error(f"Error backing up champion model: {e}")
+    
+    def _save_champion_model(self):
+        """Saves the current champion model."""
+        if not self.champion_pipeline:
+            return
+        
+        try:
+            model_dir = Path('./ml_models_v3')
+            model_dir.mkdir(exist_ok=True)
+            champion_path = model_dir / 'champion_model.joblib'
+            
+            champion_data = {
+                'pipeline': self.champion_pipeline,
+                'feature_columns': self.feature_columns,
+                'model_info': self.champion_model_info,
+                'saved_at': datetime.now().isoformat()
+            }
+            
+            joblib.dump(champion_data, champion_path)
+            logger.info(f"Champion model saved to {champion_path}")
+            
+        except Exception as e:
+            logger.error(f"Error saving champion model: {e}")
 
 # Function for frontend training calls
 def train_new_model(model_type='gradient_boosting'):

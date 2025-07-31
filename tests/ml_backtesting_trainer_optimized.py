@@ -34,11 +34,15 @@ try:
     from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, VotingClassifier
     from sklearn.linear_model import LogisticRegression
     from sklearn.svm import SVC
-    from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV, TimeSeriesSplit
+    from sklearn.model_selection import train_test_split, cross_val_score, TimeSeriesSplit
+    import optuna
+    from imblearn.over_sampling import SMOTENC
+    from sklearn.calibration import CalibratedClassifierCV
+    from sklearn.metrics import accuracy_score, f1_score
+    import mlflow
     from sklearn.preprocessing import StandardScaler, LabelEncoder
     from sklearn.impute import SimpleImputer
-    from sklearn.metrics import accuracy_score, classification_report, log_loss, roc_auc_score, confusion_matrix
-    from sklearn.calibration import CalibratedClassifierCV
+    from sklearn.metrics import classification_report, log_loss, roc_auc_score, confusion_matrix
     import matplotlib.pyplot as plt
     import seaborn as sns
     SKLEARN_AVAILABLE = True
@@ -504,10 +508,15 @@ class MLBacktestingTrainer:
         y_train = train_df[target_column]
         X_test = test_df[feature_columns]
         y_test = test_df[target_column]
-        
+
+        # Apply SMOTENC
+        categorical_indices = [i for i, col in enumerate(feature_columns) if df[col].dtype == 'object']
+        smote_nc = SMOTENC(categorical_features=categorical_indices, random_state=42)
+        X_resampled, y_resampled = smote_nc.fit_resample(X_train, y_train)
+
         # Scale features
         scaler = StandardScaler()
-        X_train_scaled = scaler.fit_transform(X_train)
+        X_resampled_scaled = scaler.fit_transform(X_resampled)
         X_test_scaled = scaler.transform(X_test)
         
         best_model = None
@@ -555,12 +564,35 @@ class MLBacktestingTrainer:
                 n_jobs=-1,
                 verbose=0
             )
-            
-            grid_search.fit(X_train_scaled, y_train)
-            
-            # Test on holdout set
-            test_score = grid_search.score(X_test_scaled, y_test)
-            
+
+            # Define optuna objective
+            def objective(trial):
+                model_class = config['model']
+                params = {key: trial.suggest_categorical(key, values) for key, values in config['params'].items()}
+                model = model_class(**params, random_state=42)
+                model = CalibratedClassifierCV(model, method='sigmoid')
+                score = cross_val_score(model, X_resampled_scaled, y_resampled, cv=tscv, scoring='f1').mean()
+                return score
+
+            # Optuna study
+            study = optuna.create_study(direction='maximize')
+            study.optimize(objective, n_trials=30)
+
+            # Retrain with best params
+            best_params = study.best_params
+            best_model = model_class(**best_params, random_state=42)
+            best_model = CalibratedClassifierCV(best_model, method='sigmoid')
+            best_model.fit(X_resampled_scaled, y_resampled)
+
+            # Evaluate on test set
+            y_pred = best_model.predict(X_test_scaled)
+            test_score = f1_score(y_test, y_pred, average='binary')
+
+            # Log to MLflow
+            mlflow.log_params(best_params)
+            mlflow.log_metric('f1_score', test_score)
+            mlflow.log_artifact('model', best_model)
+
             # Color code the results
             if test_score >= 0.65:
                 result_color = "🟢"
@@ -569,13 +601,13 @@ class MLBacktestingTrainer:
             else:
                 result_color = "🔴"
             
-            print(f"      {result_color} CV Score: {grid_search.best_score_:.3f} | Test Score: {test_score:.3f}")
-            print(f"      🔧 Best params: {grid_search.best_params_}")
+            print(f"      {result_color} Test F1 Score: {test_score:.3f}")
+            print(f"      🔧 Best params: {best_params}")
             
             if test_score > best_score:
                 best_score = test_score
-                best_model = grid_search.best_estimator_
-                best_params = grid_search.best_params_
+                best_model = best_model
+                best_params = best_params
                 best_model_name = model_name
         
         print(f"\n🏆 OPTIMIZATION COMPLETE!")

@@ -7,7 +7,7 @@ The Greyhound Racing Predictor is a comprehensive, AI-powered system for analyzi
 ### Key Features
 
 - **Unified Database**: Consolidates data from multiple sources into a single, efficient SQLite database (`greyhound_racing_data.db`)
-- **Advanced ML Pipeline**: Utilizes ML System V3 with enhanced feature engineering and intelligent prediction model selection
+### Advanced ML Pipeline: Utilizes Optuna for Bayesian optimization with stratified TimeSeriesSplit, feature engineering, and intelligent model selection. Incorporates class imbalance handling with SMOTE-NC and focal loss, and outputs to MLflow.
 - **Unified Prediction System**: Intelligent prediction engine that automatically selects the best available prediction method
 - **Flask Web Interface**: A web-based dashboard for monitoring races, viewing predictions, and managing the system
 - **Comprehensive API**: RESTful API endpoints for predictions, dog statistics, race data, and system management

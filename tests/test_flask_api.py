@@ -338,6 +338,18 @@ def test_api_races(client):
         assert 'winner_name' in race
     save_snapshot('api_races', json_data)
 
+def test_api_predictions_upcoming(client):
+    """Test the /api/predictions/upcoming endpoint with race IDs."""
+    payload = {"race_ids": ["race_001", "race_002"]}
+    response = client.post('/api/predictions/upcoming', json=payload)
+    assert response.status_code == 200
+    json_data = response.get_json()
+    assert json_data['success'] is True
+    assert 'predictions' in json_data
+    assert isinstance(json_data['predictions'], dict)
+    save_snapshot('api_predictions_upcoming', json_data)
+
+
 def test_predict_endpoint_no_file(client):
     """Test the /api/predict endpoint when the race file does not exist."""
     payload = {'race_filename': 'non_existent_race.csv'}

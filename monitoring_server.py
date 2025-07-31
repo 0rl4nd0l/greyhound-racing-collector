@@ -12,6 +12,7 @@ Date: July 27, 2025
 
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
+from prometheus_client import generate_latest, CollectorRegistry, Gauge
 import os
 import json
 from pathlib import Path
@@ -34,6 +35,26 @@ def dashboard():
     except Exception as e:
         logger.log_error(f"Error serving dashboard: {str(e)}", context={'component': 'web_server'})
         return jsonify({'error': 'Dashboard not available'}), 500
+
+@app.route('/metrics')
+def get_metrics_prometheus():
+    """Expose Prometheus metrics"""
+    try:
+        registry = CollectorRegistry()
+        scrape_duration = Gauge('scrape_duration_seconds', 'Scrape duration by job', registry=registry)
+        model_latency = Gauge('model_latency_seconds', 'Model inference time', registry=registry)
+        queue_length = Gauge('queue_length', 'Job queue length', registry=registry)
+
+        # Simulate metric values
+        scrape_duration.set(monitoring._calculate_live_metrics().get('response_time', 0))
+        # Example: Set fixed values for other metrics
+        model_latency.set(1.5)
+        queue_length.set(3)
+
+        return generate_latest(registry), 200, {'Content-Type': 'text/plain; charset=utf-8'}
+    except Exception as e:
+        logger.log_error(f"Prometheus metrics generation failed: {str(e)}", context={'component': 'web_api'})
+        return "Internal Server Error", 500
 
 @app.route('/api/health')
 def get_health():

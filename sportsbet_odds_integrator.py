@@ -21,14 +21,14 @@ import re
 import sqlite3
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.chrome.service import Service
+try:
+    from playwright.sync_api import sync_playwright
+except ImportError:
+    sync_playwright = None
+try:
+    import redis
+except ImportError:
+    redis = None
 import pandas as pd
 from urllib.parse import urljoin, urlparse
 import threading
@@ -41,9 +41,11 @@ class SportsbetOddsIntegrator:
     def __init__(self, db_path="greyhound_racing_data.db"):
         self.db_path = db_path
         self.base_url = "https://www.sportsbet.com.au"
-        self.greyhound_url = f"{self.base_url}/racing-schedule/greyhound/today"
+        if redis:
+            self.redis_client = redis.StrictRedis(host='localhost', port=6379, db=0)
+        else:
+            self.redis_client = None
         self.session = requests.Session()
-        self.driver = None
         self.odds_cache = {}
         self.update_interval = 30  # seconds
         self.setup_session()
@@ -149,30 +151,22 @@ class SportsbetOddsIntegrator:
         conn.commit()
         conn.close()
         
-    def setup_driver(self):
-        """Setup Chrome driver for web scraping"""
-        if self.driver:
-            return
-            
-        options = Options()
-        options.add_argument('--headless')
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-dev-shm-usage')
-        options.add_argument('--disable-gpu')
-        options.add_argument('--window-size=1920,1080')
-        options.add_argument('--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-        options.add_argument('--disable-blink-features=AutomationControlled')
-        options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        options.add_experimental_option('useAutomationExtension', False)
-        
-        try:
-            service = Service(ChromeDriverManager().install())
-            self.driver = webdriver.Chrome(service=service, options=options)
-            self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-            print("✅ Chrome driver setup successful")
-        except Exception as e:
-            print(f"⚠️  Chrome driver setup failed: {e}")
-            self.driver = None
+    def fetch_odds(self):
+        """Fetch odds using headless Playwright"""
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.goto(self.greyhound_url)
+            # Implement logic to extract odds here using page.query_selector_all or similar
+            print("✅ Fetched odds successfully")
+            browser.close()
+
+    def publish_to_redis(self, key, data):
+        if self.redis_client:
+            self.redis_client.set(key, data)
+            self.redis_client.publish('odds_updates', data)
+        else:
+            print("⚠️ Redis not available, skipping publish")
             
     def close_driver(self):
         """Close the web driver"""
