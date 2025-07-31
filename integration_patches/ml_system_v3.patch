@@ -1,0 +1,28 @@
+--- ml_system_v3.py.orig
++++ ml_system_v3.py
+@@ -1,4 +1,5 @@
+ # ... existing imports ...
++from prediction_sanity_integration import apply_sanity_checks_to_response
+ 
+ class MLSystemV3:
+     def __init__(self, db_path="greyhound_racing_data.db"):
+@@ -10,6 +11,7 @@
+         self.challenger_model_info = {}
+         
+         # ... existing initialization code ...
++        self.enable_sanity_checks = True  # Enable sanity checks
+         
+         self._try_load_latest_model()
+ 
+@@ -380,6 +382,15 @@
+             }
+             
++            # Apply sanity checks if enabled
++            if hasattr(self, 'enable_sanity_checks') and self.enable_sanity_checks:
++                response = {'predictions': [result]}
++                response = apply_sanity_checks_to_response(response)
++                if response.get('sanity_check', {}).get('fixes_applied'):
++                    logger.info("Sanity check fixes applied to ML prediction")
++                result = response['predictions'][0]
++            
+             return result

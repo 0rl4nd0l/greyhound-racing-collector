@@ -1455,9 +1455,17 @@ def api_predict_single_race():
                 logger.log_process("Using PredictionPipelineV3")
                 pipeline = PredictionPipelineV3()
                 prediction_result = pipeline.predict_race_file(race_file_path, enhancement_level="basic")
-                logger.log_process("PredictionPipelineV3 completed successfully")
+                
+                # Check if prediction was actually successful
+                if prediction_result and prediction_result.get("success"):
+                    logger.log_process("PredictionPipelineV3 completed successfully")
+                else:
+                    logger.log_process(f"PredictionPipelineV3 returned unsuccessful result: {prediction_result}")
+                    prediction_result = None  # Force fallback
+                    
             except Exception as e:
                 logger.log_error(f"PredictionPipelineV3 failed: {e}")
+                prediction_result = None  # Ensure fallback will trigger
 
         # Fallback to UnifiedPredictor if primary fails
         if not prediction_result and UnifiedPredictor:
@@ -1468,6 +1476,7 @@ def api_predict_single_race():
                 logger.log_process("UnifiedPredictor completed successfully")
             except Exception as e:
                 logger.log_error(f"UnifiedPredictor failed: {e}")
+                prediction_result = None
 
         # Return response based on prediction result
         if prediction_result and prediction_result.get("success"):

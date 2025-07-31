@@ -153,6 +153,9 @@ class PredictionPipelineV3:
             f"🚀 Starting comprehensive prediction for: {os.path.basename(race_file_path)}"
         )
         logger.info(f"   Enhancement level: {enhancement_level}")
+        
+        # Track fallback reasons throughout the prediction process
+        fallback_reasons = []
 
         # --- Primary Method: Comprehensive Pipeline ---
         if self.comprehensive_pipeline and enhancement_level == "full":
@@ -167,12 +170,27 @@ class PredictionPipelineV3:
                 )
                 if result and result.get("success"):
                     logger.info("  ✅ Comprehensive prediction successful!")
+                    # Add metadata about prediction method used
+                    result["prediction_tier"] = "comprehensive_pipeline"
+                    result["fallback_reasons"] = fallback_reasons
                     return result
                 else:
+                    failure_reason = f"Comprehensive pipeline returned unsuccessful result: {result.get('error', 'Unknown failure')}"
+                    fallback_reasons.append({
+                        "tier": "comprehensive_pipeline",
+                        "reason": failure_reason,
+                        "timestamp": datetime.now().isoformat()
+                    })
                     logger.warning(
-                        "  ⚠️ Comprehensive prediction failed. Falling back..."
+                        f"  ⚠️ Comprehensive prediction failed: {failure_reason}. Falling back..."
                     )
             except Exception as e:
+                failure_reason = f"Comprehensive pipeline exception: {str(e)}"
+                fallback_reasons.append({
+                    "tier": "comprehensive_pipeline",
+                    "reason": failure_reason,
+                    "timestamp": datetime.now().isoformat()
+                })
                 logger.error(f"  ❌ Comprehensive pipeline error: {e}. Falling back...")
 
         # --- Fallback 1: Weather-Enhanced Predictor ---
@@ -184,12 +202,27 @@ class PredictionPipelineV3:
                 )
                 if result and result.get("success"):
                     logger.info("  ✅ Weather-enhanced prediction successful!")
+                    # Add metadata about prediction method used and fallback reasons
+                    result["prediction_tier"] = "weather_enhanced"
+                    result["fallback_reasons"] = fallback_reasons
                     return result
                 else:
+                    failure_reason = f"Weather-enhanced predictor returned unsuccessful result: {result.get('error', 'Unknown failure')}"
+                    fallback_reasons.append({
+                        "tier": "weather_enhanced",
+                        "reason": failure_reason,
+                        "timestamp": datetime.now().isoformat()
+                    })
                     logger.warning(
-                        "  ⚠️ Weather-enhanced prediction failed. Falling back..."
+                        f"  ⚠️ Weather-enhanced prediction failed: {failure_reason}. Falling back..."
                     )
             except Exception as e:
+                failure_reason = f"Weather-enhanced predictor exception: {str(e)}"
+                fallback_reasons.append({
+                    "tier": "weather_enhanced",
+                    "reason": failure_reason,
+                    "timestamp": datetime.now().isoformat()
+                })
                 logger.error(
                     f"  ❌ Weather-enhanced predictor error: {e}. Falling back..."
                 )
@@ -201,10 +234,25 @@ class PredictionPipelineV3:
                 result = self.unified_predictor.predict_race_file(race_file_path)
                 if result and result.get("success"):
                     logger.info("  ✅ Unified predictor successful!")
+                    # Add metadata about prediction method used and fallback reasons
+                    result["prediction_tier"] = "unified_predictor"
+                    result["fallback_reasons"] = fallback_reasons
                     return result
                 else:
-                    logger.warning("  ⚠️ Unified predictor failed. Falling back...")
+                    failure_reason = f"Unified predictor returned unsuccessful result: {result.get('error', 'Unknown failure')}"
+                    fallback_reasons.append({
+                        "tier": "unified_predictor",
+                        "reason": failure_reason,
+                        "timestamp": datetime.now().isoformat()
+                    })
+                    logger.warning(f"  ⚠️ Unified predictor failed: {failure_reason}. Falling back...")
             except Exception as e:
+                failure_reason = f"Unified predictor exception: {str(e)}"
+                fallback_reasons.append({
+                    "tier": "unified_predictor",
+                    "reason": failure_reason,
+                    "timestamp": datetime.now().isoformat()
+                })
                 logger.error(f"  ❌ Unified predictor error: {e}. Falling back...")
 
         # --- Fallback 3: Basic ML System V3 (as a last resort) ---
@@ -213,11 +261,27 @@ class PredictionPipelineV3:
             # This is the original simple prediction logic
             race_df = self._load_race_file(race_file_path)
             if race_df is None or race_df.empty:
-                return self._error_response("Could not load race file or file is empty")
+                failure_reason = "Could not load race file or file is empty"
+                fallback_reasons.append({
+                    "tier": "ml_system_v3_basic",
+                    "reason": failure_reason,
+                    "timestamp": datetime.now().isoformat()
+                })
+                error_response = self._error_response(failure_reason)
+                error_response["fallback_reasons"] = fallback_reasons
+                return error_response
 
             dogs = self._extract_dogs(race_df, race_file_path)
             if not dogs:
-                return self._error_response("No participating dogs found in race file")
+                failure_reason = "No participating dogs found in race file"
+                fallback_reasons.append({
+                    "tier": "ml_system_v3_basic",
+                    "reason": failure_reason,
+                    "timestamp": datetime.now().isoformat()
+                })
+                error_response = self._error_response(failure_reason)
+                error_response["fallback_reasons"] = fallback_reasons
+                return error_response
 
             predictions = []
             for dog in dogs:
@@ -240,9 +304,15 @@ class PredictionPipelineV3:
                 predictions.append(prediction)
 
             if not predictions:
-                return self._error_response(
-                    "No predictions could be generated by basic ML system"
-                )
+                failure_reason = "No predictions could be generated by basic ML system"
+                fallback_reasons.append({
+                    "tier": "ml_system_v3_basic",
+                    "reason": failure_reason,
+                    "timestamp": datetime.now().isoformat()
+                })
+                error_response = self._error_response(failure_reason)
+                error_response["fallback_reasons"] = fallback_reasons
+                return error_response
 
             predictions.sort(key=lambda x: x["win_probability"], reverse=True)
             # Apply group softmax normalization
@@ -254,14 +324,22 @@ class PredictionPipelineV3:
                 "success": True,
                 "predictions": predictions,
                 "prediction_method": "ml_system_v3_basic",
+                "prediction_tier": "ml_system_v3_basic",
                 "note": "Used basic ML system as a final fallback",
+                "fallback_reasons": fallback_reasons,
             }
 
         except Exception as e:
+            failure_reason = f"All prediction methods failed. Final error: {str(e)}"
+            fallback_reasons.append({
+                "tier": "ml_system_v3_basic",
+                "reason": failure_reason,
+                "timestamp": datetime.now().isoformat()
+            })
             logger.critical(f"  ❌ All prediction methods failed. Final error: {e}")
-            return self._error_response(
-                f"All prediction methods failed. Final error: {e}"
-            )
+            error_response = self._error_response(failure_reason)
+            error_response["fallback_reasons"] = fallback_reasons
+            return error_response
 
     def _load_race_file(self, race_file_path: str) -> pd.DataFrame:
         """Load and parse race file with enhanced format support"""

@@ -158,3 +158,46 @@ class SanityChecks:
 
         validation_results['flags'] = inconsistency_flags
         return validation_results
+
+    def fix_predictions(self, predictions: List[Dict]) -> List[Dict]:
+        """
+        Automatically fix inconsistencies found in predictions.
+
+        Args:
+            predictions: A list of prediction dictionaries.
+
+        Returns:
+            A list of predictions with applied fixes.
+        """
+        
+        corrected_predictions = predictions.copy()
+
+        # Fix 1: Ensure probabilities in [0, 1] and handle NaN values
+        for p in corrected_predictions:
+            if 'win_probability' in p:
+                if pd.isna(p['win_probability']):
+                    p['win_probability'] = 0.5  # Default probability
+                else:
+                    p['win_probability'] = float(np.clip(p['win_probability'], 0, 1))
+            if 'place_probability' in p:
+                if pd.isna(p['place_probability']):
+                    p['place_probability'] = 0.65  # Default place probability
+                else:
+                    p['place_probability'] = float(np.clip(p['place_probability'], 0, 1))
+
+        # Fix 2: Apply softmax to probabilities
+        win_probs = np.array([p.get('win_probability', 0.5) for p in corrected_predictions])
+        # Handle any remaining NaN values
+        win_probs = np.nan_to_num(win_probs, nan=0.5)
+        softmax_probs = np.exp(win_probs) / np.sum(np.exp(win_probs))
+        for i, p in enumerate(corrected_predictions):
+            p['win_probability'] = float(softmax_probs[i])
+
+        # Fix 3: Align ranks based on win probability
+        corrected_predictions.sort(key=lambda x: x['win_probability'], reverse=True)
+        for i, p in enumerate(corrected_predictions):
+            p['predicted_rank'] = i + 1
+
+        # Fix 4: Ensure unique ranks
+        # Already handled in the alignment above
+        return corrected_predictions

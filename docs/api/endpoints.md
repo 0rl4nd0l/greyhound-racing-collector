@@ -46,7 +46,9 @@ The API allows interaction with the prediction system, providing endpoints for p
         "confidence_score": 0.87,
         "reasoning": "Strong recent form and favorable conditions"
       }
-    ]
+    ],
+    "prediction_tier": "comprehensive_pipeline",
+    "fallback_reasons": []
   }
   ```
 
@@ -129,4 +131,88 @@ The API allows interaction with the prediction system, providing endpoints for p
 ## Versioning
 
 - The API follows semantic versioning principles. Ensure to check the API version before integration.
+
+## Prediction Fallback Mechanism
+
+The prediction system uses an intelligent fallback hierarchy to ensure robust predictions even when higher-tier systems fail. The response includes metadata about which prediction tier was used and any fallback reasons.
+
+### Prediction Tiers (in order of preference)
+
+1. **comprehensive_pipeline** - Full comprehensive analysis with all enhancements
+2. **weather_enhanced** - Weather-enhanced predictor with meteorological data
+3. **unified_predictor** - Unified prediction system combining multiple approaches
+4. **ml_system_v3_basic** - Basic ML system as final fallback
+
+### Response Fields Related to Fallbacks
+
+- **prediction_tier**: String indicating which prediction tier was successfully used
+- **fallback_reasons**: Array of objects describing why higher tiers failed (if any)
+
+### Fallback Reason Structure
+
+```json
+{
+  "tier": "comprehensive_pipeline",
+  "reason": "Comprehensive pipeline exception: Model file not found",
+  "timestamp": "2025-01-15T10:30:45.123456"
+}
+```
+
+### Example Response with Fallbacks
+
+```json
+{
+  "success": true,
+  "prediction_tier": "unified_predictor",
+  "fallback_reasons": [
+    {
+      "tier": "comprehensive_pipeline",
+      "reason": "Comprehensive pipeline exception: Database connection failed",
+      "timestamp": "2025-01-15T10:30:45.123456"
+    },
+    {
+      "tier": "weather_enhanced",
+      "reason": "Weather-enhanced predictor returned unsuccessful result: Weather API timeout",
+      "timestamp": "2025-01-15T10:30:46.789012"
+    }
+  ],
+  "predictions": [...],
+  "note": "Successfully predicted using unified predictor after higher tiers failed"
+}
+```
+
+### Error Response with Fallbacks
+
+If all prediction tiers fail, the error response will include all fallback reasons:
+
+```json
+{
+  "success": false,
+  "error": "All prediction methods failed. Final error: No valid predictions generated",
+  "predictions": [],
+  "prediction_method": "ml_system_v3",
+  "fallback_reasons": [
+    {
+      "tier": "comprehensive_pipeline",
+      "reason": "Comprehensive pipeline exception: Model file corrupted",
+      "timestamp": "2025-01-15T10:30:45.123456"
+    },
+    {
+      "tier": "weather_enhanced",
+      "reason": "Weather-enhanced predictor exception: API key expired",
+      "timestamp": "2025-01-15T10:30:46.789012"
+    },
+    {
+      "tier": "unified_predictor",
+      "reason": "Unified predictor returned unsuccessful result: Invalid race data format",
+      "timestamp": "2025-01-15T10:30:47.345678"
+    },
+    {
+      "tier": "ml_system_v3_basic",
+      "reason": "All prediction methods failed. Final error: No valid predictions generated",
+      "timestamp": "2025-01-15T10:30:48.901234"
+    }
+  ]
+}
+```
 
