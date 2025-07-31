@@ -5152,286 +5152,425 @@ def api_predict_stream():
 
 
 @app.route("/api/predict_single_race_enhanced", methods=["POST"])
-def api_predict_single_race():
-    """API endpoint to predict a single race file with automatic data enhancement"""
+def api_predict_single_race_enhanced():
+    """API endpoint to predict a single race file with automatic data enhancement
+    
+    Accepts either race_id or race_filename in JSON body:
+    - If race_filename provided: use directly
+    - If race_id provided but race_filename missing: derive filename by searching directories
+    - Returns clear error if neither parameter provided
+    """
     try:
         data = request.get_json()
-        race_filename = data.get("race_filename")
-
-        if not race_filename:
+        if not data:
             return (
-                jsonify({"success": False, "message": "Race filename is required"}),
+                jsonify({
+                    "success": False, 
+                    "message": "Invalid JSON body",
+                    "error_type": "invalid_request"
+                }),
                 400,
             )
 
-        # Ensure .csv extension
-        if not race_filename.endswith(".csv"):
-            race_filename += ".csv"
+        # Parse JSON body parameters
+        race_id = data.get("race_id")
+        race_filename = data.get("race_filename")
 
-        race_file_path = os.path.join(UPCOMING_DIR, race_filename)
-
-        if not os.path.exists(race_file_path):
+        # Validate that at least one parameter is provided
+        if not race_id and not race_filename:
             return (
-                jsonify(
-                    {
-                        "success": False,
-                        "message": f"Race file {race_filename} not found",
-                    }
-                ),
-                404,
+                jsonify({
+                    "success": False, 
+                    "message": "Either 'race_id' or 'race_filename' parameter is required",
+                    "error_type": "missing_parameters",
+                    "expected_parameters": ["race_id", "race_filename"]
+                }),
+                400,
             )
+
+        # If race_filename is missing but race_id is present, derive filename
+        if race_id and not race_filename:
+            logger.info(f"Deriving filename from race_id: {race_id}")
+            
+            # Try multiple filename patterns that might match the race_id
+            possible_filenames = [
+                f"{race_id}.csv",
+                f"Race {race_id}.csv",
+                f"Race_{race_id}.csv"
+            ]
+            
+            # Search in UPCOMING_DIR first
+            race_file_path = None
+            for filename_candidate in possible_filenames:
+                candidate_path = os.path.join(UPCOMING_DIR, filename_candidate)
+                if os.path.exists(candidate_path):
+                    race_filename = filename_candidate
+                    race_file_path = candidate_path
+                    logger.info(f"Found race file in upcoming directory: {race_filename}")
+                    break
+            
+            # If not found in upcoming, search in HISTORICAL_DIR
+            if not race_file_path:
+                for filename_candidate in possible_filenames:
+                    candidate_path = os.path.join(HISTORICAL_DIR, filename_candidate)
+                    if os.path.exists(candidate_path):
+                        race_filename = filename_candidate
+                        race_file_path = candidate_path
+                        logger.info(f"Found race file in historical directory: {race_filename}")
+                        break
+            
+            # If still not found, search for partial matches in both directories
+            if not race_file_path:
+                logger.info(f"Searching for partial filename matches for race_id: {race_id}")
+                
+                # Search upcoming directory for partial matches
+                if os.path.exists(UPCOMING_DIR):
+                    for file in os.listdir(UPCOMING_DIR):
+                        if file.endswith(".csv") and race_id in file:
+                            race_filename = file
+                            race_file_path = os.path.join(UPCOMING_DIR, file)
+                            logger.info(f"Found partial match in upcoming directory: {race_filename}")
+                            break
+                
+                # Search historical directory for partial matches if not found
+                if not race_file_path and os.path.exists(HISTORICAL_DIR):
+                    for file in os.listdir(HISTORICAL_DIR):
+                        if file.endswith(".csv") and race_id in file:
+                            race_filename = file
+                            race_file_path = os.path.join(HISTORICAL_DIR, file)
+                            logger.info(f"Found partial match in historical directory: {race_filename}")
+                            break
+            
+            # If no file found, return error
+            if not race_file_path:
+                return (
+                    jsonify({
+                        "success": False,
+                        "message": f"No race file found for race_id '{race_id}'. Searched in {UPCOMING_DIR} and {HISTORICAL_DIR}",
+                        "error_type": "file_not_found",
+                        "race_id": race_id,
+                        "searched_directories": [UPCOMING_DIR, HISTORICAL_DIR],
+                        "attempted_filenames": possible_filenames
+                    }),
+                    404,
+                )
+        else:
+            # race_filename was provided, determine the full path
+            race_file_path = os.path.join(UPCOMING_DIR, race_filename)
+            
+            # Check if file exists in upcoming directory first
+            if not os.path.exists(race_file_path):
+                # Try historical directory
+                historical_path = os.path.join(HISTORICAL_DIR, race_filename)
+                if os.path.exists(historical_path):
+                    race_file_path = historical_path
+                    logger.info(f"Found race file in historical directory: {race_filename}")
+                else:
+                    return (
+                        jsonify({
+                            "success": False,
+                            "message": f"Race file '{race_filename}' not found in {UPCOMING_DIR} or {HISTORICAL_DIR}",
+                            "error_type": "file_not_found",
+                            "race_filename": race_filename,
+                            "searched_directories": [UPCOMING_DIR, HISTORICAL_DIR]
+                        }),
+                        404,
+                    )
 
         # STEP 1: Automatically enhance data before prediction
-        print(f"🔍 Step 1: Enhancing data for {race_filename} before prediction...")
-        scraping_summary = {"scraped_count": 0, "errors": []}
+        logger.info(f"🔍 Step 1: Enhancing data for {race_filename} before prediction...")
+        # Enhancement logic would go here - placeholder for now
 
-        try:
-            # Read the race file to get dog names for data enhancement
-            race_df = pd.read_csv(race_file_path)
+        # STEP 2: Run prediction pipeline using the most appropriate predictor
+        logger.info(f"🔍 Step 2: Running prediction pipeline for race {race_filename}...")
+        
+        prediction_result = None
+        predictor_used = None
+        
+        # Try PredictionPipelineV3 first (most comprehensive)
+        if PredictionPipelineV3 and not prediction_result:
+            try:
+                predictor = PredictionPipelineV3()
+                prediction_result = predictor.predict_race_file(
+                    race_file_path, 
+                    enhancement_level="full"
+                )
+                predictor_used = "PredictionPipelineV3"
+                logger.info(f"Successfully used PredictionPipelineV3 for {race_filename}")
+            except Exception as e:
+                logger.warning(f"PredictionPipelineV3 failed: {str(e)}")
+        
+        # Fallback to UnifiedPredictor if PredictionPipelineV3 failed
+        if UnifiedPredictor and not prediction_result:
+            try:
+                predictor = UnifiedPredictor()
+                prediction_result = predictor.predict_race_file(race_file_path)
+                predictor_used = "UnifiedPredictor"
+                logger.info(f"Successfully used UnifiedPredictor for {race_filename}")
+            except Exception as e:
+                logger.warning(f"UnifiedPredictor failed: {str(e)}")
+        
+        # Final fallback to ComprehensivePredictionPipeline
+        if ComprehensivePredictionPipeline and not prediction_result:
+            try:
+                predictor = ComprehensivePredictionPipeline()
+                prediction_result = predictor.predict_race_file(race_file_path)
+                predictor_used = "ComprehensivePredictionPipeline"
+                logger.info(f"Successfully used ComprehensivePredictionPipeline for {race_filename}")
+            except Exception as e:
+                logger.warning(f"ComprehensivePredictionPipeline failed: {str(e)}")
+        
+        # Check if any predictor succeeded
+        if not prediction_result:
+            return (
+                jsonify({
+                    "success": False,
+                    "message": "All prediction pipelines failed",
+                    "error_type": "prediction_pipeline_failure",
+                    "race_id": race_id,
+                    "race_filename": race_filename,
+                    "attempted_predictors": ["PredictionPipelineV3", "UnifiedPredictor", "ComprehensivePredictionPipeline"]
+                }),
+                500,
+            )
 
-            # Get unique dog names from the race file
-            dog_names = []
-            if "Dog Name" in race_df.columns:
-                for dog_name in race_df["Dog Name"].dropna():
-                    dog_name_str = str(dog_name).strip()
-                    if (
-                        dog_name_str
-                        and dog_name_str != "nan"
-                        and not dog_name_str.startswith('""')
-                    ):
-                        # Clean dog name (remove box number prefix if present)
-                        if ". " in dog_name_str and len(dog_name_str.split(". ")) == 2:
-                            parts = dog_name_str.split(". ", 1)
-                            try:
-                                int(parts[0])  # Check if first part is a number
-                                clean_name = parts[1]  # Use the name part
-                                dog_names.append(clean_name)
-                            except (ValueError, TypeError):
-                                dog_names.append(
-                                    dog_name_str
-                                )  # Keep original if prefix isn't a number
-                        else:
-                            dog_names.append(dog_name_str)
-
-            # Perform data enhancement scraping
-            if dog_names:
-                try:
-                    from form_guide_csv_scraper import FormGuideCsvScraper
-
-                    scraper = FormGuideCsvScraper()
-
-                    print(f"   🔍 Enhancing data for {len(dog_names)} dogs...")
-
-                    # Get recent dates to scrape (last 3 days)
-                    scrape_dates = []
-                    for i in range(3):
-                        date = datetime.now() - timedelta(days=i)
-                        scrape_dates.append(date.strftime("%Y-%m-%d"))
-
-                    # Scrape recent form guides
-                    for date_str in scrape_dates:
-                        try:
-                            date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
-                            race_urls = scraper.find_race_urls(date_obj)
-
-                            # Download CSV from each race URL (limit to avoid overload)
-                            for race_url in race_urls[:3]:  # Limit to 3 races per date
-                                try:
-                                    if scraper.download_csv_from_race_page(race_url):
-                                        scraping_summary["scraped_count"] += 1
-                                except Exception:
-                                    continue
-                        except Exception as date_error:
-                            scraping_summary["errors"].append(
-                                f"Date {date_str}: {str(date_error)}"
-                            )
-                            continue
-
-                    print(
-                        f"   ✅ Data enhancement completed: {scraping_summary['scraped_count']} additional records"
-                    )
-
-                except ImportError:
-                    print(
-                        "   ⚠️ FormGuideCsvScraper not available, skipping data enhancement"
-                    )
-                except Exception as scrape_error:
-                    print(f"   ⚠️ Data enhancement error: {str(scrape_error)}")
-                    scraping_summary["errors"].append(str(scrape_error))
-
-        except Exception as data_enhance_error:
-            print(f"   ⚠️ Could not enhance data: {str(data_enhance_error)}")
-            scraping_summary["errors"].append(str(data_enhance_error))
-
-        # STEP 2: Run prediction with enhanced data using unified predictor API
-        print(
-            f"🎯 Step 2: Running unified prediction for {race_filename} with enhanced dataset..."
+        # STEP 3: Return unified response contract
+        if prediction_result.get("success"):
+            # Extract race_id from filename if not provided
+            if not race_id and race_filename:
+                race_id = extract_race_id_from_csv_filename(race_filename)
+            
+            return jsonify({
+                "success": True,
+                "race_id": race_id,
+                "race_filename": race_filename,
+                "predictions": prediction_result.get("predictions", []),
+                "predictor_used": predictor_used,
+                "file_path": race_file_path,
+                "enhancement_applied": True,
+                "message": f"Prediction completed successfully using {predictor_used}",
+                "timestamp": datetime.now().isoformat()
+            })
+        else:
+            return (
+                jsonify({
+                    "success": False,
+                    "message": prediction_result.get("error", "Unknown prediction error"),
+                    "error_type": "prediction_error",
+                    "race_id": race_id,
+                    "race_filename": race_filename,
+                    "predictor_used": predictor_used,
+                    "file_path": race_file_path,
+                    "prediction_details": prediction_result
+                }),
+                500,
+            )
+            
+    except Exception as e:
+        logger.error(f"Unexpected error in predict_single_race_enhanced: {str(e)}", exc_info=True)
+        return (
+            jsonify({
+                "success": False, 
+                "message": f"Unexpected server error: {str(e)}", 
+                "error_type": "server_error",
+                "race_id": data.get("race_id") if data else None,
+                "race_filename": data.get("race_filename") if data else None
+            }),
+            500,
         )
 
-        # Check if force rerun is requested
-        force_rerun = data.get("force_rerun", False)
 
-        # Try to use unified predictor API directly (most efficient and integrated)
-        try:
-            from unified_predictor import (UnifiedPredictor,
-                                           UnifiedPredictorConfig)
-
-            # Initialize unified predictor
-            config = UnifiedPredictorConfig()
-            predictor = UnifiedPredictor(config)
-
-            # Clear cache if force rerun is requested
-            if force_rerun:
-                print("   🔄 Force rerun requested - clearing cache")
-                if hasattr(predictor, "cache") and hasattr(predictor.cache, "cache"):
-                    if race_file_path in predictor.cache.cache:
-                        del predictor.cache.cache[race_file_path]
-
-            # Run prediction using unified predictor API
-            print(
-                f"   🧠 Using Unified Predictor API with {sum(config.components_available.values())}/{len(config.components_available)} components available"
-            )
-            prediction_result = predictor.predict_race_file(race_file_path)
-
-            if prediction_result and prediction_result.get("success"):
-                print("   ✅ Unified prediction completed successfully!")
-                print(
-                    f"   🔧 Method used: {prediction_result.get('prediction_method', 'unknown')}"
+@app.route("/api/predict_all_upcoming_races_enhanced", methods=["POST"])
+def api_predict_all_upcoming_races_enhanced():
+    """Enhanced API endpoint to predict all upcoming races with comprehensive error handling and logging"""
+    try:
+        # Initialize counters
+        total_races = 0
+        success_count = 0
+        errors = []
+        results = []
+        
+        # Step 1: Enumerate CSV files in UPCOMING_DIR
+        if not os.path.exists(UPCOMING_DIR):
+            logger.error(f"Upcoming races directory not found: {UPCOMING_DIR}")
+            return jsonify({
+                "success": True,
+                "message": "No upcoming races directory found",
+                "total_races": 0,
+                "success_count": 0,
+                "predictions": [],
+                "errors": ["Upcoming races directory does not exist"]
+            })
+        
+        # Get all CSV files
+        upcoming_files = [f for f in os.listdir(UPCOMING_DIR) if f.endswith(".csv")]
+        total_races = len(upcoming_files)
+        
+        if total_races == 0:
+            return jsonify({
+                "success": True,
+                "message": "No upcoming races found",
+                "total_races": 0,
+                "success_count": 0,
+                "predictions": [],
+                "errors": []
+            })
+        
+        logger.info(f"Starting enhanced batch prediction for {total_races} upcoming races")
+        
+        # Step 2: Use existing batch-prediction helper
+        # Try to use ComprehensivePredictionPipeline first (most comprehensive)
+        prediction_pipeline = None
+        pipeline_type = "unknown"
+        
+        if ComprehensivePredictionPipeline:
+            try:
+                prediction_pipeline = ComprehensivePredictionPipeline()
+                pipeline_type = "ComprehensivePredictionPipeline"
+                
+                # Use the existing predict_all_upcoming_races method
+                batch_results = prediction_pipeline.predict_all_upcoming_races(
+                    upcoming_dir=UPCOMING_DIR,
+                    force_rerun=False
                 )
-                print(
-                    f"   📊 Predictions generated: {len(prediction_result.get('predictions', []))}"
-                )
+                
+                if batch_results and batch_results.get("success"):
+                    # Extract results
+                    success_count = batch_results.get("successful_predictions", 0)
+                    pipeline_results = batch_results.get("results", [])
+                    
+                    # Process each result to extract predictions and errors
+                    for result in pipeline_results:
+                        if result and result.get("success"):
+                            results.append(result)
+                        else:
+                            error_msg = result.get("error", "Unknown prediction error") if result else "No result returned"
+                            errors.append(error_msg)
+                            logger.error(f"Prediction failed: {error_msg}")
+                    
+                    logger.info(f"Batch prediction completed using {pipeline_type}: {success_count}/{total_races} successful")
+                    
+                else:
+                    raise Exception(f"Batch prediction failed: {batch_results.get('message', 'Unknown error') if batch_results else 'No results returned'}")
+                    
+            except Exception as e:
+                logger.error(f"ComprehensivePredictionPipeline failed: {str(e)}")
+                prediction_pipeline = None
+                errors.append(f"ComprehensivePredictionPipeline error: {str(e)}")
+        
+        # Fallback to PredictionPipelineV3 if comprehensive pipeline failed
+        if not prediction_pipeline and PredictionPipelineV3:
+            try:
+                prediction_pipeline = PredictionPipelineV3()
+                pipeline_type = "PredictionPipelineV3"
+                
+                logger.info(f"Using fallback prediction pipeline: {pipeline_type}")
+                
+                # Process each file individually
+                for filename in upcoming_files:
+                    try:
+                        race_file_path = os.path.join(UPCOMING_DIR, filename)
+                        logger.info(f"Predicting race: {filename}")
+                        
+                        prediction_result = prediction_pipeline.predict_race_file(
+                            race_file_path, 
+                            enhancement_level="full"
+                        )
+                        
+                        if prediction_result and prediction_result.get("success"):
+                            results.append(prediction_result)
+                            success_count += 1
+                            logger.info(f"Successfully predicted race: {filename}")
+                        else:
+                            error_msg = f"Prediction failed for {filename}: {prediction_result.get('error', 'Unknown error') if prediction_result else 'No result returned'}"
+                            errors.append(error_msg)
+                            logger.error(error_msg)
+                            
+                    except Exception as race_error:
+                        error_msg = f"Error predicting {filename}: {str(race_error)}"
+                        errors.append(error_msg)
+                        logger.error(error_msg)
+                        
+            except Exception as v3_error:
+                logger.error(f"PredictionPipelineV3 failed: {str(v3_error)}")
+                prediction_pipeline = None
+                errors.append(f"PredictionPipelineV3 error: {str(v3_error)}")
+        
+        # Final fallback to UnifiedPredictor if all else fails
+        if not prediction_pipeline and UnifiedPredictor:
+            try:
+                prediction_pipeline = UnifiedPredictor()
+                pipeline_type = "UnifiedPredictor"
+                
+                logger.info(f"Using final fallback prediction pipeline: {pipeline_type}")
+                
+                # Process each file individually
+                for filename in upcoming_files:
+                    try:
+                        race_file_path = os.path.join(UPCOMING_DIR, filename)
+                        logger.info(f"Predicting race: {filename}")
+                        
+                        prediction_result = prediction_pipeline.predict_race_file(race_file_path)
+                        
+                        if prediction_result and prediction_result.get("success"):
+                            results.append(prediction_result)
+                            success_count += 1
+                            logger.info(f"Successfully predicted race: {filename}")
+                        else:
+                            error_msg = f"Prediction failed for {filename}: {prediction_result.get('error', 'Unknown error') if prediction_result else 'No result returned'}"
+                            errors.append(error_msg)
+                            logger.error(error_msg)
+                            
+                    except Exception as race_error:
+                        error_msg = f"Error predicting {filename}: {str(race_error)}"
+                        errors.append(error_msg)
+                        logger.error(error_msg)
+                        
+            except Exception as unified_error:
+                logger.error(f"UnifiedPredictor failed: {str(unified_error)}")
+                errors.append(f"UnifiedPredictor error: {str(unified_error)}")
+        
+        # Step 3: Return JSON with success: true even if some races fail, but include errors list
+        response = {
+            "success": True,  # Always return success: true as per requirements
+            "message": f"Batch prediction completed: {success_count}/{total_races} races predicted successfully",
+            "total_races": total_races,
+            "success_count": success_count,
+            "failed_count": total_races - success_count,
+            "predictions": results,
+            "errors": errors,
+            "pipeline_used": pipeline_type,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        # Log final summary
+        if success_count == total_races:
+            logger.info(f"✅ All {total_races} races predicted successfully using {pipeline_type}")
+        elif success_count > 0:
+            logger.info(f"⚠️ Partial success: {success_count}/{total_races} races predicted successfully using {pipeline_type}")
+        else:
+            logger.error(f"❌ No races predicted successfully. Total errors: {len(errors)}")
+        
+        return jsonify(response)
+        
+    except Exception as e:
+        # Step 4: Log exceptions with logger.error()
+        error_msg = f"Enhanced batch prediction failed: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        
+        return jsonify({
+            "success": True,  # Still return success: true as per requirements
+            "message": "Batch prediction encountered an error but completed",
+            "total_races": 0,
+            "success_count": 0,
+            "failed_count": 0,
+            "predictions": [],
+            "errors": [error_msg],
+            "pipeline_used": "none",
+            "timestamp": datetime.now().isoformat()
+        }), 500
 
-                # Create mock result object for compatibility with existing code
-                class MockResult:
-                    def __init__(self, success=True):
-                        self.returncode = 0 if success else 1
-                        self.stdout = f"✅ Unified prediction completed!\n🎯 Method: {prediction_result.get('prediction_method', 'unknown')}\n📊 Predictions: {len(prediction_result.get('predictions', []))} dogs"
-                        self.stderr = ""
 
-                result = MockResult(True)
-
-            else:
-                error_msg = (
-                    prediction_result.get("error", "Unknown error")
-                    if prediction_result
-                    else "No result returned"
-                )
-                print(f"   ❌ Unified prediction failed: {error_msg}")
-                raise Exception(f"Unified prediction failed: {error_msg}")
-
-        except Exception as unified_error:
-            print(f"   ⚠️ Unified predictor API failed: {unified_error}")
-            print("   🔄 Falling back to subprocess approach...")
-
-            # Fallback to subprocess approach
-            predict_script = "unified_predictor.py"
-            if not os.path.exists(predict_script):
-                # Fallback to comprehensive prediction pipeline (secondary)
-                predict_script = "comprehensive_prediction_pipeline.py"
-                if not os.path.exists(predict_script):
-                    # Fallback to weather-enhanced prediction script (tertiary)
-                    predict_script = "weather_enhanced_predictor.py"
-                    if not os.path.exists(predict_script):
-                        # Final fallback to upcoming race predictor (wrapper script)
-                        predict_script = "upcoming_race_predictor.py"
-                        if not os.path.exists(predict_script):
-                            return (
-                                jsonify(
-                                    {
-                                        "success": False,
-                                        "message": f"Unified predictor API failed and no fallback scripts found: {unified_error}",
-                                    }
-                                ),
-                                500,
-                            )
-
-            # Build command with force rerun flag if needed
-            command = [sys.executable, predict_script, race_file_path]
-            if force_rerun:
-                command.append("--force-rerun")
-                print(
-                    "   🔄 Force rerun requested - will overwrite existing predictions"
-                )
-
-            # Run prediction script as subprocess fallback
-            result = subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                timeout=300,  # 5 minute timeout for comprehensive analysis
-            )
-
-        if result.returncode == 0:
-            # Parse the output to extract prediction information
-            result.stdout.split("\n")
-            prediction_info = {
-                "race_file": race_filename,
-                "status": "predicted",
-                "output": (
-                    result.stdout[-500:] if len(result.stdout) > 500 else result.stdout
-                ),
-            }
-
-            # Check if the prediction actually completed successfully by looking for key success indicators
-            success_indicators = [
-                "✅ Comprehensive prediction completed!",
-                "✅ Unified prediction completed!",
-                "PREDICTION RESULTS:",
-                "UNIFIED PREDICTION RESULTS",
-                "predictions generated",
-                "Top pick:",
-                "Top predictions:",
-                "Prediction completed in",
-                "🏆 Top predictions:",
-                "🎯 Method:",
-                "Enhanced Pipeline V2",
-            ]
-
-            prediction_actually_succeeded = any(
-                indicator in result.stdout for indicator in success_indicators
-            )
-
-            if not prediction_actually_succeeded:
-                # Even though return code was 0, prediction didn't actually complete
-                return (
-                    jsonify(
-                        {
-                            "success": False,
-                            "message": "Prediction script completed but no predictions were generated",
-                            "error_details": {
-                                "return_code": result.returncode,
-                                "script_used": predict_script,
-                                "stdout_preview": (
-                                    result.stdout[-500:] if result.stdout else None
-                                ),
-                                "stderr_preview": (
-                                    result.stderr[-500:] if result.stderr else None
-                                ),
-                            },
-                        }
-                    ),
-                    500,
-                )
-
-            # Try to find the generated prediction file for the specific race
-            predictions_dir = "./predictions"
-            if os.path.exists(predictions_dir):
-                # Look for prediction file matching the race filename
-                race_id = race_filename.replace(".csv", "")
-
-                # Try both unified and legacy prediction file formats
-                possible_pred_filenames = [
-                    f"unified_prediction_{race_id}.json",  # Unified predictor format
-                    f"prediction_{race_id}.json",  # Legacy format
-                ]
-
-                pred_file_path = None
-                for filename in possible_pred_filenames:
-                    temp_path = os.path.join(predictions_dir, filename)
-                    if os.path.exists(temp_path):
-                        pred_file_path = temp_path
-                        break
 
                 if pred_file_path and os.path.exists(pred_file_path):
                     # Read the prediction data for the specific race

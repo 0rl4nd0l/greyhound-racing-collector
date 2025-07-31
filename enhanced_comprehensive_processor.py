@@ -798,11 +798,11 @@ class EnhancedComprehensiveProcessor:
         # Try multiple filename patterns
         patterns = [
             # Pattern 1: "Race_XX_VENUE_YYYY-MM-DD.csv" (current format)
-            (r"Race_(\d+)_([A-Z_]+)_(\d{4}-\d{2}-\d{2})\.csv", "%Y-%m-%d"),
+            (r"Race_(\d+)_([A-Z0-9_]+)_(\d{4}-\d{2}-\d{2})\.csv", "%Y-%m-%d"),
             # Pattern 2: "Race X - VENUE - DD Month YYYY.csv" (legacy format)
-            (r"Race (\d+) - ([A-Z_]+) - (\d{1,2} \w+ \d{4})\.csv", "%d %B %Y"),
+            (r"Race (\d+) - ([A-Z0-9_]+) - (\d{1,2} \w+ \d{4})\.csv", "%d %B %Y"),
             # Pattern 3: "Race X - VENUE - D Month YYYY.csv" (single digit day)
-            (r"Race (\d+) - ([A-Z_]+) - (\d{1} \w+ \d{4})\.csv", "%d %B %Y"),
+            (r"Race (\d+) - ([A-Z0-9_]+) - (\d{1} \w+ \d{4})\.csv", "%d %B %Y"),
         ]
 
         race_number = None
@@ -1759,7 +1759,9 @@ class EnhancedComprehensiveProcessor:
 
         try:
             # First try to access the expert form page directly
-            expert_form_url = race_url.rstrip("/") + "/expert-form"
+            # Remove query parameters like ?trial=false before adding /expert-form
+            base_url = race_url.split('?')[0].rstrip('/')
+            expert_form_url = base_url + '/expert-form'
             print(f"   🎯 Attempting to access expert form: {expert_form_url}")
 
             try:

@@ -120,8 +120,9 @@ class PredictionOrchestrator:
                     betting_rec = optimizer.calculate_betting_value(
                         prediction["win_probability"],
                         market_odds,
-                        prediction["confidence"],
+                        prediction["confidence"]
                     )
+                    prediction["expected_value"] = betting_rec.get("expected_value")
                     prediction["betting_recommendation"] = betting_rec
 
             # Override betting recommendation if custom strategy provided
@@ -131,6 +132,11 @@ class PredictionOrchestrator:
                     prediction["win_probability"], market_odds, prediction["confidence"]
                 )
                 prediction["betting_recommendation"] = betting_rec
+                prediction["expected_value"] = betting_rec.get("expected_value", 0)
+
+            # Ensure expected_value is always present in prediction response
+            if "expected_value" not in prediction:
+                prediction["expected_value"] = prediction.get("betting_recommendation", {}).get("expected_value", 0)
 
             return {
                 "success": True,

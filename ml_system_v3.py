@@ -39,6 +39,22 @@ except ImportError:
 
 from traditional_analysis import TraditionalRaceAnalyzer
 
+# Try to import SHAP explainer
+try:
+    from shap_explainer import get_shap_values
+    SHAP_EXPLAINABILITY_AVAILABLE = True
+except ImportError:
+    SHAP_EXPLAINABILITY_AVAILABLE = False
+    print("⚠️ SHAP explainability not available")
+
+# Import probability calibrator
+try:
+    from probability_calibrator import ProbabilityCalibrator
+    CALIBRATION_AVAILABLE = True
+except ImportError:
+    CALIBRATION_AVAILABLE = False
+    print("⚠️ Probability calibrator not available")
+
 logger = logging.getLogger(__name__)
 
 
@@ -175,13 +191,15 @@ class MLSystemV3:
         return True
 
     def predict(self, dog_data):
-        """Makes a prediction using the trained model."""
+        """Makes a prediction using the trained model with probability calibration."""
         if not self.pipeline:
             logger.warning("No model loaded, cannot make prediction.")
             return {
                 "win_probability": 0.5,
+                "place_probability": 0.65,  # Default place probability
                 "confidence": 0.0,
                 "model_info": "No model loaded",
+                "calibration_applied": False,
             }
 
         try:
@@ -194,24 +212,95 @@ class MLSystemV3:
                 columns=self.feature_columns, fill_value=0
             )
 
-            # Make prediction
-            win_prob = self.pipeline.predict_proba(features_df)[0, 1]
+            # Make raw prediction
+            raw_win_prob = self.pipeline.predict_proba(features_df)[0, 1]
+            # Estimate place probability (typically higher than win probability)
+            raw_place_prob = min(0.95, raw_win_prob * 2.8)  # Heuristic based on greyhound racing
+
+            # Apply calibration if available
+            calibrated_probs = {}
+            calibration_applied = False
+            
+            if CALIBRATION_AVAILABLE:
+                try:
+                    calibrator = ProbabilityCalibrator(self.db_path)
+                    calibrated_probs = calibrator.calibrate_probs(raw_win_prob, raw_place_prob)
+                    calibration_applied = calibrated_probs.get('calibration_available', False)
+                except Exception as e:
+                    logger.warning(f"Calibration failed: {e}")
+                    calibrated_probs = {
+                        'calibrated_win_prob': raw_win_prob,
+                        'calibrated_place_prob': raw_place_prob,
+                        'win_calibration_applied': False,
+                        'place_calibration_applied': False
+                    }
+            else:
+                calibrated_probs = {
+                    'calibrated_win_prob': raw_win_prob,
+                    'calibrated_place_prob': raw_place_prob,
+                    'win_calibration_applied': False,
+                    'place_calibration_applied': False
+                }
 
             # Calculate confidence based on feature quality
             confidence = self._calculate_confidence(features)
 
-            return {
-                "win_probability": float(win_prob),
+            # Add SHAP explainability if available
+            explainability = {}
+            if SHAP_EXPLAINABILITY_AVAILABLE:
+                try:
+                    # Use timeout to prevent hanging
+                    import signal
+                    
+                    def timeout_handler(signum, frame):
+                        raise TimeoutError("SHAP calculation timed out")
+                    
+                    # Set 30 second timeout for SHAP calculation
+                    signal.signal(signal.SIGALRM, timeout_handler)
+                    signal.alarm(30)
+                    
+                    try:
+                        explainability = get_shap_values(features_df, top_n=10)
+                    finally:
+                        signal.alarm(0)  # Cancel timeout
+                        
+                except (TimeoutError, Exception) as e:
+                    logger.warning(f"SHAP explainability failed: {e}")
+                    explainability = {
+                        "error": f"Explainability calculation failed: {str(e)}", 
+                        "feature_importance": {},
+                        "available_models": []
+                    }
+            else:
+                explainability = {
+                    "error": "SHAP not available - install with pip install shap", 
+                    "feature_importance": {},
+                    "available_models": []
+                }
+
+            result = {
+                "win_probability": float(calibrated_probs['calibrated_win_prob']),
+                "place_probability": float(calibrated_probs['calibrated_place_prob']),
+                "raw_win_probability": float(raw_win_prob),
+                "raw_place_probability": float(raw_place_prob),
                 "confidence": float(confidence),
                 "model_info": self.model_info.get("model_type", "unknown"),
+                "calibration_applied": calibration_applied,
+                "win_calibration_applied": calibrated_probs.get('win_calibration_applied', False),
+                "place_calibration_applied": calibrated_probs.get('place_calibration_applied', False),
+                "explainability": explainability,
             }
+            
+            return result
 
         except Exception as e:
             logger.error(f"Error making prediction: {e}")
             return {
                 "win_probability": 0.5,
+                "place_probability": 0.65,
                 "confidence": 0.0,
                 "model_info": f"Prediction error: {str(e)}",
+                "calibration_applied": False,
             }
 
     def get_model_info(self):

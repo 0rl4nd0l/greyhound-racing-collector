@@ -23,6 +23,7 @@ from datetime import datetime
 import pandas as pd
 
 from ml_system_v3 import MLSystemV3
+from shap_explainer import get_shap_explainer 
 
 sys.path.append("archive/outdated_scripts")
 
@@ -57,8 +58,22 @@ try:
 except ImportError:
     UNIFIED_AVAILABLE = False
 
-logger = logging.getLogger(__name__)
+# Import probability calibrator for use in prediction methods
+try:
+    from probability_calibrator import apply_probability_calibration
+    CALIBRATION_AVAILABLE = True
+except ImportError:
+    CALIBRATION_AVAILABLE = False
 
+
+def group_softmax(probs, T=1.0):
+    """Apply group softmax normalization"""
+    import numpy as np
+    exps = np.exp(probs / T)
+    sum_exps = np.sum(exps)
+    return exps / sum_exps
+
+logger = logging.getLogger(__name__)
 
 class PredictionPipelineV3:
     def __init__(self, db_path="greyhound_racing_data.db"):
@@ -207,11 +222,20 @@ class PredictionPipelineV3:
             predictions = []
             for dog in dogs:
                 ml_result = self.ml_system.predict(dog)
+                try:
+                    # Add SHAP explainability to prediction
+                    dog_features_df = pd.DataFrame([dog])
+                    explainability = get_shap_explainer().get_shap_values(dog_features_df, top_n=10)
+                except Exception as e:
+                    logger.warning(f"SHAP explainability failed for {dog['name']}: {e}")
+                    explainability = {"error": "Explainability unavailable", "feature_importance": {}}
+                
                 prediction = {
                     "dog_name": dog["name"],
                     "box_number": dog.get("box_number", 0),
                     "win_probability": ml_result["win_probability"],
                     "prediction_method": "ml_system_v3_basic",
+                    "explainability": explainability,
                 }
                 predictions.append(prediction)
 
@@ -221,6 +245,10 @@ class PredictionPipelineV3:
                 )
 
             predictions.sort(key=lambda x: x["win_probability"], reverse=True)
+            # Apply group softmax normalization
+            norm_probs = self.group_softmax([p["win_probability"] for p in predictions])
+            for i, p in enumerate(predictions):
+                p["norm_win_prob"] = norm_probs[i]
 
             return {
                 "success": True,

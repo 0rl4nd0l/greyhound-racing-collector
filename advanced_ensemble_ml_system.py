@@ -49,6 +49,13 @@ except ImportError:
 from ensemble_roi_weighter import EnsembleROIWeighter
 from ml_system_v3 import MLSystemV3
 
+# Try to import SportsbetOddsIntegrator for market odds lookup
+try:
+    from sportsbet_odds_integrator import SportsbetOddsIntegrator
+    SPORTSBET_AVAILABLE = True
+except ImportError:
+    SPORTSBET_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -58,24 +65,43 @@ class BettingStrategyOptimizer:
     into profitable betting recommendations with risk management.
     """
 
-    def __init__(self):
+    def __init__(self, db_path="greyhound_racing_data.db"):
         self.kelly_multiplier = 0.25  # Conservative Kelly criterion
         self.min_edge = 0.05  # Minimum 5% edge required
         self.max_bet_size = 0.1  # Maximum 10% of bankroll per bet
         self.confidence_threshold = 0.7  # Minimum confidence for betting
+        self.db_path = db_path
+        
+        # Initialize odds integrator if available
+        self.odds_integrator = None
+        if SPORTSBET_AVAILABLE:
+            try:
+                self.odds_integrator = SportsbetOddsIntegrator(db_path)
+                logger.info("✅ SportsbetOddsIntegrator initialized for market odds lookup")
+            except Exception as e:
+                logger.warning(f"⚠️ Could not initialize SportsbetOddsIntegrator: {e}")
 
     def calculate_betting_value(
-        self, win_prob: float, market_odds: float, confidence: float
+        self, win_prob: float, market_odds: Optional[float], confidence: float
     ) -> dict:
         """
         Calculate betting value and recommended stake using Kelly criterion
         with professional risk management.
+        
+        Args:
+            win_prob: Predicted win probability (0.0 to 1.0)
+            market_odds: Market odds from SportsbetOddsIntegrator (optional)
+            confidence: Model confidence (0.0 to 1.0)
+            
+        Returns:
+            Dictionary with expected_value and betting recommendation
         """
-        if (
-            win_prob <= 0
-            or market_odds <= 1.0
-            or confidence < self.confidence_threshold
-        ):
+        # Handle case where no market odds are available
+        if not market_odds or market_odds <= 1.0:
+            return self._no_bet_recommendation()
+            
+        # Basic validation
+        if win_prob <= 0 or confidence < self.confidence_threshold:
             return self._no_bet_recommendation()
 
         # Calculate implied market probability
@@ -164,6 +190,112 @@ class BettingStrategyOptimizer:
             "risk_level": "NONE",
             "kelly_fraction": 0,
         }
+    
+    def get_market_odds(self, race_id: str, dog_name: str) -> Optional[float]:
+        """
+        Lookup market odds for a specific dog in a race using SportsbetOddsIntegrator.
+        
+        Args:
+            race_id: Unique race identifier
+            dog_name: Name of the dog to lookup odds for
+            
+        Returns:
+            Market odds as float, or None if not found
+        """
+        if not self.odds_integrator:
+            logger.warning("SportsbetOddsIntegrator not available for market odds lookup")
+            return None
+            
+        try:
+            # Query the live_odds table for current odds
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Try exact name match first
+            cursor.execute(
+                """
+                SELECT odds_decimal, timestamp
+                FROM live_odds 
+                WHERE race_id = ? AND (dog_name = ? OR dog_clean_name = ?)
+                AND is_current = TRUE
+                ORDER BY timestamp DESC
+                LIMIT 1
+                """,
+                (race_id, dog_name, dog_name.strip().lower())
+            )
+            
+            result = cursor.fetchone()
+            if result:
+                odds_decimal, timestamp = result
+                logger.debug(f"Found market odds {odds_decimal} for {dog_name} in {race_id}")
+                return float(odds_decimal)
+            
+            # Try fuzzy match if exact match fails
+            cursor.execute(
+                """
+                SELECT odds_decimal, dog_name, timestamp
+                FROM live_odds 
+                WHERE race_id = ? AND is_current = TRUE
+                ORDER BY timestamp DESC
+                """,
+                (race_id,)
+            )
+            
+            all_odds = cursor.fetchall()
+            dog_name_clean = dog_name.strip().lower()
+            
+            for odds_decimal, db_dog_name, timestamp in all_odds:
+                db_dog_name_clean = db_dog_name.strip().lower()
+                # Simple fuzzy matching - check if names contain each other
+                if (dog_name_clean in db_dog_name_clean or 
+                    db_dog_name_clean in dog_name_clean or
+                    # Check if first few characters match
+                    (len(dog_name_clean) >= 3 and len(db_dog_name_clean) >= 3 and
+                     dog_name_clean[:3] == db_dog_name_clean[:3])):
+                    logger.debug(f"Fuzzy match: {dog_name} -> {db_dog_name}, odds {odds_decimal}")
+                    return float(odds_decimal)
+            
+            logger.warning(f"No market odds found for {dog_name} in race {race_id}")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error looking up market odds: {e}")
+            return None
+        finally:
+            if 'conn' in locals():
+                conn.close()
+    
+    def calculate_betting_value_with_odds_lookup(
+        self, win_prob: float, confidence: float, race_id: str, dog_name: str
+    ) -> dict:
+        """
+        Calculate betting value with automatic market odds lookup.
+        
+        Args:
+            win_prob: Predicted win probability (0.0 to 1.0)
+            confidence: Model confidence (0.0 to 1.0)  
+            race_id: Unique race identifier for odds lookup
+            dog_name: Name of the dog for odds lookup
+            
+        Returns:
+            Dictionary with expected_value and betting recommendation
+        """
+        # Lookup market odds
+        market_odds = self.get_market_odds(race_id, dog_name)
+        
+        if not market_odds:
+            # Return no-bet if we can't find market odds
+            result = self._no_bet_recommendation()
+            result["reason"] = "No market odds available"
+            result["market_odds_found"] = False
+            return result
+        
+        # Calculate betting value with retrieved odds
+        result = self.calculate_betting_value(win_prob, market_odds, confidence)
+        result["market_odds_found"] = True
+        result["market_odds_source"] = "SportsbetOddsIntegrator"
+        
+        return result
 
 
 class AdvancedFeatureEngineer(BaseEstimator, TransformerMixin):
@@ -234,7 +366,7 @@ class AdvancedEnsembleMLSystem:
         self.models = {}
         self.ensemble_model = None
         self.feature_engineer = AdvancedFeatureEngineer()
-        self.betting_optimizer = BettingStrategyOptimizer()
+        self.betting_optimizer = BettingStrategyOptimizer(db_path)
         self.model_info = {}
         self.ensemble_weights: Optional[Dict[str, float]] = None
 
