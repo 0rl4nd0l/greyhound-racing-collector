@@ -1,5 +1,66 @@
 // Interactive Races Page JavaScript
 
+// CSRF Token helper function
+function getCSRFToken() {
+    const metaTag = document.querySelector('meta[name="csrf-token"]');
+    return metaTag ? metaTag.getAttribute('content') : null;
+}
+
+// Enhanced fetch wrapper with CSRF and error handling
+async function fetchWithErrorHandling(url, options = {}) {
+    try {
+        const defaultHeaders = {
+            'Content-Type': 'application/json'
+        };
+        
+        // Add CSRF token if available
+        const csrfToken = getCSRFToken();
+        if (csrfToken && (options.method === 'POST' || options.method === 'PUT' || options.method === 'DELETE')) {
+            defaultHeaders['X-CSRFToken'] = csrfToken;
+        }
+        
+        const finalOptions = {
+            ...options,
+            headers: {
+                ...defaultHeaders,
+                ...options.headers
+            }
+        };
+        
+        const response = await fetch(url, finalOptions);
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${errorText || response.statusText}`);
+        }
+        
+        return response;
+    } catch (error) {
+        console.error(`Fetch error for ${url}:`, error);
+        throw error;
+    }
+}
+
+// Toast notification function
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+    toast.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    toast.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    `;
+    
+    document.body.appendChild(toast);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (toast.parentNode) {
+            toast.remove();
+        }
+    }, 5000);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const state = {
         races: [],
@@ -8,6 +69,7 @@ document.addEventListener('DOMContentLoaded', () => {
         searchQuery: '',
         sortOrder: 'race_date|desc',
         filters: {},
+        isLoading: false,
     };
 
     const elements = {
@@ -24,23 +86,38 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize the page
     async function init() {
-        await loadRaces();
-        setupEventListeners();
-        renderRaces();
+        try {
+            await loadRaces();
+            setupEventListeners();
+            renderRaces();
+        } catch (error) {
+            console.error('Initialization failed:', error);
+            showToast('Failed to initialize page. Please refresh and try again.', 'danger');
+        }
     }
 
-    // Load races from API
+    // Load races from API with proper error handling
     async function loadRaces() {
+        if (state.isLoading) return;
+        
+        state.isLoading = true;
+        
         try {
-            const response = await fetch('/api/races/paginated');
+            const response = await fetchWithErrorHandling('/api/races/paginated');
             const data = await response.json();
+            
             if (data.success) {
-                state.races = data.races;
+                state.races = Array.isArray(data.races) ? data.races : [];
+                showToast(`Successfully loaded ${state.races.length} races`, 'success');
             } else {
-                showAlert('Failed to load races.', 'danger');
+                throw new Error(data.message || 'Failed to load races');
             }
         } catch (error) {
-            showAlert('Error loading races: ' + error.message, 'danger');
+            console.error('Failed to load races:', error);
+            showToast(`Error loading races: ${error.message}`, 'danger');
+            state.races = [];
+        } finally {
+            state.isLoading = false;
         }
     }
 
@@ -145,73 +222,264 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     async function runAllUpcomingPredictions() {
+        if (state.isLoading) {
+            showToast('Another operation is in progress. Please wait.', 'warning');
+            return;
+        }
+        
+        const button = elements.runAllUpcomingButton;
+        const originalText = button.innerHTML;
+        
         try {
-            const response = await fetch('/api/predict_all_upcoming_races_enhanced', { method: 'POST' });
+            state.isLoading = true;
+            button.disabled = true;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running All Predictions...';
+            
+            const response = await fetchWithErrorHandling('/api/predict_all_upcoming_races_enhanced', { 
+                method: 'POST' 
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                showToast(errorText || 'Failed to run all upcoming predictions', 'danger');
+                return;
+            }
+            
             const data = await response.json();
 
             if (data.success) {
-                showAlert(`Successfully processed ${data.total_races} races.`, 'success');
+                showToast(`Successfully processed ${data.total_races || 0} races.`, 'success');
                 displayPredictionResults([data]);
             } else {
-                showAlert(data.message || 'Failed to run all upcoming predictions.', 'danger');
+                throw new Error(data.message || 'Unknown error occurred');
             }
         } catch (error) {
-            showAlert('Error running all upcoming predictions: ' + error.message, 'danger');
+            console.error('Error running all upcoming predictions:', error);
+            showToast(`Error running all upcoming predictions: ${error.message}`, 'danger');
+        } finally {
+            state.isLoading = false;
+            button.disabled = false;
+            button.innerHTML = originalText;
         }
     }
 
-    // Run predictions for selected races
+    // Run predictions for selected races with improved error handling
     async function runPredictions(raceIds) {
-        elements.predictionResultsContainer.style.display = 'block';
-        elements.predictionResultsBody.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div></div>';
-
-        const results = [];
-        for (const raceId of raceIds) {
-            try {
-                const response = await fetch(`/api/predict_single_race_enhanced`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ race_id: raceId })
-                });
-                const data = await response.json();
-                results.push(data);
-            } catch (error) {
-                results.push({ success: false, race_id: raceId, message: error.message });
-            }
+        if (!Array.isArray(raceIds) || raceIds.length === 0) {
+            showToast('No races selected for prediction', 'warning');
+            return;
         }
+        
+        if (state.isLoading) {
+            showToast('Another operation is in progress. Please wait.', 'warning');
+            return;
+        }
+        
+        const button = elements.runSelectedButton;
+        const originalText = button.innerHTML;
+        
+        try {
+            state.isLoading = true;
+            button.disabled = true;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running Predictions...';
+            
+            elements.predictionResultsContainer.style.display = 'block';
+            elements.predictionResultsBody.innerHTML = `
+                <div class="text-center">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Processing ${raceIds.length} race(s)...</p>
+                </div>`;
 
-        displayPredictionResults(results);
+            const results = [];
+            let successCount = 0;
+            
+            for (let i = 0; i < raceIds.length; i++) {
+                const raceId = raceIds[i];
+                
+                // Update progress
+                elements.predictionResultsBody.innerHTML = `
+                    <div class="text-center">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Processing race ${i + 1} of ${raceIds.length} (Race ID: ${raceId})...</p>
+                        <div class="progress">
+                            <div class="progress-bar" role="progressbar" 
+                                 style="width: ${((i) / raceIds.length) * 100}%"
+                                 aria-valuenow="${i}" aria-valuemin="0" aria-valuemax="${raceIds.length}"></div>
+                        </div>
+                    </div>`;
+                
+                try {
+                    const response = await fetchWithErrorHandling('/api/predict_single_race_enhanced', {
+                        method: 'POST',
+                        body: JSON.stringify({ race_id: raceId })
+                    });
+                    
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        throw new Error(errorText || `HTTP ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+                    results.push(data);
+                    
+                    if (data.success) {
+                        successCount++;
+                    }
+                } catch (error) {
+                    console.error(`Error predicting race ${raceId}:`, error);
+                    results.push({ 
+                        success: false, 
+                        race_id: raceId, 
+                        message: error.message,
+                        error_type: 'network_error'
+                    });
+                }
+            }
+
+            showToast(`Completed predictions: ${successCount}/${raceIds.length} successful`, 
+                      successCount === raceIds.length ? 'success' : 'warning');
+            displayPredictionResults(results);
+            
+        } catch (error) {
+            console.error('Error in runPredictions:', error);
+            showToast(`Error running predictions: ${error.message}`, 'danger');
+            elements.predictionResultsBody.innerHTML = `
+                <div class="alert alert-danger">
+                    <strong>Error:</strong> ${error.message}
+                </div>`;
+        } finally {
+            state.isLoading = false;
+            button.disabled = false;
+            button.innerHTML = originalText;
+        }
     }
 
-    // Display prediction results
+    // Display prediction results with enhanced formatting
     function displayPredictionResults(results) {
+        if (!Array.isArray(results) || results.length === 0) {
+            elements.predictionResultsBody.innerHTML = `
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i> No prediction results to display.
+                </div>`;
+            return;
+        }
+        
         elements.predictionResultsBody.innerHTML = '';
-        results.forEach(result => {
+        
+        results.forEach((result, index) => {
             const resultDiv = document.createElement('div');
-            resultDiv.className = `alert ${result.success ? 'alert-success' : 'alert-danger'}`;
-            if (result.success) {
-                const topPick = result.prediction.top_pick;
-                const winProb = topPick.final_score || topPick.win_probability || 0;
-                resultDiv.innerHTML = `<strong>Race:</strong> ${result.race_id} - <strong>Top Pick:</strong> ${topPick.dog_name} (Win Probability: ${(winProb * 100).toFixed(2)}%)`;
+            resultDiv.className = `alert ${result.success ? 'alert-success' : 'alert-danger'} mb-3`;
+            
+            if (result.success && result.prediction) {
+                const prediction = result.prediction;
+                const topPick = prediction.top_pick || prediction.predictions?.[0];
+                
+                if (topPick) {
+                    const winProb = topPick.final_score || topPick.win_probability || topPick.confidence || 0;
+                    const dogName = topPick.dog_name || topPick.name || 'Unknown';
+                    const raceInfo = result.race_name || result.race_id || `Race ${index + 1}`;
+                    
+                    resultDiv.innerHTML = `
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <h6 class="alert-heading mb-1">
+                                    <i class="fas fa-trophy text-warning"></i> ${raceInfo}
+                                </h6>
+                                <p class="mb-1">
+                                    <strong>Top Pick:</strong> ${dogName} 
+                                    <span class="badge bg-success">${(winProb * 100).toFixed(1)}%</span>
+                                </p>
+                                ${prediction.betting_suggestions ? 
+                                    `<small class="text-muted">
+                                        <i class="fas fa-lightbulb"></i> 
+                                        ${prediction.betting_suggestions.length} betting suggestions available
+                                    </small>` : ''}
+                            </div>
+                            <button class="btn btn-sm btn-outline-primary" 
+                                    onclick="toggleDetails(this, ${index})" 
+                                    data-expanded="false">
+                                <i class="fas fa-chevron-down"></i> Details
+                            </button>
+                        </div>
+                        <div class="prediction-details" id="details-${index}" style="display: none; margin-top: 15px;">
+                            <!-- Details will be populated when expanded -->
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <h6 class="alert-heading">
+                            <i class="fas fa-check-circle"></i> ${result.race_id || `Race ${index + 1}`}
+                        </h6>
+                        <p class="mb-0">Prediction completed but no top pick available.</p>
+                    `;
+                }
             } else {
-                resultDiv.innerHTML = `<strong>Race:</strong> ${result.race_id} - <strong>Error:</strong> ${result.message}`;
+                const errorMessage = result.message || result.error || 'Unknown error occurred';
+                const raceInfo = result.race_id || `Race ${index + 1}`;
+                
+                resultDiv.innerHTML = `
+                    <h6 class="alert-heading">
+                        <i class="fas fa-exclamation-triangle"></i> ${raceInfo}
+                    </h6>
+                    <p class="mb-0"><strong>Error:</strong> ${errorMessage}</p>
+                    ${result.error_type === 'network_error' ? 
+                        '<small class="text-muted">This may be a temporary network issue. Please try again.</small>' : ''}
+                `;
             }
+            
             elements.predictionResultsBody.appendChild(resultDiv);
         });
-    }
-
-    // Utility to show alerts
-    function showAlert(message, type = 'info') {
-        const alertDiv = document.createElement('div');
-        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
-        alertDiv.role = 'alert';
-        alertDiv.innerHTML = `
-            ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        
+        // Add summary at the bottom
+        const successCount = results.filter(r => r.success).length;
+        const summaryDiv = document.createElement('div');
+        summaryDiv.className = 'alert alert-info mt-3';
+        summaryDiv.innerHTML = `
+            <h6><i class="fas fa-info-circle"></i> Summary</h6>
+            <p class="mb-0">
+                Processed ${results.length} race(s): 
+                <span class="badge bg-success">${successCount} successful</span>
+                <span class="badge bg-danger">${results.length - successCount} failed</span>
+            </p>
         `;
-        document.querySelector('.container-fluid').insertAdjacentElement('afterbegin', alertDiv);
+        elements.predictionResultsBody.appendChild(summaryDiv);
+    }
+    
+    // Toggle prediction details
+    window.toggleDetails = function(button, index) {
+        const detailsDiv = document.getElementById(`details-${index}`);
+        const icon = button.querySelector('i');
+        const isExpanded = button.getAttribute('data-expanded') === 'true';
+        
+        if (isExpanded) {
+            detailsDiv.style.display = 'none';
+            icon.className = 'fas fa-chevron-down';
+            button.innerHTML = '<i class="fas fa-chevron-down"></i> Details';
+            button.setAttribute('data-expanded', 'false');
+        } else {
+            detailsDiv.style.display = 'block';
+            icon.className = 'fas fa-chevron-up';
+            button.innerHTML = '<i class="fas fa-chevron-up"></i> Hide';
+            button.setAttribute('data-expanded', 'true');
+            
+            // Load detailed information if not already loaded
+            if (detailsDiv.innerHTML.trim() === '') {
+                detailsDiv.innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin"></i> Loading details...</div>';
+                // Here you could load more detailed prediction information
+                setTimeout(() => {
+                    detailsDiv.innerHTML = '<p class="text-muted">Detailed prediction analysis would be displayed here.</p>';
+                }, 500);
+            }
+        }
+    };
+
+    // Utility to show alerts (legacy function for compatibility)
+    function showAlert(message, type = 'info') {
+        showToast(message, type);
     }
 
     init();

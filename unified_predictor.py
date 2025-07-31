@@ -25,7 +25,7 @@ import logging
 import sqlite3
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, List, Optional, Any
 import warnings
 import pandas as pd
 import numpy as np
@@ -126,7 +126,7 @@ class UnifiedPredictorConfig:
             'box_number': 4.5  # Mid-field box
         }
         
-        logger.info(f"🔧 Unified Predictor Configuration:")
+        logger.info("🔧 Unified Predictor Configuration:")
         logger.info(f"   Components available: {sum(self.components_available.values())}/4")
         for component, available in self.components_available.items():
             status = "✅" if available else "❌"
@@ -536,16 +536,16 @@ class UnifiedPredictor:
             if method == 'unified_system':
                 # Use the unified system's own comprehensive prediction
                 try:
-                    logger.info(f"🧠 Trying unified system comprehensive prediction...")
+                    logger.info("🧠 Trying unified system comprehensive prediction...")
                     prediction_result = self._unified_system_prediction(race_file_path)
                     if prediction_result and prediction_result.get('success'):
                         predictions = prediction_result.get('predictions', [])
                         if self._is_prediction_quality_acceptable(predictions):
                             successful_method = method
-                            logger.info(f"✅ Unified system successful with good quality")
+                            logger.info("✅ Unified system successful with good quality")
                             break
                         else:
-                            logger.warning(f"⚠️ Unified system produced poor quality predictions, trying next method")
+                            logger.warning("⚠️ Unified system produced poor quality predictions, trying next method")
                             continue
                     else:
                         logger.warning(f"⚠️ Unified system failed: {prediction_result.get('error', 'Unknown error')}")
@@ -874,9 +874,6 @@ class UnifiedPredictor:
     def _unified_system_prediction(self, race_file_path: str) -> Dict[str, Any]:
         """Unified system's own comprehensive prediction method with optimal feature alignment"""
         try:
-            import pandas as pd
-            import numpy as np
-            import sqlite3
             
             logger.info(f"🚀 Starting unified system prediction for: {os.path.basename(race_file_path)}")
             
@@ -1028,7 +1025,7 @@ class UnifiedPredictor:
 
             # If parsing failed, try content-based extraction
             if race_info['venue'] == 'UNKNOWN':
-                logger.warning(f"⚠️ Standard parsing failed, trying content-based extraction...")
+                logger.warning("⚠️ Standard parsing failed, trying content-based extraction...")
                 race_info = self._try_content_based_parsing(race_file_path, race_df, race_info)
 
             # Extract additional info from CSV data
@@ -1535,7 +1532,6 @@ class UnifiedPredictor:
         """Calculate data quality score for a dog"""
         try:
             score = 0.0
-            max_score = 1.0
             
             # Historical data availability (40%)
             history_count = len(history)
@@ -1899,7 +1895,7 @@ def main():
     result = predictor.predict_race_file(race_file_path, enhancement_level)
     
     if result['success']:
-        print(f"\n🏆 UNIFIED PREDICTION RESULTS")
+        print("\n🏆 UNIFIED PREDICTION RESULTS")
         print("=" * 60)
         print(f"🎯 Method: {result.get('prediction_method', 'Unknown')}")
         print(f"⏱️  Time: {result.get('prediction_time_seconds', 0):.2f}s")

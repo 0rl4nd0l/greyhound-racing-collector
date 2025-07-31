@@ -169,6 +169,54 @@ npm test
 npm run cypress:run
 ```
 
+## Data Collection Scrapers
+
+The system includes several specialized scrapers for different data collection needs:
+
+### Historical Data Collection
+
+- **`form_guide_csv_scraper.py`**
+  - **Purpose**: Downloads CSV form guides for **historical races only** (previous day or earlier)
+  - **Target**: Training data collection for machine learning models
+  - **Usage**: `python form_guide_csv_scraper.py`
+  - **Output**: CSV files in `./unprocessed` directory
+  - **Note**: Automatically skips current day and future races
+
+### Live/Upcoming Race Data
+
+- **`upcoming_race_browser.py`**
+  - **Purpose**: Fetches **upcoming races** with real-time race scheduling
+  - **Target**: Live prediction data pipeline
+  - **Usage**: Import and use `UpcomingRaceBrowser` class
+  - **Features**: Real race times, venue mapping, future race filtering
+  - **Output**: Race metadata for prediction pipeline
+
+### Quick Race Listing
+
+- **`direct_racing_scraper.py`**
+  - **Purpose**: Quick scrape of today's and tomorrow's races from main page
+  - **Target**: Immediate race overview
+  - **Usage**: `python direct_racing_scraper.py`
+  - **Output**: Race summaries with estimated times
+
+### Odds Collection
+
+- **`hybrid_odds_scraper.py`**
+  - **Purpose**: Reliable odds scraping with API + Selenium fallback
+  - **Target**: Live betting odds for any race
+  - **Features**: Professional API-first approach with DOM scraping backup
+  - **Usage**: Import `HybridOddsScraper` class
+  - **Output**: Structured odds data as pandas DataFrame
+
+### Which Scraper to Use?
+
+| Need | Scraper | When to Use |
+|------|---------|-------------|
+| **Training Data** | `form_guide_csv_scraper.py` | Building ML models with historical race results |
+| **Live Predictions** | `upcoming_race_browser.py` | Getting upcoming races for real-time predictions |
+| **Quick Overview** | `direct_racing_scraper.py` | Checking what races are available today/tomorrow |
+| **Betting Odds** | `hybrid_odds_scraper.py` | Getting current odds for any specific race |
+
 ## Dependencies
 
 ### Backend (pip)
@@ -184,6 +232,7 @@ npm run cypress:run
 -   `python-dotenv`
 -   `scikit-learn`
 -   `joblib`
+-   `selenium`
 
 ### Frontend (npm)
 

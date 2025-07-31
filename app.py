@@ -30,13 +30,52 @@ import pandas as pd
 import threading
 import time
 from logger import logger
+
+# Import pipeline profiler for bottleneck analysis
+try:
+    from pipeline_profiler import profile_function, track_sequence, pipeline_profiler
+    PROFILING_ENABLED = True
+    print("🔍 Pipeline profiling enabled")
+except ImportError:
+    print("⚠️ Pipeline profiling not available")
+    PROFILING_ENABLED = False
+    def profile_function(func):
+        return func
+    def track_sequence(step_name, component, step_type="processing"):
+        class DummyTracker:
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+        return DummyTracker()
+
+# Import comprehensive form data collector
+try:
+    from comprehensive_form_data_collector import ComprehensiveFormDataCollector
+    COMPREHENSIVE_COLLECTOR_AVAILABLE = True
+    print("🚀 Comprehensive form data collector available")
+except ImportError as e:
+    print(f"⚠️ Comprehensive form data collector not available: {e}")
+    COMPREHENSIVE_COLLECTOR_AVAILABLE = False
+    ComprehensiveFormDataCollector = None
 from utils.file_naming import build_prediction_filename, extract_race_id_from_csv_filename
 from sportsbet_odds_integrator import SportsbetOddsIntegrator
 from venue_mapping_fix import GreyhoundVenueMapper
-from enhanced_data_integration import EnhancedDataIntegrator
 import pickle
 import logging
 import hashlib
+import yaml
+
+# Features and feature store imports
+from features import (V3DistanceStatsFeatures,
+                     V3RecentFormFeatures, 
+                     V3VenueAnalysisFeatures,
+                     V3BoxPositionFeatures,
+                     V3CompetitionFeatures,
+                     V3WeatherTrackFeatures,
+                     V3TrainerFeatures,
+                     FeatureStore)
+                     
+# Initialize feature store singleton
+feature_store = FeatureStore()
 
 # Model registry system
 from model_registry import get_model_registry
@@ -67,6 +106,22 @@ except ImportError:
 # Load environment variables from .env file
 from dotenv import load_dotenv
 load_dotenv()
+
+# GPT Prediction Enhancer singleton
+gpt_enhancer_instance = None
+
+def get_gpt_enhancer():
+    """Get or create singleton GPTPredictionEnhancer instance"""
+    global gpt_enhancer_instance
+    if gpt_enhancer_instance is None:
+        try:
+            from gpt_prediction_enhancer import GPTPredictionEnhancer
+            gpt_enhancer_instance = GPTPredictionEnhancer()
+            logger.info("GPTPredictionEnhancer singleton initialized successfully")
+        except Exception as e:
+            logger.warning(f"Failed to initialize GPTPredictionEnhancer: {e}")
+            gpt_enhancer_instance = None
+    return gpt_enhancer_instance
 
 app = Flask(__name__)
 app.secret_key = 'greyhound_racing_secret_key_2025'
@@ -164,7 +219,7 @@ def api_dogs_search():
 
 @app.route('/api/dogs/<dog_name>/details')
 def api_dog_details(dog_name):
-    """API endpoint to get detailed information about a specific dog"""
+    """API endpoint to get detailed information about a specific dog with comprehensive data"""
     try:
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
@@ -173,6 +228,15 @@ def api_dog_details(dog_name):
         cleaned_dog_name = dog_name
         if '. ' in dog_name and dog_name.split('.')[0].isdigit():
             cleaned_dog_name = dog_name.split('. ', 1)[1]
+        
+        # First try to get comprehensive dog profile if available
+        comprehensive_profile = None
+        if COMPREHENSIVE_COLLECTOR_AVAILABLE and ComprehensiveFormDataCollector:
+            try:
+                collector = ComprehensiveFormDataCollector(DATABASE_PATH)
+                comprehensive_profile = collector.get_dog_comprehensive_profile(cleaned_dog_name)
+            except Exception as e:
+                logger.warning(f"Failed to get comprehensive profile for {cleaned_dog_name}: {e}")
         
         # Get dog basic information
         cursor.execute("""
@@ -253,7 +317,7 @@ def api_dog_details(dog_name):
         
         conn.close()
         
-        # Format basic info
+        # Format basic info with comprehensive enhancements
         win_rate = (dog_info[3] / dog_info[2] * 100) if dog_info[2] > 0 else 0
         place_rate = (dog_info[4] / dog_info[2] * 100) if dog_info[2] > 0 else 0
         
@@ -270,6 +334,20 @@ def api_dog_details(dog_name):
             'last_race_date': dog_info[7],
             'created_at': dog_info[8]
         }
+        
+        # Enhance with comprehensive profile data if available
+        if comprehensive_profile:
+            dog_details.update({
+                'comprehensive_career_stats': comprehensive_profile.get('career_stats', {}),
+                'comprehensive_track_performance': comprehensive_profile.get('track_performance', {}),
+                'comprehensive_distance_analysis': comprehensive_profile.get('distance_analysis', {}),
+                'comprehensive_trainer_info': comprehensive_profile.get('trainer_info', {}),
+                'comprehensive_form_trends': comprehensive_profile.get('form_trends', {}),
+                'comprehensive_sectional_analysis': comprehensive_profile.get('sectional_analysis', {}),
+                'has_comprehensive_data': True
+            })
+        else:
+            dog_details['has_comprehensive_data'] = False
         
         # Format recent races
         recent_performances = []
@@ -321,13 +399,29 @@ def api_dog_details(dog_name):
                 'best_time': distance[4]
             })
         
-        return jsonify({
+        # Prepare comprehensive response
+        response_data = {
             'success': True,
             'dog_details': dog_details,
             'recent_performances': recent_performances,
             'venue_performance': venue_performance,
             'distance_performance': distance_performance
-        })
+        }
+        
+        # Add comprehensive data insights if available
+        if comprehensive_profile:
+            response_data.update({
+                'comprehensive_insights': {
+                    'form_quality_score': comprehensive_profile.get('form_quality_score', 0),
+                    'track_specialization': comprehensive_profile.get('track_specialization', {}),
+                    'recent_form_rating': comprehensive_profile.get('recent_form_rating', 'Unknown'),
+                    'career_phase': comprehensive_profile.get('career_phase', 'Unknown'),
+                    'improvement_trends': comprehensive_profile.get('improvement_trends', []),
+                    'consistency_rating': comprehensive_profile.get('consistency_rating', 0)
+                }
+            })
+        
+        return jsonify(response_data)
         
     except Exception as e:
         return jsonify({
@@ -337,7 +431,7 @@ def api_dog_details(dog_name):
 
 @app.route('/api/dogs/<dog_name>/form')
 def api_dog_form(dog_name):
-    """API endpoint to get form guide for a specific dog"""
+    """API endpoint to get comprehensive form guide for a specific dog"""
     try:
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
@@ -346,6 +440,15 @@ def api_dog_form(dog_name):
         cleaned_dog_name = dog_name
         if '. ' in dog_name and dog_name.split('.')[0].isdigit():
             cleaned_dog_name = dog_name.split('. ', 1)[1]
+        
+        # Get detailed race history from comprehensive collector if available
+        detailed_race_history = None
+        if COMPREHENSIVE_COLLECTOR_AVAILABLE and ComprehensiveFormDataCollector:
+            try:
+                collector = ComprehensiveFormDataCollector(DATABASE_PATH)
+                detailed_race_history = collector.get_dog_detailed_race_history(cleaned_dog_name, limit=20)
+            except Exception as e:
+                logger.warning(f"Failed to get detailed race history for {cleaned_dog_name}: {e}")
 
         # Get last 20 performances with more details from the unified schema
         cursor.execute("""
@@ -398,8 +501,44 @@ def api_dog_form(dog_name):
                 'split_times': performance[15]
             })
         
-        # Calculate form trends
-        if len(form_guide) >= 5:
+        # Calculate enhanced form trends using comprehensive data if available
+        form_trend = "Insufficient data"
+        comprehensive_form_analysis = None
+        
+        if detailed_race_history and len(detailed_race_history) > 0:
+            # Use comprehensive data for enhanced form analysis
+            comprehensive_form_analysis = {
+                'total_detailed_races': len(detailed_race_history),
+                'sectional_trends': [],
+                'track_condition_performance': {},
+                'grade_progression': [],
+                'weight_trends': []
+            }
+            
+            # Analyze sectional performance trends
+            sectional_times = [race.get('sectional_times', {}) for race in detailed_race_history if race.get('sectional_times')]
+            if sectional_times:
+                comprehensive_form_analysis['sectional_trends'] = sectional_times[:10]  # Last 10 races with sectionals
+            
+            # Analyze track condition performance
+            for race in detailed_race_history:
+                condition = race.get('track_condition', 'Unknown')
+                if condition not in comprehensive_form_analysis['track_condition_performance']:
+                    comprehensive_form_analysis['track_condition_performance'][condition] = []
+                comprehensive_form_analysis['track_condition_performance'][condition].append(race.get('finish_position'))
+            
+            # Calculate form trend from detailed data
+            if len(detailed_race_history) >= 5:
+                recent_positions = [race.get('finish_position') for race in detailed_race_history[:5] if race.get('finish_position')]
+                older_positions = [race.get('finish_position') for race in detailed_race_history[5:10] if race.get('finish_position')]
+                
+                if recent_positions and older_positions:
+                    recent_avg = sum(recent_positions) / len(recent_positions)
+                    older_avg = sum(older_positions) / len(older_positions)
+                    form_trend = "Improving" if recent_avg < older_avg else "Declining" if recent_avg > older_avg else "Stable"
+        
+        # Fallback to basic form trend calculation
+        elif len(form_guide) >= 5:
             recent_positions = [race['finish_position'] for race in form_guide[:5] if race['finish_position']]
             older_positions = [race['finish_position'] for race in form_guide[5:10] if race['finish_position']]
             
@@ -407,16 +546,25 @@ def api_dog_form(dog_name):
             older_avg = sum(older_positions) / len(older_positions) if older_positions else 0
             
             form_trend = "Improving" if recent_avg < older_avg else "Declining" if recent_avg > older_avg else "Stable"
-        else:
-            form_trend = "Insufficient data"
         
-        return jsonify({
+        response_data = {
             'success': True,
             'dog_name': dog_name,
             'form_guide': form_guide,
             'form_trend': form_trend,
             'total_performances': len(form_guide)
-        })
+        }
+        
+        # Add comprehensive form analysis if available
+        if comprehensive_form_analysis:
+            response_data.update({
+                'comprehensive_form_analysis': comprehensive_form_analysis,
+                'has_detailed_history': True
+            })
+        else:
+            response_data['has_detailed_history'] = False
+        
+        return jsonify(response_data)
         
     except Exception as e:
         return jsonify({
@@ -601,9 +749,33 @@ def api_all_dogs():
 def api_races_paginated():
     """API endpoint for interactive races with pagination, search, and runners"""
     try:
-        # Get parameters
-        page = request.args.get('page', 1, type=int)
-        per_page = min(request.args.get('per_page', 10, type=int), 50)  # Limit to prevent overload
+        import traceback
+        from datetime import datetime
+        logger = logging.getLogger(__name__)
+        # Get parameters with validation
+        try:
+            page = int(request.args.get('page', 1))
+            per_page = int(request.args.get('per_page', 10))
+        except (ValueError, TypeError):
+            return jsonify({
+                'success': False,
+                'message': 'Invalid page or per_page parameter. Must be integers.'
+            }), 400
+        
+        # Validate page and per_page values
+        if page < 1:
+            return jsonify({
+                'success': False,
+                'message': 'Page number must be greater than 0.'
+            }), 400
+        
+        if per_page < 1:
+            return jsonify({
+                'success': False,
+                'message': 'Per page value must be greater than 0.'
+            }), 400
+        
+        per_page = min(per_page, 50)  # Limit to prevent overload
         sort_by = request.args.get('sort_by', 'race_date')
         order = request.args.get('order', 'desc')
         search = request.args.get('search', '').strip()
@@ -669,20 +841,34 @@ def api_races_paginated():
         order_direction = 'ASC' if order == 'asc' else 'DESC'
         
         # Get total count for pagination
-        count_query = f"SELECT COUNT(*) FROM race_metadata {where_clause}"
-        cursor.execute(count_query, search_params)
-        total_count = cursor.fetchone()[0]
+        try:
+            count_query = f"SELECT COUNT(*) FROM race_metadata {where_clause}"
+            cursor.execute(count_query, search_params)
+            total_count = cursor.fetchone()[0]
+        except Exception as e:
+            conn.close()
+            return jsonify({
+                'success': False,
+                'message': f'Error getting race count: {str(e)}'
+            }), 500
         
         # Get races with pagination
-        races_query = f"""
-            {base_query}
-            {where_clause}
-            ORDER BY {order_by} {order_direction}
-            LIMIT ? OFFSET ?
-        """
-        
-        cursor.execute(races_query, search_params + [per_page, offset])
-        races = cursor.fetchall()
+        try:
+            races_query = f"""
+                {base_query}
+                {where_clause}
+                ORDER BY {order_by} {order_direction}
+                LIMIT ? OFFSET ?
+            """
+            
+            cursor.execute(races_query, search_params + [per_page, offset])
+            races = cursor.fetchall()
+        except Exception as e:
+            conn.close()
+            return jsonify({
+                'success': False,
+                'message': f'Error fetching races: {str(e)}'
+            }), 500
         
         # Format race results and get runners for each race
         result_races = []
@@ -690,22 +876,29 @@ def api_races_paginated():
             race_id = race[0]
             
             # Get runners for this race
-            runners_query = """
-                SELECT 
-                    dog_name,
-                    box_number,
-                    finish_position,
-                    individual_time,
-                    weight,
-                    odds_decimal,
-                    margin,
-                    trainer_name
-                FROM dog_race_data 
-                WHERE race_id = ?
-                ORDER BY CAST(box_number AS INTEGER)
-            """
-            cursor.execute(runners_query, (race_id,))
-            runners_data = cursor.fetchall()
+            try:
+                runners_query = """
+                    SELECT 
+                        dog_name,
+                        box_number,
+                        finish_position,
+                        individual_time,
+                        weight,
+                        odds_decimal,
+                        margin,
+                        trainer_name
+                    FROM dog_race_data 
+                    WHERE race_id = ?
+                    ORDER BY CAST(box_number AS INTEGER)
+                """
+                cursor.execute(runners_query, (race_id,))
+                runners_data = cursor.fetchall()
+            except Exception as e:
+                conn.close()
+                return jsonify({
+                    'success': False,
+                    'message': f'Error fetching runners for race {race_id}: {str(e)}'
+                }), 500
             
             # Format runners
             runners = []
@@ -716,30 +909,69 @@ def api_races_paginated():
                 place_prob = min(win_prob * 2.5, 1.0)  # Place probability is typically higher
                 confidence = min(win_prob * 0.8 + 0.2, 1.0)  # Base confidence on win probability
                 
+                # Safe conversion function for database values
+                def safe_convert(value, convert_func, default):
+                    try:
+                        if value is None:
+                            return default
+                        if isinstance(value, (bytes, bytearray)):
+                            try:
+                                # Try to decode bytes to string first
+                                decoded_value = value.decode('utf-8')
+                                try:
+                                    # Try direct conversion using the target function
+                                    return convert_func(decoded_value)
+                                except (ValueError, TypeError, UnicodeDecodeError):
+                                    return str(decoded_value)  # Fallback to string conversion if conversion fails, ensuring no bytes propagate
+                            except (UnicodeDecodeError, ValueError, TypeError):
+                                return default
+                        return convert_func(value)
+                    except (ValueError, TypeError, UnicodeDecodeError):
+                        return default
+                
                 runners.append({
-                    'dog_name': runner[0] or 'Unknown',
-                    'box_number': runner[1] or 0,
-                    'finish_position': runner[2],
-                    'individual_time': runner[3],
-                    'weight': runner[4],
-                    'odds': f"{float(runner[5]):.2f}" if runner[5] else 'N/A',
-                    'margin': runner[6],
-                    'trainer_name': runner[7],
+                    'dog_name': safe_convert(runner[0], str, 'Unknown'),
+                    'box_number': safe_convert(runner[1], int, 0),
+                    'finish_position': safe_convert(runner[2], int, None),
+                    'individual_time': safe_convert(runner[3], str, None),
+                    'weight': safe_convert(runner[4], float, None),
+                    'odds': safe_convert(runner[5], lambda x: f"{float(x):.2f}", 'N/A'),
+                    'margin': safe_convert(runner[6], str, None),
+                    'trainer_name': safe_convert(runner[7], str, None),
                     'win_probability': round(win_prob, 3),
                     'place_probability': round(place_prob, 3),
                     'confidence': round(confidence, 3)
                 })
             
+            # ===== CRITICAL DATETIME PARSING FIX =====
+            # This handles ISO format timestamps with microseconds: 2025-07-23T19:13:28.830973
+            # See DATETIME_PARSING_DOCUMENTATION.md for full details
+            # DO NOT MODIFY without reading documentation
             # Format extraction timestamp
             extraction_time = race[12]
             if extraction_time:
                 try:
-                    dt = datetime.fromisoformat(extraction_time.replace('Z', '+00:00'))
+                    # STEP 1: Remove microseconds by splitting on decimal point
+                    # Handles: 2025-07-23T19:13:28.830973 -> 2025-07-23T19:13:28
+                    time_str = str(extraction_time).split('.')[0]
+                    
+                    # STEP 2: Detect format type and parse accordingly
+                    if 'T' in time_str:
+                        # ISO format with 'T' separator: 2025-07-23T19:13:28
+                        dt = datetime.strptime(time_str, '%Y-%m-%dT%H:%M:%S')
+                    else:
+                        # Standard format with space: 2025-07-23 19:13:28
+                        dt = datetime.strptime(time_str, '%Y-%m-%d %H:%M:%S')
+                    
+                    # STEP 3: Standardize output format for frontend consistency
                     formatted_time = dt.strftime('%Y-%m-%d %H:%M')
-                except:
-                    formatted_time = extraction_time
+                except Exception as e:
+                    # STEP 4: Graceful error handling with logging
+                    logger.warning(f"Failed to parse extraction time '{extraction_time}': {e}")
+                    formatted_time = str(extraction_time) if extraction_time else 'Unknown'
             else:
                 formatted_time = 'Unknown'
+            # ===== END CRITICAL DATETIME PARSING FIX =====
             
             race_url = race[11] if race[11] else db_manager.generate_race_url(race[1], race[3], race[2])
             
@@ -785,9 +1017,12 @@ def api_races_paginated():
         })
         
     except Exception as e:
+        traceback_str = ''.join(traceback.format_exception(None, e, e.__traceback__))
+        logger.error(f"Error in `/api/races/paginated`: {str(e)}\nStack trace: {traceback_str}")
+
         return jsonify({
             'success': False,
-            'message': f'Error fetching races: {str(e)}'
+            'message': f'Unexpected error occurred. Please consult the logs.'
         }), 500
 
 @app.route('/api/races')
@@ -1059,10 +1294,13 @@ class DatabaseManager:
                 extraction_time = race[12]
                 if extraction_time:
                     try:
-                        dt = datetime.fromisoformat(extraction_time.replace('Z', '+00:00'))
+                        # Handle various datetime formats, remove microseconds if present
+                        time_str = str(extraction_time).split('.')[0]
+                        dt = datetime.strptime(time_str, '%Y-%m-%d %H:%M:%S')
                         formatted_time = dt.strftime('%Y-%m-%d %H:%M')
-                    except:
-                        formatted_time = extraction_time
+                    except Exception as e:
+                        logger.warning(f"Failed to parse extraction time '{extraction_time}': {e}")
+                        formatted_time = str(extraction_time) if extraction_time else 'Unknown'
                 else:
                     formatted_time = 'Unknown'
                 
@@ -1169,16 +1407,35 @@ class DatabaseManager:
             for race in races:
                 race_url = race[11] if race[11] else self.generate_race_url(race[1], race[3], race[2])
                 
-                # Format extraction timestamp for better display
+                # ===== CRITICAL DATETIME PARSING FIX =====
+                # This handles ISO format timestamps with microseconds: 2025-07-23T19:13:28.830973
+                # See DATETIME_PARSING_DOCUMENTATION.md for full details
+                # DO NOT MODIFY without reading documentation
+                # Format extraction timestamp
                 extraction_time = race[12]
                 if extraction_time:
                     try:
-                        dt = datetime.fromisoformat(extraction_time.replace('Z', '+00:00'))
+                        # STEP 1: Remove microseconds by splitting on decimal point
+                        # Handles: 2025-07-23T19:13:28.830973 -e 2025-07-23T19:13:28
+                        time_str = str(extraction_time).split('.')[0]
+                        
+                        # STEP 2: Detect format type and parse accordingly
+                        if 'T' in time_str:
+                            # ISO format with 'T' separator: 2025-07-23T19:13:28
+                            dt = datetime.strptime(time_str, '%Y-%m-%dT%H:%M:%S')
+                        else:
+                            # Standard format with space: 2025-07-23 19:13:28
+                            dt = datetime.strptime(time_str, '%Y-%m-%d %H:%M:%S')
+                        
+                        # STEP 3: Standardize output format for frontend consistency
                         formatted_time = dt.strftime('%Y-%m-%d %H:%M')
-                    except:
-                        formatted_time = extraction_time
+                    except Exception as e:
+                        # STEP 4: Graceful error handling with logging
+                        logger.warning(f"Failed to parse extraction time '{extraction_time}': {e}")
+                        formatted_time = str(extraction_time) if extraction_time else 'Unknown'
                 else:
                     formatted_time = 'Unknown'
+                # ===== END CRITICAL DATETIME PARSING FIX =====
                 
                 result.append({
                     'race_id': race[0],
@@ -1451,7 +1708,7 @@ os.makedirs('logs', exist_ok=True)
 # Model registry debug logging function
 def log_model_registry_debug(message, level="INFO"):
     """Enhanced logging for model registry operations"""
-    timestamp = datetime.now().isoformat()
+    datetime.now().isoformat()
     log_message = f"[MODEL_REGISTRY] {message}"
     
     if level == "ERROR":
@@ -1528,7 +1785,38 @@ except Exception as e:
     print(f"⚠️  Model registry initialization failed: {e}")
     model_registry = None
 
-@app.route('/')
+def run_schema_validation_and_healing(db_path, schema_contract_path):
+    """Run schema validation and apply non-destructive fixes"""
+    logger.info("🔍 Running Schema Validation and Healing...")
+    
+    try:
+        # Load schema contract
+        with open(schema_contract_path, 'r') as file:
+            schema_contract = yaml.safe_load(file)
+
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        # Validate and repair tables and columns
+        for table, config in schema_contract['tables'].items():
+            cursor.execute(f"PRAGMA table_info({table})")
+            columns = {col[1]: col[2] for col in cursor.fetchall()}
+            for col in config['columns']:
+                col_name = col['name']
+                expected_type = col['type']
+                if col_name not in columns:
+                    # Alter table to add missing column
+                    alter_command = f"ALTER TABLE {table} ADD COLUMN {col_name} {expected_type}"
+                    cursor.execute(alter_command)
+                elif columns[col_name] != expected_type:
+                    logger.warning(f"Type mismatch for column {col_name} in table {table}")
+
+        conn.commit()
+        logger.info("✅ Schema validation and healing complete.")
+    except Exception as e:
+        logger.error(f"Schema Validation Error: {e}")
+    finally:
+        conn.close()
 def index():
     """Home page with dashboard overview"""
     db_stats = db_manager.get_database_stats()
@@ -2007,6 +2295,7 @@ def run_command_with_output(command, log_prefix=""):
         })
         return False
 
+@profile_function
 def process_files_background():
     """Background task to process files"""
     global processing_status
@@ -2707,6 +2996,25 @@ def api_fetch_csv():
         'message': 'CSV fetching started'
     })
 
+@app.route('/api/start_scraper', methods=['POST'])
+def api_start_scraper():
+    """API endpoint to start automated data collection (scraping)"""
+    if processing_status['running']:
+        return jsonify({
+            'success': False,
+            'message': 'Processing already in progress'
+        }), 400
+    
+    # Start background scraping (run.py collect)
+    thread = threading.Thread(target=run_scraper_background)
+    thread.daemon = True
+    thread.start()
+    
+    return jsonify({
+        'success': True,
+        'message': 'Data collection (scraping) started'
+    })
+
 @app.route('/api/process_data', methods=['POST'])
 def api_process_data():
     """API endpoint to process enhanced data"""
@@ -2724,6 +3032,84 @@ def api_process_data():
     return jsonify({
         'success': True,
         'message': 'Data processing started'
+    })
+
+@app.route('/api/collect_and_analyze', methods=['POST'])
+def api_collect_and_analyze():
+    """API endpoint to run the full automated pipeline: collect + analyze"""
+    if processing_status['running']:
+        return jsonify({
+            'success': False,
+            'message': 'Processing already in progress'
+        }), 400
+    
+    def collect_and_analyze_background():
+        """Background task to run collect then analyze"""
+        global processing_status
+        
+        with processing_lock:
+            processing_status['running'] = True
+            processing_status['start_time'] = datetime.now()
+            processing_status['progress'] = 0
+        
+        try:
+            safe_log_to_processing("🚀 Starting automated data collection and analysis pipeline...", "INFO", 0)
+            
+            # Step 1: Collection (run.py collect)
+            safe_log_to_processing("🔍 Step 1: Collecting data (upcoming races + moving to unprocessed)...", "INFO", 10)
+            processing_status['progress'] = 20
+            
+            success1 = run_command_with_output(
+                [sys.executable, 'run.py', 'collect'],
+                "🔍 "
+            )
+            
+            if not processing_status.get('running', False):
+                return
+            
+            processing_status['progress'] = 50
+            
+            if success1:
+                safe_log_to_processing("✅ Data collection completed successfully!", "INFO", 50)
+                
+                # Step 2: Analysis (run.py analyze) 
+                safe_log_to_processing("📈 Step 2: Analyzing data (processing files + database storage)...", "INFO", 55)
+                processing_status['progress'] = 60
+                
+                success2 = run_command_with_output(
+                    [sys.executable, 'run.py', 'analyze'],
+                    "📈 "
+                )
+                
+                if not processing_status.get('running', False):
+                    return
+                
+                processing_status['progress'] = 90
+                
+                if success2:
+                    safe_log_to_processing("✅ Data analysis completed successfully!", "INFO", 95)
+                    safe_log_to_processing("🎉 Full pipeline completed: Data collected, processed, and stored in database!", "INFO", 100)
+                else:
+                    safe_log_to_processing("❌ Data analysis failed", "ERROR", 90)
+            else:
+                safe_log_to_processing("❌ Data collection failed", "ERROR", 50)
+        
+        except Exception as e:
+            safe_log_to_processing(f"❌ Pipeline error: {str(e)}", "ERROR", processing_status.get('progress', 0))
+        
+        finally:
+            processing_status['running'] = False
+            processing_status['progress'] = 100
+            safe_log_to_processing("🏁 Automated pipeline task completed", "INFO", 100)
+    
+    # Start background pipeline
+    thread = threading.Thread(target=collect_and_analyze_background)
+    thread.daemon = True
+    thread.start()
+    
+    return jsonify({
+        'success': True,
+        'message': 'Automated data collection and analysis pipeline started'
     })
 
 @app.route('/api/update_analysis', methods=['POST'])
@@ -3006,14 +3392,14 @@ def api_test_historical_prediction():
                 prediction_result = pipeline.predict_race_file(temp_race_file, enhancement_level='full')
                 
                 if prediction_result and prediction_result.get('success'):
-                    print(f"✅ MLv3 prediction completed successfully!")
+                    print("✅ MLv3 prediction completed successfully!")
                     real_predictions = prediction_result.get('predictions', [])
                 else:
                     raise Exception(f"Prediction failed: {prediction_result.get('error', 'Unknown error') if prediction_result else 'No result'}")
                     
             except Exception as pred_error:
                 print(f"⚠️ Real prediction failed: {pred_error}")
-                print(f"🔄 Falling back to basic analysis using database data...")
+                print("🔄 Falling back to basic analysis using database data...")
                 
                 # Fallback: Use database data for basic prediction analysis
                 real_predictions = []
@@ -3411,7 +3797,7 @@ def api_scrape_race_data():
     try:
         data = request.get_json()
         race_filename = data.get('race_filename')
-        venue = data.get('venue')
+        data.get('venue')
         
         if not race_filename:
             return jsonify({
@@ -3532,7 +3918,7 @@ def api_scrape_race_data():
                                 try:
                                     if scraper.download_csv_from_race_page(race_url):
                                         scraped_count += 1
-                                except Exception as race_error:
+                                except Exception:
                                     continue  # Skip failed races
                             
                             if race_urls:
@@ -3564,7 +3950,7 @@ def api_scrape_race_data():
                                                     new_records_found += 1
                                                     print(f"   ✅ Found new data for {dog_name} in {filename}")
                                                     break
-                                        except Exception as file_check_error:
+                                        except Exception:
                                             continue
                     
                 except Exception as scraper_error:
@@ -3572,7 +3958,7 @@ def api_scrape_race_data():
                     print(f"   ❌ Scraper error: {str(scraper_error)}")
             
             else:
-                print(f"   ✅ All dogs have recent data - no scraping needed")
+                print("   ✅ All dogs have recent data - no scraping needed")
             
             # Final summary
             total_dogs_analyzed = len(dog_names)
@@ -3780,7 +4166,7 @@ def api_predict_single_race():
             
             # Clear cache if force rerun is requested
             if force_rerun:
-                print(f"   🔄 Force rerun requested - clearing cache")
+                print("   🔄 Force rerun requested - clearing cache")
                 if hasattr(predictor, 'cache') and hasattr(predictor.cache, 'cache'):
                     if race_file_path in predictor.cache.cache:
                         del predictor.cache.cache[race_file_path]
@@ -3790,7 +4176,7 @@ def api_predict_single_race():
             prediction_result = predictor.predict_race_file(race_file_path)
             
             if prediction_result and prediction_result.get('success'):
-                print(f"   ✅ Unified prediction completed successfully!")
+                print("   ✅ Unified prediction completed successfully!")
                 print(f"   🔧 Method used: {prediction_result.get('prediction_method', 'unknown')}")
                 print(f"   📊 Predictions generated: {len(prediction_result.get('predictions', []))}")
                 
@@ -3810,7 +4196,7 @@ def api_predict_single_race():
                 
         except Exception as unified_error:
             print(f"   ⚠️ Unified predictor API failed: {unified_error}")
-            print(f"   🔄 Falling back to subprocess approach...")
+            print("   🔄 Falling back to subprocess approach...")
             
             # Fallback to subprocess approach
             predict_script = 'unified_predictor.py'
@@ -3833,7 +4219,7 @@ def api_predict_single_race():
             command = [sys.executable, predict_script, race_file_path]
             if force_rerun:
                 command.append('--force-rerun')
-                print(f"   🔄 Force rerun requested - will overwrite existing predictions")
+                print("   🔄 Force rerun requested - will overwrite existing predictions")
             
             # Run prediction script as subprocess fallback
             result = subprocess.run(
@@ -3845,7 +4231,7 @@ def api_predict_single_race():
         
         if result.returncode == 0:
             # Parse the output to extract prediction information
-            output_lines = result.stdout.split('\n')
+            result.stdout.split('\n')
             prediction_info = {
                 'race_file': race_filename,
                 'status': 'predicted',
@@ -3965,13 +4351,6 @@ def api_predict_single_race():
             })
         else:
             # Enhanced error logging and reporting
-            error_details = {
-                'return_code': result.returncode,
-                'stderr': result.stderr,
-                'stdout': result.stdout,
-                'script_used': predict_script,
-                'race_file': race_file_path
-            }
             
             # Log the full error for debugging
             print(f"❌ Prediction failed for {race_filename}:")
@@ -4116,7 +4495,7 @@ def api_prediction_results():
                         'prediction_timestamp': data.get('prediction_timestamp', ''),
                         'file_path': os.path.basename(file_path)
                     })
-            except (json.JSONDecodeError, KeyError) as e:
+            except (json.JSONDecodeError, KeyError):
                 continue  # Skip corrupted files
         
         return jsonify({
@@ -4139,7 +4518,7 @@ def api_prediction_detail(race_name):
         predictions_dir = './predictions'
         
         # Initialize venue mapper for better historical data lookup
-        venue_mapper = GreyhoundVenueMapper()
+        GreyhoundVenueMapper()
         
         # Try multiple prediction file naming conventions
         prediction_file = None
@@ -5364,7 +5743,6 @@ def api_generate_report():
     try:
         from flask import send_file
         import io
-        import csv
         
         # Get database stats and race data
         db_manager = DatabaseManager(DATABASE_PATH)
@@ -5572,7 +5950,6 @@ def ml_training_dashboard():
 def api_model_status():
     """Get current model status and performance metrics"""
     try:
-        import os
         import joblib
         import json
         from pathlib import Path
@@ -6327,58 +6704,85 @@ def api_start_automated_monitoring():
 
 @app.route('/api/check_performance_drift')
 def api_check_performance_drift():
-    """Check for model performance drift"""
+    """Check for model performance and feature drift"""
     try:
-        # Load recent backtesting results to check for drift
-        results_dir = Path('./automated_backtesting_results')
-        if not results_dir.exists():
-            return jsonify({
-                'success': True,
-                'drift_detected': False,
-                'message': 'No historical results to compare'
-            })
+        feature_drift_detected = False
+        feature_drift_reports = {}
         
-        result_files = list(results_dir.glob('backtest_results_*.json'))
-        if len(result_files) < 2:
-            return jsonify({
-                'success': True,
-                'drift_detected': False,
-                'message': 'Insufficient historical data for drift detection'
-            })
-        
-        # Compare latest two results
-        result_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
-        
-        with open(result_files[0], 'r') as f:
-            latest_results = json.load(f)
-        with open(result_files[1], 'r') as f:
-            previous_results = json.load(f)
-        
-        latest_accuracy = latest_results.get('accuracy', 0)
-        previous_accuracy = previous_results.get('accuracy', 0)
-        
-        if previous_accuracy > 0:
-            drift_percentage = abs(latest_accuracy - previous_accuracy) / previous_accuracy * 100
-            drift_detected = drift_percentage > 5  # 5% threshold
+        # Step 1: Check for feature drift if baseline exists
+        try:
+            current_features = feature_store.load()
+            baseline_features = pd.read_parquet('baseline_feature_store.parquet')
             
-            return jsonify({
-                'success': True,
-                'drift_detected': drift_detected,
-                'drift_percentage': round(drift_percentage, 2),
-                'latest_accuracy': latest_accuracy,
-                'previous_accuracy': previous_accuracy
-            })
-        else:
-            return jsonify({
-                'success': True,
-                'drift_detected': False,
-                'message': 'Invalid historical accuracy data'
-            })
+            feature_drift_reports = feature_store.check_drift(current_features, baseline_features)
+            feature_drift_detected = any(report['drift_detected'] for report in feature_drift_reports.values())
+        except FileNotFoundError:
+            # No baseline features available yet
+            feature_drift_reports = {'message': 'No baseline features found for comparison'}
+        except Exception as fe:
+            feature_drift_reports = {'error': f'Feature drift check failed: {str(fe)}'}
+        
+        # Step 2: Check for performance drift using backtest results
+        performance_drift_detected = False
+        performance_drift_data = {}
+        
+        try:
+            results_dir = Path('./comprehensive_model_results')
+            if results_dir.exists():
+                result_files = list(results_dir.glob('backtest_results_*.json'))
+                
+                if len(result_files) >= 2:
+                    # Compare latest two results
+                    result_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+                    
+                    with open(result_files[0], 'r') as f:
+                        latest_results = json.load(f)
+                    with open(result_files[1], 'r') as f:
+                        previous_results = json.load(f)
+                    
+                    latest_accuracy = latest_results.get('accuracy', 0)
+                    previous_accuracy = previous_results.get('accuracy', 0)
+                    
+                    if previous_accuracy > 0:
+                        drift_percentage = abs(latest_accuracy - previous_accuracy) / previous_accuracy * 100
+                        performance_drift_detected = drift_percentage > 5  # 5% threshold
+                        
+                        performance_drift_data = {
+                            'drift_percentage': round(drift_percentage, 2),
+                            'latest_accuracy': latest_accuracy,
+                            'previous_accuracy': previous_accuracy,
+                            'threshold_exceeded': performance_drift_detected
+                        }
+                    else:
+                        performance_drift_data = {'message': 'Invalid historical accuracy data'}
+                else:
+                    performance_drift_data = {'message': 'Insufficient historical data for performance drift detection'}
+            else:
+                performance_drift_data = {'message': 'No results directory found'}
+        except Exception as pe:
+            performance_drift_data = {'error': f'Performance drift check failed: {str(pe)}'}
+        
+        # Combined drift assessment
+        overall_drift_detected = feature_drift_detected or performance_drift_detected
+        
+        return jsonify({
+            'success': True,
+            'overall_drift_detected': overall_drift_detected,
+            'feature_drift': {
+                'detected': feature_drift_detected,
+                'reports': feature_drift_reports
+            },
+            'performance_drift': {
+                'detected': performance_drift_detected,
+                'data': performance_drift_data
+            },
+            'timestamp': datetime.now().isoformat()
+        })
             
     except Exception as e:
         return jsonify({
             'success': False,
-            'message': f'Error checking performance drift: {str(e)}'
+            'message': f'Error checking drift: {str(e)}'
         }), 500
 
 @app.route('/api/check_data_quality')
@@ -6582,37 +6986,34 @@ def api_gpt_enhance_race():
                 'message': 'Race file path is required'
             }), 400
         
-        # Import the GPT enhancer
-        try:
-            from gpt_prediction_enhancer import GPTPredictionEnhancer
-            enhancer = GPTPredictionEnhancer()
-            
-            # Run enhancement
-            result = enhancer.enhance_race_prediction(
-                race_file_path, 
-                include_betting_strategy=include_betting,
-                include_pattern_analysis=include_patterns
-            )
-            
-            if 'error' in result:
-                return jsonify({
-                    'success': False,
-                    'message': result['error']
-                }), 500
-            
-            return jsonify({
-                'success': True,
-                'enhancement': result,
-                'tokens_used': result.get('tokens_used', 0),
-                'estimated_cost': result.get('tokens_used', 0) * 0.045 / 1000,  # Rough estimate
-                'timestamp': datetime.now().isoformat()
-            })
-            
-        except ImportError as e:
+        # Use singleton GPT enhancer
+        enhancer = get_gpt_enhancer()
+        if not enhancer:
             return jsonify({
                 'success': False,
-                'message': f'GPT enhancement not available: {str(e)}. Install openai package and set OPENAI_API_KEY.'
+                'message': 'GPT enhancement not available. Install openai package and set OPENAI_API_KEY.'
             }), 500
+        
+        # Run enhancement
+        result = enhancer.enhance_race_prediction(
+            race_file_path, 
+            include_betting_strategy=include_betting,
+            include_pattern_analysis=include_patterns
+        )
+        
+        if 'error' in result:
+            return jsonify({
+                'success': False,
+                'message': result['error']
+            }), 500
+        
+        return jsonify({
+            'success': True,
+            'enhancement': result,
+            'tokens_used': result.get('tokens_used', 0),
+            'estimated_cost': result.get('tokens_used', 0) * 0.045 / 1000,  # Rough estimate
+            'timestamp': datetime.now().isoformat()
+        })
             
     except Exception as e:
         return jsonify({
@@ -6626,8 +7027,13 @@ def api_gpt_daily_insights():
     try:
         date_str = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
         
-        from gpt_prediction_enhancer import GPTPredictionEnhancer
-        enhancer = GPTPredictionEnhancer()
+        # Use singleton GPT enhancer
+        enhancer = get_gpt_enhancer()
+        if not enhancer:
+            return jsonify({
+                'success': False,
+                'message': 'GPT enhancement not available. Install openai package and set OPENAI_API_KEY.'
+            }), 500
         
         insights = enhancer.generate_daily_insights(date_str)
         
@@ -6637,11 +7043,6 @@ def api_gpt_daily_insights():
             'timestamp': datetime.now().isoformat()
         })
         
-    except ImportError as e:
-        return jsonify({
-            'success': False,
-            'message': f'GPT enhancement not available: {str(e)}'
-        }), 500
     except Exception as e:
         return jsonify({
             'success': False,
@@ -6662,8 +7063,13 @@ def api_gpt_enhance_multiple():
                 'message': 'Race files list is required'
             }), 400
         
-        from gpt_prediction_enhancer import GPTPredictionEnhancer
-        enhancer = GPTPredictionEnhancer()
+        # Use singleton GPT enhancer
+        enhancer = get_gpt_enhancer()
+        if not enhancer:
+            return jsonify({
+                'success': False,
+                'message': 'GPT enhancement not available. Install openai package and set OPENAI_API_KEY.'
+            }), 500
         
         results = enhancer.enhance_multiple_races(race_files, max_races)
         
@@ -6673,11 +7079,6 @@ def api_gpt_enhance_multiple():
             'timestamp': datetime.now().isoformat()
         })
         
-    except ImportError as e:
-        return jsonify({
-            'success': False,
-            'message': f'GPT enhancement not available: {str(e)}'
-        }), 500
     except Exception as e:
         return jsonify({
             'success': False,
@@ -6697,8 +7098,13 @@ def api_gpt_comprehensive_report():
                 'message': 'Race IDs list is required'
             }), 400
         
-        from gpt_prediction_enhancer import GPTPredictionEnhancer
-        enhancer = GPTPredictionEnhancer()
+        # Use singleton GPT enhancer
+        enhancer = get_gpt_enhancer()
+        if not enhancer:
+            return jsonify({
+                'success': False,
+                'message': 'GPT enhancement not available. Install openai package and set OPENAI_API_KEY.'
+            }), 500
         
         report = enhancer.create_comprehensive_report(race_ids)
         
@@ -6709,11 +7115,6 @@ def api_gpt_comprehensive_report():
             'timestamp': datetime.now().isoformat()
         })
         
-    except ImportError as e:
-        return jsonify({
-            'success': False,
-            'message': f'GPT enhancement not available: {str(e)}'
-        }), 500
     except Exception as e:
         return jsonify({
             'success': False,
@@ -6897,7 +7298,7 @@ def api_today_races_basic():
                     else:
                         time_status = 'LATER'
                         
-                except (ValueError, TypeError) as e:
+                except (ValueError, TypeError):
                     # If we can't parse the time, mark as unknown
                     time_status = 'UNKNOWN'
                     minutes_until = 999
@@ -7177,7 +7578,7 @@ def api_predictions_upcoming():
                                             'race_info': race_info
                                         }
                                 break
-                        except Exception as e:
+                        except Exception:
                             continue
                 
                 if race_predictions:

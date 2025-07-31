@@ -369,6 +369,10 @@ class FormGuideCsvScraper:
         return False
     
     def handle_file_exists_interaction(self, filename, race_info):
+        """Automated handling for existing files - always skip"""
+        print(f"⚠️ File already exists: {filename}")
+        print(f"   Skipping race: {race_info['venue']} Race {race_info['race_number']}")
+        return 'skip'
         """Handle user interaction when file already exists"""
         race_num = race_info['race_number']
         venue = race_info['venue']

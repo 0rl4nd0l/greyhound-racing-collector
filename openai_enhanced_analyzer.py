@@ -16,6 +16,7 @@ Features:
 """
 
 import os
+import time
 import json
 import sqlite3
 import pandas as pd
@@ -79,6 +80,12 @@ class OpenAIEnhancedAnalyzer:
         self.model = "gpt-4-turbo-preview"  # Use GPT-4 for best analysis
         self.temperature = 0.3  # Lower temperature for more consistent analysis
         self.max_tokens = 2000
+        
+        # Check if we should use mock mode
+        self.mock_mode = False
+        if not self.api_key or self.api_key.startswith("sk-test") or self.api_key == 'your_openai_api_key_here':
+            logger.warning("Using mock OpenAI mode - API key not valid")
+            self.mock_mode = True
         
         # Analysis templates
         self.setup_analysis_templates()

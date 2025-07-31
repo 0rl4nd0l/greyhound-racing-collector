@@ -1,26 +1,33 @@
-# Core data processing
-pandas==2.2.1
-numpy==1.26.4
+# Core data processing (Updated to working versions)
+pandas==2.3.1
+numpy==2.3.2
 
 # Web scraping and HTTP requests
-requests==2.31.0
-urllib3==2.2.1
-beautifulsoup4>=4.11.0
+requests==2.32.4
+urllib3==2.5.0
+beautifulsoup4==4.13.4
+selenium==4.34.2
+webdriver-manager==4.0.2
+lxml==6.0.0
 
 # Flask web framework
-Flask>=2.3.0
-Flask-CORS>=4.0.0
-Werkzeug>=2.3.0
+Flask==3.1.1
+Flask-CORS==6.0.1
+Werkzeug==3.1.3
 
 # Environment and configuration
-python-dotenv>=1.0.0
+python-dotenv==1.0.1
+schedule==1.2.2
+pytz==2025.2
 
-# Machine learning
-scikit-learn>=1.3.0
-joblib>=1.3.0
+# Machine learning (Compatible versions)
+scikit-learn==1.7.1
+xgboost==3.0.3
+joblib==1.5.1
+scipy==1.16.1
 
 # Database
-sqlite3  # Comes with Python standard library
+# sqlite3 - Comes with Python standard library (no installation needed)
 
 # Testing
 pytest>=7.0.0

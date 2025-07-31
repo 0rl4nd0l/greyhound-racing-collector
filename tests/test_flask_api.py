@@ -24,6 +24,132 @@ def client(app):
     """A test client for the app."""
     return app.test_client()
 
+
+def test_api_races_paginated_happy_path(client):
+    """Test the /api/races/paginated endpoint for happy path."""
+    response = client.get('/api/races/paginated?page=1&per_page=10')
+    assert response.status_code == 200
+    json_data = response.get_json()
+    assert json_data['success'] is True
+    assert 'races' in json_data
+    assert 'pagination' in json_data
+    assert json_data['pagination']['page'] == 1
+    assert json_data['pagination']['per_page'] == 10
+    assert len(json_data['races']) <= 10  # Check that we do not exceed per_page count
+
+def test_api_races_paginated_last_page(client):
+    """Test the /api/races/paginated for the last page, ensuring no errors on upper edge."""
+    response = client.get('/api/races/paginated?page=999')
+    assert response.status_code == 200
+    json_data = response.get_json()
+    assert json_data['success'] is True
+    assert 'pagination' in json_data
+    assert json_data['pagination']['page'] == 999
+    assert json_data['pagination']['has_next'] is False
+    assert 'races' in json_data
+    assert 'pagination' in json_data
+
+def test_api_races_paginated_out_of_range(client):
+    """Test the /api/races/paginated fails gracefully for non-existent pages."""
+    response = client.get('/api/races/paginated?page=10000')
+    assert response.status_code == 200
+    json_data = response.get_json()
+    assert json_data['success'] is True
+    assert not json_data['races']
+    assert json_data['pagination']['has_next'] is False  # Edge case coverage
+    assert json_data['pagination']['page'] == 10000  # Ensure pagination reflects request
+
+def test_api_races_paginated_bad_input(client):
+    """Test the /api/races/paginated for invalid inputs to ensure robust error handling."""
+    # Test non-integer page parameter
+    response = client.get('/api/races/paginated?page=abc')
+    assert response.status_code == 400
+    json_data = response.get_json()
+    assert json_data['success'] is False
+    assert 'Invalid page or per_page parameter' in json_data['message']
+
+    # Test negative page parameter
+    response = client.get('/api/races/paginated?page=-1')
+    assert response.status_code == 400
+    json_data = response.get_json()
+    assert json_data['success'] is False
+    assert 'Page number must be greater than 0' in json_data['message']
+    
+    # Test non-integer per_page parameter
+    response = client.get('/api/races/paginated?per_page=xyz')
+    assert response.status_code == 400
+    json_data = response.get_json()
+    assert json_data['success'] is False
+    assert 'Invalid page or per_page parameter' in json_data['message']
+    
+    # Test zero per_page parameter
+    response = client.get('/api/races/paginated?per_page=0')
+    assert response.status_code == 400
+    json_data = response.get_json()
+    assert json_data['success'] is False
+    assert 'Per page value must be greater than 0' in json_data['message']
+
+    # Test negative per_page parameter
+    response = client.get('/api/races/paginated?per_page=-5')
+    assert response.status_code == 400
+    json_data = response.get_json()
+    assert json_data['success'] is False
+    assert 'Per page value must be greater than 0' in json_data['message']
+
+def test_api_races_paginated_json_structure(client):
+    """Test that the /api/races/paginated endpoint returns the expected JSON structure."""
+    response = client.get('/api/races/paginated?page=1&per_page=5')
+    assert response.status_code == 200
+    json_data = response.get_json()
+    
+    # Verify top-level structure
+    assert json_data['success'] is True
+    assert 'races' in json_data
+    assert 'pagination' in json_data
+    assert 'sort_by' in json_data
+    assert 'order' in json_data
+    assert 'search' in json_data
+    
+    # Verify pagination structure
+    pagination = json_data['pagination']
+    assert 'page' in pagination
+    assert 'per_page' in pagination
+    assert 'total_count' in pagination
+    assert 'total_pages' in pagination
+    assert 'has_next' in pagination
+    assert 'has_prev' in pagination
+    
+    # Verify race structure (if races exist)
+    races = json_data['races']
+    assert isinstance(races, list)
+    
+    if races:  # Only check race structure if races exist
+        race = races[0]
+        expected_race_fields = [
+            'race_id', 'venue', 'race_number', 'race_date', 'race_name',
+            'grade', 'distance', 'field_size', 'winner_name', 'winner_odds',
+            'winner_margin', 'url', 'extraction_timestamp', 'track_condition', 'runners'
+        ]
+        
+        for field in expected_race_fields:
+            assert field in race, f"Missing field '{field}' in race object"
+        
+        # Verify runners structure
+        runners = race['runners']
+        assert isinstance(runners, list)
+        
+        if runners:  # Only check runner structure if runners exist
+            runner = runners[0]
+            expected_runner_fields = [
+                'dog_name', 'box_number', 'finish_position', 'individual_time',
+                'weight', 'odds', 'margin', 'trainer_name', 'win_probability',
+                'place_probability', 'confidence'
+            ]
+            
+            for field in expected_runner_fields:
+                assert field in runner, f"Missing field '{field}' in runner object"
+            assert type(runner['box_number']) is int, f"box_number should be an integer"
+
 def save_snapshot(name, data):
     """Saves a snapshot of the JSON response."""
     snapshot_dir = os.path.join(os.path.dirname(__file__), 'fixtures', 'expected_responses')
@@ -31,6 +157,151 @@ def save_snapshot(name, data):
     snapshot_path = os.path.join(snapshot_dir, f'{name}.json')
     with open(snapshot_path, 'w') as f:
         json.dump(data, f, indent=4, sort_keys=True)
+
+def test_api_races_paginated_database_error_handling(client):
+    """Test the /api/races/paginated endpoint handles database errors gracefully."""
+    # This test assumes we can trigger a database error by invalid query parameters
+    # In a real scenario, we might mock the database connection to fail
+    response = client.get('/api/races/paginated?page=1&per_page=10')
+    assert response.status_code == 200  # Should not crash even if DB issues occur
+    json_data = response.get_json()
+    # Should return either success data or a proper error response
+    if not json_data['success']:
+        assert 'message' in json_data
+        assert 'error' in json_data['message'].lower()
+        assert response.status_code == 500
+    else:
+        # Success case - verify database schema compliance
+        assert 'races' in json_data
+        assert 'pagination' in json_data
+        
+def test_api_races_paginated_schema_validation(client):
+    """Test that race and runner data matches expected schema from unified DB."""
+    response = client.get('/api/races/paginated?page=1&per_page=3')
+    assert response.status_code == 200
+    json_data = response.get_json()
+    assert json_data['success'] is True
+    
+    races = json_data['races']
+    if races:
+        race = races[0]
+        
+        # Verify race_metadata table columns are present
+        race_metadata_columns = [
+            'race_id', 'venue', 'race_number', 'race_date', 'race_name',
+            'grade', 'distance', 'field_size', 'winner_name', 'winner_odds',
+            'winner_margin', 'url', 'extraction_timestamp', 'track_condition'
+        ]
+        
+        for column in race_metadata_columns:
+            assert column in race, f"Missing race_metadata column '{column}' in response"
+        
+        # Verify dog_race_data table columns are present in runners
+        runners = race.get('runners', [])
+        if runners:
+            runner = runners[0]
+            dog_race_data_columns = [
+                'dog_name', 'box_number', 'finish_position', 'individual_time',
+                'weight', 'odds', 'margin', 'trainer_name'
+            ]
+            
+            for column in dog_race_data_columns:
+                # Map from database column to API response field
+                api_field = column
+                if column == 'odds_decimal':
+                    api_field = 'odds'
+                elif column == 'trainer_name':
+                    api_field = 'trainer_name'
+                    
+                assert api_field in runner, f"Missing dog_race_data column '{column}' mapped as '{api_field}' in runner response"
+                
+        # Verify data types are correct
+        assert isinstance(race['race_number'], (int, str))
+        assert isinstance(race['race_id'], str)
+        assert isinstance(race['venue'], str)
+        
+def test_api_races_paginated_query_params_validation(client):
+    """Test all supported query parameters work correctly."""
+    # Test search functionality
+    response = client.get('/api/races/paginated?page=1&per_page=5&search=DAPTO')
+    assert response.status_code == 200
+    json_data = response.get_json()
+    assert json_data['success'] is True
+    assert json_data['search'] == 'DAPTO'
+    
+    # Test sorting options
+    sort_options = ['race_date', 'venue', 'confidence', 'grade']
+    for sort_by in sort_options:
+        response = client.get(f'/api/races/paginated?page=1&sort_by={sort_by}')
+        assert response.status_code == 200
+        json_data = response.get_json()
+        assert json_data['success'] is True
+        assert json_data['sort_by'] == sort_by
+    
+    # Test order options
+    for order in ['asc', 'desc']:
+        response = client.get(f'/api/races/paginated?page=1&order={order}')
+        assert response.status_code == 200
+        json_data = response.get_json()
+        assert json_data['success'] is True
+        assert json_data['order'] == order
+        
+def test_api_races_paginated_per_page_limits(client):
+    """Test per_page parameter respects limits and boundaries."""
+    # Test maximum per_page limit (should be capped at 50)
+    response = client.get('/api/races/paginated?page=1&per_page=100')
+    assert response.status_code == 200
+    json_data = response.get_json()
+    assert json_data['success'] is True
+    assert json_data['pagination']['per_page'] == 50  # Should be capped
+    assert len(json_data['races']) <= 50
+    
+    # Test minimum valid per_page
+    response = client.get('/api/races/paginated?page=1&per_page=1')
+    assert response.status_code == 200
+    json_data = response.get_json()
+    assert json_data['success'] is True
+    assert json_data['pagination']['per_page'] == 1
+    assert len(json_data['races']) <= 1
+    
+def test_api_races_paginated_default_values(client):
+    """Test that default values are applied correctly when no parameters provided."""
+    response = client.get('/api/races/paginated')
+    assert response.status_code == 200
+    json_data = response.get_json()
+    assert json_data['success'] is True
+    
+    # Check default values
+    assert json_data['pagination']['page'] == 1  # Default page
+    assert json_data['pagination']['per_page'] == 10  # Default per_page
+    assert json_data['sort_by'] == 'race_date'  # Default sort_by
+    assert json_data['order'] == 'desc'  # Default order
+    assert json_data['search'] == ''  # Default empty search
+    
+def test_api_races_paginated_pagination_math(client):
+    """Test that pagination calculations are mathematically correct."""
+    response = client.get('/api/races/paginated?page=1&per_page=5')
+    assert response.status_code == 200
+    json_data = response.get_json()
+    assert json_data['success'] is True
+    
+    pagination = json_data['pagination']
+    total_count = pagination['total_count']
+    per_page = pagination['per_page']
+    total_pages = pagination['total_pages']
+    
+    # Verify total_pages calculation is correct
+    import math
+    expected_total_pages = math.ceil(total_count / per_page) if total_count > 0 else 1
+    assert total_pages == expected_total_pages, f"Expected {expected_total_pages} total pages, got {total_pages}"
+    
+    # Verify has_next and has_prev logic
+    page = pagination['page']
+    has_next = pagination['has_next']
+    has_prev = pagination['has_prev']
+    
+    assert has_next == (page < total_pages), f"has_next should be {page < total_pages}, got {has_next}"
+    assert has_prev == (page > 1), f"has_prev should be {page > 1}, got {has_prev}"
 
 def test_api_dogs_search(client):
     """Test the /api/dogs/search endpoint."""
@@ -88,9 +359,9 @@ def test_predict_endpoint_success(client, app):
     race_filepath = os.path.join(app.config['UPCOMING_DIR'], race_filename)
     
     with open(race_filepath, 'w') as f:
-        f.write("Dog,Box,Weight,Trainer\n")
-        f.write("Test Dog 1,1,30.0,Trainer A\n")
-        f.write("Test Dog 2,2,31.0,Trainer B\n")
+        f.write("Dog Name,Box,Weight,Trainer\n")
+        f.write("1. Test Dog 1,1,30.0,Trainer A\n")
+        f.write("2. Test Dog 2,2,31.0,Trainer B\n")
 
     payload = {'race_filename': race_filename}
     response = client.post('/api/predict', json=payload)

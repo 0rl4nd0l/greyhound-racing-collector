@@ -188,7 +188,6 @@ class FastTrackScraper:
         except Exception as e:
             self.logger.error(f"Unexpected error fetching {url}: {e}")
             return None
-
     def _parse_dog(self, soup: BeautifulSoup) -> Dict[str, Any]:
         """
         Parses the HTML of a dog's profile page.
@@ -201,6 +200,14 @@ class FastTrackScraper:
         """
         self.logger.debug("Parsing dog profile soup.")
         dog_details = {}
+
+        # Extract dog's ID
+        id_elem = soup.select_one("input[name='dogId'], #dogId")
+        if id_elem:
+            try:
+                dog_details['dog_id'] = int(id_elem.get('value') or id_elem.text.strip())
+            except (ValueError, TypeError):
+                dog_details['dog_id'] = id_elem.get('value') or id_elem.text.strip()
 
         # Example: Extracting dog's name
         name_tag = soup.select_one(".dog-profile-header h1")
@@ -299,13 +306,34 @@ class FastTrackScraper:
         self.logger.debug("Parsing race result soup.")
         race_data = {}
 
+        # Initialize required fields
+        race_data['race_id'] = None
+        race_data['race_name'] = None
+        race_data['venue'] = None
+        race_data['race_date'] = None
+        race_data['distance'] = None
+        race_data['grade'] = None
+        race_data['track_condition'] = None
+
         # Extract race metadata
         header = soup.select_one("h1")
         if header:
             header_text = header.text.strip()
             parts = header_text.split(' ')
-            race_data['venue'] = parts[0]
-            race_data['race_date'] = parts[-1]
+            if len(parts) >= 2:
+                race_data['venue'] = parts[0]
+                race_data['race_date'] = parts[-1]
+            race_data['race_name'] = header_text
+        
+        # Try to extract race ID from URL or page elements
+        race_id_elem = soup.select_one("[data-race-id], input[name='raceId'], #raceId")
+        if race_id_elem:
+            race_id_value = race_id_elem.get('value') or race_id_elem.get('data-race-id')
+            if race_id_value:
+                try:
+                    race_data['race_id'] = int(race_id_value)
+                except (ValueError, TypeError):
+                    race_data['race_id'] = race_id_value
         
         race_details_table = soup.select_one("table.race-details")
         if race_details_table:
@@ -325,8 +353,36 @@ class FastTrackScraper:
                 name_elem = row.select_one("a[href*='/Dog/Form?id=']")
                 
                 if box_elem and name_elem:
-                    dog_data['box_number'] = box_elem.text.strip()
+                    # Convert box_number to integer
+                    try:
+                        dog_data['box_number'] = int(box_elem.text.strip())
+                    except (ValueError, TypeError):
+                        dog_data['box_number'] = box_elem.text.strip()
+                    
                     dog_data['dog_name'] = name_elem.text.strip()
+                    
+                    # Initialize optional fields
+                    dog_data['finish_position'] = None
+                    dog_data['race_time'] = None
+                    
+                    # Try to extract finish position and race time from other columns
+                    position_elem = row.select_one(".position, .finish-position, td:nth-child(2)")
+                    if position_elem:
+                        try:
+                            dog_data['finish_position'] = int(position_elem.text.strip())
+                        except (ValueError, TypeError):
+                            pass
+                    
+                    time_elem = row.select_one(".race-time, .time, td:nth-child(3)")
+                    if time_elem:
+                        try:
+                            time_text = time_elem.text.strip()
+                            # Handle various time formats (e.g., "29.45", "29.45s")
+                            time_text = time_text.replace('s', '').strip()
+                            dog_data['race_time'] = float(time_text)
+                        except (ValueError, TypeError):
+                            pass
+                    
                     results.append(dog_data)
             except Exception as e:
                 self.logger.warning(f"Error parsing dog row: {e}")

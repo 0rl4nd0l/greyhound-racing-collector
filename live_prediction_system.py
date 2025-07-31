@@ -78,6 +78,8 @@ class LivePredictionSystem:
         all_races = []
         base_url = "https://www.thedogs.com.au"
 
+        fallback_to_demo = False
+
         for i in range(days_ahead + 1):
             check_date = datetime.now().date() + timedelta(days=i)
             date_str = check_date.strftime('%Y-%m-%d')
@@ -106,9 +108,31 @@ class LivePredictionSystem:
 
             except requests.RequestException as e:
                 self.logger.error(f"Error fetching races for {date_str}: {e}")
+                fallback_to_demo = True
+
+        # if fallback_to_demo and not all_races:
+        #     self.logger.info("No live races available, using demo race data for prediction.")
+        #     all_races = self.get_demo_races_data()
 
         self.logger.info(f"--- Fetched a total of {len(all_races)} upcoming races ---")
         return all_races
+
+    def get_demo_races_data(self):
+        """Provides demo race data when live races are not available."""
+        return [
+            {
+                'venue': 'Demo Track',
+                'race_number': 1,
+                'race_url': '',
+                'race_date': datetime.now().strftime('%Y-%m-%d')
+            },
+            {
+                'venue': 'Demo Track',
+                'race_number': 2,
+                'race_url': '',
+                'race_date': datetime.now().strftime('%Y-%m-%d')
+            }
+        ]
 
     def store_upcoming_races(self, races):
         """Stores upcoming race information in the database."""

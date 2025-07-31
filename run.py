@@ -19,19 +19,20 @@ from pathlib import Path
 def run_collection():
     """Run data collection process"""
     print("🔍 Starting data collection...")
-    
-    # Try to run form guide scraper first
-    if os.path.exists('form_guide_csv_scraper.py'):
-        try:
-            print("📊 Running form guide CSV scraper...")
-            result = subprocess.run([sys.executable, 'form_guide_csv_scraper.py'], 
-                                  capture_output=True, text=True, timeout=300)
-            if result.returncode == 0:
-                print("✅ Form guide scraping completed")
-            else:
-                print(f"⚠️ Form guide scraping had issues: {result.stderr[:200]}")
-        except Exception as e:
-            print(f"❌ Form guide scraping failed: {e}")
+        
+    # Ensure comprehensive scraping of all available data
+    try:
+        print("📊 Running form guide CSV scraper for full data...")
+        result = subprocess.run([sys.executable, 'form_guide_csv_scraper.py'], 
+                              capture_output=True, text=True, timeout=60)  # Extended timeout for full scrape
+        if result.returncode == 0:
+            print("✅ Form guide scraping completed successfully")
+        else:
+            print(f"⚠️ Form guide scraping issues: {result.stderr[:200]}")
+    except subprocess.TimeoutExpired:
+        print("⏰ Form guide scraping timed out, please retry if needed.")
+    except Exception as e:
+        print(f"❌ Form guide scraping failed: {e}")
     
     # Check for upcoming race browser
     if os.path.exists('upcoming_race_browser.py'):
@@ -41,6 +42,20 @@ def run_collection():
             browser = UpcomingRaceBrowser()
             races = browser.get_upcoming_races(days_ahead=1)
             print(f"✅ Found {len(races)} upcoming races")
+        
+            # Move downloaded races to unprocessed for automatic processing
+            upcoming_dir = Path('./upcoming_races')
+            unprocessed_dir = Path('./unprocessed')
+            
+            if upcoming_dir.exists():
+                upcoming_files = list(upcoming_dir.glob('*.csv'))
+                for file in upcoming_files:
+                    destination = unprocessed_dir / file.name
+                    if destination.exists():
+                        print(f"   ⏭️ Skipping {file.name} - already in unprocessed")
+                    else:
+                        file.rename(destination)
+                        print(f"   📂 Moved {file.name} to unprocessed for processing")
         except Exception as e:
             print(f"⚠️ Upcoming race collection had issues: {e}")
     

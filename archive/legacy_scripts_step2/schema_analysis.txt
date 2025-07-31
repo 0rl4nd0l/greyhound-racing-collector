@@ -1,0 +1,328 @@
+=== DATABASE SCHEMA ANALYSIS ===
+
+TABLES AND COLUMNS:
+--------------------------------------------------
+
+Table: race_metadata (40 columns)
+Columns: id, race_id, venue, race_number, race_date, race_name, grade, distance, track_condition, weather, temperature, humidity, wind_speed, wind_direction, track_record, prize_money_total, prize_money_breakdown, race_time, field_size, url, extraction_timestamp, data_source, winner_name, winner_odds, winner_margin, race_status, data_quality_note, actual_field_size, scratched_count, scratch_rate, box_analysis, weather_condition, precipitation, pressure, visibility, weather_location, weather_timestamp, weather_adjustment_factor, sportsbet_url, venue_slug
+
+Table: dog_race_data_backup (40 columns)
+Columns: id, race_id, dog_name, dog_clean_name, dog_id, box_number, finish_position, trainer_name, trainer_id, weight, running_style, odds_decimal, odds_fractional, starting_price, individual_time, sectional_1st, sectional_2nd, sectional_3rd, margin, beaten_margin, was_scratched, blackbook_link, extraction_timestamp, data_source, form_guide_json, historical_records, performance_rating, speed_rating, class_rating, recent_form, win_probability, place_probability, scraped_trainer_name, scraped_reaction_time, scraped_nbtt, scraped_race_classification, scraped_raw_result, scraped_finish_position, best_time, data_quality_note
+
+Table: race_analytics (9 columns)
+Columns: id, race_id, analysis_type, analysis_data, confidence_score, predicted_winner, predicted_odds, analysis_timestamp, model_version
+
+Table: track_conditions (12 columns)
+Columns: id, venue, date, condition, rail_position, track_rating, weather_conditions, temperature, humidity, wind_conditions, track_bias, extraction_timestamp
+
+Table: track_condition_backup_20250724_185411 (5 columns)
+Columns: race_id, track_condition, weather, url, extraction_timestamp
+
+Table: dog_race_data (40 columns)
+Columns: id, race_id, dog_name, dog_clean_name, dog_id, box_number, trainer_name, trainer_id, weight, running_style, odds_decimal, odds_fractional, starting_price, individual_time, sectional_1st, sectional_2nd, sectional_3rd, margin, beaten_margin, was_scratched, blackbook_link, extraction_timestamp, data_source, form_guide_json, historical_records, performance_rating, speed_rating, class_rating, recent_form, win_probability, place_probability, scraped_trainer_name, scraped_reaction_time, scraped_nbtt, scraped_race_classification, scraped_raw_result, scraped_finish_position, best_time, data_quality_note, finish_position
+
+Table: live_odds (15 columns)
+Columns: id, race_id, venue, race_number, race_date, race_time, dog_name, dog_clean_name, box_number, odds_decimal, odds_fractional, market_type, source, timestamp, is_current
+
+Table: odds_history (7 columns)
+Columns: id, race_id, dog_clean_name, odds_decimal, odds_change, timestamp, source
+
+Table: value_bets (10 columns)
+Columns: id, race_id, dog_clean_name, predicted_probability, market_odds, implied_probability, value_percentage, confidence_level, bet_recommendation, timestamp
+
+Table: predictions (7 columns)
+Columns: id, race_id, dog_clean_name, predicted_probability, confidence_level, prediction_source, timestamp
+
+Table: weather_data (16 columns)
+Columns: id, venue_code, race_date, race_time, temperature, humidity, wind_speed, wind_direction, pressure, condition, precipitation, visibility, uv_index, data_source, collection_timestamp, confidence
+
+Table: weather_impact_analysis (13 columns)
+Columns: id, venue_code, weather_condition, temperature_range, humidity_range, wind_range, avg_winning_time, time_variance, favorite_strike_rate, avg_winning_margin, track_bias_impact, sample_size, last_updated
+
+Table: weather_forecast_cache (6 columns)
+Columns: id, venue_code, forecast_date, forecast_data, cache_timestamp, expires_at
+
+Table: weather_data_v2 (16 columns)
+Columns: id, venue_code, race_date, race_time, temperature, humidity, wind_speed, wind_direction, pressure, condition, precipitation, visibility, weather_code, data_source, collection_timestamp, confidence
+
+Table: venue_mappings (8 columns)
+Columns: id, venue_key, official_name, venue_codes, track_codes, location, active, created_at
+
+Table: enhanced_expert_data (21 columns)
+Columns: id, race_id, dog_name, dog_clean_name, venue, race_date, race_number, position, box_number, weight, distance, grade, race_time, win_time, bonus_time, first_sectional, margin, pir_rating, starting_price, extraction_timestamp, data_source
+
+Table: enhanced_expert_data_backup_dog_day_fix (21 columns)
+Columns: id, race_id, dog_name, dog_clean_name, venue, race_date, race_number, position, box_number, weight, distance, grade, race_time, win_time, bonus_time, first_sectional, margin, pir_rating, starting_price, extraction_timestamp, data_source
+
+Table: dog_race_data_backup_box_number_fix (40 columns)
+Columns: id, race_id, dog_name, dog_clean_name, dog_id, box_number, trainer_name, trainer_id, weight, running_style, odds_decimal, odds_fractional, starting_price, individual_time, sectional_1st, sectional_2nd, sectional_3rd, margin, beaten_margin, was_scratched, blackbook_link, extraction_timestamp, data_source, form_guide_json, historical_records, performance_rating, speed_rating, class_rating, recent_form, win_probability, place_probability, scraped_trainer_name, scraped_reaction_time, scraped_nbtt, scraped_race_classification, scraped_raw_result, scraped_finish_position, best_time, data_quality_note, finish_position
+
+Table: race_metadata_backup_dedup_race_metadata (39 columns)
+Columns: id, race_id, venue, race_number, race_date, race_name, grade, distance, track_condition, weather, temperature, humidity, wind_speed, wind_direction, track_record, prize_money_total, prize_money_breakdown, race_time, field_size, url, extraction_timestamp, data_source, winner_name, winner_odds, winner_margin, race_status, data_quality_note, actual_field_size, scratched_count, scratch_rate, box_analysis, weather_condition, precipitation, pressure, visibility, weather_location, weather_timestamp, weather_adjustment_factor, sportsbet_url
+
+Table: dog_race_data_backup_dedup_dog_race_data (40 columns)
+Columns: id, race_id, dog_name, dog_clean_name, dog_id, box_number, trainer_name, trainer_id, weight, running_style, odds_decimal, odds_fractional, starting_price, individual_time, sectional_1st, sectional_2nd, sectional_3rd, margin, beaten_margin, was_scratched, blackbook_link, extraction_timestamp, data_source, form_guide_json, historical_records, performance_rating, speed_rating, class_rating, recent_form, win_probability, place_probability, scraped_trainer_name, scraped_reaction_time, scraped_nbtt, scraped_race_classification, scraped_raw_result, scraped_finish_position, best_time, data_quality_note, finish_position
+
+Table: dogs (9 columns)
+Columns: dog_id, dog_name, total_races, total_wins, total_places, best_time, average_position, last_race_date, created_at
+
+Table: dog_performances (12 columns)
+Columns: performance_id, dog_name, race_id, box_number, finish_position, race_time, weight, trainer, odds, margin, created_at, dog_id
+
+Table: dogs_ft_extra (18 columns)
+Columns: id, dog_id, sire_name, sire_id, dam_name, dam_id, whelping_date, age_days, color, sex, ear_brand, career_starts, career_wins, career_places, career_win_percent, winning_boxes_json, last_updated, data_source
+
+Table: races_ft_extra (12 columns)
+Columns: id, race_id, track_rating, weather_description, race_comment, split_1_time_winner, split_2_time_winner, run_home_time_winner, video_url, stewards_report_url, last_updated, data_source
+
+Table: dog_performance_ft_extra (13 columns)
+Columns: id, performance_id, pir_rating, split_1_time, split_2_time, run_home_time, beaten_margin, in_race_comment, fixed_odds_sp, prize_money, pre_race_weight, last_updated, data_source
+
+Table: expert_form_analysis (14 columns)
+Columns: id, race_id, pdf_url, analysis_text, expert_selections, confidence_ratings, key_insights, analysis_date, expert_name, extraction_timestamp, extraction_confidence, data_source, processing_status, processing_notes
+
+Table: races_gr_extra (9 columns)
+Columns: id, race_id, meeting_id, long_form_url, short_form_url, fields_url, data_source, scraped_at, updated_at
+
+Table: gr_race_details (13 columns)
+Columns: id, race_id, race_number, race_name, race_time, race_distance, race_grade, prize_money, conditions, track_condition, weather, scraped_at, updated_at
+
+Table: gr_dog_entries (23 columns)
+Columns: id, race_id, dog_name, box_number, trainer_name, owner_name, form_guide, recent_form, best_time, last_start, weight, age_months, color, sex, sire, dam, comment, jockey_name, barrier_trial_info, scratched, emergency, scraped_at, updated_at
+
+Table: gr_dog_form (13 columns)
+Columns: id, dog_entry_id, race_date, venue, distance, box_number, finishing_position, race_time, split_times, margin, weight, comments, scraped_at
+
+
+COLUMN FREQUENCY ANALYSIS:
+--------------------------------------------------
+id: appears in 27 table(s) - race_metadata, dog_race_data_backup, race_analytics, track_conditions, dog_race_data, live_odds, odds_history, value_bets, predictions, weather_data, weather_impact_analysis, weather_forecast_cache, weather_data_v2, venue_mappings, enhanced_expert_data, enhanced_expert_data_backup_dog_day_fix, dog_race_data_backup_box_number_fix, race_metadata_backup_dedup_race_metadata, dog_race_data_backup_dedup_dog_race_data, dogs_ft_extra, races_ft_extra, dog_performance_ft_extra, expert_form_analysis, races_gr_extra, gr_race_details, gr_dog_entries, gr_dog_form
+race_id: appears in 20 table(s) - race_metadata, dog_race_data_backup, race_analytics, track_condition_backup_20250724_185411, dog_race_data, live_odds, odds_history, value_bets, predictions, enhanced_expert_data, enhanced_expert_data_backup_dog_day_fix, dog_race_data_backup_box_number_fix, race_metadata_backup_dedup_race_metadata, dog_race_data_backup_dedup_dog_race_data, dog_performances, races_ft_extra, expert_form_analysis, races_gr_extra, gr_race_details, gr_dog_entries
+data_source: appears in 15 table(s) - race_metadata, dog_race_data_backup, dog_race_data, weather_data, weather_data_v2, enhanced_expert_data, enhanced_expert_data_backup_dog_day_fix, dog_race_data_backup_box_number_fix, race_metadata_backup_dedup_race_metadata, dog_race_data_backup_dedup_dog_race_data, dogs_ft_extra, races_ft_extra, dog_performance_ft_extra, expert_form_analysis, races_gr_extra
+extraction_timestamp: appears in 11 table(s) - race_metadata, dog_race_data_backup, track_conditions, track_condition_backup_20250724_185411, dog_race_data, enhanced_expert_data, enhanced_expert_data_backup_dog_day_fix, dog_race_data_backup_box_number_fix, race_metadata_backup_dedup_race_metadata, dog_race_data_backup_dedup_dog_race_data, expert_form_analysis
+race_time: appears in 10 table(s) - race_metadata, live_odds, weather_data, weather_data_v2, enhanced_expert_data, enhanced_expert_data_backup_dog_day_fix, race_metadata_backup_dedup_race_metadata, dog_performances, gr_race_details, gr_dog_form
+dog_name: appears in 10 table(s) - dog_race_data_backup, dog_race_data, live_odds, enhanced_expert_data, enhanced_expert_data_backup_dog_day_fix, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data, dogs, dog_performances, gr_dog_entries
+dog_clean_name: appears in 10 table(s) - dog_race_data_backup, dog_race_data, live_odds, odds_history, value_bets, predictions, enhanced_expert_data, enhanced_expert_data_backup_dog_day_fix, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data
+box_number: appears in 10 table(s) - dog_race_data_backup, dog_race_data, live_odds, enhanced_expert_data, enhanced_expert_data_backup_dog_day_fix, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data, dog_performances, gr_dog_entries, gr_dog_form
+weight: appears in 9 table(s) - dog_race_data_backup, dog_race_data, enhanced_expert_data, enhanced_expert_data_backup_dog_day_fix, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data, dog_performances, gr_dog_entries, gr_dog_form
+race_date: appears in 8 table(s) - race_metadata, live_odds, weather_data, weather_data_v2, enhanced_expert_data, enhanced_expert_data_backup_dog_day_fix, race_metadata_backup_dedup_race_metadata, gr_dog_form
+margin: appears in 8 table(s) - dog_race_data_backup, dog_race_data, enhanced_expert_data, enhanced_expert_data_backup_dog_day_fix, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data, dog_performances, gr_dog_form
+venue: appears in 7 table(s) - race_metadata, track_conditions, live_odds, enhanced_expert_data, enhanced_expert_data_backup_dog_day_fix, race_metadata_backup_dedup_race_metadata, gr_dog_form
+dog_id: appears in 7 table(s) - dog_race_data_backup, dog_race_data, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data, dogs, dog_performances, dogs_ft_extra
+race_number: appears in 6 table(s) - race_metadata, live_odds, enhanced_expert_data, enhanced_expert_data_backup_dog_day_fix, race_metadata_backup_dedup_race_metadata, gr_race_details
+data_quality_note: appears in 6 table(s) - race_metadata, dog_race_data_backup, dog_race_data, dog_race_data_backup_box_number_fix, race_metadata_backup_dedup_race_metadata, dog_race_data_backup_dedup_dog_race_data
+odds_decimal: appears in 6 table(s) - dog_race_data_backup, dog_race_data, live_odds, odds_history, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data
+starting_price: appears in 6 table(s) - dog_race_data_backup, dog_race_data, enhanced_expert_data, enhanced_expert_data_backup_dog_day_fix, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data
+best_time: appears in 6 table(s) - dog_race_data_backup, dog_race_data, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data, dogs, gr_dog_entries
+distance: appears in 5 table(s) - race_metadata, enhanced_expert_data, enhanced_expert_data_backup_dog_day_fix, race_metadata_backup_dedup_race_metadata, gr_dog_form
+temperature: appears in 5 table(s) - race_metadata, track_conditions, weather_data, weather_data_v2, race_metadata_backup_dedup_race_metadata
+humidity: appears in 5 table(s) - race_metadata, track_conditions, weather_data, weather_data_v2, race_metadata_backup_dedup_race_metadata
+finish_position: appears in 5 table(s) - dog_race_data_backup, dog_race_data, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data, dog_performances
+trainer_name: appears in 5 table(s) - dog_race_data_backup, dog_race_data, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data, gr_dog_entries
+odds_fractional: appears in 5 table(s) - dog_race_data_backup, dog_race_data, live_odds, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data
+beaten_margin: appears in 5 table(s) - dog_race_data_backup, dog_race_data, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data, dog_performance_ft_extra
+recent_form: appears in 5 table(s) - dog_race_data_backup, dog_race_data, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data, gr_dog_entries
+grade: appears in 4 table(s) - race_metadata, enhanced_expert_data, enhanced_expert_data_backup_dog_day_fix, race_metadata_backup_dedup_race_metadata
+track_condition: appears in 4 table(s) - race_metadata, track_condition_backup_20250724_185411, race_metadata_backup_dedup_race_metadata, gr_race_details
+weather: appears in 4 table(s) - race_metadata, track_condition_backup_20250724_185411, race_metadata_backup_dedup_race_metadata, gr_race_details
+wind_speed: appears in 4 table(s) - race_metadata, weather_data, weather_data_v2, race_metadata_backup_dedup_race_metadata
+wind_direction: appears in 4 table(s) - race_metadata, weather_data, weather_data_v2, race_metadata_backup_dedup_race_metadata
+precipitation: appears in 4 table(s) - race_metadata, weather_data, weather_data_v2, race_metadata_backup_dedup_race_metadata
+pressure: appears in 4 table(s) - race_metadata, weather_data, weather_data_v2, race_metadata_backup_dedup_race_metadata
+visibility: appears in 4 table(s) - race_metadata, weather_data, weather_data_v2, race_metadata_backup_dedup_race_metadata
+trainer_id: appears in 4 table(s) - dog_race_data_backup, dog_race_data, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data
+running_style: appears in 4 table(s) - dog_race_data_backup, dog_race_data, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data
+individual_time: appears in 4 table(s) - dog_race_data_backup, dog_race_data, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data
+sectional_1st: appears in 4 table(s) - dog_race_data_backup, dog_race_data, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data
+sectional_2nd: appears in 4 table(s) - dog_race_data_backup, dog_race_data, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data
+sectional_3rd: appears in 4 table(s) - dog_race_data_backup, dog_race_data, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data
+was_scratched: appears in 4 table(s) - dog_race_data_backup, dog_race_data, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data
+blackbook_link: appears in 4 table(s) - dog_race_data_backup, dog_race_data, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data
+form_guide_json: appears in 4 table(s) - dog_race_data_backup, dog_race_data, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data
+historical_records: appears in 4 table(s) - dog_race_data_backup, dog_race_data, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data
+performance_rating: appears in 4 table(s) - dog_race_data_backup, dog_race_data, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data
+speed_rating: appears in 4 table(s) - dog_race_data_backup, dog_race_data, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data
+class_rating: appears in 4 table(s) - dog_race_data_backup, dog_race_data, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data
+win_probability: appears in 4 table(s) - dog_race_data_backup, dog_race_data, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data
+place_probability: appears in 4 table(s) - dog_race_data_backup, dog_race_data, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data
+scraped_trainer_name: appears in 4 table(s) - dog_race_data_backup, dog_race_data, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data
+scraped_reaction_time: appears in 4 table(s) - dog_race_data_backup, dog_race_data, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data
+scraped_nbtt: appears in 4 table(s) - dog_race_data_backup, dog_race_data, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data
+scraped_race_classification: appears in 4 table(s) - dog_race_data_backup, dog_race_data, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data
+scraped_raw_result: appears in 4 table(s) - dog_race_data_backup, dog_race_data, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data
+scraped_finish_position: appears in 4 table(s) - dog_race_data_backup, dog_race_data, dog_race_data_backup_box_number_fix, dog_race_data_backup_dedup_dog_race_data
+timestamp: appears in 4 table(s) - live_odds, odds_history, value_bets, predictions
+venue_code: appears in 4 table(s) - weather_data, weather_impact_analysis, weather_forecast_cache, weather_data_v2
+last_updated: appears in 4 table(s) - weather_impact_analysis, dogs_ft_extra, races_ft_extra, dog_performance_ft_extra
+scraped_at: appears in 4 table(s) - races_gr_extra, gr_race_details, gr_dog_entries, gr_dog_form
+race_name: appears in 3 table(s) - race_metadata, race_metadata_backup_dedup_race_metadata, gr_race_details
+url: appears in 3 table(s) - race_metadata, track_condition_backup_20250724_185411, race_metadata_backup_dedup_race_metadata
+weather_condition: appears in 3 table(s) - race_metadata, weather_impact_analysis, race_metadata_backup_dedup_race_metadata
+condition: appears in 3 table(s) - track_conditions, weather_data, weather_data_v2
+created_at: appears in 3 table(s) - venue_mappings, dogs, dog_performances
+pir_rating: appears in 3 table(s) - enhanced_expert_data, enhanced_expert_data_backup_dog_day_fix, dog_performance_ft_extra
+updated_at: appears in 3 table(s) - races_gr_extra, gr_race_details, gr_dog_entries
+track_record: appears in 2 table(s) - race_metadata, race_metadata_backup_dedup_race_metadata
+prize_money_total: appears in 2 table(s) - race_metadata, race_metadata_backup_dedup_race_metadata
+prize_money_breakdown: appears in 2 table(s) - race_metadata, race_metadata_backup_dedup_race_metadata
+field_size: appears in 2 table(s) - race_metadata, race_metadata_backup_dedup_race_metadata
+winner_name: appears in 2 table(s) - race_metadata, race_metadata_backup_dedup_race_metadata
+winner_odds: appears in 2 table(s) - race_metadata, race_metadata_backup_dedup_race_metadata
+winner_margin: appears in 2 table(s) - race_metadata, race_metadata_backup_dedup_race_metadata
+race_status: appears in 2 table(s) - race_metadata, race_metadata_backup_dedup_race_metadata
+actual_field_size: appears in 2 table(s) - race_metadata, race_metadata_backup_dedup_race_metadata
+scratched_count: appears in 2 table(s) - race_metadata, race_metadata_backup_dedup_race_metadata
+scratch_rate: appears in 2 table(s) - race_metadata, race_metadata_backup_dedup_race_metadata
+box_analysis: appears in 2 table(s) - race_metadata, race_metadata_backup_dedup_race_metadata
+weather_location: appears in 2 table(s) - race_metadata, race_metadata_backup_dedup_race_metadata
+weather_timestamp: appears in 2 table(s) - race_metadata, race_metadata_backup_dedup_race_metadata
+weather_adjustment_factor: appears in 2 table(s) - race_metadata, race_metadata_backup_dedup_race_metadata
+sportsbet_url: appears in 2 table(s) - race_metadata, race_metadata_backup_dedup_race_metadata
+track_rating: appears in 2 table(s) - track_conditions, races_ft_extra
+source: appears in 2 table(s) - live_odds, odds_history
+predicted_probability: appears in 2 table(s) - value_bets, predictions
+confidence_level: appears in 2 table(s) - value_bets, predictions
+collection_timestamp: appears in 2 table(s) - weather_data, weather_data_v2
+confidence: appears in 2 table(s) - weather_data, weather_data_v2
+position: appears in 2 table(s) - enhanced_expert_data, enhanced_expert_data_backup_dog_day_fix
+win_time: appears in 2 table(s) - enhanced_expert_data, enhanced_expert_data_backup_dog_day_fix
+bonus_time: appears in 2 table(s) - enhanced_expert_data, enhanced_expert_data_backup_dog_day_fix
+first_sectional: appears in 2 table(s) - enhanced_expert_data, enhanced_expert_data_backup_dog_day_fix
+performance_id: appears in 2 table(s) - dog_performances, dog_performance_ft_extra
+color: appears in 2 table(s) - dogs_ft_extra, gr_dog_entries
+sex: appears in 2 table(s) - dogs_ft_extra, gr_dog_entries
+prize_money: appears in 2 table(s) - dog_performance_ft_extra, gr_race_details
+venue_slug: appears in 1 table(s) - race_metadata
+analysis_type: appears in 1 table(s) - race_analytics
+analysis_data: appears in 1 table(s) - race_analytics
+confidence_score: appears in 1 table(s) - race_analytics
+predicted_winner: appears in 1 table(s) - race_analytics
+predicted_odds: appears in 1 table(s) - race_analytics
+analysis_timestamp: appears in 1 table(s) - race_analytics
+model_version: appears in 1 table(s) - race_analytics
+date: appears in 1 table(s) - track_conditions
+rail_position: appears in 1 table(s) - track_conditions
+weather_conditions: appears in 1 table(s) - track_conditions
+wind_conditions: appears in 1 table(s) - track_conditions
+track_bias: appears in 1 table(s) - track_conditions
+market_type: appears in 1 table(s) - live_odds
+is_current: appears in 1 table(s) - live_odds
+odds_change: appears in 1 table(s) - odds_history
+market_odds: appears in 1 table(s) - value_bets
+implied_probability: appears in 1 table(s) - value_bets
+value_percentage: appears in 1 table(s) - value_bets
+bet_recommendation: appears in 1 table(s) - value_bets
+prediction_source: appears in 1 table(s) - predictions
+uv_index: appears in 1 table(s) - weather_data
+temperature_range: appears in 1 table(s) - weather_impact_analysis
+humidity_range: appears in 1 table(s) - weather_impact_analysis
+wind_range: appears in 1 table(s) - weather_impact_analysis
+avg_winning_time: appears in 1 table(s) - weather_impact_analysis
+time_variance: appears in 1 table(s) - weather_impact_analysis
+favorite_strike_rate: appears in 1 table(s) - weather_impact_analysis
+avg_winning_margin: appears in 1 table(s) - weather_impact_analysis
+track_bias_impact: appears in 1 table(s) - weather_impact_analysis
+sample_size: appears in 1 table(s) - weather_impact_analysis
+forecast_date: appears in 1 table(s) - weather_forecast_cache
+forecast_data: appears in 1 table(s) - weather_forecast_cache
+cache_timestamp: appears in 1 table(s) - weather_forecast_cache
+expires_at: appears in 1 table(s) - weather_forecast_cache
+weather_code: appears in 1 table(s) - weather_data_v2
+venue_key: appears in 1 table(s) - venue_mappings
+official_name: appears in 1 table(s) - venue_mappings
+venue_codes: appears in 1 table(s) - venue_mappings
+track_codes: appears in 1 table(s) - venue_mappings
+location: appears in 1 table(s) - venue_mappings
+active: appears in 1 table(s) - venue_mappings
+total_races: appears in 1 table(s) - dogs
+total_wins: appears in 1 table(s) - dogs
+total_places: appears in 1 table(s) - dogs
+average_position: appears in 1 table(s) - dogs
+last_race_date: appears in 1 table(s) - dogs
+trainer: appears in 1 table(s) - dog_performances
+odds: appears in 1 table(s) - dog_performances
+sire_name: appears in 1 table(s) - dogs_ft_extra
+sire_id: appears in 1 table(s) - dogs_ft_extra
+dam_name: appears in 1 table(s) - dogs_ft_extra
+dam_id: appears in 1 table(s) - dogs_ft_extra
+whelping_date: appears in 1 table(s) - dogs_ft_extra
+age_days: appears in 1 table(s) - dogs_ft_extra
+ear_brand: appears in 1 table(s) - dogs_ft_extra
+career_starts: appears in 1 table(s) - dogs_ft_extra
+career_wins: appears in 1 table(s) - dogs_ft_extra
+career_places: appears in 1 table(s) - dogs_ft_extra
+career_win_percent: appears in 1 table(s) - dogs_ft_extra
+winning_boxes_json: appears in 1 table(s) - dogs_ft_extra
+weather_description: appears in 1 table(s) - races_ft_extra
+race_comment: appears in 1 table(s) - races_ft_extra
+split_1_time_winner: appears in 1 table(s) - races_ft_extra
+split_2_time_winner: appears in 1 table(s) - races_ft_extra
+run_home_time_winner: appears in 1 table(s) - races_ft_extra
+video_url: appears in 1 table(s) - races_ft_extra
+stewards_report_url: appears in 1 table(s) - races_ft_extra
+split_1_time: appears in 1 table(s) - dog_performance_ft_extra
+split_2_time: appears in 1 table(s) - dog_performance_ft_extra
+run_home_time: appears in 1 table(s) - dog_performance_ft_extra
+in_race_comment: appears in 1 table(s) - dog_performance_ft_extra
+fixed_odds_sp: appears in 1 table(s) - dog_performance_ft_extra
+pre_race_weight: appears in 1 table(s) - dog_performance_ft_extra
+pdf_url: appears in 1 table(s) - expert_form_analysis
+analysis_text: appears in 1 table(s) - expert_form_analysis
+expert_selections: appears in 1 table(s) - expert_form_analysis
+confidence_ratings: appears in 1 table(s) - expert_form_analysis
+key_insights: appears in 1 table(s) - expert_form_analysis
+analysis_date: appears in 1 table(s) - expert_form_analysis
+expert_name: appears in 1 table(s) - expert_form_analysis
+extraction_confidence: appears in 1 table(s) - expert_form_analysis
+processing_status: appears in 1 table(s) - expert_form_analysis
+processing_notes: appears in 1 table(s) - expert_form_analysis
+meeting_id: appears in 1 table(s) - races_gr_extra
+long_form_url: appears in 1 table(s) - races_gr_extra
+short_form_url: appears in 1 table(s) - races_gr_extra
+fields_url: appears in 1 table(s) - races_gr_extra
+race_distance: appears in 1 table(s) - gr_race_details
+race_grade: appears in 1 table(s) - gr_race_details
+conditions: appears in 1 table(s) - gr_race_details
+owner_name: appears in 1 table(s) - gr_dog_entries
+form_guide: appears in 1 table(s) - gr_dog_entries
+last_start: appears in 1 table(s) - gr_dog_entries
+age_months: appears in 1 table(s) - gr_dog_entries
+sire: appears in 1 table(s) - gr_dog_entries
+dam: appears in 1 table(s) - gr_dog_entries
+comment: appears in 1 table(s) - gr_dog_entries
+jockey_name: appears in 1 table(s) - gr_dog_entries
+barrier_trial_info: appears in 1 table(s) - gr_dog_entries
+scratched: appears in 1 table(s) - gr_dog_entries
+emergency: appears in 1 table(s) - gr_dog_entries
+dog_entry_id: appears in 1 table(s) - gr_dog_form
+finishing_position: appears in 1 table(s) - gr_dog_form
+split_times: appears in 1 table(s) - gr_dog_form
+comments: appears in 1 table(s) - gr_dog_form
+
+
+CRITICAL TABLES (likely main data tables):
+--------------------------------------------------
+- race_metadata: 40 columns
+- dog_race_data: 40 columns
+- gr_dog_entries: 23 columns
+- enhanced_expert_data: 21 columns
+- dogs_ft_extra: 18 columns
+- weather_data: 16 columns
+- weather_data_v2: 16 columns
+- live_odds: 15 columns
+- expert_form_analysis: 14 columns
+- gr_dog_form: 13 columns
+- dog_performance_ft_extra: 13 columns
+- weather_impact_analysis: 13 columns
+- gr_race_details: 13 columns
+- track_conditions: 12 columns
+- races_ft_extra: 12 columns
+- dog_performances: 12 columns
+- value_bets: 10 columns
+- dogs: 9 columns
+- race_analytics: 9 columns
+- races_gr_extra: 9 columns
+- venue_mappings: 8 columns
+- odds_history: 7 columns
+- predictions: 7 columns
+- weather_forecast_cache: 6 columns

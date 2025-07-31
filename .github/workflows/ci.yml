@@ -227,7 +227,16 @@ print('Test database created successfully')
       run: |
         export TESTING=1
         export DATABASE_URL=sqlite:///test_greyhound_racing_data.db
+        export OPENAI_API_KEY=test_key_for_ci
         pytest tests/ -v --cov=. --cov-report=xml --cov-report=html
+
+    - name: Run GPT endpoint tests with stubbed OpenAI
+      run: |
+        export TESTING=1
+        export DATABASE_URL=sqlite:///test_greyhound_racing_data.db
+        export OPENAI_API_KEY=test_key_for_ci
+        pytest tests/test_gpt_endpoints.py -v
+        pytest tests/test_merged_prediction_logic.py -v
 
     - name: Run integration tests
       run: |

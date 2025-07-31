@@ -28,6 +28,9 @@ from typing import Dict, List, Optional, Tuple, Any
 import time
 import random
 import threading
+# Placeholder for profiling - removed dependency
+def profile_function(func):
+    return func
 
 # Selenium for advanced scraping
 try:
@@ -91,6 +94,9 @@ class EnhancedComprehensiveProcessor:
         
         # Initialize database
         self.init_database()
+        
+        # Enhanced scraping configuration for comprehensive data collection
+        self.enable_comprehensive_scraping = True
         
         # Initialize web driver for enhanced scraping (only if needed)
         self.driver = None
@@ -647,6 +653,10 @@ class EnhancedComprehensiveProcessor:
                 'dogs': processed_dogs,
                 'status': 'success'
             }
+            
+            # Log each processed dog for debugging
+            for dog in processed_dogs:
+                print(f"   🐶 Processed dog: {dog['dog_name']} with finish position {dog.get('finish_position', 'N/A')}")
 
         except Exception as e:
             print(f"❌ Error processing {csv_file_path}: {str(e)}")

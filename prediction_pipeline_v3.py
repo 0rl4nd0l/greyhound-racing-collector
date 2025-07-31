@@ -15,11 +15,8 @@ This is the primary prediction interface with intelligent fallback hierarchy.
 
 import logging
 import pandas as pd
-import numpy as np
 import os
-import json
 from datetime import datetime
-from pathlib import Path
 from ml_system_v3 import MLSystemV3
 
 # Import comprehensive analysis systems (with fallback handling)
@@ -34,7 +31,7 @@ except ImportError:
     WEATHER_AVAILABLE = False
     
 try:
-    from archive.outdated_scripts.gpt_prediction_enhancer import GPTPredictionEnhancer
+    from gpt_prediction_enhancer import GPTPredictionEnhancer
     GPT_AVAILABLE = True
 except ImportError:
     GPT_AVAILABLE = False
@@ -104,7 +101,7 @@ class PredictionPipelineV3:
     def _print_system_status(self):
         """Print status of all available systems"""
         print("\n🔧 Integrated System Status:")
-        print(f"  ML System V3: ✅ (Primary)")
+        print("  ML System V3: ✅ (Primary)")
         print(f"  Weather Enhanced: {'✅' if self.weather_predictor else '❌'}")
         print(f"  GPT Enhancement: {'✅' if self.gpt_enhancer else '❌'}")
         print(f"  Unified Predictor: {'✅' if self.unified_predictor else '❌'}")

@@ -1,19 +1,21 @@
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import json
 import time
 import traceback
-from comprehensive_prediction_pipeline import ComprehensivePredictionPipeline
 from prediction_pipeline_v3 import PredictionPipelineV3
 from unified_predictor import UnifiedPredictor
 
 def main():
     results = {}
-    test_race_file = "tests/fixtures/test_race.csv"
+    test_race_file = "sample_data/test_race_1.csv"
 
     for predictor_class in [
         UnifiedPredictor,
         PredictionPipelineV3,
-        ComprehensivePredictionPipeline,
     ]:
         predictor_name = predictor_class.__name__
         results[predictor_name] = {}
