@@ -29,6 +29,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from constants import DOG_NAME_KEY
 from json_utils import safe_correlation, safe_float, safe_json_dump, safe_mean
 from utils.file_naming import build_prediction_filename
 
@@ -465,7 +466,7 @@ class WeatherEnhancedPredictor:
             predictions = []
 
             for dog_info in participating_dogs:
-                dog_name = dog_info["name"]
+                dog_name = dog_info[DOG_NAME_KEY]
 
                 # Get historical data for this dog using exact matching strategies only
                 dog_historical = pd.DataFrame()
@@ -677,7 +678,7 @@ class WeatherEnhancedPredictor:
             race_df = pd.read_csv(race_file_path)
             participating_dogs = self._extract_participating_dogs(race_df)
             participating_dog_names = [
-                dog["name"].upper() for dog in participating_dogs
+                dog[DOG_NAME_KEY].upper() for dog in participating_dogs
             ]
 
             # Filter form data for participating dogs
@@ -719,7 +720,7 @@ class WeatherEnhancedPredictor:
 
                     dogs.append(
                         {
-                            "name": current_dog_name,
+                            DOG_NAME_KEY: current_dog_name,
                             "box": box_number,
                             "raw_name": dog_name_raw,
                         }
@@ -1205,7 +1206,7 @@ class WeatherEnhancedPredictor:
             return np.array(feature_vector).reshape(1, -1)
 
         except Exception as e:
-            print(f"⚠️ Error creating features for {dog_info['name']}: {e}")
+            print(f"⚠️ Error creating features for {dog_info[DOG_NAME_KEY]}: {e}")
             return None
 
     def _predict_dog_performance(self, dog_features):
@@ -1264,7 +1265,7 @@ class WeatherEnhancedPredictor:
             for i, dog in enumerate(dogs):
                 predictions.append(
                     {
-                        "dog_name": dog["name"],
+                        "dog_name": dog[DOG_NAME_KEY],
                         "box_number": dog.get("box", "Unknown"),
                         "prediction_score": max(
                             0.1, 0.8 - (i * 0.1)

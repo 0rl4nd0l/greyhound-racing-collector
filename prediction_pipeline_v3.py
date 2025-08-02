@@ -22,8 +22,9 @@ from datetime import datetime
 
 import pandas as pd
 
+from constants import DOG_NAME_KEY
 from ml_system_v3 import MLSystemV3
-from shap_explainer import get_shap_explainer 
+from shap_explainer import get_shap_explainer
 
 sys.path.append("archive/outdated_scripts")
 
@@ -291,11 +292,11 @@ class PredictionPipelineV3:
                     dog_features_df = pd.DataFrame([dog])
                     explainability = get_shap_explainer().get_shap_values(dog_features_df, top_n=10)
                 except Exception as e:
-                    logger.warning(f"SHAP explainability failed for {dog['name']}: {e}")
+                    logger.warning(f"SHAP explainability failed for {dog[DOG_NAME_KEY]}: {e}")
                     explainability = {"error": "Explainability unavailable", "feature_importance": {}}
                 
                 prediction = {
-                    "dog_name": dog["name"],
+                    "dog_name": dog[DOG_NAME_KEY],
                     "box_number": dog.get("box_number", 0),
                     "win_probability": ml_result["win_probability"],
                     "prediction_method": "ml_system_v3_basic",
@@ -441,7 +442,7 @@ class PredictionPipelineV3:
                                 pass
 
                     current_dog = {
-                        "name": clean_name,
+                        DOG_NAME_KEY: clean_name,
                         "box_number": box_number or len(dogs) + 1,
                         "weight": (
                             float(row.get("WGT", 30.0))
