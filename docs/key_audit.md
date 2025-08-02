@@ -88,9 +88,9 @@ For each file, the key changes will typically involve:
 ### Root Directory Files
 - `feature_engineering.py`: 2 occurrences
 - `run.py`: 1 occurrence
-- `enhanced_pipeline_v2.py`: 25 occurrences
+- `enhanced_pipeline_v2.py`: 22 occurrences
 - `unified_predictor.py`: 15 occurrences
-- `sportsbet_odds_integrator.py`: 20 occurrences
+- `sportsbet_odds_integrator.py`: 19 occurrences
 - `prediction_pipeline_v3.py`: 3 occurrences
 - [Additional files...]
 
@@ -99,8 +99,32 @@ For each file, the key changes will typically involve:
 - These are lower priority as they represent legacy/backup code
 
 ### Test Directory
-- `tests/` contains test files that may need updating after core changes
+- `tests/` contains test files that need updating after core changes
 - `debug_logs/` contains validation scripts
+
+## Top Files by Occurrence Count
+
+**Active/Core Files (High Priority)**:
+1. `app.py` - 45 occurrences
+2. `enhanced_comprehensive_processor.py` - 28 occurrences 
+3. `enhanced_pipeline_v2.py` - 22 occurrences
+4. `database_maintenance.py` - 22 occurrences
+5. `file_manager_ui.py` - 21 occurrences
+6. `sportsbet_odds_integrator.py` - 19 occurrences
+7. `enhanced_race_analyzer.py` - 17 occurrences
+8. `unified_predictor.py` - 15 occurrences
+9. `comprehensive_prediction_pipeline.py` - 14 occurrences
+10. `weather_enhanced_predictor.py` - 11 occurrences
+
+**Archive/Backup Files (Lower Priority)**:
+- `archive/database_and_migrations/app_original.py` - 42 occurrences
+- `archive_old_apps/app_original.py` - 34 occurrences
+- Various backup files in `feature_importance_backups/` - 100+ occurrences
+- Legacy scripts in `archive/` - 200+ occurrences
+
+**Test Files**:
+- `tests/ml_backtesting_trainer_optimized.py` - 12 occurrences
+- Various other test files - 50+ occurrences
 
 ## Completion Criteria
 

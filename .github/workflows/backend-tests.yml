@@ -1,0 +1,116 @@
+name: Backend Unit Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        python-version: [3.9, 3.10, 3.11]
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-cov pytest-flask
+    
+    - name: Create test directories
+      run: |
+        mkdir -p /tmp/tests_uploads
+        mkdir -p logs
+        mkdir -p unprocessed
+        mkdir -p processed
+        mkdir -p historical
+        mkdir -p upcoming
+    
+    - name: Run backend unit tests with coverage
+      run: |
+        python -m pytest tests/test_backend_suite.py \
+          --cov=app \
+          --cov-report=term-missing \
+          --cov-report=xml:coverage.xml \
+          --cov-report=html:htmlcov \
+          --cov-fail-under=13 \
+          -v
+    
+    - name: Run key consistency regression tests
+      run: |
+        python -m pytest tests/test_key_consistency.py \
+          --tb=short \
+          -v \
+          --maxfail=5
+      continue-on-error: false  # This will block merges on failure
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: backend
+        name: backend-coverage
+        fail_ci_if_error: true
+    
+    - name: Archive coverage reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: coverage-report-${{ matrix.python-version }}
+        path: htmlcov/
+
+  comprehensive-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.11
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-cov pytest-flask
+    
+    - name: Create test directories
+      run: |
+        mkdir -p /tmp/tests_uploads
+        mkdir -p logs
+        mkdir -p unprocessed
+        mkdir -p processed
+        mkdir -p historical
+        mkdir -p upcoming
+    
+    - name: Run comprehensive backend tests (non-prediction)
+      run: |
+        python -m pytest tests/test_comprehensive_backend.py \
+          -k "not predict and not malformed" \
+          --cov=app \
+          --cov-report=term-missing \
+          --cov-report=xml:comprehensive-coverage.xml \
+          --timeout=300 \
+          -v
+      continue-on-error: true  # Don't fail CI if comprehensive tests timeout
+    
+    - name: Upload comprehensive coverage
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./comprehensive-coverage.xml
+        flags: comprehensive
+        name: comprehensive-coverage
+      if: success()

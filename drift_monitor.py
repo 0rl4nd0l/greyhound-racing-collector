@@ -12,9 +12,7 @@ import logging
 
 # Try to import evidently, fall back to manual PSI/KS calculation if not available
 try:
-    from evidently import ColumnMapping
-    from evidently.report import Report
-    from evidently.metric_preset import DataDriftPreset
+    from evidently.presets import DataDriftPreset
     EVIDENTLY_AVAILABLE = True
 except ImportError:
     EVIDENTLY_AVAILABLE = False
@@ -33,10 +31,9 @@ class DriftMonitor:
         # Ensure logs directory exists
         os.makedirs("logs", exist_ok=True)
         
-        # Initialize evidently if available
-        if EVIDENTLY_AVAILABLE:
-            self.drift_report = Report(metrics=[DataDriftPreset()])
-            self.column_mapping = ColumnMapping()
+        # Initialize evidently if available (disable for now since the API has changed)
+        # TODO: Re-implement evidently integration with new API when needed
+        # For now, we'll use manual drift detection which works well
         
         # Calculate baseline correlations
         self._calculate_baseline_correlations()
@@ -110,11 +107,8 @@ class DriftMonitor:
         }
         
         try:
-            # Use evidently if available
-            if EVIDENTLY_AVAILABLE:
-                drift_results.update(self._evidently_drift_check(current_data))
-            else:
-                drift_results.update(self._manual_drift_check(current_data))
+            # Use manual drift detection (evidently integration disabled due to API changes)
+            drift_results.update(self._manual_drift_check(current_data))
             
             # Check correlations
             correlation_alerts = self._check_correlations(current_data)

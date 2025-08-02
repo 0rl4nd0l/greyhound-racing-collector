@@ -11,88 +11,113 @@ The API allows interaction with the prediction system, providing endpoints for p
 ### Single Race Prediction (Enhanced)
 - **Endpoint**: `/api/predict_single_race_enhanced`
 - **Method**: POST
-- **Description**: Get enhanced predictions for a single race with advanced analysis
+- **Description**: Primary endpoint for single race prediction with intelligent pipeline selection and automatic file discovery
 - **Request Body**:
   ```json
   {
     "race_filename": "Race 4 - GOSF - 2025-07-28.csv"
+    // OR
+    "race_id": "race_identifier"
   }
   ```
+- **Key Features**:
+  - Accepts either `race_filename` or `race_id` parameter
+  - Automatically searches multiple directories (upcoming, historical)
+  - Intelligent pipeline selection: PredictionPipelineV3 → UnifiedPredictor → ComprehensivePredictionPipeline
+  - Enhanced error handling with detailed failure information
+
 - **Response**:
   ```json
   {
-    "race_summary": {
-      "race_name": "Race 4",
-      "venue": "GOSF",
-      "date": "2025-07-28",
-      "distance": "500m",
-      "field_size": 8
-    },
-    "top_picks": [
-      {
-        "dog_name": "Lightning Bolt",
-        "trap_number": 1,
-        "win_probability": 0.35,
-        "confidence": "High"
-      }
-    ],
+    "success": true,
+    "race_id": "extracted_or_provided_id",
+    "race_filename": "Race 4 - GOSF - 2025-07-28.csv",
     "predictions": [
       {
         "dog_name": "Lightning Bolt",
-        "trap_number": 1,
+        "box_number": 1,
         "win_probability": 0.35,
-        "place_probability": 0.65,
-        "predicted_rank": 1,
-        "confidence_score": 0.87,
-        "reasoning": "Strong recent form and favorable conditions"
+        "place_probability": 0.67,
+        "confidence_score": 0.84,
+        "predicted_position": 1,
+        "reasoning": "Strong recent form and favorable track conditions"
       }
     ],
-    "prediction_tier": "comprehensive_pipeline",
-    "fallback_reasons": []
+    "predictor_used": "PredictionPipelineV3",
+    "file_path": "/path/to/race/file.csv",
+    "enhancement_applied": true,
+    "timestamp": "2025-01-15T10:30:00Z"
+  }
+  ```
+
+- **Error Response**:
+  ```json
+  {
+    "success": false,
+    "message": "Race file 'invalid.csv' not found in upcoming or historical directories",
+    "error_type": "file_not_found",
+    "race_filename": "invalid.csv",
+    "searched_directories": ["./upcoming_races", "./historical_races"]
   }
   ```
 
 ### All Upcoming Races Prediction (Enhanced)
 - **Endpoint**: `/api/predict_all_upcoming_races_enhanced`
 - **Method**: POST
-- **Description**: Get enhanced predictions for all upcoming races with comprehensive analysis
-- **Request Body** (Optional):
+- **Description**: Batch endpoint for predicting all upcoming races with comprehensive error handling and performance monitoring
+- **Request Body** (Optional JSON):
   ```json
   {
-    "max_races": 5,
-    "skip_sanity_checks": false,
-    "enable_drift_monitoring": true
+    "max_races": 10,
+    "force_rerun": false
   }
   ```
+- **Key Features**:
+  - Automatically discovers all CSV files in upcoming races directory
+  - Intelligent pipeline selection: ComprehensivePredictionPipeline (primary) → PredictionPipelineV3 (fallback)
+  - Comprehensive error tracking and recovery
+  - Performance monitoring and timing metrics
+  - Detailed success/failure reporting
+
 - **Response**:
   ```json
   {
-    "status": "success",
-    "total_races": 3,
-    "successful_predictions": 2,
-    "failed_predictions": 1,
-    "processing_time_seconds": 45.2,
-    "drift_warnings": [],
-    "sanity_check_results": {
-      "total_checks": 15,
-      "passed": 14,
-      "failed": 1,
-      "warnings": ["Feature correlation drift detected"]
-    },
-    "races": [
+    "success": true,
+    "total_races": 5,
+    "success_count": 4,
+    "predictions": [
       {
         "race_filename": "Race 1 - GOSF - 2025-01-15.csv",
-        "status": "success",
-        "prediction": {
-          "race_summary": {},
-          "top_picks": [],
-          "predictions": []
-        },
-        "confidence_score": 0.87,
-        "drift_score": 0.12,
-        "processing_time_ms": 2340
+        "success": true,
+        "predictions": [
+          {
+            "dog_name": "Lightning Bolt",
+            "box_number": 1,
+            "win_probability": 0.35,
+            "predicted_position": 1
+          }
+        ],
+        "processing_time_ms": 2340,
+        "pipeline_used": "ComprehensivePredictionPipeline"
       }
-    ]
+    ],
+    "errors": [
+      "Race 5 prediction failed: insufficient historical data"
+    ],
+    "pipeline_type": "ComprehensivePredictionPipeline",
+    "processing_time_seconds": 45.2
+  }
+  ```
+
+- **Empty Directory Response**:
+  ```json
+  {
+    "success": true,
+    "message": "No upcoming races found",
+    "total_races": 0,
+    "success_count": 0,
+    "predictions": [],
+    "errors": []
   }
   ```
 

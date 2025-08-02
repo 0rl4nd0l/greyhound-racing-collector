@@ -81,75 +81,124 @@ The application provides a comprehensive RESTful API for interacting with the pr
 
 ### Main Prediction Endpoints
 
+#### Enhanced Single Race Prediction
+
 -   **POST /api/predict_single_race_enhanced**
 
-    This is the primary endpoint for getting predictions for a single race. It automatically fetches the latest data, runs the most advanced prediction pipeline available, and returns detailed results.
+    **Primary endpoint** for getting predictions for a single race with automatic data enhancement and intelligent pipeline selection.
 
-    **Request Body**:
+    **Request Body** (JSON):
 
     ```json
     {
         "race_filename": "Race 4 - GOSF - 2025-07-28.csv"
+        // OR
+        "race_id": "race_identifier"
     }
     ```
 
+    **Key Features**:
+    - Accepts either `race_filename` or `race_id` parameter
+    - Automatically searches multiple directories (upcoming, historical)
+    - Intelligent prediction pipeline selection:
+      1. **PredictionPipelineV3** (primary - most advanced)
+      2. **UnifiedPredictor** (fallback)
+      3. **ComprehensivePredictionPipeline** (final fallback)
+    - Enhanced error handling with detailed failure information
+
     **Response**:
 
-    -   A detailed JSON object containing the race summary, top picks, and a full list of predictions for each dog with confidence scores and reasoning.
+    ```json
+    {
+        "success": true,
+        "race_id": "extracted_or_provided_id",
+        "race_filename": "Race 4 - GOSF - 2025-07-28.csv",
+        "predictions": [
+            {
+                "dog_name": "Lightning Bolt",
+                "box_number": 1,
+                "win_probability": 0.35,
+                "place_probability": 0.67,
+                "confidence_score": 0.84,
+                "predicted_position": 1,
+                "reasoning": "Strong recent form and favorable track conditions"
+            }
+        ],
+        "predictor_used": "PredictionPipelineV3",
+        "file_path": "/path/to/race/file.csv",
+        "enhancement_applied": true,
+        "timestamp": "2025-01-15T10:30:00Z"
+    }
+    ```
+
+#### Enhanced Batch Prediction
 
 -   **POST /api/predict_all_upcoming_races_enhanced**
 
-    Enhanced endpoint for getting predictions for all upcoming races. This endpoint incorporates improved sanity checking, drift monitoring, exponential decay weighting, and enhanced error handling for more reliable predictions.
+    **Batch endpoint** for predicting all upcoming races with comprehensive error handling, logging, and performance monitoring.
 
-    **Request Body** (Optional):
+    **Request Body** (Optional JSON):
 
     ```json
     {
-        "max_races": 5,
-        "skip_sanity_checks": false,
-        "enable_drift_monitoring": true
+        "max_races": 10,
+        "force_rerun": false
     }
     ```
+
+    **Key Features**:
+    - Automatically discovers all CSV files in upcoming races directory
+    - Intelligent pipeline selection with fallbacks
+    - Comprehensive error tracking and recovery
+    - Performance monitoring and timing metrics
+    - Detailed success/failure reporting
 
     **Response**:
 
     ```json
     {
-        "status": "success",
-        "total_races": 3,
-        "successful_predictions": 2,
-        "failed_predictions": 1,
-        "processing_time_seconds": 45.2,
-        "drift_warnings": [],
-        "sanity_check_results": {
-            "total_checks": 15,
-            "passed": 14,
-            "failed": 1,
-            "warnings": ["Feature correlation drift detected in traditional_analysis"]
-        },
-        "races": [
+        "success": true,
+        "total_races": 5,
+        "success_count": 4,
+        "predictions": [
             {
                 "race_filename": "Race 1 - GOSF - 2025-01-15.csv",
-                "status": "success",
-                "prediction": {
-                    "race_summary": {...},
-                    "top_picks": [...],
-                    "predictions": [...]
-                },
-                "confidence_score": 0.87,
-                "drift_score": 0.12,
-                "processing_time_ms": 2340
+                "success": true,
+                "predictions": [...],
+                "processing_time_ms": 2340,
+                "pipeline_used": "ComprehensivePredictionPipeline"
             }
-        ]
+        ],
+        "errors": [
+            "Race 5 prediction failed: insufficient historical data"
+        ],
+        "pipeline_type": "ComprehensivePredictionPipeline",
+        "processing_time_seconds": 45.2
     }
     ```
 
-    **Features**:
-    - Comprehensive sanity checking of all prediction components
-    - Real-time drift monitoring and alerting
-    - Exponential decay weighting for historical data
-    - Enhanced error handling and recovery
-    - Detailed performance metrics and timing information
+    **Pipeline Selection Logic**:
+    1. **ComprehensivePredictionPipeline** (primary - handles batch operations)
+    2. **PredictionPipelineV3** (fallback - individual race processing)
+    3. Detailed error reporting if both fail
+
+### Data Flow Architecture
+
+The enhanced prediction system follows this data flow:
+
+```
+[Race CSV Files] → [Pipeline Selection] → [Data Enhancement] → [ML Processing] → [Prediction Results]
+                           ↓
+        ┌─ PredictionPipelineV3 (Advanced ML + Features)
+        ├─ ComprehensivePredictionPipeline (Batch + Comprehensive)
+        └─ UnifiedPredictor (Legacy Fallback)
+```
+
+**Key Improvements**:
+- **Automatic Enhancement**: All predictions include data enrichment from multiple sources
+- **Intelligent Fallbacks**: System gracefully degrades through available prediction methods
+- **Error Recovery**: Comprehensive error handling prevents total system failures
+- **Performance Monitoring**: Detailed timing and success metrics for optimization
 
 ### Data Endpoints
 
@@ -344,6 +393,7 @@ The system includes several specialized scrapers for different data collection n
 
 The following files have been moved to the `/archive` directory as they have been superseded by newer implementations:
 
+### Legacy Prediction and Debug Scripts
 -   `run_pipeline_debug.py`
 -   `integrity_test.py`
 -   `flask_api_endpoint_test.py`
@@ -353,3 +403,12 @@ The following files have been moved to the `/archive` directory as they have bee
 -   `debug_scaler.py`
 -   `debug_race_extraction.py`
 -   `train_test_data.py`
+
+### Obsolete Upcoming Race Scripts (Archive: `/archive/obsolete_upcoming_race_scripts/`)
+-   `upcoming_race_predictor.py` - Superseded by enhanced prediction endpoints
+-   `upcoming_race_predictor_clean.py` - Superseded by PredictionPipelineV3
+-   `upcoming_race_predictor_test.py` - Superseded by modern pytest test suite
+-   `integrated_race_collector.py` - Superseded by ComprehensiveFormDataCollector
+-   `enhanced_odds_collector.py` - Superseded by hybrid_odds_scraper.py
+
+**Note**: These scripts have been replaced by the enhanced API endpoints (`/api/predict_single_race_enhanced`, `/api/predict_all_upcoming_races_enhanced`) which provide intelligent pipeline selection, comprehensive error handling, and better integration with the main application.

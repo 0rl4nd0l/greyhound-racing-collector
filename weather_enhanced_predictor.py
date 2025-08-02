@@ -32,6 +32,7 @@ import pandas as pd
 from constants import DOG_NAME_KEY
 from json_utils import safe_correlation, safe_float, safe_json_dump, safe_mean
 from utils.file_naming import build_prediction_filename
+from logger import key_mismatch_logger
 
 warnings.filterwarnings("ignore")
 
@@ -466,7 +467,22 @@ class WeatherEnhancedPredictor:
             predictions = []
 
             for dog_info in participating_dogs:
-                dog_name = dog_info[DOG_NAME_KEY]
+                try:
+                    dog_name = dog_info[DOG_NAME_KEY]
+                except KeyError:
+                    # Enhanced KeyError handling for dog names
+                    key_mismatch_logger.log_key_error(
+                        error_context={
+                            "operation": "dog_name_extraction_in_weather_enhanced_prediction",
+                            "race_file_path": race_file_path,
+                            "dog_record": dict(dog_info),
+                            "available_keys": list(dog_info.keys()),
+                            "missing_key": DOG_NAME_KEY,
+                            "step": "weather_enhanced_prediction_processing"
+                        },
+                        dog_record=dict(dog_info)
+                    )
+                    continue
 
                 # Get historical data for this dog using exact matching strategies only
                 dog_historical = pd.DataFrame()
@@ -542,6 +558,9 @@ class WeatherEnhancedPredictor:
                                 "prediction_score": float(
                                     weather_adjusted_score
                                 ),  # Final score
+                                "win_probability": float(
+                                    weather_adjusted_score
+                                ),  # Alias for consistency
                                 "confidence": min(
                                     0.95, max(0.1, weather_adjusted_score)
                                 ),
@@ -571,6 +590,7 @@ class WeatherEnhancedPredictor:
                                 "weather_adjustment_factor": float(weather_adjustment),
                                 "weather_adjusted_score": float(fallback_score),
                                 "prediction_score": float(fallback_score),
+                                "win_probability": float(fallback_score),  # Alias for consistency
                                 "confidence": 0.1,
                                 "historical_races": len(dog_historical),
                                 "form_data_races": len(dog_form_data),
@@ -590,6 +610,7 @@ class WeatherEnhancedPredictor:
                             "weather_adjustment_factor": float(weather_adjustment),
                             "weather_adjusted_score": float(basic_score),
                             "prediction_score": float(basic_score),
+                            "win_probability": float(basic_score),  # Alias for consistency
                             "confidence": 0.05,
                             "historical_races": len(dog_historical),
                             "form_data_races": len(dog_form_data),
@@ -677,9 +698,23 @@ class WeatherEnhancedPredictor:
             # Filter for dogs that appear in this specific race
             race_df = pd.read_csv(race_file_path)
             participating_dogs = self._extract_participating_dogs(race_df)
-            participating_dog_names = [
-                dog[DOG_NAME_KEY].upper() for dog in participating_dogs
-            ]
+            participating_dog_names = []
+            for dog in participating_dogs:
+                try:
+                    participating_dog_names.append(dog[DOG_NAME_KEY].upper())
+                except KeyError:
+                    # Enhanced KeyError handling for dog names in form data loading
+                    key_mismatch_logger.log_key_error(
+                        error_context={
+                            "operation": "participating_dog_names_extraction_in_form_data_loading",
+                            "race_file_path": race_file_path,
+                            "dog_record": dict(dog),
+                            "available_keys": list(dog.keys()),
+                            "missing_key": DOG_NAME_KEY,
+                            "step": "form_data_loading_participating_dogs_processing"
+                        },
+                        dog_record=dict(dog)
+                    )
 
             # Filter form data for participating dogs
             race_specific_form_data = {}
@@ -1263,13 +1298,33 @@ class WeatherEnhancedPredictor:
 
             predictions = []
             for i, dog in enumerate(dogs):
+                try:
+                    dog_name = dog[DOG_NAME_KEY]
+                except KeyError:
+                    # Enhanced KeyError handling for dog names in fallback prediction
+                    key_mismatch_logger.log_key_error(
+                        error_context={
+                            "operation": "dog_name_extraction_in_fallback_prediction",
+                            "race_file_path": race_file_path,
+                            "dog_record": dict(dog),
+                            "available_keys": list(dog.keys()),
+                            "missing_key": DOG_NAME_KEY,
+                            "step": "fallback_prediction_processing"
+                        },
+                        dog_record=dict(dog)
+                    )
+                    continue
+                
                 predictions.append(
                     {
-                        "dog_name": dog[DOG_NAME_KEY],
+                        "dog_name": dog_name,
                         "box_number": dog.get("box", "Unknown"),
                         "prediction_score": max(
                             0.1, 0.8 - (i * 0.1)
                         ),  # Decreasing scores
+                        "win_probability": max(
+                            0.1, 0.8 - (i * 0.1)
+                        ),  # Alias for consistency
                         "confidence": 0.1,
                         "note": "Fallback prediction - ML system unavailable",
                     }

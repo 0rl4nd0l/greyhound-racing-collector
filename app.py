@@ -39,6 +39,22 @@ import pandas as pd
 
 from logger import logger
 
+# Import optimized caching and query systems
+try:
+    from endpoint_cache import get_endpoint_cache, cached_endpoint
+    from optimized_queries import get_optimized_queries
+    
+    OPTIMIZATION_ENABLED = True
+    print("🚀 Endpoint optimization enabled (caching + optimized queries)")
+except ImportError as e:
+    print(f"⚠️ Endpoint optimization not available: {e}")
+    OPTIMIZATION_ENABLED = False
+    
+    def cached_endpoint(key_func=None, ttl=30):
+        def decorator(func):
+            return func
+        return decorator
+
 # Import pipeline profiler for bottleneck analysis
 try:
     from pipeline_profiler import (pipeline_profiler, profile_function,
@@ -87,6 +103,16 @@ except ImportError as e:
     print(f"⚠️ Comprehensive form data collector not available: {e}")
     COMPREHENSIVE_COLLECTOR_AVAILABLE = False
     ComprehensiveFormDataCollector = None
+
+# Import batch prediction pipeline
+try:
+    from batch_prediction_pipeline import BatchPredictionPipeline
+    BATCH_PIPELINE_AVAILABLE = True
+    print("🚀 Batch prediction pipeline available")
+except ImportError as e:
+    print(f"⚠️ Batch prediction pipeline not available: {e}")
+    BATCH_PIPELINE_AVAILABLE = False
+    BatchPredictionPipeline = None
 import hashlib
 import logging
 # from venue_mapping_fix import GreyhoundVenueMapper  # Module not found
@@ -102,6 +128,7 @@ from features import (FeatureStore, V3BoxPositionFeatures,
 from sportsbet_odds_integrator import SportsbetOddsIntegrator
 from utils.file_naming import (build_prediction_filename,
                                extract_race_id_from_csv_filename)
+from utils.csv_metadata import parse_race_csv_meta
 
 # Initialize feature store singleton
 feature_store = FeatureStore()
@@ -1344,6 +1371,506 @@ def api_races_paginated():
         )
 
 
+@app.route("/api/upcoming_races_csv")
+def api_upcoming_races_csv():
+    """API endpoint to list upcoming races from CSV files with pagination and search"""
+    try:
+        # Get parameters with validation (same as /api/races/paginated)
+        try:
+            page = int(request.args.get("page", 1))
+            per_page = int(request.args.get("per_page", 10))
+        except (ValueError, TypeError):
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "Invalid page or per_page parameter. Must be integers.",
+                    }
+                ),
+                400,
+            )
+
+        # Validate page and per_page values
+        if page < 1:
+            return (
+                jsonify(
+                    {"success": False, "message": "Page number must be greater than 0."}
+                ),
+                400,
+            )
+
+        if per_page < 1:
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "Per page value must be greater than 0.",
+                    }
+                ),
+                400,
+            )
+
+        per_page = min(per_page, 50)  # Limit to prevent overload
+        sort_by = request.args.get("sort_by", "race_date")
+        order = request.args.get("order", "desc")
+        search = request.args.get("search", "").strip()
+
+        # Get all CSV files in upcoming_races directory
+        if not os.path.exists(UPCOMING_DIR):
+            return jsonify(
+                {
+                    "success": True,
+                    "races": [],
+                    "pagination": {
+                        "page": page,
+                        "per_page": per_page,
+                        "total_count": 0,
+                        "total_pages": 0,
+                        "has_next": False,
+                        "has_prev": False,
+                    },
+                    "sort_by": sort_by,
+                    "order": order,
+                    "search": search,
+                }
+            )
+
+        # List and process CSV files
+        csv_files = [f for f in os.listdir(UPCOMING_DIR) if f.endswith(".csv")]
+        
+        if not csv_files:
+            return jsonify(
+                {
+                    "success": True,
+                    "races": [],
+                    "pagination": {
+                        "page": page,
+                        "per_page": per_page,
+                        "total_count": 0,
+                        "total_pages": 0,
+                        "has_next": False,
+                        "has_prev": False,
+                    },
+                    "sort_by": sort_by,
+                    "order": order,
+                    "search": search,
+                }
+            )
+
+        # Parse CSV files and extract race metadata
+        races_data = []
+        
+        for filename in csv_files:
+            file_path = os.path.join(UPCOMING_DIR, filename)
+            
+            try:
+                # Get file modification time for sorting
+                file_mtime = os.path.getmtime(file_path)
+                formatted_mtime = datetime.fromtimestamp(file_mtime).strftime("%Y-%m-%d %H:%M")
+                
+                # Read header row only using pandas for robustness
+                try:
+                    df_header = pd.read_csv(file_path, nrows=1)
+                    columns = list(df_header.columns)
+                except Exception as e:
+                    logger.warning(f"Failed to read CSV header for {filename}: {e}")
+                    continue
+                
+                # Extract race information from filename and headers
+                race_name = None
+                venue = None
+                race_date = None
+                distance = None
+                grade = None
+                race_number = None
+                
+                # Try to get Race Name from header or filename
+                if "Race Name" in columns and not df_header["Race Name"].empty:
+                    race_name = str(df_header["Race Name"].iloc[0])
+                elif "Race_Name" in columns and not df_header["Race_Name"].empty:
+                    race_name = str(df_header["Race_Name"].iloc[0])
+                else:
+                    # Fallback to filename
+                    race_name = filename.replace(".csv", "")
+                
+                # Try to get Venue from header or filename
+                if "Venue" in columns and not df_header["Venue"].empty:
+                    venue = str(df_header["Venue"].iloc[0])
+                else:
+                    # Try to extract venue from filename tokens
+                    filename_parts = filename.replace(".csv", "").split("_")
+                    for part in filename_parts:
+                        if len(part) == 3 and part.isupper():
+                            venue = part
+                            break
+                    if not venue:
+                        venue = "Unknown"
+                
+                # Try to get Race Date from filename pattern or column
+                if "Race Date" in columns and not df_header["Race Date"].empty:
+                    race_date = str(df_header["Race Date"].iloc[0])
+                elif "Race_Date" in columns and not df_header["Race_Date"].empty:
+                    race_date = str(df_header["Race_Date"].iloc[0])
+                else:
+                    # Try to extract date from filename (pattern: YYYY-MM-DD)
+                    import re
+                    date_match = re.search(r"(\d{4}-\d{2}-\d{2})", filename)
+                    if date_match:
+                        race_date = date_match.group(1)
+                    else:
+                        race_date = "Unknown"
+                
+                # Extract Distance
+                if "Distance" in columns and not df_header["Distance"].empty:
+                    distance = str(df_header["Distance"].iloc[0])
+                else:
+                    distance = "Unknown"
+                
+                # Extract Grade
+                if "Grade" in columns and not df_header["Grade"].empty:
+                    grade = str(df_header["Grade"].iloc[0])
+                else:
+                    grade = "Unknown"
+                
+                # Extract Race Number
+                if "Race Number" in columns and not df_header["Race Number"].empty:
+                    race_number = int(df_header["Race Number"].iloc[0])
+                elif "Race_Number" in columns and not df_header["Race_Number"].empty:
+                    race_number = int(df_header["Race_Number"].iloc[0])
+                else:
+                    # Try to extract from filename
+                    race_num_match = re.search(r"Race[_\s]?(\d+)", filename, re.IGNORECASE)
+                    if race_num_match:
+                        race_number = int(race_num_match.group(1))
+                    else:
+                        race_number = 0
+                
+                # Build race_id using MD5 hash of filename
+                race_id = hashlib.md5(filename.encode()).hexdigest()[:12]
+                
+                # Clean up 'nan' values
+                def clean_value(value):
+                    if value is None or str(value).lower() in ['nan', 'none', 'null']:
+                        return "Unknown"
+                    return str(value)
+                
+                race_data = {
+                    "race_id": race_id,
+                    "venue": clean_value(venue),
+                    "race_number": race_number,
+                    "race_date": clean_value(race_date),
+                    "race_name": clean_value(race_name),
+                    "grade": clean_value(grade),
+                    "distance": clean_value(distance),
+                    "field_size": 0,  # Not available in CSV headers
+                    "winner_name": "Unknown",  # Upcoming race, no winner yet
+                    "winner_odds": "N/A",
+                    "winner_margin": "N/A",
+                    "url": "",  # No URL for upcoming races
+                    "extraction_timestamp": formatted_mtime,
+                    "track_condition": "Unknown",  # Not available in CSV headers
+                    "runners": [],  # Could be populated from CSV data if needed
+                    "filename": filename,  # Added for frontend to request predictions
+                    "file_mtime": file_mtime,  # For sorting
+                }
+                
+                races_data.append(race_data)
+                
+            except Exception as e:
+                logger.warning(f"Error processing CSV file {filename}: {e}")
+                continue
+        
+        # Apply search filter if provided
+        if search:
+            filtered_races = []
+            search_lower = search.lower()
+            for race in races_data:
+                if (search_lower in race["venue"].lower() or
+                    search_lower in race["race_name"].lower() or
+                    search_lower in race["grade"].lower() or
+                    search_lower in race["filename"].lower()):
+                    filtered_races.append(race)
+            races_data = filtered_races
+        
+        # Sort races
+        sort_options = {
+            "race_date": "race_date",
+            "venue": "venue",
+            "confidence": "file_mtime",  # Use file modification time as proxy
+            "grade": "grade",
+        }
+        
+        sort_key = sort_options.get(sort_by, "file_mtime")
+        reverse_sort = (order == "desc")
+        
+        # Handle different sort key types
+        if sort_key == "file_mtime":
+            races_data.sort(key=lambda x: x["file_mtime"], reverse=reverse_sort)
+        else:
+            races_data.sort(key=lambda x: str(x[sort_key]).lower(), reverse=reverse_sort)
+        
+        # Remove file_mtime from final output (used only for sorting)
+        for race in races_data:
+            race.pop("file_mtime", None)
+        
+        # Apply pagination
+        total_count = len(races_data)
+        offset = (page - 1) * per_page
+        paginated_races = races_data[offset:offset + per_page]
+        
+        # Calculate pagination info
+        total_pages = math.ceil(total_count / per_page) if total_count > 0 else 1
+        has_next = page < total_pages
+        has_prev = page > 1
+        
+        return jsonify(
+            {
+                "success": True,
+                "races": paginated_races,
+                "pagination": {
+                    "page": page,
+                    "per_page": per_page,
+                    "total_count": total_count,
+                    "total_pages": total_pages,
+                    "has_next": has_next,
+                    "has_prev": has_prev,
+                },
+                "sort_by": sort_by,
+                "order": order,
+                "search": search,
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in /api/upcoming_races_csv: {str(e)}")
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "message": f"Error processing upcoming races: {str(e)}",
+                }
+            ),
+            500,
+        )
+
+def create_batch_pipeline():
+    """Initialize the batch prediction pipeline instance"""
+    if not BATCH_PIPELINE_AVAILABLE:
+        raise Exception("Batch prediction pipeline not available")
+    
+    return BatchPredictionPipeline()
+
+@app.route("/api/batch/predict", methods=["POST"])
+def api_batch_predict():
+    """API endpoint for batch predictions"""
+    data = request.get_json()
+
+    # Validate input
+    if not data or "files" not in data:
+        return jsonify({"success": False, "message": "No files provided"}), 400
+
+    file_paths = data.get("files", [])
+    try:
+        # Initialize the batch prediction pipeline
+        pipeline = create_batch_pipeline()
+
+        # Create a new batch job
+        job_id = pipeline.create_batch_job(
+            name="API Batch Prediction",
+            input_files=file_paths,
+            output_dir="./api_batch_output",
+            batch_size=10,
+            max_workers=3
+        )
+
+        # Run job asynchronously
+        def run_batch_async(job_id):
+            pipeline.run_batch_job(job_id)
+
+        threading.Thread(target=run_batch_async, args=(job_id,), daemon=True).start()
+
+        return jsonify({"success": True, "job_id": job_id, "message": "Batch prediction started"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+@app.route("/api/batch/status/<job_id>", methods=["GET"])
+def api_batch_status(job_id):
+    """API endpoint for checking the status of a batch job"""
+    pipeline = create_batch_pipeline()
+    job = pipeline.get_job_status(job_id)
+
+    if not job:
+        return jsonify({"success": False, "message": "Job not found"}), 404
+
+    return jsonify({
+        "success": True,
+        "status": job.status,
+        "progress": job.progress,
+        "completed": job.completed_files,
+        "failed": job.failed_files,
+        "total": job.total_files,
+        "created_at": job.created_at,
+        "errors": job.error_messages
+    })
+
+@app.route("/api/batch/cancel/<job_id>", methods=["POST"])
+def api_batch_cancel(job_id):
+    """API endpoint to cancel a batch job"""
+    pipeline = create_batch_pipeline()
+    result = pipeline.cancel_job(job_id)
+
+    if not result:
+        return jsonify({"success": False, "message": "Unable to cancel job, or job not found"}), 404
+
+    return jsonify({"success": True, "message": "Job cancelled"})
+
+@app.route("/api/batch/progress/<job_id>", methods=["GET"])
+def api_batch_progress(job_id):
+    """API endpoint to get batch job progress with callback support"""
+    try:
+        pipeline = create_batch_pipeline()
+        job = pipeline.get_job_status(job_id)
+
+        if not job:
+            return jsonify({"success": False, "message": "Job not found"}), 404
+
+        # Support for callback parameter (JSONP-style callback)
+        callback = request.args.get('callback')
+        
+        progress_data = {
+            "success": True,
+            "job_id": job_id,
+            "status": job.status,
+            "progress": job.progress,
+            "completed": job.completed_files,
+            "failed": job.failed_files,
+            "total": job.total_files,
+            "current_file": getattr(job, 'current_file', None),
+            "created_at": job.created_at,
+            "updated_at": getattr(job, 'updated_at', None),
+            "errors": job.error_messages[-5:] if job.error_messages else [],  # Last 5 errors
+            "recent_completions": getattr(job, 'recent_completions', [])[-3:] if hasattr(job, 'recent_completions') else [],  # Last 3 completed files
+            "estimated_time_remaining": getattr(job, 'estimated_time_remaining', None),
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        if callback:
+            # Return JSONP response for cross-origin requests
+            response_text = f"{callback}({json.dumps(progress_data)})"
+            return Response(response_text, mimetype='application/javascript')
+        else:
+            return jsonify(progress_data)
+            
+    except Exception as e:
+        error_response = {"success": False, "message": str(e)}
+        if callback:
+            response_text = f"{callback}({json.dumps(error_response)})"
+            return Response(response_text, mimetype='application/javascript')
+        else:
+            return jsonify(error_response), 500
+
+@app.route("/api/batch/stream", methods=["POST"])
+def api_batch_stream():
+    """API endpoint for streaming batch predictions with progress updates"""
+    try:
+        import json
+        import uuid
+        from flask import Response, copy_current_request_context
+
+        data = request.get_json()
+        if not data or "files" not in data:
+            return jsonify({"success": False, "message": "No files provided"}), 400
+
+        file_paths = data.get("files", [])
+        batch_size = data.get("batch_size", 10)
+        max_workers = data.get("max_workers", 3)
+        stream_id = str(uuid.uuid4())
+
+        @copy_current_request_context
+        def generate_batch_stream():
+            try:
+                pipeline = create_batch_pipeline()
+                
+                # Send initial status
+                yield f"data: {json.dumps({'type': 'start', 'stream_id': stream_id, 'message': f'Starting batch prediction for {len(file_paths)} files...', 'total_files': len(file_paths)})}\n\n"
+
+                # Create batch job
+                job_id = pipeline.create_batch_job(
+                    name=f"Stream Batch {stream_id[:8]}",
+                    input_files=file_paths,
+                    output_dir="./stream_batch_output",
+                    batch_size=batch_size,
+                    max_workers=max_workers
+                )
+                
+                yield f"data: {json.dumps({'type': 'job_created', 'job_id': job_id, 'message': f'Batch job {job_id} created'})}\n\n"
+
+                # Start job asynchronously and monitor progress
+                def run_batch_async_monitor(job_id):
+                    pipeline.run_batch_job(job_id)
+
+                import threading
+                batch_thread = threading.Thread(target=run_batch_async_monitor, args=(job_id,), daemon=True)
+                batch_thread.start()
+
+                # Monitor job progress
+                last_progress = -1
+                last_completed = 0
+                
+                while True:
+                    time.sleep(1)  # Check every second
+                    
+                    job = pipeline.get_job_status(job_id)
+                    if not job:
+                        yield f"data: {json.dumps({'type': 'error', 'message': 'Job not found'})}\n\n"
+                        break
+
+                    # Send progress updates
+                    if job.progress != last_progress or job.completed_files != last_completed:
+                        yield f"data: {json.dumps({'type': 'progress', 'progress': job.progress, 'completed': job.completed_files, 'failed': job.failed_files, 'total': job.total_files, 'status': job.status})}\n\n"
+                        last_progress = job.progress
+                        last_completed = job.completed_files
+
+                    # Send completion updates
+                    if hasattr(job, 'recent_completions') and job.recent_completions:
+                        for completion in job.recent_completions:
+                            if completion not in getattr(generate_batch_stream, 'sent_completions', set()):
+                                yield f"data: {json.dumps({'type': 'file_completed', 'file': completion, 'completed': job.completed_files, 'total': job.total_files})}\n\n"
+                                if not hasattr(generate_batch_stream, 'sent_completions'):
+                                    generate_batch_stream.sent_completions = set()
+                                generate_batch_stream.sent_completions.add(completion)
+
+                    # Check if job is complete
+                    if job.status in ['completed', 'failed', 'cancelled']:
+                        yield f"data: {json.dumps({'type': 'complete', 'status': job.status, 'completed': job.completed_files, 'failed': job.failed_files, 'total': job.total_files, 'message': f'Batch job {job.status}'})}\n\n"
+                        break
+                    
+                    # Send keepalive every 30 seconds
+                    if hasattr(generate_batch_stream, 'keepalive_counter'):
+                        generate_batch_stream.keepalive_counter += 1
+                    else:
+                        generate_batch_stream.keepalive_counter = 1
+                        
+                    if generate_batch_stream.keepalive_counter % 30 == 0:
+                        yield f"data: {json.dumps({'type': 'keepalive', 'timestamp': datetime.now().isoformat()})}\n\n"
+
+            except Exception as e:
+                yield f"data: {json.dumps({'type': 'error', 'message': f'Stream error: {str(e)}'})}\n\n"
+
+        return Response(
+            generate_batch_stream(),
+            mimetype="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "Cache-Control",
+            },
+        )
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": f"Stream setup error: {str(e)}"}), 500
+
 @app.route("/api/health")
 def api_health():
     """Health check endpoint"""
@@ -2519,32 +3046,61 @@ def api_stats():
 
 
 @app.route("/api/system_status")
+@cached_endpoint(ttl=30)  # Cache for 30 seconds
 def api_system_status():
-    """API endpoint for the real-time monitoring sidebar"""
+    """API endpoint for the real-time monitoring sidebar - Optimized with caching"""
     try:
-        # Get logs
-        logs = logger.get_web_logs(limit=50)
-
-        # Get model metrics
-        model_metrics = get_model_predictions()
-
-        # Get database health
-        db_stats = db_manager.get_database_stats()
-
-        return jsonify(
-            {
-                "success": True,
-                "logs": logs,
-                "model_metrics": model_metrics,
-                "db_stats": db_stats,
-                "timestamp": datetime.now().isoformat(),
-            }
-        )
+        start_time = time.time()
+        
+        if OPTIMIZATION_ENABLED:
+            # Use optimized queries for better performance
+            optimized_queries = get_optimized_queries(DATABASE_PATH)
+            
+            # Get comprehensive system stats in a single query
+            system_stats = optimized_queries.get_comprehensive_system_stats()
+            db_stats = system_stats.get('database', {})
+            
+            # Get logs (optimized if stored in database)
+            logs = optimized_queries.get_recent_logs_optimized(limit=50)
+            
+            # Fallback to logger if no database logs
+            if not logs:
+                logs = logger.get_web_logs(limit=50)
+            
+            # Get model metrics (optimized)
+            model_metrics = get_model_predictions()
+            
+            # Add query performance info
+            query_performance = optimized_queries.get_query_performance_stats()
+            
+        else:
+            # Fallback to original implementation
+            logs = logger.get_web_logs(limit=50)
+            model_metrics = get_model_predictions()
+            db_stats = db_manager.get_database_stats()
+            query_performance = {'optimized': False}
+        
+        total_time = time.time() - start_time
+        
+        return {
+            "success": True,
+            "logs": logs,
+            "model_metrics": model_metrics,
+            "db_stats": db_stats,
+            "query_performance": query_performance,
+            "response_time_ms": round(total_time * 1000, 2),
+            "timestamp": datetime.now().isoformat(),
+            "optimized": OPTIMIZATION_ENABLED
+        }
+        
     except Exception as e:
+        logger.exception(f"Error in system_status endpoint: {e}")
         return (
-            jsonify(
-                {"success": False, "message": f"Error getting system status: {str(e)}"}
-            ),
+            {
+                "success": False, 
+                "message": f"Error getting system status: {str(e)}",
+                "timestamp": datetime.now().isoformat()
+            },
             500,
         )
 
@@ -2564,44 +3120,62 @@ def api_recent_races():
 
 
 @app.route("/api/model_registry/models")
+@cached_endpoint(ttl=30)  # Cache for 30 seconds
 def api_model_registry_models():
-    """API endpoint to list all models in the registry"""
+    """API endpoint to list all models in the registry - Optimized with caching"""
     try:
+        start_time = time.time()
+        
         if model_registry is None:
             return (
-                jsonify(
-                    {"success": False, "message": "Model registry not initialized"}
-                ),
+                {
+                    "success": False, 
+                    "message": "Model registry not initialized",
+                    "timestamp": datetime.now().isoformat()
+                },
                 500,
             )
 
         models = model_registry.list_models()
-
-        return jsonify(
-            {
-                "success": True,
-                "models": models,
-                "count": len(models),
-                "timestamp": datetime.now().isoformat(),
-            }
-        )
+        
+        # Add performance metadata
+        query_time = time.time() - start_time
+        
+        return {
+            "success": True,
+            "models": models,
+            "count": len(models),
+            "response_time_ms": round(query_time * 1000, 2),
+            "timestamp": datetime.now().isoformat(),
+            "optimized": True
+        }
 
     except Exception as e:
+        logger.exception(f"Error in model_registry_models endpoint: {e}")
         return (
-            jsonify({"success": False, "message": f"Error listing models: {str(e)}"}),
+            {
+                "success": False, 
+                "message": f"Error listing models: {str(e)}",
+                "timestamp": datetime.now().isoformat()
+            },
             500,
         )
 
 
 @app.route("/api/model_registry/models/<model_id>")
+@cached_endpoint(key_func=lambda req: f"model_detail:{req.view_args['model_id']}", ttl=60)  # Cache for 60 seconds
 def api_model_registry_model_detail(model_id):
-    """API endpoint to get detailed information about a specific model"""
+    """API endpoint to get detailed information about a specific model - Optimized with caching"""
     try:
+        start_time = time.time()
+        
         if model_registry is None:
             return (
-                jsonify(
-                    {"success": False, "message": "Model registry not initialized"}
-                ),
+                {
+                    "success": False, 
+                    "message": "Model registry not initialized",
+                    "timestamp": datetime.now().isoformat()
+                },
                 500,
             )
 
@@ -2609,36 +3183,50 @@ def api_model_registry_model_detail(model_id):
 
         if model_info is None:
             return (
-                jsonify({"success": False, "message": f"Model {model_id} not found"}),
+                {
+                    "success": False, 
+                    "message": f"Model {model_id} not found",
+                    "timestamp": datetime.now().isoformat()
+                },
                 404,
             )
+        
+        query_time = time.time() - start_time
 
-        return jsonify(
-            {
-                "success": True,
-                "model": model_info,
-                "timestamp": datetime.now().isoformat(),
-            }
-        )
+        return {
+            "success": True,
+            "model": model_info,
+            "response_time_ms": round(query_time * 1000, 2),
+            "timestamp": datetime.now().isoformat(),
+            "optimized": True
+        }
 
     except Exception as e:
+        logger.exception(f"Error in model_registry_model_detail endpoint: {e}")
         return (
-            jsonify(
-                {"success": False, "message": f"Error getting model details: {str(e)}"}
-            ),
+            {
+                "success": False, 
+                "message": f"Error getting model details: {str(e)}",
+                "timestamp": datetime.now().isoformat()
+            },
             500,
         )
 
 
 @app.route("/api/model_registry/performance")
+@cached_endpoint(ttl=45)  # Cache for 45 seconds
 def api_model_registry_performance():
-    """API endpoint to get performance metrics for all models"""
+    """API endpoint to get performance metrics for all models - Optimized with caching"""
     try:
+        start_time = time.time()
+        
         if model_registry is None:
             return (
-                jsonify(
-                    {"success": False, "message": "Model registry not initialized"}
-                ),
+                {
+                    "success": False, 
+                    "message": "Model registry not initialized",
+                    "timestamp": datetime.now().isoformat()
+                },
                 500,
             )
 
@@ -2668,78 +3256,93 @@ def api_model_registry_performance():
         performance_data = {
             "total_models": total_models,
             "active_models": active_models,
-            "avg_accuracy": avg_accuracy,
-            "avg_f1_score": avg_f1,
+            "avg_accuracy": round(avg_accuracy, 4),
+            "avg_f1_score": round(avg_f1, 4),
             "best_model": (
                 best_model.model_id
                 if best_model and hasattr(best_model, "model_id")
                 else None
             ),
             "best_accuracy": (
-                best_model.accuracy
+                round(best_model.accuracy, 4)
                 if best_model and hasattr(best_model, "accuracy")
                 else 0
             ),
         }
+        
+        query_time = time.time() - start_time
 
-        return jsonify(
-            {
-                "success": True,
-                "performance": performance_data,
-                "timestamp": datetime.now().isoformat(),
-            }
-        )
+        return {
+            "success": True,
+            "performance": performance_data,
+            "response_time_ms": round(query_time * 1000, 2),
+            "timestamp": datetime.now().isoformat(),
+            "optimized": True
+        }
 
     except Exception as e:
+        logger.exception(f"Error in model_registry_performance endpoint: {e}")
         return (
-            jsonify(
-                {
-                    "success": False,
-                    "message": f"Error getting performance data: {str(e)}",
-                }
-            ),
+            {
+                "success": False,
+                "message": f"Error getting performance data: {str(e)}",
+                "timestamp": datetime.now().isoformat()
+            },
             500,
         )
 
 
 @app.route("/api/model_registry/status")
+@cached_endpoint(ttl=30)  # Cache for 30 seconds
 def api_model_registry_status():
-    """API endpoint to get model registry status"""
+    """API endpoint to get model registry status - Optimized with caching"""
     try:
+        start_time = time.time()
+        
         if model_registry is None:
-            return jsonify(
-                {
-                    "success": False,
-                    "message": "Model registry not initialized",
-                    "initialized": False,
-                    "model_count": 0,
-                }
-            )
+            return {
+                "success": False,
+                "message": "Model registry not initialized",
+                "initialized": False,
+                "model_count": 0,
+                "timestamp": datetime.now().isoformat()
+            }
 
         models = model_registry.list_models()
+        query_time = time.time() - start_time
+        
+        # Get cache statistics if optimization is enabled
+        cache_stats = {}
+        if OPTIMIZATION_ENABLED:
+            try:
+                cache = get_endpoint_cache()
+                cache_stats = cache.get_stats()
+            except Exception as e:
+                logger.warning(f"Failed to get cache stats: {e}")
 
-        return jsonify(
-            {
-                "success": True,
-                "initialized": True,
-                "model_count": len(models),
-                "registry_path": (
-                    model_registry.registry_file
-                    if hasattr(model_registry, "registry_file")
-                    else "Unknown"
-                ),
-                "timestamp": datetime.now().isoformat(),
-            }
-        )
+        return {
+            "success": True,
+            "initialized": True,
+            "model_count": len(models),
+            "registry_path": (
+                model_registry.registry_file
+                if hasattr(model_registry, "registry_file")
+                else "Unknown"
+            ),
+            "response_time_ms": round(query_time * 1000, 2),
+            "cache_stats": cache_stats,
+            "timestamp": datetime.now().isoformat(),
+            "optimized": OPTIMIZATION_ENABLED
+        }
 
     except Exception as e:
+        logger.exception(f"Error in model_registry_status endpoint: {e}")
         return (
-            jsonify(
-                {
-                    "success": False,
-                    "message": f"Error getting registry status: {str(e)}",
-                }
-            ),
+            {
+                "success": False,
+                "message": f"Error getting registry status: {str(e)}",
+                "timestamp": datetime.now().isoformat()
+            },
             500,
         )
 
@@ -5678,8 +6281,30 @@ def api_prediction_results():
                     }
                     if predictions_list:
                         first_pred = predictions_list[0]
+                        # Enhanced KeyError handling for dog names
+                        from constants import DOG_NAME_KEY
+                        from pathlib import Path
+                        
+                        try:
+                            dog_name = first_pred[DOG_NAME_KEY]
+                        except KeyError:
+                            # Log the KeyError with detailed context using key_mismatch_logger
+                            key_mismatch_logger.log_key_error(
+                                error_context={
+                                    "operation": "top_pick_creation_from_prediction_results",
+                                    "race_file_path": str(Path(file_path).name),
+                                    "dog_record": dict(first_pred),
+                                    "available_keys": list(first_pred.keys()),
+                                    "missing_key": DOG_NAME_KEY,
+                                    "step": "api_prediction_results_processing"
+                                },
+                                dog_record=dict(first_pred)
+                            )
+                            # Use fallback value
+                            dog_name = first_pred.get("dog_name", "Unknown")
+                        
                         top_pick_data = {
-                            "dog_name": first_pred.get("dog_name", "Unknown"),
+                            "dog_name": dog_name,
                             "box_number": first_pred.get("box_number", "N/A"),
                             "prediction_score": safe_float(
                                 first_pred.get("final_score", 0)
@@ -10770,6 +11395,45 @@ def api_download_and_predict_race():
             ),
             500,
         )
+
+
+@app.route("/api/csv_metadata")
+def api_csv_metadata():
+    """API endpoint to extract metadata from CSV files using lightweight extractor"""
+    try:
+        file_path = request.args.get("file_path")
+        
+        if not file_path:
+            return jsonify({
+                "success": False,
+                "error": "file_path parameter is required",
+                "message": "Please provide a file_path parameter with the path to the CSV file"
+            }), 400
+        
+        # Use the new parse_race_csv_meta function
+        metadata = parse_race_csv_meta(file_path)
+        
+        # Check if extraction was successful
+        if metadata.get("status") == "error":
+            return jsonify({
+                "success": False,
+                "error": metadata.get("error_message", "Unknown error"),
+                "metadata": metadata,
+                "timestamp": datetime.now().isoformat()
+            }), 400
+        
+        return jsonify({
+            "success": True,
+            "metadata": metadata,
+            "timestamp": datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Server error: {str(e)}",
+            "message": "An unexpected error occurred while extracting CSV metadata"
+        }), 500
 
 
 if __name__ == "__main__":

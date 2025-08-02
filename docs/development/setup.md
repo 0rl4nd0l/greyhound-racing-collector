@@ -249,6 +249,30 @@ mkdocs serve
 - Use clear, consistent formatting.
 - Include error handling information.
 
+#### New Enhanced Prediction Endpoints
+
+The system now includes enhanced prediction endpoints with intelligent pipeline selection:
+
+**Single Race Prediction**:
+```bash
+curl -X POST http://localhost:5000/api/predict_single_race_enhanced \
+  -H "Content-Type: application/json" \
+  -d '{"race_filename": "Race 1 - GOSF - 2025-01-15.csv"}'
+```
+
+**Batch Race Prediction**:
+```bash
+curl -X POST http://localhost:5000/api/predict_all_upcoming_races_enhanced \
+  -H "Content-Type: application/json" \
+  -d '{"max_races": 5}'
+```
+
+**Key Features**:
+- Intelligent prediction pipeline selection (PredictionPipelineV3 → UnifiedPredictor → ComprehensivePredictionPipeline)
+- Comprehensive error handling and recovery
+- Performance monitoring and detailed metrics
+- Automatic file discovery and path resolution
+
 ## Troubleshooting
 
 ### Common Issues

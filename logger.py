@@ -308,5 +308,83 @@ class EnhancedLogger:
         return structured_error
 
 
+class KeyMismatchLogger:
+    """Logger adapter for capturing KeyErrors related to dog names."""
+
+    def __init__(self, logger):
+        self.logger = logger
+
+    def log_key_error(self, error_context=None, dog_record=None, error=None, file_path=None):
+        """Logs KeyError with detailed context including dog record and race file path.
+        
+        Supports both old and new interfaces:
+        - New: log_key_error(error_context={...}, dog_record={...})
+        - Old: log_key_error(error, dog_record, file_path)
+        """
+        # Handle new enhanced interface
+        if error_context is not None and isinstance(error_context, dict):
+            message = f"KeyError in {error_context.get('operation', 'unknown operation')}"
+            
+            # Extract information from error_context
+            race_file_path = error_context.get('race_file_path', 'unknown')
+            missing_key = error_context.get('missing_key', 'unknown')
+            available_keys = error_context.get('available_keys', [])
+            step = error_context.get('step', 'unknown')
+            operation = error_context.get('operation', 'unknown')
+            
+            # Log with comprehensive context
+            self.logger.log_error(
+                message,
+                context={
+                    "operation": operation,
+                    "race_file_path": race_file_path,
+                    "missing_key": missing_key,
+                    "available_keys": available_keys,
+                    "step": step,
+                    "dog_record": dog_record or error_context.get('dog_record', {}),
+                    "error_type": "KeyError",
+                    "enhanced_logging": True
+                },
+            )
+            
+            # Also print detailed error information for immediate visibility
+            print(f"\n🚨 KEYERROR DETECTED:")
+            print(f"   Operation: {operation}")
+            print(f"   Race File: {race_file_path}")
+            print(f"   Missing Key: {missing_key}")
+            print(f"   Available Keys: {available_keys}")
+            print(f"   Step: {step}")
+            if dog_record:
+                print(f"   Dog Record: {dog_record}")
+            print(f"   Stack trace logged to error files\n")
+        
+        # Handle old interface for backward compatibility
+        elif error is not None and dog_record is not None:
+            self.logger.log_error(
+                "KeyError encountered in dog names",
+                error=error,
+                context={
+                    "dog_record": dog_record,
+                    "race_file_path": file_path or "unknown",
+                    "legacy_interface": True
+                },
+            )
+        
+        else:
+            # Fallback logging
+            self.logger.log_error(
+                "KeyError logged with insufficient context",
+                context={
+                    "error_context": error_context,
+                    "dog_record": dog_record,
+                    "error": str(error) if error else None,
+                    "file_path": file_path,
+                    "insufficient_context": True
+                }
+            )
+
+
 # Global logger instance
 logger = EnhancedLogger()
+# Global KeyMismatchLogger instance
+key_mismatch_logger = KeyMismatchLogger(logger)

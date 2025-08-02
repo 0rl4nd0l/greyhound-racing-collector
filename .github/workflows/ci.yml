@@ -113,6 +113,30 @@ jobs:
           alembic upgrade head
         fi
 
+    - name: Database Schema Consistency Tests
+      run: |
+        echo "Running database schema consistency tests..."
+        
+        # Test 1: Alembic schema consistency (empty diff check)
+        echo "Testing Alembic schema consistency..."
+        python -m pytest tests/test_database_schema_consistency.py::test_alembic_schema_consistency -v
+        
+        # Test 2: Foreign key indexes check
+        echo "Testing foreign key indexes..."
+        python -m pytest tests/test_database_schema_consistency.py::test_foreign_key_indexes -v
+        
+        # Test 3: Data integrity checks
+        echo "Testing data integrity..."
+        python -m pytest tests/test_database_schema_consistency.py::test_data_integrity -v
+        
+        # Test 4: Schema hash generation
+        echo "Testing schema hash generation..."
+        python -m pytest tests/test_database_schema_consistency.py::test_schema_hash_generation -v
+        
+        echo "Schema consistency tests completed successfully!"
+      env:
+        DATABASE_URL: ${{ env.DATABASE_URL }}
+
     - name: Run load tests with Locust
       run: |
         pip install locust
@@ -122,6 +146,18 @@ jobs:
     - name: Run unit tests
       run: |
         make test
+    
+    - name: Run key consistency regression tests
+      run: |
+        echo "Running key consistency tests to prevent KeyError regressions..."
+        python -m pytest tests/test_key_consistency.py \
+          --tb=short \
+          -v \
+          --maxfail=3 \
+          --timeout=600
+        echo "Key consistency tests completed successfully!"
+      env:
+        DATABASE_URL: ${{ env.DATABASE_URL }}
 
     - name: Run security tests
       run: |

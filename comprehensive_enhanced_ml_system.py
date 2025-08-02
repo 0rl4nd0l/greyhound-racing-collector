@@ -228,24 +228,149 @@ class ComprehensiveEnhancedMLSystem:
         print("🚀 Comprehensive Enhanced ML Model System Initialized")
 
     def load_form_guide_data(self):
-        """Load and parse all form guide CSV files with proper blank row handling"""
+        """Load comprehensive form guide data using the new CSV ingestion layer"""
         try:
-            print("📊 Loading form guide data from CSV files...")
-
-            form_data = {}
-
-            # Load from both sources for comprehensive historical data
+            print(f"📊 Loading form guide data using robust CSV ingestion layer...")
+            
+            # Import the new CSV ingestion system
+            from csv_ingestion import create_ingestor, FormGuideCsvIngestionError
+            
+            # Create ingestor with moderate validation (balanced approach)
+            ingestor = create_ingestor("moderate")
+            
+            form_data = {}  # Dictionary to store all dog form data
             csv_files = []
 
-            # Primary source: unprocessed directory (1,228 files with rich historical data)
+            # Load from unprocessed directory (primary source with 1,228 files)
             if self.unprocessed_forms_dir.exists():
                 unprocessed_files = list(self.unprocessed_forms_dir.glob("*.csv"))
                 csv_files.extend(unprocessed_files)
-                print(
-                    f"📁 Found {len(unprocessed_files)} files in unprocessed directory"
-                )
+                print(f"📁 Found {len(unprocessed_files)} files in unprocessed directory")
 
-            # Secondary source: downloaded directory (backup/additional data)
+            # Load from downloaded forms directory (additional source)
+            if self.downloaded_forms_dir.exists():
+                downloaded_files = list(self.downloaded_forms_dir.glob("*.csv"))
+                csv_files.extend(downloaded_files)
+                print(f"📁 Found {len(downloaded_files)} files in downloaded directory")
+
+            print(f"📁 Total: {len(csv_files)} form guide files to process")
+
+            # Use batch ingestion for efficiency
+            batch_results = ingestor.batch_ingest(csv_files, continue_on_error=True)
+            
+            print(f"✅ Successfully processed {len(batch_results['successful'])} files")
+            print(f"❌ Failed to process {len(batch_results['failed'])} files")
+            print(f"📊 Total records extracted: {batch_results['total_records']}")
+            
+            # Log any errors for investigation
+            if batch_results['failed']:
+                print("⚠️ Failed files and errors:")
+                for failed_file in batch_results['failed'][:5]:  # Show first 5 errors
+                    error = batch_results['errors'].get(failed_file, "Unknown error")
+                    print(f"  - {failed_file}: {error[:100]}...")
+                if len(batch_results['failed']) > 5:
+                    print(f"  ... and {len(batch_results['failed']) - 5} more")
+            
+            # Process successful files individually to build form_data structure
+            processed_count = 0
+            for success_info in batch_results['successful']:
+                try:
+                    file_path = success_info['file']
+                    processed_data, validation_result = ingestor.ingest_csv(file_path)
+                    
+                    # Group by dog name (which is now properly mapped to dog_name)
+                    for record in processed_data:
+                        dog_name = record['dog_name']
+                        if dog_name not in form_data:
+                            form_data[dog_name] = []
+                        
+                        # Check for duplicates before adding
+                        race_key = (
+                            record.get("date", ""),
+                            record.get("track", ""),
+                            record.get("place", ""),
+                            record.get("box", ""),
+                            record.get("weight", ""),
+                            record.get("distance", ""),
+                        )
+                        
+                        # Check if this exact race already exists for this dog
+                        is_duplicate = False
+                        for existing_race in form_data[dog_name]:
+                            existing_key = (
+                                existing_race.get("date", ""),
+                                existing_race.get("track", ""),
+                                existing_race.get("place", ""),
+                                existing_race.get("box", ""),
+                                existing_race.get("weight", ""),
+                                existing_race.get("distance", ""),
+                            )
+                            if race_key == existing_key:
+                                is_duplicate = True
+                                break
+                        
+                        if not is_duplicate:
+                            # Add source file information for traceability
+                            record['source_file'] = file_path
+                            form_data[dog_name].append(record)
+                    
+                    processed_count += 1
+                    if processed_count % 100 == 0:
+                        print(f"   Processed {processed_count} files...")
+                        
+                except FormGuideCsvIngestionError as e:
+                    print(f"⚠️ Error processing {file_path}: {e}")
+                    continue
+                except Exception as e:
+                    print(f"⚠️ Unexpected error processing {file_path}: {e}")
+                    continue
+
+            print(f"✅ Final result: Loaded form data for {len(form_data)} dogs")
+
+            # Print summary statistics
+            total_races = sum(len(races) for races in form_data.values())
+            avg_races = total_races / len(form_data) if form_data else 0
+            print(f"📈 Total historical races: {total_races}")
+            print(f"📊 Average races per dog: {avg_races:.1f}")
+            
+            # Validate that Dog Name -> dog_name mapping worked correctly
+            sample_dog_names = list(form_data.keys())[:5]
+            print(f"📋 Sample dog names (showing proper mapping): {sample_dog_names}")
+
+            return form_data
+
+        except ImportError as e:
+            print(f"❌ CSV ingestion layer not available: {e}")
+            print("   Falling back to legacy CSV loading...")
+            return self._load_form_guide_data_legacy()
+        except Exception as e:
+            print(f"❌ Error loading form guide data: {e}")
+            return {}
+            return form_data
+
+        except ImportError as e:
+            print(f"❌ CSV ingestion layer not available: {e}")
+            print("   Falling back to legacy CSV loading...")
+            return self._load_form_guide_data_legacy()
+        except Exception as e:
+            print(f"❌ Error loading form guide data: {e}")
+            return {}
+            
+    def _load_form_guide_data_legacy(self):
+        """Legacy form guide data loading method (fallback)"""
+        try:
+            print(f"📊 Loading form guide data (legacy method)...")
+
+            form_data = {}  # Dictionary to store all dog form data
+            csv_files = []
+
+            # Load from unprocessed directory (primary source with 1,228 files)
+            if self.unprocessed_forms_dir.exists():
+                unprocessed_files = list(self.unprocessed_forms_dir.glob("*.csv"))
+                csv_files.extend(unprocessed_files)
+                print(f"📁 Found {len(unprocessed_files)} files in unprocessed directory")
+
+            # Load from downloaded forms directory (additional source)
             if self.downloaded_forms_dir.exists():
                 downloaded_files = list(self.downloaded_forms_dir.glob("*.csv"))
                 csv_files.extend(downloaded_files)
@@ -320,7 +445,9 @@ class ComprehensiveEnhancedMLSystem:
                                 continue
 
                             # Parse this row as historical race data for current dog
+                            # NOTE: Using legacy column names (Dog Name -> dog_name mapping happens implicitly)
                             historical_race = {
+                                "dog_name": current_dog_name,  # ENSURE dog_name mapping
                                 "sex": str(row.get("Sex", "")).strip(),
                                 "place": str(row.get("PLC", "")).strip(),
                                 "box": str(row.get("BOX", "")).strip(),
@@ -386,11 +513,18 @@ class ComprehensiveEnhancedMLSystem:
             avg_races = total_races / len(form_data) if form_data else 0
             print(f"📈 Total historical races: {total_races}")
             print(f"📊 Average races per dog: {avg_races:.1f}")
+            
+            # Validate that dog_name mapping worked in legacy mode
+            sample_records = []
+            for dog_name, races in list(form_data.items())[:3]:
+                if races:
+                    sample_records.append(f"{dog_name}: {races[0].get('dog_name', 'MISSING')}")
+            print(f"📋 Sample dog_name mappings (legacy): {sample_records}")
 
             return form_data
 
         except Exception as e:
-            print(f"❌ Error loading form guide data: {e}")
+            print(f"❌ Error loading form guide data (legacy): {e}")
             return {}
 
     def parse_historical_race_data(self, race_data_str):
@@ -440,7 +574,7 @@ class ComprehensiveEnhancedMLSystem:
 
             query = """
             SELECT 
-                drd.race_id, drd.dog_clean_name, drd.finish_position,
+                drd.race_id, drd.dog_name, drd.dog_clean_name, drd.finish_position,
                 drd.box_number, drd.weight, drd.starting_price,
                 drd.performance_rating, drd.speed_rating, drd.class_rating,
                 drd.individual_time, drd.margin,

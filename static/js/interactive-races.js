@@ -70,6 +70,7 @@ document.addEventListener('DOMContentLoaded', () => {
         sortOrder: 'race_date|desc',
         filters: {},
         isLoading: false,
+        viewMode: 'regular', // 'regular' or 'upcoming'
     };
 
     const elements = {
@@ -82,6 +83,8 @@ document.addEventListener('DOMContentLoaded', () => {
         runAllUpcomingButton: document.getElementById('run-all-upcoming-predictions'),
         predictionResultsContainer: document.getElementById('prediction-results-container'),
         predictionResultsBody: document.getElementById('prediction-results-body'),
+        viewToggleButton: document.getElementById('view-toggle-button'),
+        viewModeLabel: document.getElementById('view-mode-label'),
     };
 
     // Initialize the page
@@ -103,12 +106,15 @@ document.addEventListener('DOMContentLoaded', () => {
         state.isLoading = true;
         
         try {
-            const response = await fetchWithErrorHandling('/api/races/paginated');
+            // Choose endpoint based on view mode
+            const endpoint = state.viewMode === 'upcoming' ? '/api/upcoming_races_csv' : '/api/races/paginated';
+            const response = await fetchWithErrorHandling(endpoint);
             const data = await response.json();
             
             if (data.success) {
                 state.races = Array.isArray(data.races) ? data.races : [];
-                showToast(`Successfully loaded ${state.races.length} races`, 'success');
+                const viewLabel = state.viewMode === 'upcoming' ? 'upcoming' : 'regular';
+                showToast(`Successfully loaded ${state.races.length} ${viewLabel} races`, 'success');
             } else {
                 throw new Error(data.message || 'Failed to load races');
             }
@@ -134,20 +140,50 @@ document.addEventListener('DOMContentLoaded', () => {
 
         paginatedRaces.forEach(race => {
             const row = document.createElement('tr');
+            
+            // Add race_filename data attribute for upcoming races
+            const raceFilenamAttr = race.filename ? `data-race-filename="${race.filename}"` : '';
+            
             row.innerHTML = `
-                <td><input type="checkbox" class="race-checkbox" data-race-id="${race.race_id}"></td>
+                <td><input type="checkbox" class="race-checkbox" data-race-id="${race.race_id}" ${raceFilenamAttr}></td>
                 <td>${race.race_name}</td>
                 <td>${race.venue}</td>
                 <td>${new Date(race.race_date).toLocaleDateString()}</td>
                 <td>${race.distance}m</td>
                 <td>${race.grade}</td>
                 <td><span class="badge bg-secondary">Not Predicted</span></td>
-                <td><button class="btn btn-sm btn-primary predict-btn" data-race-id="${race.race_id}">Predict</button></td>
+                <td><button class="btn btn-sm btn-primary predict-btn" data-race-id="${race.race_id}" ${raceFilenamAttr}>Predict</button></td>
             `;
             elements.racesTableBody.appendChild(row);
         });
 
+        // Enhanced prediction buttons are handled by PredictionButtonManager
+        // No need to add individual event listeners here
+
         renderPagination(filteredRaces.length);
+    }
+
+    // Toggle view mode between regular and upcoming races
+    function toggleViewMode() {
+        state.viewMode = state.viewMode === 'regular' ? 'upcoming' : 'regular';
+        
+        // Update UI to reflect the new view mode
+        if (elements.viewModeLabel) {
+            elements.viewModeLabel.textContent = state.viewMode === 'upcoming' ? 'Upcoming Races' : 'Regular Races';
+        }
+        
+        if (elements.viewToggleButton) {
+            elements.viewToggleButton.innerHTML = `
+                <i class="fas fa-${state.viewMode === 'upcoming' ? 'history' : 'calendar-plus'}"></i> 
+                Switch to ${state.viewMode === 'upcoming' ? 'Regular' : 'Upcoming'}
+            `;
+        }
+        
+        // Reset pagination and reload races
+        state.currentPage = 1;
+        loadRaces().then(() => {
+            renderRaces();
+        });
     }
 
     // Setup event listeners
@@ -163,16 +199,24 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         elements.runSelectedButton.addEventListener('click', () => {
-            const selectedIds = Array.from(document.querySelectorAll('.race-checkbox:checked'))
-                                     .map(cb => cb.dataset.raceId);
-            if (selectedIds.length > 0) {
-                runPredictions(selectedIds);
+            const selectedRaces = Array.from(document.querySelectorAll('.race-checkbox:checked'))
+                                        .map(cb => ({
+                                            raceId: cb.dataset.raceId,
+                                            raceFilename: cb.dataset.raceFilename
+                                        }));
+            if (selectedRaces.length > 0) {
+                runPredictions(selectedRaces);
             }
         });
         
         elements.runAllUpcomingButton.addEventListener('click', () => {
             runAllUpcomingPredictions();
         });
+        
+        // Add view toggle event listener
+        if (elements.viewToggleButton) {
+            elements.viewToggleButton.addEventListener('click', toggleViewMode);
+        }
     }
 
     // Filter and sort races based on state
@@ -279,9 +323,69 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Run prediction for a single race with enhanced error handling
+    async function runSinglePrediction(raceId, raceFilename) {
+        if (state.isLoading) {
+            showToast('Another operation is in progress. Please wait.', 'warning');
+            return;
+        }
+        
+        try {
+            state.isLoading = true;
+            
+            // Show prediction results container
+            elements.predictionResultsContainer.style.display = 'block';
+            elements.predictionResultsBody.innerHTML = `
+                <div class="text-center">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Processing single race prediction...</p>
+                </div>`;
+            
+            // Prepare request body - send race_filename if available (for upcoming races), otherwise race_id
+            const requestBody = {};
+            if (raceFilename) {
+                requestBody.race_filename = raceFilename;
+            } else {
+                requestBody.race_id = raceId;
+            }
+            
+            const response = await fetchWithErrorHandling('/api/predict_single_race_enhanced', {
+                method: 'POST',
+                body: JSON.stringify(requestBody)
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(errorText || `HTTP ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                showToast('Prediction completed successfully!', 'success');
+                displayPredictionResults([data]);
+            } else {
+                showToast(`Prediction failed: ${data.message || 'Unknown error'}`, 'danger');
+                displayPredictionResults([data]);
+            }
+            
+        } catch (error) {
+            console.error('Error in runSinglePrediction:', error);
+            showToast(`Error running prediction: ${error.message}`, 'danger');
+            elements.predictionResultsBody.innerHTML = `
+                <div class="alert alert-danger">
+                    <strong>Error:</strong> ${error.message}
+                </div>`;
+        } finally {
+            state.isLoading = false;
+        }
+    }
+
     // Run predictions for selected races with improved error handling
-    async function runPredictions(raceIds) {
-        if (!Array.isArray(raceIds) || raceIds.length === 0) {
+    async function runPredictions(races) {
+        if (!Array.isArray(races) || races.length === 0) {
             showToast('No races selected for prediction', 'warning');
             return;
         }
@@ -305,33 +409,44 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="spinner-border" role="status">
                         <span class="visually-hidden">Loading...</span>
                     </div>
-                    <p class="mt-2">Processing ${raceIds.length} race(s)...</p>
+                    <p class="mt-2">Processing ${races.length} race(s)...</p>
                 </div>`;
 
             const results = [];
             let successCount = 0;
             
-            for (let i = 0; i < raceIds.length; i++) {
-                const raceId = raceIds[i];
+            for (let i = 0; i < races.length; i++) {
+                const race = races[i];
+                const raceId = race.raceId;
+                const raceFilename = race.raceFilename;
                 
                 // Update progress
+                const displayId = raceFilename || raceId;
                 elements.predictionResultsBody.innerHTML = `
                     <div class="text-center">
                         <div class="spinner-border" role="status">
                             <span class="visually-hidden">Loading...</span>
                         </div>
-                        <p class="mt-2">Processing race ${i + 1} of ${raceIds.length} (Race ID: ${raceId})...</p>
+                        <p class="mt-2">Processing race ${i + 1} of ${races.length} (${displayId})...</p>
                         <div class="progress">
                             <div class="progress-bar" role="progressbar" 
-                                 style="width: ${((i) / raceIds.length) * 100}%"
-                                 aria-valuenow="${i}" aria-valuemin="0" aria-valuemax="${raceIds.length}"></div>
+                                 style="width: ${((i) / races.length) * 100}%"
+                                 aria-valuenow="${i}" aria-valuemin="0" aria-valuemax="${races.length}"></div>
                         </div>
                     </div>`;
                 
                 try {
+                    // Prepare request body - send race_filename if available (for upcoming races), otherwise race_id
+                    const requestBody = {};
+                    if (raceFilename) {
+                        requestBody.race_filename = raceFilename;
+                    } else {
+                        requestBody.race_id = raceId;
+                    }
+                    
                     const response = await fetchWithErrorHandling('/api/predict_single_race_enhanced', {
                         method: 'POST',
-                        body: JSON.stringify({ race_id: raceId })
+                        body: JSON.stringify(requestBody)
                     });
                     
                     if (!response.ok) {
@@ -346,18 +461,19 @@ document.addEventListener('DOMContentLoaded', () => {
                         successCount++;
                     }
                 } catch (error) {
-                    console.error(`Error predicting race ${raceId}:`, error);
+                    console.error(`Error predicting race ${displayId}:`, error);
                     results.push({ 
                         success: false, 
-                        race_id: raceId, 
+                        race_id: raceId,
+                        race_filename: raceFilename,
                         message: error.message,
                         error_type: 'network_error'
                     });
                 }
             }
 
-            showToast(`Completed predictions: ${successCount}/${raceIds.length} successful`, 
-                      successCount === raceIds.length ? 'success' : 'warning');
+            showToast(`Completed predictions: ${successCount}/${races.length} successful`, 
+                      successCount === races.length ? 'success' : 'warning');
             displayPredictionResults(results);
             
         } catch (error) {
