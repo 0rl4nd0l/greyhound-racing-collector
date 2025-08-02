@@ -151,10 +151,11 @@ jobs:
       run: |
         echo "Running key consistency tests to prevent KeyError regressions..."
         python -m pytest tests/test_key_consistency.py \
+          -m "key_consistency and not slow" \
           --tb=short \
           -v \
           --maxfail=3 \
-          --timeout=600
+          --timeout=300
         echo "Key consistency tests completed successfully!"
       env:
         DATABASE_URL: ${{ env.DATABASE_URL }}

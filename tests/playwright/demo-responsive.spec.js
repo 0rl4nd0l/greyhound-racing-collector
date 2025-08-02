@@ -112,13 +112,14 @@ const demoHTML = `<!DOCTYPE html>
                             <li><a class="dropdown-item" href="/upload">Upload Files</a></li>
                         </ul>
                     </li>
-                </ul>
-                <ul class="navbar-nav">
                     <li class="nav-item">
-                        <button class="btn btn-outline-light btn-sm me-2" onclick="toggleTheme()" id="theme-toggle" title="Toggle dark mode">
+                        <button class="btn btn-outline-light btn-sm me-2" onclick="toggleTheme()" id="theme-toggle" title="Toggle dark mode" aria-label="Toggle dark/light theme">
                             <i class="fas fa-moon" id="theme-icon" aria-hidden="true"></i>
+                            <span class="visually-hidden">Toggle dark/light theme</span>
                         </button>
                     </li>
+                </ul>
+                <ul class="navbar-nav">
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="helpDropdown" role="button" data-bs-toggle="dropdown">
                             <i class="fas fa-question-circle" aria-hidden="true"></i> Help
@@ -436,6 +437,13 @@ test.describe('Demo Responsive UI & Component Tests', () => {
   test('should persist theme toggle in localStorage', async ({ page }, testInfo) => {
     const viewport = getViewportInfo(testInfo.project.name);
     
+    // On mobile, expand navbar first to access theme toggle
+    if (viewport.name === 'mobile') {
+      const navbarToggler = page.locator('.navbar-toggler');
+      await navbarToggler.click();
+      await page.waitForTimeout(500);
+    }
+    
     // Find theme toggle button
     const themeToggle = page.locator('#theme-toggle');
     await expect(themeToggle).toBeVisible();
@@ -497,6 +505,13 @@ test.describe('Demo Responsive UI & Component Tests', () => {
   test('should pass accessibility audit with Axe-core', async ({ page }, testInfo) => {
     const viewport = getViewportInfo(testInfo.project.name);
     
+    // On mobile, expand navbar first to access theme toggle
+    if (viewport.name === 'mobile') {
+      const navbarToggler = page.locator('.navbar-toggler');
+      await navbarToggler.click();
+      await page.waitForTimeout(500);
+    }
+    
     // Run axe accessibility scan
     const accessibilityScanResults = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])
@@ -519,9 +534,9 @@ test.describe('Demo Responsive UI & Component Tests', () => {
     
     // 1. Buttons should have accessible names
     const themeToggle = page.locator('#theme-toggle');
-    const themeToggleTitle = await themeToggle.getAttribute('title');
-    expect(themeToggleTitle).toBeTruthy();
-    expect(themeToggleTitle.toLowerCase()).toContain('toggle');
+    const themeToggleAriaLabel = await themeToggle.getAttribute('aria-label');
+    expect(themeToggleAriaLabel).toBeTruthy();
+    expect(themeToggleAriaLabel.toLowerCase()).toContain('toggle');
     
     // 2. Sidebar should have proper ARIA attributes
     const sidebar = page.locator('#system-status-sidebar');

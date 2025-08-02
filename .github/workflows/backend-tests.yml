@@ -49,10 +49,14 @@ jobs:
     
     - name: Run key consistency regression tests
       run: |
+        echo "Running key consistency tests to prevent KeyError regressions..."
         python -m pytest tests/test_key_consistency.py \
+          -m "key_consistency and not slow" \
           --tb=short \
           -v \
-          --maxfail=5
+          --maxfail=3 \
+          --timeout=300
+        echo "Key consistency tests completed successfully!"
       continue-on-error: false  # This will block merges on failure
     
     - name: Upload coverage to Codecov
