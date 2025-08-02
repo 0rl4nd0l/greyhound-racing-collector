@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  postgres-test:
+    image: postgres:15-alpine
+    container_name: greyhound_test_db
+    environment:
+      POSTGRES_DB: greyhound_test
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5433:5432"  # Use different port to avoid conflicts with production
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+      - ./tests/data/fixtures:/docker-entrypoint-initdb.d  # Load test data on startup
+    networks:
+      - test_network
+    command: postgres -c log_statement=all -c log_destination=stderr
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test_user -d greyhound_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis-test:
+    image: redis:7-alpine
+    container_name: greyhound_test_redis
+    ports:
+      - "6380:6379"  # Use different port to avoid conflicts
+    networks:
+      - test_network
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  playwright:
+    image: mcr.microsoft.com/playwright:v1.40.0-focal
+    container_name: greyhound_playwright
+    environment:
+      - CI=true
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    networks:
+      - test_network
+    profiles: ["e2e"]  # Only start for E2E tests
+
+volumes:
+  postgres_test_data:
+    driver: local
+
+networks:
+  test_network:
+    driver: bridge

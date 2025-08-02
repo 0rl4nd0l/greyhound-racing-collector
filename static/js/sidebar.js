@@ -57,6 +57,6 @@ function updateSidebar() {
 
 document.addEventListener('DOMContentLoaded', () => {
     updateSidebar();
-    setInterval(updateSidebar, 5000); // Poll every 5 seconds
+    setInterval(updateSidebar, 30000); // Poll every 30 seconds (reduced from 5 seconds)
 });
 

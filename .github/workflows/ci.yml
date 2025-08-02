@@ -7,12 +7,43 @@ on:
   pull_request:
     branches: [ main, develop ]
 
+env:
+  DATABASE_URL: postgresql://test_user:test_password@localhost:5433/greyhound_test
+  REDIS_URL: redis://localhost:6380/0
+  TESTING: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.9, 3.10.0, 3.11]
+        python-version: ["3.9", "3.10", "3.11"]
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: greyhound_test
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5433:5432
+        options: >
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 3s
+          --health-retries 3
 
     steps:
     - uses: actions/checkout@v4
@@ -26,15 +57,20 @@ jobs:
       uses: actions/cache@v3
       with:
         path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
         restore-keys: |
           ${{ runner.os }}-pip-
 
-    - name: Install dependencies
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y postgresql-client
+
+    - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pytest pytest-cov pytest-mock flake8 black isort
+        pip install -r requirements-test.txt
 
     - name: Lint with flake8
       run: |
@@ -51,109 +87,31 @@ jobs:
       run: |
         isort --check-only --diff .
 
-    - name: Create test database
+    - name: Set up PostgreSQL test database
       run: |
-        # Create a minimal test database for testing
-        python -c "
-import sqlite3
-import os
+        PGPASSWORD=test_password psql -h localhost -p 5433 -U test_user -d greyhound_test -f tests/data/fixtures/001_init_schema.sql
+        echo "PostgreSQL test database initialized successfully"
 
-# Create test database
-conn = sqlite3.connect('test_greyhound_racing_data.db')
-cursor = conn.cursor()
+    - name: Install Playwright browsers
+      run: |
+        npx playwright install --with-deps
 
-# Create minimal schema for testing
-cursor.execute('''
-    CREATE TABLE IF NOT EXISTS race_metadata (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        race_id TEXT UNIQUE,
-        venue TEXT,
-        race_date DATE,
-        race_name TEXT,
-        grade TEXT,
-        distance TEXT,
-        track_condition TEXT,
-        weather TEXT,
-        temperature REAL,
-        humidity REAL,
-        wind_speed REAL,
-        wind_direction TEXT,
-        track_record TEXT,
-        prize_money_total REAL,
-        prize_money_breakdown TEXT,
-        race_time TEXT,
-        field_size INTEGER,
-        track_variant TEXT,
-        number_of_runners INTEGER,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-''')
+    - name: Install and cache ChromeDriver
+      run: |
+        python -m webdriver_manager.chrome
+        echo "ChromeDriver installed and cached successfully"
 
-cursor.execute('''
-    CREATE TABLE IF NOT EXISTS dog_race_data (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        race_id TEXT,
-        dog_name TEXT,
-        dog_clean_name TEXT,
-        trap_number INTEGER,
-        finish_position INTEGER,
-        starting_price TEXT,
-        individual_time REAL,
-        sectional_1 REAL,
-        sectional_2 REAL,
-        sectional_3 REAL,
-        sectional_4 REAL,
-        weight REAL,
-        trainer TEXT,
-        age TEXT,
-        form_comment TEXT,
-        margin TEXT,
-        prize_money REAL,
-        box_number INTEGER,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-''')
-
-cursor.execute('''
-    CREATE TABLE IF NOT EXISTS dogs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT,
-        clean_name TEXT,
-        trainer TEXT,
-        sire TEXT,
-        dam TEXT,
-        color TEXT,
-        sex TEXT,
-        date_of_birth DATE,
-        weight REAL,
-        career_starts INTEGER,
-        career_wins INTEGER,
-        career_places INTEGER,
-        career_shows INTEGER,
-        career_earnings REAL,
-        best_time REAL,
-        last_start_date DATE,
-        retirement_date DATE,
-        active BOOLEAN DEFAULT 1,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-''')
-
-conn.commit()
-conn.close()
-print('Test database created successfully')
-"
+    - name: Run ChromeDriver smoke test
+      run: |
+        python tests/test_chromedriver_smoke.py
+        echo "ChromeDriver smoke test passed successfully"
 
     - name: Run database migrations
       run: |
-        # Test database migrations
-        export TESTING=1
-        # Use test database for migrations
-        sed -i 's/greyhound_racing_data.db/test_greyhound_racing_data.db/g' alembic.ini
-        alembic upgrade head
+        # Run Alembic migrations on test database if alembic.ini exists
+        if [ -f "alembic.ini" ]; then
+          alembic upgrade head
+        fi
 
     - name: Run load tests with Locust
       run: |
@@ -163,32 +121,31 @@ print('Test database created successfully')
 
     - name: Run unit tests
       run: |
-        export TESTING=1
-        export DATABASE_URL=sqlite:///test_greyhound_racing_data.db
-        export OPENAI_API_KEY=test_key_for_ci
-        pytest tests/ -v --cov=. --cov-report=xml --cov-report=html
+        make test
 
-    - name: Run GPT endpoint tests with stubbed OpenAI
+    - name: Run security tests
       run: |
-        export TESTING=1
-        export DATABASE_URL=sqlite:///test_greyhound_racing_data.db
-        export OPENAI_API_KEY=test_key_for_ci
-        pytest tests/test_gpt_endpoints.py -v
-        pytest tests/test_merged_prediction_logic.py -v
+        make security
 
     - name: Run integration tests
       run: |
-        export TESTING=1
-        export DATABASE_URL=sqlite:///test_greyhound_racing_data.db
         # Run specific integration tests if they exist
         if [ -d "tests/integration" ]; then
-          pytest tests/integration/ -v
+          pytest tests/integration/ -v --cov-append
         fi
+
+    - name: Run end-to-end tests
+      if: matrix.python-version == '3.11'
+      run: |
+        make e2e
+
+    - name: Run performance tests
+      if: matrix.python-version == '3.11'
+      run: |
+        make perf
 
     - name: Test CLI commands
       run: |
-        export TESTING=1
-        export DATABASE_URL=sqlite:///test_greyhound_racing_data.db
         # Test basic CLI functionality
         python run.py --help || echo "CLI help command tested"
 
