@@ -3,9 +3,9 @@ name: CI Pipeline - Greyhound Racing Predictor
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, requirements-update ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main, develop, requirements-update ]
 
 env:
   DATABASE_URL: postgresql://test_user:test_password@localhost:5433/greyhound_test

@@ -2,9 +2,9 @@ name: Backend Unit Tests
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, requirements-update ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main, develop, requirements-update ]
 
 jobs:
   test:
