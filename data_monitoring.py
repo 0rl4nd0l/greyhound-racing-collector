@@ -357,6 +357,8 @@ class DataMonitor:
                     "action_required": "Investigate data quality issues",
                 }
             )
+            # Trigger model retraining for poor data quality
+            self._trigger_model_retrain("Data Quality Degradation")
 
         return alerts
 
@@ -509,6 +511,11 @@ System: Greyhound Racing Data Monitor
         )
 
         return results
+
+    def _trigger_model_retrain(self, reason: str):
+        """Trigger the model retraining process"""
+        self.logger.info(f"🔄 Triggering model retrain due to {reason}")
+        os.system("python train_model_v4.py")
 
 
 def main():

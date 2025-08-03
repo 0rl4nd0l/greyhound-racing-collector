@@ -286,6 +286,7 @@ class ModelMonitoringService:
                     )
 
                 elif accuracy_drop > self.thresholds["accuracy_drop_warning"]:
+                    self._trigger_model_retrain("Performance Degradation")
                     self._generate_alert(
                         "performance_warning",
                         {
@@ -339,6 +340,11 @@ class ModelMonitoringService:
             "model_load_error": "error",
         }
         return severity_map.get(alert_type, "info")
+
+    def _trigger_model_retrain(self, reason: str):
+        """Trigger the model retraining process"""
+        logger.info(f"🔄 Triggering model retrain due to {reason}")
+        os.system("python ml_system_v4.py")
 
     def _cleanup_old_data(self):
         """Clean up old performance history and alerts"""

@@ -37,6 +37,7 @@ class EnhancedLogger:
         self.process_log_file = self.log_dir / "process.log"
         self.error_log_file = self.log_dir / "errors.log"
         self.system_log_file = self.log_dir / "system.log"
+        self.workflow_log_file = self.log_dir / "main_workflow.jsonl"
         self.web_log_file = self.log_dir / "web_access.json"
 
         # Thread-safe logging
@@ -133,6 +134,17 @@ class EnhancedLogger:
                 self.web_logs["process"] = self.web_logs["process"][-1000:]
 
         self.save_web_logs()
+        
+        # Also log to main_workflow.jsonl
+        workflow_entry = {
+            "timestamp": timestamp,
+            "level": level,
+            "message": message,
+            "details": details or {}
+        }
+        with open(self.workflow_log_file, "a") as f:
+            json.dump(workflow_entry, f)
+            f.write("\n")
 
     def log_error(
         self,

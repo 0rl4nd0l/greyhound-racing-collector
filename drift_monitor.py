@@ -14,9 +14,9 @@ import logging
 try:
     from evidently.presets import DataDriftPreset
     EVIDENTLY_AVAILABLE = True
-except ImportError:
+except (ImportError, TypeError) as e:
     EVIDENTLY_AVAILABLE = False
-    print("⚠️ Evidently not available, using manual drift detection")
+    print(f"⚠️ Evidently not available ({e}), using manual drift detection")
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +95,7 @@ class DriftMonitor:
             return 0.0
     
     def check_for_drift(self, current_data: pd.DataFrame) -> Dict:
-        """Check for data drift and log results."""
+        """Check for data drift and trigger model retraining if required."""
         drift_results = {
             "timestamp": datetime.now().isoformat(),
             "reference_size": len(self.reference_data),
@@ -123,9 +123,16 @@ class DriftMonitor:
         except Exception as e:
             logger.error(f"Error in drift detection: {e}")
             drift_results["error"] = str(e)
-        
-        return drift_results
-    
+            # Trigger retraining if high drift detected
+            if drift_results["summary"]["high_drift_features"]:
+                self._trigger_model_retrain("High Drift Detected")
+            return drift_results
+
+    def _trigger_model_retrain(self, reason: str):
+        """Trigger the model retraining process"""
+        logger.info(f"🔄 Triggering model retrain due to {reason}")
+        os.system("python ml_system_v4.py")
+
     def _evidently_drift_check(self, current_data: pd.DataFrame) -> Dict:
         """Use evidently for drift detection."""
         try:

@@ -144,8 +144,9 @@ class MLSystemV4:
             if self.upcoming_race_box_numbers:
                 race_data['box_number'] = range(1, len(race_data) + 1)
 
-            if self.upcoming_race_weights:
-                race_data['weight'] = race_data['WGT']
+            if self.upcoming_race_weights and 'weight' in race_data.columns:
+                # Weight column already exists, no need to map
+                pass
 
             race_features = self.temporal_builder.build_features_for_race(race_data, race_id)
 
