@@ -295,7 +295,7 @@ class FeatureEngineer:
     def _calculate_speed_consistency(self, dog_data):
         """Calculate consistency of speed"""
         speeds = dog_data.get('time_history', [])
-        if len(speeds)  2:
+        if len(speeds) < 2:
             return 0.5  # default consistency if no data
         return 1 / (np.std(speeds) + 0.1)
 
@@ -310,7 +310,7 @@ class FeatureEngineer:
     def _calculate_recent_momentum(self, dog_data):
         """Calculate recent racing momentum"""
         recent_positions = dog_data.get('recent_form', [])
-        if len(recent_positions)  2:
+        if len(recent_positions) < 2:
             return 0.0
         return np.mean(recent_positions[:3]) - np.mean(recent_positions[-3:])
     

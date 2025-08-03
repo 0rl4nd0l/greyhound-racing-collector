@@ -58,7 +58,7 @@ The Greyhound Racing Predictor is a comprehensive, AI-powered system for analyzi
   ```bash
   python app.py
   ```
-The application will be available at `http://127.0.0.1:5000`.
+The application will be available at `http://127.0.0.1:5002` (or the port specified by the `PORT` environment variable).
 
 - **Dashboard Access**: Visit `/gpt-enhancement` for the GPT Enhancement Dashboard.
 
@@ -215,33 +215,33 @@ The enhanced prediction system follows this data flow:
 
 -   **POST /api/gpt/enhance_race**: Enhance a race with GPT analysis
     ```bash
-    curl -X POST http://127.0.0.1:5000/api/gpt/enhance_race \
+    curl -X POST http://127.0.0.1:5002/api/gpt/enhance_race \
       -H "Content-Type: application/json" \
       -d '{"race_file_path": "./upcoming_races/Race 1 - GOSF - 2025-07-31.csv"}'
     ```
 
 -   **GET /api/gpt/daily_insights**: Get GPT daily insights for a specific date
     ```bash
-    curl "http://127.0.0.1:5000/api/gpt/daily_insights?date=2025-07-31"
+    curl "http://127.0.0.1:5002/api/gpt/daily_insights?date=2025-07-31"
     ```
 
 -   **POST /api/gpt/enhance_multiple**: Enhance multiple races with GPT analysis
     ```bash
-    curl -X POST http://127.0.0.1:5000/api/gpt/enhance_multiple \
+    curl -X POST http://127.0.0.1:5002/api/gpt/enhance_multiple \
       -H "Content-Type: application/json" \
       -d '{"race_files": ["race1.csv", "race2.csv"], "max_races": 3}'
     ```
 
 -   **POST /api/gpt/comprehensive_report**: Generate comprehensive GPT report
     ```bash
-    curl -X POST http://127.0.0.1:5000/api/gpt/comprehensive_report \
+    curl -X POST http://127.0.0.1:5002/api/gpt/comprehensive_report \
       -H "Content-Type: application/json" \
       -d '{"race_ids": ["race123", "race456"]}'
     ```
 
 -   **GET /api/gpt/status**: Check GPT integration status
     ```bash
-    curl "http://127.0.0.1:5000/api/gpt/status"
+    curl "http://127.0.0.1:5002/api/gpt/status"
     ```
 
 ## Recommendations for Long-Term Stability

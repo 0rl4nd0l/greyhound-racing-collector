@@ -12399,7 +12399,7 @@ def main():
 if __name__ == "__main__":
     # Get PORT from environment or CLI, default to DEFAULT_PORT
     import os
-PORT = int(os.getenv('PORT', DEFAULT_PORT))
+    PORT = int(os.getenv('PORT', DEFAULT_PORT))
     
     # Create templates and static directories if they don't exist
     os.makedirs("./templates", exist_ok=True)

@@ -14,7 +14,7 @@ import os
 import multiprocessing
 
 # Server socket
-bind = f"127.0.0.1:{os.environ.get('DEFAULT_PORT', '5000')}"
+bind = f"127.0.0.1:{os.environ.get('DEFAULT_PORT', os.environ.get('PORT', '5002'))}"
 backlog = 2048
 
 # Worker processes
