@@ -279,12 +279,12 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s --file race.csv                    # Predict single file
-  %(prog)s --batch ./upcoming_races/         # Predict all files in directory
-  %(prog)s --upcoming-races                  # Predict all upcoming races
+  %(prog)s --file race.csv                    # Predict single file with required headers
+  %(prog)s --batch ./upcoming_races/         # Predict all files with manifest behavior
+  %(prog)s --upcoming-races                  # Predict with debug mode enabled
   %(prog)s --job-status abc123               # Check job status
   %(prog)s --list-jobs                       # List all jobs
-        """
+"""
     )
     
     parser.add_argument('--file', '-f', 

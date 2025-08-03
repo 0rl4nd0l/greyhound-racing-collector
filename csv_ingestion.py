@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
 CSV Ingestion Layer for Form Guide Data
-======================================
+=======================================
+
+Debug mode allows logging of detailed CSV parsing and processing steps.
 
 This module provides robust CSV ingestion capabilities with:
 1. Schema validation to ensure required columns exist
@@ -214,6 +216,9 @@ class FormGuideCsvIngestor:
         """
         Validate CSV schema and return detailed validation results.
         
+        if self.logger.debug_mode:
+            self.logger.process_logger.debug(f"Validating CSV schema for {file_path}")
+        
         Args:
             file_path: Path to the CSV file to validate
             
@@ -249,6 +254,9 @@ class FormGuideCsvIngestor:
             available_columns = list(df.columns)
             
             # Check if file appears to be HTML (common issue)
+            # TODO: Gap - Improve HTML detection for corrupted CSV files
+            # TODO: File corruption handling is limited to basic DOCTYPE check
+            # TODO: Add detection for other file formats (JSON, XML, plain text)
             if len(available_columns) == 1 and "DOCTYPE html" in str(df.iloc[0, 0]):
                 errors.append("File appears to be HTML, not CSV data")
                 return ValidationResult(
@@ -261,6 +269,9 @@ class FormGuideCsvIngestor:
                 )
             
             # Check for Dog Name column specifically
+            # TODO: Gap - Dog Name column validation needs enhancement
+            # TODO: Current aliases may be incomplete for different CSV sources
+            # TODO: Add fuzzy matching for slightly misspelled headers
             dog_name_found = False
             dog_name_column = None
             
@@ -358,6 +369,39 @@ class FormGuideCsvIngestor:
             file_info=file_info
         )
     
+    def validate_headers(self, headers: List[str]) -> None:
+        """
+        Validate that all required columns are present.
+        
+        if self.logger.debug_mode:
+            self.logger.process_logger.debug(f"Validating headers: {headers}")
+        
+        Args:
+            headers: The list of column headers from the CSV
+        
+        Raises:
+            ValueError: if any required column is missing or misplaced
+        """
+        required_columns = self.required_columns_by_level[self.validation_level]
+        for target_col in required_columns:
+            mapping = self.column_mappings.get(target_col)
+            if not mapping:
+                continue
+                
+            found = False
+            # Check primary name
+            if mapping.source_name in headers:
+                found = True
+            else:
+                # Check aliases
+                for alias in mapping.aliases:
+                    if alias in headers:
+                        found = True
+                        break
+            
+            if not found:
+                raise ValueError(f"Missing required column: {mapping.source_name} (maps to {target_col})")
+
     def map_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Map CSV columns to standardized names, with Dog Name -> dog_name.
@@ -405,6 +449,9 @@ class FormGuideCsvIngestor:
     def process_form_guide_format(self, df: pd.DataFrame) -> List[Dict[str, Any]]:
         """
         Process form guide format where blank rows belong to dog above them.
+
+        if self.logger.debug_mode:
+            self.logger.process_logger.debug("Processing form guide format")
         
         Args:
             df: DataFrame with mapped columns
@@ -416,19 +463,14 @@ class FormGuideCsvIngestor:
         current_dog_name = None
         
         for idx, row in df.iterrows():
-            dog_name_raw = str(row["dog_name"]).strip()
-            
-            # Check if this is a new dog or continuation of previous
-            if (dog_name_raw not in ['""', "", "nan", "NaN"] and 
-                not pd.isna(row["dog_name"])):
-                
-                # New dog - clean the name
+            if pd.isna(row["dog_name"]) or row["dog_name"].strip() == "":
+                row["dog_name"] = current_dog_name
+            else:
+                dog_name_raw = str(row["dog_name"]).strip()
                 current_dog_name = dog_name_raw
-                
-                # Remove box number prefix (e.g., "1. Mel Monelli" -> "Mel Monelli")
                 if ". " in current_dog_name:
                     current_dog_name = current_dog_name.split(". ", 1)[1]
-            
+
             # Skip if we don't have a current dog
             if current_dog_name is None:
                 continue
@@ -457,6 +499,9 @@ class FormGuideCsvIngestor:
                    skip_validation: bool = False) -> Tuple[List[Dict[str, Any]], ValidationResult]:
         """
         Complete CSV ingestion pipeline with validation and processing.
+        
+        if self.logger.debug_mode:
+            self.logger.process_logger.debug(f"Starting CSV ingestion for {file_path}")
         
         Args:
             file_path: Path to CSV file to ingest

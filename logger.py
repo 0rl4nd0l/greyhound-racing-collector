@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import threading
+import argparse
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -39,26 +40,43 @@ class EnhancedLogger:
         self.system_log_file = self.log_dir / "system.log"
         self.workflow_log_file = self.log_dir / "main_workflow.jsonl"
         self.web_log_file = self.log_dir / "web_access.json"
+        self.debug_log_file = self.log_dir / "debug.log"
 
         # Thread-safe logging
         self.lock = threading.Lock()
 
+        # Debug mode state - can be set via --debug flag or DEBUG env var
+        self.debug_mode = self._check_debug_mode()        
         # Setup Python logging
         self.setup_python_logging()
 
         # Initialize web-accessible logs
-        self.web_logs = {"process": [], "errors": [], "system": []}
+        self.web_logs = {"process": [], "errors": [], "system": [], "debug": []}
 
         # Load existing web logs
         self.load_web_logs()
 
+        debug_status = "🐛 ENABLED" if self.debug_mode else "DISABLED"
         print(f"📋 Enhanced Logger initialized - Log directory: {self.log_dir}")
+        print(f"🔍 Debug mode: {debug_status}")
 
+    def _check_debug_mode(self) -> bool:
+        """Determine if debug mode is enabled via env or argument"""
+        parser = argparse.ArgumentParser(add_help=False)
+        parser.add_argument('--debug', action='store_true')
+        args, _ = parser.parse_known_args()
+
+        # Check environment variable or command-line argument
+        return os.getenv('DEBUG', '0') == '1' or args.debug
+    
     def setup_python_logging(self):
         """Setup Python logging with file handlers"""
+        # Set debug level if debug mode is enabled
+        log_level = logging.DEBUG if self.debug_mode else logging.INFO
+        
         # Configure root logger
         logging.basicConfig(
-            level=logging.INFO,
+            level=log_level,
             format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
             handlers=[
                 logging.FileHandler(self.system_log_file),
@@ -70,21 +88,35 @@ class EnhancedLogger:
         self.process_logger = logging.getLogger("process")
         self.error_logger = logging.getLogger("errors")
         self.system_logger = logging.getLogger("system")
+        self.debug_logger = logging.getLogger("debug")
+
+        # Set debug level for all loggers if debug mode is enabled
+        if self.debug_mode:
+            self.process_logger.setLevel(logging.DEBUG)
+            self.error_logger.setLevel(logging.DEBUG)
+            self.system_logger.setLevel(logging.DEBUG)
+            self.debug_logger.setLevel(logging.DEBUG)
 
         # Add file handlers
         process_handler = logging.FileHandler(self.process_log_file)
         error_handler = logging.FileHandler(self.error_log_file)
+        debug_handler = logging.FileHandler(self.debug_log_file)
 
-        process_handler.setFormatter(
-            logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-        )
-        error_handler.setFormatter(
-            logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-        )
+        formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+        
+        process_handler.setFormatter(formatter)
+        error_handler.setFormatter(formatter)
+        debug_handler.setFormatter(formatter)
 
         self.process_logger.addHandler(process_handler)
         self.error_logger.addHandler(error_handler)
-        self.error_logger.setLevel(logging.ERROR)
+        self.debug_logger.addHandler(debug_handler)
+        
+        # Add debug handler to all loggers in debug mode
+        if self.debug_mode:
+            self.process_logger.addHandler(debug_handler)
+            self.error_logger.addHandler(debug_handler)
+            self.system_logger.addHandler(debug_handler)
 
     def load_web_logs(self):
         """Load existing web logs from file"""
@@ -94,7 +126,7 @@ class EnhancedLogger:
                     self.web_logs = json.load(f)
         except Exception as e:
             print(f"⚠️ Could not load web logs: {e}")
-            self.web_logs = {"process": [], "errors": [], "system": []}
+            self.web_logs = {"process": [], "errors": [], "system": [], "debug": []}
 
     def save_web_logs(self):
         """Save web logs to file"""
@@ -255,7 +287,7 @@ class EnhancedLogger:
         """Clear specific log types"""
         with self.lock:
             if log_type == "all":
-                self.web_logs = {"process": [], "errors": [], "system": []}
+                self.web_logs = {"process": [], "errors": [], "system": [], "debug": []}
             elif log_type in self.web_logs:
                 self.web_logs[log_type] = []
 

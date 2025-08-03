@@ -533,6 +533,10 @@ class EnhancedComprehensiveProcessor:
             # STEP 3: Group and process dog data properly
             print(f"   🐕 Grouping dog data by name...")
             dog_groups = self.group_dog_data(df)
+            
+            # LOGGING: Number of rows returned by ingestor
+            print(f"   📊 DEBUG: Number of rows from CSV ingestor: {len(df)}")
+            print(f"   📊 DEBUG: Number of dog groups created: {len(dog_groups)}")
 
             processed_dogs = []
             for dog_group in dog_groups:
@@ -541,6 +545,8 @@ class EnhancedComprehensiveProcessor:
                 )
                 if dog_data:
                     processed_dogs.append(dog_data)
+                    
+            print(f"   📊 DEBUG: Number of processed dogs for DB insertion: {len(processed_dogs)}")
 
             # STEP 4: Validate and fix winner data consistency
             print(f"   🔧 Validating winner data consistency...")
@@ -3192,6 +3198,7 @@ class EnhancedComprehensiveProcessor:
                     race_info.get("weather_adjustment_factor", ""),
                 ),
             )
+            print("   📊 DEBUG: Attempting to insert race metadata into the database")
 
             # Save dog data (matching existing schema) - filter out N/A finish positions
             valid_dogs = []
@@ -3247,6 +3254,7 @@ class EnhancedComprehensiveProcessor:
                         dog.get("best_time", 0.0),
                     ),
                 )
+                print(f"   📊 DEBUG: Attempting to insert data for dog {dog['dog_clean_name']} into database")
 
             conn.commit()
             print(

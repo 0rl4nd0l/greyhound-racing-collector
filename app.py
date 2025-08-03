@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 """
 Greyhound Racing Dashboard
@@ -38,6 +39,20 @@ import time
 import pandas as pd
 
 from logger import logger
+
+# Import profiling configuration
+from profiling_config import set_profiling_enabled, is_profiling
+
+# Import CSV ingestion system for processing race files
+try:
+    from csv_ingestion import FormGuideCsvIngestor, create_ingestor
+    CSV_INGESTION_AVAILABLE = True
+    print("🚀 CSV ingestion system available")
+except ImportError as e:
+    print(f"⚠️ CSV ingestion system not available: {e}")
+    CSV_INGESTION_AVAILABLE = False
+    FormGuideCsvIngestor = None
+    create_ingestor = None
 
 # Import optimized caching and query systems
 try:
@@ -150,6 +165,7 @@ import logging
 import pickle
 
 import yaml
+import glob
 
 # Features and feature store imports
 from features import (FeatureStore, V3BoxPositionFeatures,
@@ -242,6 +258,26 @@ app.config["UPLOAD_FOLDER"] = UPCOMING_DIR
 
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+@app.route("/predict", methods=["GET"])
+def predict_page():
+    """Predict page - Select upcoming races for prediction"""
+    try:
+        # Fetch upcoming races from the API endpoint
+        import requests
+        response = requests.get("http://localhost:5002/api/upcoming_races_csv")
+        if response.status_code == 200:
+            races = response.json().get("races", [])
+            race_filenames = [race["filename"] for race in races]
+            return render_template("predict.html", races=race_filenames)
+        else:
+            flash("Failed to load upcoming races", "error")
+            return redirect(url_for("index"))
+    except Exception as e:
+        logging.error(f"Error loading predict page: {str(e)}")
+        flash("Error loading predict page", "error")
+        return redirect(url_for("index"))
 
 
 @app.route("/api/dogs/search")
@@ -1447,6 +1483,9 @@ def api_upcoming_races_csv():
         search = request.args.get("search", "").strip()
 
         # Get all CSV files in upcoming_races directory
+        # TODO: Gap - Directory scanning needs better error handling
+        # TODO: Consider recursive scanning for subdirectories
+        # TODO: Add file size and modification time checks for performance
         if not os.path.exists(UPCOMING_DIR):
             return jsonify(
                 {
@@ -1466,8 +1505,17 @@ def api_upcoming_races_csv():
                 }
             )
 
-        # List and process CSV files
-        csv_files = [f for f in os.listdir(UPCOMING_DIR) if f.endswith(".csv")]
+        # List and process CSV files using the helper function
+        # TODO: Gap - File filtering needs enhancement
+        # TODO: Validate that files are actually CSV format, not just .csv extension
+        # TODO: Add file corruption checks before processing
+        refresh = request.args.get('refresh', 'false').lower() == 'true'
+        upcoming_races = load_upcoming_races(refresh=refresh)
+        csv_files = [race.get("filename", f"{race.get('name', 'race')}.csv") for race in upcoming_races if race.get("filename") and race.get("filename").endswith(".csv")]
+        
+        # If no files from helper, fallback to direct directory scan for CSV only
+        if not csv_files:
+            csv_files = [f for f in os.listdir(UPCOMING_DIR) if f.endswith(".csv")]
         
         if not csv_files:
             return jsonify(
@@ -1500,6 +1548,9 @@ def api_upcoming_races_csv():
                 formatted_mtime = datetime.fromtimestamp(file_mtime).strftime("%Y-%m-%d %H:%M")
                 
                 # Read header row only using pandas for robustness
+                # TODO: Gap - Header reading needs better validation
+                # TODO: Check for HTML content in CSV files (common corruption issue)
+                # TODO: Add encoding detection for international characters
                 try:
                     df_header = pd.read_csv(file_path, nrows=1)
                     columns = list(df_header.columns)
@@ -2289,12 +2340,17 @@ def api_predict_all_upcoming():
         if PredictionPipelineV3 is None:
             return jsonify({"error": "PredictionPipelineV3 not available"}), 500
 
-        # Get all CSV files in upcoming_races directory
-        upcoming_files = []
-        if os.path.exists(UPCOMING_DIR):
-            for file in os.listdir(UPCOMING_DIR):
-                if file.endswith(".csv"):
-                    upcoming_files.append(file)
+        # Get all CSV files using the helper function
+        upcoming_races = load_upcoming_races(refresh=False)
+        upcoming_files = [race.get("filename", f"{race.get('name', 'race')}.csv") for race in upcoming_races if race.get("filename") or race.get("name")]
+        
+        # If no files from helper, fallback to direct directory scan for CSV only
+        if not upcoming_files:
+            upcoming_files = [
+                f
+                for f in os.listdir(UPCOMING_DIR)
+                if f.endswith(".csv") and f != "README.md"
+            ]
 
         if not upcoming_files:
             return jsonify(
@@ -4719,11 +4775,18 @@ def api_predict_upcoming():
                 404,
             )
 
-        upcoming_files = [
-            f
-            for f in os.listdir(UPCOMING_DIR)
-            if f.endswith(".csv") and f != "README.md"
-        ]
+        # Get all CSV files using the helper function
+        refresh = request.args.get('refresh', 'false').lower() == 'true'
+        upcoming_races = load_upcoming_races(refresh=refresh)
+        upcoming_files = [race.get("filename", f"{race.get('name', 'race')}.csv") for race in upcoming_races if race.get("filename") or race.get("name")]
+        
+        # If no files from helper, fallback to direct directory scan for CSV only
+        if not upcoming_files:
+            upcoming_files = [
+                f
+                for f in os.listdir(UPCOMING_DIR)
+                if f.endswith(".csv") and f != "README.md"
+            ]
         if not upcoming_files:
             return (
                 jsonify(
@@ -6282,8 +6345,14 @@ def api_predict_all_upcoming_races_enhanced():
                 "total_processing_time_seconds": time.time() - start_time
             })
         
-        # Get all CSV files
-        upcoming_files = [f for f in os.listdir(UPCOMING_DIR) if f.endswith(".csv")]
+        # Get all CSV and JSON files using the helper function
+        upcoming_races = load_upcoming_races(refresh=False)
+        upcoming_files = [race.get("filename", f"{race.get('name', 'race')}.csv") for race in upcoming_races if race.get("filename") or race.get("name")]
+        
+        # If no files from helper, fallback to direct directory scan for CSV only
+        if not upcoming_files:
+            upcoming_files = [f for f in os.listdir(UPCOMING_DIR) if f.endswith(".csv")]
+        
         total_races = len(upcoming_files)
         
         logger.info(f"📊 Found {total_races} CSV files to process")
@@ -7987,6 +8056,64 @@ _upcoming_races_cache = {
     "expires_in_minutes": 5,  # Cache for 5 minutes
 }
 
+def load_upcoming_races(refresh=False):
+    """Helper function to load upcoming races from CSV and JSON files."""
+    import os
+    import pandas as pd
+    from datetime import datetime
+    import json
+
+    global _upcoming_races_cache
+    now = datetime.now()
+
+    if not refresh and _upcoming_races_cache["data"] is not None and _upcoming_races_cache["timestamp"] is not None and (now - _upcoming_races_cache["timestamp"]).total_seconds() < (_upcoming_races_cache["expires_in_minutes"] * 60):
+        return _upcoming_races_cache["data"]
+
+    upcoming_races_dir = "./upcoming_races"
+    races = []
+
+    try:
+        for filename in os.listdir(upcoming_races_dir):
+            if filename.endswith(".csv") or filename.endswith(".json"):
+                file_path = os.path.join(upcoming_races_dir, filename)
+                try:
+                    if filename.endswith(".csv"):
+                        df = pd.read_csv(file_path)
+                    else:
+                        with open(file_path, "r") as f:
+                            df = pd.json_normalize(json.load(f))
+
+                    for _, row in df.iterrows():
+                        # Filter out post-outcome columns here if necessary
+                        race_metadata = {
+                            "name": row.get("Race Name"),
+                            "venue": row.get("Venue"),
+                            "date": row.get("Date"),
+                            "distance": row.get("Distance"),
+                            "grade": row.get("Grade"),
+                            "number": row.get("Race Number"),
+                            # Add other fields as needed
+                        }
+                        races.append(race_metadata)
+
+                except Exception as e:
+                    print(f"Error reading {filename}: {e}")
+    except OSError as listdir_error:
+        print(f"Warning: Unable to access upcoming races directory: {listdir_error}")
+        print("Falling back to cached data if available.")
+
+        if _upcoming_races_cache["data"] is not None:
+            print("Using cached data for upcoming races.")
+            return _upcoming_races_cache["data"]
+
+        print("No cached data available; unable to load upcoming races.")
+        raise
+
+    _upcoming_races_cache["data"] = races
+    _upcoming_races_cache["timestamp"] = now
+
+    return races
+
 
 @app.route("/api/upcoming_races_stream")
 def api_upcoming_races_stream():
@@ -8056,42 +8183,21 @@ def api_upcoming_races_stream():
     )
 
 
+@app.route("/api/upcoming_races_csv")
 @app.route("/api/upcoming_races")
 def api_upcoming_races():
-    """API endpoint to fetch upcoming races from the website with caching"""
+    """API endpoint to fetch upcoming races from CSV and JSON files with caching"""
     try:
-        # Check if we have valid cached data
-        now = datetime.now()
-        if (
-            _upcoming_races_cache["data"] is not None
-            and _upcoming_races_cache["timestamp"] is not None
-            and (now - _upcoming_races_cache["timestamp"]).total_seconds()
-            < (_upcoming_races_cache["expires_in_minutes"] * 60)
-        ):
-
-            # Return cached data with cache info
-            cached_data = _upcoming_races_cache["data"].copy()
-            cached_data["from_cache"] = True
-            cached_data["cache_age_seconds"] = int(
-                (now - _upcoming_races_cache["timestamp"]).total_seconds()
-            )
-            return jsonify(cached_data)
-
-        # Fetch fresh data
-        from upcoming_race_browser import UpcomingRaceBrowser
-
-        browser = UpcomingRaceBrowser()
-
-        days_ahead = request.args.get("days", 1, type=int)  # Default to 1 day ahead
-        races = browser.get_upcoming_races(days_ahead=days_ahead)
+        refresh = request.args.get('refresh', 'false').lower() == 'true'
+        races = load_upcoming_races(refresh=refresh)
 
         # Prepare response data
         response_data = {
             "success": True,
             "races": races,
             "count": len(races),
-            "timestamp": now.isoformat(),
-            "from_cache": False,
+            "timestamp": datetime.now().isoformat(),
+            "from_cache": not refresh,
             "cache_expires_in_minutes": _upcoming_races_cache["expires_in_minutes"],
         }
 
@@ -11706,6 +11812,187 @@ def api_csv_metadata():
         }), 500
 
 
+def ingest(file_path: Path) -> dict:
+    """
+    Ingest a single race file from CLI/scheduler.
+    
+    This function:
+    - Accepts a single file path from CLI/scheduler
+    - Removes any directory globbing logic  
+    - Calls the refactored parser and downstream prediction only for that file
+    
+    Args:
+        file_path: Path to the CSV file to ingest
+        
+    Returns:
+        dict: Result of ingestion with success status and details
+    """
+    try:
+        # Ensure file_path is a Path object
+        if isinstance(file_path, str):
+            file_path = Path(file_path)
+        
+        logger.info(f"Starting ingestion for single file: {file_path}")
+        
+        # Validate file exists
+        if not file_path.exists():
+            error_msg = f"File not found: {file_path}"
+            logger.error(error_msg)
+            return {"success": False, "error": error_msg}
+        
+        # Validate file is CSV
+        if not file_path.suffix.lower() == '.csv':
+            error_msg = f"File must be CSV format: {file_path}"
+            logger.error(error_msg)
+            return {"success": False, "error": error_msg}
+        
+        # Step 1: Parse the CSV file using the refactored parser
+        parser_result = None
+        if CSV_INGESTION_AVAILABLE:
+            try:
+                logger.info(f"Using CSV ingestion system for parsing: {file_path}")
+                ingestor = create_ingestor(validation_level="moderate")
+                processed_data, validation_result = ingestor.ingest_csv(file_path)
+                
+                parser_result = {
+                    "success": True,
+                    "processed_data": processed_data,
+                    "validation_result": validation_result,
+                    "record_count": len(processed_data),
+                    "parser_used": "FormGuideCsvIngestor"
+                }
+                logger.info(f"CSV ingestion successful: {len(processed_data)} records processed")
+                
+            except Exception as e:
+                logger.error(f"CSV ingestion failed: {str(e)}")
+                parser_result = {"success": False, "error": str(e)}
+        else:
+            # Fallback to basic pandas parsing
+            try:
+                logger.info(f"Using fallback pandas parser for: {file_path}")
+                import pandas as pd
+                df = pd.read_csv(file_path)
+                
+                parser_result = {
+                    "success": True,
+                    "processed_data": df.to_dict('records'),
+                    "record_count": len(df),
+                    "parser_used": "pandas_fallback"
+                }
+                logger.info(f"Pandas parsing successful: {len(df)} records processed")
+                
+            except Exception as e:
+                logger.error(f"Pandas parsing failed: {str(e)}")
+                parser_result = {"success": False, "error": str(e)}
+        
+        if not parser_result or not parser_result.get("success"):
+            error_msg = f"Parsing failed: {parser_result.get('error', 'Unknown parsing error') if parser_result else 'No parser result'}"
+            logger.error(error_msg)
+            return {"success": False, "error": error_msg}
+        
+        # Step 2: Run downstream prediction for the parsed file
+        prediction_result = None
+        try:
+            logger.info(f"Starting downstream prediction for: {file_path}")
+            
+            # Try PredictionPipelineV3 first (most comprehensive)
+            if PredictionPipelineV3:
+                try:
+                    logger.info("Using PredictionPipelineV3 for downstream prediction")
+                    pipeline = PredictionPipelineV3()
+                    prediction_result = pipeline.predict_race_file(file_path, enhancement_level="full")
+                    
+                    if prediction_result and prediction_result.get("success"):
+                        logger.info("PredictionPipelineV3 completed successfully")
+                    else:
+                        logger.warning(f"PredictionPipelineV3 returned unsuccessful result: {prediction_result}")
+                        prediction_result = None  # Force fallback
+                        
+                except Exception as e:
+                    logger.error(f"PredictionPipelineV3 failed: {str(e)}")
+                    prediction_result = None
+            
+            # Fallback to UnifiedPredictor if primary fails
+            if not prediction_result and UnifiedPredictor:
+                try:
+                    logger.info("Using UnifiedPredictor for downstream prediction")
+                    predictor = UnifiedPredictor()
+                    prediction_result = predictor.predict_race_file(file_path)
+                    
+                    if prediction_result and prediction_result.get("success"):
+                        logger.info("UnifiedPredictor completed successfully")
+                    else:
+                        logger.warning(f"UnifiedPredictor returned unsuccessful result: {prediction_result}")
+                        
+                except Exception as e:
+                    logger.error(f"UnifiedPredictor failed: {str(e)}")
+                    prediction_result = None
+            
+            # Final fallback to ComprehensivePredictionPipeline
+            if not prediction_result and ComprehensivePredictionPipeline:
+                try:
+                    logger.info("Using ComprehensivePredictionPipeline for downstream prediction")
+                    predictor = ComprehensivePredictionPipeline()
+                    prediction_result = predictor.predict_race_file(file_path)
+                    
+                    if prediction_result and prediction_result.get("success"):
+                        logger.info("ComprehensivePredictionPipeline completed successfully")
+                        
+                except Exception as e:
+                    logger.error(f"ComprehensivePredictionPipeline failed: {str(e)}")
+                    prediction_result = None
+                    
+        except Exception as e:
+            logger.error(f"Downstream prediction error: {str(e)}")
+            prediction_result = {"success": False, "error": str(e)}
+        
+        # Determine if prediction was successful
+        prediction_success = prediction_result and prediction_result.get("success", False)
+        
+        # Step 3: Compile final result
+        result = {
+            "success": True,
+            "file_path": str(file_path),
+            "parsing": {
+                "success": parser_result["success"],
+                "parser_used": parser_result.get("parser_used", "unknown"),
+                "record_count": parser_result.get("record_count", 0)
+            },
+            "prediction": {
+                "success": prediction_success,
+                "predictor_used": (
+                    "PredictionPipelineV3" if prediction_result and "PredictionPipelineV3" in str(type(prediction_result))
+                    else "UnifiedPredictor" if prediction_result and "UnifiedPredictor" in str(type(prediction_result))
+                    else "ComprehensivePredictionPipeline" if prediction_result and "ComprehensivePredictionPipeline" in str(type(prediction_result))
+                    else "unknown"
+                ),
+                "prediction_count": (
+                    len(prediction_result.get("predictions", [])) if prediction_result and prediction_result.get("predictions") else 0
+                ),
+                "error": prediction_result.get("error") if prediction_result and not prediction_success else None
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        # Log final status
+        if prediction_success:
+            logger.info(f"Ingestion completed successfully for {file_path}: {parser_result.get('record_count', 0)} records parsed, {result['prediction']['prediction_count']} predictions generated")
+        else:
+            logger.warning(f"Ingestion completed with warnings for {file_path}: parsing successful but prediction failed")
+        
+        return result
+        
+    except Exception as e:
+        error_msg = f"Ingestion failed for {file_path}: {str(e)}"
+        logger.error(error_msg)
+        return {
+            "success": False,
+            "error": error_msg,
+            "file_path": str(file_path) if file_path else "unknown",
+            "timestamp": datetime.now().isoformat()
+        }
+
+
 # Background Task API Endpoints
 
 @app.route("/api/tasks/download_race", methods=["POST"])
@@ -11951,8 +12238,74 @@ def api_all_tasks_status():
             "message": f"Error getting tasks status: {str(e)}"
         }), 500
 
+def create_cli_parser():
+    """Create CLI argument parser for Flask app"""
+    import argparse
+    
+    parser = argparse.ArgumentParser(
+        description="Greyhound Racing Dashboard Flask Application",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python app.py --enable-profiling
+  python app.py --host 0.0.0.0 --port 8080 --enable-profiling
+        """
+    )
+    
+    parser.add_argument(
+        '--host',
+        default='127.0.0.1',
+        help='Host to bind to (default: 127.0.0.1)'
+    )
+    
+    parser.add_argument(
+        '--port',
+        type=int,
+        default=5000,
+        help='Port to bind to (default: 5000)'
+    )
+    
+    parser.add_argument(
+        '--debug',
+        action='store_true',
+        help='Enable Flask debug mode'
+    )
+    
+    parser.add_argument(
+        '--enable-profiling',
+        action='store_true',
+        help='Enable profiling for performance analysis (default: disabled for zero overhead)'
+    )
+    
+    return parser
+
+
+def main():
+    """Main Flask app entry point with profiling support"""
+    parser = create_cli_parser()
+    args = parser.parse_args()
+    
+    # Configure profiling based on CLI flag
+    if args.enable_profiling:
+        set_profiling_enabled(True)
+        print("🔍 Profiling enabled for Flask app")
+    else:
+        set_profiling_enabled(False)
+    
+    # Show profiling status for debugging
+    if is_profiling():
+        print("📊 Flask app running with profiling enabled")
+    
+    # Run Flask app with configured options
+    app.run(
+        host=args.host,
+        port=args.port,
+        debug=args.debug
+    )
+
 
 if __name__ == "__main__":
+    main()
     # Create templates and static directories if they don't exist
     os.makedirs("./templates", exist_ok=True)
     os.makedirs("./static/css", exist_ok=True)

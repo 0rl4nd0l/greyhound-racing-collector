@@ -379,6 +379,51 @@ The system includes several specialized scrapers for different data collection n
 -   `papaparse`
 -   (See `package.json` for a full list of dev dependencies)
 
+## Additional Features
+
+### Header Requirements
+
+The following headers are required for input CSV files:
+
+- `Dog Name`: The name of the dog
+- `PLC`: Place of the dog in the race
+- `BOX`: The box number from which the dog started
+
+### Manifest Behavior
+
+Each batch job generates a manifest file capturing:
+
+- Workflow steps
+- Timestamps
+- Model versions and hyperparameters
+- Data checksums
+
+These files ensure reproducibility and tracking of job progress.
+
+### Debug Mode Usage
+
+Enable detailed logging by setting the environment variable `DEBUG=1`.
+
+**Example Commands:**
+```bash
+# Enable debug mode for single file prediction
+DEBUG=1 python3 cli_batch_predictor.py --file upcoming_races/test_race.csv
+
+# Enable debug mode for batch prediction
+DEBUG=1 python3 batch_prediction_cli.py --input ./upcoming_races --output ./batch_results
+```
+
+**Expected Debug Log Excerpts:**
+```
+DEBUG: Processing CSV file: test_race.csv
+DEBUG: Found headers: ['Dog Name', 'PLC', 'BOX', 'Trainer']
+DEBUG: Dog count: 8 (expected: 8)
+DEBUG: Validation passed - all required headers present
+DEBUG: Feature extraction complete for 8 dogs
+WARNING: Dog count deviation detected: expected 8, found 7
+DEBUG: Model prediction complete - top 3 predictions generated
+```
+
 ## Repository Structure
 
 -   `app.py`: Main Flask application.

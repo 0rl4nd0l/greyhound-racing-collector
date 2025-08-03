@@ -11,10 +11,14 @@ Usage:
     python run.py analyze    # Run data analysis
 """
 
+import argparse
 import os
 import subprocess
 import sys
 from pathlib import Path
+
+# Import profiling configuration
+from profiling_config import set_profiling_enabled, is_profiling
 
 
 def run_collection():
@@ -220,25 +224,67 @@ def run_prediction(race_file_path=None):
         return False
 
 
+def create_parser():
+    """Create argument parser for the main CLI"""
+    parser = argparse.ArgumentParser(
+        description="Greyhound Racing Data Collection and Analysis Pipeline",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python run.py collect --enable-profiling
+  python run.py analyze
+  python run.py predict race.csv --enable-profiling
+        """
+    )
+    
+    parser.add_argument(
+        'command',
+        choices=['collect', 'analyze', 'predict'],
+        help='Command to execute'
+    )
+    
+    parser.add_argument(
+        'race_file_path',
+        nargs='?',
+        help='Path to race file (for predict command)'
+    )
+    
+    parser.add_argument(
+        '--enable-profiling',
+        action='store_true',
+        help='Enable profiling for performance analysis (default: disabled for zero overhead)'
+    )
+    
+    return parser
+
+
 def main():
-    """Main entry point"""
-    if len(sys.argv) < 2:
-        print("Usage: python run.py [collect|analyze|predict] [race_file_path]")
-        sys.exit(1)
-
-    command = sys.argv[1].lower()
-
-    if command == "collect":
+    """Main entry point with profiling support"""
+    parser = create_parser()
+    args = parser.parse_args()
+    
+    # Configure profiling based on CLI flag
+    if args.enable_profiling:
+        set_profiling_enabled(True)
+        print("🔍 Profiling enabled")
+    else:
+        set_profiling_enabled(False)
+    
+    # Show profiling status for debugging
+    if is_profiling():
+        print("📊 Running with profiling enabled")
+    
+    # Execute command
+    if args.command == "collect":
         run_collection()
-    elif command == "analyze":
+    elif args.command == "analyze":
         run_analysis()
-    elif command == "predict":
-        race_file_path = sys.argv[2] if len(sys.argv) > 2 else None
-        success = run_prediction(race_file_path)
+    elif args.command == "predict":
+        success = run_prediction(args.race_file_path)
         sys.exit(0 if success else 1)
     else:
-        print(f"Unknown command: {command}")
-        print("Usage: python run.py [collect|analyze|predict] [race_file_path]")
+        # This shouldn't happen due to argparse choices, but keeping for safety
+        print(f"Unknown command: {args.command}")
         sys.exit(1)
 
 

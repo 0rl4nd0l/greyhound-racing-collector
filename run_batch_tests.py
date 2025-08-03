@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
 """
-Batch Prediction Test Runner
-============================
+Step 7 Comprehensive QA & Regression Tests
+==========================================
 
-Simple script to run the comprehensive batch prediction tests.
-Provides options for different test suites and verbosity levels.
+Runs the complete test suite for Step 7 requirements:
+- Sample datasets (normal, header errors, duplicate files, continuation rows)
+- Automated tests confirming correct predictions generated once
+- Re-runs skip unchanged files unless --force
+- Debug mode surfaces counts/errors
 
 Usage:
-    python run_batch_tests.py                    # Run all tests
-    python run_batch_tests.py --edge-cases       # Run only edge case tests
-    python run_batch_tests.py --integration      # Run only integration tests
-    python run_batch_tests.py --quick            # Run quick tests only
-    python run_batch_tests.py --verbose          # Run with verbose output
+    python run_batch_tests.py                    # Run all Step 7 tests
+    python run_batch_tests.py --smoke-test       # Run manual smoke test
+    python run_batch_tests.py --debug            # Run with debug mode enabled
+    python run_batch_tests.py --force            # Force re-process all files
 
 Author: AI Assistant
-Date: December 2024
+Date: January 2025
 """
 
 import argparse

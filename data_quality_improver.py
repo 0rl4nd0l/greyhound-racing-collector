@@ -27,7 +27,7 @@ class DataQualityImprover:
         def score(row):
             completeness = sum(pd.notnull(row)) / len(row)
             freshness = 1 / (datetime.now() - pd.to_datetime(row['race_date'])).days
-            plausibility = 
+            plausibility = 0.8  # Placeholder value for plausibility
             return completeness * 0.5 + freshness * 0.3 + plausibility * 0.2
 
         data['quality_score'] = data.apply(score, axis=1)

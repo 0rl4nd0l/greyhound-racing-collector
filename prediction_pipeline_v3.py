@@ -25,6 +25,7 @@ import pandas as pd
 from constants import DOG_NAME_KEY
 from ml_system_v3 import MLSystemV3
 from shap_explainer import get_shap_explainer
+from utils.profiling_utils import ProfilingRecorder
 
 sys.path.append("archive/outdated_scripts")
 
@@ -174,6 +175,8 @@ class PredictionPipelineV3:
                     # Add metadata about prediction method used
                     result["prediction_tier"] = "comprehensive_pipeline"
                     result["fallback_reasons"] = fallback_reasons
+                    # Flush profiling data to file
+                    ProfilingRecorder.flush_to_file()
                     return result
                 else:
                     failure_reason = f"Comprehensive pipeline returned unsuccessful result: {result.get('error', 'Unknown failure')}"
@@ -206,6 +209,8 @@ class PredictionPipelineV3:
                     # Add metadata about prediction method used and fallback reasons
                     result["prediction_tier"] = "weather_enhanced"
                     result["fallback_reasons"] = fallback_reasons
+                    # Flush profiling data to file
+                    ProfilingRecorder.flush_to_file()
                     return result
                 else:
                     failure_reason = f"Weather-enhanced predictor returned unsuccessful result: {result.get('error', 'Unknown failure')}"
@@ -238,6 +243,8 @@ class PredictionPipelineV3:
                     # Add metadata about prediction method used and fallback reasons
                     result["prediction_tier"] = "unified_predictor"
                     result["fallback_reasons"] = fallback_reasons
+                    # Flush profiling data to file
+                    ProfilingRecorder.flush_to_file()
                     return result
                 else:
                     failure_reason = f"Unified predictor returned unsuccessful result: {result.get('error', 'Unknown failure')}"
@@ -271,7 +278,6 @@ class PredictionPipelineV3:
                 error_response = self._error_response(failure_reason)
                 error_response["fallback_reasons"] = fallback_reasons
                 return error_response
-
             dogs = self._extract_dogs(race_df, race_file_path)
             if not dogs:
                 failure_reason = "No participating dogs found in race file"
@@ -321,7 +327,7 @@ class PredictionPipelineV3:
             for i, p in enumerate(predictions):
                 p["norm_win_prob"] = norm_probs[i]
 
-            return {
+            result = {
                 "success": True,
                 "predictions": predictions,
                 "prediction_method": "ml_system_v3_basic",
@@ -329,6 +335,9 @@ class PredictionPipelineV3:
                 "note": "Used basic ML system as a final fallback",
                 "fallback_reasons": fallback_reasons,
             }
+            # Flush profiling data to file
+            ProfilingRecorder.flush_to_file()
+            return result
 
         except Exception as e:
             failure_reason = f"All prediction methods failed. Final error: {str(e)}"
@@ -340,8 +349,9 @@ class PredictionPipelineV3:
             logger.critical(f"  ❌ All prediction methods failed. Final error: {e}")
             error_response = self._error_response(failure_reason)
             error_response["fallback_reasons"] = fallback_reasons
+            # Flush profiling data to file
+            ProfilingRecorder.flush_to_file()
             return error_response
-
     def _load_race_file(self, race_file_path: str) -> pd.DataFrame:
         """Load and parse race file with enhanced format support"""
         try:

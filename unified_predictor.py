@@ -30,6 +30,7 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
+from utils.profiling_utils import ProfilingRecorder
 
 warnings.filterwarnings("ignore")
 
@@ -672,6 +673,8 @@ class UnifiedPredictor:
 
         # If no method succeeded, return error
         if not prediction_result or not prediction_result.get("success"):
+            # Flush profiling data to file
+            ProfilingRecorder.flush_to_file()
             return {
                 "success": False,
                 "error": "All prediction methods failed",
@@ -768,6 +771,8 @@ class UnifiedPredictor:
         logger.info(
             f"🏁 Prediction completed in {prediction_time:.2f}s using {successful_method}"
         )
+        # Flush profiling data to file
+        ProfilingRecorder.flush_to_file()
         return prediction_result
 
     def _run_prediction_method(

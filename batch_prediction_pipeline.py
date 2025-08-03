@@ -18,6 +18,7 @@ Version: 1.0.0
 import asyncio
 import csv
 import json
+import os
 import logging
 import os
 import time
@@ -103,11 +104,20 @@ class BatchPredictionPipeline:
     - Unicode and edge case handling
     """
     
+    processed_manifest_path = "processed_manifest.json"
+    
     def __init__(self, config: Optional[BatchProcessingConfig] = None):
         """Initialize the batch prediction pipeline"""
         self.config = config or BatchProcessingConfig()
         self.jobs: Dict[str, BatchJob] = {}
         self.active_jobs: Dict[str, bool] = {}
+        
+        # Load processed manifest
+        if os.path.exists(self.processed_manifest_path):
+            with open(self.processed_manifest_path, 'r') as manifest_file:
+                self.processed_manifest = json.load(manifest_file)
+        else:
+            self.processed_manifest = {}
         
         # Initialize prediction systems
         self.prediction_pipeline = None
@@ -155,6 +165,15 @@ class BatchPredictionPipeline:
         """Create a new batch prediction job"""
         job_id = str(uuid.uuid4())
         
+        # Check manifest for already processed files
+        force = kwargs.get('force', False)
+        
+        if not force:
+            input_files = [
+                file_path for file_path in input_files
+                if os.path.getmtime(file_path) > self.processed_manifest.get(os.path.basename(file_path), 0)
+            ]
+
         # Validate input files
         valid_files = []
         for file_path in input_files:
@@ -275,6 +294,16 @@ class BatchPredictionPipeline:
         
         return job
     
+    def _update_manifest(self, file_path: str):
+        """Update processed file manifest"""
+        self.processed_manifest[os.path.basename(file_path)] = os.path.getmtime(file_path)
+        temp_manifest_path = self.processed_manifest_path + ".tmp"
+
+        with open(temp_manifest_path, 'w') as manifest_file:
+            json.dump(self.processed_manifest, manifest_file, indent=2, default=str)
+
+        os.replace(temp_manifest_path, self.processed_manifest_path)
+
     def _process_single_file(self, job_id: str, file_path: str) -> Dict[str, Any]:
         """Process a single CSV file with streaming and error handling"""
         result = {
@@ -322,9 +351,11 @@ class BatchPredictionPipeline:
                 # Save results if configured
                 if self.config.save_intermediate:
                     self._save_prediction_results(job_id, file_path, result)
-                    
             else:
                 result["error"] = "No predictions generated"
+
+            if result["success"]:
+                self._update_manifest(file_path)
             
         except Exception as e:
             result["error"] = f"Processing error: {str(e)}"

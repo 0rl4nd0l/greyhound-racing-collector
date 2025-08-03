@@ -36,6 +36,26 @@ def setup_argument_parser():
         epilog="""
 Examples:
   # Basic batch prediction
+  python %(prog)s --input ./upcoming_races --output ./batch_results
+  
+  # Advanced options with custom headers, manifest, and debug mode
+  python %(prog)s --input ./data --output ./results --headers "Dog Name,PLC,BOX" \
+    --manifest --debug
+  
+  # Check job status with manifest tracking
+  python %(prog)s --job-status abc123def
+  
+  # Cancel running job with detailed log
+  python %(prog)s --cancel-job abc123def
+"""
+    )
+    """Setup command line argument parser"""
+    parser = argparse.ArgumentParser(
+        description="Robust Batch Prediction Pipeline CLI",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Basic batch prediction
   python batch_prediction_cli.py --input ./upcoming_races --output ./batch_results
 
   # Advanced options with custom configuration
@@ -66,6 +86,13 @@ Examples:
         type=str
     )
     
+# Force re-process files
+    parser.add_argument(
+        '--force', '-f',
+        help='Force re-process all files, ignoring manifest',
+        action='store_true'
+    )
+
     # Configuration arguments
     parser.add_argument(
         '--workers', '-w',
@@ -343,6 +370,7 @@ def main():
                 name=job_name,
                 input_files=csv_files,
                 output_dir=args.output,
+                metadata={"force": args.force},
                 batch_size=args.batch_size,
                 max_workers=args.workers
             )
