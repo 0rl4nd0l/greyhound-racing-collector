@@ -52,8 +52,11 @@ class DependencyAnalyzer:
         python_files = []
         
         for root, dirs, files in os.walk(self.root_path):
-            # Skip hidden directories, node_modules, venv, etc.
-            dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ['node_modules', 'venv', '__pycache__']]
+            # Skip hidden directories, node_modules, venv, site-packages, etc.
+            dirs[:] = [d for d in dirs if not d.startswith('.') and d not in [
+                'node_modules', 'venv', 'venv_fresh', '__pycache__', 'site-packages',
+                '.git', '.vscode', 'dist', 'build', 'env'
+            ]]
             
             for file in files:
                 if file.endswith('.py'):
@@ -92,12 +95,16 @@ class DependencyAnalyzer:
     
     def generate_report(self):
         """Generate a dependency analysis report"""
+        # Convert sets to lists for JSON serialization
+        all_deps_serializable = {k: list(v) for k, v in self.dependencies.items()}
+        rev_deps_serializable = {k: list(v) for k, v in self.reverse_dependencies.items()}
+        
         report = {
             "timestamp": "2025-08-03",
             "total_python_files": len(self.dependencies),
             "main_components": {},
-            "all_dependencies": dict(self.dependencies),
-            "reverse_dependencies": dict(self.reverse_dependencies)
+            "all_dependencies": all_deps_serializable,
+            "reverse_dependencies": rev_deps_serializable
         }
         
         # Analyze main components

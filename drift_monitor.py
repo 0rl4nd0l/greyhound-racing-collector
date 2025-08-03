@@ -107,26 +107,73 @@ class DriftMonitor:
         }
         
         try:
-            # Use manual drift detection (evidently integration disabled due to API changes)
-            drift_results.update(self._manual_drift_check(current_data))
-            
+            # Always run manual drift check
+            manual_drift_results = self._manual_drift_check(current_data)
+            drift_results.update(manual_drift_results)
+
+            # Run evidently drift check if available
+            if EVIDENTLY_AVAILABLE:
+                evidently_drift_results = self._evidently_drift_check(current_data)
+                drift_results.update(evidently_drift_results)
+
+            # Merge results from both checks
+            for feature in manual_drift_results['feature_drift']:
+                manual_drift = manual_drift_results['feature_drift'][feature]
+                evident_drift = evidently_drift_results.get('feature_drift', {}).get(feature, {})
+
+                # Check drift based on criteria
+                psi_drift = abs(manual_drift['psi']) > 0.25
+                std_change = ('std_change' in evident_drift and evident_drift['std_change'] > 0.2)
+                mean_change = ('mean_change' in evident_drift and evident_drift['mean_change'] > 0.2)
+
+                if psi_drift or std_change or mean_change:
+                    drift_results['drift_detected'] = True
+                    if feature not in drift_results['summary']['high_drift_features']:
+                        drift_results['summary']['high_drift_features'].append(feature)
+
             # Check correlations
             correlation_alerts = self._check_correlations(current_data)
             drift_results["correlation_alerts"] = correlation_alerts
-            
+
             if correlation_alerts:
                 drift_results["drift_detected"] = True
-            
+
             # Log results
             self._log_drift_results(drift_results)
-            
+
         except Exception as e:
             logger.error(f"Error in drift detection: {e}")
             drift_results["error"] = str(e)
-            # Trigger retraining if high drift detected
-            if drift_results["summary"]["high_drift_features"]:
-                self._trigger_model_retrain("High Drift Detected")
-            return drift_results
+
+        # Trigger retraining if high drift detected
+        if drift_results["summary"]["high_drift_features"]:
+            self._trigger_model_retrain("High Drift Detected")
+
+        try:
+            # Ensure audit path exists
+            audit_ts_path = f"audit_results/{datetime.now().strftime('%Y%m%dT%H%M%SZ')}/drift"
+            os.makedirs(audit_ts_path, exist_ok=True)
+
+            # Save manual report
+            manual_report_path = os.path.join(audit_ts_path, 'manual_drift_report.json')
+            self._save_manual_report(manual_report_path, drift_results)
+
+            # Append summary to audit log
+            with open('audit.log', 'a') as log_file:
+                log_file.write(f"{datetime.now().isoformat()} - Drift detection completed. High drift features: {', '.join(drift_results['summary']['high_drift_features'])}\n")
+
+            # Append summary to summary report
+            with open('summary_report.md', 'a') as summary_file:
+                summary_file.write(f"## Drift Report - {datetime.now().isoformat()}\n")
+                summary_file.write(f"### High Drift Features\n")
+                for feature in drift_results['summary']['high_drift_features']:
+                    summary_file.write(f"- {feature}\n")
+                summary_file.write("\n")
+
+        except Exception as e:
+            logger.error(f"Error in saving drift report: {e}")
+
+        return drift_results
 
     def _trigger_model_retrain(self, reason: str):
         """Trigger the model retraining process"""

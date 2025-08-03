@@ -51,7 +51,7 @@ services:
       - CELERY_BROKER_URL=redis://redis-test:6379/0
       - CELERY_RESULT_BACKEND=redis://redis-test:6379/0
     ports:
-      - "5000:5000"
+      - "${DEFAULT_PORT}:${DEFAULT_PORT}"
     volumes:
       - .:/app
       - ./test_data:/app/test_data

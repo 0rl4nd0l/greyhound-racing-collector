@@ -61,12 +61,16 @@ def test_flask_app():
 if __name__ == "__main__":
     print("🚀 Testing Flask app startup components...")
     
+    # Get PORT from environment or default to 5002
+    import os
+    PORT = int(os.environ.get('PORT', 5002))
+    
     if test_imports():
         app = test_flask_app()
         if app:
-            print("🎉 All tests passed! Starting server on port 5002...")
+            print(f"🎉 All tests passed! Starting server on port {PORT}...")
             try:
-                app.run(debug=False, host="localhost", port=5002, use_reloader=False)
+                app.run(host="0.0.0.0", port=PORT, use_reloader=False)
             except Exception as e:
                 print(f"❌ Server startup failed: {e}")
                 traceback.print_exc()

@@ -14,7 +14,8 @@ import json
 
 class ConcurrencyTester:
     def __init__(self, base_url: str = "http://127.0.0.1:5000"):
-        self.base_url = base_url
+        import os
+        self.base_url = base_url.replace('5000', os.environ.get('DEFAULT_PORT', '5000'))
         self.session = requests.Session()
         self.results = {}
         

@@ -37,6 +37,9 @@ import joblib
 # Import our temporal feature builder
 from temporal_feature_builder import TemporalFeatureBuilder, create_temporal_assertion_hook
 
+# Import profiling infrastructure
+from pipeline_profiler import profile_function, track_sequence, pipeline_profiler
+
 logger = logging.getLogger(__name__)
 
 class MLSystemV4:
@@ -130,37 +133,39 @@ class MLSystemV4:
             logger.error(f"Error preparing time-ordered data: {e}")
             return pd.DataFrame(), pd.DataFrame()
     
+    @profile_function
     def build_leakage_safe_features(self, raw_data: pd.DataFrame) -> pd.DataFrame:
         """Build features using temporal feature builder to prevent leakage."""
-        logger.info("🔧 Building leakage-safe features...")
-        
-        all_features = []
-        
-        # Process each race separately
-        for race_id in raw_data['race_id'].unique():
-            race_data = raw_data[raw_data['race_id'] == race_id]
+        with track_sequence('feature_engineering', 'MLSystemV4', 'feature_engineering'):
+            logger.info("🔧 Building leakage-safe features...")
             
-            # Build temporal leakage-safe features
-            if self.upcoming_race_box_numbers:
-                race_data['box_number'] = range(1, len(race_data) + 1)
-
-            if self.upcoming_race_weights and 'weight' in race_data.columns:
-                # Weight column already exists, no need to map
-                pass
-
-            race_features = self.temporal_builder.build_features_for_race(race_data, race_id)
-
-            # Validate temporal integrity
-            self.temporal_builder.validate_temporal_integrity(race_features, race_data)
+            all_features = []
             
-            all_features.append(race_features)
-        
-        # Combine all race features
-        combined_features = pd.concat(all_features, ignore_index=True)
-        
-        logger.info(f"✅ Built {len(combined_features)} feature vectors across {len(raw_data['race_id'].unique())} races")
-        
-        return combined_features
+            # Process each race separately
+            for race_id in raw_data['race_id'].unique():
+                race_data = raw_data[raw_data['race_id'] == race_id]
+                
+                # Build temporal leakage-safe features
+                if self.upcoming_race_box_numbers:
+                    race_data['box_number'] = range(1, len(race_data) + 1)
+
+                if self.upcoming_race_weights and 'weight' in race_data.columns:
+                    # Weight column already exists, no need to map
+                    pass
+
+                race_features = self.temporal_builder.build_features_for_race(race_data, race_id)
+
+                # Validate temporal integrity
+                self.temporal_builder.validate_temporal_integrity(race_features, race_data)
+                
+                all_features.append(race_features)
+            
+            # Combine all race features
+            combined_features = pd.concat(all_features, ignore_index=True)
+            
+            logger.info(f"✅ Built {len(combined_features)} feature vectors across {len(raw_data['race_id'].unique())} races")
+            
+            return combined_features
     
     def create_sklearn_pipeline(self, features_df: pd.DataFrame) -> Pipeline:
         """Create sklearn pipeline with proper encoding and calibration."""
@@ -358,8 +363,16 @@ class MLSystemV4:
                 features_dict = X_pred.iloc[idx].to_dict()
                 self.assert_no_leakage(features_dict, race_id, dog_name)
             
-            # Make raw predictions
-            raw_win_probabilities = self.calibrated_pipeline.predict_proba(X_pred)[:, 1]
+            # Make raw predictions with instrumentation (inference)
+            with track_sequence('inference', 'MLSystemV4', 'inference'):
+                calibration_present = 'calibration_meta' in self.model_info
+                predict_proba_lambda = lambda x: self.calibrated_pipeline.predict_proba(x)[:, 1]
+                raw_win_probabilities = predict_proba_lambda(X_pred)
+                
+                # Record calibration stage
+                if calibration_present:
+                    with track_sequence('calibration', 'MLSystemV4', 'calibration'):
+                        logger.info('Recording calibration stage after predict_proba as calibration is present.')
             
             # Group normalization (softmax within race)
             normalized_win_probs = self._group_normalize_probabilities(raw_win_probabilities)
@@ -436,6 +449,10 @@ class MLSystemV4:
             }
             
             logger.info(f"✅ Race prediction complete for {race_id}: {len(predictions)} dogs")
+            
+            # Expose internal profiler flush
+            self.flush_profiler()
+            
             return result
         
         except Exception as e:
@@ -447,12 +464,14 @@ class MLSystemV4:
                 'fallback_reason': f'Prediction pipeline error: {str(e)}'
             }
     
+    @profile_function
     def _group_normalize_probabilities(self, probabilities: np.ndarray) -> np.ndarray:
         """Apply softmax normalization to ensure probabilities sum to 1."""
-        # Softmax normalization
-        exp_probs = np.exp(probabilities - np.max(probabilities))  # Subtract max for numerical stability
-        normalized = exp_probs / np.sum(exp_probs)
-        return normalized
+        with track_sequence('post', 'MLSystemV4', 'post'):
+            # Softmax normalization
+            exp_probs = np.exp(probabilities - np.max(probabilities))  # Subtract max for numerical stability
+            normalized = exp_probs / np.sum(exp_probs)
+            return normalized
     
     def _learn_ev_thresholds(self, test_features: pd.DataFrame, 
                            test_probabilities: np.ndarray) -> Dict[str, float]:
@@ -585,35 +604,37 @@ class MLSystemV4:
         
         return model_path
     
+    @profile_function
     def _try_load_latest_model(self):
         """Try to load the latest model."""
-        model_dir = Path('./ml_models_v4')
-        if not model_dir.exists():
-            logger.info("No model directory found")
-            return
-        
-        model_files = list(model_dir.glob('ml_model_v4_*.joblib'))
-        if not model_files:
-            logger.info("No trained models found")
-            return
-        
-        latest_model = max(model_files, key=lambda x: x.stat().st_mtime)
-        
-        try:
-            model_data = joblib.load(latest_model)
-            self.calibrated_pipeline = model_data.get('calibrated_pipeline')
-            self.feature_columns = model_data.get('feature_columns', [])
-            self.categorical_columns = model_data.get('categorical_columns', [])
-            self.numerical_columns = model_data.get('numerical_columns', [])
-            self.model_info = model_data.get('model_info', {})
-            self.ev_thresholds = model_data.get('ev_thresholds', {})
+        with track_sequence('model_load', 'MLSystemV4', 'model_load'):
+            model_dir = Path('./ml_models_v4')
+            if not model_dir.exists():
+                logger.info("No model directory found")
+                return
             
-            logger.info(f"📥 Loaded model from {latest_model}")
-            logger.info(f"📊 Model info: {self.model_info.get('model_type', 'unknown')}")
-        
-        except Exception as e:
-            logger.error(f"Error loading model: {e}")
-            self.calibrated_pipeline = None
+            model_files = list(model_dir.glob('ml_model_v4_*.joblib'))
+            if not model_files:
+                logger.info("No trained models found")
+                return
+            
+            latest_model = max(model_files, key=lambda x: x.stat().st_mtime)
+            
+            try:
+                model_data = joblib.load(latest_model)
+                self.calibrated_pipeline = model_data.get('calibrated_pipeline')
+                self.feature_columns = model_data.get('feature_columns', [])
+                self.categorical_columns = model_data.get('categorical_columns', [])
+                self.numerical_columns = model_data.get('numerical_columns', [])
+                self.model_info = model_data.get('model_info', {})
+                self.ev_thresholds = model_data.get('ev_thresholds', {})
+                
+                logger.info(f"📥 Loaded model from {latest_model}")
+                logger.info(f"📊 Model info: {self.model_info.get('model_type', 'unknown')}")
+            
+            except Exception as e:
+                logger.error(f"Error loading model: {e}")
+                self.calibrated_pipeline = None
 
 
 # Training function

@@ -22,12 +22,14 @@ Version: 1.0.0
 """
 
 import os
+import sqlite3
 import pandas as pd
 from typing import Dict, List, Any, Optional, Union, Tuple
 from pathlib import Path
 import logging
 from dataclasses import dataclass
 from enum import Enum
+from datetime import datetime
 
 
 class ValidationLevel(Enum):
@@ -621,6 +623,125 @@ def create_ingestor(validation_level: str = "moderate") -> FormGuideCsvIngestor:
     
     level = level_map.get(validation_level.lower(), ValidationLevel.MODERATE)
     return FormGuideCsvIngestor(validation_level=level)
+
+
+def save_to_database(processed_data: List[Dict[str, Any]], db_path: str = 'greyhound_racing_data.db'):
+    """
+    Save the processed CSV data into the database.
+    Creates race metadata and dog race data records from form guide data.
+    """
+    if not processed_data:
+        print("No data to save")
+        return
+        
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    try:
+        # Group records by race (track + date + distance + grade)
+        races = {}
+        for record in processed_data:
+            # Generate race ID from available data
+            track = record.get('track', 'unknown').lower()
+            date = record.get('date', 'unknown')
+            distance = record.get('distance', 'unknown')
+            grade = record.get('grade', 'unknown')
+            
+            race_key = f"{track}_{date}_{distance}_{grade}"
+            race_id = race_key.replace(' ', '_').replace('/', '_')
+            
+            if race_key not in races:
+                races[race_key] = {
+                    'race_id': race_id,
+                    'venue': track.title(),
+                    'race_date': date,
+                    'distance': distance,
+                    'grade': grade,
+                    'dogs': []
+                }
+            
+            # Add dog data to race
+            races[race_key]['dogs'].append({
+                'race_id': race_id,
+                'dog_name': record.get('dog_name', ''),
+                'dog_clean_name': record.get('dog_name', '').strip() if record.get('dog_name') else '',
+                'box_number': record.get('box'),
+                'finish_position': record.get('place'),
+                'weight': record.get('weight'),
+                'starting_price': record.get('starting_price'),
+                'individual_time': record.get('time'),
+                'sectional_1st': record.get('first_sectional'),
+                'margin': record.get('margin'),
+                'extraction_timestamp': datetime.now().isoformat(),
+                'data_source': 'csv_ingestion'
+            })
+        
+        # Insert race metadata and dog data
+        races_saved = 0
+        dogs_saved = 0
+        
+        for race_key, race_data in races.items():
+            # Insert race metadata
+            cursor.execute("""
+                INSERT OR IGNORE INTO race_metadata 
+                (race_id, venue, race_date, distance, grade, field_size, extraction_timestamp, data_source)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                race_data['race_id'],
+                race_data['venue'],
+                race_data['race_date'],
+                race_data['distance'],
+                race_data['grade'],
+                len(race_data['dogs']),
+                datetime.now().isoformat(),
+                'csv_ingestion'
+            ))
+            
+            if cursor.rowcount > 0:
+                races_saved += 1
+            
+            # Insert dog race data
+            for dog in race_data['dogs']:
+                cursor.execute("""
+                    INSERT OR IGNORE INTO dog_race_data 
+                    (race_id, dog_name, dog_clean_name, box_number, finish_position, weight, 
+                     starting_price, individual_time, sectional_1st, margin, extraction_timestamp, data_source)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    dog['race_id'],
+                    dog['dog_name'],
+                    dog['dog_clean_name'],
+                    dog['box_number'],
+                    dog['finish_position'],
+                    dog['weight'],
+                    dog['starting_price'],
+                    dog['individual_time'],
+                    dog['sectional_1st'],
+                    dog['margin'],
+                    dog['extraction_timestamp'],
+                    dog['data_source']
+                ))
+                
+                if cursor.rowcount > 0:
+                    dogs_saved += 1
+        
+        # Commit changes
+        conn.commit()
+        print(f"✅ Saved {races_saved} races and {dogs_saved} dog records to database")
+        
+    except Exception as e:
+        print(f"❌ Error saving to database: {e}")
+        conn.rollback()
+    finally:
+        conn.close()
+
+
+# Enhanced CSV ingestion pipeline
+class EnhancedFormGuideCsvIngestor(FormGuideCsvIngestor):
+    def ingest_csv(self, file_path: Union[str, Path], skip_validation: bool = False) -> Tuple[List[Dict[str, Any]], ValidationResult]:
+        processed_data, validation_result = super().ingest_csv(file_path, skip_validation)
+        save_to_database(processed_data)
+        return processed_data, validation_result
 
 
 # Example usage and testing

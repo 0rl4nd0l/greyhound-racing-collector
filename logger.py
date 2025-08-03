@@ -47,8 +47,11 @@ class EnhancedLogger:
 
         # Debug mode state - can be set via --debug flag or DEBUG env var
         self.debug_mode = self._check_debug_mode()        
-        # Setup Python logging
+# Setup Python logging with JSON formatting
         self.setup_python_logging()
+
+        # Add rotating file handler
+        self.add_rotating_file_handler()
 
         # Initialize web-accessible logs
         self.web_logs = {"process": [], "errors": [], "system": [], "debug": []}
@@ -118,6 +121,17 @@ class EnhancedLogger:
             self.error_logger.addHandler(debug_handler)
             self.system_logger.addHandler(debug_handler)
 
+    def add_rotating_file_handler(self):
+        """Add a rotating file handler to prevent log files from growing too large"""
+        from logging.handlers import RotatingFileHandler
+
+        # Define a rotating handler with a max size of 5MB and up to 3 backup files
+        rotating_file_handler = RotatingFileHandler(self.system_log_file, maxBytes=5*1024*1024, backupCount=3)
+        rotating_file_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+
+        # Add this handler to the root logger
+        logging.getLogger().addHandler(rotating_file_handler)
+
     def load_web_logs(self):
         """Load existing web logs from file"""
         try:
@@ -156,6 +170,12 @@ class EnhancedLogger:
             log_entry = {
                 "timestamp": timestamp,
                 "level": level,
+                "component": "process",
+                "file": str(self.process_log_file),
+                "action": details.get("action", "unknown") if details else "unknown",
+                "cache_status": details.get("cache_status", "unknown") if details else "unknown",
+                "validation_errors": details.get("validation_errors", []) if details else [],
+                "outcome": details.get("outcome", "unknown") if details else "unknown",
                 "message": message,
                 "details": details or {},
             }
@@ -171,6 +191,12 @@ class EnhancedLogger:
         workflow_entry = {
             "timestamp": timestamp,
             "level": level,
+            "component": "process",
+            "file": str(self.workflow_log_file),
+            "action": details.get("action", "unknown"),
+            "cache_status": details.get("cache_status", "unknown"),
+            "validation_errors": details.get("validation_errors", []),
+            "outcome": details.get("outcome", "unknown"),
             "message": message,
             "details": details or {}
         }

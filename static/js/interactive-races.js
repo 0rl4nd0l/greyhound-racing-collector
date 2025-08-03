@@ -206,6 +206,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                         }));
             if (selectedRaces.length > 0) {
                 runPredictions(selectedRaces);
+            } else {
+                showToast('Please choose at least one race', 'warning');
             }
         });
         

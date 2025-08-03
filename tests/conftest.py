@@ -14,7 +14,18 @@ from flask import Flask
 from flask.testing import FlaskClient
 
 # Import the Flask app
-from app import app as flask_app
+try:
+    import sys
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))  # Go to root directory
+    import app as app_module
+    flask_app = app_module.app
+except ImportError:
+    # Fallback: try direct import
+    import importlib.util
+    app_spec = importlib.util.spec_from_file_location("app", os.path.join(os.path.dirname(os.path.dirname(__file__)), "app.py"))
+    app_module = importlib.util.module_from_spec(app_spec)
+    app_spec.loader.exec_module(app_module)
+    flask_app = app_module.app
 
 
 @pytest.fixture(scope="session")

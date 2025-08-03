@@ -4,7 +4,7 @@ const { test, expect } = require('@playwright/test');
 // Tests the complete integration between frontend, API, and background workers (Celery/RQ)
 
 test.describe('Background Worker Integration', () => {
-  const baseURL = process.env.FLASK_BASE_URL || 'http://localhost:5000';
+const baseURL = process.env.FLASK_BASE_URL || `http://localhost:${process.env.DEFAULT_PORT || '5000'}`;
   const backendType = process.env.BACKEND_TYPE || 'celery';
   const testTimeout = parseInt(process.env.TEST_TIMEOUT) || 60000;
 

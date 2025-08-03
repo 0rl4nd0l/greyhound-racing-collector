@@ -9,7 +9,8 @@ import sys
 
 def test_endpoints():
     """Test basic endpoints for accessibility"""
-    base_url = "http://127.0.0.1:5000"
+    import os
+    base_url = f"http://127.0.0.1:{os.environ.get('DEFAULT_PORT', '5000')}"
     
     endpoints = [
         "/api/health",

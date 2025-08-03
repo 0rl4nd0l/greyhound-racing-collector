@@ -22,10 +22,12 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+import os
 
 import joblib
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from sklearn.isotonic import IsotonicRegression
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import (
@@ -33,6 +35,7 @@ from sklearn.metrics import (
     log_loss, 
     mean_squared_error
 )
+from sklearn.linear_model import LinearRegression
 
 try:
     from sklearn.calibration import calibration_curve
@@ -48,15 +51,145 @@ logger = logging.getLogger(__name__)
 
 
 class ProbabilityCalibrator:
-    """
-    Isotonic regression-based probability calibrator for win and place probabilities.
+    def validate_current_model(self) -> Dict[str, float]:
+        """
+        Validate the current calibration model and return metrics
+        including Brier score, calibration slope/intercept, and
+        confidence-decile hit-rates.
+
+        Returns:
+            Dict containing Brier score, calibration slope/intercept, and
+            confidence-decile hit-rates.
+        """
+        cal_data = self._load_calibration_data()
+        if cal_data.empty:
+            logger.error("No validation data available")
+            return {}
+
+        results = {'brier_score': None, 'calibration_slope': None, 'calibration_intercept': None, 'confidence_deciles': []}
+
+        # Evaluate calibration slope and intercept
+        raw_probs = cal_data['raw_win_prob'].values
+        actuals = cal_data['actual_win'].values
+        calibrated_probs = self.win_calibrator.predict(raw_probs)
+
+        slope_intercept_model = LinearRegression().fit(calibrated_probs.reshape(-1, 1), actuals)
+        slope = slope_intercept_model.coef_[0]
+        intercept = slope_intercept_model.intercept_
+
+        # Calculate Brier Score
+        brier_score = brier_score_loss(actuals, calibrated_probs)
+
+        # Log and assess metrics
+        results['brier_score'] = brier_score
+        results['calibration_slope'] = slope
+        results['calibration_intercept'] = intercept
+
+        # Generate confidence-decile hit-rates (e.g., 10 bins)
+        bins = np.linspace(0, 1, 11)
+        bin_indices = np.digitize(calibrated_probs, bins) - 1
+        hits_per_decile = [np.mean(actuals[bin_indices == i]) for i in range(len(bins) - 1)]
+
+        results['confidence_deciles'] = hits_per_decile
+
+        logger.info(f"Brier Score: {brier_score:.4f}")
+        logger.info(f"Calibration slope: {slope:.4f}")
+        logger.info(f"Calibration intercept: {intercept:.4f}")
+        logger.info(f"Confidence deciles: {hits_per_decile}")
+
+        # Perform assertions and determine PASS/FAIL status
+        test_results = []
+        
+        # Test 1: Brier score ≤ 0.18
+        brier_pass = brier_score <= 0.18
+        test_results.append(('Brier Score ≤ 0.18', brier_pass, f'{brier_score:.4f}'))
+        if not brier_pass:
+            logger.error(f"FAIL: Brier Score {brier_score:.4f} exceeds threshold 0.18")
+        else:
+            logger.info(f"PASS: Brier Score {brier_score:.4f} within threshold 0.18")
+
+        # Test 2: |slope - 1| ≤ 0.2
+        slope_deviation = abs(slope - 1)
+        slope_pass = slope_deviation <= 0.2
+        test_results.append(('|Slope - 1| ≤ 0.2', slope_pass, f'{slope_deviation:.4f}'))
+        if not slope_pass:
+            logger.error(f"FAIL: Calibration slope deviation {slope_deviation:.4f} exceeds threshold 0.2")
+        else:
+            logger.info(f"PASS: Calibration slope deviation {slope_deviation:.4f} within threshold 0.2")
+
+        # Test 3: Check for monotonic inversion in deciles
+        # Filter out NaN values for monotonic check
+        valid_deciles = [x for x in hits_per_decile if not np.isnan(x)]
+        monotonic_pass = len(valid_deciles) == 0 or valid_deciles == sorted(valid_deciles)
+        test_results.append(('No monotonic inversion in deciles', monotonic_pass, f'{len(valid_deciles)} valid deciles'))
+        if not monotonic_pass:
+            logger.warning(f"WARNING: Monotonic inversion detected in confidence deciles: {valid_deciles}")
+        else:
+            logger.info(f"PASS: No monotonic inversion in confidence deciles")
+
+        # Overall PASS/FAIL determination
+        overall_pass = all(result[1] for result in test_results[:2])  # Only Brier and slope are critical
+        overall_status = "PASS" if overall_pass else "FAIL"
+        
+        logger.info(f"📊 Model Calibration Drift Check: {overall_status}")
+        
+        # Save reliability diagram as PNG and CSV
+        timestamp = os.environ.get('AUDIT_TS', datetime.now().strftime('%Y%m%dT%H%M%SZ'))
+        output_path = Path(f"audit_results/{timestamp}/calibration")
+        output_path.mkdir(exist_ok=True, parents=True)
+
+        # Plot reliability diagram
+        plt.figure(figsize=(8, 6))
+        # Only plot valid (non-NaN) deciles
+        valid_bins = []
+        valid_hits = []
+        for i, (bin_val, hit_rate) in enumerate(zip(bins[:-1], hits_per_decile)):
+            if not np.isnan(hit_rate):
+                valid_bins.append(bin_val)
+                valid_hits.append(hit_rate)
+        
+        if valid_bins:
+            plt.plot(valid_bins, valid_hits, marker='o', linestyle='--', color='b', label='Calibration')
+            plt.plot([0, 1], [0, 1], linestyle='-', color='r', alpha=0.5, label='Perfect Calibration')
+        
+        plt.title('Reliability Diagram - Model Calibration Validation')
+        plt.xlabel('Predicted Probability')
+        plt.ylabel('Observed Frequency')
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        plt.savefig(output_path / 'reliability_diagram.png', dpi=150, bbox_inches='tight')
+        plt.close()
+
+        # Save underlying data as CSV
+        df_data = {'calculated_probability': bins[:-1], 'hit_rate': hits_per_decile}
+        pd.DataFrame(df_data).to_csv(output_path / 'reliability_diagram.csv', index=False)
+
+        # Log results to audit.log with structured format
+        audit_log_path = Path(f"audit_results/{timestamp}/audit.log")
+        with open(audit_log_path, "a") as f:
+            f.write(f"\n=== MODEL CALIBRATION DRIFT CHECK - {datetime.now().isoformat()} ===\n")
+            f.write(f"Audit Timestamp: {timestamp}\n")
+            f.write(f"Brier Score: {brier_score:.4f} (threshold ≤ 0.18)\n")
+            f.write(f"Calibration Slope: {slope:.4f}\n")
+            f.write(f"Calibration Intercept: {intercept:.4f}\n")
+            f.write(f"Slope Deviation: {slope_deviation:.4f} (threshold ≤ 0.2)\n")
+            for i, hit_rate in enumerate(hits_per_decile):
+                if not np.isnan(hit_rate):
+                    f.write(f"Decile_{i+1}: Hit Rate={hit_rate:.4f}\n")
+            f.write(f"Test Results:\n")
+            for test_name, passed, value in test_results:
+                status = "PASS" if passed else "FAIL"
+                f.write(f"  {test_name}: {status} ({value})\n")
+            f.write(f"Overall Status: {overall_status}\n")
+            f.write(f"Artifacts: reliability_diagram.png, reliability_diagram.csv\n")
+            f.write(f"\n")
+        
+        results['overall_status'] = overall_status
+        results['test_results'] = test_results
+
+        return results
     
-    This class handles:
-    1. Training calibrators on hold-out calibration data
-    2. Saving/loading calibrated models
-    3. Applying calibration to raw predictions
-    4. Validation and performance metrics
-    """
+    # End of validate_current_model method
     
     def __init__(self, db_path: str = "greyhound_racing_data.db"):
         self.db_path = db_path

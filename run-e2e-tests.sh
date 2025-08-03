@@ -118,7 +118,7 @@ else
 fi
 
 # Environment variables for tests
-export FLASK_BASE_URL="http://localhost:5000"
+export FLASK_BASE_URL="http://localhost:${DEFAULT_PORT}"
 export TEST_TIMEOUT="60000"
 export BACKEND_TYPE="$BACKEND_TYPE"
 

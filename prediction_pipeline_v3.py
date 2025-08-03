@@ -21,11 +21,12 @@ import sys
 from datetime import datetime
 
 import pandas as pd
+from src.parsers.csv_ingestion import CsvIngestion
 
 from constants import DOG_NAME_KEY
 from ml_system_v3 import MLSystemV3
 from shap_explainer import get_shap_explainer
-from utils.profiling_utils import ProfilingRecorder
+from utils.profiling_utils import ProfilingRecorder, timed
 
 sys.path.append("archive/outdated_scripts")
 
@@ -78,6 +79,7 @@ def group_softmax(probs, T=1.0):
 logger = logging.getLogger(__name__)
 
 class PredictionPipelineV3:
+    @timed("model_load")
     def __init__(self, db_path="greyhound_racing_data.db"):
         self.db_path = db_path
         self.ml_system = MLSystemV3(db_path)
@@ -162,6 +164,8 @@ class PredictionPipelineV3:
         # --- Primary Method: Comprehensive Pipeline ---
         if self.comprehensive_pipeline and enhancement_level == "full":
             try:
+                import time
+                tier_start_time = time.time()
                 logger.info(
                     "  -> Trying Comprehensive Prediction Pipeline (V3 Primary)..."
                 )
@@ -175,6 +179,7 @@ class PredictionPipelineV3:
                     # Add metadata about prediction method used
                     result["prediction_tier"] = "comprehensive_pipeline"
                     result["fallback_reasons"] = fallback_reasons
+                    ProfilingRecorder.record("comprehensive_pipeline_tier", time.time() - tier_start_time)
                     # Flush profiling data to file
                     ProfilingRecorder.flush_to_file()
                     return result
@@ -188,6 +193,7 @@ class PredictionPipelineV3:
                     logger.warning(
                         f"  ⚠️ Comprehensive prediction failed: {failure_reason}. Falling back..."
                     )
+                ProfilingRecorder.record("comprehensive_pipeline_tier", time.time() - tier_start_time)
             except Exception as e:
                 failure_reason = f"Comprehensive pipeline exception: {str(e)}"
                 fallback_reasons.append({
@@ -196,6 +202,7 @@ class PredictionPipelineV3:
                     "timestamp": datetime.now().isoformat()
                 })
                 logger.error(f"  ❌ Comprehensive pipeline error: {e}. Falling back...")
+                ProfilingRecorder.record("comprehensive_pipeline_tier", time.time() - tier_start_time)
 
         # --- Fallback 1: Weather-Enhanced Predictor ---
         if self.weather_predictor:
@@ -291,6 +298,8 @@ class PredictionPipelineV3:
                 return error_response
 
             predictions = []
+            ProfilingRecorder.start_session("race_id_placeholder", "model_version_placeholder", len(dogs), "ml_system.predict")
+            
             for dog in dogs:
                 ml_result = self.ml_system.predict(dog)
                 try:
@@ -322,10 +331,13 @@ class PredictionPipelineV3:
                 return error_response
 
             predictions.sort(key=lambda x: x["win_probability"], reverse=True)
-            # Apply group softmax normalization
+# Apply group softmax normalization with profiling
+            import time
+            start_time = time.time()
             norm_probs = self.group_softmax([p["win_probability"] for p in predictions])
             for i, p in enumerate(predictions):
                 p["norm_win_prob"] = norm_probs[i]
+            ProfilingRecorder.record("group_softmax_ranking", time.time() - start_time)
 
             result = {
                 "success": True,
@@ -335,6 +347,7 @@ class PredictionPipelineV3:
                 "note": "Used basic ML system as a final fallback",
                 "fallback_reasons": fallback_reasons,
             }
+            ProfilingRecorder.end_session()
             # Flush profiling data to file
             ProfilingRecorder.flush_to_file()
             return result
@@ -349,79 +362,32 @@ class PredictionPipelineV3:
             logger.critical(f"  ❌ All prediction methods failed. Final error: {e}")
             error_response = self._error_response(failure_reason)
             error_response["fallback_reasons"] = fallback_reasons
+            ProfilingRecorder.end_session()
             # Flush profiling data to file
             ProfilingRecorder.flush_to_file()
             return error_response
-    def _load_race_file(self, race_file_path: str) -> pd.DataFrame:
-        """Load and parse race file with enhanced format support"""
+    @timed("_load_race_file")
+    def _load_race_file(self, race_file_path: str) -> dict:
+        """Load and parse race file using CsvIngestion module"""
         try:
-            # Better delimiter detection and line number handling
-            with open(race_file_path, "r", encoding="utf-8") as f:
-                first_line = f.readline().strip()
-                logger.debug(f"First line of CSV: {first_line[:100]}...")
+            ingestion = CsvIngestion(race_file_path)
+            parsed_race, validation_report = ingestion.parse_csv()
 
-                # Check if file has line numbers (format: "1|data|data|data")
-                has_line_numbers = False
-                if "|" in first_line:
-                    parts = first_line.split("|", 1)
-                    if len(parts) >= 2 and parts[0].strip().isdigit():
-                        has_line_numbers = True
-                        logger.debug("Detected line numbers at start of each row")
-
-                # Determine delimiter
-                delimiter = (
-                    "," if first_line.count(",") > first_line.count("|") else "|"
-                )
-                logger.debug(f"Using delimiter: '{delimiter}'")
-
-            if has_line_numbers and delimiter == "|":
-                # Special handling for pipe-delimited files with line numbers
-                logger.debug(
-                    "Using special parsing for pipe-delimited file with line numbers"
-                )
-
-                # Read all lines and strip line numbers
-                cleaned_lines = []
-                with open(race_file_path, "r", encoding="utf-8") as f:
-                    for line in f:
-                        line = line.strip()
-                        if "|" in line:
-                            # Remove line number (everything before first |)
-                            parts = line.split("|", 1)
-                            if len(parts) >= 2 and parts[0].strip().isdigit():
-                                cleaned_line = parts[1]  # Keep everything after first |
-                                cleaned_lines.append(cleaned_line)
-                            else:
-                                cleaned_lines.append(
-                                    line
-                                )  # Keep original if no line number
-                        else:
-                            cleaned_lines.append(line)
-
-                # Create temporary cleaned content
-                cleaned_content = "\n".join(cleaned_lines)
-
-                # Parse the cleaned content
-                from io import StringIO
-
-                df = pd.read_csv(StringIO(cleaned_content), delimiter="|")
-                logger.debug(
-                    f"Successfully parsed pipe-delimited file with line numbers removed"
-                )
-            else:
-                # Standard CSV parsing
-                df = pd.read_csv(race_file_path, delimiter=delimiter)
+            if validation_report.errors:
+                logger.error(f"Validation errors found: {validation_report.errors}")
+                return None
 
             logger.debug(
-                f"Loaded race file with {len(df)} rows and columns: {list(df.columns)}"
+                f"Loaded race file with {len(parsed_race.records)} rows and columns: {parsed_race.headers}"
             )
-            return df
+            return parsed_race
 
         except Exception as e:
             logger.error(f"Error loading race file: {e}")
             logger.debug(f"File path: {race_file_path}")
             return None
 
+    @timed("_extract_dogs")
     def _extract_dogs(self, race_df: pd.DataFrame, race_file_path: str) -> list:
         """Extract dog information from race file"""
         dogs = []

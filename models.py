@@ -5,7 +5,7 @@ This file defines the database schema for Alembic migrations and consistency tes
 
 from sqlalchemy import (Column, Integer, String, Float, Date, Text, Boolean, 
                        DateTime, ForeignKey, Index, UniqueConstraint, Numeric)
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 from sqlalchemy.sql import func
 
 Base = declarative_base()
@@ -189,4 +189,27 @@ class PredictionHistory(Base):
     __table_args__ = (
         Index('idx_prediction_history_race_id', 'race_id'),
         Index('idx_prediction_history_model', 'model_name', 'model_version'),
+    )
+
+
+class ProcessedRaceFiles(Base):
+    __tablename__ = 'processed_race_files'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    file_hash = Column(String(64), unique=True, nullable=False)  # SHA-256 hash
+    race_date = Column(Date, nullable=False)
+    venue = Column(String, nullable=False)
+    race_no = Column(Integer, nullable=False)
+    file_path = Column(String, nullable=False)
+    file_size = Column(Integer)
+    processed_at = Column(DateTime, default=func.current_timestamp())
+    status = Column(String, default='processed')  # processed, failed, skipped
+    error_message = Column(Text)
+    
+    # Indexes for performance
+    __table_args__ = (
+        Index('idx_processed_files_hash', 'file_hash'),
+        Index('idx_processed_files_race_key', 'race_date', 'venue', 'race_no'),
+        Index('idx_processed_files_processed_at', 'processed_at'),
+        UniqueConstraint('file_hash', name='uq_processed_files_hash'),
     )

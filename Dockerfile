@@ -90,10 +90,11 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD python -c "from drivers import setup_selenium_driver_path; setup_selenium_driver_path(); print('ChromeDriver OK')" || exit 1
 
 # Expose port for Flask app
-EXPOSE 5000
+# Use environment variable for the port
+EXPOSE ${DEFAULT_PORT}
 
 # Default command
-CMD ["python", "-m", "flask", "run", "--host=0.0.0.0", "--port=5000"]
+CMD ["python", "-m", "flask", "run", "--host=0.0.0.0", "--port=${DEFAULT_PORT}"]
 
 # Development stage
 FROM base as development
@@ -117,4 +118,4 @@ COPY --chown=appuser:appuser . .
 # Run smoke test to verify ChromeDriver setup
 RUN python tests/test_chromedriver_smoke.py
 
-CMD ["python", "-m", "flask", "run", "--host=0.0.0.0", "--port=5000"]
+CMD ["python", "-m", "flask", "run", "--host=0.0.0.0", "--port=${DEFAULT_PORT}"]

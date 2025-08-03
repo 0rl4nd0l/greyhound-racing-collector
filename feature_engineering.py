@@ -194,10 +194,16 @@ class FeatureEngineer:
         features["win_rate"] = float(dog_data.get("win_rate", 0.1))
         features["place_rate"] = float(dog_data.get("place_rate", 0.3))
 
-        # Recent form with exponential decay weighting
+# Recent form with exponential decay weighting
         recent_form = dog_data.get("recent_form", [4, 4, 4])
         if isinstance(recent_form, list) and len(recent_form) > 0:
             # Apply exponential decay (λ = 0.95) where most recent races have highest weight
+            decay_weights = np.exp(-0.05 * np.arange(len(recent_form)))
+            features["weighted_recent_form"] = np.average(recent_form, weights=decay_weights)
+            features["speed_trend"] = self._calculate_speed_trend(recent_form)
+            features["competitiveness_score"] = self._calculate_competitiveness(dog_data)
+            features["distance_win_rate"] = self._calculate_distance_win_rate(dog_data)
+            features["box_position_win_rate"] = self._calculate_box_position_win_rate(dog_data)
             decay_weights = np.power(0.95, np.arange(len(recent_form)))
             features["recent_form_avg"] = float(np.average(recent_form, weights=decay_weights))
         else:
@@ -250,6 +256,73 @@ class FeatureEngineer:
         features["long_term_form_trend"] = float(dog_data.get("form_trend", 0.0))
 
         return features
+
+    def _calculate_speed_trend(self, recent_form):
+        """Calculate speed trend from recent form data"""
+        if len(recent_form) < 3:
+            return 0.0
+        
+        # Linear regression on recent form to detect improvement/decline
+        x = np.arange(len(recent_form))
+        y = np.array(recent_form)
+        
+        # Fit line and return negative slope (improvement = negative slope in positions)
+        try:
+            slope = np.polyfit(x, y, 1)[0]
+            return -slope  # Negative slope means improving positions
+        except:
+            return 0.0
+    
+    def _calculate_competitiveness(self, dog_data):
+        """Calculate competitive level from historical data"""
+        # Base competitiveness on win rate and place rate
+        win_rate = dog_data.get('win_rate', 0.1)
+        place_rate = dog_data.get('place_rate', 0.3)
+        avg_position = dog_data.get('avg_position', 4.0)
+        
+        # Ensure realistic historical data
+        win_rate = max(0, min(win_rate, 1))
+        place_rate = max(0, min(place_rate, 1))
+        avg_position = max(1, min(avg_position, 8))
+
+        # Normalize position to 0-1 scale (1 = always first, 0 = always last)
+        position_score = max(0, (8 - avg_position) / 7)
+        
+        # Combine metrics
+        competitiveness = (win_rate * 0.4 + place_rate * 0.3 + position_score * 0.3)
+        return min(1.0, competitiveness)
+
+    def _calculate_speed_consistency(self, dog_data):
+        """Calculate consistency of speed"""
+        speeds = dog_data.get('time_history', [])
+        if len(speeds)  2:
+            return 0.5  # default consistency if no data
+        return 1 / (np.std(speeds) + 0.1)
+
+    def _calculate_venue_avg_position(self, dog_data, venue):
+        """Calculate average position at the given venue"""
+        venue_history = [race for race in dog_data.get('history', []) if race.get('venue') == venue]
+        if len(venue_history) == 0:
+            return 4.0  # default average position
+        positions = [race.get('position', 4) for race in venue_history]
+        return np.mean(positions)
+
+    def _calculate_recent_momentum(self, dog_data):
+        """Calculate recent racing momentum"""
+        recent_positions = dog_data.get('recent_form', [])
+        if len(recent_positions)  2:
+            return 0.0
+        return np.mean(recent_positions[:3]) - np.mean(recent_positions[-3:])
+    
+    def _calculate_distance_win_rate(self, dog_data):
+        """Calculate win rate at specific distances"""
+        # Ensure realistic historical data
+        return max(0, min(dog_data.get('distance_win_rate', dog_data.get('win_rate', 0.1)), 1))
+    
+    def _calculate_box_position_win_rate(self, dog_data):
+        """Calculate win rate from specific box positions"""
+        # Ensure realistic historical data
+        return max(0, min(dog_data.get('box_position_win_rate', dog_data.get('win_rate', 0.1)), 1))
 
     def _create_traditional_features(self, dog_data):
         """Create traditional analysis features"""

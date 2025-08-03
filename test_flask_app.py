@@ -173,5 +173,9 @@ def database_status():
         })
 
 if __name__ == "__main__":
-    print("🚀 Starting test Flask server on port 5002...")
-    app.run(debug=False, host="localhost", port=5002)
+    # Get PORT from environment or default to 5002
+    import os
+    PORT = int(os.environ.get('PORT', 5002))
+    
+    print(f"🚀 Starting test Flask server on port {PORT}...")
+    app.run(host="0.0.0.0", port=PORT)

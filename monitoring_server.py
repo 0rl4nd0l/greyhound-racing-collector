@@ -294,8 +294,12 @@ def log_response(response):
     return response
 
 
-def run_server(host="localhost", port=5000, debug=False):
+def run_server(host="localhost", port=int(os.environ.get('DEFAULT_PORT', '5000')), debug=False):
     """Run the monitoring web server"""
+    # Allow PORT to be overridden by environment variable
+    import os
+    port = int(os.environ.get('PORT', port))
+    
     logger.log_system(
         f"Starting monitoring web server on http://{host}:{port}", "INFO", "WEB_SERVER"
     )
@@ -313,7 +317,7 @@ def run_server(host="localhost", port=5000, debug=False):
         )
 
     try:
-        app.run(host=host, port=port, debug=debug, threaded=True)
+        app.run(host="0.0.0.0", port=port, debug=debug, threaded=True)
     except Exception as e:
         logger.log_error(
             f"Failed to start web server: {str(e)}", context={"component": "web_server"}

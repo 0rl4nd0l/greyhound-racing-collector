@@ -21,7 +21,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from flask import (Flask, Response, flash, jsonify, redirect, render_template,
-                   request, stream_template, url_for)
+                   request, send_from_directory, stream_template, url_for)
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
@@ -40,12 +40,15 @@ import pandas as pd
 
 from logger import logger
 
+# Configuration constants
+DEFAULT_PORT = 5002
+
 # Import profiling configuration
 from profiling_config import set_profiling_enabled, is_profiling
 
 # Import CSV ingestion system for processing race files
 try:
-    from csv_ingestion import FormGuideCsvIngestor, create_ingestor
+    from csv_ingestion import FormGuideCsvIngestor, create_ingestor, EnhancedFormGuideCsvIngestor, FormGuideCsvIngestionError
     CSV_INGESTION_AVAILABLE = True
     print("🚀 CSV ingestion system available")
 except ImportError as e:
@@ -53,6 +56,8 @@ except ImportError as e:
     CSV_INGESTION_AVAILABLE = False
     FormGuideCsvIngestor = None
     create_ingestor = None
+    EnhancedFormGuideCsvIngestor = None
+    FormGuideCsvIngestionError = Exception
 
 # Import optimized caching and query systems
 try:
@@ -260,13 +265,72 @@ def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-@app.route("/predict", methods=["GET"])
+@app.route("/predict", methods=["GET", "POST"])
 def predict_page():
     """Predict page - Select upcoming races for prediction"""
+    if request.method == "POST":
+        # Handle form submission
+        race_files = request.form.getlist("race_files")
+        action = request.form.get("action", "single")
+        
+        if not race_files:
+            flash("Please select a race file", "error")
+            return redirect(url_for("predict_page"))
+        
+        # For single prediction, use the first selected race
+        race_file = race_files[0]
+        
+        try:
+            race_file_path = os.path.join(UPCOMING_DIR, race_file)
+            if not os.path.exists(race_file_path):
+                flash(f"Race file not found: {race_file}", "error")
+                return redirect(url_for("predict_page"))
+            
+            logger.log_process(f"Starting prediction for race: {race_file}")
+            
+            # Use PredictionPipelineV3 if available
+            prediction_result = None
+            if PredictionPipelineV3:
+                try:
+                    pipeline = PredictionPipelineV3()
+                    prediction_result = pipeline.predict_race_file(race_file_path, enhancement_level="basic")
+                except Exception as e:
+                    logger.log_error(f"PredictionPipelineV3 failed: {e}")
+            
+            # Fallback to UnifiedPredictor
+            if not prediction_result or not prediction_result.get("success"):
+                if UnifiedPredictor:
+                    try:
+                        predictor = UnifiedPredictor()
+                        prediction_result = predictor.predict_race_file(race_file_path)
+                    except Exception as e:
+                        logger.log_error(f"UnifiedPredictor failed: {e}")
+            
+            # Get races for the form
+            import requests
+            default_port = os.environ.get('DEFAULT_PORT', '5000')
+            response = requests.get(f"http://localhost:{default_port}/api/upcoming_races_csv")
+            races = []
+            if response.status_code == 200:
+                races_data = response.json().get("races", [])
+                races = [race["filename"] for race in races_data]
+            
+            return render_template("predict.html", 
+                                 races=races, 
+                                 prediction_result=prediction_result,
+                                 selected_race=race_file)
+                                 
+        except Exception as e:
+            logger.log_error(f"Error during prediction for {race_file}", error=e)
+            flash(f"Prediction error: {str(e)}", "error")
+            return redirect(url_for("predict_page"))
+    
+    # Handle GET request
     try:
         # Fetch upcoming races from the API endpoint
         import requests
-        response = requests.get("http://localhost:5002/api/upcoming_races_csv")
+        default_port = os.environ.get('DEFAULT_PORT', '5000')
+        response = requests.get(f"http://localhost:{default_port}/api/upcoming_races_csv")
         if response.status_code == 200:
             races = response.json().get("races", [])
             race_filenames = [race["filename"] for race in races]
@@ -279,6 +343,11 @@ def predict_page():
         flash("Error loading predict page", "error")
         return redirect(url_for("index"))
 
+
+@app.route('/favicon.ico')
+def favicon():
+    return send_from_directory(os.path.join(app.root_path, 'static'),
+                               'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
 @app.route("/api/dogs/search")
 def api_dogs_search():
@@ -361,6 +430,29 @@ def api_dogs_search():
             500,
         )
 
+
+@app.route('/api/ingest_csv', methods=['POST'])
+def ingest_csv_route():
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'error': 'No file part'}), 400
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'success': False, 'error': 'No selected file'}), 400
+
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(file_path)
+
+        ingestor = EnhancedFormGuideCsvIngestor()
+        try:
+            processed_data, validation_result = ingestor.ingest_csv(file_path)
+            return jsonify({'success': True, 'records_processed': len(processed_data)}), 200
+        except FormGuideCsvIngestionError as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+
+    return jsonify({'success': False, 'error': 'Unsupported file type'}), 400
 
 @app.route("/api/dogs/<dog_name>/details")
 def api_dog_details(dog_name):
@@ -12261,8 +12353,8 @@ Examples:
     parser.add_argument(
         '--port',
         type=int,
-        default=5000,
-        help='Port to bind to (default: 5000)'
+        default=DEFAULT_PORT,
+        help=f'Port to bind to (default: {DEFAULT_PORT})'
     )
     
     parser.add_argument(
@@ -12305,7 +12397,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # Get PORT from environment or CLI, default to DEFAULT_PORT
+    import os
+PORT = int(os.getenv('PORT', DEFAULT_PORT))
+    
     # Create templates and static directories if they don't exist
     os.makedirs("./templates", exist_ok=True)
     os.makedirs("./static/css", exist_ok=True)
@@ -12314,5 +12409,5 @@ if __name__ == "__main__":
     # Run integrity test before starting the app
     run_integrity_test()
 
-    # Run the app with fixed configuration to prevent hanging
-    app.run(debug=False, host="localhost", port=5002, use_reloader=False)
+    # Only run app if called directly
+    app.run(host="0.0.0.0", port=PORT)
