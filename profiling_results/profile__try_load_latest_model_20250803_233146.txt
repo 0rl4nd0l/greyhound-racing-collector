@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-03T23:31:46.481310
+Total Time: 0.017s
+CPU Time: 0.018s
+I/O Time: 0.0ms
+Memory Peak: 0.37MB
+Function Calls: 2792
+Bottlenecks: <20>(382.000s), /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:607(_try_load_latest_model)(0.015s), /Users/orlandolee/greyhound_racing_collector/pipeline_profiler.py:709(__exit__)(0.014s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1509(info)(0.013s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1640(_log)(0.013s)
+
+==================================================
+Detailed cProfile Output:
+         2792 function calls (2751 primitive calls) in 0.017 seconds
+
+   Ordered by: cumulative time
+   List reduced from 382 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    0.015    0.015 /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:607(_try_load_latest_model)
+        1    0.000    0.000    0.014    0.014 /Users/orlandolee/greyhound_racing_collector/pipeline_profiler.py:709(__exit__)
+        1    0.000    0.000    0.013    0.013 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1509(info)
+        1    0.000    0.000    0.013    0.013 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1640(_log)
+        1    0.000    0.000    0.013    0.013 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1666(handle)
+        1    0.001    0.001    0.013    0.013 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1720(callHandlers)
+        1    0.000    0.000    0.011    0.011 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1907(read)
+        1    0.000    0.000    0.011    0.011 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:694(__init__)
+        1    0.000    0.000    0.011    0.011 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/construction.py:423(dict_to_mgr)
+       10    0.000    0.000    0.006    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/indexes/base.py:7659(ensure_index)
+        3    0.000    0.000    0.005    0.002 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1010(handle)
+        1    0.000    0.000    0.005    0.005 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/construction.py:96(arrays_to_mgr)
+       22    0.001    0.000    0.003    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/construction.py:517(sanitize_array)
+      3/2    0.000    0.000    0.003    0.002 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/series.py:389(__init__)
+        1    0.000    0.000    0.003    0.003 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/construction.py:596(_homogenize)
+        1    0.000    0.000    0.002    0.002 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/managers.py:2121(create_block_manager_from_column_arrays)
+        2    0.000    0.000    0.002    0.001 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1250(emit)
+        3    0.000    0.000    0.002    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/indexes/base.py:475(__new__)
+        1    0.000    0.000    0.002    0.002 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/series.py:607(_init_dict)
+  644/643    0.001    0.000    0.001    0.000 {built-in method builtins.isinstance}
+
+

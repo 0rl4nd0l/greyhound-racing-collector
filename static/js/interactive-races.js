@@ -86,6 +86,21 @@ document.addEventListener('DOMContentLoaded', () => {
         viewToggleButton: document.getElementById('view-toggle-button'),
         viewModeLabel: document.getElementById('view-mode-label'),
     };
+    
+    // Check for missing elements and log them
+    const missingElements = [];
+    Object.keys(elements).forEach(key => {
+        if (!elements[key]) {
+            missingElements.push(key);
+            console.warn(`Missing DOM element: ${key} (ID: ${key.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, '')})`);
+        }
+    });
+    
+    if (missingElements.length > 0) {
+        console.error('Interactive Races: Missing required DOM elements:', missingElements);
+        showToast(`Interactive Races failed to initialize due to missing elements: ${missingElements.join(', ')}`, 'danger');
+        return; // Exit early if critical elements are missing
+    }
 
     // Initialize the page
     async function init() {
@@ -129,6 +144,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Render races in the table
     function renderRaces() {
+        if (!elements.racesTableBody) {
+            console.error('racesTableBody element not found');
+            return;
+        }
+        
         const filteredRaces = filterAndSortRaces();
         const paginatedRaces = paginateRaces(filteredRaces);
 
@@ -188,32 +208,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Setup event listeners
     function setupEventListeners() {
-        elements.searchButton.addEventListener('click', () => {
-            state.searchQuery = elements.searchBox.value;
-            renderRaces();
-        });
+        if (elements.searchButton) {
+            elements.searchButton.addEventListener('click', () => {
+                state.searchQuery = elements.searchBox ? elements.searchBox.value : '';
+                renderRaces();
+            });
+        }
 
-        elements.selectAllCheckbox.addEventListener('change', (e) => {
-            const checkboxes = document.querySelectorAll('.race-checkbox');
-            checkboxes.forEach(checkbox => checkbox.checked = e.target.checked);
-        });
+        if (elements.selectAllCheckbox) {
+            elements.selectAllCheckbox.addEventListener('change', (e) => {
+                const checkboxes = document.querySelectorAll('.race-checkbox');
+                checkboxes.forEach(checkbox => checkbox.checked = e.target.checked);
+            });
+        }
 
-        elements.runSelectedButton.addEventListener('click', () => {
-            const selectedRaces = Array.from(document.querySelectorAll('.race-checkbox:checked'))
-                                        .map(cb => ({
-                                            raceId: cb.dataset.raceId,
-                                            raceFilename: cb.dataset.raceFilename
-                                        }));
-            if (selectedRaces.length > 0) {
-                runPredictions(selectedRaces);
-            } else {
-                showToast('Please choose at least one race', 'warning');
-            }
-        });
+        if (elements.runSelectedButton) {
+            elements.runSelectedButton.addEventListener('click', () => {
+                const selectedRaces = Array.from(document.querySelectorAll('.race-checkbox:checked'))
+                                            .map(cb => ({
+                                                raceId: cb.dataset.raceId,
+                                                raceFilename: cb.dataset.raceFilename
+                                            }));
+                if (selectedRaces.length > 0) {
+                    runPredictions(selectedRaces);
+                } else {
+                    showToast('Please choose at least one race', 'warning');
+                }
+            });
+        }
         
-        elements.runAllUpcomingButton.addEventListener('click', () => {
-            runAllUpcomingPredictions();
-        });
+        if (elements.runAllUpcomingButton) {
+            elements.runAllUpcomingButton.addEventListener('click', () => {
+                runAllUpcomingPredictions();
+            });
+        }
         
         // Add view toggle event listener
         if (elements.viewToggleButton) {
@@ -252,6 +280,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Render pagination controls
     function renderPagination(totalRaces) {
+        if (!elements.paginationControls) {
+            console.error('paginationControls element not found');
+            return;
+        }
+        
         const totalPages = Math.ceil(totalRaces / state.racesPerPage);
         elements.paginationControls.innerHTML = '';
 
@@ -336,14 +369,18 @@ document.addEventListener('DOMContentLoaded', () => {
             state.isLoading = true;
             
             // Show prediction results container
-            elements.predictionResultsContainer.style.display = 'block';
-            elements.predictionResultsBody.innerHTML = `
-                <div class="text-center">
-                    <div class="spinner-border" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                    <p class="mt-2">Processing single race prediction...</p>
-                </div>`;
+            if (elements.predictionResultsContainer) {
+                elements.predictionResultsContainer.style.display = 'block';
+            }
+            if (elements.predictionResultsBody) {
+                elements.predictionResultsBody.innerHTML = `
+                    <div class="text-center">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Processing single race prediction...</p>
+                    </div>`;
+            }
             
             // Prepare request body - send race_filename if available (for upcoming races), otherwise race_id
             const requestBody = {};
@@ -376,10 +413,12 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             console.error('Error in runSinglePrediction:', error);
             showToast(`Error running prediction: ${error.message}`, 'danger');
-            elements.predictionResultsBody.innerHTML = `
-                <div class="alert alert-danger">
-                    <strong>Error:</strong> ${error.message}
-                </div>`;
+            if (elements.predictionResultsBody) {
+                elements.predictionResultsBody.innerHTML = `
+                    <div class="alert alert-danger">
+                        <strong>Error:</strong> ${error.message}
+                    </div>`;
+            }
         } finally {
             state.isLoading = false;
         }
@@ -405,14 +444,18 @@ document.addEventListener('DOMContentLoaded', () => {
             button.disabled = true;
             button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running Predictions...';
             
-            elements.predictionResultsContainer.style.display = 'block';
-            elements.predictionResultsBody.innerHTML = `
-                <div class="text-center">
-                    <div class="spinner-border" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                    <p class="mt-2">Processing ${races.length} race(s)...</p>
-                </div>`;
+            if (elements.predictionResultsContainer) {
+                elements.predictionResultsContainer.style.display = 'block';
+            }
+            if (elements.predictionResultsBody) {
+                elements.predictionResultsBody.innerHTML = `
+                    <div class="text-center">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Processing ${races.length} race(s)...</p>
+                    </div>`;
+            }
 
             const results = [];
             let successCount = 0;
@@ -424,18 +467,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Update progress
                 const displayId = raceFilename || raceId;
-                elements.predictionResultsBody.innerHTML = `
-                    <div class="text-center">
-                        <div class="spinner-border" role="status">
-                            <span class="visually-hidden">Loading...</span>
-                        </div>
-                        <p class="mt-2">Processing race ${i + 1} of ${races.length} (${displayId})...</p>
-                        <div class="progress">
-                            <div class="progress-bar" role="progressbar" 
-                                 style="width: ${((i) / races.length) * 100}%"
-                                 aria-valuenow="${i}" aria-valuemin="0" aria-valuemax="${races.length}"></div>
-                        </div>
-                    </div>`;
+                if (elements.predictionResultsBody) {
+                    elements.predictionResultsBody.innerHTML = `
+                        <div class="text-center">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Processing race ${i + 1} of ${races.length} (${displayId})...</p>
+                            <div class="progress">
+                                <div class="progress-bar" role="progressbar" 
+                                     style="width: ${((i) / races.length) * 100}%"
+                                     aria-valuenow="${i}" aria-valuemin="0" aria-valuemax="${races.length}"></div>
+                            </div>
+                        </div>`;
+                }
                 
                 try {
                     // Prepare request body - send race_filename if available (for upcoming races), otherwise race_id
@@ -481,10 +526,12 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             console.error('Error in runPredictions:', error);
             showToast(`Error running predictions: ${error.message}`, 'danger');
-            elements.predictionResultsBody.innerHTML = `
-                <div class="alert alert-danger">
-                    <strong>Error:</strong> ${error.message}
-                </div>`;
+            if (elements.predictionResultsBody) {
+                elements.predictionResultsBody.innerHTML = `
+                    <div class="alert alert-danger">
+                        <strong>Error:</strong> ${error.message}
+                    </div>`;
+            }
         } finally {
             state.isLoading = false;
             button.disabled = false;
@@ -494,6 +541,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Display prediction results with enhanced formatting
     function displayPredictionResults(results) {
+        if (!elements.predictionResultsBody) {
+            console.error('predictionResultsBody element not found');
+            return;
+        }
+        
         if (!Array.isArray(results) || results.length === 0) {
             elements.predictionResultsBody.innerHTML = `
                 <div class="alert alert-warning">
@@ -695,6 +747,19 @@ document.addEventListener('DOMContentLoaded', function() {
         pagination: document.getElementById('pagination'),
         paginationNav: document.getElementById('paginationNav')
     };
+    
+    // Check for missing elements in second DOMContentLoaded block
+    const missingElements = [];
+    Object.keys(elements).forEach(key => {
+        if (!elements[key]) {
+            missingElements.push(key);
+            console.warn(`Missing DOM element in second block: ${key}`);
+        }
+    });
+    
+    if (missingElements.length > 0) {
+        console.warn('Second Interactive Races block: Some elements are missing:', missingElements);
+    }
 
     function init() {
         setupEventListeners();
@@ -723,12 +788,24 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function setupEventListeners() {
-        elements.searchInput.addEventListener('input', debounce(handleSearch, 300));
-        elements.clearSearch.addEventListener('click', clearSearch);
-        elements.sortSelect.addEventListener('change', handleFilterChange);
-        elements.statusFilter.addEventListener('change', handleFilterChange);
-        elements.venueFilter.addEventListener('change', handleFilterChange);
-        elements.toggleView.addEventListener('click', toggleView);
+        if (elements.searchInput) {
+            elements.searchInput.addEventListener('input', debounce(handleSearch, 300));
+        }
+        if (elements.clearSearch) {
+            elements.clearSearch.addEventListener('click', clearSearch);
+        }
+        if (elements.sortSelect) {
+            elements.sortSelect.addEventListener('change', handleFilterChange);
+        }
+        if (elements.statusFilter) {
+            elements.statusFilter.addEventListener('change', handleFilterChange);
+        }
+        if (elements.venueFilter) {
+            elements.venueFilter.addEventListener('change', handleFilterChange);
+        }
+        if (elements.toggleView) {
+            elements.toggleView.addEventListener('click', toggleView);
+        }
     }
 
     async function loadVenuesAndGrades() {
@@ -740,6 +817,10 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function populateSelect(selectElement, options, defaultOption) {
+        if (!selectElement) {
+            console.warn('Cannot populate select - element is null');
+            return;
+        }
         selectElement.innerHTML = `<option value="all">${defaultOption}</option>`;
         options.forEach(option => {
             selectElement.innerHTML += `<option value="${option}">${option}</option>`;
@@ -747,31 +828,44 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function handleSearch(event) {
-        state.filters.searchQuery = event.target.value;
+        state.filters.searchQuery = event.target ? event.target.value : '';
         state.filters.page = 1;
         fetchRaces();
     }
 
     function clearSearch() {
-        elements.searchInput.value = '';
+        if (elements.searchInput) {
+            elements.searchInput.value = '';
+        }
         state.filters.searchQuery = '';
         state.filters.page = 1;
         fetchRaces();
     }
 
     function handleFilterChange() {
-        state.filters.sortBy = elements.sortSelect.value.split('|')[0];
-        state.filters.order = elements.sortSelect.value.split('|')[1];
-        state.filters.status = elements.statusFilter.value;
-        state.filters.venue = elements.venueFilter.value;
+        if (elements.sortSelect && elements.sortSelect.value) {
+            const sortValue = elements.sortSelect.value.split('|');
+            state.filters.sortBy = sortValue[0];
+            state.filters.order = sortValue[1];
+        }
+        if (elements.statusFilter) {
+            state.filters.status = elements.statusFilter.value;
+        }
+        if (elements.venueFilter) {
+            state.filters.venue = elements.venueFilter.value;
+        }
         state.filters.page = 1;
         fetchRaces();
     }
 
     function toggleView() {
         state.view = state.view === 'grid' ? 'list' : 'grid';
-        elements.viewIcon.className = state.view === 'grid' ? 'fas fa-th-large' : 'fas fa-list';
-        elements.racesContainer.className = `races-container ${state.view}`;
+        if (elements.viewIcon) {
+            elements.viewIcon.className = state.view === 'grid' ? 'fas fa-th-large' : 'fas fa-list';
+        }
+        if (elements.racesContainer) {
+            elements.racesContainer.className = `races-container ${state.view}`;
+        }
     }
 
     init();

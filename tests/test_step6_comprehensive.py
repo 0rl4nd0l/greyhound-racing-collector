@@ -23,7 +23,7 @@ from datetime import datetime
 from flask.testing import FlaskClient
 
 # Import test fixtures and utilities
-from conftest import test_app, client, temp_db, setup_database
+from .conftest import test_app, client, temp_db, setup_database
 
 
 class TestStep6Requirements:

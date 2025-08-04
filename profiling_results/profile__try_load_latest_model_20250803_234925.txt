@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-03T23:49:25.270993
+Total Time: 0.007s
+CPU Time: 0.012s
+I/O Time: 0.0ms
+Memory Peak: 10.10MB
+Function Calls: 289
+Bottlenecks: <20>(109.000s), /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:607(_try_load_latest_model)(0.006s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1509(info)(0.003s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1640(_log)(0.002s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1666(handle)(0.002s)
+
+==================================================
+Detailed cProfile Output:
+         289 function calls (288 primitive calls) in 0.006 seconds
+
+   Ordered by: cumulative time
+   List reduced from 109 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    0.006    0.006 /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:607(_try_load_latest_model)
+        1    0.000    0.000    0.003    0.003 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1509(info)
+        1    0.000    0.000    0.002    0.002 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1640(_log)
+        1    0.000    0.000    0.002    0.002 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1666(handle)
+        1    0.000    0.000    0.002    0.002 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1720(callHandlers)
+        3    0.000    0.000    0.002    0.001 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1010(handle)
+        3    0.000    0.000    0.002    0.001 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1138(emit)
+        2    0.000    0.000    0.001    0.001 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_abc.py:442(exists)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/pipeline_profiler.py:709(__exit__)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/pipeline_profiler.py:305(track_sequence_step)
+        2    0.000    0.000    0.001    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_local.py:510(stat)
+        2    0.000    0.000    0.001    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_local.py:581(glob)
+        1    0.001    0.001    0.001    0.001 {built-in method builtins.print}
+        4    0.000    0.000    0.001    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_local.py:289(drive)
+        1    0.001    0.001    0.001    0.001 {method 'read' of '_io.BufferedReader' objects}
+        2    0.000    0.000    0.001    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_local.py:166(__fspath__)
+        4    0.000    0.000    0.001    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_local.py:227(__str__)
+        2    0.000    0.000    0.001    0.000 {built-in method posix.stat}
+        2    0.000    0.000    0.001    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1250(emit)
+        4    0.000    0.000    0.000    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_local.py:257(_parse_path)
+
+

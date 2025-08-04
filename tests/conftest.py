@@ -106,7 +106,7 @@ def setup_test_data(db_path):
     ''')
     
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS race_metadata (
+CREATE TABLE IF NOT EXISTS race_metadata (
             race_id TEXT PRIMARY KEY,
             venue TEXT,
             race_number INTEGER,
@@ -114,13 +114,37 @@ def setup_test_data(db_path):
             race_name TEXT,
             grade TEXT,
             distance TEXT,
+            track_condition TEXT,
             field_size INTEGER,
-            winner_name TEXT,
-            winner_odds TEXT,
-            winner_margin TEXT,
-            url TEXT,
+            temperature REAL,
+            humidity REAL,
+            wind_speed REAL,
+            wind_direction TEXT,
+            track_record TEXT,
+            prize_money_total REAL,
+            prize_money_breakdown TEXT,
+            race_time TEXT,
             extraction_timestamp TEXT,
-            track_condition TEXT
+            data_source TEXT,
+            winner_name TEXT,
+            winner_odds REAL,
+            winner_margin REAL,
+            race_status TEXT,
+            data_quality_note TEXT,
+            actual_field_size INTEGER,
+            scratched_count INTEGER,
+            scratch_rate REAL,
+            box_analysis TEXT,
+            weather_condition TEXT,
+            precipitation REAL,
+            pressure REAL,
+            visibility REAL,
+            weather_location TEXT,
+            weather_timestamp TEXT,
+            weather_adjustment_factor REAL,
+            sportsbet_url TEXT,
+            venue_slug TEXT,
+            start_datetime TEXT
         )
     ''')
     
@@ -129,12 +153,17 @@ def setup_test_data(db_path):
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             race_id TEXT,
             dog_name TEXT,
+            dog_clean_name TEXT,
             box_number INTEGER,
             finish_position INTEGER,
             individual_time TEXT,
             weight REAL,
             trainer_name TEXT,
             odds_decimal REAL,
+            starting_price REAL,
+            performance_rating REAL,
+            speed_rating REAL,
+            class_rating REAL,
             margin TEXT,
             sectional_1st TEXT,
             sectional_2nd TEXT,
@@ -156,30 +185,45 @@ def setup_test_data(db_path):
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ''', dog)
     
+    # Insert test data with new schema columns
     test_races = [
-        ('test_race_1', 'Test Track A', 1, '2025-01-15', 'Test Race One', 'Grade 5', '500m', 8, 
-         'Test Greyhound One', '2.50', '1.2L', 'http://test.url/1', '2025-01-15T19:00:00', 'Good'),
-        ('test_race_2', 'Test Track B', 2, '2025-01-14', 'Test Race Two', 'Grade 4', '520m', 6, 
-         'Test Greyhound Two', '3.20', '0.8L', 'http://test.url/2', '2025-01-14T20:00:00', 'Slow'),
+        ('test_race_1', 'Test Track A', 1, '2025-01-15', 'Test Race One', 'Grade 5', '500m', 'Good', 8, 
+         25.5, 65.0, 12.5, 'NE', '18.20', 5000.0, 'Winner: $3000, Second: $1000', '18.45', 
+         '2025-01-15T19:00:00', 'sportsbet', 'Test Greyhound One', 2.50, 1.2, 'complete', 
+         'good quality', 8, 0, 0.0, '1-8', 'sunny', 0.0, 1013.25, 10.0, 'Test Track A', 
+         '2025-01-15T18:30:00', 1.0, 'http://sportsbet.url/1', 'test-track-a', '2025-01-15T19:00:00'),
+        ('test_race_2', 'Test Track B', 2, '2025-01-14', 'Test Race Two', 'Grade 4', '520m', 'Slow', 6, 
+         22.0, 70.0, 8.0, 'SW', '18.85', 4000.0, 'Winner: $2500, Second: $800', '18.90', 
+         '2025-01-14T20:00:00', 'sportsbet', 'Test Greyhound Two', 3.20, 0.8, 'complete', 
+         'good quality', 6, 0, 0.0, '1-6', 'cloudy', 2.5, 1015.0, 8.0, 'Test Track B', 
+         '2025-01-14T19:30:00', 1.0, 'http://sportsbet.url/2', 'test-track-b', '2025-01-14T20:00:00'),
     ]
     
     for race in test_races:
         cursor.execute('''
-            INSERT OR REPLACE INTO race_metadata VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO race_metadata 
+            (race_id, venue, race_number, race_date, race_name, grade, distance, track_condition, field_size,
+             temperature, humidity, wind_speed, wind_direction, track_record, prize_money_total,
+             prize_money_breakdown, race_time, extraction_timestamp, data_source, winner_name,
+             winner_odds, winner_margin, race_status, data_quality_note, actual_field_size,
+             scratched_count, scratch_rate, box_analysis, weather_condition, precipitation,
+             pressure, visibility, weather_location, weather_timestamp, weather_adjustment_factor,
+             sportsbet_url, venue_slug, start_datetime)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', race)
     
     test_dog_races = [
-        ('test_race_1', 'Test Greyhound One', 1, 1, '18.45', 30.2, 'Test Trainer A', 2.50, 'Win'),
-        ('test_race_1', 'Test Greyhound Two', 2, 3, '18.72', 30.8, 'Test Trainer B', 4.80, '2.5L'),
-        ('test_race_2', 'Test Greyhound Two', 1, 1, '18.85', 30.5, 'Test Trainer B', 3.20, 'Win'),
-        ('test_race_2', 'Test Greyhound Three', 3, 2, '19.15', 29.9, 'Test Trainer C', 5.40, '1.2L'),
+        ('test_race_1', 'Test Greyhound One', 'Test Greyhound One', 1, 1, '18.45', 30.2, 'Test Trainer A', 2.50, 2.50, 8.5, 7.2, 6.8, 'Win'),
+        ('test_race_1', 'Test Greyhound Two', 'Test Greyhound Two', 2, 3, '18.72', 30.8, 'Test Trainer B', 4.80, 4.80, 7.8, 6.9, 6.2, '2.5L'),
+        ('test_race_2', 'Test Greyhound Two', 'Test Greyhound Two', 1, 1, '18.85', 30.5, 'Test Trainer B', 3.20, 3.20, 8.1, 7.5, 6.9, 'Win'),
+        ('test_race_2', 'Test Greyhound Three', 'Test Greyhound Three', 3, 2, '19.15', 29.9, 'Test Trainer C', 5.40, 5.40, 7.2, 6.8, 6.1, '1.2L'),
     ]
     
     for dog_race in test_dog_races:
         cursor.execute('''
             INSERT OR REPLACE INTO dog_race_data 
-            (race_id, dog_name, box_number, finish_position, individual_time, weight, trainer_name, odds_decimal, margin)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (race_id, dog_name, dog_clean_name, box_number, finish_position, individual_time, weight, trainer_name, odds_decimal, starting_price, performance_rating, speed_rating, class_rating, margin)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', dog_race)
     
     conn.commit()

@@ -294,7 +294,7 @@ def log_response(response):
     return response
 
 
-def run_server(host="localhost", port=int(os.environ.get('DEFAULT_PORT', '5000')), debug=False):
+def run_server(host="localhost", port=int(os.environ.get('DEFAULT_PORT', '5002')), debug=False):
     """Run the monitoring web server"""
     # Allow PORT to be overridden by environment variable
     import os
@@ -335,7 +335,7 @@ if __name__ == "__main__":
         "--host", default="localhost", help="Host to bind to (default: localhost)"
     )
     parser.add_argument(
-        "--port", type=int, default=5000, help="Port to bind to (default: 5000)"
+        "--port", type=int, default=5002, help="Port to bind to (default: 5002)"
     )
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
 

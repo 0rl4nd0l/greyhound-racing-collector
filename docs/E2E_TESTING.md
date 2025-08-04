@@ -100,7 +100,7 @@ All services include health checks to ensure they're ready before tests run:
 
 ```yaml
 healthcheck:
-  test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+  test: ["CMD", "curl", "-f", "http://localhost:5002/health"]
   interval: 10s
   timeout: 5s
   retries: 5

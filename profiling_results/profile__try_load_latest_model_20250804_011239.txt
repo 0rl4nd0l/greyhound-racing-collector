@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T01:12:39.420953
+Total Time: 6.151s
+CPU Time: 5.995s
+I/O Time: 0.0ms
+Memory Peak: 31.72MB
+Function Calls: 2382031
+Bottlenecks: <20>(903.000s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)(7.033s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:505(get_request)(5.019s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)(3.728s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)(3.656s)
+
+==================================================
+Detailed cProfile Output:
+         2382031 function calls (2381069 primitive calls) in 6.162 seconds
+
+   Ordered by: cumulative time
+   List reduced from 903 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+9087/9083    0.308    0.000    7.033    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)
+       10    0.846    0.085    5.019    0.502 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:505(get_request)
+6042/6038    0.042    0.000    3.728    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)
+6039/6038    0.587    0.000    3.656    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)
+36168/36065    0.328    0.000    2.208    0.000 {method 'read' of '_io.BufferedReader' objects}
+6014/6013    0.086    0.000    2.048    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle_utils.py:234(_read_bytes)
+     12/3    0.000    0.000    1.796    0.599 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:998(_bootstrap)
+     12/3    0.000    0.000    1.796    0.599 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:1025(_bootstrap_inner)
+     11/3    0.001    0.000    1.795    0.598 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:981(run)
+      9/3    0.003    0.000    1.794    0.598 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:690(process_request_thread)
+      9/3    0.001    0.000    1.786    0.595 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:360(finish_request)
+      9/3    0.001    0.000    1.785    0.595 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:760(__init__)
+      9/3    0.005    0.001    1.785    0.595 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/serving.py:395(handle)
+     11/8    0.000    0.000    1.678    0.210 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/serving.py:259(write)
+       10    0.002    0.000    1.570    0.157 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/http/server.py:534(end_headers)
+       10    0.001    0.000    1.564    0.156 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/http/server.py:540(flush_headers)
+       16    0.003    0.000    1.542    0.096 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:844(write)
+   413382    0.636    0.000    1.492    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:281(read)
+       13    0.000    0.000    0.831    0.064 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/wsgi.py:255(__next__)
+        6    0.000    0.000    0.831    0.139 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/wrappers/response.py:31(_iter_encoded)
+
+

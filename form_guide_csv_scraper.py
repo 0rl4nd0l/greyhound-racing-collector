@@ -570,6 +570,82 @@ class FormGuideCsvScraper:
         except Exception as e:
             print(f"❌ Error setting up Chrome driver: {e}")
             return None
+    
+    def test_single_race_download(self, race_url):
+        """Test mode: Download CSV from a single race URL"""
+        print(f"🧪 Test Mode: Downloading CSV from single race URL")
+        print(f"📍 URL: {race_url}")
+        
+        try:
+            # Extract race info from URL
+            race_info = self.extract_race_info_from_url(race_url)
+            if not race_info:
+                print(f"❌ Could not extract race information from URL")
+                return False
+            
+            print(f"📊 Race Info: {race_info}")
+            
+            # Download the CSV
+            success = self.download_csv_file(race_info)
+            if success:
+                print(f"✅ Successfully downloaded race CSV!")
+                return True
+            else:
+                print(f"❌ Failed to download race CSV")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Error in test mode: {e}")
+            return False
+    
+    def extract_race_info_from_url(self, race_url):
+        """Extract race information from a race URL"""
+        try:
+            # Parse URL to extract venue, date, and race number
+            # Handle both formats:
+            # - https://www.thedogs.com.au/racing/venue/YYYY/MM/DD/race_number
+            # - https://www.thedogs.com.au/racing/venue/YYYY-MM-DD/race_number/...
+            
+            # Remove query parameters
+            base_url = race_url.split('?')[0]
+            
+            # Try format 1: /racing/venue/YYYY-MM-DD/race_number/...
+            url_match = re.match(r'https://www\.thedogs\.com\.au/racing/([^/]+)/(\d{4})-(\d{2})-(\d{2})/(\d+)', base_url)
+            if url_match:
+                venue_slug, year, month, day, race_number = url_match.groups()
+            else:
+                # Try format 2: /racing/venue/YYYY/MM/DD/race_number
+                url_match = re.match(r'https://www\.thedogs\.com\.au/racing/([^/]+)/(\d{4})/(\d{2})/(\d{2})/(\d+)', base_url)
+                if url_match:
+                    venue_slug, year, month, day, race_number = url_match.groups()
+                else:
+                    print(f"⚠️ URL format not recognized: {race_url}")
+                    return None
+            
+            # Map venue slug to venue code
+            venue = None
+            for url_venue, code in self.venue_map.items():
+                if url_venue == venue_slug:
+                    venue = code
+                    break
+            
+            if not venue:
+                print(f"⚠️ Unknown venue: {venue_slug}")
+                venue = venue_slug.upper().replace('-', '_')
+            
+            # Format date
+            date_str = f"{year}-{month}-{day}"
+            
+            return {
+                'race_number': race_number,
+                'venue': venue,
+                'date': date_str,
+                'url': race_url
+            }
+            
+        except Exception as e:
+            print(f"❌ Error extracting race info from URL: {e}")
+            return None
 
 if __name__ == "__main__":
     import argparse
@@ -581,6 +657,8 @@ if __name__ == "__main__":
                        help='Test the caching system with a specific CSV file')
     parser.add_argument('--stats', action='store_true',
                        help='Show cache statistics and exit')
+    parser.add_argument('--test-url', type=str,
+                       help='Test mode: Download CSV from a single race URL')
     
     args = parser.parse_args()
     
@@ -631,6 +709,15 @@ if __name__ == "__main__":
         result2 = scraper.parse_csv_with_ingestion(args.test_file, force=args.force)
         print(f"Second attempt (force={args.force}): {result2}")
         
+        sys.exit(0)
+    
+    if args.test_url:
+        print(f"\n🧪 Test Mode: Downloading single race CSV")
+        success = scraper.test_single_race_download(args.test_url)
+        if success:
+            print(f"\n🎉 Test completed successfully!")
+        else:
+            print(f"\n💥 Test failed!")
         sys.exit(0)
     
     print(f"\n✨ Caching system ready! Use --help for options.")

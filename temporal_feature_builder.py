@@ -16,6 +16,10 @@ import pandas as pd
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple, Any, Optional
 import warnings
+import hashlib
+import pickle
+import os
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +46,11 @@ class TemporalFeatureBuilder:
         
         # Exponential decay factor for historical race weighting
         self.decay_factor = 0.95  # Recent races weighted more heavily
+        
+        # Feature caching setup
+        self.cache_dir = Path('./feature_cache')
+        self.cache_dir.mkdir(exist_ok=True)
+        self.enable_caching = True
         
     def get_race_timestamp(self, race_row: pd.Series) -> datetime:
         """Get race timestamp, preferring race_time over race_date."""

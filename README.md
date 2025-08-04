@@ -60,6 +60,42 @@ The Greyhound Racing Predictor is a comprehensive, AI-powered system for analyzi
   ```
 The application will be available at `http://127.0.0.1:5002` (or the port specified by the `PORT` environment variable).
 
+#### Port Configuration & Troubleshooting
+
+The application uses **port 5002** by default. You can override this using the `PORT` environment variable:
+
+```bash
+# Run on a different port
+PORT=8080 python app.py
+
+# Or set it persistently
+export PORT=8080
+python app.py
+```
+
+##### Port Conflict Resolution
+
+If you encounter "port already in use" errors, use these troubleshooting commands:
+
+```bash
+# Check what's using a specific port
+lsof -i :5002
+
+# Find all Python processes using ports
+lsof -i -P | grep python
+
+# Kill a specific process by PID (replace XXXX with actual PID)
+kill XXXX
+
+# Kill all Python processes (use with caution)
+pkill -f python
+
+# Check if the service is responding
+curl http://localhost:5002/api/health
+```
+
+**Health Check Endpoint**: The application provides a health check at `/api/health` which returns JSON with system status, component availability, and version information.
+
 - **Dashboard Access**: Visit `/gpt-enhancement` for the GPT Enhancement Dashboard.
 
 - **Data Processing and Predictions:**

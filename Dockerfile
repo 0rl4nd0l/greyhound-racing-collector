@@ -91,10 +91,10 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
 
 # Expose port for Flask app
 # Use environment variable for the port
-EXPOSE ${DEFAULT_PORT}
+EXPOSE 5002
 
 # Default command
-CMD ["python", "-m", "flask", "run", "--host=0.0.0.0", "--port=${DEFAULT_PORT}"]
+CMD ["sh", "-c", "python -m flask run --host=0.0.0.0 --port=${PORT:-5002}"]
 
 # Development stage
 FROM base as development
@@ -118,4 +118,4 @@ COPY --chown=appuser:appuser . .
 # Run smoke test to verify ChromeDriver setup
 RUN python tests/test_chromedriver_smoke.py
 
-CMD ["python", "-m", "flask", "run", "--host=0.0.0.0", "--port=${DEFAULT_PORT}"]
+CMD ["sh", "-c", "python -m flask run --host=0.0.0.0 --port=${PORT:-5002}"]

@@ -571,7 +571,7 @@ Provide a comprehensive risk framework for this race.
                     df["winner_odds"].mean() if "winner_odds" in df.columns else 0
                 ),
                 "avg_winning_time": (
-                    df[df["finish_position"] == 1]["individual_time"].mean()
+                    pd.to_numeric(df[df["finish_position"] == 1]["individual_time"], errors="coerce").mean()
                     if len(df) > 0
                     else 0
                 ),

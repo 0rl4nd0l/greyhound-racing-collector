@@ -77,7 +77,7 @@ fi
 # Step 4: Verify Flask app is responding
 echo -e "${YELLOW}🔍 Verifying Flask app endpoints...${NC}"
 for i in {1..30}; do
-    if curl -s http://localhost:5000/health > /dev/null; then
+    if curl -s http://localhost:${DEFAULT_PORT:-5002}/health > /dev/null; then
         echo -e "${GREEN}✅ Flask app is responding${NC}"
         break
     fi
@@ -89,7 +89,7 @@ done
 echo -e "${YELLOW}🔍 Testing critical API endpoints...${NC}"
 endpoints=("/health" "/api/races" "/api/tasks" "/api/background/status")
 for endpoint in "${endpoints[@]}"; do
-    if curl -s "http://localhost:5000${endpoint}" > /dev/null; then
+    if curl -s "http://localhost:${DEFAULT_PORT:-5002}${endpoint}" > /dev/null; then
         echo -e "${GREEN}✅ ${endpoint} is accessible${NC}"
     else
         echo -e "${RED}❌ ${endpoint} is not accessible${NC}"
@@ -118,7 +118,7 @@ else
 fi
 
 # Environment variables for tests
-export FLASK_BASE_URL="http://localhost:${DEFAULT_PORT}"
+export FLASK_BASE_URL="http://localhost:${DEFAULT_PORT:-5002}"
 export TEST_TIMEOUT="60000"
 export BACKEND_TYPE="$BACKEND_TYPE"
 

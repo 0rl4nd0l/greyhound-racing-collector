@@ -23,6 +23,7 @@ from pathlib import Path
 from flask import (Flask, Response, flash, jsonify, redirect, render_template,
                    request, send_from_directory, stream_template, url_for)
 from flask_cors import CORS
+from flask_compress import Compress
 from werkzeug.utils import secure_filename
 
 try:
@@ -188,9 +189,40 @@ feature_store = FeatureStore()
 # Model registry system
 from model_registry import get_model_registry
 
+# Import asset management system
+try:
+    from assets import AssetManager
+    ASSET_MANAGEMENT_AVAILABLE = True
+    print("🚀 Asset management system available")
+except ImportError as e:
+    print(f"⚠️ Asset management system not available: {e}")
+    ASSET_MANAGEMENT_AVAILABLE = False
+    AssetManager = None
+
+# Import model training API blueprint
+try:
+    from model_training_api import model_training_bp
+    MODEL_TRAINING_API_AVAILABLE = True
+    print("🚀 Model training API blueprint available")
+except ImportError as e:
+    print(f"⚠️ Model training API blueprint not available: {e}")
+    MODEL_TRAINING_API_AVAILABLE = False
+    model_training_bp = None
+
+# Import Guardian Service for file integrity protection
+try:
+    from services.guardian_service import get_guardian_service, start_guardian_service
+    GUARDIAN_SERVICE_AVAILABLE = True
+    print("🛡️ Guardian Service available")
+except ImportError as e:
+    print(f"⚠️ Guardian Service not available: {e}")
+    GUARDIAN_SERVICE_AVAILABLE = False
+    get_guardian_service = None
+    start_guardian_service = None
+
 # ML System V3 for comprehensive predictions
 try:
-    from ml_system_v3 import train_new_model
+    from ml_system_v4 import train_leakage_safe_model
     from prediction_pipeline_v3 import PredictionPipelineV3
 
     ML_SYSTEM_V3_AVAILABLE = True
@@ -198,6 +230,17 @@ except ImportError as e:
     logger.warning(f"ML System V3 not available: {e}")
     ML_SYSTEM_V3_AVAILABLE = False
     PredictionPipelineV3 = None
+
+# ML System V4 for advanced predictions
+try:
+    from prediction_pipeline_v4 import PredictionPipelineV4
+
+    ML_SYSTEM_V4_AVAILABLE = True
+    print("🚀 ML System V4 (Advanced) available")
+except ImportError as e:
+    logger.warning(f"ML System V4 not available: {e}")
+    ML_SYSTEM_V4_AVAILABLE = False
+    PredictionPipelineV4 = None
 
 # Legacy prediction system imports (kept for fallback)
 try:
@@ -240,6 +283,64 @@ def get_gpt_enhancer():
 app = Flask(__name__)
 app.secret_key = "greyhound_racing_secret_key_2025"
 
+# Configure long-term caching for static files (1 year = 31536000 seconds)
+if not app.debug:
+    app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 60 * 60 * 24 * 365
+
+# Initialize asset management system
+if ASSET_MANAGEMENT_AVAILABLE and AssetManager:
+    try:
+        asset_manager = AssetManager(app)
+        print("✅ Asset management system initialized successfully")
+    except Exception as e:
+        print(f"⚠️ Asset management initialization failed: {e}")
+        asset_manager = None
+else:
+    asset_manager = None
+    print("⚠️ Asset management system not available")
+
+# Performance profiling hooks
+request_times = {}
+performance_log_file = "logs/perf_server.log"
+
+# Ensure logs directory exists
+os.makedirs("logs", exist_ok=True)
+
+@app.before_request
+def before_request():
+    """Track request start time for profiling"""
+    if is_profiling():
+        request.start_time = time.time()
+        # Log the start of request processing
+        with open(performance_log_file, "a") as f:
+            f.write(f"{datetime.now().isoformat()} - START - {request.method} {request.path} from {request.remote_addr}\n")
+
+@app.after_request
+def after_request(response):
+    """Track request completion time and log performance metrics"""
+    if is_profiling() and hasattr(request, 'start_time'):
+        duration = time.time() - request.start_time
+        endpoint = request.endpoint or 'unknown'
+        
+        # Log performance metrics
+        with open(performance_log_file, "a") as f:
+            f.write(f"{datetime.now().isoformat()} - END - {request.method} {request.path} - {response.status_code} - {duration*1000:.2f}ms\n")
+        
+        # Log slow requests (>500ms)
+        if duration > 0.5:
+            logger.warning(f"Slow request detected: {request.method} {request.path} took {duration*1000:.2f}ms")
+            with open(performance_log_file, "a") as f:
+                f.write(f"{datetime.now().isoformat()} - SLOW - {request.method} {request.path} - {duration*1000:.2f}ms\n")
+    
+    return response
+
+# Register model training API blueprint if available
+if MODEL_TRAINING_API_AVAILABLE and model_training_bp:
+    app.register_blueprint(model_training_bp)
+    print("🎯 Model Training API routes registered successfully")
+else:
+    print("⚠️ Model Training API routes not registered - blueprint not available")
+
 # Enable CORS for all domains on all routes
 CORS(
     app,
@@ -248,6 +349,10 @@ CORS(
     allow_headers=["Content-Type", "Authorization", "Access-Control-Allow-Credentials"],
     supports_credentials=True,
 )
+
+# Initialize Flask-Compress for automatic response compression
+compress = Compress()
+compress.init_app(app)
 
 # Configuration
 DATABASE_PATH = "greyhound_racing_data.db"
@@ -265,7 +370,7 @@ def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-@app.route("/predict", methods=["GET", "POST"])
+@app.route("/predict_page", methods=["GET", "POST"])
 def predict_page():
     """Predict page - Select upcoming races for prediction"""
     if request.method == "POST":
@@ -288,27 +393,88 @@ def predict_page():
             
             logger.log_process(f"Starting prediction for race: {race_file}")
             
-            # Use PredictionPipelineV3 if available
+            # Run actual prediction using available pipelines (V4 -> V3 -> UnifiedPredictor)
             prediction_result = None
-            if PredictionPipelineV3:
+            
+            # Try PredictionPipelineV4 first (most advanced)
+            if PredictionPipelineV4:
                 try:
+                    logger.log_process("Using PredictionPipelineV4 for web interface")
+                    pipeline = PredictionPipelineV4()
+                    prediction_result = pipeline.predict_race_file(race_file_path)
+                    
+                    if prediction_result and prediction_result.get("success"):
+                        logger.log_process("PredictionPipelineV4 completed successfully")
+                    else:
+                        logger.log_process(f"PredictionPipelineV4 returned unsuccessful result: {prediction_result}")
+                        prediction_result = None
+                        
+                except Exception as e:
+                    logger.log_error(f"PredictionPipelineV4 failed: {e}")
+                    prediction_result = None
+            
+            # Fallback to PredictionPipelineV3 if V4 fails
+            if not prediction_result and PredictionPipelineV3:
+                try:
+                    logger.log_process("Fallback to PredictionPipelineV3 for web interface")
                     pipeline = PredictionPipelineV3()
                     prediction_result = pipeline.predict_race_file(race_file_path, enhancement_level="basic")
+                    
+                    if prediction_result and prediction_result.get("success"):
+                        logger.log_process("PredictionPipelineV3 completed successfully")
+                    else:
+                        logger.log_process(f"PredictionPipelineV3 returned unsuccessful result: {prediction_result}")
+                        prediction_result = None
+                        
                 except Exception as e:
                     logger.log_error(f"PredictionPipelineV3 failed: {e}")
+                    prediction_result = None
             
-            # Fallback to UnifiedPredictor
+            # Final fallback to UnifiedPredictor if both V4 and V3 fail
+            if not prediction_result and UnifiedPredictor:
+                try:
+                    logger.log_process("Fallback to UnifiedPredictor for web interface")
+                    predictor = UnifiedPredictor()
+                    prediction_result = predictor.predict_race_file(race_file_path)
+                    
+                    if prediction_result and prediction_result.get("success"):
+                        logger.log_process("UnifiedPredictor completed successfully")
+                    else:
+                        logger.log_process(f"UnifiedPredictor returned unsuccessful result: {prediction_result}")
+                        prediction_result = None
+                        
+                except Exception as e:
+                    logger.log_error(f"UnifiedPredictor failed: {e}")
+                    prediction_result = None
+            
+            # Check if prediction was successful
             if not prediction_result or not prediction_result.get("success"):
-                if UnifiedPredictor:
-                    try:
-                        predictor = UnifiedPredictor()
-                        prediction_result = predictor.predict_race_file(race_file_path)
-                    except Exception as e:
-                        logger.log_error(f"UnifiedPredictor failed: {e}")
+                error_msg = prediction_result.get("error", "All prediction methods failed") if prediction_result else "No prediction pipeline available"
+                flash(f"Prediction failed: {error_msg}", "error")
+                return redirect(url_for("predict_page"))
+            
+            # Enhance prediction result with proper race information parsing
+            if prediction_result and prediction_result.get("summary", {}).get("race_info"):
+                race_info = prediction_result["summary"]["race_info"]
+                # Use the csv metadata parser for more accurate parsing
+                try:
+                    from utils.csv_metadata import parse_race_csv_meta
+                    csv_meta = parse_race_csv_meta(race_file_path)
+                    if csv_meta and csv_meta.get("status") == "success":
+                        # Update race info with properly parsed metadata
+                        if csv_meta.get("race_number") and csv_meta["race_number"] > 0:
+                            race_info["race_number"] = str(csv_meta["race_number"])
+                        if csv_meta.get("venue") and csv_meta["venue"] != "Unknown":
+                            race_info["venue"] = csv_meta["venue"]
+                        if csv_meta.get("race_date") and csv_meta["race_date"] != "Unknown":
+                            race_info["race_date"] = csv_meta["race_date"]
+                        logger.log_process(f"Enhanced race info: {race_info}")
+                except Exception as e:
+                    logger.log_error(f"Error enhancing race info: {e}")
             
             # Get races for the form
             import requests
-            default_port = os.environ.get('DEFAULT_PORT', '5000')
+            default_port = os.environ.get('DEFAULT_PORT', os.environ.get('PORT', '5002'))
             response = requests.get(f"http://localhost:{default_port}/api/upcoming_races_csv")
             races = []
             if response.status_code == 200:
@@ -327,17 +493,18 @@ def predict_page():
     
     # Handle GET request
     try:
-        # Fetch upcoming races from the API endpoint
-        import requests
-        default_port = os.environ.get('DEFAULT_PORT', '5000')
-        response = requests.get(f"http://localhost:{default_port}/api/upcoming_races_csv")
-        if response.status_code == 200:
-            races = response.json().get("races", [])
-            race_filenames = [race["filename"] for race in races]
-            return render_template("predict.html", races=race_filenames)
-        else:
-            flash("Failed to load upcoming races", "error")
-            return redirect(url_for("index"))
+        # Get all available race files directly from filesystem instead of paginated API
+        race_filenames = []
+        if os.path.exists(UPCOMING_DIR):
+            for filename in os.listdir(UPCOMING_DIR):
+                if filename.endswith('.csv') and not filename.startswith('.') and filename != 'README.md':
+                    race_filenames.append(filename)
+        
+        # Sort filenames for better user experience
+        race_filenames.sort()
+        
+        return render_template("predict.html", races=race_filenames)
+        
     except Exception as e:
         logging.error(f"Error loading predict page: {str(e)}")
         flash("Error loading predict page", "error")
@@ -346,8 +513,8 @@ def predict_page():
 
 @app.route('/favicon.ico')
 def favicon():
-    return send_from_directory(os.path.join(app.root_path, 'static'),
-                               'favicon.ico', mimetype='image/vnd.microsoft.icon')
+    # Always return a 204 No Content response since we don't have a favicon
+    return Response(status=204)
 
 @app.route("/api/dogs/search")
 def api_dogs_search():
@@ -1530,9 +1697,144 @@ def api_races_paginated():
         )
 
 
+@app.route("/api/upcoming_races")
+def api_upcoming_races():
+    """API endpoint for live upcoming races from thedogs.com.au (DEFAULT) with CSV fallback"""
+    try:
+        # Get parameters
+        days_ahead = request.args.get('days', 1, type=int)  # Default to today + tomorrow
+        page = request.args.get('page', 1, type=int)
+        per_page = min(request.args.get('per_page', 50, type=int), 100)  # Max 100 per page
+        source = request.args.get('source', 'live')  # 'live' or 'csv'
+        
+        # PRIMARY: Use live scraping by default
+        if source == 'live':
+            try:
+                # Use UpcomingRaceBrowser for comprehensive live data
+                from upcoming_race_browser import UpcomingRaceBrowser
+                browser = UpcomingRaceBrowser()
+                
+                # Get races for multiple days if requested
+                from datetime import datetime, timedelta
+                all_races = []
+                
+                for day_offset in range(days_ahead + 1):  # Include today (0) + days_ahead
+                    target_date = datetime.now().date() + timedelta(days=day_offset)
+                    day_races = browser.get_races_for_date(target_date)
+                    
+                    if day_races:
+                        # Add date to each race
+                        for race in day_races:
+                            race["date"] = target_date.strftime("%Y-%m-%d")
+                        all_races.extend(day_races)
+                        logger.info(f"Got {len(day_races)} races for {target_date}")
+                
+                races = all_races
+                logger.info(f"Total live races found: {len(races)}")
+                
+            except Exception as live_error:
+                logger.error(f"Live scraping failed: {live_error}")
+                # Fallback to CSV data if live scraping fails
+                logger.info("Falling back to CSV files from upcoming_races directory")
+                races = load_upcoming_races_with_guaranteed_fields(refresh=True)
+                source = "csv_fallback"
+        else:
+            # Use CSV files when explicitly requested
+            races = load_upcoming_races_with_guaranteed_fields(refresh=True)
+            source = "csv"
+        
+        # Convert races to consistent format for frontend
+        formatted_races = []
+        for race in races:
+            # Handle both live scraping format and CSV format
+            formatted_race = {
+                "race_id": race.get("url", race.get("race_id", f"{race.get('venue', 'unknown')}_{race.get('race_number', 0)}"))
+,
+                "venue": race.get("venue", "Unknown"),
+                "venue_name": race.get("venue_name", race.get("venue", "Unknown")),
+                "race_number": race.get("race_number", 0),
+                "date": race.get("date", race.get("race_date", "")),  # Handle both date fields
+                "race_time": race.get("race_time", "TBA"),
+                "race_name": race.get("race_name") or race.get("title", f"Race {race.get('race_number', 0)}"),
+                "distance": race.get("distance", "Unknown"),
+                "grade": race.get("grade", "Unknown"),
+                "url": race.get("url", ""),
+                "description": race.get("description", ""),
+                "filename": race.get("filename", ""),  # For CSV files
+                "source": source
+            }
+            formatted_races.append(formatted_race)
+        
+        # Sort races by date and time
+        def sort_race_key(race):
+            date_str = race.get("date", "9999-12-31")
+            time_str = race.get("race_time", "23:59")
+            
+            # Convert time to sortable format
+            try:
+                if "PM" in time_str or "AM" in time_str:
+                    # Convert 12-hour to 24-hour
+                    time_part, period = time_str.split()
+                    hours, minutes = map(int, time_part.split(':'))
+                    if period == 'PM' and hours != 12:
+                        hours += 12
+                    elif period == 'AM' and hours == 12:
+                        hours = 0
+                    time_sort = f"{hours:02d}:{minutes:02d}"
+                else:
+                    time_sort = time_str
+            except:
+                time_sort = "23:59"
+                
+            return f"{date_str} {time_sort}"
+        
+        formatted_races.sort(key=sort_race_key)
+        
+        # Apply pagination
+        total_count = len(formatted_races)
+        if page > 1 or per_page < total_count:
+            start_idx = (page - 1) * per_page
+            end_idx = start_idx + per_page
+            paginated_races = formatted_races[start_idx:end_idx]
+        else:
+            paginated_races = formatted_races
+            
+        # Calculate pagination info
+        import math
+        total_pages = math.ceil(total_count / per_page) if total_count > 0 else 1
+        has_next = page < total_pages
+        has_prev = page > 1
+            
+        return jsonify({
+            "success": True,
+            "races": paginated_races,
+            "total_count": total_count,
+            "page": page,
+            "per_page": per_page,
+            "pagination": {
+                "total_pages": total_pages,
+                "has_next": has_next,
+                "has_prev": has_prev
+            },
+            "source": source,
+            "message": f"Found {total_count} upcoming races ({'live from thedogs.com.au' if source == 'live' else 'from CSV files' if source == 'csv' else 'from CSV fallback'})"
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in /api/upcoming_races: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": f"Error loading upcoming races: {str(e)}",
+            "races": [],
+            "total_count": 0,
+            "source": "error"
+        }), 500
+
+
 @app.route("/api/upcoming_races_csv")
 def api_upcoming_races_csv():
     """API endpoint to list upcoming races from CSV files with pagination and search"""
+    from datetime import datetime
     try:
         # Get parameters with validation (same as /api/races/paginated)
         try:
@@ -1574,10 +1876,7 @@ def api_upcoming_races_csv():
         order = request.args.get("order", "desc")
         search = request.args.get("search", "").strip()
 
-        # Get all CSV files in upcoming_races directory
-        # TODO: Gap - Directory scanning needs better error handling
-        # TODO: Consider recursive scanning for subdirectories
-        # TODO: Add file size and modification time checks for performance
+        # Check if upcoming races directory exists
         if not os.path.exists(UPCOMING_DIR):
             return jsonify(
                 {
@@ -1597,17 +1896,19 @@ def api_upcoming_races_csv():
                 }
             )
 
-        # List and process CSV files using the helper function
-        # TODO: Gap - File filtering needs enhancement
-        # TODO: Validate that files are actually CSV format, not just .csv extension
-        # TODO: Add file corruption checks before processing
-        refresh = request.args.get('refresh', 'false').lower() == 'true'
-        upcoming_races = load_upcoming_races(refresh=refresh)
-        csv_files = [race.get("filename", f"{race.get('name', 'race')}.csv") for race in upcoming_races if race.get("filename") and race.get("filename").endswith(".csv")]
-        
-        # If no files from helper, fallback to direct directory scan for CSV only
-        if not csv_files:
-            csv_files = [f for f in os.listdir(UPCOMING_DIR) if f.endswith(".csv")]
+        # Get all CSV files directly from directory (avoid helper function causing duplicates)
+        csv_files = []
+        try:
+            all_files = os.listdir(UPCOMING_DIR)
+            csv_files = [f for f in all_files if f.endswith(".csv") and not f.startswith(".")]
+        except OSError as e:
+            logger.error(f"Error reading upcoming races directory: {e}")
+            return jsonify(
+                {
+                    "success": False,
+                    "message": "Error accessing upcoming races directory",
+                }
+            ), 500
         
         if not csv_files:
             return jsonify(
@@ -1630,113 +1931,106 @@ def api_upcoming_races_csv():
 
         # Parse CSV files and extract race metadata
         races_data = []
+        seen_races = set()  # Track unique races to prevent duplicates
         
         for filename in csv_files:
             file_path = os.path.join(UPCOMING_DIR, filename)
             
             try:
+                # Skip if file doesn't exist or is not readable
+                if not os.path.isfile(file_path):
+                    continue
+                    
                 # Get file modification time for sorting
                 file_mtime = os.path.getmtime(file_path)
                 formatted_mtime = datetime.fromtimestamp(file_mtime).strftime("%Y-%m-%d %H:%M")
                 
-                # Read header row only using pandas for robustness
-                # TODO: Gap - Header reading needs better validation
-                # TODO: Check for HTML content in CSV files (common corruption issue)
-                # TODO: Add encoding detection for international characters
-                try:
-                    df_header = pd.read_csv(file_path, nrows=1)
-                    columns = list(df_header.columns)
-                except Exception as e:
-                    logger.warning(f"Failed to read CSV header for {filename}: {e}")
-                    continue
+                # Extract race information from filename using improved regex patterns
+                import re
                 
-                # Extract race information from filename and headers
-                race_name = None
-                venue = None
-                race_date = None
-                distance = None
-                grade = None
-                race_number = None
+                race_name = filename.replace(".csv", "")
+                venue = "Unknown"
+                race_date = "Unknown"
+                race_number = 0
                 
-                # Try to get Race Name from header or filename
-                if "Race Name" in columns and not df_header["Race Name"].empty:
-                    race_name = str(df_header["Race Name"].iloc[0])
-                elif "Race_Name" in columns and not df_header["Race_Name"].empty:
-                    race_name = str(df_header["Race_Name"].iloc[0])
+                # Pattern 1: "Race 1 - AP_K - 01 July 2025.csv"
+                pattern1 = r'Race\s+(\d+)\s*-\s*([A-Z_/]+)\s*-\s*(\d{1,2}\s+\w+\s+\d{4})'
+                match1 = re.search(pattern1, filename, re.IGNORECASE)
+                
+                # Pattern 2: "Race 1 - AP_K - 2025-08-04.csv"
+                pattern2 = r'Race\s+(\d+)\s*-\s*([A-Z_/]+)\s*-\s*(\d{4}-\d{2}-\d{2})'
+                match2 = re.search(pattern2, filename, re.IGNORECASE)
+                
+                if match1:
+                    race_number = int(match1.group(1))
+                    venue = match1.group(2).replace('/', '_')  # Normalize venue format
+                    date_str = match1.group(3)
+                    # Convert date like "01 July 2025" to "2025-07-01"
+                    try:
+                        parsed_date = datetime.strptime(date_str, "%d %B %Y")
+                        race_date = parsed_date.strftime("%Y-%m-%d")
+                    except ValueError:
+                        race_date = date_str  # Keep original if parsing fails
+                elif match2:
+                    race_number = int(match2.group(1))
+                    venue = match2.group(2).replace('/', '_')  # Normalize venue format
+                    race_date = match2.group(3)
                 else:
-                    # Fallback to filename
-                    race_name = filename.replace(".csv", "")
-                
-                # Try to get Venue from header or filename
-                if "Venue" in columns and not df_header["Venue"].empty:
-                    venue = str(df_header["Venue"].iloc[0])
-                else:
-                    # Try to extract venue from filename tokens
-                    filename_parts = filename.replace(".csv", "").split("_")
-                    for part in filename_parts:
-                        if len(part) == 3 and part.isupper():
-                            venue = part
-                            break
-                    if not venue:
-                        venue = "Unknown"
-                
-                # Try to get Race Date from filename pattern or column
-                if "Race Date" in columns and not df_header["Race Date"].empty:
-                    race_date = str(df_header["Race Date"].iloc[0])
-                elif "Race_Date" in columns and not df_header["Race_Date"].empty:
-                    race_date = str(df_header["Race_Date"].iloc[0])
-                else:
-                    # Try to extract date from filename (pattern: YYYY-MM-DD)
-                    import re
-                    date_match = re.search(r"(\d{4}-\d{2}-\d{2})", filename)
+                    # Fallback: try to extract individual components
+                    race_match = re.search(r'Race[_\s]+(\d+)', filename, re.IGNORECASE)
+                    if race_match:
+                        race_number = int(race_match.group(1))
+                    
+                    venue_match = re.search(r'([A-Z_/]{2,6})', filename)
+                    if venue_match:
+                        venue = venue_match.group(1).replace('/', '_')
+                    
+                    date_match = re.search(r'(\d{4}-\d{2}-\d{2})', filename)
                     if date_match:
                         race_date = date_match.group(1)
-                    else:
-                        race_date = "Unknown"
                 
-                # Extract Distance
-                if "Distance" in columns and not df_header["Distance"].empty:
-                    distance = str(df_header["Distance"].iloc[0])
-                else:
-                    distance = "Unknown"
+                # Create a unique key to prevent duplicates
+                unique_key = f"{venue}_{race_date}_{race_number}"
+                if unique_key in seen_races:
+                    logger.debug(f"Skipping duplicate race: {filename}")
+                    continue
+                seen_races.add(unique_key)
                 
-                # Extract Grade
-                if "Grade" in columns and not df_header["Grade"].empty:
-                    grade = str(df_header["Grade"].iloc[0])
-                else:
-                    grade = "Unknown"
+                # Try to read CSV to get additional info (like number of runners)
+                field_size = 0
+                distance = "Unknown"
+                grade = "Unknown"
                 
-                # Extract Race Number
-                if "Race Number" in columns and not df_header["Race Number"].empty:
-                    race_number = int(df_header["Race Number"].iloc[0])
-                elif "Race_Number" in columns and not df_header["Race_Number"].empty:
-                    race_number = int(df_header["Race_Number"].iloc[0])
-                else:
-                    # Try to extract from filename
-                    race_num_match = re.search(r"Race[_\s]?(\d+)", filename, re.IGNORECASE)
-                    if race_num_match:
-                        race_number = int(race_num_match.group(1))
-                    else:
-                        race_number = 0
+                try:
+                    # Read CSV to count runners and get distance info
+                    df = pd.read_csv(file_path)
+                    if not df.empty:
+                        field_size = len(df)
+                        # Try to get distance from DIST column (common in these files)
+                        if 'DIST' in df.columns and not df['DIST'].empty:
+                            distances = df['DIST'].dropna().unique()
+                            if len(distances) > 0:
+                                distance = f"{distances[0]}m"
+                        # Try to get grade from G column
+                        if 'G' in df.columns and not df['G'].empty:
+                            grades = df['G'].dropna().unique()
+                            if len(grades) > 0:
+                                grade = str(grades[0])
+                except Exception as e:
+                    logger.debug(f"Could not read CSV content for {filename}: {e}")
                 
-                # Build race_id using MD5 hash of filename
-                race_id = hashlib.md5(filename.encode()).hexdigest()[:12]
-                
-                # Clean up 'nan' values
-                def clean_value(value):
-                    if value is None or str(value).lower() in ['nan', 'none', 'null']:
-                        return "Unknown"
-                    return str(value)
+                # Build race_id using MD5 hash of unique key (prevents duplicate IDs)
+                race_id = hashlib.md5(unique_key.encode()).hexdigest()[:12]
                 
                 race_data = {
                     "race_id": race_id,
-                    "venue": clean_value(venue),
+                    "venue": venue,
                     "race_number": race_number,
-                    "race_date": clean_value(race_date),
-                    "race_name": clean_value(race_name),
-                    "grade": clean_value(grade),
-                    "distance": clean_value(distance),
-                    "field_size": 0,  # Not available in CSV headers
+                    "race_date": race_date,
+                    "race_name": race_name,
+                    "grade": grade,
+                    "distance": distance,
+                    "field_size": field_size,
                     "winner_name": "Unknown",  # Upcoming race, no winner yet
                     "winner_odds": "N/A",
                     "winner_margin": "N/A",
@@ -2366,6 +2660,95 @@ def api_predict_single_race():
         return jsonify({"success": False, "message": f"Prediction error: {str(e)}"}), 500
 
 
+@app.route("/predict_single", methods=["POST"])
+def predict_single():
+    """Predict single race from an uploaded CSV file."""
+    try:
+        if 'file' not in request.files:
+            return jsonify({"error": "No file part"}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({"error": "No selected file"}), 400
+        
+        if not allowed_file(file.filename):
+            return jsonify({"error": "File type not allowed"}), 400
+
+        # Ensure upload directory exists
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+        
+        # Secure the filename and save the file
+        filename = secure_filename(file.filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(file_path)
+
+        logger.log_process(f"File {filename} saved for prediction.")
+
+        # Get model version info
+        model_version = "unknown"
+        if PredictionPipelineV3:
+            model_version = "PredictionPipelineV3"
+        elif UnifiedPredictor:
+            model_version = "UnifiedPredictor"
+
+        # Initialize prediction pipeline
+        prediction_result = None
+        
+        # Try PredictionPipelineV3 first
+        if PredictionPipelineV3:
+            try:
+                pipeline = PredictionPipelineV3()
+                prediction_result = pipeline.predict_race_file(file_path, enhancement_level="basic")
+            except Exception as e:
+                logger.log_error(f"PredictionPipelineV3 failed: {e}")
+                prediction_result = None
+        
+        # Fallback to UnifiedPredictor
+        if not prediction_result and UnifiedPredictor:
+            try:
+                predictor = UnifiedPredictor()
+                prediction_result = predictor.predict_race_file(file_path)
+                model_version = "UnifiedPredictor"
+            except Exception as e:
+                logger.log_error(f"UnifiedPredictor failed: {e}")
+                prediction_result = None
+
+        # Clean up uploaded file
+        try:
+            os.remove(file_path)
+        except:
+            pass  # Don't fail if cleanup fails
+
+        # Check if prediction was successful
+        if not prediction_result:
+            return jsonify({
+                "success": False,
+                "filename": filename,
+                "model_version": model_version,
+                "error": "Prediction pipeline not available or failed"
+            }), 500
+
+        # Extract predictions from result
+        predictions = prediction_result.get("predictions", [])
+        
+        # Format response according to task requirements
+        return jsonify({
+            "success": True,
+            "filename": filename,
+            "model_version": model_version,
+            "predictions": predictions
+        })
+
+    except Exception as e:
+        logger.log_error(f"Error in predict_single endpoint: {str(e)}")
+        return jsonify({
+            "success": False,
+            "filename": getattr(file, 'filename', 'unknown') if 'file' in locals() else 'unknown',
+            "model_version": "unknown",
+            "error": f"Server error: {str(e)}"
+        }), 500
+
+
 def api_predict_batch(data):
     """Batch prediction using UnifiedPredictor"""
     try:
@@ -2545,6 +2928,7 @@ class DatabaseManager:
         except Exception:
             return None
 
+    @query_performance_decorator
     def get_recent_races(self, limit=10):
         """Get recent races with basic info"""
         try:
@@ -2588,9 +2972,19 @@ class DatabaseManager:
                 extraction_time = race[12]
                 if extraction_time:
                     try:
-                        # Handle various datetime formats, remove microseconds if present
+                        # STEP 1: Remove microseconds by splitting on decimal point
+                        # Handles: 2025-07-23T19:13:28.830973 -> 2025-07-23T19:13:28
                         time_str = str(extraction_time).split(".")[0]
-                        dt = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
+
+                        # STEP 2: Detect format type and parse accordingly
+                        if "T" in time_str:
+                            # ISO format with 'T' separator: 2025-07-23T19:13:28
+                            dt = datetime.strptime(time_str, "%Y-%m-%dT%H:%M:%S")
+                        else:
+                            # Standard format with space: 2025-07-23 19:13:28
+                            dt = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
+
+                        # STEP 3: Standardize output format for frontend consistency
                         formatted_time = dt.strftime("%Y-%m-%d %H:%M")
                     except Exception as e:
                         logger.warning(
@@ -2626,6 +3020,7 @@ class DatabaseManager:
             print(f"Error getting recent races: {e}")
             return []
 
+    @query_performance_decorator
     def get_paginated_races(self, page=1, per_page=20):
         """Get paginated races ordered by processing time (extraction_timestamp)"""
         try:
@@ -2867,6 +3262,7 @@ class DatabaseManager:
             print(f"Error getting race details: {e}")
             return None
 
+    @query_performance_decorator
     def get_database_stats(self):
         """Get database statistics"""
         try:
@@ -3143,6 +3539,16 @@ except Exception as e:
     log_model_registry_debug(f"Model registry initialization failed: {str(e)}", "ERROR")
     print(f"⚠️  Model registry initialization failed: {e}")
     model_registry = None
+
+# Initialize database manager
+print("🗄️ Initializing database manager...")
+try:
+    db_manager = DatabaseManager(DATABASE_PATH)
+    print(f"✅ Database manager initialized successfully with database: {DATABASE_PATH}")
+except Exception as e:
+    print(f"⚠️ Database manager initialization failed: {e}")
+    # Create a minimal fallback db_manager to prevent crashes
+    db_manager = None
 
 
 def run_schema_validation_and_healing(db_path, schema_contract_path):
@@ -3467,14 +3873,51 @@ def api_system_status():
 
 
 @app.route("/api/recent_races")
+@cached_endpoint(ttl=15) if OPTIMIZATION_ENABLED else lambda f: f  # Cache for 15 seconds when optimized
 def api_recent_races():
-    """API endpoint for recent races"""
-    limit = request.args.get("limit", 10, type=int)
-    races = db_manager.get_recent_races(limit=limit)
-
-    return jsonify(
-        {"races": races, "count": len(races), "timestamp": datetime.now().isoformat()}
-    )
+    """API endpoint for recent races - Optimized with caching and pagination"""
+    try:
+        start_time = time.time()
+        
+        # Limit default to 10 rows for better performance
+        limit = request.args.get("limit", 10, type=int)
+        
+        # Cap maximum limit to prevent excessive database load
+        limit = min(limit, 50)
+        
+        if OPTIMIZATION_ENABLED:
+            # Use optimized database queries when available
+            optimized_queries = get_optimized_queries(DATABASE_PATH)
+            races = optimized_queries.get_recent_races_optimized(limit=limit)
+            
+            # Fallback to standard method if optimized query fails
+            if not races:
+                races = db_manager.get_recent_races(limit=limit)
+        else:
+            races = db_manager.get_recent_races(limit=limit)
+        
+        query_time = time.time() - start_time
+        
+        return {
+            "success": True,
+            "races": races, 
+            "count": len(races), 
+            "limit": limit,
+            "response_time_ms": round(query_time * 1000, 2),
+            "timestamp": datetime.now().isoformat(),
+            "optimized": OPTIMIZATION_ENABLED
+        }
+        
+    except Exception as e:
+        logger.exception(f"Error in recent_races endpoint: {e}")
+        return (
+            {
+                "success": False, 
+                "message": f"Error getting recent races: {str(e)}",
+                "timestamp": datetime.now().isoformat()
+            },
+            500,
+        )
 
 
 # Model Registry API Endpoints
@@ -3681,20 +4124,25 @@ def api_model_registry_status():
             except Exception as e:
                 logger.warning(f"Failed to get cache stats: {e}")
 
+        # Find best models for each prediction type
+        best_models = {}
+        try:
+            best_models = {m.prediction_type: m for m in models if hasattr(m, 'is_best') and m.is_best}
+        except Exception as e:
+            logger.warning(f"Failed to get best models: {e}")
+            best_models = {}
+
         return {
-            "success": True,
-            "initialized": True,
-            "model_count": len(models),
-            "registry_path": (
-                model_registry.registry_file
-                if hasattr(model_registry, "registry_file")
-                else "Unknown"
-            ),
-            "response_time_ms": round(query_time * 1000, 2),
-            "cache_stats": cache_stats,
-            "timestamp": datetime.now().isoformat(),
-            "optimized": OPTIMIZATION_ENABLED
-        }
+        "success": True,
+        "initialized": True,
+        "model_count": len(models),
+        "best_models": best_models,
+        "all_models": models,
+        "response_time_ms": round(query_time * 1000, 2),
+        "cache_stats": cache_stats,
+        "timestamp": datetime.now().isoformat(),
+        "optimized": OPTIMIZATION_ENABLED
+    }
 
     except Exception as e:
         logger.exception(f"Error in model_registry_status endpoint: {e}")
@@ -3988,9 +4436,9 @@ def fetch_csv_background():
 
         processing_status["progress"] = 25
 
-        # Run the form guide CSV scraper
+        # Run the form guide CSV scraper with historical flag for batch scraping
         success = run_command_with_output(
-            [sys.executable, "form_guide_csv_scraper.py"], "📊 "
+            [sys.executable, "form_guide_csv_scraper.py", "--historical", "--verbose-fetch"], "📊 "
         )
 
         processing_status["progress"] = 100
@@ -4573,18 +5021,59 @@ def api_processing_status():
     return jsonify(status)
 
 
-@app.route("/api/logs")
+@app.route("/api/logs", methods=["GET", "POST"])
 def api_logs():
-    """API endpoint for enhanced logs"""
-    log_type = request.args.get("type", "all")
-    limit = request.args.get("limit", 100, type=int)
+    """API endpoint for enhanced logs - GET to retrieve, POST to add log entries"""
+    if request.method == 'GET':
+        log_type = request.args.get("type", "all")
+        limit = request.args.get("limit", 100, type=int)
 
-    logs = logger.get_web_logs(log_type, limit)
-    summary = logger.get_log_summary()
+        logs = logger.get_web_logs(log_type, limit)
+        summary = logger.get_log_summary()
 
-    return jsonify(
-        {"logs": logs, "summary": summary, "timestamp": datetime.now().isoformat()}
-    )
+        return jsonify(
+            {"logs": logs, "summary": summary, "timestamp": datetime.now().isoformat()}
+        )
+    
+    elif request.method == 'POST':
+        """POST endpoint to add log entries - used for advisory status logging"""
+        try:
+            data = request.get_json()
+            if not data:
+                return jsonify({"success": False, "error": "No data provided"}), 400
+            
+            # Extract log data
+            summary = data.get("summary", "")
+            level = data.get("level", "INFO")
+            component = data.get("component", "advisory")
+            details = data.get("details", {})
+            
+            # Log the entry using the appropriate logger method
+            if component == "advisory":
+                logger.log_system(
+                    message=summary,
+                    level=level,
+                    component="ADVISORY"
+                )
+            else:
+                logger.log_process(
+                    message=summary,
+                    level=level,
+                    details=details
+                )
+            
+            return jsonify({
+                "success": True,
+                "message": "Log entry added successfully",
+                "timestamp": datetime.now().isoformat()
+            })
+            
+        except Exception as e:
+            logger.error(f"Error adding log entry: {e}")
+            return jsonify({
+                "success": False,
+                "error": f"Error adding log entry: {str(e)}"
+            }), 500
 
 
 @app.route("/api/logs/clear", methods=["POST"])
@@ -5395,10 +5884,17 @@ def api_race_files_status():
                                 )
 
                                 # Extract race information from race_info
-                                venue = race_info.get("venue", "Unknown")
+                                raw_venue = race_info.get("venue", "Unknown")
                                 race_date = race_info.get("date", "Unknown")
                                 distance = race_info.get("distance", "Unknown")
                                 grade = race_info.get("grade", "Unknown")
+                                
+                                # Standardize venue name using the CSV metadata utility
+                                try:
+                                    from utils.csv_metadata import standardize_venue_name
+                                    venue = standardize_venue_name(raw_venue) if raw_venue != "Unknown" else raw_venue
+                                except ImportError:
+                                    venue = raw_venue  # Fallback if utility not available
 
                                 # Calculate total dogs from predictions
                                 total_dogs = (
@@ -5663,6 +6159,61 @@ def api_race_files_status():
                 "unpredicted_races": [],
             }
         )
+
+
+@app.route("/api/generate_advisory", methods=["POST"])
+def api_generate_advisory():
+    """API endpoint to generate advisory messages for prediction data"""
+    try:
+        # Import advisory generator
+        from advisory import AdvisoryGenerator
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({"success": False, "error": "No data provided"}), 400
+        
+        # Get file path or prediction data
+        file_path = data.get("file_path")
+        prediction_data = data.get("prediction_data")
+        
+        if not file_path and not prediction_data:
+            return jsonify({
+                "success": False, 
+                "error": "Either file_path or prediction_data must be provided"
+            }), 400
+        
+        # Initialize advisory generator
+        advisory_generator = AdvisoryGenerator()
+        
+        # Generate advisory report
+        if file_path:
+            # Validate file exists
+            if not os.path.exists(file_path):
+                return jsonify({
+                    "success": False, 
+                    "error": f"File not found: {file_path}"
+                }), 404
+            
+            advisory_result = advisory_generator.generate_advisory(file_path=file_path)
+        else:
+            advisory_result = advisory_generator.generate_advisory(data=prediction_data)
+        
+        # Return the advisory result
+        return jsonify(advisory_result)
+        
+    except ImportError as e:
+        logger.error(f"Advisory system not available: {e}")
+        return jsonify({
+            "success": False,
+            "error": "Advisory system not available",
+            "details": str(e)
+        }), 500
+    except Exception as e:
+        logger.error(f"Error generating advisory: {e}")
+        return jsonify({
+            "success": False,
+            "error": f"Error generating advisory: {str(e)}"
+        }), 500
 
 
 @app.route("/api/scrape_race_data", methods=["POST"])
@@ -6315,9 +6866,21 @@ def api_predict_single_race_enhanced():
         predictor_used = None
         attempts = []
         
-        # Try PredictionPipelineV3 first (most comprehensive)
+        # Try PredictionPipelineV4 first (most advanced)
+        if PredictionPipelineV4 and not prediction_result:
+            try:
+                logger.info(f"Using PredictionPipelineV4 for {race_filename}")
+                predictor = PredictionPipelineV4()
+                prediction_result = predictor.predict_race_file(race_file_path)
+                predictor_used = "PredictionPipelineV4"
+                logger.info(f"Successfully used PredictionPipelineV4 for {race_filename}")
+            except Exception as e:
+                logger.warning(f"PredictionPipelineV4 failed: {str(e)}")
+        
+        # Fallback to PredictionPipelineV3 if V4 failed
         if PredictionPipelineV3 and not prediction_result:
             try:
+                logger.info(f"Fallback to PredictionPipelineV3 for {race_filename}")
                 predictor = PredictionPipelineV3()
                 prediction_result = predictor.predict_race_file(
                     race_file_path, 
@@ -6328,9 +6891,10 @@ def api_predict_single_race_enhanced():
             except Exception as e:
                 logger.warning(f"PredictionPipelineV3 failed: {str(e)}")
         
-        # Fallback to UnifiedPredictor if PredictionPipelineV3 failed
+        # Fallback to UnifiedPredictor if both V4 and V3 failed
         if UnifiedPredictor and not prediction_result:
             try:
+                logger.info(f"Final fallback to UnifiedPredictor for {race_filename}")
                 predictor = UnifiedPredictor()
                 prediction_result = predictor.predict_race_file(race_file_path)
                 predictor_used = "UnifiedPredictor"
@@ -6341,6 +6905,7 @@ def api_predict_single_race_enhanced():
         # Final fallback to ComprehensivePredictionPipeline
         if ComprehensivePredictionPipeline and not prediction_result:
             try:
+                logger.info(f"Last resort fallback to ComprehensivePredictionPipeline for {race_filename}")
                 predictor = ComprehensivePredictionPipeline()
                 prediction_result = predictor.predict_race_file(race_file_path)
                 predictor_used = "ComprehensivePredictionPipeline"
@@ -6357,7 +6922,7 @@ def api_predict_single_race_enhanced():
                     "error_type": "prediction_pipeline_failure",
                     "race_id": race_id,
                     "race_filename": race_filename,
-                    "attempted_predictors": ["PredictionPipelineV3", "UnifiedPredictor", "ComprehensivePredictionPipeline"]
+                    "attempted_predictors": ["PredictionPipelineV4", "PredictionPipelineV3", "UnifiedPredictor", "ComprehensivePredictionPipeline"]
                 }),
                 500,
             )
@@ -8148,21 +8713,106 @@ _upcoming_races_cache = {
     "expires_in_minutes": 5,  # Cache for 5 minutes
 }
 
-def load_upcoming_races(refresh=False):
-    """Helper function to load upcoming races from CSV and JSON files."""
+def _extract_csv_metadata(file_path):
+    """Extract metadata from CSV filename using regex.
+    
+    Expected filename format: "Race 1 – AP_K – 2025-08-04.csv"
+    Returns dict with race_number, venue, date, or None values if not found.
+    """
+    import re
+    import os
+    
+    filename = os.path.basename(file_path)
+    
+    # Regex pattern to match: "Race {number} – {venue} – {date}.csv"
+    # The en dash (–) is different from hyphen (-)
+    pattern = r'Race\s+(\d+)\s*[–-]\s*([A-Z_]+)\s*[–-]\s*(\d{4}-\d{2}-\d{2})\.csv'
+    
+    match = re.match(pattern, filename, re.IGNORECASE)
+    if match:
+        return {
+            'race_number': int(match.group(1)),
+            'venue': match.group(2),
+            'date': match.group(3)
+        }
+    
+    # Fallback: try to extract individual components
+    race_number = None
+    venue = None
+    date = None
+    
+    # Extract race number
+    race_match = re.search(r'Race[_\s]+(\d+)', filename, re.IGNORECASE)
+    if race_match:
+        race_number = int(race_match.group(1))
+    
+    # Extract venue (look for uppercase 3-4 letter codes)
+    venue_match = re.search(r'([A-Z_]{2,4})', filename)
+    if venue_match:
+        venue = venue_match.group(1)
+    
+    # Extract date (YYYY-MM-DD format)
+    date_match = re.search(r'(\d{4}-\d{2}-\d{2})', filename)
+    if date_match:
+        date = date_match.group(1)
+    
+    return {
+        'race_number': race_number,
+        'venue': venue,
+        'date': date
+    }
+
+
+def load_upcoming_races_with_guaranteed_fields(refresh=False):
+    """Refactored helper function to load upcoming races with guaranteed API contract fields.
+    
+    Returns list with guaranteed fields: date, venue, venue_name, race_number, race_time, 
+    distance, grade, race_name, url, filename, race_id
+    """
     import os
     import pandas as pd
     from datetime import datetime
     import json
+    import hashlib
+    import re
 
     global _upcoming_races_cache
     now = datetime.now()
 
+    # Check cache first
     if not refresh and _upcoming_races_cache["data"] is not None and _upcoming_races_cache["timestamp"] is not None and (now - _upcoming_races_cache["timestamp"]).total_seconds() < (_upcoming_races_cache["expires_in_minutes"] * 60):
-        return _upcoming_races_cache["data"]
+        cached_data = _upcoming_races_cache["data"]
+        # Ensure cached data is always a list and has guaranteed fields
+        if isinstance(cached_data, dict):
+            cached_data = list(cached_data.values())
+        return [_ensure_guaranteed_fields(race) for race in cached_data] if cached_data else []
 
     upcoming_races_dir = "./upcoming_races"
     races = []
+
+    def parse_time_to_minutes(time_str):
+        """Convert time string like '6:31 PM' to minutes since midnight for sorting."""
+        if not time_str:
+            return 0
+        try:
+            # Handle different time formats
+            time_str = str(time_str).strip()
+            if re.match(r'\d{1,2}:\d{2} [AP]M', time_str):
+                # Parse "6:31 PM" format
+                time_part, period = time_str.split()
+                hours, minutes = map(int, time_part.split(':'))
+                if period.upper() == 'PM' and hours != 12:
+                    hours += 12
+                elif period.upper() == 'AM' and hours == 12:
+                    hours = 0
+                return hours * 60 + minutes
+            elif re.match(r'\d{1,2}:\d{2}', time_str):
+                # Parse "18:31" format (24-hour)
+                hours, minutes = map(int, time_str.split(':'))
+                return hours * 60 + minutes
+        except (ValueError, AttributeError):
+            pass
+        return 0
 
     try:
         for filename in os.listdir(upcoming_races_dir):
@@ -8170,26 +8820,297 @@ def load_upcoming_races(refresh=False):
                 file_path = os.path.join(upcoming_races_dir, filename)
                 try:
                     if filename.endswith(".csv"):
-                        df = pd.read_csv(file_path)
-                    else:
-                        with open(file_path, "r") as f:
-                            df = pd.json_normalize(json.load(f))
-
-                    for _, row in df.iterrows():
-                        # Filter out post-outcome columns here if necessary
-                        race_metadata = {
-                            "name": row.get("Race Name"),
-                            "venue": row.get("Venue"),
-                            "date": row.get("Date"),
-                            "distance": row.get("Distance"),
-                            "grade": row.get("Grade"),
-                            "number": row.get("Race Number"),
-                            # Add other fields as needed
+                        # Extract metadata from filename using helper function
+                        filename_metadata = _extract_csv_metadata(file_path)
+                        
+                        # Read only header row (or first data row) to get grade/distance
+                        try:
+                            df_header = pd.read_csv(file_path, nrows=1)
+                            # Check for both possible column names for grade and distance
+                            header_grade = None
+                            header_distance = None
+                            
+                            # Handle grade columns (G or Grade)
+                            if "Grade" in df_header.columns:
+                                header_grade = df_header.get("Grade", pd.Series([None])).iloc[0]
+                            elif "G" in df_header.columns:
+                                header_grade = df_header.get("G", pd.Series([None])).iloc[0]
+                            
+                            # Handle distance columns (DIST or Distance)
+                            if "Distance" in df_header.columns:
+                                header_distance = df_header.get("Distance", pd.Series([None])).iloc[0]
+                            elif "DIST" in df_header.columns:
+                                header_distance = df_header.get("DIST", pd.Series([None])).iloc[0]
+                                
+                        except Exception as e:
+                            print(f"Warning: Could not read header from {filename}: {e}")
+                            header_grade = None
+                            header_distance = None
+                        
+                        # Build race dict with guaranteed fields
+                        race_data = {
+                            "date": filename_metadata['date'] or "",
+                            "venue": filename_metadata['venue'] or "Unknown Venue",
+                            "venue_name": filename_metadata['venue'] or "Unknown Venue",  # Same as venue for now
+                            "race_number": filename_metadata['race_number'] or "",
+                            "race_time": "",  # Time not available in filename pattern
+                            "distance": str(header_distance) if header_distance is not None else "",
+                            "grade": str(header_grade) if header_grade is not None else "",
+                            "race_name": f"Race {filename_metadata['race_number']}" if filename_metadata['race_number'] else "Unknown Race",
+                            "url": "",  # URL not available from CSV files
+                            "filename": filename,
+                            "race_id": hashlib.md5(filename.encode()).hexdigest()[:12],
                         }
-                        races.append(race_metadata)
+                        
+                        # Ensure all guaranteed fields are present
+                        race_data = _ensure_guaranteed_fields(race_data)
+                        races.append(race_data)
+                        
+                    else:
+                        # For JSON files, load the data directly
+                        with open(file_path, "r") as f:
+                            json_data = json.load(f)
+                            
+                        # Handle both list and dict structures
+                        if isinstance(json_data, dict):
+                            # Convert dict to list of values if needed
+                            json_data = list(json_data.values())
+                        elif not isinstance(json_data, list):
+                            # If it's neither dict nor list, wrap in list
+                            json_data = [json_data]
+                        
+                        for item in json_data:
+                            if isinstance(item, dict):
+                                race_data = {
+                                    "date": item.get("date") or item.get("race_date") or item.get("Date") or "",
+                                    "venue": item.get("venue") or item.get("Venue") or "Unknown Venue",
+                                    "venue_name": item.get("venue_name") or item.get("venue") or item.get("Venue") or "Unknown Venue",
+                                    "race_number": item.get("race_number") or item.get("Race Number") or item.get("number") or "",
+                                    "race_time": item.get("race_time") or item.get("Race Time") or item.get("time") or "",
+                                    "distance": item.get("distance") or item.get("Distance") or "",
+                                    "grade": item.get("grade") or item.get("Grade") or "",
+                                    "race_name": item.get("race_name") or item.get("Race Name") or "Unknown Race",
+                                    "url": item.get("url") or item.get("URL") or "",
+                                    "filename": filename,
+                                    "race_id": hashlib.md5(f"{filename}_{item.get('race_number', item.get('Race Number', 0))}".encode()).hexdigest()[:12],
+                                }
+                                
+                                # Ensure all guaranteed fields are present
+                                race_data = _ensure_guaranteed_fields(race_data)
+                                race_data["_sort_time_minutes"] = parse_time_to_minutes(race_data["race_time"])
+                                races.append(race_data)
 
                 except Exception as e:
                     print(f"Error reading {filename}: {e}")
+                    
+    except OSError as listdir_error:
+        print(f"Warning: Unable to access upcoming races directory: {listdir_error}")
+        print("Falling back to cached data if available.")
+
+        if _upcoming_races_cache["data"] is not None:
+            print("Using cached data for upcoming races.")
+            cached_data = _upcoming_races_cache["data"]
+            if isinstance(cached_data, dict):
+                cached_data = list(cached_data.values())
+            return [_ensure_guaranteed_fields(race) for race in cached_data] if cached_data else []
+
+        print("No cached data available; unable to load upcoming races.")
+        raise
+
+    # Deduplicate races by (venue, date, race_number) composite key
+    seen_races = {}
+    deduplicated_races = []
+    
+    for race in races:
+        # Create composite key for deduplication
+        venue = race.get("venue", "")
+        race_date = race.get("date", "")
+        race_number = race.get("race_number", "")
+        
+        # Convert race_number to string for consistent comparison
+        race_number_str = str(race_number) if race_number else ""
+        
+        dedup_key = (venue, race_date, race_number_str)
+        
+        # Keep the first occurrence of each unique race
+        if dedup_key not in seen_races:
+            seen_races[dedup_key] = True
+            deduplicated_races.append(race)
+    
+    # Replace races list with deduplicated version
+    races = deduplicated_races
+    
+    # Add sorting helper _sort_time_minutes only once for all races
+    for race in races:
+        if "_sort_time_minutes" not in race:
+            race["_sort_time_minutes"] = parse_time_to_minutes(race.get("race_time", ""))
+    
+    races.sort(key=lambda x: (
+        x.get("date", ""),  # Sort by date first
+        x.get("_sort_time_minutes", 0),  # Then by race time
+        x.get("venue", "")  # Finally by venue
+    ))
+    
+    # Remove the sorting helper field from final output
+    for race in races:
+        race.pop("_sort_time_minutes", None)
+
+    _upcoming_races_cache["data"] = races
+    _upcoming_races_cache["timestamp"] = now
+
+    return races
+
+def _ensure_guaranteed_fields(race_data):
+    """Ensure all guaranteed API contract fields are present in race data.
+    
+    Guaranteed fields: date, venue, venue_name, race_number, race_time, 
+    distance, grade, race_name, url, filename, race_id
+    """
+    guaranteed_fields = {
+        "date": "",
+        "venue": "Unknown Venue",
+        "venue_name": "Unknown Venue",
+        "race_number": "",
+        "race_time": "",
+        "distance": "",
+        "grade": "",
+        "race_name": "Unknown Race",
+        "url": "",
+        "filename": "",
+        "race_id": ""
+    }
+    
+    for field, default_value in guaranteed_fields.items():
+        if field not in race_data or race_data[field] is None:
+            race_data[field] = default_value
+        else:
+            race_data[field] = str(race_data[field])
+    
+    return race_data
+
+def load_upcoming_races(refresh=False):
+    """Legacy helper function to load upcoming races from CSV and JSON files.
+    Kept for backward compatibility."""
+    import os
+    import pandas as pd
+    from datetime import datetime
+    import json
+    import re
+
+    global _upcoming_races_cache
+    now = datetime.now()
+
+    if not refresh and _upcoming_races_cache["data"] is not None and _upcoming_races_cache["timestamp"] is not None and (now - _upcoming_races_cache["timestamp"]).total_seconds() < (_upcoming_races_cache["expires_in_minutes"] * 60):
+        cached_data = _upcoming_races_cache["data"]
+        if isinstance(cached_data, dict):
+            return list(cached_data.values())
+        return cached_data
+
+    upcoming_races_dir = "./upcoming_races"
+    races = []
+
+    def parse_time_to_minutes(time_str):
+        """Convert time string like '6:31 PM' to minutes since midnight for sorting."""
+        if not time_str:
+            return 0
+        try:
+            # Handle different time formats
+            time_str = str(time_str).strip()
+            if re.match(r'\d{1,2}:\d{2} [AP]M', time_str):
+                # Parse "6:31 PM" format
+                time_part, period = time_str.split()
+                hours, minutes = map(int, time_part.split(':'))
+                if period.upper() == 'PM' and hours != 12:
+                    hours += 12
+                elif period.upper() == 'AM' and hours == 12:
+                    hours = 0
+                return hours * 60 + minutes
+            elif re.match(r'\d{1,2}:\d{2}', time_str):
+                # Parse "18:31" format (24-hour)
+                hours, minutes = map(int, time_str.split(':'))
+                return hours * 60 + minutes
+        except (ValueError, AttributeError):
+            pass
+        return 0
+
+    try:
+        for filename in os.listdir(upcoming_races_dir):
+            if filename.endswith(".csv") or filename.endswith(".json"):
+                file_path = os.path.join(upcoming_races_dir, filename)
+                try:
+                    if filename.endswith(".csv"):
+                        # Extract metadata from filename using helper function
+                        filename_metadata = _extract_csv_metadata(file_path)
+                        
+                        # Read only header row (or first data row) to get grade/distance
+                        try:
+                            df_header = pd.read_csv(file_path, nrows=1)
+                            # Handle both possible column names for grade and distance
+                            header_grade = None
+                            header_distance = None
+                            
+                            if "Grade" in df_header.columns:
+                                header_grade = df_header.get("Grade", pd.Series([None])).iloc[0]
+                            elif "G" in df_header.columns:
+                                header_grade = df_header.get("G", pd.Series([None])).iloc[0]
+                            
+                            if "Distance" in df_header.columns:
+                                header_distance = df_header.get("Distance", pd.Series([None])).iloc[0]
+                            elif "DIST" in df_header.columns:
+                                header_distance = df_header.get("DIST", pd.Series([None])).iloc[0]
+                        except Exception as e:
+                            print(f"Warning: Could not read header from {filename}: {e}")
+                            header_grade = None
+                            header_distance = None
+                        
+                        # Build single race dict from filename metadata and header data
+                        race_metadata = {
+                            "race_name": f"Race {filename_metadata['race_number']}" if filename_metadata['race_number'] else "Unknown Race",
+                            "venue": filename_metadata['venue'] or "Unknown Venue",
+                            "race_date": filename_metadata['date'] or "",
+                            "race_time": "",  # Time not available in filename pattern
+                            "distance": str(header_distance) if header_distance is not None else "",
+                            "grade": str(header_grade) if header_grade is not None else "",
+                            "race_number": filename_metadata['race_number'] or "",
+                            "filename": filename,
+                            "race_id": hashlib.md5(filename.encode()).hexdigest()[:12],
+                        }
+                        
+                        # Append single race dict once
+                        races.append(race_metadata)
+                    else:
+                        # For JSON files, load the data directly
+                        with open(file_path, "r") as f:
+                            json_data = json.load(f)
+                            
+                        # Handle both list and dict structures
+                        if isinstance(json_data, dict):
+                            # Convert dict to list of values if needed
+                            json_data = list(json_data.values())
+                        elif not isinstance(json_data, list):
+                            # If it's neither dict nor list, wrap in list
+                            json_data = [json_data]
+                        
+                        for item in json_data:
+                            if isinstance(item, dict):
+                                race_metadata = {
+                                    "race_name": item.get("race_name") or item.get("Race Name") or "Unknown Race",
+                                    "venue": item.get("venue") or item.get("Venue") or "Unknown Venue",
+                                    "race_date": item.get("date") or item.get("race_date") or item.get("Date") or "",
+                                    "race_time": item.get("race_time") or item.get("Race Time") or item.get("time") or "",
+                                    "distance": item.get("distance") or item.get("Distance") or "",
+                                    "grade": item.get("grade") or item.get("Grade") or "",
+                                    "race_number": item.get("race_number") or item.get("Race Number") or item.get("number") or "",
+                                    "filename": filename,
+                                    "race_id": hashlib.md5(f"{filename}_{item.get('race_number', item.get('Race Number', 0))}".encode()).hexdigest()[:12],
+                                    # Add sorting helper
+                                    "_sort_time_minutes": parse_time_to_minutes(item.get("race_time") or item.get("Race Time") or item.get("time") or "")
+                                }
+                                races.append(race_metadata)
+
+                except Exception as e:
+                    print(f"Error reading {filename}: {e}")
+                    
     except OSError as listdir_error:
         print(f"Warning: Unable to access upcoming races directory: {listdir_error}")
         print("Falling back to cached data if available.")
@@ -8200,6 +9121,44 @@ def load_upcoming_races(refresh=False):
 
         print("No cached data available; unable to load upcoming races.")
         raise
+
+    # Deduplicate races by (venue, date, race_number) composite key
+    seen_races = {}
+    deduplicated_races = []
+    
+    for race in races:
+        # Create composite key for deduplication
+        venue = race.get("venue", "")
+        race_date = race.get("race_date", "")
+        race_number = race.get("race_number", "")
+        
+        # Convert race_number to string for consistent comparison
+        race_number_str = str(race_number) if race_number else ""
+        
+        dedup_key = (venue, race_date, race_number_str)
+        
+        # Keep the first occurrence of each unique race
+        if dedup_key not in seen_races:
+            seen_races[dedup_key] = True
+            deduplicated_races.append(race)
+    
+    # Replace races list with deduplicated version
+    races = deduplicated_races
+    
+    # Add sorting helper _sort_time_minutes only once for all races
+    for race in races:
+        if "_sort_time_minutes" not in race:
+            race["_sort_time_minutes"] = parse_time_to_minutes(race.get("race_time", ""))
+    
+    races.sort(key=lambda x: (
+        x.get("race_date", ""),  # Sort by date first
+        x.get("_sort_time_minutes", 0),  # Then by race time
+        x.get("venue", "")  # Finally by venue
+    ))
+    
+    # Remove the sorting helper field from final output
+    for race in races:
+        race.pop("_sort_time_minutes", None)
 
     _upcoming_races_cache["data"] = races
     _upcoming_races_cache["timestamp"] = now
@@ -8213,6 +9172,7 @@ def api_upcoming_races_stream():
     import json
 
     from flask import Response, copy_current_request_context
+    from datetime import datetime, timedelta
 
     # Get days_ahead parameter before starting the generator
     days_ahead = request.args.get("days", 1, type=int)
@@ -8275,37 +9235,6 @@ def api_upcoming_races_stream():
     )
 
 
-@app.route("/api/upcoming_races_csv")
-@app.route("/api/upcoming_races")
-def api_upcoming_races():
-    """API endpoint to fetch upcoming races from CSV and JSON files with caching"""
-    try:
-        refresh = request.args.get('refresh', 'false').lower() == 'true'
-        races = load_upcoming_races(refresh=refresh)
-
-        # Prepare response data
-        response_data = {
-            "success": True,
-            "races": races,
-            "count": len(races),
-            "timestamp": datetime.now().isoformat(),
-            "from_cache": not refresh,
-            "cache_expires_in_minutes": _upcoming_races_cache["expires_in_minutes"],
-        }
-
-        # Update cache
-        _upcoming_races_cache["data"] = response_data.copy()
-        _upcoming_races_cache["timestamp"] = now
-
-        return jsonify(response_data)
-
-    except Exception as e:
-        return (
-            jsonify(
-                {"success": False, "error": f"Error fetching upcoming races: {str(e)}"}
-            ),
-            500,
-        )
 
 
 @app.route("/api/download_upcoming_race", methods=["POST"])
@@ -12399,7 +13328,7 @@ def main():
 if __name__ == "__main__":
     # Get PORT from environment or CLI, default to DEFAULT_PORT
     import os
-    PORT = int(os.getenv('PORT', DEFAULT_PORT))
+    port = int(os.environ.get("PORT", DEFAULT_PORT))
     
     # Create templates and static directories if they don't exist
     os.makedirs("./templates", exist_ok=True)
@@ -12408,6 +13337,19 @@ if __name__ == "__main__":
 
     # Run integrity test before starting the app
     run_integrity_test()
+    
+    # Initialize Guardian Service in background
+    # TEMPORARILY DISABLED - Guardian Service startup commented out for hot-fix
+    # if GUARDIAN_SERVICE_AVAILABLE and start_guardian_service:
+    #     try:
+    #         guardian_thread = threading.Thread(target=start_guardian_service, daemon=True)
+    #         guardian_thread.start()
+    #         print("🛡️ Guardian Service started in background")
+    #     except Exception as e:
+    #         print(f"⚠️ Failed to start Guardian Service: {e}")
+    # else:
+    #     print("⚠️ Guardian Service not available")
+    print("🛡️ Guardian Service autostart disabled (hot-fix)")
 
     # Only run app if called directly
-    app.run(host="0.0.0.0", port=PORT)
+    app.run(host="0.0.0.0", port=port, debug=False)

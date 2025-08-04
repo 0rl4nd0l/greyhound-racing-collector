@@ -22,6 +22,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Tuple, Any, Optional
 import warnings
+import hashlib
+import pickle
+import os
 
 # Sklearn imports
 from sklearn.model_selection import TimeSeriesSplit
@@ -143,11 +146,11 @@ class MLSystemV4:
             
             # Process each race separately
             for race_id in raw_data['race_id'].unique():
-                race_data = raw_data[raw_data['race_id'] == race_id]
+                race_data = raw_data[raw_data['race_id'] == race_id].copy()
                 
                 # Build temporal leakage-safe features
                 if self.upcoming_race_box_numbers:
-                    race_data['box_number'] = range(1, len(race_data) + 1)
+                    race_data.loc[:, 'box_number'] = range(1, len(race_data) + 1)
 
                 if self.upcoming_race_weights and 'weight' in race_data.columns:
                     # Weight column already exists, no need to map
@@ -336,6 +339,80 @@ class MLSystemV4:
         
         return True
     
+    def preprocess_upcoming_race_csv(self, race_data: pd.DataFrame, race_id: str) -> pd.DataFrame:
+        """Preprocess upcoming race CSV to match expected format."""
+        try:
+            # Map CSV columns to expected database columns
+            column_mapping = {
+                'Dog Name': 'dog_clean_name',
+                'BOX': 'box_number', 
+                'WGT': 'weight',
+                'DIST': 'distance',
+                'DATE': 'race_date',
+                'TRACK': 'venue',
+                'G': 'grade',
+                'PIR': 'pir_rating',
+                'SP': 'starting_price'
+            }
+            
+            # Rename columns
+            processed_data = race_data.rename(columns=column_mapping)
+            
+            # Extract race information from race_id 
+            # Format: "Race 1 - AP_K - 2025-08-04"
+            race_parts = race_id.split(' - ')
+            if len(race_parts) >= 3:
+                race_date = race_parts[2]
+                venue_code = race_parts[1]
+                
+                # Add race metadata
+                processed_data['race_date'] = race_date
+                processed_data['venue'] = venue_code
+                processed_data['race_id'] = race_id
+                
+                # Add race_time if not present (use noon as default for upcoming races)
+                processed_data['race_time'] = '12:00'
+            
+            # Clean dog names (remove numbering like "1. ", "2. ")
+            if 'dog_clean_name' in processed_data.columns:
+                processed_data['dog_clean_name'] = processed_data['dog_clean_name'].str.replace(r'^\d+\.\s*', '', regex=True)
+                processed_data['dog_clean_name'] = processed_data['dog_clean_name'].str.strip()
+            
+            # Clean box numbers
+            if 'box_number' in processed_data.columns:
+                processed_data['box_number'] = pd.to_numeric(processed_data['box_number'], errors='coerce')
+            
+            # Clean weight
+            if 'weight' in processed_data.columns:
+                processed_data['weight'] = pd.to_numeric(processed_data['weight'], errors='coerce')
+            
+            # Clean distance
+            if 'distance' in processed_data.columns:
+                processed_data['distance'] = pd.to_numeric(processed_data['distance'], errors='coerce')
+            
+            # Add required fields that might be missing
+            required_fields = {
+                'finish_position': None,  # Upcoming race - no finish position yet
+                'individual_time': None,  # Upcoming race - no time yet
+                'field_size': len(processed_data),
+                'track_condition': 'Good',  # Default track condition
+                'weather': 'Fine',  # Default weather
+                'temperature': 20.0,  # Default temperature
+                'humidity': 50.0,  # Default humidity
+                'wind_speed': 0.0  # Default wind speed
+            }
+            
+            for field, default_value in required_fields.items():
+                if field not in processed_data.columns:
+                    processed_data[field] = default_value
+            
+            logger.info(f"📋 Preprocessed {len(processed_data)} dogs for race {race_id}")
+            return processed_data
+            
+        except Exception as e:
+            logger.error(f"Error preprocessing CSV for race {race_id}: {e}")
+            raise
+    
     def predict_race(self, race_data: pd.DataFrame, race_id: str, 
                     market_odds: Dict[str, float] = None) -> Dict[str, Any]:
         """Make predictions for all dogs in a race with group normalization and EV."""
@@ -354,8 +431,12 @@ class MLSystemV4:
             X_pred = race_features.drop(['race_id', 'dog_clean_name', 'target', 'target_timestamp'], 
                                        axis=1, errors='ignore')
             
-            # Ensure all required columns are present
+            # Ensure all required columns are present and convert to numeric
             X_pred = X_pred.reindex(columns=self.feature_columns, fill_value=0)
+            
+            # Convert all columns to numeric, replacing any non-numeric with 0
+            for col in X_pred.columns:
+                X_pred[col] = pd.to_numeric(X_pred[col], errors='coerce').fillna(0)
             
             # Assert no temporal leakage at prediction time
             for idx, row in race_features.iterrows():
@@ -451,7 +532,7 @@ class MLSystemV4:
             logger.info(f"✅ Race prediction complete for {race_id}: {len(predictions)} dogs")
             
             # Expose internal profiler flush
-            self.flush_profiler()
+            pipeline_profiler.generate_comprehensive_report()
             
             return result
         
@@ -532,10 +613,29 @@ class MLSystemV4:
     def _create_explainability_metadata(self, X_pred: pd.DataFrame, race_id: str) -> Dict[str, Any]:
         """Create explainability metadata for logging."""
         try:
-            # Calculate mean feature values for this race
+            # Calculate mean feature values for numeric columns only
+            numeric_cols = X_pred.select_dtypes(include=[np.number]).columns
+            mean_values = {}
+            
+            if len(numeric_cols) > 0:
+                mean_values = X_pred[numeric_cols].mean().to_dict()
+            
+            # Add info about non-numeric columns
+            non_numeric_cols = X_pred.select_dtypes(exclude=[np.number]).columns
+            non_numeric_info = {}
+            for col in non_numeric_cols:
+                unique_vals = X_pred[col].unique()
+                non_numeric_info[col] = {
+                    'type': 'categorical',
+                    'unique_count': len(unique_vals),
+                    'sample_values': unique_vals[:3].tolist() if len(unique_vals) > 0 else []
+                }
+            
             feature_summary = {
-                'mean_values': X_pred.mean().to_dict(),
+                'mean_values': mean_values,
+                'non_numeric_features': non_numeric_info,
                 'feature_count': len(X_pred.columns),
+                'numeric_feature_count': len(numeric_cols),
                 'samples_count': len(X_pred),
                 'log_path': f'logs/explainability_{race_id}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
             }
@@ -654,6 +754,16 @@ def train_leakage_safe_model():
             'success': False,
             'message': 'Model training failed'
         }
+
+
+# Backward compatibility alias
+def train_new_model(model_type="leakage_safe"):
+    """Train a new ML model - backward compatibility wrapper.
+    
+    Args:
+        model_type: Ignored for v4, always uses leakage-safe training
+    """
+    return train_leakage_safe_model()
 
 
 if __name__ == "__main__":

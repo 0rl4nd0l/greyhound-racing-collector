@@ -112,6 +112,9 @@ class BatchPredictionPipeline:
         self.jobs: Dict[str, BatchJob] = {}
         self.active_jobs: Dict[str, bool] = {}
         
+        # Setup logging first
+        self.logger = logging.getLogger(__name__)
+        
         # Load processed manifest
         if os.path.exists(self.processed_manifest_path):
             with open(self.processed_manifest_path, 'r') as manifest_file:
@@ -125,9 +128,6 @@ class BatchPredictionPipeline:
         self.csv_ingestor = None
         
         self._initialize_systems()
-        
-        # Setup logging
-        self.logger = logging.getLogger(__name__)
         
     def _initialize_systems(self):
         """Initialize available prediction systems"""

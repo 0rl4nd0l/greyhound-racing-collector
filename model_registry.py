@@ -66,6 +66,9 @@ class ModelMetadata:
     is_active: bool = False
     is_best: bool = False
     notes: str = ""
+    prediction_type: str = "win"  # Type of prediction (win, place, show, etc.)
+    performance_score: float = 0.0  # Composite performance score
+    created_at: str = ""  # ISO timestamp when model was created
 
 
 class ModelRegistry:
@@ -225,12 +228,15 @@ class ModelRegistry:
                 # Get file size
                 model_size_mb = model_file.stat().st_size / (1024 * 1024)
 
-                # Create metadata
+                # Get the created_at timestamp
+                created_at = datetime.now().isoformat()
+                
+                # Create metadata (without performance_score initially)
                 metadata = ModelMetadata(
                     model_id=model_id,
                     model_name=model_name,
                     model_type=model_type,
-                    training_timestamp=datetime.now().isoformat(),
+                    training_timestamp=created_at,
                     accuracy=performance_metrics.get("accuracy", 0.0),
                     auc=performance_metrics.get("auc", 0.5),
                     f1_score=performance_metrics.get("f1_score", 0.0),
@@ -256,7 +262,13 @@ class ModelRegistry:
                     inference_time_ms=training_info.get("inference_time_ms", 0.0),
                     is_active=True,
                     notes=notes,
+                    prediction_type=training_info.get("prediction_type", "win"),
+                    created_at=created_at,
+                    performance_score=0.0  # Will be calculated below
                 )
+                
+                # Calculate and set performance_score using the same logic as _calculate_model_score
+                metadata.performance_score = self._calculate_model_score(metadata)
 
                 # Save metadata
                 metadata_file = self.metadata_dir / f"{model_id}_metadata.json"
@@ -464,6 +476,66 @@ class ModelRegistry:
         except Exception as e:
             logger.error(f"Error loading model {model_id}: {e}")
             return None
+
+    def get_most_recent(self, prediction_type: str) -> Optional[ModelMetadata]:
+        """Get the most recent model for a given prediction type."""
+        models = []
+        for model_data in self.model_index.values():
+            if (model_data.get("prediction_type") == prediction_type and 
+                model_data.get("is_active", True)):
+                try:
+                    metadata = ModelMetadata(**model_data)
+                    models.append(metadata)
+                except (TypeError, KeyError) as e:
+                    logger.warning(f"Error loading metadata: {e}")
+                    continue
+        
+        if not models:
+            return None
+        return max(models, key=lambda x: x.created_at)
+
+    def get_best(self, prediction_type: str) -> Optional[ModelMetadata]:
+        """Get the best model for a given prediction type based on performance score."""
+        models = []
+        for model_data in self.model_index.values():
+            if (model_data.get("prediction_type") == prediction_type and 
+                model_data.get("is_active", True)):
+                try:
+                    metadata = ModelMetadata(**model_data)
+                    models.append(metadata)
+                except (TypeError, KeyError) as e:
+                    logger.warning(f"Error loading metadata: {e}")
+                    continue
+        
+        if not models:
+            return None
+        return max(models, key=lambda x: x.performance_score)
+
+    def list_trainable(self, limit: int = 50) -> List[ModelMetadata]:
+        """List available trainable models excluding already-running job ids."""
+        # Try to import training jobs from the API module
+        running_jobs = set()
+        try:
+            from model_training_api import training_jobs
+            running_jobs = {job["model_id"] for job in training_jobs.values() if job["status"] == "running"}
+        except ImportError:
+            # If we can't import training_jobs, just return all models
+            pass
+        
+        models = []
+        for model_data in self.model_index.values():
+            if (model_data.get("model_id") not in running_jobs and 
+                model_data.get("is_active", True)):
+                try:
+                    metadata = ModelMetadata(**model_data)
+                    models.append(metadata)
+                except (TypeError, KeyError) as e:
+                    logger.warning(f"Error loading metadata: {e}")
+                    continue
+        
+        # Sort by performance score (descending) then by created_at (recent first)
+        models.sort(key=lambda x: (x.performance_score, x.created_at), reverse=True)
+        return models[:limit]
 
     def list_models(self, active_only: bool = True) -> List[ModelMetadata]:
         """List all registered models"""

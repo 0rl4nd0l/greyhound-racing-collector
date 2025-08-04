@@ -21,6 +21,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import pandas as pd
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -218,36 +220,81 @@ class PipelineOrchestrator:
                 logger.info("ℹ️ No upcoming race files for predictions")
                 return True
 
-            # Use unified predictor if available
-            if os.path.exists("unified_predictor.py"):
-                logger.info("🧠 Using unified predictor system")
-
-                from unified_predictor import UnifiedPredictor
-
-                predictor = UnifiedPredictor()
-
-                successful_predictions = 0
-                for race_file in upcoming_files:
+            # Try advanced ML systems in priority order
+            predictors = [
+                ("ml_system_v4.py", "MLSystemV4", "🛡️ Using ML System V4 (Temporal Safe)"),
+                ("advanced_ensemble_ml_system.py", "AdvancedEnsembleMLSystem", "🎯 Using Advanced Ensemble ML System"), 
+                ("comprehensive_enhanced_ml_system.py", "ComprehensiveEnhancedMLSystem", "🧠 Using Comprehensive Enhanced ML System"),
+                ("advanced_ml_system_v2.py", "AdvancedMLSystemV2", "⚡ Using Advanced ML System V2"),
+                ("ml_system_v3.py", "MLSystemV3", "📊 Using ML System V3")
+            ]
+            
+            predictor_used = None
+            successful_predictions = 0
+            
+            for file_name, class_name, log_message in predictors:
+                if os.path.exists(file_name):
                     try:
-                        result = predictor.predict_race_file(str(race_file))
-                        if result.get("success"):
-                            successful_predictions += 1
-                            logger.info(f"✅ Predicted: {race_file.name}")
-                        else:
-                            logger.warning(
-                                f"⚠️ Prediction failed for {race_file.name}: {result.get('error')}"
-                            )
+                        logger.info(log_message)
+                        
+                        # Dynamic import based on available system
+                        module_name = file_name.replace('.py', '')
+                        module = __import__(module_name)
+                        predictor_class = getattr(module, class_name)
+                        predictor = predictor_class()
+                        predictor_used = class_name
+                        
+                        # Process each upcoming race file
+                        for race_file in upcoming_files:
+                            try:
+                                # Different systems may have different prediction methods
+                                if hasattr(predictor, 'predict_race_file'):
+                                    result = predictor.predict_race_file(str(race_file))
+                                elif hasattr(predictor, 'generate_predictions'):
+                                    result = predictor.generate_predictions(str(race_file))
+                                elif hasattr(predictor, 'predict_race'):
+                                    # Prepare the data and call predict_race
+                                    raw_race_data = pd.read_csv(race_file)
+                                    
+                                    # Preprocess CSV if available
+                                    if hasattr(predictor, 'preprocess_upcoming_race_csv'):
+                                        race_data = predictor.preprocess_upcoming_race_csv(raw_race_data, race_file.stem)
+                                    else:
+                                        race_data = raw_race_data
+                                    
+                                    market_odds = {}  # Replace with actual odds retrieval logic
+                                    result = predictor.predict_race(race_data, race_file.stem, market_odds)
+                                elif hasattr(predictor, 'predict'):
+                                    result = predictor.predict(str(race_file))
+                                else:
+                                    logger.warning(f"⚠️ {class_name} has no compatible prediction method")
+                                    continue
+                                    
+                                if result and result.get("success", True):
+                                    successful_predictions += 1
+                                    logger.info(f"✅ Predicted: {race_file.name}")
+                                else:
+                                    logger.warning(
+                                        f"⚠️ Prediction failed for {race_file.name}: {result.get('error', 'Unknown error')}"
+                                    )
+                            except Exception as e:
+                                logger.error(f"❌ Error predicting {race_file.name}: {e}")
+                        
+                        # Successfully used this predictor, don't try others
+                        break
+                        
                     except Exception as e:
-                        logger.error(f"❌ Error predicting {race_file.name}: {e}")
-
+                        logger.warning(f"⚠️ Could not initialize {class_name}: {e}")
+                        continue
+            
+            if predictor_used:
                 self.stats["predictions_generated"] = successful_predictions
                 logger.info(
-                    f"🏁 Generated {successful_predictions}/{len(upcoming_files)} predictions"
+                    f"🏁 Generated {successful_predictions}/{len(upcoming_files)} predictions using {predictor_used}"
                 )
                 return successful_predictions > 0
-
             else:
-                logger.warning("⚠️ No prediction system available")
+                logger.error("❌ No prediction system available or working")
                 return False
 
         except Exception as e:

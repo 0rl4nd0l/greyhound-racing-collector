@@ -1,0 +1,31 @@
+Dog Name,Sex,PLC,BOX,WGT,DIST,DATE,TRACK,G,TIME,WIN,BON,1 SEC,MGN,W/2G,PIR,SP,day_of_week,month,track_code
+1. Nola Keeping,B,1,4,27.8,516,2025-07-12,DUBO,5,29.6,29.6,29.6,4.48,0.75,Swift Bonnie,1,2.6,Saturday,July,DUBO
+1. Nola Keeping,B,2,8,27.2,520,2025-07-02,RICH,5,30.12,30.01,29.84,4.46,1.5,Zipping Balboa,22332,4.6,Wednesday,July,RICH
+1. Nola Keeping,B,1,6,27.6,516,2025-06-28,DUBO,MX,29.84,29.84,29.84,4.54,0.75,Little King,42221,2.4,Saturday,June,DUBO
+1. Nola Keeping,B,1,5,28.0,527,2025-06-08,GUNN,MX,31.21,31.21,30.23,3.6,1.0,Larrikin Pioneer,112211,1.5,Sunday,June,GUNN
+1. Nola Keeping,B,1,2,28.0,527,2025-06-01,GUNN,MX,30.41,30.41,30.24,3.59,14.0,Rhapsody Beast,1111,1.45,Sunday,June,GUNN
+2. Ritza Benji,D,2,2,28.5,520,2025-07-17,W/PK,5,30.03,30.01,29.63,5.52,0.25,Flying Goddess,2332,2.0,Thursday,July,W
+2. Ritza Benji,D,5,5,28.5,520,2025-07-10,W/PK,5,30.44,29.8,29.54,5.64,9.25,Forged Iron,3365,4.4,Thursday,July,W
+2. Ritza Benji,D,1,4,28.7,520,2025-07-03,W/PK,5,29.54,29.54,29.54,5.48,2.0,Santino Kade,1111,26.0,Thursday,July,W
+2. Ritza Benji,D,3,4,28.5,400,2025-06-30,MAIT,5,22.7,22.62,22.34,5.91,1.0,Tarawi,7443,6.5,Monday,June,MAIT
+2. Ritza Benji,D,2,8,28.8,400,2025-06-23,MAIT,5,22.78,22.75,22.37,5.46,0.5,Miss Mila,7642,2.8,Monday,June,MAIT
+4. Hurry Tuncurry,D,5,1,31.5,515,2025-07-15,GOSF,4/5,29.99,29.52,29.34,4.66,6.5,Zipping Angelica,55455,9.5,Tuesday,July,GOSF
+4. Hurry Tuncurry,D,7,2,31.5,515,2025-07-08,GOSF,5,30.2,29.48,29.48,4.63,10.25,Tarawi Licorice,65447,4.6,Tuesday,July,GOSF
+4. Hurry Tuncurry,D,1,8,31.4,515,2025-05-06,GOSF,5,29.7,29.7,29.62,4.53,0.75,He's Bon's Boy,321,6.5,Tuesday,May,GOSF
+4. Hurry Tuncurry,D,1,6,31.4,603,2025-04-29,GOSF,5,34.7,34.7,34.7,9.03,3.0,Tarawi Aroura,111,5.5,Tuesday,April,GOSF
+4. Hurry Tuncurry,D,1,3,31.4,525,2025-04-23,TARE,5,30.72,30.72,30.36,4.04,0.75,Prim And Pretty,3321,2.25,Wednesday,April,TARE
+5. Raging Saige,B,1,4,24.5,520,2025-07-19,W/PK,5,29.78,29.78,29.37,5.48,2.0,LEONI BALE,2111,9.5,Saturday,July,W
+5. Raging Saige,B,1,8,24.5,520,2025-07-12,W/PK,5,30.0,30.0,29.56,5.59,3.5,King Harada,5111,2.3,Saturday,July,W
+5. Raging Saige,B,1,3,24.3,600,2025-07-05,GRDN,5,34.74,34.74,34.74,9.3,0.5,King Harada,2111,3.4,Saturday,July,GRDN
+5. Raging Saige,B,6,5,24.1,600,2025-06-21,GRDN,4/5,35.62,34.58,34.58,9.92,14.75,Kenzie Robbo,7776,6.0,Saturday,June,GRDN
+5. Raging Saige,B,1,7,24.0,515,2025-06-13,GRDN,5,29.74,29.74,29.74,5.06,3.0,Kiss Me Augie,5311,3.3,Friday,June,GRDN
+7. Big Town Skye,B,7,5,24.7,401,2025-07-20,RICH,4/5,23.38,22.8,22.78,7.06,8.25,Kiwi Kawa,2777,10.0,Sunday,July,RICH
+7. Big Town Skye,B,2,3,25.3,401,2025-07-11,RICH,5,23.23,22.77,22.67,6.78,6.5,Weffalee Lee Lee,1222,4.6,Friday,July,RICH
+7. Big Town Skye,B,8,7,25.1,622,2025-06-27,RICH,5,36.86,35.77,35.77,10.03,15.5,Great Terms,8678,11.0,Friday,June,RICH
+7. Big Town Skye,B,6,6,24.8,520,2025-06-21,W/PK,5,30.64,29.77,29.41,5.75,12.25,Go Jimmy,2856,11.0,Saturday,June,W
+7. Big Town Skye,B,1,6,25.1,520,2025-06-12,W/PK,5,29.81,29.81,29.53,5.5,2.75,Motor City Sonny,1121,5.5,Thursday,June,W
+8. Summer Quinn,B,2,1,28.2,622,2025-07-18,RICH,5,35.84,35.7,35.7,9.63,2.0,Promises Three,4222,1.75,Friday,July,RICH
+8. Summer Quinn,B,2,4,27.8,520,2025-07-05,W/PK,NG,29.85,29.78,29.45,5.55,1.0,Coast Rig,6422,4.6,Saturday,July,W
+8. Summer Quinn,B,1,1,27.9,520,2025-06-28,W/PK,NG,29.7,29.7,29.48,5.56,3.75,GINNY'S RUN,4321,1.6,Saturday,June,W
+8. Summer Quinn,B,7,6,28.2,520,2025-06-07,QTT,OPEN,30.94,29.83,29.48,5.56,15.75,Sooty Keeping,7,9.5,Saturday,June,QTT
+8. Summer Quinn,B,2,2,28.2,520,2025-06-01,QTT,OPEN,29.52,29.29,29.29,4.95,3.25,Blue Blend,1122,3.5,Sunday,June,QTT

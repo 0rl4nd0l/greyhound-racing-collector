@@ -47,6 +47,7 @@ class ProfileResult:
     call_count: int
     bottlenecks: List[str]
     timestamp: str
+    result: Any = None  # Store the actual function result
 
 
 @dataclass
@@ -100,7 +101,13 @@ class PipelineProfiler:
         # Start process monitoring
         process = psutil.Process()
         start_cpu_times = process.cpu_times()
-        start_io_counters = process.io_counters() if self.enable_io_tracking else None
+        start_io_counters = None
+        if self.enable_io_tracking:
+            try:
+                start_io_counters = process.io_counters()
+            except AttributeError:
+                # io_counters not available on all platforms (e.g., macOS)
+                start_io_counters = None
         start_memory = process.memory_info().rss
 
         # Profile with cProfile
@@ -121,7 +128,13 @@ class PipelineProfiler:
 
         # Get resource usage
         end_cpu_times = process.cpu_times()
-        end_io_counters = process.io_counters() if self.enable_io_tracking else None
+        end_io_counters = None
+        if self.enable_io_tracking:
+            try:
+                end_io_counters = process.io_counters()
+            except AttributeError:
+                # io_counters not available on all platforms (e.g., macOS)
+                end_io_counters = None
         end_memory = process.memory_info().rss
 
         cpu_time = (end_cpu_times.user + end_cpu_times.system) - (
@@ -160,6 +173,7 @@ class PipelineProfiler:
             call_count=ps.total_calls,
             bottlenecks=bottlenecks,
             timestamp=datetime.now().isoformat(),
+            result=result  # Store the actual function result
         )
 
         # Store and save results
@@ -673,7 +687,10 @@ def profile_function(func):
     """
 
     def wrapper(*args, **kwargs):
-        return pipeline_profiler.profile_function(func, *args, **kwargs)
+        # Perform profiling
+        profile_result = pipeline_profiler.profile_function(func, *args, **kwargs)
+        # Return the actual function's result
+        return profile_result.result
 
     return wrapper
 

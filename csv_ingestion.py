@@ -30,6 +30,7 @@ import logging
 from dataclasses import dataclass
 from enum import Enum
 from datetime import datetime
+import hashlib
 
 
 class ValidationLevel(Enum):
@@ -80,13 +81,15 @@ class FormGuideCsvIngestor:
     - Comprehensive error reporting
     """
     
-    def __init__(self, validation_level: ValidationLevel = ValidationLevel.MODERATE):
+    def __init__(self, db_path: str = 'greyhound_racing_data.db', validation_level: ValidationLevel = ValidationLevel.MODERATE):
         """
         Initialize the CSV ingestor.
         
         Args:
+            db_path: Path to the database for caching
             validation_level: How strict to be with column validation
         """
+        self.db_path = db_path
         self.validation_level = validation_level
         self.logger = logging.getLogger(__name__)
         
@@ -538,6 +541,17 @@ class FormGuideCsvIngestor:
             )
         
         try:
+            # Check if file is already processed in cache
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            file_hash = hashlib.sha256(Path(file_path).read_bytes()).hexdigest()
+            cursor.execute("SELECT 1 FROM processed_race_files WHERE file_hash = ?", (file_hash,))
+            if cursor.fetchone() is not None:
+                self.logger.info(f"File {file_path} is already processed, skipping.")
+                conn.close()
+                return [], ValidationResult(is_valid=True, errors=[], warnings=["Already processed"], missing_required=[], available_columns=[], file_info={})
+            conn.close()
+            
             # Step 2: Load CSV
             df = pd.read_csv(file_path, on_bad_lines="skip", encoding="utf-8")
             
@@ -552,6 +566,13 @@ class FormGuideCsvIngestor:
                     f"No valid data extracted from {file_path}. "
                     "Check file format and ensure it contains race data."
                 )
+
+            # Cache the processed file
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO processed_race_files (file_hash, file_path) VALUES (?, ?)", (file_hash, str(file_path)))
+            conn.commit()
+            conn.close()
             
             self.logger.info(f"Successfully ingested {len(processed_data)} records from {file_path}")
             

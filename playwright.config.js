@@ -28,7 +28,7 @@ module.exports = defineConfig({
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
-baseURL: `http://127.0.0.1:${process.env.DEFAULT_PORT || '5000'}`,
+baseURL: `http://127.0.0.1:${process.env.DEFAULT_PORT || '5002'}`,
     
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
@@ -110,7 +110,7 @@ baseURL: `http://127.0.0.1:${process.env.DEFAULT_PORT || '5000'}`,
   /* Run your local dev server before starting the tests */
   // webServer: {
   //   command: 'python app.py',
-  //   url: 'http://127.0.0.1:5000',
+  //   url: 'http://127.0.0.1:5002',
   //   reuseExistingServer: !process.env.CI,
   //   env: {
   //     FLASK_ENV: 'testing'

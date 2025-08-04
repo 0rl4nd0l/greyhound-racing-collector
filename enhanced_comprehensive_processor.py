@@ -805,9 +805,11 @@ class EnhancedComprehensiveProcessor:
         patterns = [
             # Pattern 1: "Race_XX_VENUE_YYYY-MM-DD.csv" (current format)
             (r"Race_(\d+)_([A-Z0-9_]+)_(\d{4}-\d{2}-\d{2})\.csv", "%Y-%m-%d"),
-            # Pattern 2: "Race X - VENUE - DD Month YYYY.csv" (legacy format)
+            # Pattern 2: "Race X - VENUE - YYYY-MM-DD.csv" (new format from upcoming races)
+            (r"Race (\d+) - ([A-Z0-9_]+) - (\d{4}-\d{2}-\d{2})\.csv", "%Y-%m-%d"),
+            # Pattern 3: "Race X - VENUE - DD Month YYYY.csv" (legacy format)
             (r"Race (\d+) - ([A-Z0-9_]+) - (\d{1,2} \w+ \d{4})\.csv", "%d %B %Y"),
-            # Pattern 3: "Race X - VENUE - D Month YYYY.csv" (single digit day)
+            # Pattern 4: "Race X - VENUE - D Month YYYY.csv" (single digit day)
             (r"Race (\d+) - ([A-Z0-9_]+) - (\d{1} \w+ \d{4})\.csv", "%d %B %Y"),
         ]
 

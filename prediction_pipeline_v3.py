@@ -24,7 +24,7 @@ import pandas as pd
 from src.parsers.csv_ingestion import CsvIngestion
 
 from constants import DOG_NAME_KEY
-from ml_system_v3 import MLSystemV3
+from ml_system_v4 import MLSystemV4
 from shap_explainer import get_shap_explainer
 from utils.profiling_utils import ProfilingRecorder, timed
 
@@ -82,7 +82,7 @@ class PredictionPipelineV3:
     @timed("model_load")
     def __init__(self, db_path="greyhound_racing_data.db"):
         self.db_path = db_path
-        self.ml_system = MLSystemV3(db_path)
+        self.ml_system = MLSystemV4(db_path)
 
         # Initialize advanced systems
         self.weather_predictor = None

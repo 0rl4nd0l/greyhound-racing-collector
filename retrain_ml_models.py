@@ -202,7 +202,7 @@ def retrain_models(X, y, feature_columns):
         }
 
         # Register the model in the registry
-        model_id = registry.register_model(
+model_id = registry.register_model(
             model_obj=best_model["model"],
             scaler_obj=ml_system.scaler,
             model_name=best_model_name,
@@ -214,6 +214,7 @@ def retrain_models(X, y, feature_columns):
                 "params", {}
             ),
             notes=f"Retrained model from {len(X_train)} historical samples",
+            is_active=False  # Set active state to False
         )
 
         print(f"✅ Model registered in registry: {model_id}")

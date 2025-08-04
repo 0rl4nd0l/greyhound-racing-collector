@@ -50,6 +50,13 @@ except ImportError:
     COMPREHENSIVE_AVAILABLE = False
 
 try:
+    from prediction_pipeline_v4 import PredictionPipelineV4
+
+    V4_AVAILABLE = True
+except ImportError:
+    V4_AVAILABLE = False
+
+try:
     from prediction_pipeline_v3 import PredictionPipelineV3
 
     V3_AVAILABLE = True
@@ -214,6 +221,64 @@ class ComprehensivePipelineStrategy(Predictor):
             )
 
 
+class PredictionPipelineV4Strategy(Predictor):
+    """Strategy implementation for PredictionPipelineV4"""
+
+    def __init__(self):
+        super().__init__()
+        self.pipeline = None
+        self._model_loaded = False
+
+    def _ensure_model_loaded(self):
+        """Ensure model is loaded once per worker"""
+        if not self._model_loaded:
+            with self.lock:
+                if not self._model_loaded and V4_AVAILABLE:
+                    try:
+                        self.pipeline = PredictionPipelineV4()
+                        self._model_loaded = True
+                        logger.info("✅ PredictionPipelineV4 model loaded")
+                    except Exception as e:
+                        logger.error(f"❌ Failed to load PredictionPipelineV4: {e}")
+
+    def predict(self, race_file_path: str) -> PredictionResult:
+        """Make prediction using PredictionPipelineV4"""
+        start_time = time.time()
+
+        try:
+            self._ensure_model_loaded()
+            if not self.pipeline:
+                raise Exception("PredictionPipelineV4 not available")
+
+            result = self.pipeline.predict_race_file(race_file_path)
+            processing_time = (time.time() - start_time) * 1000
+
+            return PredictionResult(
+                race_id=os.path.basename(race_file_path),
+                success=result.get("success", False),
+                predictions=result.get("predictions", []),
+                method_used="PredictionPipelineV4",
+                timestamp=datetime.now(),
+                processing_time_ms=processing_time,
+                error_message=(
+                    result.get("error") if not result.get("success") else None
+                ),
+            )
+
+        except Exception as e:
+            processing_time = (time.time() - start_time) * 1000
+            logger.error(f"PredictionPipelineV4 strategy failed: {e}")
+            return PredictionResult(
+                race_id=os.path.basename(race_file_path),
+                success=False,
+                predictions=[],
+                method_used="PredictionPipelineV4",
+                timestamp=datetime.now(),
+                processing_time_ms=processing_time,
+                error_message=str(e),
+            )
+
+
 class UnifiedPredictorStrategy(Predictor):
     """Strategy implementation for UnifiedPredictor"""
 
@@ -306,38 +371,49 @@ class PredictionStrategyManager:
     def _register_strategies(self):
         """Register available prediction strategies in priority order (newest first)"""
 
-        # Strategy 1: PredictionPipelineV3 (newest, highest priority)
-        if V3_AVAILABLE:
-            self.strategies.append(PredictionPipelineV3Strategy())
-            self.strategy_configs["PredictionPipelineV3"] = StrategyConfig(
-                strategy_name="PredictionPipelineV3",
+        # Strategy 1: PredictionPipelineV4 (newest, highest priority)
+        if V4_AVAILABLE:
+            self.strategies.append(PredictionPipelineV4Strategy())
+            self.strategy_configs["PredictionPipelineV4"] = StrategyConfig(
+                strategy_name="PredictionPipelineV4",
                 priority=1,
                 enabled=True,
                 timeout_seconds=300,
             )
-            logger.info("✅ Registered PredictionPipelineV3Strategy (Priority 1)")
+            logger.info("✅ Registered PredictionPipelineV4Strategy (Priority 1)")
 
-        # Strategy 2: ComprehensivePredictionPipeline (second priority)
-        if COMPREHENSIVE_AVAILABLE:
-            self.strategies.append(ComprehensivePipelineStrategy())
-            self.strategy_configs["ComprehensivePredictionPipeline"] = StrategyConfig(
-                strategy_name="ComprehensivePredictionPipeline",
+        # Strategy 2: PredictionPipelineV3
+        if V3_AVAILABLE:
+            self.strategies.append(PredictionPipelineV3Strategy())
+            self.strategy_configs["PredictionPipelineV3"] = StrategyConfig(
+                strategy_name="PredictionPipelineV3",
                 priority=2,
                 enabled=True,
                 timeout_seconds=300,
             )
-            logger.info("✅ Registered ComprehensivePipelineStrategy (Priority 2)")
+            logger.info("✅ Registered PredictionPipelineV3Strategy (Priority 2)")
 
-        # Strategy 3: UnifiedPredictor (fallback)
-        if UNIFIED_AVAILABLE:
-            self.strategies.append(UnifiedPredictorStrategy())
-            self.strategy_configs["UnifiedPredictor"] = StrategyConfig(
-                strategy_name="UnifiedPredictor",
+        # Strategy 3: ComprehensivePredictionPipeline
+        if COMPREHENSIVE_AVAILABLE:
+            self.strategies.append(ComprehensivePipelineStrategy())
+            self.strategy_configs["ComprehensivePredictionPipeline"] = StrategyConfig(
+                strategy_name="ComprehensivePredictionPipeline",
                 priority=3,
                 enabled=True,
                 timeout_seconds=300,
             )
-            logger.info("✅ Registered UnifiedPredictorStrategy (Priority 3)")
+            logger.info("✅ Registered ComprehensivePipelineStrategy (Priority 3)")
+
+        # Strategy 4: UnifiedPredictor (fallback)
+        if UNIFIED_AVAILABLE:
+            self.strategies.append(UnifiedPredictorStrategy())
+            self.strategy_configs["UnifiedPredictor"] = StrategyConfig(
+                strategy_name="UnifiedPredictor",
+                priority=4,
+                enabled=True,
+                timeout_seconds=300,
+            )
+            logger.info("✅ Registered UnifiedPredictorStrategy (Priority 4)")
 
     def predict_single_race(self, race_file_path: str) -> PredictionResult:
         """Predict a single race using the strategy pattern"""

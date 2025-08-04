@@ -812,7 +812,17 @@ class UpcomingRaceBrowser:
                 )
             else:
                 # Handle direct URL request
-                csv_url = csv_info if isinstance(csv_info, str) else csv_info.get("url")
+                if isinstance(csv_info, str):
+                    csv_url = csv_info
+                elif isinstance(csv_info, dict):
+                    csv_url = csv_info.get("url")
+                else:
+                    # csv_info is None or unexpected type
+                    return {"success": False, "error": "Invalid CSV info returned from link finder"}
+                
+                if not csv_url:
+                    return {"success": False, "error": "No valid CSV URL found"}
+                
                 csv_response = self.session.get(csv_url, timeout=30)
 
             if csv_response.status_code != 200:

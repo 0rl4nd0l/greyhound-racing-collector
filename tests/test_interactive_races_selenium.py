@@ -36,7 +36,7 @@ except ImportError:
     print("⚠️ Selenium WebDriver not available - integration tests will be skipped")
 
 from app import app as flask_app
-from conftest import test_app, temp_db, setup_database
+from .conftest import test_app, temp_db, setup_database
 
 
 @pytest.mark.skipif(not SELENIUM_AVAILABLE, reason="Selenium WebDriver not available")

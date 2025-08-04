@@ -21,7 +21,7 @@ from flask.testing import FlaskClient
 import pandas as pd
 
 # Import test fixtures
-from conftest import test_app, client, temp_db, setup_database
+from .conftest import test_app, client, temp_db, setup_database
 
 
 class TestUpcomingRacesCSVEndpoint:

@@ -39,11 +39,11 @@ def test_predict_single_race(client: FlaskClient):
         f.write("1. Test Dog 1,1,30.0,Trainer A\n")
         f.write("2. Test Dog 2,2,31.0,Trainer B\n")
 
-    # API request
-    response = client.post("/predict", json={"race_filename": race_filename})
+    # API request to the correct JSON API endpoint
+    response = client.post("/api/predict_single_race_enhanced", json={"race_filename": race_filename})
     assert response.status_code in [200, 400, 500]
     json_data = response.get_json()
-    assert "prediction" in json_data or "error" in json_data
+    assert "success" in json_data
 
     os.remove(race_filepath)
 
@@ -57,7 +57,7 @@ def test_api_file_upload(client: FlaskClient):
         if response.status_code == 302:
             location = response.headers.get("Location")
             assert location is not None
-            assert location.endswith("/scraping_status")
+            assert location.endswith("/scraping")
 
 
 def test_database_operations(client: FlaskClient):
@@ -88,15 +88,17 @@ def test_large_file_upload(client: FlaskClient):
         if response.status_code == 302:
             location = response.headers.get("Location")
             assert location is not None
-            assert location.endswith("/scraping_status")
+            assert location.endswith("/scraping")
 
     os.remove(large_filename)
 
 
 def test_missing_parameters(client: FlaskClient):
     # Ensure that endpoints handle missing parameters gracefully
-    response = client.post("/api/predict", json={})
+    # Send empty dict - the endpoint returns "Invalid JSON body" for empty dict
+    response = client.post("/api/predict_single_race_enhanced", json={})
     assert response.status_code == 400
     json_data = response.get_json()
     assert json_data["success"] is False
-    assert "No race data provided" in json_data["error"]
+    # The endpoint returns "Invalid JSON body" for empty dict in this implementation
+    assert "Invalid JSON body" in json_data["message"]

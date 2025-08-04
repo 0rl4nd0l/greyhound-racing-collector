@@ -1,0 +1,127 @@
+"""
+Prediction Pipeline V4 - Advanced Integrated System
+==================================================
+
+An advanced prediction pipeline based on ML System V4, leveraging all available model improvements
+and EV calculations for enhanced predictions.
+"""
+
+import logging
+import os
+import pandas as pd
+from datetime import datetime
+
+from ml_system_v4 import MLSystemV4
+from src.parsers.csv_ingestion import CsvIngestion
+
+logger = logging.getLogger(__name__)
+
+class PredictionPipelineV4:
+    def __init__(self, db_path="greyhound_racing_data.db"):
+        self.db_path = db_path
+        self.ml_system_v4 = MLSystemV4(db_path)
+        logger.info("🚀 Prediction Pipeline V4 - Advanced System Initialized")
+
+    def predict_race_file(self, race_file_path: str) -> dict:
+        """Main prediction method using ML System V4."""
+        logger.info(
+            f"🚀 Starting prediction for: {os.path.basename(race_file_path)} using ML System V4"
+        )
+
+        try:
+            # Use CSV ingestion to read race data
+            ingestion = CsvIngestion(race_file_path)
+            parsed_race, validation_report = ingestion.parse_csv()
+            
+            if not validation_report.is_valid:
+                errors = '\n'.join(validation_report.errors)
+                logger.error(f"🛑 Validation failed for {race_file_path} with errors: {errors}")
+                return {'success': False, 'error': errors, 'race_id': race_file_path}
+            
+            # Convert to DataFrame
+            race_data = pd.DataFrame(parsed_race.records, columns=parsed_race.headers)
+            race_id = os.path.basename(race_file_path).replace('.csv', '')  # Use full filename without extension as race_id
+
+            # Map CSV columns to expected ML System V4 format
+            race_data = self._map_csv_to_v4_format(race_data, race_file_path)
+
+            # Perform prediction with V4 system
+            result = self.ml_system_v4.predict_race(race_data, race_id)
+
+            if result.get('success'):
+                logger.info(f"✅ Prediction successful for {race_id}")
+            else:
+                logger.warning(f"❌ Prediction failed for {race_id}: {result.get('error')}")
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Error processing file {race_file_path}: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e),
+                'race_id': race_file_path
+            }
+
+    def _map_csv_to_v4_format(self, race_data: pd.DataFrame, race_file_path: str) -> pd.DataFrame:
+        """Map CSV columns to the expected ML System V4 format."""
+        
+        # Extract race information from filename and first row
+        filename = os.path.basename(race_file_path)
+        
+        # Parse race date from filename (e.g., "Race 1 - GOUL - 01 August 2025.csv")
+        parts = filename.replace('.csv', '').split(' - ')
+        if len(parts) >= 3:
+            date_part = parts[2]  # "01 August 2025"
+            try:
+                # Convert to YYYY-MM-DD format
+                date_obj = datetime.strptime(date_part, "%d %B %Y")
+                race_date = date_obj.strftime("%Y-%m-%d")
+            except ValueError:
+                # Fallback to current date
+                race_date = datetime.now().strftime("%Y-%m-%d")
+            
+            venue = parts[1] if len(parts) > 1 else "Unknown"
+        else:
+            race_date = datetime.now().strftime("%Y-%m-%d")
+            venue = "Unknown"
+        
+        # Create mapped DataFrame with required columns
+        mapped_data = []
+        
+        for _, row in race_data.iterrows():
+            dog_name = row.get('Dog Name', '').strip()
+            if not dog_name or dog_name.startswith('""'):
+                continue  # Skip empty rows
+            
+            # Extract box number from dog name if it starts with a number
+            if dog_name.split('.')[0].isdigit():
+                box_number = int(dog_name.split('.')[0])
+                clean_dog_name = dog_name.split('.', 1)[1].strip() if '.' in dog_name else dog_name
+            else:
+                box_number = row.get('BOX', 1)
+                clean_dog_name = dog_name
+            
+            # Map the row to V4 expected format
+            mapped_row = {
+                'race_id': filename.replace('.csv', ''),
+                'dog_clean_name': clean_dog_name,
+                'box_number': box_number,
+                'weight': float(row.get('WGT', 0)) if pd.notna(row.get('WGT')) else 30.0,
+                'starting_price': float(row.get('SP', 0)) if pd.notna(row.get('SP')) else 3.0,
+                'trainer_name': 'Unknown',  # Not available in CSV
+                'venue': venue,
+                'grade': row.get('G', 'G5') if pd.notna(row.get('G')) else 'G5',
+                'track_condition': 'Good',  # Default value
+                'weather': 'Fine',  # Default value
+                'temperature': 20.0,  # Default value
+                'humidity': 60.0,  # Default value
+                'wind_speed': 10.0,  # Default value
+                'field_size': len(race_data),
+                'race_date': race_date,
+                'race_time': '14:30'  # Default race time
+            }
+            
+            mapped_data.append(mapped_row)
+        
+        return pd.DataFrame(mapped_data)

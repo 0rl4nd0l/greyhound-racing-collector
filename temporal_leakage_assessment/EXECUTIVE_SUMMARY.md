@@ -2,7 +2,7 @@
 # Temporal Data Leakage Assessment Report
 ## Greyhound Prediction Pipeline Fix
 
-**Assessment Date:** 2025-08-02 13:53:58
+**Assessment Date:** 2025-08-03 22:13:31
 
 ## 🎯 KEY INSIGHT
 Post-race features are NOT inherently bad - they become leakage only when used to predict the SAME race they come from.

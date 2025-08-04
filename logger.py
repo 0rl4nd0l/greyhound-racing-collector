@@ -193,10 +193,10 @@ class EnhancedLogger:
             "level": level,
             "component": "process",
             "file": str(self.workflow_log_file),
-            "action": details.get("action", "unknown"),
-            "cache_status": details.get("cache_status", "unknown"),
-            "validation_errors": details.get("validation_errors", []),
-            "outcome": details.get("outcome", "unknown"),
+            "action": (details or {}).get("action", "unknown"),
+            "cache_status": (details or {}).get("cache_status", "unknown"),
+            "validation_errors": (details or {}).get("validation_errors", []),
+            "outcome": (details or {}).get("outcome", "unknown"),
             "message": message,
             "details": details or {}
         }
@@ -293,6 +293,13 @@ class EnhancedLogger:
     def info(self, message: str, context: Optional[Dict] = None):
         """Log info messages"""
         self.log_process(message, level="INFO", details=context)
+    
+    def error(self, message: str, exc_info: bool = False, **kwargs):
+        """Log error messages (compatibility method)"""
+        if exc_info:
+            self.exception(message, context=kwargs)
+        else:
+            self.log_error(message, context=kwargs)
 
     def get_web_logs(self, log_type: str = "all", limit: int = 100) -> List[Dict]:
         """Get logs for web display"""

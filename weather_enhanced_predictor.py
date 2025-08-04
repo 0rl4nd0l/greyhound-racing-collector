@@ -1315,16 +1315,13 @@ class WeatherEnhancedPredictor:
                     )
                     continue
                 
+                prediction_value = max(0.1, 0.8 - (i * 0.1))
                 predictions.append(
                     {
                         "dog_name": dog_name,
                         "box_number": dog.get("box", "Unknown"),
-                        "prediction_score": max(
-                            0.1, 0.8 - (i * 0.1)
-                        ),  # Decreasing scores
-                        "win_probability": max(
-                            0.1, 0.8 - (i * 0.1)
-                        ),  # Alias for consistency
+                        "prediction_score": prediction_value,
+                        "win_probability": prediction_value,  # Alias for consistency
                         "confidence": 0.1,
                         "note": "Fallback prediction - ML system unavailable",
                     }
