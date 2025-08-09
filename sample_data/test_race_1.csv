@@ -1,9 +1,0 @@
-Dog Name,Sex,PLC,BOX,WGT,DIST,DATE,TRACK,G,TIME,WIN,BON,1 SEC,MGN,W/2G,PIR,SP
-1. Lightning Bolt,D,1,1,30.2,525,2025-01-15,SAND,5,30.15,30.15,30.15,5.25,2.0,Thunder Strike,1,2.8
-2. Thunder Strike,B,2,2,29.8,525,2025-01-15,SAND,5,30.35,30.15,30.15,5.28,0.75,Lightning Bolt,2,3.2
-3. Storm Runner,D,3,3,31.1,525,2025-01-15,SAND,5,30.48,30.15,30.15,5.31,1.5,Lightning Bolt,3,4.5
-4. Rain Dancer,B,4,4,28.9,525,2025-01-15,SAND,5,30.52,30.15,30.15,5.33,2.25,Lightning Bolt,4,6.8
-5. Wind Chaser,D,5,5,30.6,525,2025-01-15,SAND,5,30.65,30.15,30.15,5.35,3.0,Lightning Bolt,5,8.2
-6. Fire Walker,B,6,6,29.5,525,2025-01-15,SAND,5,30.78,30.15,30.15,5.38,4.5,Lightning Bolt,6,12.0
-7. Ice Breaker,D,7,7,31.3,525,2025-01-15,SAND,5,30.92,30.15,30.15,5.41,6.0,Lightning Bolt,7,15.5
-8. Sky Jumper,B,8,8,30.0,525,2025-01-15,SAND,5,31.05,30.15,30.15,5.44,7.25,Lightning Bolt,8,21.0

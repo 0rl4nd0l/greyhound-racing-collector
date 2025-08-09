@@ -1,0 +1,39 @@
+Profile for build_leakage_safe_features
+Timestamp: 2025-08-04T13:59:11.990012
+Total Time: 50.482s
+CPU Time: 44.713s
+I/O Time: 0.0ms
+Memory Peak: 1.19MB
+Function Calls: 10206601
+Bottlenecks: <20>(884.000s), /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:273(build_leakage_safe_features)(50.478s), /Users/orlandolee/greyhound_racing_collector/temporal_feature_builder.py:343(build_features_for_race)(49.816s), /Users/orlandolee/greyhound_racing_collector/temporal_feature_builder.py:73(load_dog_historical_data)(34.062s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/sql.py:436(read_sql_query)(16.778s)
+
+==================================================
+Detailed cProfile Output:
+         10206601 function calls (10083879 primitive calls) in 50.479 seconds
+
+   Ordered by: cumulative time
+   List reduced from 884 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.029    0.029   50.478   50.478 /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:273(build_leakage_safe_features)
+       81    0.176    0.002   49.816    0.615 /Users/orlandolee/greyhound_racing_collector/temporal_feature_builder.py:343(build_features_for_race)
+      409    0.325    0.001   34.062    0.083 /Users/orlandolee/greyhound_racing_collector/temporal_feature_builder.py:73(load_dog_historical_data)
+      409    0.017    0.000   16.778    0.041 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/sql.py:436(read_sql_query)
+      409    0.013    0.000   16.755    0.041 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/sql.py:2717(read_query)
+      409    0.041    0.000   14.979    0.037 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/sql.py:196(_wrap_result)
+      409    0.631    0.002   13.400    0.033 /Users/orlandolee/greyhound_racing_collector/temporal_feature_builder.py:124(create_historical_features)
+      409    0.008    0.000   12.147    0.030 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:10177(apply)
+      409    0.013    0.000   12.110    0.030 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/apply.py:864(apply)
+      409    0.008    0.000   12.089    0.030 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/apply.py:1061(apply_standard)
+      409    0.069    0.000   11.009    0.027 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/apply.py:1070(apply_series_generator)
+      409    0.111    0.000   10.597    0.026 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/sql.py:162(_convert_arrays_to_dataframe)
+     2856    0.046    0.000   10.407    0.004 /Users/orlandolee/greyhound_racing_collector/temporal_feature_builder.py:55(get_race_timestamp)
+     2775    0.007    0.000   10.116    0.004 /Users/orlandolee/greyhound_racing_collector/temporal_feature_builder.py:104(<lambda>)
+     2898    0.288    0.000   10.101    0.003 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/tools/datetimes.py:678(to_datetime)
+     2898    0.234    0.000    9.368    0.003 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/tools/datetimes.py:316(_convert_listlike_datetimes)
+      489    0.045    0.000    8.720    0.018 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:694(__init__)
+    43215    2.490    0.000    8.045    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/construction.py:517(sanitize_array)
+      409    0.316    0.001    7.810    0.019 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/construction.py:423(dict_to_mgr)
+      489    0.050    0.000    7.364    0.015 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/construction.py:96(arrays_to_mgr)
+
+

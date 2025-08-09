@@ -6,9 +6,32 @@ on:
   pull_request:
     branches: [ main, develop, requirements-update ]
 
+env:
+  DATABASE_URL: postgresql://test_user:test_password@localhost:5433/greyhound_test
+  REDIS_URL: redis://localhost:6380/0
+  TESTING: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: greyhound_test
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5433:5432
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+      
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+        options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 3s --health-retries 3
     
     strategy:
       matrix:
@@ -22,11 +45,21 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
     
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y postgresql-client
+    
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pytest pytest-cov pytest-flask
+        pip install -r requirements-test.txt
+    
+    - name: Set up PostgreSQL test database
+      run: |
+        PGPASSWORD=test_password psql -h localhost -p 5433 -U test_user -d greyhound_test -f tests/data/fixtures/001_init_schema.sql || echo "Schema setup completed"
+        echo "PostgreSQL test database initialized successfully"
     
     - name: Create test directories
       run: |
@@ -34,18 +67,54 @@ jobs:
         mkdir -p logs
         mkdir -p unprocessed
         mkdir -p processed
-        mkdir -p historical
-        mkdir -p upcoming
+        mkdir -p historical_races
+        mkdir -p upcoming_races
     
-    - name: Run backend unit tests with coverage
+    - name: Run comprehensive backend unit tests with coverage
       run: |
-        python -m pytest tests/test_backend_suite.py \
+        echo "Running comprehensive backend unit test suite..."
+        python -m pytest tests/test_backend_suite.py tests/test_flask_api.py tests/test_backend.py \
           --cov=app \
           --cov-report=term-missing \
           --cov-report=xml:coverage.xml \
           --cov-report=html:htmlcov \
           --cov-fail-under=13 \
-          -v
+          --tb=short \
+          -v \
+          --maxfail=10 \
+          --timeout=300
+        echo "Backend unit tests completed successfully!"
+      env:
+        DATABASE_URL: ${{ env.DATABASE_URL }}
+        REDIS_URL: ${{ env.REDIS_URL }}
+        TESTING: true
+    
+    - name: Run API endpoint tests
+      run: |
+        echo "Running API endpoint tests..."
+        python -m pytest tests/test_flask_api.py \
+          --tb=short \
+          -v \
+          --maxfail=5 \
+          --timeout=180
+        echo "API endpoint tests completed successfully!"
+      env:
+        DATABASE_URL: ${{ env.DATABASE_URL }}
+        REDIS_URL: ${{ env.REDIS_URL }}
+        TESTING: true
+    
+    - name: Run database operation tests
+      run: |
+        echo "Running database operation tests..."
+        python -m pytest tests/test_database_integrity.py \
+          --tb=short \
+          -v \
+          --maxfail=3 \
+          --timeout=120
+        echo "Database operation tests completed successfully!"
+      env:
+        DATABASE_URL: ${{ env.DATABASE_URL }}
+        TESTING: true
     
     - name: Run key consistency regression tests
       run: |

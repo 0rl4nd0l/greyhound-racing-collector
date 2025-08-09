@@ -64,7 +64,7 @@ class PredictionPipelineV4:
             }
 
     def _map_csv_to_v4_format(self, race_data: pd.DataFrame, race_file_path: str) -> pd.DataFrame:
-        """Map CSV columns to the expected ML System V4 format."""
+        """Map CSV columns to the expected ML System V4 format with proper data type handling."""
         
         # Extract race information from filename and first row
         filename = os.path.basename(race_file_path)
@@ -90,28 +90,44 @@ class PredictionPipelineV4:
         mapped_data = []
         
         for _, row in race_data.iterrows():
-            dog_name = row.get('Dog Name', '').strip()
-            if not dog_name or dog_name.startswith('""'):
+            dog_name = str(row.get('Dog Name', '')).strip()
+            if not dog_name or dog_name.startswith('""') or dog_name.lower() in ['nan', 'none', '']:
                 continue  # Skip empty rows
             
             # Extract box number from dog name if it starts with a number
-            if dog_name.split('.')[0].isdigit():
-                box_number = int(dog_name.split('.')[0])
-                clean_dog_name = dog_name.split('.', 1)[1].strip() if '.' in dog_name else dog_name
-            else:
-                box_number = row.get('BOX', 1)
+            try:
+                if '.' in dog_name and dog_name.split('.')[0].isdigit():
+                    box_number = int(dog_name.split('.')[0])
+                    clean_dog_name = dog_name.split('.', 1)[1].strip() if '.' in dog_name else dog_name
+                else:
+                    # Try to get box number from BOX column
+                    box_val = row.get('BOX', 1)
+                    box_number = int(pd.to_numeric(box_val, errors='coerce')) if pd.notna(box_val) else 1
+                    clean_dog_name = dog_name
+            except (ValueError, TypeError):
+                box_number = 1
                 clean_dog_name = dog_name
             
-            # Map the row to V4 expected format
+            # Safely convert numeric values with proper error handling
+            def safe_float_convert(value, default=0.0):
+                """Safely convert value to float with fallback."""
+                try:
+                    if pd.isna(value) or value == '' or value is None:
+                        return default
+                    return float(pd.to_numeric(value, errors='coerce'))
+                except (ValueError, TypeError):
+                    return default
+            
+            # Map the row to V4 expected format with safe conversions
             mapped_row = {
                 'race_id': filename.replace('.csv', ''),
                 'dog_clean_name': clean_dog_name,
-                'box_number': box_number,
-                'weight': float(row.get('WGT', 0)) if pd.notna(row.get('WGT')) else 30.0,
-                'starting_price': float(row.get('SP', 0)) if pd.notna(row.get('SP')) else 3.0,
-                'trainer_name': 'Unknown',  # Not available in CSV
+                'box_number': int(box_number),
+                'weight': safe_float_convert(row.get('WGT'), 30.0),
+                'starting_price': safe_float_convert(row.get('SP'), 3.0),
+                'trainer_name': str(row.get('TRAINER', 'Unknown')),
                 'venue': venue,
-                'grade': row.get('G', 'G5') if pd.notna(row.get('G')) else 'G5',
+                'grade': str(row.get('G', 'G5')),
                 'track_condition': 'Good',  # Default value
                 'weather': 'Fine',  # Default value
                 'temperature': 20.0,  # Default value
@@ -119,9 +135,34 @@ class PredictionPipelineV4:
                 'wind_speed': 10.0,  # Default value
                 'field_size': len(race_data),
                 'race_date': race_date,
-                'race_time': '14:30'  # Default race time
+                'race_time': '14:30',  # Default race time
+                # Add additional fields that ML System V4 might expect
+                'distance': safe_float_convert(row.get('DIST'), 500.0),
+                'margin': None,  # Upcoming race - no margin yet
+                'individual_time': None,  # Upcoming race - no time yet
+                'finish_position': None,  # Upcoming race - no finish position
+                'performance_rating': safe_float_convert(row.get('PERF'), 0.0),
+                'speed_rating': safe_float_convert(row.get('SPEED'), 0.0),
+                'class_rating': safe_float_convert(row.get('CLASS'), 0.0)
             }
             
             mapped_data.append(mapped_row)
         
-        return pd.DataFrame(mapped_data)
+        if not mapped_data:
+            logger.warning(f"No valid dog data found in {race_file_path}")
+            return pd.DataFrame()
+        
+        # Create DataFrame and ensure proper data types
+        result_df = pd.DataFrame(mapped_data)
+        
+        # Ensure numeric columns are properly typed
+        numeric_columns = ['box_number', 'weight', 'starting_price', 'temperature', 
+                          'humidity', 'wind_speed', 'field_size', 'distance', 
+                          'performance_rating', 'speed_rating', 'class_rating']
+        
+        for col in numeric_columns:
+            if col in result_df.columns:
+                result_df[col] = pd.to_numeric(result_df[col], errors='coerce').fillna(0.0)
+        
+        logger.info(f"📋 Mapped {len(result_df)} dogs for ML System V4 prediction")
+        return result_df

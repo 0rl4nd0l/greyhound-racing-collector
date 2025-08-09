@@ -3006,13 +3006,35 @@ class EnhancedComprehensiveProcessor:
         if not os.path.exists(self.unprocessed_dir):
             return {"status": "error", "message": "Unprocessed directory not found"}
 
-        csv_files = [f for f in os.listdir(self.unprocessed_dir) if f.endswith(".csv")]
+        # STEP 1: Call the new API once to obtain processed_set
+        try:
+            from utils.caching_utils import get_processed_filenames
+            processed_set = get_processed_filenames(self.unprocessed_dir, self.db_path)
+            print(f"📊 Loaded {len(processed_set)} processed files for pre-filtering")
+        except ImportError:
+            print("⚠️ Fast lookup API not available, using legacy method")
+            processed_set = set()
+        except Exception as e:
+            print(f"⚠️ Error loading processed files: {e}, continuing with legacy method")
+            processed_set = set()
 
+        # STEP 2: Build csv_files with pre-filtering
+        all_files = [f for f in os.listdir(self.unprocessed_dir) if f.endswith(".csv")]
+        csv_files = [f for f in all_files if f not in processed_set]
+        
+        # STEP 3: Log quick stats (total, skipped_on_prefilter)
+        total_files = len(all_files)
+        skipped_on_prefilter = len(processed_set & set(all_files))  # intersection
+        print(f"📈 Pre-filter stats: {total_files} total, {skipped_on_prefilter} skipped on pre-filter, {len(csv_files)} remaining")
+
+        # STEP 4: If list is empty → early-exit with "No unprocessed files"
         if not csv_files:
             return {
                 "status": "success",
-                "message": "No unprocessed files found",
+                "message": "No unprocessed files",
                 "processed_count": 0,
+                "total_files": total_files,
+                "skipped_on_prefilter": skipped_on_prefilter,
             }
 
         results = {

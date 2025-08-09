@@ -56,6 +56,7 @@ except ImportError:
     ValidationLevel = None
 
 from logger import logger
+from utils.date_parsing import is_historical
 
 
 @dataclass
@@ -167,12 +168,23 @@ class BatchPredictionPipeline:
         
         # Check manifest for already processed files
         force = kwargs.get('force', False)
+        historical_mode = kwargs.get('historical', False)
         
         if not force:
             input_files = [
                 file_path for file_path in input_files
                 if os.path.getmtime(file_path) > self.processed_manifest.get(os.path.basename(file_path), 0)
             ]
+        
+        # Filter for historical races if historical mode is enabled
+        if historical_mode:
+            filtered_files = []
+            for file_path in input_files:
+                if self._is_file_historical(file_path):
+                    filtered_files.append(file_path)
+                else:
+                    self.logger.info(f"Skipping non-historical file: {file_path}")
+            input_files = filtered_files
 
         # Validate input files
         valid_files = []
@@ -638,6 +650,93 @@ class BatchPredictionPipeline:
             self.logger.error(f"Failed to cleanup job {job_id}: {e}")
         
         return False
+    
+    def _is_file_historical(self, file_path: str) -> bool:
+        """
+        Check if a CSV file contains historical race data (dates < today).
+        
+        This method examines the CSV file to extract race dates and determines
+        if they represent historical races using the is_historical function.
+        
+        Args:
+            file_path (str): Path to the CSV file to check
+            
+        Returns:
+            bool: True if the file contains historical race data, False otherwise
+        """
+        try:
+            # First try to extract date from filename if it follows a standard pattern
+            filename = os.path.basename(file_path)
+            
+            # Common filename patterns that might contain dates
+            import re
+            
+            # Pattern 1: YYYY-MM-DD format in filename
+            date_pattern_1 = r'(\d{4}-\d{2}-\d{2})'
+            match = re.search(date_pattern_1, filename)
+            if match:
+                date_str = match.group(1)
+                return is_historical(date_str)
+            
+            # Pattern 2: DDMMYYYY format in filename  
+            date_pattern_2 = r'(\d{2})(\d{2})(\d{4})'
+            match = re.search(date_pattern_2, filename)
+            if match:
+                day, month, year = match.groups()
+                date_str = f"{year}-{month}-{day}"
+                return is_historical(date_str)
+            
+            # If filename doesn't contain date, examine CSV content
+            return self._check_csv_content_for_historical_dates(file_path)
+            
+        except Exception as e:
+            self.logger.warning(f"Error checking if file {file_path} is historical: {e}")
+            # If we can't determine, assume it's not historical (safer default)
+            return False
+    
+    def _check_csv_content_for_historical_dates(self, file_path: str) -> bool:
+        """
+        Check CSV content for historical dates by examining common date columns.
+        
+        Args:
+            file_path (str): Path to the CSV file to examine
+            
+        Returns:
+            bool: True if any race dates in the file are historical, False otherwise
+        """
+        try:
+            # Read a small sample of the CSV to check for dates
+            sample_df = pd.read_csv(file_path, nrows=10)  # Only read first 10 rows for efficiency
+            
+            # Common column names that might contain race dates
+            date_columns = [
+                'date', 'race_date', 'Date', 'Race Date', 'race_time', 'Race Time',
+                'meeting_date', 'Meeting Date', 'start_time', 'Start Time'
+            ]
+            
+            for col in sample_df.columns:
+                if any(date_col.lower() in col.lower() for date_col in ['date', 'time']):
+                    # Found a potential date column
+                    for _, row in sample_df.iterrows():
+                        cell_value = row[col]
+                        if pd.notna(cell_value) and str(cell_value).strip():
+                            # Try to check if this value represents a historical date
+                            if is_historical(str(cell_value)):
+                                return True
+            
+            # If no obvious date columns found, check if filename suggests it's historical
+            # by examining file modification time as a fallback
+            file_mtime = os.path.getmtime(file_path)
+            file_date = datetime.fromtimestamp(file_mtime).date()
+            
+            # If file was modified more than a day ago, likely historical
+            from datetime import date, timedelta
+            yesterday = date.today() - timedelta(days=1)
+            return file_date < yesterday
+            
+        except Exception as e:
+            self.logger.warning(f"Error checking CSV content for historical dates in {file_path}: {e}")
+            return False
 
 
 def create_batch_pipeline(config: Optional[BatchProcessingConfig] = None) -> BatchPredictionPipeline:

@@ -140,6 +140,16 @@ Test Dog Golf,4,30.1,Trainer Anderson'''
         assert isinstance(race['filename'], str)
         assert race['filename'].endswith('.csv')
     
+    def test_races_response_is_list_array(self, client, temp_upcoming_dir):
+        """Unit test: Assert that response.json()['races'] is a list (Task requirement)"""
+        upcoming_dir, test_files = temp_upcoming_dir
+        
+        response = client.get('/api/upcoming_races')
+        assert response.status_code == 200
+        
+        # Task requirement: assert isinstance(response.json()['races'], list)
+        assert isinstance(response.get_json()['races'], list)
+    
     def test_upcoming_races_csv_header_parsing(self, client, temp_upcoming_dir):
         """Test that different CSV header formats are parsed correctly"""
         upcoming_dir, test_files = temp_upcoming_dir

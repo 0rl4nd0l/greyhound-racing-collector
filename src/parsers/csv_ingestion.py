@@ -4,6 +4,12 @@ import unicodedata
 import hashlib
 from typing import List, Tuple, Dict, Any
 from dataclasses import dataclass
+import sys
+import os
+
+# Add utils directory to path for guardian import
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+from utils.file_integrity_guardian import FileIntegrityGuardian
 
 @dataclass
 class ParsedRace:
@@ -94,6 +100,25 @@ class CsvIngestion:
         return errors
 
     def parse_csv(self) -> Tuple['ParsedRace', 'ValidationReport']:
+        # Pre-validate file with integrity guardian
+        try:
+            guardian = FileIntegrityGuardian()
+            validation_result = guardian.validate_file(self.file_path)
+            
+            if validation_result.should_quarantine:
+                # File is problematic, quarantine it
+                issues_summary = "; ".join(validation_result.issues)
+                guardian.quarantine_file(self.file_path, f"Pre-parse validation failed: {issues_summary}")
+                return ParsedRace([], [], self.file_path, ""), ValidationReport([f"File quarantined: {issues_summary}"])
+                
+        except Exception as guardian_error:
+            print(f"⚠️ Guardian validation failed for {self.file_path}: {guardian_error}")
+            # Continue with normal parsing if guardian fails
+        
+        # Increase CSV field size limit to handle large fields
+        current_limit = csv.field_size_limit()
+        csv.field_size_limit(10 * 1024 * 1024)  # Set to 10MB limit
+        
         try:
             with open(self.file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
@@ -142,5 +167,8 @@ class CsvIngestion:
                 
         except Exception as e:
             return ParsedRace([], [], self.file_path, ""), ValidationReport([f"Error reading CSV file: {str(e)}"])
+        finally:
+            # Restore original field size limit
+            csv.field_size_limit(current_limit)
 
 # Further expansion needed for complete dog block extraction, validation, etc.

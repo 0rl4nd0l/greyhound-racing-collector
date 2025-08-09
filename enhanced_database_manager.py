@@ -172,12 +172,18 @@ class EnhancedDatabaseManager:
         else:
             race_dict["formatted_extraction_time"] = "Unknown"
 
-        # Clean null values
+        # Clean null values and handle non-serializable types
         for key, value in race_dict.items():
             if value is None or (
                 isinstance(value, str) and value.lower() in ["nan", "null", "none", ""]
             ):
                 race_dict[key] = None
+            elif isinstance(value, bytes):
+                # Convert bytes to string for JSON serialization
+                try:
+                    race_dict[key] = value.decode('utf-8')
+                except UnicodeDecodeError:
+                    race_dict[key] = str(value)
 
         return race_dict
 
@@ -191,6 +197,12 @@ class EnhancedDatabaseManager:
                 dog_dict[key] = None
             elif isinstance(value, str) and value.lower() == "nan":
                 dog_dict[key] = None
+            elif isinstance(value, bytes):
+                # Convert bytes to string for JSON serialization
+                try:
+                    dog_dict[key] = value.decode('utf-8')
+                except UnicodeDecodeError:
+                    dog_dict[key] = str(value)
 
         # Parse historical_records JSON if it exists
         if dog_dict.get("historical_records"):

@@ -31,6 +31,8 @@ Faker==37.5.3
 fakeredis==2.30.3
 filelock==3.16.1
 Flask==3.1.1
+Flask-Assets==2.1.0
+Flask-Compress==1.15
 flask-cors==6.0.1
 Flask-Login==0.6.3
 fonttools==4.58.5

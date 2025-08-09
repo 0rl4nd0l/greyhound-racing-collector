@@ -1,0 +1,6 @@
+dog_name,sex,place,box_number,weight_kg,distance_m,race_date,track_code,grade,race_time,winning_time,bonus_points,first_section_time,margin,winner_two_greyhounds,performance_index_rating,starting_price
+Nordic Queen,B,6,8,25.0,342,2025-06-21,AP/K,M,21.55,19.89,19.64,4.87,23.75,BACARDI GIRL,4566,34.0
+Nordic Queen,B,6,5,25.5,342,2025-06-10,AP/K,M,21.29,20.19,19.41,4.86,15.75,Gabby Maisy,6,81.0
+Nordic Queen,B,4,5,25.1,342,2025-06-07,AP/K,M,21.5,20.5,19.84,4.74,14.25,BLAZIN' BON,4,26.0
+Nordic Queen,B,4,1,25.3,300,2025-06-03,MBS,M,18.45,17.75,16.68,4.75,10.0,Catching,2444,26.0
+Nordic Queen,B,3,8,25.3,300,2025-05-27,MBS,M,17.91,17.48,16.66,,6.0,Slip Me Fifty,3,34.0

@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T12:41:50.786450
+Total Time: 26.307s
+CPU Time: 25.245s
+I/O Time: 0.0ms
+Memory Peak: 99.58MB
+Function Calls: 5813277
+Bottlenecks: <20>(2548.000s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)(43.716s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/connection.py:253(poll)(19.694s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/__init__.py:274(load)(19.022s), objects}(17.418s)
+
+==================================================
+Detailed cProfile Output:
+         5813277 function calls (5359268 primitive calls) in 29.499 seconds
+
+   Ordered by: cumulative time
+   List reduced from 2548 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+6039/6038    1.023    0.000   43.716    0.007 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)
+       49    0.003    0.000   19.694    0.402 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/connection.py:253(poll)
+  199/192    0.076    0.000   19.022    0.099 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/__init__.py:274(load)
+  201/194    0.144    0.001   17.418    0.090 {method 'read' of '_io.TextIOWrapper' objects}
+     12/1    0.001    0.000   14.312   14.312 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:690(process_request_thread)
+     12/1    0.002    0.000   14.312   14.312 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:360(finish_request)
+     12/1    0.003    0.000   14.312   14.312 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:760(__init__)
+        1    0.001    0.001   14.312   14.312 /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:810(_try_load_latest_model)
+        1    0.067    0.067   14.253   14.253 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:613(_unpickle)
+  218/211    0.168    0.001   13.301    0.063 {method '__exit__' of '_io._IOBase' objects}
+       49    0.003    0.000   13.038    0.266 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/connection.py:439(_poll)
+   120/44    0.025    0.000   12.648    0.287 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/selectors.py:385(select)
+    62/38    0.007    0.000   12.631    0.332 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/connection.py:1134(wait)
+36183/36081    0.590    0.000   12.019    0.000 {method 'read' of '_io.BufferedReader' objects}
+       10    0.002    0.000   10.125    1.012 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1403(_terminate_and_reset)
+       10    0.006    0.001   10.105    1.010 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/_parallel_backends.py:323(terminate)
+     13/7    0.005    0.000    9.432    1.347 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/pool.py:500(_wait_for_updates)
+   183147    0.960    0.000    8.639    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py:414(_iterencode)
+        2    0.000    0.000    8.222    4.111 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/bs4/__init__.py:122(__init__)
+        2    0.000    0.000    8.222    4.111 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/bs4/__init__.py:471(_feed)
+
+

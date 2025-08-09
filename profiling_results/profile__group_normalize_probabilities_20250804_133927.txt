@@ -1,0 +1,39 @@
+Profile for _group_normalize_probabilities
+Timestamp: 2025-08-04T13:39:27.359476
+Total Time: 0.009s
+CPU Time: 0.038s
+I/O Time: 0.0ms
+Memory Peak: 0.34MB
+Function Calls: 1000
+Bottlenecks: <20>(232.000s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/c_parser_wrapper.py:60(__init__)(0.008s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:10177(apply)(0.007s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/apply.py:864(apply)(0.007s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/apply.py:1061(apply_standard)(0.006s)
+
+==================================================
+Detailed cProfile Output:
+         1000 function calls (986 primitive calls) in 0.011 seconds
+
+   Ordered by: cumulative time
+   List reduced from 232 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    0.008    0.008 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/c_parser_wrapper.py:60(__init__)
+        1    0.000    0.000    0.007    0.007 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:10177(apply)
+        1    0.000    0.000    0.007    0.007 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/apply.py:864(apply)
+        1    0.000    0.000    0.006    0.006 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/apply.py:1061(apply_standard)
+        1    0.000    0.000    0.006    0.006 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/apply.py:1070(apply_series_generator)
+        1    0.000    0.000    0.005    0.005 /Users/orlandolee/greyhound_racing_collector/temporal_feature_builder.py:104(<lambda>)
+        1    0.000    0.000    0.005    0.005 /Users/orlandolee/greyhound_racing_collector/temporal_feature_builder.py:55(get_race_timestamp)
+        1    0.000    0.000    0.004    0.004 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/tools/datetimes.py:678(to_datetime)
+        1    0.003    0.003    0.004    0.004 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/tools/datetimes.py:316(_convert_listlike_datetimes)
+        1    0.000    0.000    0.002    0.002 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/apply.py:1242(series_generator)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:3988(_ixs)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/dateutil/parser/_parser.py:666(_parse)
+        1    0.001    0.001    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/managers.py:958(fast_xs)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/csv_ingestion.py:503(ingest_csv)
+       84    0.000    0.000    0.001    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/re/__init__.py:174(search)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/apply.py:860(values)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:12597(values)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/managers.py:1633(as_array)
+        1    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/managers.py:1707(_interleave)
+        1    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/dateutil/parser/_parser.py:199(split)
+
+

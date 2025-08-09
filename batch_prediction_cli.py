@@ -196,6 +196,12 @@ Examples:
         default='text'
     )
     
+    parser.add_argument(
+        '--historical',
+        help='Enable historical mode - only process races with dates < today',
+        action='store_true'
+    )
+    
     return parser
 
 
@@ -370,9 +376,10 @@ def main():
                 name=job_name,
                 input_files=csv_files,
                 output_dir=args.output,
-                metadata={"force": args.force},
+                metadata={"force": args.force, "historical": args.historical},
                 batch_size=args.batch_size,
-                max_workers=args.workers
+                max_workers=args.workers,
+                historical=args.historical
             )
             
             if not args.quiet:

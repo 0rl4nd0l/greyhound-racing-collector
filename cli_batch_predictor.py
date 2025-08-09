@@ -105,7 +105,7 @@ def monitor_job_progress(pipeline, job_id, show_details=True):
         print(f"\n⏸️  Monitoring stopped. Job {job_id[:8]} continues in background.")
         print(f"   Check status with: python {sys.argv[0]} --job-status {job_id}")
 
-def predict_single_file(file_path, pipeline=None):
+def predict_single_file(file_path, pipeline=None, historical=False):
     """Predict a single race file"""
     if not os.path.exists(file_path):
         print(f"❌ File not found: {file_path}")
@@ -127,7 +127,8 @@ def predict_single_file(file_path, pipeline=None):
             input_files=[file_path],
             output_dir="./cli_predictions",
             batch_size=1,
-            max_workers=1
+            max_workers=1,
+            historical=historical
         )
         
         print(f"📋 Created job: {job_id}")
@@ -144,7 +145,7 @@ def predict_single_file(file_path, pipeline=None):
         print(f"❌ Error predicting file: {e}")
         return False
 
-def predict_batch_directory(directory_path, pipeline=None):
+def predict_batch_directory(directory_path, pipeline=None, historical=False):
     """Predict all CSV files in a directory"""
     if not os.path.exists(directory_path):
         print(f"❌ Directory not found: {directory_path}")
@@ -175,7 +176,8 @@ def predict_batch_directory(directory_path, pipeline=None):
             input_files=csv_files,
             output_dir="./cli_batch_predictions",
             batch_size=10,
-            max_workers=3
+            max_workers=3,
+            historical=historical
         )
         
         print(f"📋 Created batch job: {job_id}")
@@ -301,6 +303,8 @@ Examples:
                        help='Enable detailed progress callbacks (default: True)')
     parser.add_argument('--quiet', '-q', action='store_true',
                        help='Suppress progress output')
+    parser.add_argument('--historical', action='store_true',
+                       help='Enable historical mode - only process races with dates < today')
     
     args = parser.parse_args()
     
@@ -325,10 +329,10 @@ Examples:
     
     try:
         if args.file:
-            success = predict_single_file(args.file, pipeline)
+            success = predict_single_file(args.file, pipeline, args.historical)
         
         elif args.batch:
-            success = predict_batch_directory(args.batch, pipeline)
+            success = predict_batch_directory(args.batch, pipeline, args.historical)
         
         elif args.upcoming_races:
             success = predict_upcoming_races(pipeline)

@@ -15,7 +15,8 @@ function refreshRaceCards() {
 function updateRaceCards(races) {
     const container = document.getElementById('race-cards-container');
     container.innerHTML = '';
-    races.forEach(race => {
+    const racesArray = Array.isArray(races) ? races : Object.values(races || {});
+    racesArray.forEach(race => {
         const card = document.createElement('div');
         card.className = 'race-card';
         card.innerHTML = `

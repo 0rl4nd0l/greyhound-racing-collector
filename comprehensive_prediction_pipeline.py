@@ -210,16 +210,47 @@ class ComprehensivePredictionPipeline:
             except Exception as e:
                 print(f"❌ Error updating race times: {e}")
 
-    def validate_race_file(self, race_file_path):
-        """Validate race file and check data quality"""
+    def validate_race_file(self, race_file_path, min_file_size=100):
+        """Validate race file and check data quality
+        
+        Args:
+            race_file_path: Path to the race file to validate
+            min_file_size: Minimum file size in bytes (default: 100)
+            
+        Returns:
+            Tuple of (is_valid: bool, message: str)
+        """
         try:
             if not os.path.exists(race_file_path):
                 return False, "Race file not found"
 
+            # Check file size first (before reading content)
+            file_size = os.path.getsize(race_file_path)
+            if file_size < min_file_size:
+                filename = os.path.basename(race_file_path)
+                print(f"⚠️  Skipping file '{filename}': Too small ({file_size} bytes < {min_file_size} bytes minimum)")
+                return False, f"File too small: {file_size} bytes (minimum: {min_file_size} bytes)"
+
             # Check if file is actually HTML (common issue with failed downloads)
             with open(race_file_path, "r", encoding="utf-8") as f:
-                first_line = f.readline().strip()
-                if first_line.startswith("<!DOCTYPE") or first_line.startswith("<html"):
+                content_sample = f.read(1024)  # Read first 1KB to check for HTML patterns
+                
+                # Check for various HTML indicators
+                html_indicators = [
+                    "<!DOCTYPE",
+                    "<html", 
+                    "<HTML",
+                    "<head>",
+                    "<HEAD>",
+                    "<body>",
+                    "<BODY>",
+                    "<title>",
+                    "<TITLE>"
+                ]
+                
+                if any(indicator in content_sample for indicator in html_indicators):
+                    filename = os.path.basename(race_file_path)
+                    print(f"⚠️  Skipping file '{filename}': Contains HTML content, not CSV data")
                     return (
                         False,
                         "File appears to be HTML, not CSV. Possibly a failed download.",

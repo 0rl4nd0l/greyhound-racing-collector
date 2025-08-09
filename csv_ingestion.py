@@ -547,7 +547,7 @@ class FormGuideCsvIngestor:
             file_hash = hashlib.sha256(Path(file_path).read_bytes()).hexdigest()
             cursor.execute("SELECT 1 FROM processed_race_files WHERE file_hash = ?", (file_hash,))
             if cursor.fetchone() is not None:
-                self.logger.info(f"File {file_path} is already processed, skipping.")
+                self.logger.debug(f"File {file_path} is already processed, skipping.")
                 conn.close()
                 return [], ValidationResult(is_valid=True, errors=[], warnings=["Already processed"], missing_required=[], available_columns=[], file_info={})
             conn.close()
@@ -573,6 +573,14 @@ class FormGuideCsvIngestor:
             cursor.execute("INSERT INTO processed_race_files (file_hash, file_path) VALUES (?, ?)", (file_hash, str(file_path)))
             conn.commit()
             conn.close()
+            
+            # Update mtime heuristic for optimization
+            try:
+                from utils.mtime_heuristic import create_mtime_heuristic
+                heuristic = create_mtime_heuristic(self.db_path)
+                heuristic.update_processed_mtime_from_files([str(file_path)])
+            except Exception as e:
+                self.logger.debug(f"Mtime heuristic update failed (non-critical): {e}")
             
             self.logger.info(f"Successfully ingested {len(processed_data)} records from {file_path}")
             

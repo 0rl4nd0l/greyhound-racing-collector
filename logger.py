@@ -203,6 +203,88 @@ class EnhancedLogger:
         with open(self.workflow_log_file, "a") as f:
             json.dump(workflow_entry, f)
             f.write("\n")
+    
+    def log_race_operation(
+        self, 
+        race_date: str, 
+        venue: str, 
+        race_number: str, 
+        operation: str, 
+        reason: str,
+        http_status: Optional[int] = None,
+        verbose_fetch: bool = False,
+        level: str = "INFO"
+    ):
+        """Log per-race operations in the specified format: [SKIP|CACHE|FETCH] 2025-07-25 AP_K R4 – reason
+        
+        Args:
+            race_date: Date in YYYY-MM-DD format
+            venue: Venue code (e.g., AP_K)
+            race_number: Race number
+            operation: One of SKIP, CACHE, or FETCH
+            reason: Descriptive reason for the operation
+            http_status: HTTP status code (logged when fetches_attempted)
+            verbose_fetch: Whether to log at all (conditional logging)
+            level: Log level (INFO, WARNING, ERROR)
+        """
+        # Always log warnings and errors regardless of verbose_fetch
+        if level in ["WARNING", "ERROR"] or verbose_fetch:
+            # Format the structured log line
+            log_line = f"[{operation}] {race_date} {venue} R{race_number} – {reason}"
+            
+            # Add HTTP status if provided
+            if http_status is not None:
+                log_line += f" (HTTP {http_status})"
+            
+            # Log to appropriate level
+            if level == "ERROR":
+                self.process_logger.error(log_line)
+            elif level == "WARNING":
+                self.process_logger.warning(log_line)
+            else:
+                self.process_logger.info(log_line)
+            
+            # Add to web logs with structured data
+            timestamp = datetime.now().isoformat()
+            with self.lock:
+                log_entry = {
+                    "timestamp": timestamp,
+                    "level": level,
+                    "component": "race_operation",
+                    "operation": operation,
+                    "race_date": race_date,
+                    "venue": venue,
+                    "race_number": race_number,
+                    "reason": reason,
+                    "http_status": http_status,
+                    "message": log_line,
+                    "structured_format": True
+                }
+                self.web_logs["process"].append(log_entry)
+                
+                # Keep only last 1000 entries
+                if len(self.web_logs["process"]) > 1000:
+                    self.web_logs["process"] = self.web_logs["process"][-1000:]
+            
+            self.save_web_logs()
+            
+            # Also log to main_workflow.jsonl
+            workflow_entry = {
+                "timestamp": timestamp,
+                "type": "race_operation",
+                "level": level,
+                "operation": operation,
+                "race_date": race_date,
+                "venue": venue,
+                "race_number": race_number,
+                "reason": reason,
+                "http_status": http_status,
+                "message": log_line,
+                "verbose_fetch_enabled": verbose_fetch
+            }
+            with open(self.workflow_log_file, "a") as f:
+                json.dump(workflow_entry, f)
+                f.write("\n")
 
     def log_error(
         self,
@@ -293,6 +375,31 @@ class EnhancedLogger:
     def info(self, message: str, context: Optional[Dict] = None):
         """Log info messages"""
         self.log_process(message, level="INFO", details=context)
+    
+    def debug(self, message: str, context: Optional[Dict] = None):
+        """Log debug messages"""
+        if self.debug_mode:
+            # Log to file with debug logger
+            self.debug_logger.debug(message)
+            
+            # Add to web logs if in debug mode
+            timestamp = datetime.now().isoformat()
+            
+            with self.lock:
+                log_entry = {
+                    "timestamp": timestamp,
+                    "level": "DEBUG",
+                    "component": "debug",
+                    "message": message,
+                    "details": context or {},
+                }
+                self.web_logs["debug"].append(log_entry)
+                
+                # Keep only last 1000 debug entries
+                if len(self.web_logs["debug"]) > 1000:
+                    self.web_logs["debug"] = self.web_logs["debug"][-1000:]
+            
+            self.save_web_logs()
     
     def error(self, message: str, exc_info: bool = False, **kwargs):
         """Log error messages (compatibility method)"""

@@ -25,23 +25,26 @@ def run_collection():
     """Run data collection process"""
     print("🔍 Starting data collection...")
 
-    # Ensure comprehensive scraping of all available data
+    # Ensure comprehensive scraping of all available data using expert form method
     try:
-        print("📊 Running form guide CSV scraper for full data...")
+        print("📊 Running expert form CSV scraper for enhanced data collection...")
         result = subprocess.run(
-            [sys.executable, "form_guide_csv_scraper.py"],
+            [sys.executable, "expert_form_csv_scraper.py", "--days-ahead", "2", "--verbose"],
             capture_output=True,
             text=True,
-            timeout=60,
-        )  # Extended timeout for full scrape
+            timeout=180,  # Extended timeout for expert form scraping
+        )
         if result.returncode == 0:
-            print("✅ Form guide scraping completed successfully")
+            print("✅ Expert form CSV scraping completed successfully")
+            # Print some stats from the output if available
+            if result.stdout:
+                print(f"📊 Scraper output (last 200 chars): {result.stdout[-200:]}")
         else:
-            print(f"⚠️ Form guide scraping issues: {result.stderr[:200]}")
+            print(f"⚠️ Expert form CSV scraping issues: {result.stderr[:200] if result.stderr else 'Unknown error'}")
     except subprocess.TimeoutExpired:
-        print("⏰ Form guide scraping timed out, please retry if needed.")
+        print("⏰ Expert form CSV scraping timed out, please retry if needed.")
     except Exception as e:
-        print(f"❌ Form guide scraping failed: {e}")
+        print(f"❌ Expert form CSV scraping failed: {e}")
 
     # Check for upcoming race browser
     if os.path.exists("upcoming_race_browser.py"):
@@ -72,22 +75,53 @@ def run_collection():
     print("🏁 Data collection completed")
 
 
-def run_analysis():
-    """Run data analysis process"""
+def run_analysis(strict_scan: bool = False):
+    """Run data analysis process with mtime optimization"""
     print("📈 Starting data analysis...")
 
-    # Check for unprocessed files
+    # Check for unprocessed files using mtime heuristic
     unprocessed_dir = "./unprocessed"
     if not os.path.exists(unprocessed_dir):
         print("⚠️ No unprocessed directory found")
         return
 
-    unprocessed_files = [f for f in os.listdir(unprocessed_dir) if f.endswith(".csv")]
-    if not unprocessed_files:
-        print("ℹ️ No unprocessed files found")
-        return
+    # Use mtime heuristic for efficient file scanning
+    try:
+        from utils.mtime_heuristic import create_mtime_heuristic
+        
+        heuristic = create_mtime_heuristic()
+        
+        # Get files that need processing using mtime optimization
+        files_to_process = list(heuristic.scan_directory_optimized(
+            unprocessed_dir, 
+            strict_scan=strict_scan,
+            file_extensions=['.csv']
+        ))
+        
+        if not files_to_process:
+            if strict_scan:
+                print("ℹ️ No CSV files found in unprocessed directory")
+            else:
+                print("ℹ️ No new files to process (use --strict-scan to force full re-scan)")
+            return
 
-    print(f"📊 Found {len(unprocessed_files)} files to process")
+        print(f"📊 Found {len(files_to_process)} files to process")
+        if not strict_scan:
+            stats = heuristic.get_scan_statistics()
+            if stats.get('heuristic_enabled'):
+                print(f"🚀 Using mtime optimization (last processed: {stats.get('last_processed_datetime', 'N/A')})")
+        
+        # Convert FileEntry objects to file paths for compatibility
+        unprocessed_files = [entry.name for entry in files_to_process]
+        
+    except ImportError as e:
+        print(f"⚠️ Mtime heuristic not available, falling back to full scan: {e}")
+        # Fallback to traditional directory listing
+        unprocessed_files = [f for f in os.listdir(unprocessed_dir) if f.endswith(".csv")]
+        if not unprocessed_files:
+            print("ℹ️ No unprocessed files found")
+            return
+        print(f"📊 Found {len(unprocessed_files)} files to process (full scan)")
 
     # Try to use enhanced comprehensive processor
     if os.path.exists("enhanced_comprehensive_processor.py"):
@@ -139,6 +173,7 @@ def basic_file_processing():
 
     unprocessed_files = [f for f in os.listdir(unprocessed_dir) if f.endswith(".csv")]
     processed_count = 0
+    processed_file_paths = []
 
     for filename in unprocessed_files:
         try:
@@ -152,10 +187,21 @@ def basic_file_processing():
             shutil.copy2(source_path, dest_path)
             os.remove(source_path)
             processed_count += 1
+            processed_file_paths.append(source_path)  # Track for mtime update
             print(f"✅ {filename} processed")
 
         except Exception as e:
             print(f"❌ Error processing {filename}: {e}")
+
+    # Update mtime heuristic with processed files
+    if processed_file_paths:
+        try:
+            from utils.mtime_heuristic import create_mtime_heuristic
+            heuristic = create_mtime_heuristic()
+            heuristic.update_processed_mtime_from_files(processed_file_paths)
+            print(f"🚀 Updated mtime heuristic with {len(processed_file_paths)} processed files")
+        except Exception as e:
+            print(f"⚠️ Mtime heuristic update failed (non-critical): {e}")
 
     print(f"✅ Basic processing completed! Processed {processed_count} files")
 
@@ -232,7 +278,8 @@ def create_parser():
         epilog="""
 Examples:
   python run.py collect --enable-profiling
-  python run.py analyze
+  python run.py analyze                    # Use mtime optimization
+  python run.py analyze --strict-scan      # Disable mtime heuristic for full re-scan
   python run.py predict race.csv --enable-profiling
         """
     )
@@ -253,6 +300,12 @@ Examples:
         '--enable-profiling',
         action='store_true',
         help='Enable profiling for performance analysis (default: disabled for zero overhead)'
+    )
+    
+    parser.add_argument(
+        '--strict-scan',
+        action='store_true',
+        help='Disable mtime heuristic for full file re-scan (default: use mtime optimization)'
     )
     
     return parser
@@ -278,7 +331,7 @@ def main():
     if args.command == "collect":
         run_collection()
     elif args.command == "analyze":
-        run_analysis()
+        run_analysis(strict_scan=args.strict_scan)
     elif args.command == "predict":
         success = run_prediction(args.race_file_path)
         sys.exit(0 if success else 1)

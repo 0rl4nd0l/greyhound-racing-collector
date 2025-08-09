@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T15:23:02.246063
+Total Time: 32.075s
+CPU Time: 27.821s
+I/O Time: 0.0ms
+Memory Peak: 460.71MB
+Function Calls: 7733574
+Bottlenecks: <20>(228.000s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:674(load)(32.057s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:613(_unpickle)(31.799s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:1230(load)(31.799s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)(12.071s)
+
+==================================================
+Detailed cProfile Output:
+         7733574 function calls in 32.077 seconds
+
+   Ordered by: cumulative time
+   List reduced from 228 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.257    0.257   32.057   32.057 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:674(load)
+        1    0.000    0.000   31.799   31.799 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:613(_unpickle)
+        1    7.851    7.851   31.799   31.799 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:1230(load)
+    30129    0.499    0.000   12.071    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)
+    20062    0.200    0.000    8.722    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)
+    20062    4.074    0.000    8.508    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)
+  1368061    3.135    0.000    5.669    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:281(read)
+    30129    1.729    0.000    2.683    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:1754(load_build)
+  1347995    2.216    0.000    2.216    0.000 {method 'read' of '_io.BytesIO' objects}
+   925428    2.148    0.000    2.148    0.000 {built-in method builtins.isinstance}
+   286577    0.368    0.000    1.773    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:1659(load_binget)
+   120254    1.315    0.000    1.315    0.000 {method 'read' of '_io.BufferedReader' objects}
+    20021    0.175    0.000    1.188    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle_utils.py:234(_read_bytes)
+    25062    1.133    0.000    1.133    0.000 {method 'reduce' of 'numpy.ufunc' objects}
+    75181    0.214    0.000    0.814    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:1668(load_long_binget)
+    20021    0.680    0.000    0.680    0.000 {built-in method numpy.frombuffer}
+    30137    0.393    0.000    0.610    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:1736(load_setitems)
+   653775    0.562    0.000    0.562    0.000 {method 'append' of 'list' objects}
+    10035    0.176    0.000    0.561    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:1628(load_reduce)
+    20021    0.544    0.000    0.544    0.000 {built-in method numpy.empty}
+
+

@@ -11,6 +11,10 @@ Author: AI Assistant
 Date: July 11, 2025
 """
 
+# CRITICAL: Import profiling disabler FIRST to prevent conflicts
+import disable_profiling
+from disable_profiling import is_profiling, set_profiling_enabled, profile_function, track_sequence
+
 import json
 import math
 import os
@@ -44,8 +48,8 @@ from logger import logger
 # Configuration constants
 DEFAULT_PORT = 5002
 
-# Import profiling configuration
-from profiling_config import set_profiling_enabled, is_profiling
+# Import profiling configuration (disabled to avoid conflicts)
+# from profiling_config import set_profiling_enabled, is_profiling
 
 # Import CSV ingestion system for processing race files
 try:
@@ -92,29 +96,24 @@ except ImportError as e:
     def query_performance_decorator(func):
         return func
 
-# Import pipeline profiler for bottleneck analysis
-try:
-    from pipeline_profiler import (pipeline_profiler, profile_function,
-                                   track_sequence)
+# Import pipeline profiler for bottleneck analysis (disabled due to conflicts)
+# try:
+#     from pipeline_profiler import (pipeline_profiler, profile_function,
+#                                    track_sequence)
+#
+#     PROFILING_ENABLED = True
+#     print("🔍 Pipeline profiling enabled")
+# except ImportError:
+#     print("⚠️ Pipeline profiling not available")
+#     PROFILING_ENABLED = False
 
-    PROFILING_ENABLED = True
-    print("🔍 Pipeline profiling enabled")
-except ImportError:
-    print("⚠️ Pipeline profiling not available")
-    PROFILING_ENABLED = False
+# Temporary stubs
+class DummyTracker:
+    def __enter__(self): return self
+    def __exit__(self, *args): pass
 
-    def profile_function(func):
-        return func
-
-    def track_sequence(step_name, component, step_type="processing"):
-        class DummyTracker:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *args):
-                pass
-
-        return DummyTracker()
+def profile_function(func): return func
+def track_sequence(step_name, component, step_type="processing"): return DummyTracker()
 
 
 # Import Strategy Manager for unified prediction pipeline
@@ -281,11 +280,15 @@ def get_gpt_enhancer():
 
 
 app = Flask(__name__)
-app.secret_key = "greyhound_racing_secret_key_2025"
 
-# Configure long-term caching for static files (1 year = 31536000 seconds)
-if not app.debug:
-    app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 60 * 60 * 24 * 365
+# Load configuration from config.py
+from config import get_config
+config_class = get_config()
+app.config.from_object(config_class)
+
+# Override secret key if not already set
+if not app.config.get('SECRET_KEY'):
+    app.config['SECRET_KEY'] = "greyhound_racing_secret_key_2025"
 
 # Initialize asset management system
 if ASSET_MANAGEMENT_AVAILABLE and AssetManager:
@@ -2508,6 +2511,22 @@ def enable_explain_analyze():
             "error": f"Failed to enable query monitoring: {str(e)}"
         }), 500
 
+@app.route("/ping")
+def ping():
+    """Simple ping endpoint for testing compression"""
+    return jsonify({
+        "message": "pong",
+        "timestamp": datetime.now().isoformat(),
+        "status": "ok",
+        "server": "greyhound-racing-dashboard",
+        "compression_test": "This is a longer message to ensure the response is large enough to trigger gzip compression when the minimum size threshold is met.",
+        "data": {
+            "uptime": "running",
+            "version": "3.1.0",
+            "environment": "development"
+        }
+    })
+
 @app.route("/api/health")
 def api_health():
     """Health check endpoint"""
@@ -4422,7 +4441,7 @@ def run_scraper_background():
 
 
 def fetch_csv_background():
-    """Background task to fetch CSV form guides"""
+    """Background task to fetch CSV form guides using expert-form approach"""
     global processing_status
 
     with processing_lock:
@@ -4430,50 +4449,90 @@ def fetch_csv_background():
         # Keep existing log entries and append new ones
         processing_status["start_time"] = datetime.now()
         processing_status["progress"] = 0
+        processing_status["current_task"] = "Initializing CSV fetching"
 
     try:
         safe_log_to_processing("📊 Starting CSV form guide fetching...", "INFO", 0)
 
+        processing_status["progress"] = 10
+        processing_status["current_task"] = "Preparing expert-form scraper"
+        safe_log_to_processing("🔍 Using expert-form CSV scraper for enhanced accuracy...", "INFO", 10)
+        safe_log_to_processing("⚡ Using optimized settings for faster processing...", "INFO", 15)
+
         processing_status["progress"] = 25
+        processing_status["current_task"] = "Running CSV scraper (this may take 2-3 minutes)"
+        safe_log_to_processing("🚀 Starting CSV download process...", "INFO", 25)
 
-        # Run the form guide CSV scraper with historical flag for batch scraping
-        success = run_command_with_output(
-            [sys.executable, "form_guide_csv_scraper.py", "--historical", "--verbose-fetch"], "📊 "
+        # Run the expert form CSV scraper with optimized parameters:
+        # - Only 1 day ahead to reduce processing time
+        # - Max 2 workers for reasonable concurrency without overwhelming the server
+        # - Increased timeout for large batch processing
+        result = subprocess.run(
+            [sys.executable, "expert_form_csv_scraper.py", "--days-ahead", "1", "--max-workers", "2", "--verbose"],
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minute timeout
         )
-
+        
+        processing_status["progress"] = 90
+        processing_status["current_task"] = "Processing results"
+        
+        success = result.returncode == 0
+        
+        # Extract useful stats from output if available
+        if result.stdout:
+            output_lines = result.stdout.strip().split('\n')
+            
+            # Look for statistics in the output
+            stats_found = False
+            for line in output_lines[-20:]:  # Check last 20 lines for stats
+                if 'successful' in line.lower() or 'completed' in line.lower():
+                    safe_log_to_processing(f"📊 {line.strip()}", "INFO", 92)
+                    stats_found = True
+                elif 'races requested' in line.lower() or 'cache hits' in line.lower():
+                    safe_log_to_processing(f"📈 {line.strip()}", "INFO", 94)
+                    stats_found = True
+            
+            if not stats_found and len(output_lines) > 0:
+                # Show last few lines of output
+                safe_log_to_processing(f"📋 Output: {output_lines[-1][:100]}", "INFO", 95)
+        
         processing_status["progress"] = 100
+        processing_status["current_task"] = "Completed"
 
         if success:
-            processing_status["log"].append(
-                {
-                    "timestamp": datetime.now().isoformat(),
-                    "message": "✅ CSV form guides fetched successfully!",
-                }
+            safe_log_to_processing(
+                "✅ CSV form guides fetched successfully using expert-form method!", "INFO", 100
             )
+            if result.stderr:
+                # Even on success, show any warnings
+                error_lines = result.stderr.strip().split('\n')
+                warning_count = sum(1 for line in error_lines if 'WARNING' in line or 'WARN' in line)
+                if warning_count > 0:
+                    safe_log_to_processing(f"⚠️ Completed with {warning_count} warnings (some races may not have CSV data available)", "WARNING", 100)
         else:
-            processing_status["log"].append(
-                {
-                    "timestamp": datetime.now().isoformat(),
-                    "message": "❌ CSV fetching failed",
-                }
+            safe_log_to_processing(
+                "❌ CSV fetching failed - expert-form method encountered issues", "ERROR", 100
             )
+            if result.stderr:
+                error_msg = result.stderr.strip()[:200]  # First 200 chars of error
+                safe_log_to_processing(f"🔍 Error details: {error_msg}", "ERROR", 100)
 
-    except Exception as e:
-        processing_status["log"].append(
-            {
-                "timestamp": datetime.now().isoformat(),
-                "message": f"❌ CSV fetching error: {str(e)}",
-            }
+    except subprocess.TimeoutExpired:
+        safe_log_to_processing(
+            "⏰ CSV fetching timed out (5 minute limit). Some data may have been collected.", "WARNING", 100
         )
+        processing_status["current_task"] = "Timed out"
+    except Exception as e:
+        safe_log_to_processing(
+            f"❌ CSV fetching error: {str(e)}", "ERROR", processing_status.get("progress", 0)
+        )
+        processing_status["current_task"] = "Error occurred"
 
     finally:
         processing_status["running"] = False
-        processing_status["log"].append(
-            {
-                "timestamp": datetime.now().isoformat(),
-                "message": "🏁 CSV fetching completed",
-            }
-        )
+        processing_status["current_task"] = "Finished"
+        safe_log_to_processing("🏁 CSV fetching completed", "INFO", 100)
 
 
 def process_data_background():

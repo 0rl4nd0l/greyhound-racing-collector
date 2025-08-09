@@ -71,7 +71,7 @@ class TemporalFeatureBuilder:
             return pd.to_datetime(race_row['race_date'])
     
     def load_dog_historical_data(self, dog_name: str, target_timestamp: datetime, 
-                                lookback_days: int = 365) -> pd.DataFrame:
+                                lookback_days: int = 180) -> pd.DataFrame:
         """Load historical race data for a dog, excluding target race."""
         try:
             conn = sqlite3.connect(self.db_path)
@@ -90,10 +90,12 @@ class TemporalFeatureBuilder:
             WHERE d.dog_clean_name = ?
                 AND r.race_date IS NOT NULL
                 AND d.finish_position IS NOT NULL
+                AND date(r.race_date) >= date(?, '-180 days')
             ORDER BY r.race_date DESC, r.race_time DESC
+            LIMIT 50
             """
             
-            historical_data = pd.read_sql_query(query, conn, params=[dog_name])
+            historical_data = pd.read_sql_query(query, conn, params=[dog_name, target_timestamp.strftime('%Y-%m-%d')])
             conn.close()
             
             if historical_data.empty:
@@ -122,8 +124,9 @@ class TemporalFeatureBuilder:
             return pd.DataFrame()
     
     def create_historical_features(self, historical_data: pd.DataFrame, 
-                                 target_venue: str = None, target_grade: str = None) -> Dict[str, float]:
-        """Create features from historical races with exponential decay weighting."""
+                                 target_venue: str = None, target_grade: str = None,
+                                 target_distance: float = None) -> Dict[str, float]:
+        """Create features from historical races with exponential decay weighting and contextual adjustments."""
         if historical_data.empty:
             return self._get_default_historical_features()
         
@@ -136,17 +139,55 @@ class TemporalFeatureBuilder:
         historical_data['individual_time_numeric'] = pd.to_numeric(
             historical_data['individual_time'], errors='coerce'
         )
+        historical_data['distance_numeric'] = pd.to_numeric(
+            historical_data['distance'], errors='coerce'
+        )
         
         # Create exponential decay weights (most recent races weighted more)
         num_races = len(historical_data)
         weights = np.array([self.decay_factor ** i for i in range(num_races)])
+        
+        # Apply contextual weighting - emphasize similar race conditions
+        # Weight races at Ballarat higher if target is Ballarat
+        ballarat_codes = ['BAL', 'BALLARAT', 'Ballarat']
+        if target_venue and target_venue.upper() in [code.upper() for code in ballarat_codes]:
+            # Give extra weight to Ballarat races
+            venue_boost = (historical_data['venue'].str.upper().isin([code.upper() for code in ballarat_codes])).astype(float) * 1.5
+            weights = weights * (1 + venue_boost)
+            logger.debug(f"Applied Ballarat venue boost to {venue_boost.sum()} races")
+        elif target_venue:
+            # Give moderate boost to same venue races
+            venue_boost = (historical_data['venue'] == target_venue).astype(float) * 0.8
+            weights = weights * (1 + venue_boost)
+            logger.debug(f"Applied venue boost to {venue_boost.sum()} races for {target_venue}")
+        
+        # Weight races of same grade higher
+        if target_grade:
+            grade_boost = (historical_data['grade'] == target_grade).astype(float) * 0.6
+            weights = weights * (1 + grade_boost)
+            logger.debug(f"Applied grade boost to {grade_boost.sum()} races for grade {target_grade}")
+        
+        # Weight races of same distance higher
+        if target_distance and 'distance' in historical_data.columns:
+            distance_tolerance = 50  # Within 50m considered similar
+            distance_matches = (abs(historical_data['distance_numeric'] - target_distance) <= distance_tolerance).astype(float)
+            distance_boost = distance_matches * 0.7
+            weights = weights * (1 + distance_boost)
+            logger.debug(f"Applied distance boost to {distance_boost.sum()} races for distance {target_distance}m")
+        
         weights = weights / weights.sum()  # Normalize weights
         
+        logger.debug(f"Total contextual weight adjustments applied to {len(weights)} historical races")
+        
         # Basic performance metrics with decay weighting
-        valid_positions = historical_data['finish_position_numeric'].dropna()
+        # Get indices of valid positions to maintain temporal alignment
+        valid_position_mask = historical_data['finish_position_numeric'].notna()
+        valid_positions = historical_data['finish_position_numeric'][valid_position_mask]
+        
         if len(valid_positions) > 0:
-            valid_weights = weights[:len(valid_positions)]
-            valid_weights = valid_weights / valid_weights.sum()
+            # Use the weights corresponding to the valid positions (maintains temporal order)
+            valid_weights = weights[valid_position_mask]
+            valid_weights = valid_weights / valid_weights.sum()  # Renormalize
             
             features['historical_avg_position'] = float(
                 np.average(valid_positions, weights=valid_weights)
@@ -169,17 +210,69 @@ class TemporalFeatureBuilder:
         else:
             features['historical_form_trend'] = 0.0
         
-        # Time-based performance
-        valid_times = historical_data['individual_time_numeric'].dropna()
+        # Time-based performance with distance adjustment
+        # Get indices of valid times to maintain temporal alignment
+        valid_time_mask = historical_data['individual_time_numeric'].notna()
+        valid_times = historical_data['individual_time_numeric'][valid_time_mask]
+        
         if len(valid_times) > 0:
-            time_weights = weights[:len(valid_times)]
-            time_weights = time_weights / time_weights.sum()
+            # Use the weights corresponding to the valid times (maintains temporal order)
+            time_weights = weights[valid_time_mask]
+            time_weights = time_weights / time_weights.sum()  # Renormalize
             
-            features['historical_avg_time'] = float(
-                np.average(valid_times, weights=time_weights)
-            )
-            features['historical_best_time'] = float(valid_times.min())
-            features['historical_time_consistency'] = float(valid_times.std())
+            # Distance-adjusted time conversion when target distance is provided
+            if target_distance:
+                def adjust_time_for_distance(time_val, from_distance, to_distance):
+                    """Adjust race time for distance difference using linear scaling.
+                    This is a simple heuristic - more sophisticated models could be used.
+                    """
+                    if pd.isna(from_distance) or from_distance <= 0 or to_distance <= 0:
+                        return time_val
+                    # Linear scaling assumption: time is proportional to distance
+                    return time_val * (to_distance / from_distance)
+                
+                # Get distance data aligned with valid times
+                valid_time_distances = historical_data['distance_numeric'][valid_time_mask]
+                
+                # Apply distance adjustment to each time, maintaining alignment
+                adjusted_times = []
+                adjusted_weights = []
+                
+                for i, (time_val, distance_val, weight_val) in enumerate(zip(valid_times, valid_time_distances, time_weights)):
+                    if pd.notna(distance_val) and distance_val > 0:
+                        adjusted_time = adjust_time_for_distance(time_val, distance_val, target_distance)
+                        adjusted_times.append(adjusted_time)
+                        adjusted_weights.append(weight_val)
+                    else:
+                        # Still include times without distance info (use original time)
+                        adjusted_times.append(time_val)
+                        adjusted_weights.append(weight_val)
+                
+                adjusted_times = np.array(adjusted_times)
+                adjusted_weights = np.array(adjusted_weights)
+                adjusted_weights = adjusted_weights / adjusted_weights.sum()  # Renormalize
+                
+                features['historical_avg_time'] = float(
+                    np.average(adjusted_times, weights=adjusted_weights)
+                )
+                features['historical_best_time'] = float(adjusted_times.min())
+                features['historical_time_consistency'] = float(adjusted_times.std())
+                
+                # Add distance adjustment metadata
+                features['distance_adjusted_time'] = True
+                features['target_distance'] = float(target_distance)
+                
+                logger.debug(f"Applied distance adjustment for target distance {target_distance}m to {len(adjusted_times)} times")
+            else:
+                # No distance adjustment - use original times with preserved temporal weights
+                features['historical_avg_time'] = float(
+                    np.average(valid_times, weights=time_weights)
+                )
+                features['historical_best_time'] = float(valid_times.min())
+                features['historical_time_consistency'] = float(valid_times.std())
+                
+                features['distance_adjusted_time'] = False
+                features['target_distance'] = 0.0
         
         # Venue-specific performance
         if target_venue:
@@ -302,7 +395,8 @@ class TemporalFeatureBuilder:
             historical_features = self.create_historical_features(
                 historical_data,
                 target_venue=dog_row.get('venue'),
-                target_grade=dog_row.get('grade')
+                target_grade=dog_row.get('grade'),
+                target_distance=pd.to_numeric(dog_row.get('distance'), errors='coerce')
             )
             
             features.update(historical_features)
@@ -396,7 +490,35 @@ def create_temporal_assertion_hook():
                 f"TEMPORAL LEAKAGE DETECTED at predict time: "
                 f"Dog {dog_name} in race {race_id} has disabled features: {disabled_found}"
             )
-    
+        
+        # Check if race is in the future
+        current_date = datetime.now().date()
+        race_date_str = features.get('race_date', '')
+        
+        if race_date_str:
+            try:
+                # Try different date formats
+                date_formats = ['%d %B %Y', '%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y']
+                race_date = None
+                
+                for fmt in date_formats:
+                    try:
+                        race_date = datetime.strptime(race_date_str, fmt).date()
+                        break
+                    except ValueError:
+                        continue
+                
+                if race_date and race_date > current_date:
+                    raise AssertionError(
+                        f"TEMPORAL LEAKAGE DETECTED: Race {race_id} for dog {dog_name} is in the future: {race_date} (current: {current_date})"
+                    )
+            except AssertionError:
+                # Re-raise AssertionError (temporal leakage detection)
+                raise
+            except Exception as e:
+                # If date parsing fails, log but don't block (could be testing scenario)
+                logger.debug(f"Could not parse race date '{race_date_str}' for race {race_id}: {e}")
+
     return assert_no_target_leakage
 
 

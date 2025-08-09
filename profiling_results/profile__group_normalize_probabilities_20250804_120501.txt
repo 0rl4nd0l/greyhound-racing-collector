@@ -1,0 +1,39 @@
+Profile for _group_normalize_probabilities
+Timestamp: 2025-08-04T12:05:01.925399
+Total Time: 0.047s
+CPU Time: 0.038s
+I/O Time: 0.0ms
+Memory Peak: 0.11MB
+Function Calls: 5102
+Bottlenecks: <20>(352.000s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/_utils.py:70(__call__)(0.028s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/calibration.py:709(predict_proba)(0.027s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/_response.py:116(_get_response_values)(0.027s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/base.py:1200(is_classifier)(0.027s)
+
+==================================================
+Detailed cProfile Output:
+         5102 function calls (4817 primitive calls) in 0.059 seconds
+
+   Ordered by: cumulative time
+   List reduced from 352 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+     14/6    0.000    0.000    0.028    0.005 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/_utils.py:70(__call__)
+        1    0.000    0.000    0.027    0.027 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/calibration.py:709(predict_proba)
+        1    0.000    0.000    0.027    0.027 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/_response.py:116(_get_response_values)
+        1    0.000    0.000    0.027    0.027 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/base.py:1200(is_classifier)
+        4    0.000    0.000    0.021    0.005 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1010(handle)
+        5    0.000    0.000    0.018    0.004 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1138(emit)
+    27/21    0.000    0.000    0.014    0.001 {built-in method builtins.next}
+     16/7    0.000    0.000    0.014    0.002 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/validation.py:1673(check_is_fitted)
+    13/10    0.000    0.000    0.013    0.001 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/contextlib.py:145(__exit__)
+        2    0.000    0.000    0.012    0.006 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/pipeline.py:1218(__sklearn_tags__)
+     30/4    0.001    0.000    0.011    0.003 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/_tags.py:367(get_tags)
+        1    0.000    0.000    0.010    0.010 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/pipeline.py:44(_raise_or_warn_if_not_fitted)
+    30/16    0.008    0.000    0.009    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/_tags.py:303(_find_tags_provider)
+        1    0.000    0.000    0.009    0.009 /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:416(predict_race)
+        1    0.000    0.000    0.009    0.009 /Users/orlandolee/greyhound_racing_collector/temporal_feature_builder.py:268(build_features_for_race)
+        1    0.000    0.000    0.009    0.009 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1509(info)
+        1    0.000    0.000    0.009    0.009 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1640(_log)
+        1    0.000    0.000    0.009    0.009 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1666(handle)
+        1    0.000    0.000    0.009    0.009 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1720(callHandlers)
+        5    0.000    0.000    0.008    0.002 {method 'write' of '_io.TextIOWrapper' objects}
+
+

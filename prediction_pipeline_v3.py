@@ -21,7 +21,6 @@ import sys
 from datetime import datetime
 
 import pandas as pd
-from src.parsers.csv_ingestion import CsvIngestion
 
 from constants import DOG_NAME_KEY
 from ml_system_v4 import MLSystemV4
@@ -334,7 +333,7 @@ class PredictionPipelineV3:
 # Apply group softmax normalization with profiling
             import time
             start_time = time.time()
-            norm_probs = self.group_softmax([p["win_probability"] for p in predictions])
+            norm_probs = group_softmax([p["win_probability"] for p in predictions])
             for i, p in enumerate(predictions):
                 p["norm_win_prob"] = norm_probs[i]
             ProfilingRecorder.record("group_softmax_ranking", time.time() - start_time)
@@ -367,21 +366,20 @@ class PredictionPipelineV3:
             ProfilingRecorder.flush_to_file()
             return error_response
     @timed("_load_race_file")
-    def _load_race_file(self, race_file_path: str) -> dict:
-        """Load and parse race file using CsvIngestion module"""
+    def _load_race_file(self, race_file_path: str) -> pd.DataFrame:
+        """Load race CSV into a pandas DataFrame for downstream parsing.
+        Minimal, robust loader to keep compatibility with _extract_dogs which
+        expects original column names (e.g., 'Dog Name', 'WGT', 'SP', 'TIME').
+        """
         try:
-            ingestion = CsvIngestion(race_file_path)
-            parsed_race, validation_report = ingestion.parse_csv()
-
-            if validation_report.errors:
-                logger.error(f"Validation errors found: {validation_report.errors}")
+            df = pd.read_csv(race_file_path)
+            if df is None or df.empty:
+                logger.error("Loaded race file is empty or unreadable")
                 return None
-
             logger.debug(
-                f"Loaded race file with {len(parsed_race.records)} rows and columns: {parsed_race.headers}"
+                f"Loaded race file with {len(df)} rows and columns: {list(df.columns)}"
             )
-            return parsed_race
-
+            return df
         except Exception as e:
             logger.error(f"Error loading race file: {e}")
             logger.debug(f"File path: {race_file_path}")

@@ -292,6 +292,9 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "upload: marks tests that test file upload functionality"
     )
+    config.addinivalue_line(
+        "markers", "benchmark: marks tests as performance benchmarks"
+    )
 
 
 def pytest_collection_modifyitems(config, items):

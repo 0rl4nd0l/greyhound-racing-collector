@@ -65,244 +65,48 @@ class SQLQueryProfile:
 
 class PipelineProfiler:
     """
-    Comprehensive pipeline profiler for bottleneck analysis.
+    Disabled pipeline profiler - No-op implementation to prevent conflicts.
     """
 
     def __init__(self, output_dir: str = "./profiling_results"):
+        # Disabled profiler - no initialization
         self.output_dir = Path(output_dir)
-        self.output_dir.mkdir(exist_ok=True)
-
-        # Profiling configuration
-        self.sql_slow_query_threshold = 100  # ms
-        self.enable_memory_tracking = True
-        self.enable_io_tracking = True
-
-        # Storage for results
-        self.profile_results: List[ProfileResult] = []
-        self.sql_profiles: List[SQLQueryProfile] = []
-        self.sequence_data: List[Dict[str, Any]] = []
-
-        # Thread-safe logging
-        self.lock = threading.Lock()
-
-        print(f"🔍 Pipeline Profiler initialized - Results: {self.output_dir}")
+        self.profile_results = []
+        self.sql_profiles = []
+        self.sequence_data = []
+        # No actual profiling setup to avoid conflicts
 
     def profile_function(self, func, *args, **kwargs) -> ProfileResult:
         """
-        Profile a function with comprehensive metrics.
+        Disabled profiling function - just execute the function without profiling.
         """
         function_name = func.__name__
-        print(f"📊 Profiling function: {function_name}")
-
-        # Start memory tracking
-        if self.enable_memory_tracking:
-            tracemalloc.start()
-
-        # Start process monitoring
-        process = psutil.Process()
-        start_cpu_times = process.cpu_times()
-        start_io_counters = None
-        if self.enable_io_tracking:
-            try:
-                start_io_counters = process.io_counters()
-            except AttributeError:
-                # io_counters not available on all platforms (e.g., macOS)
-                start_io_counters = None
-        start_memory = process.memory_info().rss
-
-        # Profile with cProfile
-        profiler = cProfile.Profile()
-        start_time = time.time()
-
-        profiler.enable()
+        
+        # Just execute the function without any profiling
         try:
             result = func(*args, **kwargs)
         except Exception as e:
-            print(f"❌ Error during profiling of {function_name}: {e}")
             result = None
-        finally:
-            profiler.disable()
-
-        end_time = time.time()
-        total_time = end_time - start_time
-
-        # Get resource usage
-        end_cpu_times = process.cpu_times()
-        end_io_counters = None
-        if self.enable_io_tracking:
-            try:
-                end_io_counters = process.io_counters()
-            except AttributeError:
-                # io_counters not available on all platforms (e.g., macOS)
-                end_io_counters = None
-        end_memory = process.memory_info().rss
-
-        cpu_time = (end_cpu_times.user + end_cpu_times.system) - (
-            start_cpu_times.user + start_cpu_times.system
-        )
-        io_time = 0
-        if start_io_counters and end_io_counters:
-            io_time = (end_io_counters.read_time + end_io_counters.write_time) - (
-                start_io_counters.read_time + start_io_counters.write_time
-            )
-
-        memory_peak = (end_memory - start_memory) / 1024 / 1024  # MB
-
-        # Get memory peak if tracking enabled
-        if self.enable_memory_tracking:
-            current, peak = tracemalloc.get_traced_memory()
-            memory_peak = max(memory_peak, peak / 1024 / 1024)
-            tracemalloc.stop()
-
-        # Analyze profiler stats
-        s = StringIO()
-        ps = pstats.Stats(profiler, stream=s).sort_stats("cumulative")
-        ps.print_stats(20)  # Top 20 functions
-        profiler_output = s.getvalue()
-
-        # Extract bottlenecks from profiler output
-        bottlenecks = self._analyze_bottlenecks(profiler_output, total_time)
-
-        # Create profile result
-        profile_result = ProfileResult(
+            raise e
+        
+        # Return a dummy profile result
+        return ProfileResult(
             function_name=function_name,
-            total_time=total_time,
-            cpu_time=cpu_time,
-            io_time=io_time,
-            memory_peak=memory_peak,
-            call_count=ps.total_calls,
-            bottlenecks=bottlenecks,
+            total_time=0.0,
+            cpu_time=0.0,
+            io_time=0.0,
+            memory_peak=0.0,
+            call_count=0,
+            bottlenecks=[],
             timestamp=datetime.now().isoformat(),
-            result=result  # Store the actual function result
+            result=result
         )
-
-        # Store and save results
-        with self.lock:
-            self.profile_results.append(profile_result)
-            self._save_profile_result(profile_result, profiler_output)
-
-        print(f"✅ Profiling complete: {function_name}")
-        print(f"   ⏱️  Total time: {total_time:.3f}s")
-        print(f"   🖥️  CPU time: {cpu_time:.3f}s")
-        print(f"   💾 Memory peak: {memory_peak:.2f}MB")
-        print(f"   📞 Function calls: {ps.total_calls}")
-        print(f"   🚨 Bottlenecks: {len(bottlenecks)}")
-
-        return profile_result
 
     def profile_sql_queries(self, db_path: str) -> List[SQLQueryProfile]:
         """
-        Profile SQL queries and identify slow operations.
+        Disabled SQL profiling - returns empty list.
         """
-        print(f"🗄️  Profiling SQL queries in: {db_path}")
-
-        if not os.path.exists(db_path):
-            print(f"❌ Database not found: {db_path}")
-            return []
-
-        conn = sqlite3.connect(db_path)
-
-        # Enable query profiling
-        conn.execute("PRAGMA compile_options")
-
-        # Get all tables
-        cursor = conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        tables = cursor.fetchall()
-
-        sql_profiles = []
-
-        for (table_name,) in tables:
-            print(f"   📋 Analyzing table: {table_name}")
-
-            # Test common operations
-            operations = [
-                ("SELECT COUNT(*)", "SELECT"),
-                ("SELECT * LIMIT 10", "SELECT"),
-                (f"SELECT * FROM {table_name} WHERE rowid = 1", "SELECT"),
-            ]
-
-            for query_template, op_type in operations:
-                query = (
-                    query_template.replace("*", f"* FROM {table_name}")
-                    if "FROM" not in query_template
-                    else query_template
-                )
-
-                start_time = time.time()
-                try:
-                    cursor.execute(query)
-                    rows = cursor.fetchall()
-                    execution_time = (time.time() - start_time) * 1000  # ms
-
-                    is_slow = execution_time > self.sql_slow_query_threshold
-
-                    sql_profile = SQLQueryProfile(
-                        query=query,
-                        execution_time=execution_time,
-                        rows_affected=len(rows),
-                        is_slow=is_slow,
-                        table_name=table_name,
-                        operation_type=op_type,
-                        timestamp=datetime.now().isoformat(),
-                    )
-
-                    sql_profiles.append(sql_profile)
-
-                    if is_slow:
-                        print(
-                            f"   🐌 Slow query detected: {execution_time:.2f}ms - {query[:50]}..."
-                        )
-
-                except Exception as e:
-                    print(f"   ❌ Query failed: {query[:50]}... - {e}")
-
-        # Test complex queries
-        complex_queries = [
-            "SELECT rm.venue, COUNT(*) FROM race_metadata rm GROUP BY rm.venue",
-            "SELECT d.dog_name, COUNT(*) FROM dog_race_data d GROUP BY d.dog_name HAVING COUNT(*) > 5",
-            "SELECT rm.venue, rm.race_date, drd.dog_name FROM race_metadata rm JOIN dog_race_data drd ON rm.race_id = drd.race_id LIMIT 100",
-        ]
-
-        for query in complex_queries:
-            start_time = time.time()
-            try:
-                cursor.execute(query)
-                rows = cursor.fetchall()
-                execution_time = (time.time() - start_time) * 1000  # ms
-
-                is_slow = execution_time > self.sql_slow_query_threshold
-
-                sql_profile = SQLQueryProfile(
-                    query=query,
-                    execution_time=execution_time,
-                    rows_affected=len(rows),
-                    is_slow=is_slow,
-                    table_name="multiple",
-                    operation_type="COMPLEX",
-                    timestamp=datetime.now().isoformat(),
-                )
-
-                sql_profiles.append(sql_profile)
-
-                if is_slow:
-                    print(f"   🐌 Slow complex query: {execution_time:.2f}ms")
-
-            except Exception as e:
-                print(f"   ❌ Complex query failed: {e}")
-
-        conn.close()
-
-        with self.lock:
-            self.sql_profiles.extend(sql_profiles)
-            self._save_sql_profiles(sql_profiles)
-
-        slow_queries = [p for p in sql_profiles if p.is_slow]
-        print(
-            f"✅ SQL profiling complete: {len(sql_profiles)} queries, {len(slow_queries)} slow"
-        )
-
-        return sql_profiles
+        return []
 
     def track_sequence_step(
         self,
@@ -315,26 +119,9 @@ class PipelineProfiler:
         **metadata,
     ):
         """
-        Track a step in the sequence for diagram generation.
+        Disabled sequence tracking - does nothing.
         """
-        duration = end_time - start_time
-
-        sequence_step = {
-            "step_name": step_name,
-            "component": component,
-            "start_time": start_time,
-            "end_time": end_time,
-            "duration": duration,
-            "step_type": step_type,  # processing, io, network, db
-            "data_size": data_size,
-            "timestamp": datetime.now().isoformat(),
-            **metadata,
-        }
-
-        with self.lock:
-            self.sequence_data.append(sequence_step)
-
-        print(f"📊 Tracked: {component}.{step_name} ({duration:.3f}s, {step_type})")
+        pass
 
     def generate_sequence_diagram(self) -> str:
         """
@@ -498,9 +285,9 @@ class PipelineProfiler:
 
     def generate_comprehensive_report(self) -> str:
         """
-        Generate a comprehensive bottleneck analysis report.
+        Disabled report generation - returns empty string.
         """
-        print("📋 Generating comprehensive report...")
+        return ""
 
         report_lines = []
         report_lines.append("# Greyhound Predictor Pipeline Bottleneck Analysis")
@@ -683,45 +470,24 @@ pipeline_profiler = PipelineProfiler()
 
 def profile_function(func):
     """
-    Decorator for profiling functions.
+    Disabled profiling decorator - returns function unchanged.
     """
-
-    def wrapper(*args, **kwargs):
-        # Perform profiling
-        profile_result = pipeline_profiler.profile_function(func, *args, **kwargs)
-        # Return the actual function's result
-        return profile_result.result
-
-    return wrapper
+    return func  # Just return the function unchanged
 
 
 def track_sequence(step_name: str, component: str, step_type: str = "processing"):
     """
-    Context manager for tracking sequence steps.
+    Disabled context manager - returns dummy context manager.
     """
-
-    class SequenceTracker:
-        def __init__(self, step_name, component, step_type):
-            self.step_name = step_name
-            self.component = component
-            self.step_type = step_type
-            self.start_time = None
-
+    
+    class DummySequenceTracker:
         def __enter__(self):
-            self.start_time = time.time()
             return self
-
+        
         def __exit__(self, exc_type, exc_val, exc_tb):
-            end_time = time.time()
-            pipeline_profiler.track_sequence_step(
-                self.step_name,
-                self.component,
-                self.start_time,
-                end_time,
-                self.step_type,
-            )
-
-    return SequenceTracker(step_name, component, step_type)
+            pass  # Do nothing
+    
+    return DummySequenceTracker()
 
 
 if __name__ == "__main__":

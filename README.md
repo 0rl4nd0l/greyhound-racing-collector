@@ -1,18 +1,160 @@
-# Greyhound Racing Predictor
+# Greyhound Racing Prediction Pipeline
 
 ## Overview
 
-The Greyhound Racing Predictor is a comprehensive, AI-powered system for analyzing and predicting greyhound racing outcomes. It combines data from various sources, including FastTrack and other sportsbooks, to provide detailed race analysis and predictions using advanced machine learning techniques.
+A comprehensive machine learning system for predicting greyhound race outcomes using advanced feature engineering, temporal leakage protection, and probability calibration.
 
-### Key Features
+## Key Features
 
-- **Unified Database**: Consolidates data from multiple sources into a single, efficient SQLite database (`greyhound_racing_data.db`)
-### Advanced ML Pipeline: Utilizes Optuna for Bayesian optimization with stratified TimeSeriesSplit, feature engineering, and intelligent model selection. Incorporates class imbalance handling with SMOTE-NC and focal loss, and outputs to MLflow.
-- **Unified Prediction System**: Intelligent prediction engine that automatically selects the best available prediction method
-- **Flask Web Interface**: A web-based dashboard for monitoring races, viewing predictions, and managing the system
-- **Comprehensive API**: RESTful API endpoints for predictions, dog statistics, race data, and system management
-- **Automated Data Processing**: Scripts for automated collection, analysis, and processing of racing data
-- **Frontend Integration**: Includes a JavaScript frontend for enhanced user interaction
+This pipeline provides end-to-end functionality for:
+- **CSV Data Parsing**: Parse race data from various CSV formats
+- **Feature Engineering**: Generate 50+ features with temporal leakage protection
+- **ML Model Scoring**: Use trained models to predict race outcomes
+- **Probability Calibration**: Convert raw scores to calibrated win probabilities
+- **Ranked Output**: Generate professional race predictions with confidence metrics
+
+---
+
+## Quick Start
+
+### Installation
+
+1. **Clone the repository:**
+```bash
+git clone repository-url
+cd greyhound_racing_collector
+```
+
+2. **Install dependencies:**
+```bash
+pip install -r requirements.txt
+```
+
+3. **Verify installation:**
+```bash
+python greyhound_prediction_pipeline.py --help
+```
+
+---
+
+## Core Functions
+
+### 1. `parse_csv`
+
+Parses CSV race data and extracts structured information.
+- Output: Parsed JSON and statistics
+
+### 2. `feature_engineer`
+
+Generates features for prediction:
+- Includes recent form, venue analysis, competition level, etc.
+
+### 3. `score`
+
+Scores dogs using trained models.
+- Uses ensemble methods and feature importance analysis
+
+### 4. `probabilities`
+
+Converts scores to calibrated win probabilities.
+
+---
+
+### Basic Usage
+
+#### Parse CSV Race Data
+```bash
+python greyhound_prediction_pipeline.py parse --input races.csv --output ./parsed/
+```
+
+#### Predict Single Race
+```bash
+python greyhound_prediction_pipeline.py predict --race race_data.json --output predictions.csv
+```
+
+#### Run Full Pipeline
+```bash
+python greyhound_prediction_pipeline.py full-pipeline --input races.csv --output ./results/
+```
+
+## Advanced Usage
+
+### Custom Model Training
+
+```python
+from greyhound_prediction_pipeline import GreyhoundPredictionPipeline
+from ml_system_v4 import MLSystemV4
+
+# Initialize systems
+pipeline = GreyhoundPredictionPipeline()
+ml_system = MLSystemV4()
+
+# Train new model
+ml_system.train_model(training_data_path="historical_races.csv")
+```
+
+### Batch Processing
+
+```python
+import pandas as pd
+from pathlib import Path
+
+# Process multiple race files
+race_files = Path("./races/").glob("*.csv")
+results = []
+
+for race_file in race_files:
+    result = pipeline.run_full_pipeline(
+        str(race_file), 
+        f"./outputs/{race_file.stem}/"
+    )
+    results.append(result)
+```
+
+### API Integration
+
+```python
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+pipeline = GreyhoundPredictionPipeline()
+
+@app.route('/predict', methods=['POST'])
+def predict_race():
+    race_data = request.json
+    
+    features = pipeline.feature_engineer(race_data)
+    scores = pipeline.score(features)
+    probabilities = pipeline.probabilities(scores)
+    
+    return jsonify(probabilities)
+```
+
+## License
+
+This project is proprietary. All rights reserved.
+
+## Support
+
+For issues and questions:
+- Create GitHub issue for bugs
+- Check existing documentation
+- Review test cases for examples
+
+## Version History
+
+- **v4.0**: Current version with temporal leakage protection
+- **v3.0**: Enhanced feature engineering
+- **v2.0**: Initial ML pipeline
+- **v1.0**: Basic prediction system
+
+---
+
+## Acknowledgments
+
+- Built using scikit-learn, XGBoost, and pandas
+- Feature engineering inspired by racing domain expertise
+- Temporal validation methodology from time series forecasting best practices
 - **GPT Enhancement**: AI-powered race analysis using OpenAI GPT-4 for narrative insights and betting strategies
 
 ## Getting Started
@@ -110,6 +252,112 @@ curl http://localhost:5002/api/health
   # Run predictions on all upcoming races
   python run.py predict
   ```
+
+## Advisory Workflow
+
+The application includes an integrated advisory system that provides quality assessment and warnings for prediction results.
+
+### Advisory Features
+
+- **Automatic Quality Assessment**: Analyzes prediction confidence, calibration, and data quality
+- **Color-Coded Messages**: INFO (green), WARNING (yellow), CRITICAL (red) message types
+- **Collapsible Details**: Expandable sections for detailed issue explanations
+- **OpenAI Integration**: AI-powered summaries when API key is available, template fallback
+- **Real-time Integration**: Non-blocking workflow integration with prediction pipeline
+
+### Advisory API Endpoints
+
+#### Generate Advisory
+
+- **POST /api/generate_advisory**
+
+  Generate advisory messages for prediction data or file.
+
+  **Request Body** (JSON):
+  ```json
+  {
+    "prediction_data": {
+      "race_id": "race_identifier",
+      "race_date": "2025-08-04",
+      "predictions": [
+        {"dog_name": "Test Dog", "box_number": 1, "win_prob": 0.4, "confidence": 0.8}
+      ]
+    }
+    // OR
+    "file_path": "/path/to/prediction.json"
+  }
+  ```
+
+  **Response**:
+  ```json
+  {
+    "success": true,
+    "messages": [
+      {
+        "type": "WARNING",
+        "category": "quality_assessment",
+        "title": "Moderate Quality Predictions",
+        "message": "Prediction quality score: 75/100 - Some issues detected",
+        "timestamp": "2025-08-04T12:00:00Z"
+      }
+    ],
+    "human_readable_summary": "WARNING: 2 warnings identified. Overall quality score: 75/100. Review recommended.",
+    "ml_json": {
+      "summary": {"total_messages": 2, "quality_score": 75},
+      "feature_flags": {"has_quality_issues": true, "low_quality_score": false}
+    },
+    "processing_time_ms": 23.5,
+    "openai_used": false
+  }
+  ```
+
+### Frontend Integration
+
+The advisory system includes JavaScript utilities for frontend integration:
+
+```javascript
+// Load advisory utilities
+<script src="/static/js/advisoryUtils.js"></script>
+
+// Render advisory in UI
+const advisoryData = {
+  title: "Quality Assessment",
+  message: "Prediction analysis completed",
+  type: "warning",
+  details: ["Low confidence detected", "Class imbalance present"],
+  helpText: "These issues may affect prediction accuracy"
+};
+
+const container = document.getElementById('advisory-container');
+AdvisoryUtils.renderAdvisory(advisoryData, container);
+```
+
+### Usage Examples
+
+#### Command Line Testing
+```bash
+# Test advisory with sample data
+python3 advisory.py --test
+
+# Generate advisory for specific file
+python3 advisory.py --file prediction_result.json
+```
+
+#### API Integration
+```bash
+# Test advisory API endpoint
+curl -X POST http://127.0.0.1:5002/api/generate_advisory \
+  -H "Content-Type: application/json" \
+  -d '{"prediction_data": {"race_id": "test", "predictions": []}}'
+```
+
+#### Workflow Integration
+The advisory system is designed to integrate seamlessly with the prediction workflow:
+
+1. **Non-blocking**: Advisory generation runs in parallel, not blocking predictions
+2. **Error-tolerant**: Falls back gracefully when OpenAI unavailable
+3. **Performance-optimized**: Completes in under 100ms for typical cases
+4. **UI-ready**: Provides structured data for frontend rendering
 
 ## API Documentation
 
@@ -333,6 +581,78 @@ python test_unified_system.py
 # Test database integrity
 python test_unified_schema.py
 ```
+
+### Model Comparison Testing
+
+The system includes a comprehensive model comparison harness for evaluating ML models against historical race data:
+
+```bash
+# Compare all models against historical forms
+python tests/model_comparison_harness.py --model all --csv-dir archive/historical_forms
+
+# Test specific model (v3, v3s, v4)
+python tests/model_comparison_harness.py --model v4 --csv-dir data/test_races/
+
+# Enable verbose logging
+python tests/model_comparison_harness.py --model all --csv-dir archive/historical_forms --verbose
+```
+
+#### Expected Folder Layout
+
+The model comparison harness expects CSV files organized in the following structure:
+
+```
+archive/historical_forms/               # Root directory for historical race data
+├── Race_1_GOSF_2025-07-28.csv        # Individual race files
+├── Race_2_RICH_2025-07-29.csv        # Format: Race_[Number]_[Venue]_[Date].csv
+├── Race_3_APWE_2025-07-30.csv
+└── ...
+
+ data/test_races/                       # Alternative test data directory
+├── test_race_1.csv
+├── test_race_2.csv
+└── ...
+```
+
+**CSV File Requirements:**
+- Must contain `Dog Name` or `dog_name` column
+- Should include racing metadata: `BOX`, `Weight`, `Distance`, `Venue`, etc.
+- Post-outcome columns (like `PLC`, `finish_position`) are automatically stripped to prevent temporal leakage
+- Files are preprocessed according to FORM_GUIDE_SPEC.md standards
+
+#### Output Artifacts
+
+The harness generates comprehensive comparison reports:
+
+1. **JSON Results File**: `model_comparison_results_YYYYMMDD_HHMMSS.json`
+   - Detailed predictions from each model
+   - Performance metrics and timing data
+   - Model metadata and configuration info
+   - Success/failure tracking per race
+
+2. **Console Output**:
+   - Race-by-race prediction summaries
+   - Model performance statistics:
+     - Success rates and prediction counts
+     - Top-1 accuracy and Brier scores
+     - Expected Value (EV) correlations
+     - Confidence vs. dispersion metrics
+     - Calibration usage statistics
+
+3. **Performance Metrics**:
+   - **Success Rate**: Percentage of races successfully predicted
+   - **Top-1 Accuracy**: How often the top-ranked dog wins
+   - **Brier Score**: Probabilistic prediction accuracy (lower is better)
+   - **EV Correlation**: Alignment between predicted and realized expected value
+   - **Variance Spread**: Consistency between raw and normalized probabilities
+   - **Calibration Count**: Number of races using probability calibration
+
+#### Model Types
+
+- **v3**: Full ML System with comprehensive features
+- **v3s**: Simplified ML System (basic configuration)
+- **v4**: Leakage-safe ML System with enhanced data validation
+- **all**: Tests all available models and provides comparative analysis
 
 ### Frontend Tests (if applicable)
 

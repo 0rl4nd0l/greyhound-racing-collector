@@ -18,6 +18,11 @@ from pathlib import Path
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from prometheus_client import CollectorRegistry, Gauge, generate_latest
+try:
+    from monitoring.prometheus_exporter import get_prometheus_exporter
+    PROMETHEUS_ENHANCED = True
+except ImportError:
+    PROMETHEUS_ENHANCED = False
 
 from logger import logger
 from monitoring_api import get_monitoring_api
@@ -46,28 +51,38 @@ def dashboard():
 def get_metrics_prometheus():
     """Expose Prometheus metrics"""
     try:
-        registry = CollectorRegistry()
-        scrape_duration = Gauge(
-            "scrape_duration_seconds", "Scrape duration by job", registry=registry
-        )
-        model_latency = Gauge(
-            "model_latency_seconds", "Model inference time", registry=registry
-        )
-        queue_length = Gauge("queue_length", "Job queue length", registry=registry)
+        if PROMETHEUS_ENHANCED:
+            # Use enhanced Prometheus exporter if available
+            exporter = get_prometheus_exporter()
+            return (
+                exporter.get_metrics(),
+                200,
+                {"Content-Type": "text/plain; charset=utf-8"},
+            )
+        else:
+            # Fallback to basic metrics
+            registry = CollectorRegistry()
+            scrape_duration = Gauge(
+                "scrape_duration_seconds", "Scrape duration by job", registry=registry
+            )
+            model_latency = Gauge(
+                "model_latency_seconds", "Model inference time", registry=registry
+            )
+            queue_length = Gauge("queue_length", "Job queue length", registry=registry)
 
-        # Simulate metric values
-        scrape_duration.set(
-            monitoring._calculate_live_metrics().get("response_time", 0)
-        )
-        # Example: Set fixed values for other metrics
-        model_latency.set(1.5)
-        queue_length.set(3)
+            # Simulate metric values
+            scrape_duration.set(
+                monitoring._calculate_live_metrics().get("response_time", 0)
+            )
+            # Example: Set fixed values for other metrics
+            model_latency.set(1.5)
+            queue_length.set(3)
 
-        return (
-            generate_latest(registry),
-            200,
-            {"Content-Type": "text/plain; charset=utf-8"},
-        )
+            return (
+                generate_latest(registry),
+                200,
+                {"Content-Type": "text/plain; charset=utf-8"},
+            )
     except Exception as e:
         logger.log_error(
             f"Prometheus metrics generation failed: {str(e)}",

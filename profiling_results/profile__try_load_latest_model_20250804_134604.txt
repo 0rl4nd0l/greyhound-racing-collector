@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T13:46:04.140917
+Total Time: 56.037s
+CPU Time: 66.003s
+I/O Time: 0.0ms
+Memory Peak: 87.09MB
+Function Calls: 9938805
+Bottlenecks: <20>(1584.000s), /Users/orlandolee/greyhound_racing_collector/csv_ingestion.py:220(validate_csv_schema)(92.572s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_abc.py:442(exists)(63.139s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1990(__exit__)(62.830s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_local.py:510(stat)(62.455s)
+
+==================================================
+Detailed cProfile Output:
+         9938805 function calls (9468851 primitive calls) in 56.067 seconds
+
+   Ordered by: cumulative time
+   List reduced from 1584 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+ 2248/265    0.608    0.000   92.572    0.349 /Users/orlandolee/greyhound_racing_collector/csv_ingestion.py:220(validate_csv_schema)
+2256/1693    0.103    0.000   63.139    0.037 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_abc.py:442(exists)
+2247/1538    0.255    0.000   62.830    0.041 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1990(__exit__)
+4511/2674    0.209    0.000   62.455    0.023 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_local.py:510(stat)
+2250/1185    0.367    0.000   55.388    0.047 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:694(__init__)
+6041/6038    0.834    0.000   53.070    0.009 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)
+     6013    0.204    0.000   49.571    0.008 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle_utils.py:234(_read_bytes)
+ 2246/337    0.218    0.000   47.427    0.141 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1575(__init__)
+2250/1191    0.339    0.000   42.569    0.036 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/construction.py:423(dict_to_mgr)
+ 2246/820    0.276    0.000   42.008    0.051 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_local.py:529(open)
+2246/1538    0.151    0.000   41.696    0.027 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1622(close)
+ 2245/379    0.439    0.000   36.562    0.096 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:868(read_csv)
+ 2248/807    0.296    0.000   36.456    0.045 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1907(read)
+ 2244/379    0.308    0.000   28.300    0.075 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:583(_read)
+ 2246/778    0.465    0.000   27.954    0.036 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/common.py:664(get_handle)
+2248/1510    0.303    0.000   25.918    0.017 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/construction.py:96(arrays_to_mgr)
+2246/1539    0.174    0.000   25.064    0.016 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/common.py:131(close)
+   190825    0.862    0.000   17.857    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py:414(_iterencode)
+  844/746    0.042    0.000   16.626    0.022 <frozen genericpath>:89(getmtime)
+2248/1876    0.126    0.000   14.671    0.008 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/managers.py:2121(create_block_manager_from_column_arrays)
+
+

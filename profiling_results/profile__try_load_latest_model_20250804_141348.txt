@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T14:13:48.275888
+Total Time: 19.724s
+CPU Time: 18.601s
+I/O Time: 0.0ms
+Memory Peak: 87.15MB
+Function Calls: 4144684
+Bottlenecks: <20>(1499.000s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)(49.901s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)(18.702s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/flask/app.py:904(full_dispatch_request)(16.948s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/selectors.py:385(select)(16.822s)
+
+==================================================
+Detailed cProfile Output:
+         4144684 function calls (3913652 primitive calls) in 19.722 seconds
+
+   Ordered by: cumulative time
+   List reduced from 1499 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+9088/9083    1.166    0.000   49.901    0.005 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)
+6040/6038    0.357    0.000   18.702    0.003 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)
+     10/1    0.061    0.006   16.948   16.948 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/flask/app.py:904(full_dispatch_request)
+       46    0.007    0.000   16.822    0.366 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/selectors.py:385(select)
+   228244    1.244    0.000   12.680    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py:414(_iterencode)
+     6039    0.042    0.000   12.495    0.002 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:1279(load_frame)
+      9/5    0.001    0.000   11.923    2.385 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/http/server.py:493(send_response)
+      9/5    0.001    0.000   11.921    2.384 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/serving.py:440(log_request)
+6039/6038    1.105    0.000   11.665    0.002 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)
+      9/5    0.000    0.000   11.222    2.244 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/serving.py:475(log)
+      9/5    0.001    0.000    8.871    1.774 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/_internal.py:78(_log)
+     15/9    0.000    0.000    8.864    0.985 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1509(info)
+     15/9    0.000    0.000    8.637    0.960 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1640(_log)
+        4    0.012    0.003    8.551    2.138 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/__init__.py:120(dump)
+       45    0.256    0.006    8.031    0.178 {method 'poll' of 'select.poll' objects}
+     15/9    0.001    0.000    8.025    0.892 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1666(handle)
+      9/5    0.003    0.000    7.961    1.592 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/serving.py:259(write)
+     11/1    0.003    0.000    7.936    7.936 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/flask/app.py:1529(__call__)
+     11/1    0.000    0.000    7.936    7.936 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/flask/app.py:1479(wsgi_app)
+        2    0.003    0.002    6.745    3.372 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/bs4/__init__.py:122(__init__)
+
+

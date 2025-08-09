@@ -18,34 +18,34 @@ Date: January 2025
 import threading
 from typing import Optional
 
-# Global profiling state
-_profiling_enabled = False
+# Global profiling state - COMPLETELY DISABLED
+_profiling_enabled = False  # Always False to prevent conflicts
 _profiling_lock = threading.Lock()
 
 
 def set_profiling_enabled(enabled: bool) -> None:
     """
-    Set the global profiling enabled state.
+    Set the global profiling enabled state - DISABLED to prevent conflicts.
     
     Args:
-        enabled: Whether profiling should be enabled
+        enabled: Whether profiling should be enabled (ignored - always disabled)
     """
     global _profiling_enabled
     with _profiling_lock:
-        _profiling_enabled = enabled
+        _profiling_enabled = False  # Always disabled to prevent conflicts
 
 
 def is_profiling() -> bool:
     """
-    Check if profiling is currently enabled.
+    Check if profiling is currently enabled - ALWAYS FALSE to prevent conflicts.
     
     This function is designed to be fast and thread-safe to avoid
     any performance overhead when profiling is disabled.
     
     Returns:
-        True if profiling is enabled, False otherwise
+        Always False to prevent profiling conflicts
     """
-    return _profiling_enabled
+    return False  # Always False to prevent conflicts
 
 
 def get_profiling_status() -> dict:
@@ -75,8 +75,8 @@ def PROFILING_ENABLED():
     return is_profiling()
 
 
-# Initialize profiling as disabled by default for zero overhead
-_profiling_enabled = False
+# Initialize profiling as PERMANENTLY disabled to prevent conflicts
+_profiling_enabled = False  # Permanently disabled
 
 if __name__ == "__main__":
     print("🔧 Profiling Configuration Module")

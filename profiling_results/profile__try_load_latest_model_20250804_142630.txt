@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T14:26:30.980588
+Total Time: 21.022s
+CPU Time: 18.339s
+I/O Time: 0.0ms
+Memory Peak: 82.46MB
+Function Calls: 3724622
+Bottlenecks: <20>(1716.000s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)(23.998s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)(17.878s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle_utils.py:234(_read_bytes)(13.269s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/calibration.py:709(predict_proba)(12.305s)
+
+==================================================
+Detailed cProfile Output:
+         3724622 function calls (3660966 primitive calls) in 23.563 seconds
+
+   Ordered by: cumulative time
+   List reduced from 1716 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+9082/1542    0.237    0.000   23.998    0.016 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)
+6037/1020    0.105    0.000   17.878    0.018 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)
+     6013    0.123    0.000   13.269    0.002 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle_utils.py:234(_read_bytes)
+      6/3    0.003    0.000   12.305    4.102 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/calibration.py:709(predict_proba)
+      6/3    0.002    0.000   12.186    4.062 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/_response.py:116(_get_response_values)
+      6/3    0.001    0.000   12.021    4.007 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/pipeline.py:859(predict_proba)
+      6/3    0.002    0.000   11.994    3.998 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/ensemble/_forest.py:922(predict_proba)
+3000/1063    0.033    0.000   11.650    0.011 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/_utils.py:70(__call__)
+        3    0.000    0.000   11.206    3.735 /Users/orlandolee/greyhound_racing_collector/pipeline_profiler.py:714(__exit__)
+        3    0.001    0.000   11.202    3.734 /Users/orlandolee/greyhound_racing_collector/pipeline_profiler.py:307(track_sequence_step)
+3012/1044    0.056    0.000   11.184    0.011 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1670(_get_outputs)
+3000/1063    0.137    0.000   11.055    0.010 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:603(__call__)
+      2/1    0.000    0.000   11.054   11.054 /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:689(<lambda>)
+      2/1    0.001    0.000   10.290   10.290 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/calibration.py:480(predict_proba)
+    42/28    0.004    0.000    9.585    0.342 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/connection.py:1134(wait)
+     12/6    0.003    0.000    9.255    1.543 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/parallel.py:54(__call__)
+       33    0.002    0.000    9.177    0.278 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/queues.py:372(empty)
+     12/6    0.002    0.000    9.145    1.524 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1969(__call__)
+       33    0.003    0.000    9.009    0.273 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/connection.py:253(poll)
+       33    0.001    0.000    8.991    0.272 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/connection.py:439(_poll)
+
+

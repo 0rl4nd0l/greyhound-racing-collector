@@ -127,7 +127,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
             
             if (data.success) {
-                state.races = Array.isArray(data.races) ? data.races : [];
+state.races = Array.isArray(data.races) ? data.races : Object.values(data.races || {});
                 const viewLabel = state.viewMode === 'upcoming' ? 'upcoming' : 'regular';
                 showToast(`Successfully loaded ${state.races.length} ${viewLabel} races`, 'success');
             } else {
@@ -166,11 +166,11 @@ document.addEventListener('DOMContentLoaded', () => {
             
             row.innerHTML = `
                 <td><input type="checkbox" class="race-checkbox" data-race-id="${race.race_id}" ${raceFilenamAttr}></td>
-                <td>${race.race_name}</td>
-                <td>${race.venue}</td>
-                <td>${new Date(race.race_date).toLocaleDateString()}</td>
-                <td>${race.distance}m</td>
-                <td>${race.grade}</td>
+                <td>${race.race_name || ''}</td>
+                <td>${safeVenue(race.venue)}</td>
+                <td>${race.race_date ? new Date(race.race_date).toLocaleDateString() : ''}</td>
+                <td>${safeDistance(race.distance) ? safeDistance(race.distance) + 'm' : ''}</td>
+                <td>${safeGrade(race.grade)}</td>
                 <td><span class="badge bg-secondary">Not Predicted</span></td>
                 <td><button class="btn btn-sm btn-primary predict-btn" data-race-id="${race.race_id}" ${raceFilenamAttr}>Predict</button></td>
             `;
@@ -249,6 +249,42 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Convert race time to comparable format
+    function convertToComparableTime(raceTime) {
+        if (!raceTime) return "TBD";
+        try {
+            const timeStr = String(raceTime).trim();
+            if (timeStr.match(/\d{1,2}:\d{2}\s*[APap][Mm]/)) {
+                // Parse 12-hour format (e.g., "6:31 PM")
+                const [time, period] = timeStr.split(/\s+/);
+                const [hours, minutes] = time.split(':').map(Number);
+                let hour24 = hours;
+                if (period.toUpperCase() === 'PM' && hours !== 12) {
+                    hour24 += 12;
+                } else if (period.toUpperCase() === 'AM' && hours === 12) {
+                    hour24 = 0;
+                }
+                return hour24 * 60 + minutes;
+            } else if (timeStr.match(/\d{1,2}:\d{2}/)) {
+                // Parse 24-hour format (e.g., "18:31")
+                const [hours, minutes] = timeStr.split(':').map(Number);
+                return hours * 60 + minutes;
+            }
+        } catch (e) {
+            console.warn('Error parsing race time:', raceTime, e);
+        }
+        return "TBD";
+    }
+
+    // Null-safe venue helper
+    const safeVenue = v => (v ?? '');
+
+    // Null-safe grade helper  
+    const safeGrade = g => (g ?? '');
+
+    // Null-safe distance helper
+    const safeDistance = d => (d ?? '');
+
     // Filter and sort races based on state
     function filterAndSortRaces() {
         let filtered = state.races;
@@ -256,17 +292,42 @@ document.addEventListener('DOMContentLoaded', () => {
         if (state.searchQuery) {
             const query = state.searchQuery.toLowerCase();
             filtered = filtered.filter(race => 
-                race.race_name.toLowerCase().includes(query) || 
-                race.venue.toLowerCase().includes(query)
+                (race.race_name || '').toLowerCase().includes(query) || 
+                safeVenue(race.venue).toLowerCase().includes(query)
             );
         }
 
         const [sortKey, sortDir] = state.sortOrder.split('|');
-        filtered.sort((a, b) => {
-            if (a[sortKey] < b[sortKey]) return sortDir === 'asc' ? -1 : 1;
-            if (a[sortKey] > b[sortKey]) return sortDir === 'asc' ? 1 : -1;
-            return 0;
-        });
+        
+        // Enhanced sorting with null safety
+        if (sortKey === 'race_time') {
+            // Special handling for race time sorting with null safety
+            filtered.sort((a, b) => {
+                const tA = convertToComparableTime(a.race_time);
+                const tB = convertToComparableTime(b.race_time);
+                
+                // Handle "TBD" values - put them at the end
+                if (tA === "TBD" && tB === "TBD") {
+                    return safeVenue(a.venue).localeCompare(safeVenue(b.venue));
+                }
+                if (tA === "TBD") return 1; // TBD values go to end
+                if (tB === "TBD") return -1; // TBD values go to end
+                
+                // Both are numeric, sort normally
+                if (tA !== tB) return sortDir === 'asc' ? tA - tB : tB - tA;
+                // Secondary sort by venue
+                return safeVenue(a.venue).localeCompare(safeVenue(b.venue));
+            });
+        } else {
+            // Standard sorting with null safety
+            filtered.sort((a, b) => {
+                const valueA = a[sortKey] ?? '';
+                const valueB = b[sortKey] ?? '';
+                if (valueA < valueB) return sortDir === 'asc' ? -1 : 1;
+                if (valueA > valueB) return sortDir === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
 
         return filtered;
     }
@@ -559,7 +620,8 @@ document.addEventListener('DOMContentLoaded', () => {
         
         elements.predictionResultsBody.innerHTML = '';
         
-        results.forEach((result, index) => {
+        // Use Array.from to ensure forEach is available on all browsers
+        Array.from(results).forEach((result, index) => {
             const resultDiv = document.createElement('div');
             resultDiv.className = `alert ${result.success ? 'alert-success' : 'alert-danger'} mb-3`;
             
@@ -668,7 +730,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (result && result.predictions && result.predictions.length > 0) {
                         let detailsHTML = '<div class="row">';
                         
-                        result.predictions.forEach((prediction, idx) => {
+                        // Use Array.from to ensure forEach is available on all browsers
+                        Array.from(result.predictions).forEach((prediction, idx) => {
                             const winProb = prediction.final_score || prediction.win_probability || prediction.confidence || 0;
                             const dogName = prediction.dog_name || prediction.name || 'Unknown';
                             const boxNumber = prediction.box_number || prediction.box || 'N/A';
@@ -702,9 +765,69 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // Utility to show alerts (legacy function for compatibility)
+    // Utility to show alerts with proper container handling and graceful fallback
     function showAlert(message, type = 'info') {
-        showToast(message, type);
+        // Try to find the actual alert container present in the DOM
+        let container = document.getElementById('alertContainer') ||
+                       document.getElementById('alert-container') ||
+                       document.getElementById('alerts-container') ||
+                       document.getElementById('notification-container');
+        
+        // Graceful fallback: create container if none exists
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'alertContainer';
+            container.className = 'position-fixed top-0 end-0 p-3';
+            container.style.zIndex = '1055';
+            container.setAttribute('role', 'alert');
+            container.setAttribute('aria-live', 'polite');
+            document.body.appendChild(container);
+            console.log('✅ Alert container created with ID: alertContainer');
+        }
+        
+        // Try to use ErrorDisplayManager if available
+        if (typeof window.errorManager !== 'undefined' && window.errorManager.showAlert) {
+            return window.errorManager.showAlert(message, type);
+        }
+        
+        // Fallback implementation using the found/created container
+        const alertId = `alert-${Date.now()}`;
+        const alert = document.createElement('div');
+        alert.id = alertId;
+        alert.className = `alert alert-${type} alert-dismissible fade show`;
+        alert.setAttribute('role', 'alert');
+        
+        const iconMap = {
+            danger: '<i class="fas fa-exclamation-circle me-2"></i>',
+            warning: '<i class="fas fa-exclamation-triangle me-2"></i>',
+            info: '<i class="fas fa-info-circle me-2"></i>',
+            success: '<i class="fas fa-check-circle me-2"></i>'
+        };
+        
+        alert.innerHTML = `
+            <div class="d-flex align-items-center">
+                <div class="flex-grow-1">
+                    ${iconMap[type] || ''}
+                    ${message}
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        `;
+        
+        container.appendChild(alert);
+        
+        // Auto-dismiss after 5 seconds
+        setTimeout(() => {
+            const alertElement = document.getElementById(alertId);
+            if (alertElement && typeof bootstrap !== 'undefined' && bootstrap.Alert) {
+                const bsAlert = new bootstrap.Alert(alertElement);
+                bsAlert.close();
+            } else if (alertElement) {
+                alertElement.remove();
+            }
+        }, 5000);
+        
+        return alertId;
     }
 
     init();
@@ -750,7 +873,8 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Check for missing elements in second DOMContentLoaded block
     const missingElements = [];
-    Object.keys(elements).forEach(key => {
+    // Use Array.from to ensure forEach is available on all browsers
+    Array.from(Object.keys(elements)).forEach(key => {
         if (!elements[key]) {
             missingElements.push(key);
             console.warn(`Missing DOM element in second block: ${key}`);
