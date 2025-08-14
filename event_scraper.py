@@ -1,14 +1,15 @@
 from datetime import datetime
 from urllib.parse import urlparse
+
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3 import Retry
 
-from sportsbook_factory import SportsbookFactory
 from scraper_exception import ScraperException
+from sportsbook_factory import SportsbookFactory
 
 
-class EventScraper():
+class EventScraper:
     def __init__(self):
         self.url = None
         self.csv_outfile = None
@@ -40,17 +41,20 @@ class EventScraper():
 
     def infer_api_endpoint(self):
         params = self.sportsbook.extract_parameters_from_url(self.url)
-        self.event_id = params.get('event_id')
-        self.jurisdiction = params.get('jurisdiction', "Not applicable")
+        self.event_id = params.get("event_id")
+        self.jurisdiction = params.get("jurisdiction", "Not applicable")
         self.api_url = self.sportsbook.concatenate_api_url(
-            self.event_id, self.jurisdiction)
+            self.event_id, self.jurisdiction
+        )
 
     def get_odds(self):
         try:
             self.event_name = self.sportsbook.parse_event_name(
-                self.json_response, self.event_id)
+                self.json_response, self.event_id
+            )
             self.odds_df = self.sportsbook.parse_odds(
-                self.json_response, self.event_id, self.jurisdiction)
+                self.json_response, self.event_id, self.jurisdiction
+            )
         except Exception:
             raise ScraperException(ScraperException.ODDS_PARSING_ERROR)
 
@@ -58,7 +62,7 @@ class EventScraper():
         self.request_start_timestamp = datetime.now()
         headers = {
             "Accept": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.131 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.131 Safari/537.36",
         }
 
         try:
@@ -66,7 +70,8 @@ class EventScraper():
                 self.api_url,
                 timeout=timeout,
                 headers=headers,
-                params=params if params else self.sportsbook.get_api_params())
+                params=params if params else self.sportsbook.get_api_params(),
+            )
 
             response.raise_for_status()
             self.json_response = response.json()
@@ -95,7 +100,7 @@ class EventScraper():
                 "Error": self.error_message,
                 "Scrape Timestamp": self.timestamp_scrape_invoked,
                 "Request Start Timestamp": self.request_start_timestamp,
-                "Request End Timestamp": self.request_end_timestamp
+                "Request End Timestamp": self.request_end_timestamp,
             }
         else:
             summary = {
@@ -105,8 +110,8 @@ class EventScraper():
                 "Request End Timestamp": self.request_end_timestamp,
                 "Sportsbook": f"{self.sportsbook.get_name()} {self.jurisdiction if self.jurisdiction != 'Not applicable' else ''}",
                 "Event": self.event_name,
-                "Markets": self.odds_df['market_id'].nunique(),
-                "Selections": len(self.odds_df)
+                "Markets": self.odds_df["market_id"].nunique(),
+                "Selections": len(self.odds_df),
             }
             if self.csv_outfile:
                 summary["Filename"] = self.csv_outfile

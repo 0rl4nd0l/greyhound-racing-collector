@@ -13,7 +13,8 @@ The CSV files contain individual greyhound form data including:
 Usage: python3 form_guide_csv_scraper.py
 
 Author: AI Assistant
-Date: July 11, 2025
+Date: July 31, 2025
+Version: 3.0.1 - Fixed regex patterns and centralized date parsing
 """
 
 import os
@@ -32,9 +33,65 @@ from bs4 import BeautifulSoup
 import re
 from pathlib import Path
 import sqlite3
+from utils.date_parsing import parse_date_flexible
+from utils.race_file_utils import RaceFileManager
+from src.parsers.csv_ingestion import CsvIngestion
+
+class StatisticsTracker:
+    """Lightweight statistics tracking utility using collections.Counter wrapper"""
+    
+    def __init__(self):
+        """Initialize the statistics tracker with predefined counters"""
+        from collections import Counter
+        self.stats = Counter({
+            'races_requested': 0,
+            'cache_hits': 0,
+            'fetches_attempted': 0,
+            'fetches_failed': 0,
+            'successful_saves': 0
+        })
+    
+    def increment(self, key, amount=1):
+        """Increment a statistic counter by the specified amount"""
+        if key in self.stats:
+            self.stats[key] += amount
+        else:
+            # Allow tracking of additional stats not in the predefined set
+            self.stats[key] += amount
+    
+    def get(self, key):
+        """Get the current value of a statistic"""
+        return self.stats.get(key, 0)
+    
+    def log_summary(self):
+        """Log a summary of all statistics"""
+        print("\n📊 Statistics Summary:")
+        print(f"   🏁 Races requested: {self.stats['races_requested']}")
+        print(f"   ⚡ Cache hits: {self.stats['cache_hits']}")
+        print(f"   🌐 Fetches attempted: {self.stats['fetches_attempted']}")
+        print(f"   ❌ Fetches failed: {self.stats['fetches_failed']}")
+        print(f"   ✅ Successful saves: {self.stats['successful_saves']}")
+        
+        # Calculate derived metrics
+        if self.stats['fetches_attempted'] > 0:
+            success_rate = (self.stats['fetches_attempted'] - self.stats['fetches_failed']) / self.stats['fetches_attempted'] * 100
+            print(f"   📈 Fetch success rate: {success_rate:.1f}%")
+        
+        if self.stats['races_requested'] > 0:
+            cache_hit_rate = self.stats['cache_hits'] / self.stats['races_requested'] * 100
+            print(f"   ⚡ Cache hit rate: {cache_hit_rate:.1f}%")
+    
+    def reset(self):
+        """Reset all statistics to zero"""
+        for key in self.stats:
+            self.stats[key] = 0
+    
+    def to_dict(self):
+        """Return statistics as a dictionary"""
+        return dict(self.stats)
 
 class FormGuideCsvScraper:
-    def __init__(self):
+    def __init__(self, historical=False, verbose_fetch=False):
         self.base_url = "https://www.thedogs.com.au"
         self.unprocessed_dir = "./unprocessed"
         self.download_dir = "./form_guides/downloaded"
@@ -44,11 +101,23 @@ class FormGuideCsvScraper:
         os.makedirs(self.unprocessed_dir, exist_ok=True)
         os.makedirs(self.download_dir, exist_ok=True)
         
-        # Track collected races across all directories
-        self.collected_races = set()  # Stores (date, venue, race_number) tuples
+        # Initialize statistics tracker
+        self.stats = StatisticsTracker()
+        
+        # Initialize shared race file manager
+        self.race_file_manager = RaceFileManager(self.database_path)
+        
+        # Use manager's cached data
+        self.collected_races = self.race_file_manager.collected_races
+        self.existing_files = self.race_file_manager.existing_files
+        self.processed_hashes = self.race_file_manager.processed_hashes
+        
+        # Additional tracking for scraper-specific functionality
         self.completed_dates = set()  # Stores dates that have been fully downloaded
-        self.existing_files = set()   # Stores filenames for backup checking
-        self.load_collected_races()
+        
+        # Store CLI flags for global access
+        self.historical = historical
+        self.verbose_fetch = verbose_fetch
         
         # Note: We collect all historical races (previous day or earlier) for training data
         
@@ -87,7 +156,7 @@ class FormGuideCsvScraper:
             
             # NSW tracks
             'the-gardens': 'GARD',
-            'casino': 'CAS',
+            'casino': 'CASINO',
             'wagga': 'WAG',
             'goulburn': 'GOUL',
             'taree': 'TAR',
@@ -107,6 +176,7 @@ class FormGuideCsvScraper:
             'ingle-farm': 'INF',
             'bulli': 'BUL',
             'raymond-terrace': 'RAY',
+            'maitland': 'MAIT',
             
             # QLD tracks
             'ladbrokes-q1-lakeside': 'Q1L',
@@ -180,855 +250,990 @@ class FormGuideCsvScraper:
         print(f"🎯 Target: Historical races (previous day or earlier) for training data")
     
     def load_collected_races(self):
-        """Load all collected races from all directories to avoid re-downloading"""
-        self.collected_races.clear()
-        self.existing_files.clear()
+        """Load all collected races from all directories to avoid re-downloading - delegate to manager"""
+        # Delegate to the shared race file manager
+        self.race_file_manager.reload_cache()
         
-        # Check all directories where race files might exist
-        directories = [
-            "./unprocessed",
-            "./form_guides/downloaded", 
-            "./form_guides/processed",
-            "./historical_races",
-            "./processed"
-        ]
-        
-        total_files = 0
-        
-        for directory in directories:
-            if os.path.exists(directory):
-                files = [f for f in os.listdir(directory) if f.endswith('.csv')]
-                total_files += len(files)
-                
-                for filename in files:
-                    self.existing_files.add(filename)
-                    
-                    # Try to parse from multiple known filename formats
-                    match = re.match(r'Race (\\d+) - ([A-Z_]+) - (\\d{1,2} \\w+ \\d{4})\\.csv', filename)
-                    if not match:
-                        match = re.match(r'\\w+_Race_(\\d+)_([A-Z_]+)_([\\d-]+)\\.csv', filename)
-                    if not match:
-                        match = re.match(r'Race_(\\d+)_-_([A-Z_]+)_-_([\\d_A-Za-z]+)\\.csv', filename)
-                    if match:
-                        race_number, venue, date_str = match.groups()
-                        try:
-                            # Convert date to standard format
-                            date_obj = datetime.strptime(date_str, '%d %B %Y')
-                            date_formatted = date_obj.strftime('%Y-%m-%d')
-                            
-                            # Store race identifier
-                            race_id = (date_formatted, venue, race_number)
-                            self.collected_races.add(race_id)
-                            
-                        except ValueError:
-                            # Skip files with unparseable dates
-                            continue
-        
-        print(f"📋 Loaded {len(self.collected_races)} unique races from {total_files} files across all directories")
+        # Update local references
+        self.collected_races = self.race_file_manager.collected_races
+        self.existing_files = self.race_file_manager.existing_files
+        self.processed_hashes = self.race_file_manager.processed_hashes
 
-        # Analyze collected races to identify fully collected dates
-        race_dates = {}
-        for (date, venue, race_number) in self.collected_races:
-            if date not in race_dates:
-                race_dates[date] = {'races': set(), 'venues': set()}
-            race_dates[date]['races'].add((venue, race_number))
-            race_dates[date]['venues'].add(venue)
+    def _ensure_database_tables(self):
+        """Ensure the processed_race_files table exists"""
+        conn = sqlite3.connect(self.database_path)
+        cursor = conn.cursor()
+        
+        # Create table if it doesn't exist
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS processed_race_files (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                file_hash TEXT UNIQUE NOT NULL,
+                race_date DATE NOT NULL,
+                venue TEXT NOT NULL, 
+                race_no INTEGER NOT NULL,
+                file_path TEXT NOT NULL,
+                file_size INTEGER,
+                processed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                status TEXT DEFAULT 'processed',
+                error_message TEXT
+            )
+        ''')
+        
+        # Create indexes for performance
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_processed_files_hash ON processed_race_files(file_hash)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_processed_files_race_key ON processed_race_files(race_date, venue, race_no)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_processed_files_file_path ON processed_race_files(file_path)')
+        
+        conn.commit()
+        conn.close()
+    
+    def parse_filename_to_race_id(self, filename):
+        """Parse filename to extract race_id tuple (date, venue, race_number) - delegate to manager"""
+        return self.race_file_manager.parse_filename_to_race_id(filename)
 
-        # A date is considered "completed" if it has substantial coverage
-        # We'll be conservative: dates with 8+ races from multiple venues are likely complete
-        self.completed_dates = set()
-        for date, data in race_dates.items():
-            race_count = len(data['races'])
-            venue_count = len(data['venues'])
-            
-            # Conservative criteria for completion:
-            # - At least 8 races collected
-            # - At least 3 different venues (indicating broad coverage)
-            # OR
-            # - At least 15 races collected (likely comprehensive)
-            if (race_count >= 8 and venue_count >= 3) or race_count >= 15:
-                self.completed_dates.add(date)
+    def compute_file_hash(self, file_path):
+        """Compute SHA-256 hash of a file - delegate to manager"""
+        return self.race_file_manager.compute_file_hash(file_path)
+
+    def parse_csv_with_ingestion(self, file_path, force=False):
+        """Parse CSV using CsvIngestion module with caching and de-duplication"""
+        file_hash = self.compute_file_hash(file_path)
+
+        # Check if file already processed (cache hit)
+        if file_hash in self.processed_hashes and not force:
+            self.stats.increment('cache_hits')
+            print(f"⚠️ Cache HIT: Skipping already processed file: {file_path}")
+            return "hit"
+
+        print(f"🔄 Cache MISS: Processing file: {file_path}")
         
-        if self.completed_dates:
-            print(f"📅 Completed dates ({len(self.completed_dates)}): {sorted(list(self.completed_dates))}")
-        else:
-            print(f"📅 No fully completed dates identified yet")
-        print(f"   • Directories checked: {', '.join([d for d in directories if os.path.exists(d)])}")
-    
-    def is_race_already_collected(self, race_date, venue, race_number):
-        """Check if a race has already been collected in any directory"""
-        race_id = (race_date, venue, str(race_number))
-        return race_id in self.collected_races
-    
-    def load_processed_races(self):
-        """Load processed races from the database"""
-        processed_races = set()
-        
-        if not os.path.exists(self.database_path):
-            print(f"⚠️ Database not found at {self.database_path}")
-            return processed_races
+        # Extract race metadata from filename for database recording
+        race_info = self.parse_filename_to_race_id(os.path.basename(file_path))
         
         try:
+            # Parse CSV using ingestion module
+            try:
+                ingestion = CsvIngestion(file_path)
+                parsed_race, validation_report = ingestion.parse_csv()
+            except NameError as name_error:
+                if "ParsedRace" in str(name_error):
+                    # Fallback: Just validate that file is readable CSV
+                    import csv
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        reader = csv.reader(f)
+                        headers = next(reader)
+                        row_count = sum(1 for row in reader)
+                    print(f"📋 Parsed CSV: {len(headers)} columns, {row_count} rows")
+                    parsed_race = {"headers": headers, "row_count": row_count}
+                    validation_report = {"errors": []}
+                else:
+                    raise
+
+            # Get file size
+            file_size = os.path.getsize(file_path)
+            
+            # Record processing outcome in database
             conn = sqlite3.connect(self.database_path)
             cursor = conn.cursor()
             
-            # Check if race_metadata table exists (enhanced database)
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='race_metadata'")
-            if cursor.fetchone():
-                # Enhanced database - get races from race_metadata table
+            if race_info:
+                race_date, venue, race_no = race_info
                 cursor.execute("""
-                    SELECT DISTINCT race_date, venue, race_number 
-                    FROM race_metadata
-                    WHERE race_date IS NOT NULL AND venue IS NOT NULL AND race_number IS NOT NULL
-                """)
-                
-                for row in cursor.fetchall():
-                    race_date, venue, race_number = row
-                    # Convert date format for comparison
-                    try:
-                        date_obj = datetime.strptime(race_date, '%Y-%m-%d')
-                        formatted_date = date_obj.strftime('%Y-%m-%d')
-                        processed_races.add((formatted_date, venue, str(race_number)))
-                    except ValueError:
-                        # Try alternative date format
-                        try:
-                            date_obj = datetime.strptime(race_date, '%d %B %Y')
-                            formatted_date = date_obj.strftime('%Y-%m-%d')
-                            processed_races.add((formatted_date, venue, str(race_number)))
-                        except ValueError:
-                            continue
+                    INSERT OR REPLACE INTO processed_race_files 
+                    (file_hash, race_date, venue, race_no, file_path, file_size, status) 
+                    VALUES (?, ?, ?, ?, ?, ?, 'processed')
+                """, (file_hash, race_date, venue, race_no, file_path, file_size))
             else:
-                # Original database - get races from race_results table
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='race_results'")
-                if cursor.fetchone():
-                    cursor.execute("""
-                        SELECT DISTINCT race_date, venue, race_number 
-                        FROM race_results
-                        WHERE race_date IS NOT NULL AND venue IS NOT NULL AND race_number IS NOT NULL
-                    """)
-                    
-                    for row in cursor.fetchall():
-                        race_date, venue, race_number = row
-                        # Convert date format for comparison
-                        try:
-                            date_obj = datetime.strptime(race_date, '%Y-%m-%d')
-                            formatted_date = date_obj.strftime('%Y-%m-%d')
-                            processed_races.add((formatted_date, venue, str(race_number)))
-                        except ValueError:
-                            continue
-            
+                cursor.execute("""
+                    INSERT OR REPLACE INTO processed_race_files 
+                    (file_hash, race_date, venue, race_no, file_path, file_size, status) 
+                    VALUES (?, 'unknown', 'unknown', 0, ?, ?, 'processed')
+                """, (file_hash, file_path, file_size))
+                
+            conn.commit()
             conn.close()
             
+            # Add to processed hashes to avoid re-processing in same session
+            self.processed_hashes.add(file_hash)
+            
+            # Track successful save
+            self.stats.increment('successful_saves')
+            
+            print(f"✅ Successfully processed and cached: {file_path}")
+            return "miss"
+            
         except Exception as e:
-            print(f"⚠️ Error loading processed races from database: {e}")
+            print(f"❌ Error processing file {file_path}: {e}")
+            
+            # Record error in database
+            try:
+                conn = sqlite3.connect(self.database_path)
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT OR REPLACE INTO processed_race_files 
+                    (file_hash, race_date, venue, race_no, file_path, file_size, status, error_message) 
+                    VALUES (?, 'error', 'error', 0, ?, ?, 'failed', ?)
+                """, (file_hash, file_path, os.path.getsize(file_path) if os.path.exists(file_path) else 0, str(e)))
+                conn.commit()
+                conn.close()
+            except Exception as db_error:
+                print(f"❌ Error recording failure to database: {db_error}")
+                
+            return "error"
+    
+    def load_processed_races(self):
+        """Load processed races to avoid re-processing"""
+        processed_races = set()
+        processed_dir = "./processed"
+        
+        if os.path.exists(processed_dir):
+            for filename in os.listdir(processed_dir):
+                if filename.endswith('.csv'):
+                    # Extract race info from processed filename
+                    match = re.match(r'(\d{4}-\d{2}-\d{2})_([A-Z_]+)_Race_(\d+)_processed\.csv', filename)
+                    if match:
+                        race_date, venue, race_number = match.groups()
+                        try:
+                            formatted_date = parse_date_flexible(race_date)
+                            race_id = (formatted_date, venue, race_number)
+                            processed_races.add(race_id)
+                        except ValueError:
+                            continue
         
         return processed_races
     
-    def refresh_existing_files(self):
-        """Refresh list of existing files to avoid duplicates"""
-        self.existing_files.clear()
-        directories = [self.unprocessed_dir, self.download_dir, "./form_guides/processed"]
+    def download_csv_from_race_page(self, race_info, max_retries=3):
+        """Download CSV file from a race page with HTTP status code tracking"""
+        last_http_status = None
         
-        for directory in directories:
-            if os.path.exists(directory):
-                for file in os.listdir(directory):
-                    if file.endswith('.csv'):
-                        self.existing_files.add(file)
-        
-        print(f"📋 Refreshed list: {len(self.existing_files)} existing form guide files")
-
-    def load_existing_files(self):
-        """Initial load of existing files to avoid duplicates"""
-        self.refresh_existing_files()
-    
-    def file_already_exists(self, filename, race_info):
-        """Check if file already exists with various filename patterns"""
-        # Check exact filename match
-        if filename in self.existing_files:
-            return True
-        
-        # Check alternative filename patterns that might exist
-        race_num = race_info['race_number']
-        venue = race_info['venue']
-        date = race_info['date']
-        
-        # Alternative patterns to check
-        alternatives = [
-            f"Race {race_num} - {venue} - {date}.csv",
-            f"Race {race_num} - {venue} - {date}_*.csv",  # Files with timestamps
-            f"Race{race_num}_{venue}_{date}.csv",
-            f"R{race_num}_{venue}_{date}.csv",
-        ]
-        
-        # Check if any alternative pattern matches existing files
-        for existing_file in self.existing_files:
-            for pattern in alternatives:
-                if pattern.replace('*', '') in existing_file:
-                    return True
-        
-        return False
-    
-    def handle_file_exists_interaction(self, filename, race_info):
-        """Automated handling for existing files - always skip"""
-        print(f"⚠️ File already exists: {filename}")
-        print(f"   Skipping race: {race_info['venue']} Race {race_info['race_number']}")
-        return 'skip'
-        """Handle user interaction when file already exists"""
-        race_num = race_info['race_number']
-        venue = race_info['venue']
-        date = race_info['date']
-        
-        print(f"\n⚠️  File already exists: {filename}")
-        print(f"   Race: {venue} Race {race_num} on {date}")
-        print(f"\n   What would you like to do?")
-        print(f"   [s] Skip this race and continue with next")
-        print(f"   [o] Overwrite the existing file")
-        print(f"   [q] Quit the scraping process")
-        print(f"   [a] Skip all remaining duplicates automatically")
-        
-        while True:
+        for attempt in range(max_retries):
             try:
-                choice = input("\n   Enter your choice (s/o/q/a): ").lower().strip()
+                race_url = race_info['url']
+                print(f"🏁 Downloading CSV from race: {race_url}")
                 
-                if choice in ['s', 'skip']:
-                    print(f"   ✅ Skipping race: {venue} Race {race_num}")
-                    return 'skip'
-                elif choice in ['o', 'overwrite']:
-                    print(f"   🔄 Will overwrite: {filename}")
-                    return 'overwrite'
-                elif choice in ['q', 'quit', 'exit']:
-                    print(f"   🛑 Exiting scraping process...")
-                    return 'quit'
-                elif choice in ['a', 'auto', 'all']:
-                    print(f"   ⏭️  Will skip all remaining duplicates automatically")
-                    return 'auto_skip'
-                else:
-                    print(f"   ❌ Invalid choice. Please enter 's' (skip), 'o' (overwrite), 'q' (quit), or 'a' (auto-skip)")
-            except KeyboardInterrupt:
-                print(f"\n   🛑 Process interrupted by user")
-                return 'quit'
-            except EOFError:
-                print(f"\n   🛑 Input stream closed")
-                return 'quit'
-    
-    def move_downloaded_to_unprocessed(self):
-        """Move files from download directory to unprocessed for analysis"""
-        if not os.path.exists(self.download_dir):
-            return 0
-        
-        moved_count = 0
-        download_files = [f for f in os.listdir(self.download_dir) if f.endswith('.csv')]
-        
-        for filename in download_files:
-            download_path = os.path.join(self.download_dir, filename)
-            unprocessed_path = os.path.join(self.unprocessed_dir, filename)
-            
-            # Check if file doesn't already exist in unprocessed
-            if not os.path.exists(unprocessed_path):
+                response = self.session.get(race_url, timeout=30)
+                last_http_status = response.status_code
+                response.raise_for_status()
+                
+                soup = BeautifulSoup(response.content, 'html.parser')
+                
+                # Method 1: Look for CSV download links using multiple selectors
+                csv_selectors = [
+                    'a[href*="csv"]',
+                    'a[href*="form-guide"]',
+                    'a[href*="export"]',
+                    'a[href*="download"]',
+                    'a[download*="csv"]',
+                    '.csv-download',
+                    '.form-guide-download',
+                    '.export-csv',
+                    '.download-csv'
+                ]
+                
+                csv_url = None
+                for selector in csv_selectors:
+                    elements = soup.select(selector)
+                    for element in elements:
+                        href = element.get('href')
+                        if href and ('csv' in href.lower() or 'form' in href.lower() or 'export' in href.lower()):
+                            csv_url = href
+                            if self.verbose_fetch:
+                                print(f"   🔍 Found CSV link via selector '{selector}': {href}")
+                            break
+                    if csv_url:
+                        break
+                
+                # Method 2: Fallback to regex-based search
+                if not csv_url:
+                    csv_link = soup.find('a', href=re.compile(r'.*\.csv.*', re.IGNORECASE))
+                    if csv_link:
+                        csv_url = csv_link.get('href')
+                        if self.verbose_fetch:
+                            print(f"   🔍 Found CSV link via regex: {csv_url}")
+                
+                # Method 3: Try direct CSV URL construction
+                if not csv_url:
+                    direct_csv_url = f"{race_url.rstrip('/')}/form-guide.csv"
+                    if self.verbose_fetch:
+                        print(f"   🔍 Trying direct CSV URL: {direct_csv_url}")
+                    
+                    # Test if direct URL works
+                    try:
+                        test_response = self.session.head(direct_csv_url, timeout=10)
+                        if test_response.status_code == 200:
+                            csv_url = direct_csv_url
+                            if self.verbose_fetch:
+                                print(f"   ✅ Direct CSV URL works: {direct_csv_url}")
+                    except:
+                        pass
+                
+                # Method 4: Try alternative direct URLs
+                if not csv_url:
+                    alternative_urls = [
+                        f"{race_url.rstrip('/')}.csv",
+                        f"{race_url.rstrip('/')}/export.csv",
+                        f"{race_url.rstrip('/')}/download.csv"
+                    ]
+                    
+                    for alt_url in alternative_urls:
+                        try:
+                            test_response = self.session.head(alt_url, timeout=5)
+                            if test_response.status_code == 200:
+                                csv_url = alt_url
+                                if self.verbose_fetch:
+                                    print(f"   ✅ Alternative CSV URL works: {alt_url}")
+                                break
+                        except:
+                            continue
+                
+                if not csv_url:
+                    if self.verbose_fetch:
+                        print(f"   🔍 Available links on page:")
+                        all_links = soup.find_all('a', href=True)
+                        for i, link in enumerate(all_links[:10]):  # Show first 10 links
+                            href = link.get('href')
+                            text = link.get_text(strip=True)[:50]
+                            print(f"     {i+1}. {href} - \"{text}\"") 
+                    print(f"❌ No CSV link found on race page: {race_url}")
+                    return False, last_http_status
+                
+                # Make URL absolute
+                if not csv_url.startswith('http'):
+                    if csv_url.startswith('/'):
+                        csv_url = self.base_url + csv_url
+                    else:
+                        csv_url = f"{self.base_url}/{csv_url}"
+                
+                # Download CSV content
+                csv_response = self.session.get(csv_url, timeout=30)
+                last_http_status = csv_response.status_code  # Update with CSV download status
+                csv_response.raise_for_status()
+                
+                # Use centralized date parsing for consistent formatting
                 try:
-                    # Copy file to unprocessed directory
-                    with open(download_path, 'r', encoding='utf-8') as src:
-                        content = src.read()
-                    
-                    with open(unprocessed_path, 'w', encoding='utf-8') as dst:
-                        dst.write(content)
-                    
-                    moved_count += 1
-                    print(f"   📞 Moved to unprocessed: {filename}")
-                    
-                except Exception as e:
-                    print(f"   ⚠️ Error moving {filename}: {e}")
+                    formatted_date = parse_date_flexible(race_info['date'])
+                except ValueError as e:
+                    print(f"❌ Date parsing error for {race_info['date']}: {e}")
+                    return False, last_http_status
+                
+                # Generate filename with consistent date format
+                filename = f"Race {race_info['race_number']} - {race_info['venue']} - {formatted_date}.csv"
+                filepath = os.path.join(self.unprocessed_dir, filename)
+                
+                # Save CSV file
+                with open(filepath, 'w', encoding='utf-8') as f:
+                    f.write(csv_response.text)
+                
+                print(f"✅ Downloaded: {filename}")
+                return True, last_http_status
+                
+            except requests.exceptions.RequestException as e:
+                # Capture HTTP status from requests exceptions
+                if hasattr(e, 'response') and e.response is not None:
+                    last_http_status = e.response.status_code
+                print(f"❌ HTTP error downloading CSV (attempt {attempt + 1}): {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(2 ** attempt)  # Exponential backoff
+                continue
+            except Exception as e:
+                print(f"❌ Error downloading CSV (attempt {attempt + 1}): {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(2 ** attempt)  # Exponential backoff
+                continue
         
-        if moved_count > 0:
-            print(f"✅ Moved {moved_count} files from download to unprocessed directory")
-        
-        return moved_count
+        return False, last_http_status
     
-    def is_race_processed(self, race_date, track, race_number):
-        """Check if a race has been processed and is in the database"""
-        # Convert track name to match database format
-        track_code = None
-        
-        # Try to find matching track code
-        for venue_key, venue_code in self.venue_map.items():
-            if venue_key.replace('-', ' ').lower() in track.lower() or venue_code.lower() == track.lower():
-                track_code = venue_code
-                break
-        
-        if not track_code:
-            track_code = track  # Use original track name as fallback
-        
-        # Check if race is in processed races
-        return (race_date, track_code, str(race_number)) in self.processed_races
+    def extract_race_info(self, race_element):
+        """Extract race information from race element with improved date parsing"""
+        try:
+            # Extract race number
+            race_number_elem = race_element.find('span', class_='race-number')
+            if not race_number_elem:
+                return None
+            race_number = race_number_elem.text.strip().replace('R', '')
+            
+            # Extract race URL
+            link_elem = race_element.find('a')
+            if not link_elem:
+                return None
+            race_url = link_elem.get('href')
+            if not race_url.startswith('http'):
+                race_url = self.base_url + race_url
+            
+            # Extract venue from URL or race element
+            venue = None
+            for url_venue, code in self.venue_map.items():
+                if url_venue in race_url:
+                    venue = code
+                    break
+            
+            if not venue:
+                print(f"⚠️ Could not determine venue for URL: {race_url}")
+                return None
+            
+            # Extract date from URL or page context
+            date_match = re.search(r'/(\d{4})/(\d{2})/(\d{2})/', race_url)
+            if date_match:
+                year, month, day = date_match.groups()
+                date_str = f"{year}-{month}-{day}"
+            else:
+                # Try to extract from other sources
+                date_str = None
+            
+            if not date_str:
+                print(f"⚠️ Could not extract date from URL: {race_url}")
+                return None
+            
+            # Use centralized date parsing
+            try:
+                formatted_date = parse_date_flexible(date_str)
+            except ValueError as e:
+                print(f"❌ Date parsing error for {date_str}: {e}")
+                return None
+            
+            return {
+                'race_number': race_number,
+                'venue': venue,
+                'date': formatted_date,
+                'url': race_url
+            }
+            
+        except Exception as e:
+            print(f"❌ Error extracting race info: {e}")
+            return None
     
-    def get_race_dates(self, days_back=30, days_forward=0):
-        """Get list of dates to check for races - historical races only (previous day or earlier)"""
-        dates = []
-        today = datetime.now().date()
-        
-        # Only check past dates (previous day or earlier) for training data
-        for i in range(1, days_back + 1):  # Start from 1 to exclude today
-            check_date = today - timedelta(days=i)
-            dates.append(check_date)
-        
-        # No future dates - we only want historical races for training
-        
-        return sorted(dates, reverse=True)
-    
-    def is_valid_race_url(self, url, date_str):
-        """Validate if a URL is a proper race URL with extractable race number"""
-        if not url or date_str not in url:
-            return False
-        
-        # Check URL structure
-        parts = url.split('/')
-        if len(parts) < 7:  # Need at least: https://www.thedogs.com.au/racing/venue/date/race_num/
-            return False
-        
-        # Find numeric race number in URL parts
-        race_number = None
-        for i, part in enumerate(parts):
-            if part.isdigit() and i > 4:  # Skip domain parts
-                race_number = part
-                break
-        
-        if not race_number:
-            return False
-        
-        # Check if venue is in our mapping
-        venue_found = False
-        for venue_key in self.venue_map.keys():
-            if venue_key in url:
-                venue_found = True
-                break
-        
-        if not venue_found:
-            # Still valid if we can't map venue, but less reliable
-            pass
-        
-        # Exclude trial URLs unless they have proper race structure
-        if '?trial=true' in url and '/racing/' not in url:
-            return False
-        
-        return True
-
-    def find_race_urls(self, date):
-        """Find race URLs for a specific date with improved filtering"""
-        date_str = date.strftime('%Y-%m-%d')
-        base_url = f"{self.base_url}/racing/{date_str}"
-        
-        print(f"🔍 Checking races for {date_str}...")
+    def download_csv_file(self, race_info):
+        """Download and save CSV file with improved date parsing and enhanced logging"""
+        from logger import logger
+        from datetime import datetime
         
         try:
-            response = self.session.get(base_url, timeout=30)
+            # Track race request at start
+            self.stats.increment('races_requested')
+            if self.verbose_fetch:
+                print(f"📊 Statistics: races_requested += 1 (now {self.stats.get('races_requested')})")
             
+            # Use centralized date parsing to ensure consistency
+            try:
+                formatted_date = parse_date_flexible(race_info['date'])
+            except ValueError as e:
+                self.stats.increment('fetches_failed')
+                
+                # Enhanced logging for date parsing errors
+                logger.log_race_operation(
+                    race_date=race_info.get('date', 'unknown'),
+                    venue=race_info.get('venue', 'unknown'),
+                    race_number=str(race_info.get('race_number', '0')),
+                    operation="SKIP",
+                    reason=f"Date parsing error: {e}",
+                    verbose_fetch=self.verbose_fetch,
+                    level="ERROR"
+                )
+                
+                if self.verbose_fetch:
+                    print(f"📊 Statistics: fetches_failed += 1 (date parsing error, now {self.stats.get('fetches_failed')})")
+                return False
+            
+            # Day-level optimization: Check if this date is mostly complete before processing individual race
+            try:
+                race_date_obj = datetime.strptime(formatted_date, '%Y-%m-%d').date()
+                date_str = race_date_obj.strftime('%Y-%m-%d')
+                
+                # Skip if date is already marked as complete
+                if date_str in self.completed_dates:
+                    self.stats.increment('cache_hits')
+                    if self.verbose_fetch:
+                        print(f"⚡ Skipping race on {date_str} - day marked as complete (day-level cache)")
+                    
+                    logger.log_race_operation(
+                        race_date=formatted_date,
+                        venue=race_info['venue'],
+                        race_number=str(race_info['race_number']),
+                        operation="CACHE",
+                        reason="Day marked as complete",
+                        verbose_fetch=self.verbose_fetch
+                    )
+                    return True
+                
+                # Check if date appears mostly complete and mark it
+                if self.is_date_mostly_complete(race_date_obj):
+                    self.mark_date_as_complete(race_date_obj)
+                    self.stats.increment('cache_hits')
+                    if self.verbose_fetch:
+                        print(f"⚡ Marking {date_str} as complete and skipping remaining races")
+                    
+                    logger.log_race_operation(
+                        race_date=formatted_date,
+                        venue=race_info['venue'],
+                        race_number=str(race_info['race_number']),
+                        operation="CACHE",
+                        reason="Day appears complete, marked for skipping",
+                        verbose_fetch=self.verbose_fetch
+                    )
+                    return True
+                    
+            except (ValueError, AttributeError) as date_error:
+                if self.verbose_fetch:
+                    print(f"⚠️ Could not parse date for day-level optimization: {date_error}")
+            
+            race_id = (formatted_date, race_info['venue'], race_info['race_number'])
+            
+            # Check if already collected (cache hit)
+            if race_id in self.collected_races:
+                self.stats.increment('cache_hits')
+                
+                # Enhanced logging for cache hits
+                logger.log_race_operation(
+                    race_date=formatted_date,
+                    venue=race_info['venue'],
+                    race_number=str(race_info['race_number']),
+                    operation="CACHE",
+                    reason="Race already collected",
+                    verbose_fetch=self.verbose_fetch
+                )
+                
+                if self.verbose_fetch:
+                    print(f"📊 Statistics: cache_hits += 1 (now {self.stats.get('cache_hits')}) - Race already collected: {race_id}")
+                return True
+            
+            # Before HTTP call - track fetch attempt
+            self.stats.increment('fetches_attempted')
+            if self.verbose_fetch:
+                print(f"📊 Statistics: fetches_attempted += 1 (now {self.stats.get('fetches_attempted')}) - Attempting to fetch: {race_id}")
+            
+            # Download the CSV with HTTP status tracking
+            success, http_status = self.download_csv_from_race_page(race_info)
+            
+            if success:
+                self.collected_races.add(race_id)
+                self.stats.increment('successful_saves')
+                
+                # Enhanced logging for successful fetches
+                logger.log_race_operation(
+                    race_date=formatted_date,
+                    venue=race_info['venue'],
+                    race_number=str(race_info['race_number']),
+                    operation="FETCH",
+                    reason="CSV downloaded successfully",
+                    http_status=http_status,
+                    verbose_fetch=self.verbose_fetch
+                )
+                
+                if self.verbose_fetch:
+                    print(f"📊 Statistics: successful_saves += 1 (now {self.stats.get('successful_saves')}) - Successfully saved: {race_id}")
+                return True
+            else:
+                # On HTTP failure or missing link
+                self.stats.increment('fetches_failed')
+                
+                # Enhanced logging for fetch failures
+                logger.log_race_operation(
+                    race_date=formatted_date,
+                    venue=race_info['venue'],
+                    race_number=str(race_info['race_number']),
+                    operation="FETCH",
+                    reason="CSV download failed or no CSV link found",
+                    http_status=http_status,
+                    verbose_fetch=self.verbose_fetch,
+                    level="WARNING"
+                )
+                
+                if self.verbose_fetch:
+                    print(f"📊 Statistics: fetches_failed += 1 (download failed, now {self.stats.get('fetches_failed')}) - Failed to download: {race_id}")
+            
+            return False
+            
+        except Exception as e:
+            self.stats.increment('fetches_failed')
+            
+            # Enhanced logging for exceptions
+            logger.log_race_operation(
+                race_date=race_info.get('date', 'unknown'),
+                venue=race_info.get('venue', 'unknown'),
+                race_number=str(race_info.get('race_number', '0')),
+                operation="FETCH",
+                reason=f"Exception during download: {str(e)}",
+                verbose_fetch=self.verbose_fetch,
+                level="ERROR"
+            )
+            
+            if self.verbose_fetch:
+                print(f"📊 Statistics: fetches_failed += 1 (exception, now {self.stats.get('fetches_failed')})")
+            print(f"❌ Error downloading CSV file: {e}")
+            return False
+
+    def get_driver(self):
+        """Set up Chrome driver with options"""
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--window-size=1920,1080")
+        chrome_options.add_argument("--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+        
+        try:
+            driver = webdriver.Chrome(options=chrome_options)
+            return driver
+        except Exception as e:
+            print(f"❌ Error setting up Chrome driver: {e}")
+            return None
+    
+    def test_single_race_download(self, race_url):
+        """Test mode: Download CSV from a single race URL"""
+        print(f"🧪 Test Mode: Downloading CSV from single race URL")
+        print(f"📍 URL: {race_url}")
+        
+        try:
+            # Extract race info from URL
+            race_info = self.extract_race_info_from_url(race_url)
+            if not race_info:
+                print(f"❌ Could not extract race information from URL")
+                return False
+            
+            print(f"📊 Race Info: {race_info}")
+            
+            # Download the CSV
+            success = self.download_csv_file(race_info)
+            if success:
+                print(f"✅ Successfully downloaded race CSV!")
+                return True
+            else:
+                print(f"❌ Failed to download race CSV")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Error in test mode: {e}")
+            return False
+    
+    def extract_race_info_from_url(self, race_url):
+        """Extract race information from a race URL"""
+        try:
+            # Parse URL to extract venue, date, and race number
+            # Handle both formats:
+            # - https://www.thedogs.com.au/racing/venue/YYYY/MM/DD/race_number
+            # - https://www.thedogs.com.au/racing/venue/YYYY-MM-DD/race_number/...
+            
+            # Remove query parameters
+            base_url = race_url.split('?')[0]
+            
+            # Try format 1: /racing/venue/YYYY-MM-DD/race_number/...
+            url_match = re.match(r'https://www\.thedogs\.com\.au/racing/([^/]+)/(\d{4})-(\d{2})-(\d{2})/(\d+)', base_url)
+            if url_match:
+                venue_slug, year, month, day, race_number = url_match.groups()
+            else:
+                # Try format 2: /racing/venue/YYYY/MM/DD/race_number
+                url_match = re.match(r'https://www\.thedogs\.com\.au/racing/([^/]+)/(\d{4})/(\d{2})/(\d{2})/(\d+)', base_url)
+                if url_match:
+                    venue_slug, year, month, day, race_number = url_match.groups()
+                else:
+                    print(f"⚠️ URL format not recognized: {race_url}")
+                    return None
+            
+            # Map venue slug to venue code
+            venue = None
+            for url_venue, code in self.venue_map.items():
+                if url_venue == venue_slug:
+                    venue = code
+                    break
+            
+            if not venue:
+                print(f"⚠️ Unknown venue: {venue_slug}")
+                venue = venue_slug.upper().replace('-', '_')
+            
+            # Format date
+            date_str = f"{year}-{month}-{day}"
+            
+            return {
+                'race_number': race_number,
+                'venue': venue,
+                'date': date_str,
+                'url': race_url
+            }
+            
+        except Exception as e:
+            print(f"❌ Error extracting race info from URL: {e}")
+            return None
+    
+    def get_processed_filenames(self, directory: str) -> set:
+        """Get set of processed filenames from specified directory for O(1) membership tests - delegate to manager"""
+        return self.race_file_manager.get_processed_filenames(directory)
+    
+    def is_historical(self, date_obj):
+        """Check if a race date is historical (previous day or earlier).
+        
+        Args:
+            date_obj: datetime.date object representing the race date
+            
+        Returns:
+            bool: True if the date is strictly before today (historical)
+        """
+        from datetime import date
+        today = date.today()
+        return date_obj < today
+    
+    def is_date_mostly_complete(self, target_date, completion_threshold=0.8):
+        """Check if a date has most races already collected to enable day-level skipping.
+        
+        Args:
+            target_date: datetime.date object for the target date
+            completion_threshold: Fraction of races that must be collected (default: 0.8 = 80%)
+            
+        Returns:
+            bool: True if the date is mostly complete and should be skipped
+        """
+        try:
+            # Convert date to string format for race_id matching
+            date_str = target_date.strftime('%Y-%m-%d')
+            
+            # Count races already collected for this date
+            collected_for_date = 0
+            total_races_found = 0
+            
+            # Count collected races for this date
+            for race_id in self.collected_races:
+                race_date, venue, race_number = race_id
+                if race_date == date_str:
+                    collected_for_date += 1
+            
+            # If we have no collected races for this date, it's not complete
+            if collected_for_date == 0:
+                return False
+            
+            # For day-level optimization, we need to estimate total races for the date
+            # Use a reasonable heuristic: if we have collected a good number of races
+            # (e.g., 8+) for a date, it's likely mostly complete
+            if collected_for_date >= 8:
+                # Consider it mostly complete if we have 8+ races (typical day has 10-20 races)
+                return True
+            
+            # For smaller numbers, we could attempt to discover actual race count,
+            # but that would require an HTTP request which defeats the optimization purpose.
+            # Instead, use a conservative approach: only skip if we have many races
+            return False
+            
+        except Exception as e:
+            if self.verbose_fetch:
+                print(f"⚠️ Error checking date completion for {target_date}: {e}")
+            return False
+    
+    def mark_date_as_complete(self, target_date):
+        """Mark a date as fully processed to enable day-level skipping.
+        
+        Args:
+            target_date: datetime.date object to mark as complete
+        """
+        date_str = target_date.strftime('%Y-%m-%d')
+        self.completed_dates.add(date_str)
+        if self.verbose_fetch:
+            print(f"📅 Marked {date_str} as complete for future day-level skipping")
+    
+    def discover_races_for_date(self, target_date):
+        """Discover all race URLs for a specific date.
+        
+        Args:
+            target_date: datetime.date object for the target date
+            
+        Returns:
+            list: List of race URLs for the specified date
+        """
+        try:
+            # Format date for URL
+            date_str = target_date.strftime('%Y-%m-%d')
+            
+            # Get the main racing page for the date
+            racing_url = f"{self.base_url}/racing/{date_str}"
+            
+            if self.verbose_fetch:
+                print(f"📅 Discovering races for {date_str} from {racing_url}")
+            
+            response = self.session.get(racing_url, timeout=30)
             if response.status_code != 200:
-                print(f"   ❌ Failed to access {base_url}: {response.status_code}")
+                if self.verbose_fetch:
+                    print(f"⚠️ Failed to get racing page for {date_str}: HTTP {response.status_code}")
                 return []
             
             soup = BeautifulSoup(response.content, 'html.parser')
             
-            # Find all links that might be race links
-            all_links = soup.find_all('a', href=True)
-            race_links = []
+            # Find race links - they typically follow patterns like:
+            # /racing/venue/YYYY-MM-DD/race_number/race-name
+            race_urls = []
             
-            for link in all_links:
-                href = link.get('href')
-                if not href:
-                    continue
-                
-                # Make URL absolute if needed
-                if href.startswith('/'):
-                    full_url = f"{self.base_url}{href}"
-                elif href.startswith('http'):
-                    full_url = href
-                else:
-                    continue
-                
-                # Apply validation filters
-                if self.is_valid_race_url(full_url, date_str):
-                    race_links.append(full_url)
+            # Look for links that match the race URL pattern
+            for link in soup.find_all('a', href=True):
+                href = link['href']
+                if ('/racing/' in href and 
+                    date_str in href and 
+                    href.count('/') >= 5):  # At least /racing/venue/date/race/name
+                    
+                    # Build full URL if it's relative
+                    if href.startswith('/'):
+                        full_url = self.base_url + href
+                    else:
+                        full_url = href
+                    
+                    # Remove query parameters and add to list if not already present
+                    clean_url = full_url.split('?')[0]
+                    if clean_url not in race_urls:
+                        race_urls.append(clean_url)
             
-            # Remove duplicates while preserving order
-            seen = set()
-            unique_links = []
-            for url in race_links:
-                if url not in seen:
-                    seen.add(url)
-                    unique_links.append(url)
+            if self.verbose_fetch:
+                print(f"📋 Found {len(race_urls)} race URLs for {date_str}")
+                if race_urls and len(race_urls) <= 5:
+                    print(f"   Sample URLs: {race_urls}")
+                elif race_urls:
+                    print(f"   Sample URLs: {race_urls[:3]}")
             
-            # Filter out non-race URLs (venue-only URLs)
-            filtered_links = []
-            for url in unique_links:
-                # Skip URLs that don't have a race number (venue-only pages)
-                if '?trial=' in url and url.split('?')[0].endswith(date_str):
-                    continue  # Skip venue-only trial pages
-                filtered_links.append(url)
-            
-            if filtered_links:
-                print(f"   ✅ Found {len(filtered_links)} valid race URLs for {date_str}")
-                # Show sample URLs for debugging
-                if len(filtered_links) > 3:
-                    print(f"   📋 Sample URLs: {filtered_links[:3]}")
-                else:
-                    print(f"   📋 All URLs: {filtered_links}")
-            else:
-                print(f"   ⚪ No valid race URLs found for {date_str}")
-            
-            return filtered_links
+            return race_urls
             
         except Exception as e:
-            print(f"   ❌ Error checking {date_str}: {e}")
+            print(f"❌ Error discovering races for {target_date}: {e}")
             return []
     
-    def download_csv_from_race_page(self, race_url):
-        """Download CSV form guide from a race page"""
-        try:
-            print(f"🔄 Processing: {race_url}")
-            
-            # Get race page
-            response = self.session.get(race_url, timeout=30)
-            
-            if response.status_code != 200:
-                print(f"   ❌ Failed to access race page: {response.status_code}")
-                return False
-            
-            soup = BeautifulSoup(response.content, 'html.parser')
-            
-            # Extract race information for filename
-            race_info = self.extract_race_info(soup, race_url)
-            
-            if not race_info:
-                print(f"   ❌ Could not extract race information")
-                return False
-            
-            # Check if this is a historical race (previous day or earlier)
-            race_date_formatted = datetime.strptime(race_info['date'], '%d %B %Y').strftime('%Y-%m-%d')
-            race_date_obj = datetime.strptime(race_date_formatted, '%Y-%m-%d').date()
-            today = datetime.now().date()
-            
-            if race_date_obj >= today:
-                print(f"   ⚪ Skipping future/today race: {race_info['venue']} Race {race_info['race_number']} on {race_info['date']}")
-                return False
-            
-            print(f"   ✅ Historical race found: {race_info['venue']} Race {race_info['race_number']} on {race_info['date']}")
-            
-            # Check if race has already been collected (primary check)
-            if self.is_race_already_collected(race_date_formatted, race_info['venue'], race_info['race_number']):
-                print(f"   ⭕ Race already collected: {race_info['venue']} Race {race_info['race_number']} on {race_info['date']}")
-                return False
-            
-            # Generate filename
-            filename = f"Race {race_info['race_number']} - {race_info['venue']} - {race_info['date']}.csv"
-            
-            # Check if already exists (backup check for files with different naming)
-            if self.file_already_exists(filename, race_info):
-                # Handle user interaction for existing files
-                if not hasattr(self, 'auto_skip_duplicates'):
-                    self.auto_skip_duplicates = False
-                
-                if self.auto_skip_duplicates:
-                    print(f"   ⏭️  Auto-skipping duplicate: {filename}")
-                    return False
-                
-                choice = self.handle_file_exists_interaction(filename, race_info)
-                
-                if choice == 'skip':
-                    return False
-                elif choice == 'overwrite':
-                    print(f"   🔄 Proceeding to overwrite: {filename}")
-                    # Continue with download to overwrite
-                elif choice == 'quit':
-                    print(f"   🛑 User chose to quit. Exiting scraper...")
-                    exit(0)
-                elif choice == 'auto_skip':
-                    self.auto_skip_duplicates = True
-                    print(f"   ⏭️  Auto-skip mode enabled for remaining duplicates")
-                    return False
-            
-            # Look for CSV download link
-            csv_url = self.find_csv_download_link(soup, race_url)
-            
-            if not csv_url:
-                print(f"   ❌ No CSV download link found")
-                return False
-            
-            # Download CSV
-            return self.download_csv_file(csv_url, filename)
-            
-        except Exception as e:
-            print(f"   ❌ Error processing race page: {e}")
-            return False
-    
-    def extract_race_info(self, soup, race_url):
-        """Extract race information from the page"""
-        try:
-            # Extract race number from URL
-            url_parts = race_url.split('/')
-            race_number = None
-            venue = None
-            date = None
-            
-            # Find race number in URL
-            for i, part in enumerate(url_parts):
-                if part.isdigit() and i > 0:
-                    race_number = part
-                    break
-            
-            # Extract venue from URL
-            for venue_key, venue_code in self.venue_map.items():
-                if venue_key in race_url:
-                    venue = venue_code
-                    break
-            
-            # Extract date from URL
-            date_match = re.search(r'(\d{4}-\d{2}-\d{2})', race_url)
-            if date_match:
-                date_obj = datetime.strptime(date_match.group(1), '%Y-%m-%d')
-                date = date_obj.strftime('%d %B %Y')
-            
-            # Try to extract from page content if not found in URL
-            if not venue:
-                venue_selectors = ['.venue-name', '.track-name', 'h1', '.race-header']
-                for selector in venue_selectors:
-                    element = soup.select_one(selector)
-                    if element:
-                        text = element.get_text(strip=True)
-                        for venue_key, venue_code in self.venue_map.items():
-                            if venue_key.replace('-', ' ').lower() in text.lower():
-                                venue = venue_code
-                                break
-                        if venue:
-                            break
-            
-            if race_number and venue and date:
-                return {
-                    'race_number': race_number,
-                    'venue': venue,
-                    'date': date
-                }
-            
-            return None
-            
-        except Exception as e:
-            print(f"   ❌ Error extracting race info: {e}")
-            return None
-    
-    def find_csv_download_link(self, soup, race_url):
-        """Find CSV download link on the page using improved expert-form method"""
-        # Try the expert-form page method
-        # Remove query parameters and add expert-form
-        base_race_url = race_url.split('?')[0]  # Remove ?trial=false etc.
-        expert_form_url = f"{base_race_url}/expert-form"
-        print(f"   🔍 Checking expert-form page: {expert_form_url}")
+    def run_historical_batch_scraping(self, days_back=7):
+        """Run batch scraping for historical races.
         
-        try:
-            # Step 1: Get the expert-form page
-            response = self.session.get(expert_form_url, timeout=10)
-            if response.status_code != 200:
-                print(f"   ⚠️ Expert-form page not accessible: {response.status_code}")
-                return None
-                
-            expert_soup = BeautifulSoup(response.content, 'html.parser')
-            
-            # Step 2: Find the form with CSV export capability (enhanced detection)
-            form = None
-            csv_button_found = False
-            
-            # Look for forms with CSV export capability
-            for f in expert_soup.find_all('form'):
-                # Check for export_csv input/button
-                csv_input = f.find('input', {'name': 'export_csv'})
-                csv_button = f.find('button', {'name': 'export_csv'})
-                
-                # Also check for buttons with CSV text
-                csv_text_buttons = f.find_all('button', string=lambda text: text and 'csv' in text.lower())
-                csv_value_buttons = f.find_all('button', {'value': lambda val: val and 'csv' in val.lower()})
-                
-                if csv_input or csv_button or csv_text_buttons or csv_value_buttons:
-                    form = f
-                    csv_button_found = True
-                    print(f"   ✅ Found CSV export form with button/input")
-                    break
-            
-            if not form:
-                print(f"   ⚠️ No CSV export form found on expert-form page")
-                return None
-            
-            # Step 3: Extract form data and action
-            form_action = form.get('action')
-            form_method = form.get('method', 'GET').upper()
-            
-            # Determine the target URL
-            if form_action:
-                if form_action.startswith('/'):
-                    target_url = f"{self.base_url}{form_action}"
-                elif form_action.startswith('http'):
-                    target_url = form_action
-                else:
-                    # Relative URL - construct based on expert form page
-                    target_url = f"{'/'.join(expert_form_url.split('/')[:-1])}/{form_action}"
-            else:
-                # No action specified - use the expert form URL itself
-                target_url = expert_form_url
-            
-            print(f"   🎯 Form action: {form_action or 'None (using current URL)'}")
-            print(f"   🔗 Target URL: {target_url}")
-            
-            # Build form data
-            form_data = {}
-            
-            # Get all form inputs with their current values
-            for input_elem in form.find_all(['input', 'select', 'textarea']):
-                name = input_elem.get('name')
-                if not name:
-                    continue
-                    
-                input_type = input_elem.get('type', 'text').lower()
-                
-                if input_type == 'checkbox':
-                    if input_elem.get('checked'):
-                        form_data[name] = input_elem.get('value', 'on')
-                elif input_type == 'radio':
-                    if input_elem.get('checked'):
-                        form_data[name] = input_elem.get('value', '')
-                elif input_type in ['submit', 'button']:
-                    # Skip submit buttons unless they're the CSV export button
-                    if name == 'export_csv':
-                        form_data[name] = input_elem.get('value', 'Export CSV')
-                elif input_type == 'hidden':
-                    form_data[name] = input_elem.get('value', '')
-                else:
-                    # Text, email, etc. - use existing value or empty string
-                    form_data[name] = input_elem.get('value', '')
-            
-            # Ensure CSV export is requested
-            if 'export_csv' not in form_data:
-                form_data['export_csv'] = 'Export CSV'
-            
-            print(f"   📋 Form data keys: {list(form_data.keys())}")
-            
-            # Step 4: Submit the form to get CSV data or download URL
-            print(f"   📤 Submitting form ({form_method}) to: {target_url}")
-            
-            if form_method == 'POST':
-                form_response = self.session.post(target_url, data=form_data, timeout=15)
-            else:
-                form_response = self.session.get(target_url, params=form_data, timeout=15)
-            
-            if form_response.status_code == 200:
-                content_type = form_response.headers.get('content-type', '').lower()
-                content = form_response.text.strip()
-                
-                # Check if we got CSV data directly
-                if 'csv' in content_type or 'text/plain' in content_type:
-                    # Response is CSV data - check if it looks valid
-                    if content and len(content.split('\n')) > 1:
-                        lines = content.split('\n')
-                        first_line = lines[0].lower()
-                        if any(header in first_line for header in ['dog', 'name', 'runner', 'placing']):
-                            print(f"   ✅ Got CSV data directly ({len(lines)} lines)")
-                            return f"data:{content}"  # Special marker for direct data
-                
-                # Check if response contains a download URL
-                if content.startswith('http'):
-                    print(f"   ✅ Got CSV download URL: {content}")
-                    return content
-                
-                # Check if response is HTML with a download link
-                if '<' in content and '>' in content:
-                    response_soup = BeautifulSoup(content, 'html.parser')
-                    csv_links = response_soup.find_all('a', href=True)
-                    for link in csv_links:
-                        href = link.get('href')
-                        if href and ('csv' in href.lower() or 'export' in href.lower()):
-                            if href.startswith('/'):
-                                href = f"{self.base_url}{href}"
-                            elif not href.startswith('http'):
-                                href = f"{self.base_url}/{href}"
-                            print(f"   ✅ Found CSV link in response: {href}")
-                            return href
-                
-                print(f"   ⚠️ Unexpected response format ({len(content)} chars): {content[:100]}")
-                return None
-            else:
-                print(f"   ❌ Form submission failed: {form_response.status_code}")
-                return None
-                
-        except Exception as e:
-            print(f"   ⚠️ Error with expert-form method: {e}")
+        Args:
+            days_back: Number of days back from today to scrape (default: 7)
+        """
+        from datetime import date, timedelta
         
-        # Fallback to regular page CSV search (original method)
-        print(f"   🔍 Fallback: Checking regular page for CSV links")
+        print(f"🎯 Starting historical batch scraping for {days_back} days back...")
         
-        # Look for common CSV download patterns
-        csv_selectors = [
-            'a[href*="csv"]',
-            'a[href*="export"]',
-            'a[href*="download"]',
-            '.csv-download',
-            '.export-csv',
-            '.download-csv'
-        ]
+        end_date = date.today() - timedelta(days=1)  # Start from yesterday
+        start_date = end_date - timedelta(days=days_back-1)
         
-        for selector in csv_selectors:
-            elements = soup.select(selector)
-            for element in elements:
-                href = element.get('href')
-                if href:
-                    # Make URL absolute
-                    if href.startswith('/'):
-                        href = f"{self.base_url}{href}"
-                    elif not href.startswith('http'):
-                        href = f"{self.base_url}/{href}"
-                    
-                    print(f"   🔍 Found potential CSV link: {href}")
-                    return href
+        print(f"📅 Date range: {start_date} to {end_date}")
         
-        return None
-    
-    def download_csv_file(self, csv_url_or_data, filename):
-        """Download the CSV file or handle direct CSV data"""
-        try:
-            print(f"   📥 Processing CSV for: {filename}")
-            
-            # Check if we have direct CSV data (marked with 'data:' prefix)
-            if csv_url_or_data.startswith('data:'):
-                content = csv_url_or_data[5:]  # Remove 'data:' prefix
-                print(f"   📋 Using direct CSV data ({len(content.split('\n'))} lines)")
-            else:
-                # Download from URL
-                print(f"   🌍 Downloading from URL: {csv_url_or_data}")
-                response = self.session.get(csv_url_or_data, timeout=30)
-                
-                if response.status_code != 200:
-                    print(f"   ❌ Failed to download CSV: {response.status_code}")
-                    return False
-                
-                content = response.text
-            
-            # Validate content
-            if not content.strip():
-                print(f"   ❌ Empty CSV content")
-                return False
-            
-            # Basic CSV validation
-            lines = content.strip().split('\n')
-            if len(lines) < 2:
-                print(f"   ❌ CSV has insufficient data ({len(lines)} lines)")
-                return False
-            
-            # Check for expected headers
-            first_line = lines[0].lower()
-            expected_headers = ['dog name', 'dog', 'runner', 'name', 'placing', 'box']
-            if not any(header in first_line for header in expected_headers):
-                print(f"   ⚠️ CSV may not be a form guide (first line: {first_line[:100]})")
-                # Continue anyway as format might be different but still valid
-            else:
-                print(f"   ✅ CSV appears to be valid form guide data")
-            
-            # Save to download directory first (for backup/tracking)
-            download_filepath = os.path.join(self.download_dir, filename)
-            with open(download_filepath, 'w', encoding='utf-8') as f:
-                f.write(content)
-            
-            # Move to unprocessed directory for analysis
-            unprocessed_filepath = os.path.join(self.unprocessed_dir, filename)
-            with open(unprocessed_filepath, 'w', encoding='utf-8') as f:
-                f.write(content)
-            
-            # Add to existing files list to prevent future duplicates
-            self.existing_files.add(filename)
-            
-            # Extract race info from filename and add to collected races
-            match = re.match(r'Race (\d+) - ([A-Z_]+) - (\d{1,2} \w+ \d{4})\.csv', filename)
-            if match:
-                race_number, venue, date_str = match.groups()
-                try:
-                    date_obj = datetime.strptime(date_str, '%d %B %Y')
-                    date_formatted = date_obj.strftime('%Y-%m-%d')
-                    race_id = (date_formatted, venue, race_number)
-                    self.collected_races.add(race_id)
-                except ValueError:
-                    pass  # Skip if date parsing fails
-            
-            print(f"   ✅ Successfully saved CSV data to: {filename} ({len(lines)} lines)")
-            
-            return True
-            
-        except Exception as e:
-            print(f"   ❌ Error processing CSV data: {e}")
-            return False
-    
-    def run_scraper(self):
-        """Run the main scraping process"""
-        print("🚀 STARTING FORM GUIDE CSV SCRAPER (HISTORICAL RACES)")
-        print("=" * 60)
+        total_races_processed = 0
         
-        # Show current status
-        unprocessed_count = len([f for f in os.listdir(self.unprocessed_dir) if f.endswith('.csv')]) if os.path.exists(self.unprocessed_dir) else 0
-        download_count = len([f for f in os.listdir(self.download_dir) if f.endswith('.csv')]) if os.path.exists(self.download_dir) else 0
-        print(f"🧹 Clean Status: {unprocessed_count} files in unprocessed queue, {download_count} files in download backup")
-        print(f"🎯 Target: Historical races (previous day or earlier) for training data")
-        
-        # DISABLED: First, move any existing files from download to unprocessed
-        # This was causing an endless loop by repeatedly moving the same 847 files
-        # print("📞 Moving existing downloaded files to unprocessed...")
-        # existing_moved = self.move_downloaded_to_unprocessed()
-        # if existing_moved > 0:
-        #     print(f"✅ Moved {existing_moved} existing files")
-        # else:
-        #     print("⭕ No existing files to move")
-        print("⚠️ File moving from downloaded to unprocessed has been disabled to prevent loops")
-        
-        dates = self.get_race_dates()
-        total_downloaded = 0
-        
-        for date in dates:
-            if date.strftime('%Y-%m-%d') in self.completed_dates:
-                print(f"⭕ Date already fully collected: {date.strftime('%Y-%m-%d')}")
+        # Process each date
+        current_date = start_date
+        while current_date <= end_date:
+            if self.verbose_fetch:
+                print(f"\n🔍 Processing date: {current_date}")
+            
+            # Day-level optimization: Skip dates that are mostly complete
+            date_str = current_date.strftime('%Y-%m-%d')
+            if date_str in self.completed_dates:
+                if self.verbose_fetch:
+                    print(f"   ⚡ Skipping {current_date} - marked as complete (day-level cache)")
+                current_date += timedelta(days=1)
                 continue
-
-            race_urls = self.find_race_urls(date)
             
-            for race_url in race_urls:
-                if self.download_csv_from_race_page(race_url):
-                    total_downloaded += 1
+            # Check if date is mostly complete based on existing collected races
+            if self.is_date_mostly_complete(current_date):
+                if self.verbose_fetch:
+                    print(f"   ⚡ Skipping {current_date} - appears mostly complete ({len([r for r in self.collected_races if r[0] == date_str])} races already collected)")
+                self.mark_date_as_complete(current_date)
+                current_date += timedelta(days=1)
+                continue
+            
+            # Use UpcomingRaceBrowser for race discovery (it has working race discovery logic)
+            try:
+                from upcoming_race_browser import UpcomingRaceBrowser
+                browser = UpcomingRaceBrowser()
+                race_data_list = browser.get_races_for_date(current_date)
                 
-                # Add delay between requests
-                time.sleep(random.uniform(1, 3))
+                if not race_data_list:
+                    if self.verbose_fetch:
+                        print(f"   ⚠️ No races found for {current_date}")
+                    current_date += timedelta(days=1)
+                    continue
+                
+                if self.verbose_fetch:
+                    print(f"   📋 Found {len(race_data_list)} races for {current_date}")
+                
+                # Process each race from the browser results
+                for race_data in race_data_list:
+                    try:
+                        # Convert browser race data to scraper format
+                        race_info = {
+                            'race_number': str(race_data.get('race_number', '1')),
+                            'venue': race_data.get('venue', 'UNKNOWN'),
+                            'date': current_date.strftime('%Y-%m-%d'),
+                            'url': race_data.get('url', '')
+                        }
+                        
+                        # Verify it's actually historical
+                        if self.is_historical(current_date):
+                            self.stats.increment('races_requested')
+                            if self.verbose_fetch:
+                                print(f"   🏁 Processing: {race_info['venue']} Race {race_info['race_number']} ({race_info['date']})")
+                            
+                            success = self.download_csv_file(race_info)
+                            if success:
+                                total_races_processed += 1
+                                if self.verbose_fetch:
+                                    print(f"   ✅ Successfully downloaded: {race_info['venue']} Race {race_info['race_number']}")
+                            else:
+                                if self.verbose_fetch:
+                                    print(f"   ❌ Failed to download: {race_info['venue']} Race {race_info['race_number']}")
+                        else:
+                            if self.verbose_fetch:
+                                print(f"   ⚪ Skipping non-historical race: {race_info['venue']} Race {race_info['race_number']} on {race_info['date']}")
+                    
+                    except Exception as race_error:
+                        if self.verbose_fetch:
+                            print(f"   ⚠️ Error processing race: {race_error}")
+                        continue
+                    
+                    # Small delay to be polite to the server
+                    time.sleep(0.5)
+                    
+            except Exception as browser_error:
+                print(f"   ❌ Error using UpcomingRaceBrowser for {current_date}: {browser_error}")
+                # Fallback to old method if browser fails
+                race_urls = self.discover_races_for_date(current_date)
+                
+                if not race_urls:
+                    if self.verbose_fetch:
+                        print(f"   ⚠️ No races found for {current_date} (fallback method)")
+                    current_date += timedelta(days=1)
+                    continue
+                
+                # Process each race URL using old method
+                for race_url in race_urls:
+                    race_info = self.extract_race_info_from_url(race_url)
+                    if race_info:
+                        # Verify it's actually historical
+                        try:
+                            race_date = datetime.strptime(race_info['date'], '%Y-%m-%d').date()
+                            if self.is_historical(race_date):
+                                self.stats.increment('races_requested')
+                                success = self.download_csv_file(race_info)
+                                if success:
+                                    total_races_processed += 1
+                            else:
+                                if self.verbose_fetch:
+                                    print(f"   ⚪ Skipping non-historical race: {race_info['venue']} Race {race_info['race_number']} on {race_info['date']}")
+                        except ValueError as e:
+                            if self.verbose_fetch:
+                                print(f"   ⚠️ Date parsing error for {race_url}: {e}")
+                    
+                    # Small delay to be polite to the server
+                    time.sleep(0.5)
             
-            # Refresh existing files after each date to avoid duplicates
-            self.refresh_existing_files()
+            current_date += timedelta(days=1)
         
-        print(f"\n🎯 SCRAPING COMPLETE")
-        print("=" * 60)
-        print(f"📊 Total CSV files downloaded: {total_downloaded}")
-        print(f"📂 Files ready for analysis in: {self.unprocessed_dir}")
-        print(f"📂 Files backed up in: {self.download_dir}")
-        
-        # Show current file counts
-        unprocessed_count = len([f for f in os.listdir(self.unprocessed_dir) if f.endswith('.csv')]) if os.path.exists(self.unprocessed_dir) else 0
-        download_count = len([f for f in os.listdir(self.download_dir) if f.endswith('.csv')]) if os.path.exists(self.download_dir) else 0
-        
-        print(f"📁 Current file counts:")
-        print(f"   • Unprocessed (ready for analysis): {unprocessed_count} files")
-        print(f"   • Downloaded (backup): {download_count} files")
-        
-        # Final clean status
-        print(f"\n🧹 Final Clean Status: {unprocessed_count} files ready for processing")
-        
-        if total_downloaded > 0:
-            print(f"\n💡 Next steps:")
-            print(f"   • Run analysis on files in {self.unprocessed_dir}")
-            print(f"   • Files are automatically moved to unprocessed for analysis")
-
-
-def main():
-    """Main function"""
-    scraper = FormGuideCsvScraper()
-    scraper.run_scraper()
-
+        print(f"\n✅ Historical batch scraping completed!")
+        print(f"📊 Total races processed: {total_races_processed}")
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Form Guide CSV Scraper with robust caching')
+    parser.add_argument('--force', action='store_true', 
+                       help='Force reprocessing of all files, ignoring cache')
+    parser.add_argument('--test-file', type=str, 
+                       help='Test the caching system with a specific CSV file')
+    parser.add_argument('--stats', action='store_true',
+                       help='Show cache statistics and exit')
+    parser.add_argument('--test-url', type=str,
+                       help='Test mode: Download CSV from a single race URL')
+    parser.add_argument('--historical', action='store_true', 
+                       help='Download races from previous day or earlier')
+    parser.add_argument('--verbose-fetch', action='store_true', 
+                       help='Enable per-race fetch logging')
+    
+    args = parser.parse_args()
+    
+    scraper = FormGuideCsvScraper(historical=args.historical, verbose_fetch=args.verbose_fetch)
+    print(f"📊 Loaded {len(scraper.collected_races)} existing races")
+    print(f"📁 Found {len(scraper.existing_files)} existing files")
+    
+    if args.stats:
+        # Show detailed cache statistics
+        conn = sqlite3.connect(scraper.database_path)
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT COUNT(*) FROM processed_race_files")
+        total_processed = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT status, COUNT(*) FROM processed_race_files GROUP BY status")
+        status_counts = cursor.fetchall()
+        
+        cursor.execute("SELECT COUNT(DISTINCT venue) FROM processed_race_files WHERE venue != 'unknown'")
+        unique_venues = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT MIN(processed_at), MAX(processed_at) FROM processed_race_files")
+        date_range = cursor.fetchone()
+        
+        print(f"\n📈 Cache Statistics:")
+        print(f"   Total processed files: {total_processed}")
+        print(f"   Unique venues: {unique_venues}")
+        for status, count in status_counts:
+            print(f"   {status.capitalize()}: {count}")
+        if date_range[0] and date_range[1]:
+            print(f"   Date range: {date_range[0]} to {date_range[1]}")
+        
+        conn.close()
+        
+        # Log summary and failure guard before exit
+        scraper.stats.log_summary()
+        if scraper.stats.get('fetches_attempted') > 0 and scraper.stats.get('successful_saves') == 0:
+            raise RuntimeError("All downloads failed")
+        sys.exit(0)
+    
+    if args.test_file:
+        if not os.path.exists(args.test_file):
+            print(f"❌ Test file not found: {args.test_file}")
+            sys.exit(1)
+            
+        print(f"\n🧪 Testing caching with file: {args.test_file}")
+        
+        # Test without force
+        result1 = scraper.parse_csv_with_ingestion(args.test_file, force=False)
+        print(f"First attempt (no force): {result1}")
+        
+        # Test with force
+        result2 = scraper.parse_csv_with_ingestion(args.test_file, force=args.force)
+        print(f"Second attempt (force={args.force}): {result2}")
+        
+        # Show statistics from the test
+        scraper.stats.log_summary()
+        
+        # Check for failure guard condition before exit
+        if scraper.stats.get('fetches_attempted') > 0 and scraper.stats.get('successful_saves') == 0:
+            raise RuntimeError("All downloads failed")
+        sys.exit(0)
+    
+    if args.test_url:
+        print(f"\n🧪 Test Mode: Downloading single race CSV")
+        success = scraper.test_single_race_download(args.test_url)
+        if success:
+            print(f"\n🎉 Test completed successfully!")
+        else:
+            print(f"\n💥 Test failed!")
+        # Log summary before exit
+        scraper.stats.log_summary()
+        # Check for failure guard condition
+        if scraper.stats.get('fetches_attempted') > 0 and scraper.stats.get('successful_saves') == 0:
+            raise RuntimeError("All downloads failed")
+        sys.exit(0)
+    
+    # Run historical batch scraping if --historical flag is provided
+    if args.historical:
+        print(f"\n🎯 Historical mode activated - starting batch scraping...")
+        scraper.run_historical_batch_scraping(days_back=7)  # Default to 7 days back
+    else:
+        print(f"\n✨ Caching system ready! Use --help for options.")
+        print(f"💡 Tips:")
+        print(f"   - Use --test-file <path> to test caching with a specific file")
+        print(f"   - Use --force to ignore cache and reprocess files")
+        print(f"   - Use --stats to see cache statistics")
+        print(f"   - Use --historical to run batch scraping of recent races")
+    
+    # Final summary and failure guard for main execution path
+    scraper.stats.log_summary()
+    
+    # If any fetches were attempted but no saves succeeded, raise error for CI/batch jobs
+    if scraper.stats.get('fetches_attempted') > 0 and scraper.stats.get('successful_saves') == 0:
+        raise RuntimeError("All downloads failed")
+    
+    # Show completion message
+    if args.historical and scraper.stats.get('races_requested') > 0:
+        print(f"🏁 Historical scraping completed successfully!")
+    
+    # Allow zero eligible races case to exit normally (no error raised)

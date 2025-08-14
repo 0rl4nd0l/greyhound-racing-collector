@@ -1,0 +1,39 @@
+Profile for _group_normalize_probabilities
+Timestamp: 2025-08-04T12:27:09.913350
+Total Time: 0.017s
+CPU Time: 0.014s
+I/O Time: 0.0ms
+Memory Peak: 0.03MB
+Function Calls: 2018
+Bottlenecks: <20>(90.000s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/tree/_classes.py:1032(predict_proba)(0.015s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/validation.py:1673(check_is_fitted)(0.009s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/_tags.py:367(get_tags)(0.005s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/validation.py:1635(_is_fitted)(0.004s)
+
+==================================================
+Detailed cProfile Output:
+         2018 function calls (1969 primitive calls) in 0.017 seconds
+
+   Ordered by: cumulative time
+   List reduced from 90 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+     11/2    0.002    0.000    0.015    0.008 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/tree/_classes.py:1032(predict_proba)
+       11    0.000    0.000    0.009    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/validation.py:1673(check_is_fitted)
+       11    0.000    0.000    0.005    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/_tags.py:367(get_tags)
+       11    0.003    0.000    0.004    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/validation.py:1635(_is_fitted)
+       11    0.002    0.000    0.004    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/_tags.py:303(_find_tags_provider)
+      2/1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:617(_group_normalize_probabilities)
+      2/1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/pipeline_profiler.py:714(__exit__)
+      2/1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/pipeline_profiler.py:307(track_sequence_step)
+     10/1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/_utils.py:70(__call__)
+     10/1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:603(__call__)
+      2/1    0.000    0.000    0.001    0.001 {built-in method builtins.print}
+       19    0.000    0.000    0.001    0.000 {built-in method builtins.next}
+     10/1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/parallel.py:125(__call__)
+       11    0.000    0.000    0.001    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:363(__init__)
+       19    0.000    0.000    0.001    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/_config.py:214(config_context)
+       11    0.000    0.000    0.001    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/tree/_classes.py:482(_validate_X_predict)
+     10/1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/ensemble/_forest.py:724(_accumulate_prediction)
+       11    0.000    0.000    0.001    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/validation.py:2780(_check_n_features)
+       11    0.000    0.000    0.001    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/tree/_classes.py:1728(__sklearn_tags__)
+       11    0.000    0.000    0.001    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/validation.py:328(_num_features)
+
+

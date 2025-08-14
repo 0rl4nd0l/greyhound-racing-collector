@@ -1,5 +1,6 @@
 import pandas as pd
-from odds_dataclasses import convert_market_list_to_df, convert_selection_list_to_df
+from odds_dataclasses import (convert_market_list_to_df,
+                              convert_selection_list_to_df)
 
 
 class Sportsbook:
@@ -26,7 +27,8 @@ class Sportsbook:
             market_df = convert_market_list_to_df(market_list)
             selection_df = convert_selection_list_to_df(selection_list)
             merged_df = market_df.merge(
-                selection_df, on='market_id', how='inner').drop_duplicates()
+                selection_df, on="market_id", how="inner"
+            ).drop_duplicates()
             return merged_df
         else:
             return pd.DataFrame()

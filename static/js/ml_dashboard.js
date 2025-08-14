@@ -5,7 +5,9 @@ document.addEventListener('DOMContentLoaded', () => {
         predictions: [],
         autoRefreshInterval: null,
         isLoading: false,
-        charts: {}
+        charts: {},
+        lastPredictionData: null,
+        currentFilePath: null
     };
 
     const elements = {
@@ -17,6 +19,9 @@ document.addEventListener('DOMContentLoaded', () => {
         refreshIntervalSelect: document.getElementById('refresh-interval'),
         exportCsvButton: document.getElementById('export-csv'),
         exportPdfButton: document.getElementById('export-pdf'),
+        autoAdvisoryToggle: document.getElementById('auto-advisory-toggle'),
+        generateAdvisoryBtn: document.getElementById('generate-advisory-btn'),
+        advisoryMessagesContainer: document.getElementById('advisory-messages')
     };
 
     // Initialize the dashboard
@@ -43,6 +48,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (elements.exportPdfButton) {
             elements.exportPdfButton.addEventListener('click', exportToPdf);
+        }
+        if (elements.generateAdvisoryBtn) {
+            elements.generateAdvisoryBtn.addEventListener('click', generateAdvisoryManually);
         }
     }
 
@@ -93,6 +101,168 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Error loading predictions:', error);
         }
     }
+
+    // Generate advisory automatically after successful prediction
+    async function generateAdvisoryForPrediction(predictionData, filePath = null) {
+        // Check if auto-advisory is enabled
+        if (!elements.autoAdvisoryToggle || !elements.autoAdvisoryToggle.checked) {
+            return;
+        }
+
+        // Store prediction data for manual generation
+        state.lastPredictionData = predictionData;
+        state.currentFilePath = filePath;
+
+        await generateAdvisory(predictionData, filePath);
+    }
+
+    // Generate advisory manually via button click
+    async function generateAdvisoryManually() {
+        if (state.lastPredictionData) {
+            await generateAdvisory(state.lastPredictionData, state.currentFilePath);
+        } else {
+            // Try to get the most recent prediction from the current state
+            if (state.predictions && state.predictions.length > 0) {
+                await generateAdvisory({ prediction_data: state.predictions[0] });
+            } else {
+                showAlert('No prediction data available to generate advisory', 'warning');
+            }
+        }
+    }
+
+    // Core advisory generation function
+    async function generateAdvisory(predictionData, filePath = null) {
+        if (!elements.advisoryMessagesContainer) {
+            console.warn('Advisory messages container not found');
+            return;
+        }
+
+        // Show loading spinner
+        if (window.AdvisoryUtils && window.AdvisoryUtils.showAdvisoryLoading) {
+            window.AdvisoryUtils.showAdvisoryLoading(
+                elements.advisoryMessagesContainer,
+                'Generating AI advisory...'
+            );
+        }
+
+        // Prepare payload
+        const payload = {};
+        if (filePath) {
+            payload.file_path = filePath;
+        } else {
+            payload.prediction_data = predictionData;
+        }
+
+        try {
+            // Make non-blocking API call
+            const response = await fetch('/api/generate_advisory', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                // Clear loading state and render advisory
+                if (window.AdvisoryUtils && window.AdvisoryUtils.clearAdvisory) {
+                    window.AdvisoryUtils.clearAdvisory(elements.advisoryMessagesContainer);
+                }
+                
+                if (window.AdvisoryUtils && window.AdvisoryUtils.renderAdvisory) {
+                    window.AdvisoryUtils.renderAdvisory(result, elements.advisoryMessagesContainer);
+                } else {
+                    // Fallback rendering if AdvisoryUtils not available
+                    renderAdvisoryFallback(result);
+                }
+            } else {
+                throw new Error(result.message || 'Advisory generation failed');
+            }
+        } catch (error) {
+            console.error('Error generating advisory:', error);
+            
+            // Clear loading state
+            if (window.AdvisoryUtils && window.AdvisoryUtils.clearAdvisory) {
+                window.AdvisoryUtils.clearAdvisory(elements.advisoryMessagesContainer);
+            }
+            
+            // Show error alert
+            showAlert(`Advisory generation failed: ${error.message}`, 'danger', elements.advisoryMessagesContainer);
+        }
+    }
+
+    // Fallback advisory rendering if AdvisoryUtils is not available
+    function renderAdvisoryFallback(result) {
+        const alertClass = result.type === 'success' ? 'alert-success' :
+                          result.type === 'warning' ? 'alert-warning' :
+                          result.type === 'danger' ? 'alert-danger' : 'alert-info';
+        
+        const html = `
+            <div class="alert ${alertClass} alert-dismissible fade show" role="alert">
+                <h6><i class="fas fa-lightbulb"></i> ${result.title || 'Advisory'}</h6>
+                <p>${result.message || 'Advisory generated successfully'}</p>
+                ${result.details && result.details.length > 0 ?
+                    `<ul class="mb-0">${result.details.map(detail => `<li>${detail}</li>`).join('')}</ul>` :
+                    ''
+                }
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        `;
+        
+        elements.advisoryMessagesContainer.innerHTML = html;
+    }
+
+    // Enhanced alert function that can target specific containers
+    function showAlert(message, type, container = null) {
+        // Use the enhanced alert logic for containers
+        if (container) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+            alertDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            container.innerHTML = '';
+            container.appendChild(alertDiv);
+            
+            // Auto remove after 5 seconds
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.remove();
+                }
+            }, 5000);
+            return;
+        }
+        
+        // Global alert fallback - check if global showAlert exists
+        if (typeof window.showAlert === 'function' && window.showAlert !== showAlert) {
+            window.showAlert(message, type);
+            return;
+        }
+        
+        // Final fallback - create floating alert
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+        alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 1050; max-width: 400px;';
+        alertDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.body.appendChild(alertDiv);
+        
+        // Auto remove after 5 seconds
+        setTimeout(() => {
+            if (alertDiv.parentNode) {
+                alertDiv.remove();
+            }
+        }, 5000);
+    }
+
+    // Expose functions globally for template access
+    window.generateAdvisoryForPrediction = generateAdvisoryForPrediction;
+    window.generateAdvisoryManually = generateAdvisoryManually;
 
     init();
 });

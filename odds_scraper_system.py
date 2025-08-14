@@ -1,19 +1,20 @@
 # odds_scraper_system.py
 
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
-from datetime import datetime, timedelta
-from typing import List, Dict, Tuple, Optional
-import re
 import logging
+import re
 import sqlite3
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Tuple
+
+from selenium import webdriver
+from selenium.common.exceptions import NoSuchElementException, TimeoutException
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
 
 
 class OddsScraperSystem:
-    def __init__(self, db_path='greyhound_racing_data.db'):
+    def __init__(self, db_path="greyhound_racing_data.db"):
         self.db_path = db_path
         self.driver = None
         self.base_url = "https://www.sportsbet.com.au"
@@ -21,16 +22,18 @@ class OddsScraperSystem:
         self.setup_driver()
 
     def setup_logger(self):
-        logger = logging.getLogger('OddsScraperSystem')
+        logger = logging.getLogger("OddsScraperSystem")
         logger.setLevel(logging.INFO)
         # Console Handler
         ch = logging.StreamHandler()
         ch.setLevel(logging.INFO)
         # File Handler
-        fh = logging.FileHandler('odds_scraper.log')
+        fh = logging.FileHandler("odds_scraper.log")
         fh.setLevel(logging.INFO)
         # Formatter
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
         ch.setFormatter(formatter)
         fh.setFormatter(formatter)
         logger.addHandler(ch)
@@ -39,9 +42,9 @@ class OddsScraperSystem:
 
     def setup_driver(self):
         options = webdriver.ChromeOptions()
-        options.add_argument('--headless')
-        options.add_argument('--disable-gpu')
-        options.add_argument('log-level=3')
+        options.add_argument("--headless")
+        options.add_argument("--disable-gpu")
+        options.add_argument("log-level=3")
         self.driver = webdriver.Chrome(options=options)
         self.logger.info("WebDriver set up successfully")
 
@@ -68,8 +71,11 @@ class OddsScraperSystem:
             self.driver.quit()
             self.logger.info("Closed the WebDriver")
 
+
 if __name__ == "__main__":
     # Demo running the odds scraper system
     scraper = OddsScraperSystem()
-    test_urls = ["https://www.sportsbet.com.au/betting/greyhound-racing/australia-nz/sale/race-1-9443604"]
+    test_urls = [
+        "https://www.sportsbet.com.au/betting/greyhound-racing/australia-nz/sale/race-1-9443604"
+    ]
     scraper.run_odds_scraper(test_urls)

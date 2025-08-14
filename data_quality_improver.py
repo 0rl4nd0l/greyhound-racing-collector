@@ -27,7 +27,7 @@ class DataQualityImprover:
         def score(row):
             completeness = sum(pd.notnull(row)) / len(row)
             freshness = 1 / (datetime.now() - pd.to_datetime(row['race_date'])).days
-            plausibility = 
+            plausibility = 0.8  # Placeholder value for plausibility
             return completeness * 0.5 + freshness * 0.3 + plausibility * 0.2
 
         data['quality_score'] = data.apply(score, axis=1)
@@ -38,13 +38,14 @@ Data Quality Check and Cleanup
 This script performs comprehensive data quality checks and cleanup.
 """
 
-import pandas as pd
+import json
+import logging
 import os
 import re
-from pathlib import Path
-import logging
-import json
 from datetime import datetime
+from pathlib import Path
+
+import pandas as pd
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

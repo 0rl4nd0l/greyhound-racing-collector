@@ -1,0 +1,254 @@
+# Greyhound Racing Prediction System - Default Configuration
+# ========================================================
+# 
+# This file contains default thresholds and configuration values collected
+# during Step 1: Project Kick-off & Requirements Sync audit.
+#
+# Generated: 2025-01-04
+# Audit Date: 2025-01-04
+
+# =============================================================================
+# PREDICTION CONFIDENCE THRESHOLDS
+# =============================================================================
+confidence_thresholds:
+  # ML Model prediction confidence levels
+  high_confidence: 0.80    # Predictions above this are considered high confidence
+  medium_confidence: 0.60  # Predictions between medium and high are moderate
+  low_confidence: 0.40     # Predictions below this are low confidence
+  minimum_confidence: 0.20 # Predictions below this should be filtered out
+  
+  # GPT Enhancement confidence
+  gpt_analysis_confidence: 0.70  # Minimum confidence for GPT analysis to be used
+  gpt_consensus_threshold: 0.65  # Agreement threshold between ML and GPT predictions
+
+# =============================================================================  
+# VARIANCE CONTROL THRESHOLDS
+# =============================================================================
+variance_thresholds:
+  # Probability normalization variance controls
+  low_variance_threshold: 0.03    # Below this, apply power transformation
+  moderate_variance_threshold: 0.10  # Below this, use temperature softmax
+  high_variance_preservation: true   # Preserve high variance with simple normalization
+  
+  # Power transformation parameters
+  variance_amplification_power: 2.5  # Power for low variance amplification
+  temperature_softmax_factor: 3.0    # Temperature for moderate variance preservation
+  
+  # Model prediction variance
+  prediction_variance_min: 0.01     # Minimum acceptable prediction variance
+  prediction_variance_max: 0.95     # Maximum acceptable prediction variance
+  outlier_variance_threshold: 3.0   # Standard deviations for outlier detection
+
+# =============================================================================
+# DRIFT DETECTION THRESHOLDS  
+# =============================================================================
+drift_thresholds:
+  # Model performance drift detection
+  accuracy_drift_threshold: 0.05    # Alert if accuracy drops by more than 5%
+  auc_drift_threshold: 0.03         # Alert if AUC drops by more than 3%
+  brier_score_drift_threshold: 0.02 # Alert if Brier score increases by more than 2%
+  
+  # Data drift detection
+  feature_drift_threshold: 0.10     # Statistical test p-value threshold
+  target_distribution_drift: 0.15   # Win rate distribution change threshold
+  venue_distribution_drift: 0.20    # Venue distribution change threshold
+  
+  # Temporal drift monitoring
+  performance_window_days: 30       # Days to look back for performance comparison
+  drift_check_frequency_hours: 24   # How often to check for drift
+  minimum_samples_for_drift: 100    # Minimum samples needed for drift detection
+
+# =============================================================================
+# EXPECTED VALUE (EV) THRESHOLDS
+# =============================================================================
+ev_thresholds:
+  # Betting thresholds (learned from historical data)
+  win_threshold: 0.05        # Minimum EV for win bets
+  place_threshold: 0.035     # Minimum EV for place bets (70% of win threshold)
+  quinella_threshold: 0.06   # Minimum EV for quinella bets (120% of win threshold)
+  
+  # Risk management
+  maximum_stake_percentage: 0.05    # Maximum 5% of bankroll per bet
+  minimum_odds_threshold: 1.10      # Don't bet on odds below 1.10
+  maximum_odds_threshold: 50.0      # Don't bet on odds above 50.0
+  
+  # Portfolio management
+  daily_betting_limit: 1000.0       # Maximum daily betting amount
+  maximum_concurrent_bets: 10       # Maximum number of simultaneous bets
+  roi_target_threshold: 0.02        # Target 2% ROI minimum
+
+# =============================================================================
+# DATA QUALITY THRESHOLDS
+# =============================================================================
+data_quality:
+  # Completeness thresholds
+  minimum_feature_completeness: 0.80   # Minimum 80% of features must be present
+  critical_fields_completeness: 0.95   # Critical fields must be 95% complete
+  
+  # Validation thresholds
+  maximum_duplicate_records_pct: 0.01  # Maximum 1% duplicate records
+  maximum_invalid_box_numbers: 50      # Maximum invalid box numbers per day
+  maximum_dog_day_violations: 10       # Maximum dog-day violations per day
+  minimum_data_quality_score: 95.0     # Minimum overall data quality score
+  
+  # Outlier detection
+  weight_outlier_std_dev: 3.0          # Standard deviations for weight outliers
+  time_outlier_std_dev: 3.0            # Standard deviations for time outliers
+  odds_outlier_threshold: 100.0        # Maximum reasonable odds
+
+# =============================================================================
+# SYSTEM PERFORMANCE THRESHOLDS
+# =============================================================================
+performance_thresholds:
+  # Processing time limits
+  prediction_timeout_seconds: 30       # Maximum time for race prediction
+  model_training_timeout_hours: 4      # Maximum time for model training
+  data_ingestion_timeout_minutes: 15   # Maximum time for data ingestion
+  
+  # Memory and storage
+  maximum_memory_usage_gb: 8.0         # Maximum memory usage
+  maximum_log_file_size_mb: 100        # Maximum size for individual log files
+  maximum_cache_size_mb: 500           # Maximum cache size
+  
+  # Database performance
+  slow_query_threshold_ms: 1000        # Queries slower than this are logged
+  connection_pool_size: 20             # Database connection pool size
+  query_timeout_seconds: 30            # Maximum query execution time
+
+# =============================================================================
+# MONITORING & ALERTING THRESHOLDS
+# =============================================================================
+monitoring:
+  # Alert thresholds (inherits from config/monitoring.json)
+  max_dog_day_violations: 10
+  max_invalid_box_numbers: 50  
+  max_duplicate_records: 5
+  min_data_quality_score: 95.0
+  
+  # Additional system alerts
+  prediction_error_rate_threshold: 0.05   # Alert if >5% predictions fail
+  api_response_time_threshold_ms: 5000     # Alert if API response >5s
+  daily_prediction_volume_min: 50         # Alert if <50 predictions per day
+  
+  # Resource monitoring
+  cpu_usage_threshold: 80.0               # Alert if CPU usage >80%
+  disk_usage_threshold: 85.0              # Alert if disk usage >85%
+  memory_usage_threshold: 90.0            # Alert if memory usage >90%
+
+# =============================================================================
+# FEATURE ENGINEERING THRESHOLDS
+# =============================================================================
+feature_engineering:
+  # Temporal leakage protection
+  minimum_historical_days: 30        # Minimum days of history for features
+  maximum_lookahead_hours: 0         # No future information allowed
+  
+  # Feature selection
+  minimum_feature_importance: 0.001  # Minimum importance for feature inclusion
+  maximum_features_per_category: 50  # Maximum features per category
+  correlation_threshold: 0.95        # Remove features with correlation >95%
+  
+  # Missing value handling
+  maximum_missing_percentage: 0.20   # Drop features with >20% missing
+  imputation_method: "median"        # Default imputation method
+  
+# =============================================================================
+# GPT ENHANCEMENT CONFIGURATION
+# =============================================================================
+gpt_enhancement:
+  # API limits and thresholds
+  max_tokens_per_request: 2000        # Maximum tokens per GPT request
+  max_requests_per_day: 100           # Daily limit for GPT requests
+  temperature: 0.2                    # GPT temperature for consistency
+  
+  # Quality thresholds
+  minimum_analysis_length: 50         # Minimum characters for valid analysis
+  maximum_analysis_length: 5000       # Maximum characters to prevent overflow
+  consensus_agreement_threshold: 0.75 # Agreement threshold for ML+GPT consensus
+  
+  # Cost management
+  estimated_cost_per_1k_tokens: 0.045 # USD cost estimation
+  daily_cost_limit: 10.0              # Maximum daily cost in USD
+  cost_alert_threshold: 8.0           # Alert when approaching daily limit
+
+# =============================================================================
+# WORKFLOW LOGGING CONFIGURATION
+# =============================================================================
+workflow_logging:
+  # Log rotation and retention
+  log_retention_days: 90              # Keep logs for 90 days
+  max_log_entries_per_file: 10000     # Maximum entries per log file
+  
+  # Logging levels
+  default_log_level: "INFO"           # Default logging level
+  debug_components: []                # Components to enable debug logging
+  
+  # Structured logging
+  include_stack_traces: true          # Include stack traces in error logs
+  log_performance_metrics: true       # Log performance metrics
+  log_prediction_details: true        # Log detailed prediction information
+
+# =============================================================================
+# MODEL REGISTRY CONFIGURATION
+# =============================================================================
+model_registry:
+  # Model lifecycle
+  model_retention_days: 365           # Keep models for 1 year
+  maximum_model_versions: 10          # Keep max 10 versions per model
+  
+  # Model validation
+  minimum_test_accuracy: 0.60         # Minimum accuracy for model acceptance
+  minimum_test_auc: 0.55              # Minimum AUC for model acceptance
+  maximum_test_brier_score: 0.25      # Maximum Brier score for acceptance
+  
+  # Deployment thresholds
+  improvement_threshold: 0.02         # Minimum improvement for deployment
+  stability_test_races: 100           # Races to test stability before deployment
+  rollback_threshold: 0.10            # Performance drop threshold for rollback
+
+# =============================================================================
+# METADATA & AUDIT INFORMATION
+# =============================================================================
+metadata:
+  configuration_version: "1.0.0"
+  created_date: "2025-01-04"
+  created_by: "Project Audit - Step 1"
+  last_updated: "2025-01-04"
+  
+  # Configuration sources
+  stakeholder_input: "Default values based on system analysis"
+  historical_analysis: "Thresholds derived from ml_system_v4.py analysis"
+  industry_standards: "Aligned with racing prediction best practices"
+  
+  # Validation
+  schema_version: "defaults_v1"
+  validation_status: "pending_stakeholder_review"
+  approved_by: null
+  approval_date: null
+
+# =============================================================================
+# ENVIRONMENT-SPECIFIC OVERRIDES
+# =============================================================================
+# Note: These can be overridden by environment-specific config files
+environments:
+  development:
+    confidence_thresholds:
+      minimum_confidence: 0.10       # Lower threshold for development
+    performance_thresholds:
+      prediction_timeout_seconds: 60  # More lenient timeouts
+    gpt_enhancement:
+      max_requests_per_day: 20        # Lower limits for development
+      
+  staging:
+    drift_thresholds:
+      performance_window_days: 7      # Shorter window for staging
+    monitoring:
+      prediction_error_rate_threshold: 0.10  # More lenient for staging
+      
+  production:
+    confidence_thresholds:
+      minimum_confidence: 0.30       # Higher threshold for production
+    data_quality:
+      minimum_data_quality_score: 98.0  # Higher quality requirements
+    monitoring:
+      api_response_time_threshold_ms: 2000  # Stricter response times

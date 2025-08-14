@@ -15,24 +15,24 @@ Feature Groups:
 - v3_trainer: Trainer and ownership effects
 """
 
-from .v3_distance_stats import V3DistanceStatsFeatures
-from .v3_recent_form import V3RecentFormFeatures
-from .v3_venue_analysis import V3VenueAnalysisFeatures
+from .feature_store import FeatureStore
 from .v3_box_position import V3BoxPositionFeatures
 from .v3_competition import V3CompetitionFeatures
-from .v3_weather_track import V3WeatherTrackFeatures
+from .v3_distance_stats import V3DistanceStatsFeatures
+from .v3_recent_form import V3RecentFormFeatures
 from .v3_trainer import V3TrainerFeatures
-from .feature_store import FeatureStore
+from .v3_venue_analysis import V3VenueAnalysisFeatures
+from .v3_weather_track import V3WeatherTrackFeatures
 
 __all__ = [
-    'V3DistanceStatsFeatures',
-    'V3RecentFormFeatures', 
-    'V3VenueAnalysisFeatures',
-    'V3BoxPositionFeatures',
-    'V3CompetitionFeatures',
-    'V3WeatherTrackFeatures',
-    'V3TrainerFeatures',
-    'FeatureStore'
+    "V3DistanceStatsFeatures",
+    "V3RecentFormFeatures",
+    "V3VenueAnalysisFeatures",
+    "V3BoxPositionFeatures",
+    "V3CompetitionFeatures",
+    "V3WeatherTrackFeatures",
+    "V3TrainerFeatures",
+    "FeatureStore",
 ]
 
 __version__ = "3.0.0"

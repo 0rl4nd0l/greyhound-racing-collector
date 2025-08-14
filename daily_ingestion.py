@@ -7,7 +7,9 @@ This script updates upcoming race data daily from thedogs.com.au.
 """
 
 import os
+
 from form_guide_csv_scraper import FormGuideCsvScraper
+
 
 class DailyIngestion:
     def __init__(self):
@@ -16,7 +18,9 @@ class DailyIngestion:
     def update_upcoming_races(self):
         """Fetch and store upcoming races."""
         print("🌟 Running daily race ingestion...")
-        dates = self.scraper.get_race_dates(days_back=1)[:-1]  # Check only yesterday for updates
+        dates = self.scraper.get_race_dates(days_back=1)[
+            :-1
+        ]  # Check only yesterday for updates
 
         for date in dates:
             print(f"🔍 Checking races for {date}...")
@@ -30,6 +34,7 @@ class DailyIngestion:
                     print(f"✅ Downloaded {race_url} successfully.")
                 else:
                     print(f"❌ Failed to download {race_url}.")
+
 
 if __name__ == "__main__":
     ingestion = DailyIngestion()

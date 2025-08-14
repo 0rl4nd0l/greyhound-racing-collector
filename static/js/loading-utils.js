@@ -215,13 +215,24 @@ class ErrorDisplayManager {
     }
 
     createAlertContainer() {
-        let container = document.getElementById('alert-container');
+        // Try multiple possible container IDs for backward compatibility (prioritize alertContainer for test compatibility)
+        let container = document.getElementById('alertContainer') ||
+                       document.getElementById('alert-container') || 
+                       document.getElementById('alerts-container') ||
+                       document.getElementById('notification-container');
+        
         if (!container) {
+            // Create a new container if none exists (using alertContainer for test compatibility)
             container = document.createElement('div');
-            container.id = 'alert-container';
+            container.id = 'alertContainer';
             container.className = 'position-fixed top-0 end-0 p-3';
             container.style.zIndex = '1055';
+            container.setAttribute('role', 'alert');
+            container.setAttribute('aria-live', 'polite');
             document.body.appendChild(container);
+            console.log('✅ Alert container created with ID: alertContainer');
+        } else {
+            console.log('✅ Using existing alert container with ID:', container.id);
         }
         return container;
     }
@@ -598,6 +609,7 @@ window.hideLoading = (elementOrId) => loadingManager.hideLoading(elementOrId);
 window.isLoading = (elementOrId) => loadingManager.isLoading(elementOrId);
 
 window.showError = (message, type = 'danger', duration = 5000) => errorManager.showAlert(message, type, duration);
+window.showAlert = (message, type = 'info', duration = 5000) => errorManager.showAlert(message, type, duration);
 window.showServerError = (error) => errorManager.showServerError(error);
 window.showValidationErrors = (errors) => errorManager.showValidationErrors(errors);
 window.clearErrors = () => errorManager.clearAllErrors();
@@ -617,5 +629,8 @@ window.LoadingUtils = {
     tokenTracker,
     validator
 };
+
+// Export errorManager globally for backward compatibility
+window.errorManager = errorManager;
 
 console.log('🚀 Loading utilities initialized successfully');

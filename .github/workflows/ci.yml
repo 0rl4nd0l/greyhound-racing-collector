@@ -3,16 +3,41 @@ name: CI Pipeline - Greyhound Racing Predictor
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, requirements-update ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main, develop, requirements-update ]
+
+env:
+  DATABASE_URL: postgresql://test_user:test_password@localhost:5433/greyhound_test
+  REDIS_URL: redis://localhost:6380/0
+  TESTING: true
+  UPCOMING_RACES_DIR: ./upcoming_races_temp
+  OPENAI_USE_LIVE: 0
 
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.9, 3.10.0, 3.11]
+        python-version: ['3.9', '3.10', '3.11']
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: greyhound_test
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5433:5432
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+      
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+        options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 3s --health-retries 3
 
     steps:
     - uses: actions/checkout@v4
@@ -26,15 +51,25 @@ jobs:
       uses: actions/cache@v3
       with:
         path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
         restore-keys: |
           ${{ runner.os }}-pip-
 
-    - name: Install dependencies
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y postgresql-client
+
+    - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pytest pytest-cov pytest-mock flake8 black isort
+        pip install -r requirements-test.txt
+
+    - name: Validate upcoming_races CSVs
+      run: |
+        echo "🔎 Validating upcoming_races CSVs..."
+        python scripts/validate_upcoming_races.py --strict-future || (echo "❌ Upcoming races validation failed" && exit 1)
 
     - name: Lint with flake8
       run: |
@@ -51,109 +86,55 @@ jobs:
       run: |
         isort --check-only --diff .
 
-    - name: Create test database
+    - name: Set up PostgreSQL test database
       run: |
-        # Create a minimal test database for testing
-        python -c "
-import sqlite3
-import os
+        PGPASSWORD=test_password psql -h localhost -p 5433 -U test_user -d greyhound_test -f tests/data/fixtures/001_init_schema.sql
+        echo "PostgreSQL test database initialized successfully"
 
-# Create test database
-conn = sqlite3.connect('test_greyhound_racing_data.db')
-cursor = conn.cursor()
+    - name: Install Playwright browsers
+      run: |
+        npx playwright install --with-deps
 
-# Create minimal schema for testing
-cursor.execute('''
-    CREATE TABLE IF NOT EXISTS race_metadata (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        race_id TEXT UNIQUE,
-        venue TEXT,
-        race_date DATE,
-        race_name TEXT,
-        grade TEXT,
-        distance TEXT,
-        track_condition TEXT,
-        weather TEXT,
-        temperature REAL,
-        humidity REAL,
-        wind_speed REAL,
-        wind_direction TEXT,
-        track_record TEXT,
-        prize_money_total REAL,
-        prize_money_breakdown TEXT,
-        race_time TEXT,
-        field_size INTEGER,
-        track_variant TEXT,
-        number_of_runners INTEGER,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-''')
+    - name: Install and cache ChromeDriver
+      run: |
+        python -m webdriver_manager.chrome
+        echo "ChromeDriver installed and cached successfully"
 
-cursor.execute('''
-    CREATE TABLE IF NOT EXISTS dog_race_data (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        race_id TEXT,
-        dog_name TEXT,
-        dog_clean_name TEXT,
-        trap_number INTEGER,
-        finish_position INTEGER,
-        starting_price TEXT,
-        individual_time REAL,
-        sectional_1 REAL,
-        sectional_2 REAL,
-        sectional_3 REAL,
-        sectional_4 REAL,
-        weight REAL,
-        trainer TEXT,
-        age TEXT,
-        form_comment TEXT,
-        margin TEXT,
-        prize_money REAL,
-        box_number INTEGER,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-''')
-
-cursor.execute('''
-    CREATE TABLE IF NOT EXISTS dogs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT,
-        clean_name TEXT,
-        trainer TEXT,
-        sire TEXT,
-        dam TEXT,
-        color TEXT,
-        sex TEXT,
-        date_of_birth DATE,
-        weight REAL,
-        career_starts INTEGER,
-        career_wins INTEGER,
-        career_places INTEGER,
-        career_shows INTEGER,
-        career_earnings REAL,
-        best_time REAL,
-        last_start_date DATE,
-        retirement_date DATE,
-        active BOOLEAN DEFAULT 1,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-''')
-
-conn.commit()
-conn.close()
-print('Test database created successfully')
-"
+    - name: Run ChromeDriver smoke test
+      run: |
+        python tests/test_chromedriver_smoke.py
+        echo "ChromeDriver smoke test passed successfully"
 
     - name: Run database migrations
       run: |
-        # Test database migrations
-        export TESTING=1
-        # Use test database for migrations
-        sed -i 's/greyhound_racing_data.db/test_greyhound_racing_data.db/g' alembic.ini
-        alembic upgrade head
+        # Run Alembic migrations on test database if alembic.ini exists
+        if [ -f "alembic.ini" ]; then
+          alembic upgrade head
+        fi
+
+    - name: Database Schema Consistency Tests
+      run: |
+        echo "Running database schema consistency tests..."
+        
+        # Test 1: Alembic schema consistency (empty diff check)
+        echo "Testing Alembic schema consistency..."
+        python -m pytest tests/test_database_schema_consistency.py::test_alembic_schema_consistency -v
+        
+        # Test 2: Foreign key indexes check
+        echo "Testing foreign key indexes..."
+        python -m pytest tests/test_database_schema_consistency.py::test_foreign_key_indexes -v
+        
+        # Test 3: Data integrity checks
+        echo "Testing data integrity..."
+        python -m pytest tests/test_database_schema_consistency.py::test_data_integrity -v
+        
+        # Test 4: Schema hash generation
+        echo "Testing schema hash generation..."
+        python -m pytest tests/test_database_schema_consistency.py::test_schema_hash_generation -v
+        
+        echo "Schema consistency tests completed successfully!"
+      env:
+        DATABASE_URL: ${{ env.DATABASE_URL }}
 
     - name: Run load tests with Locust
       run: |
@@ -161,34 +142,47 @@ print('Test database created successfully')
         locust --headless -u 10 -r 1 -f load_tests/locustfile.py --run-time 2m --csv=locust-result
         cat locust-result_stats.csv
 
-    - name: Run unit tests
+    - name: Run unit tests with profiling and drift detection
       run: |
-        export TESTING=1
-        export DATABASE_URL=sqlite:///test_greyhound_racing_data.db
-        export OPENAI_API_KEY=test_key_for_ci
-        pytest tests/ -v --cov=. --cov-report=xml --cov-report=html
+        pytest tests/test_pipeline_with_profiling.py -v
+        pytest tests/test_drift_detection.py -v
+        
+    - name: Run key consistency regression tests
+      run: |
+        echo "Running key consistency tests to prevent KeyError regressions..."
+        python -m pytest tests/test_key_consistency.py \
+          -m "key_consistency and not slow" \
+          --tb=short \
+          -v \
+          --maxfail=3 \
+          --timeout=300
+        echo "Key consistency tests completed successfully!"
+      env:
+        DATABASE_URL: ${{ env.DATABASE_URL }}
 
-    - name: Run GPT endpoint tests with stubbed OpenAI
+    - name: Run security tests
       run: |
-        export TESTING=1
-        export DATABASE_URL=sqlite:///test_greyhound_racing_data.db
-        export OPENAI_API_KEY=test_key_for_ci
-        pytest tests/test_gpt_endpoints.py -v
-        pytest tests/test_merged_prediction_logic.py -v
+        make security
 
     - name: Run integration tests
       run: |
-        export TESTING=1
-        export DATABASE_URL=sqlite:///test_greyhound_racing_data.db
         # Run specific integration tests if they exist
         if [ -d "tests/integration" ]; then
-          pytest tests/integration/ -v
+          pytest tests/integration/ -v --cov-append
         fi
+
+    - name: Run end-to-end tests
+      if: matrix.python-version == '3.11'
+      run: |
+        make e2e
+
+    - name: Run performance tests
+      if: matrix.python-version == '3.11'
+      run: |
+        make perf
 
     - name: Test CLI commands
       run: |
-        export TESTING=1
-        export DATABASE_URL=sqlite:///test_greyhound_racing_data.db
         # Test basic CLI functionality
         python run.py --help || echo "CLI help command tested"
 
@@ -197,109 +191,38 @@ print('Test database created successfully')
       run: |
         export TESTING=1
         export DATABASE_URL=sqlite:///test_greyhound_racing_data.db
-        python -c "
-import sys
-import os
-sys.path.insert(0, '.')
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.datasets import make_classification
-from sklearn.metrics import roc_auc_score
-import joblib
-import time
-import json
-import numpy as np
-
-# Create dummy training data
-X, y = make_classification(n_samples=1000, n_features=10, n_classes=3, random_state=42)
-
-# Train lightweight model
-model = RandomForestClassifier(n_estimators=10, random_state=42)
-start_time = time.time()
-model.fit(X, y)
-training_time = time.time() - start_time
-
-# Test prediction latency
-test_start = time.time()
-y_pred_prob = model.predict_proba(X[:100])
-prediction_latency = (time.time() - test_start) / 100  # Average per prediction
-
-# Calculate AUC (using one-vs-rest for multiclass)
-from sklearn.preprocessing import label_binarize
-from sklearn.metrics import roc_auc_score
-y_bin = label_binarize(y, classes=[0, 1, 2])
-auc = roc_auc_score(y_bin, y_pred_prob, multi_class='ovr')
-
-# Save model
-joblib.dump(model, 'test_model.pkl')
-
-# Save metrics
-metrics = {
-    'auc': float(auc),
-    'prediction_latency': float(prediction_latency),
-    'training_time': float(training_time)
-}
-
-with open('model_metrics.json', 'w') as f:
-    json.dump(metrics, f, indent=2)
-
-print(f'Model trained successfully:')
-print(f'AUC: {auc:.4f}')
-print(f'Prediction latency: {prediction_latency:.4f}s')
-print(f'Training time: {training_time:.2f}s')
-"
+        python scripts/train_test_model.py
 
     - name: Performance guardrails check
       if: matrix.python-version == '3.11'
       run: |
-        python -c "
-import json
-import sys
-
-# Load metrics
-with open('model_metrics.json', 'r') as f:
-    metrics = json.load(f)
-
-auc = metrics['auc']
-latency = metrics['prediction_latency']
-
-print(f'Checking performance guardrails:')
-print(f'AUC: {auc:.4f}')
-print(f'Latency: {latency:.4f}s')
-
-# Define thresholds
-min_auc = 0.7  # Minimum acceptable AUC
-max_latency = 1.0  # Maximum acceptable latency (1 second)
-
-# Check guardrails
-failed = False
-
-if auc < min_auc:
-    print(f'❌ FAILED: AUC {auc:.4f} is below minimum threshold {min_auc}')
-    failed = True
-else:
-    print(f'✅ PASSED: AUC {auc:.4f} meets minimum threshold {min_auc}')
-
-if latency > max_latency:
-    print(f'❌ FAILED: Prediction latency {latency:.4f}s exceeds maximum threshold {max_latency}s')
-    failed = True
-else:
-    print(f'✅ PASSED: Prediction latency {latency:.4f}s is within acceptable range')
-
-if failed:
-    print('Pipeline failed due to performance guardrails')
-    sys.exit(1)
-else:
-    print('All performance guardrails passed!')
-"
+        python scripts/check_performance_guardrails.py
 
     - name: Upload model artifacts
       if: matrix.python-version == '3.11'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: model-artifacts
         path: |
           test_model.pkl
           model_metrics.json
+
+    - name: Run comprehensive backend unit tests
+      run: |
+        echo "Running comprehensive backend unit tests..."
+        pytest tests/test_backend_suite.py tests/test_flask_api.py tests/test_backend.py \
+          --cov=app \
+          --cov-report=term-missing \
+          --cov-report=xml:backend-coverage.xml \
+          --tb=short \
+          -v \
+          --maxfail=5 \
+          --timeout=600
+        echo "Backend unit tests completed successfully!"
+      env:
+        DATABASE_URL: ${{ env.DATABASE_URL }}
+        REDIS_URL: ${{ env.REDIS_URL }}
+        TESTING: true
 
     - name: Upload coverage reports to Codecov
       if: matrix.python-version == '3.11'
@@ -309,3 +232,180 @@ else:
         flags: unittests
         name: codecov-umbrella
         fail_ci_if_error: false
+
+  csv_ingestion_tests:
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements-test.txt
+
+    - name: Run CSV Ingestion Unit Tests
+      run: pytest tests/test_csv_ingestion_unit.py
+
+    - name: Run CSV Ingestion Integration Tests
+      run: pytest tests/test_csv_ingestion_integration.py
+
+  comprehensive-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov pytest-flask
+          
+      - name: Run comprehensive tests
+        run: |
+          pytest --cov=. --cov-report=xml --cov-report=term-missing
+          echo "Comprehensive tests completed successfully!"
+      
+      - name: Run upcoming races endpoint and CSV tests
+        run: |
+          echo "Running upcoming races endpoint and CSV validation tests..."
+          pytest tests/test_upcoming_races_endpoint.py tests/test_upcoming_races_csv_unit.py \
+            --tb=short \
+            -v \
+            --maxfail=3 \
+            --timeout=180
+          echo "Upcoming races tests completed successfully!"
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          REDIS_URL: ${{ env.REDIS_URL }}
+          TESTING: true
+          OPENAI_USE_LIVE: 1
+
+  # Headless Browser Tests Job
+  browser-tests:
+    runs-on: ubuntu-latest
+    needs: test
+    timeout-minutes: 15
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: greyhound_test
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5433:5432
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+      
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+        options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 3s --health-retries 3
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-test.txt
+    
+    - name: Install Node.js dependencies
+      run: |
+        npm install
+    
+    - name: Install Playwright browsers
+      run: |
+        npx playwright install --with-deps chromium
+    
+    - name: Set up test environment
+      run: |
+        mkdir -p ${UPCOMING_RACES_DIR}
+        mkdir -p logs
+        mkdir -p processed
+        mkdir -p historical_races
+        echo "Test environment setup complete"
+      env:
+        DATABASE_URL: postgresql://test_user:test_password@localhost:5433/greyhound_test
+        REDIS_URL: redis://localhost:6380/0
+        TESTING: true
+    
+    - name: Set up PostgreSQL test database
+      run: |
+        PGPASSWORD=test_password psql -h localhost -p 5433 -U test_user -d greyhound_test -f tests/data/fixtures/001_init_schema.sql || echo "Schema setup completed"
+        echo "PostgreSQL test database initialized successfully"
+    
+    - name: Start Flask app in background
+      run: |
+        export DATABASE_URL=postgresql://test_user:test_password@localhost:5433/greyhound_test
+        export REDIS_URL=redis://localhost:6380/0
+        export TESTING=true
+        export DEFAULT_PORT=5002
+        export FLASK_ENV=testing
+        export UPCOMING_RACES_DIR=${UPCOMING_RACES_DIR:-./upcoming_races_temp}
+        python app.py &
+        echo $! > flask_app.pid
+        sleep 15  # Give the app time to start
+        echo "Flask app started in background"
+      env:
+        DATABASE_URL: postgresql://test_user:test_password@localhost:5433/greyhound_test
+        REDIS_URL: redis://localhost:6380/0
+        TESTING: true
+    
+    - name: Wait for Flask app to be ready
+      run: |
+        echo "Waiting for Flask app to be ready..."
+        timeout 60 bash -c 'until curl -f http://localhost:5002/api/health 2>/dev/null; do echo "Waiting for Flask app..."; sleep 2; done'
+        echo "Flask app is ready!"
+    
+    - name: Run headless browser test for /upcoming_races endpoint
+      run: |
+        echo "Running Playwright test for upcoming races endpoint..."
+        npx playwright test --config=playwright.config.js --project=chromium-desktop \
+          tests/ci/test-upcoming-races-console.spec.js
+        echo "Playwright test completed successfully!"
+      env:
+        DATABASE_URL: postgresql://test_user:test_password@localhost:5433/greyhound_test
+        REDIS_URL: redis://localhost:6380/0
+        TESTING: true
+    
+    - name: Stop Flask app
+      if: always()
+      run: |
+        if [ -f flask_app.pid ]; then
+          kill $(cat flask_app.pid) || echo "Flask app already stopped"
+          rm flask_app.pid
+        fi
+        echo "Flask app stopped"
+    
+    - name: Upload Playwright test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: playwright-results
+        path: |
+          playwright-report/
+          playwright-results.json
+        retention-days: 7

@@ -7,11 +7,13 @@ This script corrects the box number assignments in existing prediction files
 by re-parsing the original race files and updating the predictions with correct data.
 """
 
-import os
 import json
+import os
 import re
-import pandas as pd
 from pathlib import Path
+
+import pandas as pd
+
 
 def extract_correct_box_numbers(race_file_path):
     """Extract correct box numbers from race CSV file"""

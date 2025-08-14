@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T09:04:09.903573
+Total Time: 6.076s
+CPU Time: 5.841s
+I/O Time: 0.0ms
+Memory Peak: 88.49MB
+Function Calls: 2357691
+Bottlenecks: <20>(883.000s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:360(finish_request)(5.265s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:760(__init__)(5.265s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/serving.py:395(handle)(5.132s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:690(process_request_thread)(5.131s)
+
+==================================================
+Detailed cProfile Output:
+         2357691 function calls (2356992 primitive calls) in 6.075 seconds
+
+   Ordered by: cumulative time
+   List reduced from 883 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+      9/4    0.000    0.000    5.265    1.316 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:360(finish_request)
+      9/4    0.010    0.001    5.265    1.316 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:760(__init__)
+      9/4    0.001    0.000    5.132    1.283 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/serving.py:395(handle)
+      9/4    0.000    0.000    5.131    1.283 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:690(process_request_thread)
+    14/13    0.001    0.000    5.038    0.388 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:641(wait)
+       21    0.000    0.000    5.032    0.240 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:327(wait)
+       11    0.000    0.000    5.031    0.457 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/wsgi.py:255(__next__)
+        4    0.000    0.000    5.031    1.258 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/wrappers/response.py:31(_iter_encoded)
+        2    0.000    0.000    5.031    2.516 /Users/orlandolee/greyhound_racing_collector/app.py:6209(generate_prediction_stream)
+        1    0.000    0.000    5.031    5.031 /Users/orlandolee/greyhound_racing_collector/prediction_strategy_manager.py:516(predict_races_streaming)
+    98/83    0.001    0.000    5.031    0.061 {method 'acquire' of '_thread.lock' objects}
+       19    0.000    0.000    5.027    0.265 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/selectors.py:385(select)
+       19    0.031    0.002    5.027    0.265 {method 'poll' of 'select.poll' objects}
+      2/1    0.000    0.000    4.995    4.995 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:613(_unpickle)
+      2/1    1.423    0.712    4.991    4.991 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:1230(load)
+9087/9083    0.087    0.000    2.475    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)
+6041/6038    0.032    0.000    1.829    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)
+6039/6038    0.643    0.000    1.786    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)
+   413382    0.629    0.000    1.122    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:281(read)
+     9083    0.303    0.000    0.489    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:1754(load_build)
+
+

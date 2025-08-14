@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T14:14:12.817087
+Total Time: 14.133s
+CPU Time: 13.139s
+I/O Time: 0.0ms
+Memory Peak: 95.79MB
+Function Calls: 2847547
+Bottlenecks: <20>(3315.000s), importlib._bootstrap>:480(_call_with_frames_removed)(11.586s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)(10.554s), builtins.__import__}(8.512s), importlib._bootstrap_external>:1020(exec_module)(7.318s)
+
+==================================================
+Detailed cProfile Output:
+         2847547 function calls (2814016 primitive calls) in 18.330 seconds
+
+   Ordered by: cumulative time
+   List reduced from 3315 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+   666/37    4.243    0.006   11.586    0.313 <frozen importlib._bootstrap>:480(_call_with_frames_removed)
+9090/9083    0.368    0.000   10.554    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)
+    35/21    0.001    0.000    8.512    0.405 {built-in method builtins.__import__}
+   318/25    0.201    0.001    7.318    0.293 <frozen importlib._bootstrap_external>:1020(exec_module)
+   311/16    0.015    0.000    7.288    0.455 <frozen importlib._bootstrap>:911(_load_unlocked)
+    322/4    0.017    0.000    7.127    1.782 <frozen importlib._bootstrap>:1349(_find_and_load)
+    321/4    0.597    0.002    7.127    1.782 <frozen importlib._bootstrap>:1304(_find_and_load_unlocked)
+6044/6038    0.094    0.000    7.092    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)
+   362/26    0.099    0.000    5.943    0.229 {built-in method builtins.exec}
+      263    0.254    0.001    5.481    0.021 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/threadpoolctl.py:1143(_make_controller_from_path)
+        1    0.000    0.000    4.319    4.319 /Users/orlandolee/greyhound_racing_collector/unified_predictor.py:373(__init__)
+     6038    0.864    0.000    4.301    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)
+        1    0.000    0.000    4.122    4.122 /Users/orlandolee/greyhound_racing_collector/comprehensive_prediction_pipeline.py:121(_initialize_systems)
+        1    0.000    0.000    4.122    4.122 /Users/orlandolee/greyhound_racing_collector/comprehensive_enhanced_ml_system.py:88(__init__)
+  405/185    0.004    0.000    4.082    0.022 <frozen importlib._bootstrap>:1390(_handle_fromlist)
+        1    0.000    0.000    4.079    4.079 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/imblearn/__init__.py:1(<module>)
+        1    0.000    0.000    4.052    4.052 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/imblearn/combine/__init__.py:1(<module>)
+        1    0.000    0.000    4.041    4.041 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/imblearn/combine/_smote_enn.py:1(<module>)
+        1    0.000    0.000    4.026    4.026 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/imblearn/base.py:1(<module>)
+        1    0.000    0.000    3.979    3.979 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/imblearn/utils/_validation.py:1(<module>)
+
+

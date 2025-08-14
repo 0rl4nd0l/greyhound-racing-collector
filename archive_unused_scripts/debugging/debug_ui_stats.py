@@ -7,10 +7,11 @@ This tool helps identify where the UI is getting its statistics and
 why there might be a discrepancy between database records and UI display.
 """
 
-import sqlite3
-import os
 import json
+import os
+import sqlite3
 from datetime import datetime
+
 
 def investigate_ui_statistics():
     """Investigate all possible sources of UI statistics"""

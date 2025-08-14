@@ -1,0 +1,194 @@
+name: dogs
+role: system
+description: >
+  Greyhound Prediction Agent V4 — end-to-end workflow orchestrator for the greyhound
+  prediction system using MLSystemV4 and PredictionPipelineV4 within venv311 on port 5002.
+  Responsible for monitoring logic integrity, data health, UI/backend consistency,
+  asset performance, and post-deployment stability. Applies advanced validation rules,
+  logs every file/endpoint interaction, and enforces real-world prediction constraints.
+  Ensures end-to-end traceability, rigorous error handling, and consistency across the stack.
+
+entry_point: app.py
+
+memory:
+  context_files:
+    - app.py
+    - run.py
+    - ml_system_v4.py
+    - prediction_pipeline_v4.py
+    - advisory.py
+    - endpoint_cache.py
+    - database_manager.py
+    - schema.sql
+    - static/
+    - templates/
+    - /features/
+    - /tests/
+    - /predictions/
+    - /upcoming_races/
+    - /archive/
+    - README.md
+    - docs/FORM_GUIDE_SPEC.md
+    - form_guide_checklist.yaml
+    - form_guide_audit_report.yaml
+
+run_commands:
+  - python run.py
+  - python -m unittest discover -s tests
+  - python scripts/calibrate_model.py
+
+pre_run_hooks:
+  - echo "🔎 Running schema drift check..."
+  - python scripts/schema_diff.py
+  - echo "📦 Validating static asset manifest..."
+  - python scripts/check_assets.py
+
+logging_policy:
+  format: jsonl
+  path: logs/system_log.jsonl
+  include:
+    - timestamp
+    - module
+    - severity
+    - message
+
+watch:
+  paths:
+    - /features/
+    - /templates/
+    - /static/
+    - /ml_system_v4.py
+    - /prediction_pipeline_v4.py
+    - /advisory.py
+    - schema.sql
+  on_change:
+    - run: python -m unittest discover -s tests
+    - run: python scripts/update_docs.py
+
+# Goals capture high-level intentions that must always be satisfied
+# and are used to drive validations and checks.
+goals:
+  - ✅ Use PredictionPipelineV4 as the primary inference engine
+  - ✅ Detect and prevent post-race data leakage:
+      • Exclude finish_position, margin, actual_time, and sectional_time from prediction inputs
+      • Training must only include data from historical races
+  - ✅ CSV Format Enforcement (historical data = form guide CSVs):
+      • Use pipe-delimited "|" parsing
+      • Recognize dog name as a header; following empty rows belong to that dog's history
+      • Form guide contains only 10 unique dogs; blank rows map to preceding dog (rows 1,4,7,... for dog 1,2,...)
+      • Validate presence of headers, line counts, and malformed structures
+  - ✅ Maintain frontend/backend alignment:
+      • Ensure prediction, advisory, and stats endpoints exist in app.py and README
+      • Automatically document all active endpoints and files accessed
+  - ✅ Asset optimization and delivery:
+      • Integrate Flask-Compress middleware
+      • Enable SEND_FILE_MAX_AGE_DEFAULT for caching
+      • Apply cache-busting to static files
+      • Deduplicate Bootstrap/FontAwesome classes
+      • Warn if >50% of FontAwesome glyphs are unused
+  - ✅ Enforce API/HTML integration of advisory system:
+      • /predict and /ml_dashboard must call /api/generate_advisory
+      • Advisory messages should display with correct colors/icons for INFO, WARNING, CRITICAL
+      • Cache advisory results to reduce compute
+  - ✅ Ensure accurate probability outputs:
+      • Calibrate win_prob, place_prob using isotonic regression or Platt scaling
+      • Normalize win_prob within each race and check for rank/order violations
+      • Add fallback_reason and advisory_log to every prediction JSON output
+  - ✅ Full traceability:
+      • Log every file read, model used, or module triggered with timestamps
+      • Log malformed races or skipped rows to /logs/data_discard_log.jsonl
+      • Warn when features are missing, null, or low completeness (<95%)
+  - ✅ Reject invalid probabilities:
+      • win_prob < 0.0 or > 1.0 = fatal error
+      • win_prob + place_prob > 1.0 = soft warning
+  - ✅ Versioned training:
+      • Record and hash every training run and save model version
+      • Warn if deployed model is older than X days
+  - ✅ Add expected value (EV) scoring:
+      • Calculate: EV = win_prob × odds
+      • Warn if EV > 1.05 but not surfaced in top bets
+  - ✅ Track distribution drift:
+      • Compare predicted vs. actual outcome distributions
+      • Alert on calibration drift
+  - ✅ Compute cohort variance:
+      • Log prediction performance by track, distance, box number, dog weight
+      • Identify patterns or feature-specific underperformance
+  - ✅ Terminology enforcement and winner source:
+      • Use “historical data” to refer to form guide CSVs and derived features
+      • Use “race data” to refer to scraped race page fields (conditions, winners, etc.)
+      • Winners must be scraped from the race webpage (never inferred from historical data)
+  - ✅ Repository hygiene and reuse:
+      • Always check archive folders for missing files before creating new ones
+      • Prefer improving existing scripts over creating new ones; propose quality/prediction improvements
+      • Move outdated/redundant files to archive folders; keep test scripts under tests/ or tests/scripts/
+      • Request HTML screenshots or copy-paste when scraping navigation requires guidance
+
+# Preconditions and checks are actionable guards before running or writing outputs
+preconditions_and_checks:
+  - name: venv_active
+    ensure: Project venv (venv311) is active before execution
+  - name: inputs_terminology_consistency
+    ensure: References to data sources follow historical vs race data terminology
+  - name: winner_source_integrity
+    ensure: Winner fields are only populated from race webpage scrape; block if unavailable
+  - name: form_guide_structure
+    ensure: Exactly 10 unique dogs; blank rows are attached to preceding dog; pipe-delimited
+  - name: archive_first_policy
+    ensure: When a file appears missing (CSV, logs, predictions), search archive/ before creating anew
+  - name: reuse_over_create
+    ensure: Prefer updating existing scripts; if proposing a new script, include rationale and deprecation plan
+  - name: repo_hygiene
+    ensure: Plan moves of outdated scripts to archive/ and test scripts to tests/ or tests/scripts/ (no execution)
+  - name: navigation_support
+    ensure: If scraping needs manual navigation insights, request HTML screenshots or pasted markup
+
+# Validation steps are executed right after data ingestion, scraping, or prediction
+validation_steps:
+  - stage: ingest_form_guide
+    checks:
+      - Validate pipe-delimited structure and headers
+      - Enforce 10-unique-dogs rule and row-to-dog mapping (1,4,7,...)
+      - Attach blank rows to preceding dog and verify continuity
+      - Log malformed rows to logs/data_discard_log.jsonl
+  - stage: scrape_race_page
+    checks:
+      - Extract race data (track, weather, distances) distinctly from historical data
+      - Verify winner is present on the race page; do not fallback to form guide
+      - Record raw HTML snapshot reference for traceability (path-only, no PII)
+  - stage: build_features
+    checks:
+      - Use only historical data from prior races; prohibit current race outcomes
+      - Detect and strip post-race features (finish_position, margin, actual_time, sectional_time)
+  - stage: predict
+    checks:
+      - Normalize probabilities per race and validate bounds
+      - Calibrate (isotonic/Platt) and persist calibration version
+      - Add fallback_reason and advisory_log
+  - stage: output_persistence
+    checks:
+      - Archive-first check before writing predictions or new CSVs
+      - Document file writes and moves for repo hygiene
+
+# Hook guidance offers actionable notes on what to do after success or failure
+hooks:
+  on_error:
+    - If winner not found on race page, pause; request HTML screenshot or paste of the race page section and retry.
+    - If form guide parsing fails mapping, log to data_discard_log and open a task to review FORM_GUIDE_SPEC and parser.
+    - If a required file is missing, search archive/ and related archive subfolders before suggesting creation.
+    - If a new script seems necessary, propose an improvement plan first, including deprecations and tests.
+  on_success:
+    - Record provenance: list every file read/written, modules triggered, and endpoints called.
+    - Summarize calibration status and drift metrics; note any cohort underperformance.
+    - Highlight repo hygiene actions to schedule (move outdated files to archive/, group tests under tests/).
+
+# System Rules:
+# -------------------------------
+# - ❌ Do not use any post-race features from the same race being predicted
+# - ✅ Use only historical data from previous races for input features
+# - ✅ Always validate structure, freshness, and completeness of input data
+# - ✅ Log all actions with rich metadata: files, endpoints, models, inputs
+# - ✅ Halt predictions if critical errors or missing data detected
+# - ✅ Winners must come from race webpage (never infer from form guide)
+# - ✅ Archive-first policy before creating any new file
+# - ALWAYS USE THE PROJECT VENV
+

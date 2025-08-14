@@ -6,12 +6,13 @@ Live Odds System Startup Script
 This script starts both the data collection system and the web dashboard.
 """
 
+import os
 import subprocess
+import sys
 import threading
 import time
-import sys
-import os
 from pathlib import Path
+
 
 def start_data_collection():
     """Start the odds collection system in background"""

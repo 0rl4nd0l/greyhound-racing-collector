@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T13:02:55.862957
+Total Time: 13.272s
+CPU Time: 13.059s
+I/O Time: 0.0ms
+Memory Peak: 106.89MB
+Function Calls: 3330251
+Bottlenecks: <20>(2325.000s), objects}(9.660s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/threadpoolctl.py:1143(_make_controller_from_path)(9.161s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/imblearn/combine/_smote_enn.py:1(<module>)(8.868s), builtins.__build_class__}(8.790s)
+
+==================================================
+Detailed cProfile Output:
+         3330251 function calls (3279141 primitive calls) in 21.399 seconds
+
+   Ordered by: cumulative time
+   List reduced from 2325 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+36311/34587    0.421    0.000    9.660    0.000 {method 'read' of '_io.BufferedReader' objects}
+      616    0.491    0.001    9.161    0.015 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/threadpoolctl.py:1143(_make_controller_from_path)
+        1    0.000    0.000    8.868    8.868 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/imblearn/combine/_smote_enn.py:1(<module>)
+  367/362    0.024    0.000    8.790    0.024 {built-in method builtins.__build_class__}
+      102    0.002    0.000    8.597    0.084 <frozen abc>:105(__new__)
+        1    0.000    0.000    8.423    8.423 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/imblearn/base.py:1(<module>)
+        1    0.000    0.000    8.412    8.412 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/imblearn/utils/__init__.py:1(<module>)
+        1    0.000    0.000    8.401    8.401 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/imblearn/utils/_validation.py:1(<module>)
+        1    0.005    0.005    7.272    7.272 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/_test_common/instance_generator.py:1(<module>)
+        1    0.020    0.020    7.204    7.204 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/_testing.py:1(<module>)
+4319/4318    0.048    0.000    5.263    0.001 /Users/orlandolee/greyhound_racing_collector/utils/race_file_utils.py:151(parse_filename_to_race_id)
+     4073    0.142    0.000    5.021    0.001 /Users/orlandolee/greyhound_racing_collector/utils/date_parsing.py:12(parse_date_flexible)
+     5089    0.656    0.000    4.588    0.001 {built-in method posix.lstat}
+    30/27    0.002    0.000    2.794    0.103 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/connection.py:1134(wait)
+      605    0.010    0.000    2.124    0.004 <frozen importlib._bootstrap_external>:145(_path_stat)
+        2    0.003    0.002    2.026    1.013 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/calibration.py:709(predict_proba)
+        4    0.000    0.000    2.017    0.504 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/parallel.py:54(__call__)
+        4    0.000    0.000    2.014    0.504 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1969(__call__)
+        2    0.000    0.000    2.007    1.003 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/_response.py:116(_get_response_values)
+        2    0.002    0.001    2.007    1.003 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/pipeline.py:859(predict_proba)
+
+
