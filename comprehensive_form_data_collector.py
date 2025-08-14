@@ -266,7 +266,9 @@ class ComprehensiveFormDataCollector:
 
         logger.info(f"🎯 Target dogs for enhancement: {len(target_dogs)}")
 
-        # Step 2: Collect from Greyhound Recorder
+        # Step 2: Collect from Greyhound Recorder (ensure lazy loader is initialized)
+        if self.greyhound_recorder is None:
+            self._load_greyhound_recorder()
         recorder_data = self._collect_from_greyhound_recorder()
 
         # Step 3: Enhanced dog profile scraping with parallel processing
@@ -353,6 +355,13 @@ class ComprehensiveFormDataCollector:
         logger.info("📋 Collecting form guides from Greyhound Recorder...")
 
         try:
+            # Ensure scraper is available via lazy loader
+            if self.greyhound_recorder is None:
+                self._load_greyhound_recorder()
+            if self.greyhound_recorder is None:
+                logger.warning("Greyhound Recorder scraper unavailable; skipping this source")
+                return {"success": False, "error": "scraper_unavailable"}
+
             # Get current form guides
             form_guides = self.greyhound_recorder.fetch_form_guides()
 

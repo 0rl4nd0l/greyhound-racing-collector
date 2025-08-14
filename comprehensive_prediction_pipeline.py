@@ -1871,6 +1871,19 @@ class ComprehensivePredictionPipeline:
             all_results.append(results)
             if results.get("success"):
                 successful_predictions += 1
+            # Persist per-race predictions to predictions/ for API consumption
+            try:
+                from utils.file_naming import build_prediction_filename
+                # Build a standardized per-race filename
+                current_timestamp = datetime.now()
+                race_id = os.path.basename(race_file_path).replace('.csv', '')
+                filename = build_prediction_filename(race_id, current_timestamp, "comprehensive")
+                filepath = self.predictions_dir / filename
+                with open(filepath, "w") as f:
+                    json.dump(results, f, indent=2, default=self._json_safe_serializer)
+                print(f"💾 Per-race prediction saved: {filepath}")
+            except Exception as e:
+                print(f"⚠️ Failed to save per-race prediction for {race_file}: {e}")
 
         summary = {
             "success": True,

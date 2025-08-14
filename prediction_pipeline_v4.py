@@ -22,7 +22,7 @@ class PredictionPipelineV4:
         self.ml_system_v4 = MLSystemV4(db_path)
         logger.info("🚀 Prediction Pipeline V4 - Advanced System Initialized")
 
-def predict_race_file(self, race_file_path: str) -> dict:
+    def predict_race_file(self, race_file_path: str) -> dict:
         """Main prediction method using ML System V4."""
         logger.info(
             f"🚀 Starting prediction for: {os.path.basename(race_file_path)} using ML System V4"
