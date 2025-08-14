@@ -551,7 +551,9 @@ class UnifiedPredictor:
         # 4. GPT Enhancement (can be applied to any prediction)
         if self.config.components_available["gpt_enhancement"]:
             try:
-                from gpt_prediction_enhancer import GPTPredictionEnhancer
+                # DEPRECATED: GPTPredictionEnhancer has been archived. Prefer using
+                # utils/openai_wrapper.OpenAIWrapper for any new OpenAI interactions.
+                from archive.outdated_openai.gpt_prediction_enhancer import GPTPredictionEnhancer
 
                 self.gpt_enhancer = GPTPredictionEnhancer()
                 logger.info("✅ GPT Enhancement available")

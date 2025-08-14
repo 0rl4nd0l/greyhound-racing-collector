@@ -120,12 +120,21 @@ class RaceFileManager:
             directories: List of directories to scan. If None, uses default set.
         """
         if directories is None:
+            try:
+                from config.paths import DATA_DIR, UPCOMING_RACES_DIR
+                data_processed = str(DATA_DIR / "processed")
+                default_upcoming = str(UPCOMING_RACES_DIR)
+            except Exception:
+                # Fallbacks if config is unavailable in certain execution contexts
+                data_processed = "./processed"
+                default_upcoming = "./upcoming_races"
             directories = [
                 "./unprocessed",
-                "./form_guides/downloaded", 
+                "./form_guides/downloaded",
                 "./form_guides/processed",
                 "./historical_races",
-                "./processed"
+                data_processed,
+                default_upcoming,
             ]
         
         self.collected_races.clear()

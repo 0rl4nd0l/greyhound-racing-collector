@@ -21,12 +21,22 @@ class Config:
     # Database settings
     DATABASE_PATH = os.environ.get('DATABASE_PATH') or 'greyhound_racing_data.db'
     
+    # Feature flags and modes
+    # Controls whether any results scraping modules (race winners, weather, live browsers)
+    # can be imported/used by the main Flask app. Defaults to disabled for isolation.
+    ENABLE_RESULTS_SCRAPERS = os.environ.get('ENABLE_RESULTS_SCRAPERS', '0') not in ('0', 'false', 'False')
+    # Controls whether live upcoming race scraping is allowed (as opposed to CSV-only)
+    ENABLE_LIVE_SCRAPING = os.environ.get('ENABLE_LIVE_SCRAPING', '0') not in ('0', 'false', 'False')
+    # Distinguish clean prediction-only vs historical workflows
+    # Values: 'prediction_only' or 'historical'. Default to prediction_only to avoid scrapers.
+    PREDICTION_IMPORT_MODE = os.environ.get('PREDICTION_IMPORT_MODE', 'prediction_only')
+    
     # Directory paths
     BASE_DIR = Path(__file__).parent
     UNPROCESSED_DIR = str(BASE_DIR / 'unprocessed')
     PROCESSED_DIR = str(BASE_DIR / 'processed')
     HISTORICAL_DIR = str(BASE_DIR / 'historical_races')
-    UPCOMING_DIR = str(BASE_DIR / 'upcoming_races')
+    UPCOMING_DIR = os.environ.get('UPCOMING_RACES_DIR') or str(BASE_DIR / 'upcoming_races_temp')
     
     # Upload settings
     UPLOAD_FOLDER = UPCOMING_DIR

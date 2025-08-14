@@ -1,4 +1,4 @@
-#!/Users/test/Desktop/greyhound_racing_collector/.venv311/bin/python
+#!/Users/test/Desktop/greyhound_racing_collector/.venv311/bin/python3.13
 # -*- coding: utf-8 -*-
 import re
 import sys

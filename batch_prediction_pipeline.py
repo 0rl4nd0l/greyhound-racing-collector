@@ -387,12 +387,17 @@ class BatchPredictionPipeline:
         }
         
         try:
-            # Detect encoding
-            import chardet
-            with open(file_path, 'rb') as f:
-                raw_data = f.read(10000)  # Read first 10KB
-                encoding_result = chardet.detect(raw_data)
-                validation_result["encoding"] = encoding_result.get("encoding", "utf-8")
+            # Detect encoding (optional chardet)
+            detected_encoding = None
+            try:
+                import chardet  # type: ignore
+                with open(file_path, 'rb') as f:
+                    raw_data = f.read(10000)  # Read first 10KB
+                    encoding_result = chardet.detect(raw_data)
+                    detected_encoding = encoding_result.get("encoding")
+            except Exception:
+                detected_encoding = None
+            validation_result["encoding"] = detected_encoding or "utf-8"
             
             # Read with detected encoding
             with open(file_path, 'r', encoding=validation_result["encoding"]) as f:

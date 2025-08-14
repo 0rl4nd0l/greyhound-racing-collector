@@ -8,6 +8,14 @@ The API allows interaction with the prediction system, providing endpoints for p
 
 ## Core Prediction Endpoints
 
+### Upcoming Races CSVs (folder, naming, and consumption)
+- Folder path: `./upcoming_races`
+- Files: `.csv` only
+- Required naming pattern: `Race {number} - {VENUE} - {YYYY-MM-DD}.csv`
+- The Upcoming UI automatically lists CSVs from this folder
+- Predictions pipeline consumes these CSVs directly (V4 primary, V3 fallback)
+- Utilities: `scripts/normalize_upcoming_to_api_pattern.py`, `scripts/alias_upcoming_api_names_safe.py`
+
 ### Single Race Prediction (Enhanced)
 - **Endpoint**: `/api/predict_single_race_enhanced`
 - **Method**: POST

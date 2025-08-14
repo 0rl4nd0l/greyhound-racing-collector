@@ -37,12 +37,25 @@ class CsvIngestion:
         return text.replace('\ufeff', '')
 
     def detect_delimiter(self, text: str) -> str:
-        if ',' in text and ';' in text:
-            return ',' if text.count(',') > text.count(';') else ';'
-        elif ',' in text:
+        """Detect common delimiters: pipe '|', comma ',', or semicolon ';'.
+        Prefer the delimiter that appears most frequently.
+        Defaults to comma if uncertain for backward compatibility.
+        """
+        pipe_count = text.count('|')
+        comma_count = text.count(',')
+        semi_count = text.count(';')
+
+        # If pipe is present and clearly used, prefer it (project standard)
+        if pipe_count > 0 and pipe_count >= comma_count and pipe_count >= semi_count:
+            return '|'
+        # If both comma and semicolon present, choose the greater count
+        if comma_count > 0 and semi_count > 0:
+            return ',' if comma_count >= semi_count else ';'
+        if comma_count > 0:
             return ','
-        elif ';' in text:
+        if semi_count > 0:
             return ';'
+        # Fallback
         return ','
 
     def has_invisible_chars(self, text: str) -> bool:
@@ -64,7 +77,9 @@ class CsvIngestion:
             return hashlib.sha256(content).hexdigest()
     
     def validate_csv_structure(self, headers: List[str], records: List[List[str]]) -> List[str]:
-        """Validate CSV structure and return list of errors"""
+        """Validate CSV structure and return list of errors.
+        - Allows blank trailing lines without treating them as errors.
+        """
         errors = []
         
         if not headers:
@@ -78,22 +93,27 @@ class CsvIngestion:
         expected_column_count = len(headers)
         
         for i, record in enumerate(records, start=2):  # Start at 2 since headers are row 1
+            # Skip completely empty rows (e.g., trailing newline)
+            if len(record) == 0 or all(str(cell).strip() == '' for cell in record):
+                continue
             if len(record) != expected_column_count:
                 errors.append(f"Row {i}: Expected {expected_column_count} columns, got {len(record)}")
         
         return errors
     
     def detect_malformed_entries(self, records: List[List[str]]) -> List[str]:
-        """Detect malformed entries that should trigger quarantine"""
+        """Detect malformed entries that should trigger quarantine.
+        Note: Completely empty rows (e.g., trailing blank line) are ignored.
+        """
         errors = []
         
         for i, record in enumerate(records, start=2):
-            # Check for completely empty rows
-            if all(cell.strip() == '' for cell in record):
-                errors.append(f"Row {i}: Empty record found")
+            # Ignore completely empty rows
+            if len(record) == 0 or all(str(cell).strip() == '' for cell in record):
+                continue
             
             # Check for records with too many empty cells
-            empty_cells = sum(1 for cell in record if cell.strip() == '')
+            empty_cells = sum(1 for cell in record if str(cell).strip() == '')
             if empty_cells > len(record) / 2:  # More than half empty
                 errors.append(f"Row {i}: Too many empty cells ({empty_cells}/{len(record)})")
         

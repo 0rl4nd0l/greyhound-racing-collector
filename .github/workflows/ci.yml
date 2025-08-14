@@ -11,6 +11,8 @@ env:
   DATABASE_URL: postgresql://test_user:test_password@localhost:5433/greyhound_test
   REDIS_URL: redis://localhost:6380/0
   TESTING: true
+  UPCOMING_RACES_DIR: ./upcoming_races_temp
+  OPENAI_USE_LIVE: 0
 
 jobs:
   test:
@@ -63,6 +65,11 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install -r requirements-test.txt
+
+    - name: Validate upcoming_races CSVs
+      run: |
+        echo "🔎 Validating upcoming_races CSVs..."
+        python scripts/validate_upcoming_races.py --strict-future || (echo "❌ Upcoming races validation failed" && exit 1)
 
     - name: Lint with flake8
       run: |
@@ -272,19 +279,20 @@ jobs:
           pytest --cov=. --cov-report=xml --cov-report=term-missing
           echo "Comprehensive tests completed successfully!"
       
-      - name: Run upcoming races endpoint tests
+      - name: Run upcoming races endpoint and CSV tests
         run: |
-          echo "Running upcoming races endpoint validation tests..."
-          pytest tests/test_upcoming_races_endpoint.py \
+          echo "Running upcoming races endpoint and CSV validation tests..."
+          pytest tests/test_upcoming_races_endpoint.py tests/test_upcoming_races_csv_unit.py \
             --tb=short \
             -v \
             --maxfail=3 \
             --timeout=180
-          echo "Upcoming races endpoint tests completed successfully!"
+          echo "Upcoming races tests completed successfully!"
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
           REDIS_URL: ${{ env.REDIS_URL }}
           TESTING: true
+          OPENAI_USE_LIVE: 1
 
   # Headless Browser Tests Job
   browser-tests:
@@ -334,7 +342,7 @@ jobs:
     
     - name: Set up test environment
       run: |
-        mkdir -p upcoming_races
+        mkdir -p ${UPCOMING_RACES_DIR}
         mkdir -p logs
         mkdir -p processed
         mkdir -p historical_races
@@ -356,6 +364,7 @@ jobs:
         export TESTING=true
         export DEFAULT_PORT=5002
         export FLASK_ENV=testing
+        export UPCOMING_RACES_DIR=${UPCOMING_RACES_DIR:-./upcoming_races_temp}
         python app.py &
         echo $! > flask_app.pid
         sleep 15  # Give the app time to start

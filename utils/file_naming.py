@@ -1,6 +1,6 @@
 """
 File naming utilities for prediction outputs.
-Provides standardized filename generation for prediction results.
+Provides standardized filename generation for prediction results and inputs.
 """
 
 import os
@@ -361,6 +361,43 @@ def get_race_id_from_filename(filename: str) -> str:
         race_id = race_id[5:]  # Remove "Race_" prefix
     elif race_id.startswith("Race-"):
         race_id = race_id[5:]  # Remove "Race-" prefix
-    
     # Sanitize the result
     return sanitize_filename_component(race_id)
+
+
+
+def build_upcoming_csv_filename(race_number: int, venue: str, date_str: str) -> str:
+    """
+    Deterministically build a compliant upcoming race CSV filename.
+
+    Format: "Race {number} - {VENUE} - {YYYY-MM-DD}.csv"
+
+    Args:
+        race_number: The race number (1-12 typically)
+        venue: Venue short code (e.g., WPK, MEA). Will be upper-cased and sanitized.
+        date_str: Race date in YYYY-MM-DD. If invalid, will fallback to 1970-01-01.
+
+    Returns:
+        Compliant filename string ending with .csv
+    """
+    # Normalize and validate inputs
+    try:
+        rn = int(race_number)
+    except Exception:
+        rn = 1
+
+    v = sanitize_filename_component((venue or "UNKNOWN").upper())
+
+    # Validate date
+    try:
+        # Accept some common variants and normalize to YYYY-MM-DD
+        from datetime import datetime as _dt
+        # Simple heuristic: if it already looks like YYYY-MM-DD, keep it; else try parsing
+        if re.match(r"^\d{4}-\d{2}-\d{2}$", str(date_str)):
+            ds = str(date_str)
+        else:
+            ds = _dt.strptime(str(date_str), "%Y-%m-%d").strftime("%Y-%m-%d")
+    except Exception:
+        ds = "1970-01-01"
+
+    return f"Race {rn} - {v} - {ds}.csv"

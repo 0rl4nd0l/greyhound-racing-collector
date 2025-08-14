@@ -10,6 +10,8 @@ env:
   DATABASE_URL: postgresql://test_user:test_password@localhost:5433/greyhound_test
   REDIS_URL: redis://localhost:6380/0
   TESTING: true
+  UPCOMING_RACES_DIR: ./upcoming_races_temp
+  OPENAI_USE_LIVE: 0
 
 jobs:
   test:
@@ -55,6 +57,11 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install -r requirements-test.txt
+
+    - name: Validate upcoming_races CSVs
+      run: |
+        echo "🔎 Validating upcoming_races CSVs..."
+        python scripts/validate_upcoming_races.py --strict-future || (echo "❌ Upcoming races validation failed" && exit 1)
     
     - name: Set up PostgreSQL test database
       run: |
@@ -68,7 +75,7 @@ jobs:
         mkdir -p unprocessed
         mkdir -p processed
         mkdir -p historical_races
-        mkdir -p upcoming_races
+        mkdir -p ${UPCOMING_RACES_DIR}
     
     - name: Run comprehensive backend unit tests with coverage
       run: |

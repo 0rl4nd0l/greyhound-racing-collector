@@ -46,7 +46,7 @@ except ImportError:
 
 # Configuration
 DATABASE_PATH = "greyhound_racing_data.db"
-UPCOMING_DIR = "./upcoming_races"
+UPCOMING_DIR = os.getenv("UPCOMING_RACES_DIR", "./upcoming_races")
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -54,6 +54,55 @@ app = FastAPI(
     description="FastAPI service for greyhound racing predictions with enhanced ML capabilities",
     version="1.0.0"
 )
+
+# Verify UPCOMING_RACES_DIR at startup
+@app.on_event("startup")
+async def ensure_upcoming_dir():
+    try:
+        if not os.path.exists(UPCOMING_DIR):
+            os.makedirs(UPCOMING_DIR, exist_ok=True)
+        # Check readability
+        if not os.access(UPCOMING_DIR, os.R_OK | os.X_OK):
+            logger.warning(f"UPCOMING_RACES_DIR not readable/executable by process: {UPCOMING_DIR}")
+        else:
+            logger.info(f"UPCOMING_RACES_DIR ready: {UPCOMING_DIR}")
+    except Exception as e:
+        logger.warning(f"Failed to prepare UPCOMING_RACES_DIR ({UPCOMING_DIR}): {e}")
+
+
+def _list_upcoming_csvs() -> List[str]:
+    try:
+        entries = sorted([e for e in os.listdir(UPCOMING_DIR) if not e.startswith('.')]) if os.path.exists(UPCOMING_DIR) else []
+        files = [e for e in entries if e.lower().endswith('.csv')]
+        skipped = {e: "invalid extension (only .csv)" for e in entries if e not in files and not e.startswith('.')}
+        logger.info(
+            "Upcoming discovery",
+            extra={
+                "details": {
+                    "directory": UPCOMING_DIR,
+                    "found_count": len(files),
+                    "found_names": files,
+                    "skipped_count": len(skipped),
+                    "skipped": skipped,
+                },
+                "action": "discover_upcoming",
+                "outcome": "observed",
+            },
+        )
+        return files
+    except Exception as e:
+        logger.warning(f"Error listing upcoming CSVs: {e}")
+        return []
+
+
+def _during_business_hours(now: datetime) -> bool:
+    try:
+        start = int(os.getenv("BUSINESS_HOURS_START", "8"))
+        end = int(os.getenv("BUSINESS_HOURS_END", "18"))
+    except Exception:
+        start, end = 8, 18
+    hour = now.hour
+    return start <= hour < end
 
 # Add CORS middleware
 app.add_middleware(
@@ -123,15 +172,30 @@ async def health_check():
             database_status = f"error: {str(e)}"
             logger.warning(f"Database health check failed: {e}")
 
+        # Upcoming files discovery with alerting
+        files = _list_upcoming_csvs()
+        upcoming_count = len(files)
+        now = datetime.now()
+        if upcoming_count == 0 and _during_business_hours(now):
+            logger.warning(
+                "ALERT: Zero upcoming race CSVs during business hours",
+                extra={
+                    "details": {"directory": UPCOMING_DIR, "business_hours": True, "timestamp": now.isoformat()},
+                    "action": "zero_upcoming_alert",
+                    "outcome": "alerted",
+                },
+            )
+
         return HealthResponse(
             status="healthy",
-            timestamp=datetime.now().isoformat(),
+            timestamp=now.isoformat(),
             version="1.0.0",
             components={
                 "database": database_status,
                 "ml_system_v3": "available" if ML_SYSTEM_V3_AVAILABLE else "unavailable",
                 "unified_predictor": "available" if UNIFIED_PREDICTOR_AVAILABLE else "unavailable",
-                "upcoming_races_dir": "exists" if os.path.exists(UPCOMING_DIR) else "missing"
+                "upcoming_races_dir": "exists" if os.path.exists(UPCOMING_DIR) else "missing",
+                "upcoming_files_count": str(upcoming_count)
             }
         )
     except Exception as e:

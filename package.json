@@ -46,6 +46,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.2",
+    "nock": "^13.5.0",
     "@babel/core": "^7.23.0",
     "@babel/preset-env": "^7.23.0",
     "@fortawesome/fontawesome-svg-core": "^7.0.0",

@@ -6,7 +6,10 @@ import shutil
 import csv
 from concurrent.futures import ProcessPoolExecutor
 from tqdm import tqdm
-import chardet
+try:
+    import chardet
+except Exception:
+    chardet = None
 import numpy as np
 from collections import defaultdict
 
@@ -45,7 +48,10 @@ def validate_csv(file_path):
         # Detect file encoding
         with open(file_path, 'rb') as f:
             raw_data = f.read(10000)
-            encoding = chardet.detect(raw_data)['encoding'] or 'utf-8'
+            if chardet is not None:
+                encoding = chardet.detect(raw_data).get('encoding') or 'utf-8'
+            else:
+                encoding = 'utf-8'
         
         # Detect delimiter
         delimiter = detect_delimiter(file_path)

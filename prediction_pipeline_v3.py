@@ -38,8 +38,9 @@ except ImportError:
     WEATHER_AVAILABLE = False
 
 try:
-    from gpt_prediction_enhancer import GPTPredictionEnhancer
-
+    # DEPRECATED: GPTPredictionEnhancer has been archived. Prefer using
+    # utils/openai_wrapper.OpenAIWrapper for any new OpenAI interactions.
+    from archive.outdated_openai.gpt_prediction_enhancer import GPTPredictionEnhancer
     GPT_AVAILABLE = True
 except ImportError:
     GPT_AVAILABLE = False

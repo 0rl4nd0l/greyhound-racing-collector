@@ -22,11 +22,32 @@ class PredictionPipelineV4:
         self.ml_system_v4 = MLSystemV4(db_path)
         logger.info("🚀 Prediction Pipeline V4 - Advanced System Initialized")
 
-    def predict_race_file(self, race_file_path: str) -> dict:
+def predict_race_file(self, race_file_path: str) -> dict:
         """Main prediction method using ML System V4."""
         logger.info(
             f"🚀 Starting prediction for: {os.path.basename(race_file_path)} using ML System V4"
         )
+
+        # Pre-prediction module sanity check
+        try:
+            from utils import module_guard
+            module_guard.pre_prediction_sanity_check(
+                context='PredictionPipelineV4.predict_race_file',
+                extra_info={'race_file_path': os.path.basename(race_file_path)}
+            )
+        except Exception as e:
+            logger.error(f"🛑 Module guard blocked prediction: {e}")
+            # Provide clear, actionable error response
+            guidance = []
+            if hasattr(e, 'resolution'):
+                guidance = getattr(e, 'resolution', [])
+            return {
+                'success': False,
+                'error': str(e),
+                'race_id': os.path.basename(race_file_path).replace('.csv', ''),
+                'fallback_reason': 'Disallowed module(s) loaded – see guidance',
+                'resolution': guidance,
+            }
 
         try:
             # Use CSV ingestion to read race data

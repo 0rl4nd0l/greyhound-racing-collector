@@ -84,6 +84,8 @@ USER appuser
 ENV DISPLAY=:99
 ENV CHROME_BIN=/usr/bin/google-chrome-stable
 ENV CHROMEDRIVER_PATH=/home/appuser/.wdm/drivers/chromedriver
+# Default directory for upcoming races inside the container (can be overridden)
+ENV UPCOMING_RACES_DIR=/app/upcoming_races_temp
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \

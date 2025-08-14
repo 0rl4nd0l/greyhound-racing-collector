@@ -50,12 +50,13 @@ services:
       - REDIS_URL=redis://redis-test:6379/0
       - CELERY_BROKER_URL=redis://redis-test:6379/0
       - CELERY_RESULT_BACKEND=redis://redis-test:6379/0
+      - UPCOMING_RACES_DIR=/app/upcoming_races_temp
     ports:
       - "${DEFAULT_PORT}:${DEFAULT_PORT}"
     volumes:
       - .:/app
       - ./test_data:/app/test_data
-      - ./test_upcoming_races:/app/upcoming_races
+      - ./test_upcoming_races:/app/upcoming_races_temp
     networks:
       - test_network
     depends_on:
@@ -86,7 +87,8 @@ services:
     volumes:
       - .:/app
       - ./test_data:/app/test_data
-      - ./test_upcoming_races:/app/upcoming_races
+      - ./test_upcoming_races:/app/upcoming_races_temp
+temp
     networks:
       - test_network
     depends_on:
@@ -113,17 +115,18 @@ services:
       - DATABASE_URL=sqlite:///./test_greyhound_racing_data.db
       - REDIS_URL=redis://redis-test:6379/1
       - RQ_REDIS_URL=redis://redis-test:6379/1
+      - UPCOMING_RACES_DIR=/app/upcoming_races_temp
     volumes:
       - .:/app
       - ./test_data:/app/test_data
-      - ./test_upcoming_races:/app/upcoming_races
+      - ./test_upcoming_races:/app/upcoming_races_temp
     networks:
       - test_network
     depends_on:
       redis-test:
         condition: service_healthy
     command: >
-      sh -c "python -m rq worker --url redis://redis-test:6379/1 default high"
+      sh -c "celery -A app.celery worker --loglevel=info --concurrency=2"
     profiles: ["rq"]  # Only start if using RQ instead of Celery
 
   # Playwright test runner

@@ -37,6 +37,8 @@ class ExpertFormCsvScraper:
         self.base_url = "https://www.thedogs.com.au"
         self.unprocessed_dir = "./unprocessed"
         self.download_dir = "./form_guides/downloaded"
+        # Output directory used by API
+        self.output_dir = os.environ.get('UPCOMING_RACES_DIR', './upcoming_races')
         self.database_path = "./databases/greyhound_racing.db"
         self.max_workers = max_workers
         self.verbose = verbose
@@ -44,6 +46,7 @@ class ExpertFormCsvScraper:
         # Create directories
         os.makedirs(self.unprocessed_dir, exist_ok=True)
         os.makedirs(self.download_dir, exist_ok=True)
+        os.makedirs(self.output_dir, exist_ok=True)
         
         # Initialize race file manager for caching
         self.race_file_manager = RaceFileManager(self.database_path)
@@ -263,7 +266,7 @@ class ExpertFormCsvScraper:
             return False
     
     def save_csv_content(self, content, filename):
-        """Save CSV content to files"""
+        """Save CSV content to files and API's upcoming directory"""
         try:
             # Validate content
             if not content.strip():
@@ -287,12 +290,17 @@ class ExpertFormCsvScraper:
             
             # Save to download directory first (for backup/tracking)
             download_filepath = os.path.join(self.download_dir, filename)
-            with open(download_filepath, 'w', encoding='utf-8') as f:
+            with open(download_filepath, 'w', encoding='utf-8', newline='') as f:
                 f.write(content)
             
             # Move to unprocessed directory for analysis
             unprocessed_filepath = os.path.join(self.unprocessed_dir, filename)
-            with open(unprocessed_filepath, 'w', encoding='utf-8') as f:
+            with open(unprocessed_filepath, 'w', encoding='utf-8', newline='') as f:
+                f.write(content)
+            
+            # Also save into API's upcoming races dir with compliant name
+            upcoming_filepath = os.path.join(self.output_dir, filename)
+            with open(upcoming_filepath, 'w', encoding='utf-8', newline='') as f:
                 f.write(content)
             
             # Add to existing files list to prevent future duplicates
@@ -319,6 +327,12 @@ class ExpertFormCsvScraper:
     def download_race_csv(self, race_info):
         """Download CSV for a single race"""
         try:
+            from utils.file_naming import build_upcoming_csv_filename
+        except Exception:
+            # Lazy import fallback if utils path not available
+            build_upcoming_csv_filename = lambda n, v, d: f"Race {n} - {v} - {d}.csv"
+        
+        try:
             self.stats['races_requested'] += 1
             
             # Use centralized date parsing
@@ -338,14 +352,15 @@ class ExpertFormCsvScraper:
                     self.safe_log(f"Race already collected: {race_id}")
                 return True
             
-            # Generate filename
-            filename = f"Race {race_info['race_number']} - {race_info['venue']} - {formatted_date}.csv"
+            # Generate compliant filename using deterministic builder
+            filename = build_upcoming_csv_filename(race_info['race_number'], race_info['venue'], formatted_date)
             
-            # Check if file already exists
-            if filename in self.existing_files:
+            # Check if file already exists in output dir
+            upcoming_path = os.path.join(self.output_dir, filename)
+            if os.path.exists(upcoming_path):
                 self.stats['cache_hits'] += 1
                 if self.verbose:
-                    self.safe_log(f"File already exists: {filename}")
+                    self.safe_log(f"File already exists in upcoming dir: {filename}")
                 return True
             
             self.stats['fetches_attempted'] += 1

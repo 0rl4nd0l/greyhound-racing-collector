@@ -32,5 +32,6 @@ psutil>=5.9.0        # System resource monitoring
 # Additional testing utilities
 factory-boy>=3.3.0   # Test data generation
 faker>=24.0.0        # Fake data generation
-responses>=0.24.0    # HTTP request mocking
+responses>=0.24.0    # HTTP request mocking (requests)
+respx>=0.21.1        # HTTPX mocking
 freezegun>=1.4.0     # Time mocking for tests

@@ -43,7 +43,19 @@ FLASK_APP=app.py
 FLASK_ENV=development
 DATABASE_URL=sqlite:///greyhound_predictor.db
 SECRET_KEY=your-secret-key-here
+UPCOMING_RACES_DIR=./upcoming_races_temp
+# Optional OpenAI config overrides
+OPENAI_MODEL=gpt-4o-mini
+OPENAI_TEMPERATURE=0.3
+OPENAI_MAX_TOKENS=2000
+# Optional: API port override
+PORT=5002
 ```
+
+Environment-specific guidance
+- Local shell (temporary): `export UPCOMING_RACES_DIR=./upcoming_races_temp`
+- Docker Compose: set `UPCOMING_RACES_DIR` under the service `environment:` key (e.g., `/app/upcoming_races_temp`)
+- Systemd/service files: `Environment=UPCOMING_RACES_DIR=/srv/greyhound/upcoming_races`
 
 ### 5. Initialize the Database
 

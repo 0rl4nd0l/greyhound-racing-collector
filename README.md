@@ -363,6 +363,17 @@ The advisory system is designed to integrate seamlessly with the prediction work
 
 The application provides a comprehensive RESTful API for interacting with the prediction system and its data. Below are the key endpoints.
 
+### Upcoming Races CSVs (source of truth)
+- Folder path: `./upcoming_races`
+- File extension: `.csv`
+- Required naming pattern: `Race {number} - {VENUE} - {YYYY-MM-DD}.csv`
+  - Example: `Race 1 - WPK - 2025-02-01.csv`
+- The Upcoming UI enumerates files from this folder automatically; no manual list needed
+- The predictions UI uses PredictionPipelineV4 on the selected CSV, with fallbacks (V3, legacy)
+- Helper scripts to maintain naming consistency:
+  - `scripts/normalize_upcoming_to_api_pattern.py`
+  - `scripts/alias_upcoming_api_names_safe.py`
+
 ### Main Prediction Endpoints
 
 #### Enhanced Single Race Prediction
@@ -712,6 +723,75 @@ The system includes several specialized scrapers for different data collection n
 | **Quick Overview** | `direct_racing_scraper.py` | Checking what races are available today/tomorrow |
 | **Betting Odds** | `hybrid_odds_scraper.py` | Getting current odds for any specific race |
 
+## Upcoming Race CSVs: Location, Naming, Schema, and Archiving
+
+To standardize developer workflows and keep the repository tidy, use the following conventions for upcoming race CSVs.
+
+- Folder path (default): `./upcoming_races_temp` (configurable via UPCOMING_RACES_DIR)
+- Environment variable: `UPCOMING_RACES_DIR` points to the folder where upcoming race CSVs are stored
+
+Folder path
+- Default: `./upcoming_races_temp`
+- Override: set `UPCOMING_RACES_DIR` in your `.env` or environment (see below)
+
+Filename convention
+- Pattern: `Race {race_number} - {VENUE_CODE} - YYYY-MM-DD.csv`
+  - Example: `Race 4 - GOSF - 2025-07-28.csv`
+- Allowed characters: letters, numbers, spaces, dashes, and underscores
+- Extension: `.csv` (lowercase)
+
+CSV schema and dialect (race data, not form guides)
+- Purpose: These files contain race data for a not-yet-run race. They must NOT include results-only fields. Per project rules, winners come from the race page, not historical form guides.
+- Encoding: UTF-8 (no BOM preferred)
+- Delimiter: comma `,`
+- Quoting: standard CSV quoting for fields containing commas or newlines
+- Line endings: `\n` (LF) preferred; `\r\n` accepted
+- Header row: required
+
+Required columns (minimum)
+- `race_date` (YYYY-MM-DD)
+- `venue_code` (e.g., GOSF, RICH)
+- `race_number` (1-12)
+- `dog_name`
+- `box` (1-8)
+
+Recommended columns (optional)
+- `trainer`, `weight`, `distance`, `grade`, `meeting_name`, `scheduled_time_local`
+
+Forbidden/empty-at-ingest columns
+- Outcome fields such as `PLC`, `finish_position`, `winner`, `margin`, `winning_time` must be absent or blank for upcoming races.
+
+Validation notes
+- Dog blocks: Expect up to 8 unique dogs; blank continuation rows are not used for upcoming race CSVs.
+- Mixed delimiters and invisible unicode should be avoided. See `docs/FORM_GUIDE_SPEC.md` for detection tips if needed.
+
+Setting UPCOMING_RACES_DIR
+- Local `.env` (preferred during development):
+  - Add `UPCOMING_RACES_DIR=./upcoming_races_temp`
+- Shell session (temporary):
+  - `export UPCOMING_RACES_DIR=./upcoming_races_temp`
+- Docker Compose:
+  - `environment:` section of the service should include `UPCOMING_RACES_DIR=/app/upcoming_races_temp`
+  - Mount the host folder to the same container path, e.g.:
+    - `- ./upcoming_races_temp:/app/upcoming_races_temp` (add `:Z` on SELinux hosts)
+- Systemd or hosting envs:
+  - Add an Environment entry: `Environment=UPCOMING_RACES_DIR=/srv/greyhound/upcoming_races`
+  - Ensure the service user has read and execute permission on the directory (e.g., `chmod 750` and group membership)
+
+Archiving procedure for outdated upcoming CSVs
+- Archive-first policy: move outdated or redundant CSVs to the archive, do not delete.
+- Suggested structure: `archive/upcoming_races/YYYY/MM/`
+- Process:
+  1. Move file into `archive/upcoming_races/{YYYY}/{MM}/`
+  2. Preserve original filename
+  3. Optionally append a timestamp if a name conflict occurs: `..._archived-YYYYMMDD-HHMMSS.csv`
+  4. Record move in your commit message (and manifest if you maintain one)
+- Rationale: Keeps main directories clean and complies with project archival rules. Always check the archive before creating a new file with the same race identity.
+
+Note on historical vs race data
+- Historical data (form guides) live under `./unprocessed` → processed → database; format described in `docs/FORM_GUIDE_SPEC.md`
+- Race data (upcoming CSVs) use the schema above and are for prediction inputs; winners and race outcomes are scraped from the race page, not inferred from the form guide.
+
 ## Dependencies
 
 ### Backend (pip)
@@ -779,6 +859,119 @@ DEBUG: Feature extraction complete for 8 dogs
 WARNING: Dog count deviation detected: expected 8, found 7
 DEBUG: Model prediction complete - top 3 predictions generated
 ```
+
+## Directory Layout and Data Types
+
+Clear separation between historical data (form guides) and race data (upcoming races) is enforced throughout the repo.
+
+- Historical data (form guides)
+  - Purpose: past-race records used for training/analysis only
+  - Source: form guide CSVs and scraped historical tables
+  - Storage: unprocessed/ → processed/ → databases/
+  - Rules: Never use historical outcome columns as inputs when predicting the same race (no leakage)
+- Race data (upcoming races)
+  - Purpose: inputs for predictions for not-yet-run races
+  - Source: manual CSVs or scraper outputs for future races
+  - Storage: UPCOMING_RACES_DIR (default: ./upcoming_races or ./upcoming_races_temp, see config)
+  - Rules: Must not contain post-race fields; winners are scraped from the race page after the race, never from form guides
+
+Related directories in this repo
+- upcoming_races/ or upcoming_races_temp/ — upcoming race CSVs (race data)
+- unprocessed/ and processed/ — ingestion lanes for historical data (form guides)
+- predictions/ — generated prediction artifacts (JSON/CSV)
+- archive/ — archive-first storage for retired/legacy files and outdated CSVs
+- logs/ — application and data quality logs
+
+Note on archive-first policy
+- Before creating new files, search under archive/ folders for an existing version.
+- When deprecating or superseding files/scripts, move them into the appropriate archive/ subfolder to keep the root clean.
+
+## Configuration
+
+Set these environment variables (e.g., in a .env file or via the shell) to control paths and behavior.
+
+- UPCOMING_RACES_DIR
+  - Description: Directory the UI/API enumerates for upcoming race CSVs
+  - Default: ./upcoming_races (some setups use ./upcoming_races_temp)
+  - Example: UPCOMING_RACES_DIR=./upcoming_races
+- DOWNLOADS_WATCH_DIR
+  - Description: Optional folder a file-watcher monitors (e.g., your browser Downloads directory) to auto-move/copy new race CSVs into UPCOMING_RACES_DIR
+  - Default: unset (manual mode)
+  - Example: DOWNLOADS_WATCH_DIR=~/Downloads
+- PREDICTIONS_DIR
+  - Description: Where generated predictions are written (JSON/CSV/UI caches)
+  - Default: ./predictions
+  - Example: PREDICTIONS_DIR=./predictions
+- ARCHIVE_ROOT
+  - Description: Root folder for archived items per the archive-first policy
+  - Default: ./archive
+  - Example: ARCHIVE_ROOT=./archive
+- LOG_PATH
+  - Description: Central log file or folder for system logs
+  - Default: ./logs
+  - Example: LOG_PATH=./logs
+
+Example .env
+
+UPCOMING_RACES_DIR=./upcoming_races
+PREDICTIONS_DIR=./predictions
+ARCHIVE_ROOT=./archive
+# Optional automation (set only if you run a watcher)
+DOWNLOADS_WATCH_DIR=~/Downloads
+
+## Manual “Upcoming Races” Flow and Immediate Prediction Visibility
+
+How the manual flow works
+1) Prepare a CSV per race following the naming pattern: "Race {race_number} - {VENUE_CODE} - YYYY-MM-DD.csv".
+2) Place the CSV into UPCOMING_RACES_DIR.
+3) The UI lists files directly from this directory. No database insert is required for visibility.
+4) When you click a race in the UI or call /api/predict_single_race_enhanced with the file name, the backend runs PredictionPipelineV4 (with fallbacks) and returns predictions.
+5) Results can be persisted under PREDICTIONS_DIR and rendered in the UI immediately.
+
+Why predictions appear immediately
+- The UI enumerates the UPCOMING_RACES_DIR and requests predictions on demand, so newly added files are instantly discoverable without a separate ingest step.
+- No post-race outcome fields are used as inputs (historical data is separate), ensuring leakage-safe predictions.
+
+Optional automation via watcher
+- If DOWNLOADS_WATCH_DIR is set and a local watcher process is running, newly downloaded CSVs can be auto-copied or moved into UPCOMING_RACES_DIR, making them appear in the UI instantly.
+- If not set, the system operates in manual mode: just copy/move files yourself.
+
+## Troubleshooting (Upcoming Races)
+
+Permissions
+- Symptom: CSVs placed in UPCOMING_RACES_DIR do not appear in the UI.
+- Checks:
+  - Ensure the application user can read and execute the directory and read the files (e.g., chmod 750 on the directory, chmod 640 on files).
+  - On Docker: confirm the volume mount path matches UPCOMING_RACES_DIR inside the container.
+
+Watcher not running (automation setups)
+- Symptom: New files downloaded into your browser Downloads don’t appear in UPCOMING_RACES_DIR automatically.
+- Checks:
+  - Verify DOWNLOADS_WATCH_DIR is set.
+  - Ensure your watcher service/process is running without errors (review logs under logs/).
+  - Fall back to manual copy: move the CSV into UPCOMING_RACES_DIR and refresh the UI.
+
+Path issues
+- Symptom: API returns “file not found” or wrong directory.
+- Checks:
+  - Confirm the exact filename (including spaces and dashes) matches the UI listing and the filesystem.
+  - Print your effective configuration (env) and verify UPCOMING_RACES_DIR/PREDICTIONS_DIR.
+  - Normalize symlinks/relative paths if running under different working directories.
+
+CSV structure errors
+- Symptom: Backend rejects the file or returns validation errors.
+- Checks:
+  - Ensure a header row exists and only pre-race fields are provided (no outcomes like PLC/finish_position).
+  - Validate required fields: race_date, venue_code, race_number, dog_name, box.
+  - Use UTF-8 encoding and .csv extension.
+
+Archive-first policy
+- Before creating a new race CSV for the same identity, search under archive/ to avoid duplicates.
+- When a race becomes outdated, move the CSV to archive/upcoming_races/YYYY/MM/ rather than deleting.
+
+## Link: Upcoming Races User Guide (with screenshots)
+
+For a step-by-step visual walkthrough, see docs/Upcoming_Races_User_Guide.md
 
 ## Repository Structure
 

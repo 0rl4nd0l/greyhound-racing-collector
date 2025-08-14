@@ -33,14 +33,14 @@ from typing import Any, Dict, List, Optional, Tuple
 import requests
 
 # Import existing components
-sys.path.append("src/collectors")
 from selenium import webdriver
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
-from the_greyhound_recorder_scraper import TheGreyhoundRecorderScraper
+# NOTE: Do not import TheGreyhoundRecorderScraper at module level to avoid heavy deps
+# It will be imported lazily when first needed using importlib.import_module
 
 try:
     from bs4 import BeautifulSoup
@@ -87,10 +87,8 @@ class ComprehensiveFormDataCollector:
         self.cache_dir = Path("./comprehensive_form_cache")
         self.cache_dir.mkdir(exist_ok=True)
 
-        # Initialize data sources
-        self.greyhound_recorder = TheGreyhoundRecorderScraper(
-            rate_limit=1.5, cache_dir=str(self.cache_dir / "tgr_cache"), use_cache=True
-        )
+        # Initialize data sources lazily (defer heavy import and instantiation)
+        self.greyhound_recorder = None
 
         # Initialize web driver for additional scraping
         self.driver = None
@@ -112,6 +110,29 @@ class ComprehensiveFormDataCollector:
         logger.info(f"   Max workers: {max_workers}")
         logger.info(f"   Cache directory: {self.cache_dir}")
         logger.info(f"   Database: {db_path}")
+
+    def _load_greyhound_recorder(self):
+        """Lazily import and instantiate TheGreyhoundRecorderScraper when needed."""
+        if self.greyhound_recorder is not None:
+            return self.greyhound_recorder
+        try:
+            import importlib, sys as _sys
+            # Ensure collector path is available for import by module name used in repo
+            collectors_path = "src/collectors"
+            if collectors_path not in _sys.path:
+                _sys.path.append(collectors_path)
+            tgr_module = importlib.import_module("the_greyhound_recorder_scraper")
+            Scraper = getattr(tgr_module, "TheGreyhoundRecorderScraper")
+            self.greyhound_recorder = Scraper(
+                rate_limit=1.5,
+                cache_dir=str(self.cache_dir / "tgr_cache"),
+                use_cache=True,
+            )
+            logger.info("✅ TheGreyhoundRecorderScraper lazily loaded")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to load TheGreyhoundRecorderScraper lazily: {e}")
+            self.greyhound_recorder = None
+        return self.greyhound_recorder
 
     def _setup_driver(self):
         """Setup Chrome driver for additional scraping"""
@@ -327,7 +348,7 @@ class ComprehensiveFormDataCollector:
 
         return dogs
 
-    def _collect_from_greyhound_recorder(self) -> Dict[str, Any]:
+    def _collect_from_greyhound_recorder(self):
         """Collect comprehensive form guides from Greyhound Recorder"""
         logger.info("📋 Collecting form guides from Greyhound Recorder...")
 
