@@ -4,6 +4,8 @@
 
 A comprehensive machine learning system for predicting greyhound race outcomes using advanced feature engineering, temporal leakage protection, and probability calibration.
 
+For common commands and a high-level architecture overview, see WARP.md.
+
 ## Key Features
 
 This pipeline provides end-to-end functionality for:
