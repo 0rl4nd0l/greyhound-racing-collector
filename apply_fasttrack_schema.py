@@ -1,11 +1,13 @@
-
-import sqlite3
 import logging
+import sqlite3
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
-DATABASE_PATH = 'greyhound_racing_data.db'
+DATABASE_PATH = "greyhound_racing_data.db"
+
 
 def apply_schema():
     """
@@ -19,7 +21,8 @@ def apply_schema():
 
         # --- Schema from 20250730_173000_add_fasttrack_schema.py ---
         logging.info("Applying schema: dogs_ft_extra")
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS dogs_ft_extra (
                 id INTEGER NOT NULL PRIMARY KEY,
                 dog_id INTEGER NOT NULL UNIQUE,
@@ -41,10 +44,12 @@ def apply_schema():
                 data_source TEXT DEFAULT 'fasttrack',
                 FOREIGN KEY(dog_id) REFERENCES dogs(id) ON DELETE CASCADE
             )
-        """)
+        """
+        )
 
         logging.info("Applying schema: races_ft_extra")
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS races_ft_extra (
                 id INTEGER NOT NULL PRIMARY KEY,
                 race_id INTEGER NOT NULL UNIQUE,
@@ -60,10 +65,12 @@ def apply_schema():
                 data_source TEXT DEFAULT 'fasttrack',
                 FOREIGN KEY(race_id) REFERENCES races(id) ON DELETE CASCADE
             )
-        """)
+        """
+        )
 
         logging.info("Applying schema: dog_performance_ft_extra")
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS dog_performance_ft_extra (
                 id INTEGER NOT NULL PRIMARY KEY,
                 performance_id INTEGER NOT NULL UNIQUE,
@@ -80,12 +87,14 @@ def apply_schema():
                 data_source TEXT DEFAULT 'fasttrack',
                 FOREIGN KEY(performance_id) REFERENCES dog_performances(id) ON DELETE CASCADE
             )
-        """)
+        """
+        )
         logging.info("FastTrack schema applied successfully.")
 
         # --- Schema from 20250730_174500_add_expert_form_analysis.py ---
         logging.info("Applying schema: expert_form_analysis")
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS expert_form_analysis (
                 id INTEGER NOT NULL PRIMARY KEY,
                 race_id INTEGER NOT NULL,
@@ -103,7 +112,8 @@ def apply_schema():
                 processing_notes TEXT,
                 FOREIGN KEY(race_id) REFERENCES races(id) ON DELETE CASCADE
             )
-        """)
+        """
+        )
         logging.info("Expert Form Analysis schema applied successfully.")
 
         conn.commit()
@@ -116,6 +126,6 @@ def apply_schema():
             conn.close()
             logging.info("Database connection closed.")
 
+
 if __name__ == "__main__":
     apply_schema()
-

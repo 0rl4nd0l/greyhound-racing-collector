@@ -15,12 +15,14 @@ Author: AI Assistant
 Date: July 25, 2025
 """
 
+import sqlite3
 import sys
 import time
-from datetime import datetime, timedelta
-from weather_service_open_meteo import OpenMeteoWeatherService, WeatherData
-import sqlite3
 import traceback
+from datetime import datetime, timedelta
+
+from weather_service_open_meteo import OpenMeteoWeatherService, WeatherData
+
 
 class WeatherServiceTester:
     """Comprehensive weather service testing class"""
@@ -275,7 +277,8 @@ class WeatherServiceTester:
         for scenario in test_scenarios:
             try:
                 # Create mock weather data
-                from weather_service_open_meteo import WeatherData, WeatherCondition
+                from weather_service_open_meteo import (WeatherCondition,
+                                                        WeatherData)
                 
                 weather_data = WeatherData(
                     location="Test Location",

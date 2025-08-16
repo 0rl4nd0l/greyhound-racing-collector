@@ -1,0 +1,35 @@
+Dog Name,Sex,PLC,BOX,WGT,DIST,DATE,TRACK,G,TIME,WIN,BON,1 SEC,MGN,W/2G,PIR,SP,day_of_week,month,track_code
+1. Rockstar Ghan,D,4,2,32.9,324,2025-06-26,RICS,5,18.12,18.07,17.63,7.1,0.75,Key Is Slick,2224,4.0,Thursday,June,RICS
+1. Rockstar Ghan,D,5,1,32.9,365,2025-06-16,NOWR,5,21.44,20.77,20.5,9.01,9.5,Skedaddle Maple,85,13.0,Monday,June,NOWR
+1. Rockstar Ghan,D,6,9,32.9,324,2025-06-12,RICS,5,18.17,17.54,17.54,7.3,9.0,Cawbourne Leota,5756,34.0,Thursday,June,RICS
+1. Rockstar Ghan,D,5,5,32.9,340,2025-05-27,BUL,5,19.89,19.53,19.2,3.56,5.25,Calla Muffin,8855,6.5,Tuesday,May,BUL
+1. Rockstar Ghan,D,6,9,33.3,401,2025-05-21,RICH,5,23.73,23.11,22.99,7.28,8.75,Who Knows Gus,7886,51.0,Wednesday,May,RICH
+2. Dark Deceit,D,2,6,32.4,324,2025-06-26,RICS,5,18.09,18.07,17.63,7.21,0.25,Key Is Slick,5542,4.2,Thursday,June,RICS
+2. Dark Deceit,D,5,5,32.3,324,2025-06-19,RICS,5,18.13,17.57,17.57,7.26,8.0,Lochinvar Hummer,8875,71.0,Thursday,June,RICS
+2. Dark Deceit,D,7,8,33.3,324,2025-01-30,RICS,5,18.11,17.77,17.27,7.42,4.75,Turbo Harry,8777,21.0,Thursday,January,RICS
+2. Dark Deceit,D,4,9,34.1,324,2025-01-16,RICS,5,18.27,17.89,17.57,7.43,5.25,Smooch,3544,26.0,Thursday,January,RICS
+2. Dark Deceit,D,6,4,34.5,324,2024-12-12,RICS,5,18.56,18.04,17.4,7.29,7.5,Despicable Miss,8776,2.25,Thursday,December,RICS
+3. Our Apprentice,D,2,8,32.6,388,2025-02-15,GOSF,5,22.68,22.66,22.36,7.29,0.25,Rattlin' Magic,412,3.8,Saturday,February,GOSF
+3. Our Apprentice,D,8,6,32.7,388,2025-02-11,GOSF,5,23.15,22.12,22.12,10.25,14.5,Beer Money,4478,34.0,Tuesday,February,GOSF
+3. Our Apprentice,D,3,5,32.2,400,2025-02-03,MAIT,5,23.08,22.74,22.08,5.43,4.75,Aussie Rattler,4223,13.0,Monday,February,MAIT
+3. Our Apprentice,D,8,6,32.7,400,2025-01-27,MAIT,5,23.51,22.77,22.2,5.44,10.5,You're So Fine,5558,31.0,Monday,January,MAIT
+3. Our Apprentice,D,5,8,32.2,400,2025-01-20,MAIT,5,23.22,22.78,22.1,5.41,6.25,Hank Mccoy,6445,41.0,Monday,January,MAIT
+4. When I'm Ready,B,3,1,27.3,324,2025-06-26,RICS,5,18.1,18.07,17.63,7.14,0.5,Key Is Slick,6433,4.4,Thursday,June,RICS
+4. When I'm Ready,B,8,3,26.9,324,2025-06-19,RICS,5,18.62,17.91,17.57,7.35,10.0,Emgrand Drive,8778,21.0,Thursday,June,RICS
+4. When I'm Ready,B,3,2,26.9,324,2025-05-29,RICS,5,18.08,18.0,17.57,7.22,1.0,Despicable Nitro,6643,13.0,Thursday,May,RICS
+4. When I'm Ready,B,4,2,27.0,324,2025-05-15,RICS,5,18.24,17.98,17.65,7.32,3.75,Express Pearl,7744,21.0,Thursday,May,RICS
+4. When I'm Ready,B,5,8,27.0,324,2025-05-08,RICS,5,18.22,17.97,17.63,7.3,3.5,Rockstar Whiff,7745,12.0,Thursday,May,RICS
+5. Utmost,D,1,1,33.8,324,2025-06-26,RICS,M,17.91,17.91,17.63,7.15,2.5,Send It Sideways,2111,2.3,Thursday,June,RICS
+5. Utmost,D,8,8,33.9,320,2025-06-06,RICH,M,19.2,18.41,18.16,2.35,11.25,Done By Noon,6668,3.8,Friday,June,RICH
+6. Despicable Pedro,D,4,4,33.5,324,2025-06-26,RICS,5,17.95,17.79,17.63,7.2,2.25,Exciting Zoey,4544,4.0,Thursday,June,RICS
+6. Despicable Pedro,D,1,3,34.3,324,2025-06-12,RICS,M,18.13,18.13,17.54,7.28,3.0,Line Drive,5311,1.8,Thursday,June,RICS
+7. Lumeah Thunder,D,1,6,34.4,350,2025-06-27,GOUL,M,20.17,20.17,19.65,7.28,6.25,Spring Marilyn,2211,16.0,Friday,June,GOUL
+7. Lumeah Thunder,D,6,8,34.0,350,2025-05-30,GOUL,M,20.65,19.47,19.36,7.28,16.75,Dark Noise,3766,18.0,Friday,May,GOUL
+7. Lumeah Thunder,D,6,1,34.4,350,2025-05-23,GOUL,M,21.48,20.14,19.48,7.28,19.0,Precocious Storm,2666,13.0,Friday,May,GOUL
+7. Lumeah Thunder,D,3,8,34.4,457,2025-04-30,TEMA,M,26.43,26.2,25.64,7.28,3.25,Allergy Free,3,2.0,Wednesday,April,TEMA
+7. Lumeah Thunder,D,3,2,34.6,440,2025-04-25,GOUL,M,24.98,24.75,24.62,7.28,3.25,AUSSIE'S QUEEN,65533,21.0,Friday,April,GOUL
+8. Kosciuszko,D,8,9,34.6,324,2025-06-26,RICS,5,18.02,17.63,17.63,7.16,5.5,Despicable Otto,6778,41.0,Thursday,June,RICS
+8. Kosciuszko,D,3,3,34.3,324,2025-06-19,RICS,5,18.1,17.84,17.57,7.16,3.75,Despicable Leo,7323,8.0,Thursday,June,RICS
+8. Kosciuszko,D,4,6,34.5,324,2025-06-12,RICS,5,17.93,17.67,17.54,7.14,3.75,Despicable Margo,2224,23.0,Thursday,June,RICS
+8. Kosciuszko,D,5,1,34.7,324,2025-06-05,RICS,5,18.33,17.82,17.63,7.45,7.25,Zipping Deloris,8755,8.5,Thursday,June,RICS
+8. Kosciuszko,D,3,2,35.1,324,2025-05-29,RICS,5,18.13,17.86,17.57,7.16,3.75,Miraculous Rebel,1333,17.0,Thursday,May,RICS

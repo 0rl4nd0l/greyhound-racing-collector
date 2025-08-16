@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T14:27:38.287818
+Total Time: 17.643s
+CPU Time: 16.834s
+I/O Time: 0.0ms
+Memory Peak: 82.31MB
+Function Calls: 3756944
+Bottlenecks: <20>(1713.000s), objects}(14.228s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1670(_get_outputs)(11.736s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/_utils.py:70(__call__)(11.200s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:1056(join)(10.848s)
+
+==================================================
+Detailed cProfile Output:
+         3756944 function calls (3692189 primitive calls) in 19.013 seconds
+
+   Ordered by: cumulative time
+   List reduced from 1713 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+36162/36063    0.514    0.000   14.228    0.000 {method 'read' of '_io.BufferedReader' objects}
+3012/1297    0.054    0.000   11.736    0.009 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1670(_get_outputs)
+ 3000/709    0.106    0.000   11.200    0.016 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/_utils.py:70(__call__)
+       18    0.004    0.000   10.848    0.603 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:1056(join)
+        6    0.000    0.000   10.672    1.779 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1403(_terminate_and_reset)
+        6    0.004    0.001   10.596    1.766 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/_parallel_backends.py:323(terminate)
+      6/2    0.005    0.001   10.174    5.087 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/calibration.py:709(predict_proba)
+     12/4    0.001    0.000   10.172    2.543 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/parallel.py:54(__call__)
+      6/2    0.001    0.000   10.080    5.040 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/_response.py:116(_get_response_values)
+      6/2    0.002    0.000   10.034    5.017 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/pipeline.py:859(predict_proba)
+      6/2    0.001    0.000   10.021    5.011 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/ensemble/_forest.py:922(predict_proba)
+       18    0.001    0.000    9.971    0.554 {method 'join' of '_thread._ThreadHandle' objects}
+       19    0.005    0.000    8.854    0.466 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/queues.py:372(empty)
+ 3000/709    0.142    0.000    8.778    0.012 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:603(__call__)
+       19    0.000    0.000    8.426    0.443 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/connection.py:253(poll)
+       19    0.002    0.000    8.221    0.433 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/connection.py:439(_poll)
+      2/1    0.000    0.000    8.214    8.214 /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:689(<lambda>)
+      2/1    0.000    0.000    8.214    8.214 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/calibration.py:480(predict_proba)
+     12/4    0.001    0.000    8.204    2.051 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1969(__call__)
+     66/2    0.003    0.000    7.759    3.880 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:998(_bootstrap)
+
+

@@ -21,13 +21,14 @@ Date: July 25, 2025
 import os
 import sys
 from datetime import datetime, timedelta
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
+from enhanced_data_processor import EnhancedDataProcessor
+from enhanced_expert_form_scraper import EnhancedExpertFormScraper
 # Import the enhanced components
 from historical_race_data_updater import HistoricalRaceDataUpdater
 from integrated_enhanced_form_system import IntegratedEnhancedFormSystem
-from enhanced_expert_form_scraper import EnhancedExpertFormScraper
-from enhanced_data_processor import EnhancedDataProcessor
+
 
 def show_database_status():
     """Show current database status and coverage"""

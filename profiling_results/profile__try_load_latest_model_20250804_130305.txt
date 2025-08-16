@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T13:03:05.942296
+Total Time: 9.931s
+CPU Time: 9.309s
+I/O Time: 0.0ms
+Memory Peak: 92.17MB
+Function Calls: 2751050
+Bottlenecks: <20>(2614.000s), builtins.__import__}(7.136s), /Users/orlandolee/greyhound_racing_collector/openai_connectivity_verifier.py:143(verify_connection)(5.115s), /Users/orlandolee/greyhound_racing_collector/openai_connectivity_verifier.py:209(_make_api_call_with_retry)(5.114s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/functools.py:1010(__get__)(5.114s)
+
+==================================================
+Detailed cProfile Output:
+         2751050 function calls (2715244 primitive calls) in 10.147 seconds
+
+   Ordered by: cumulative time
+   List reduced from 2614 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+    52/21    0.001    0.000    7.136    0.340 {built-in method builtins.__import__}
+        1    0.000    0.000    5.115    5.115 /Users/orlandolee/greyhound_racing_collector/openai_connectivity_verifier.py:143(verify_connection)
+        1    0.000    0.000    5.114    5.114 /Users/orlandolee/greyhound_racing_collector/openai_connectivity_verifier.py:209(_make_api_call_with_retry)
+        1    0.000    0.000    5.114    5.114 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/functools.py:1010(__get__)
+        1    0.000    0.000    5.114    5.114 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/openai/_client.py:173(chat)
+        1    0.000    0.000    2.878    2.878 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/openai/resources/beta/__init__.py:1(<module>)
+        1    0.000    0.000    2.864    2.864 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/openai/resources/beta/beta.py:1(<module>)
+  791/790    0.065    0.000    2.474    0.003 {built-in method builtins.__build_class__}
+     6038    0.685    0.000    2.468    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)
+        1    0.000    0.000    2.327    2.327 /Users/orlandolee/greyhound_racing_collector/openai_connectivity_verifier.py:111(initialize_client)
+        1    0.000    0.000    2.320    2.320 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/openai/_client.py:92(__init__)
+        1    0.000    0.000    2.320    2.320 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/openai/_base_client.py:821(__init__)
+        1    0.000    0.000    2.317    2.317 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/openai/_base_client.py:787(__init__)
+        1    0.007    0.007    2.317    2.317 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/httpx/_client.py:639(__init__)
+    298/1    0.016    0.000    2.277    2.277 <frozen importlib._bootstrap>:1349(_find_and_load)
+    298/1    0.341    0.001    2.277    2.277 <frozen importlib._bootstrap>:1304(_find_and_load_unlocked)
+    286/1    0.016    0.000    2.266    2.266 <frozen importlib._bootstrap>:911(_load_unlocked)
+    284/1    0.261    0.001    2.266    2.266 <frozen importlib._bootstrap_external>:1020(exec_module)
+    613/2    0.023    0.000    2.265    1.133 <frozen importlib._bootstrap>:480(_call_with_frames_removed)
+6041/2045    0.067    0.000    2.165    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)
+
+

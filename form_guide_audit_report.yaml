@@ -1,0 +1,99 @@
+spec_vs_implementation_audit:
+  timestamp: "2025-08-03T11:06:43Z"
+  
+  findings:
+    critical_gaps:
+      - name: "Mixed Delimiter Detection"
+        spec_location: "FORM_GUIDE_SPEC.md:37-49"
+        implementation_status: "MISSING"
+        description: "Spec defines regex pattern for detecting mixed delimiters, but no implementation found"
+        required_regex: "r'[,;\\t]{2,}|,[;\\t]|[;\\t],'"
+        current_implementation: "None"
+        
+      - name: "Invisible Unicode Character Detection"
+        spec_location: "FORM_GUIDE_SPEC.md:51-61"
+        implementation_status: "MISSING"
+        description: "Spec defines BOM and zero-width space detection, but not implemented"
+        required_logic: "unicodedata.category(char) in ['Cf', 'Cc']"
+        current_implementation: "None"
+        
+      - name: "Header Drift Detection"
+        spec_location: "FORM_GUIDE_SPEC.md:63-76"
+        implementation_status: "MISSING"
+        description: "No logic to detect when headers shift position"
+        required_logic: "30% drift threshold comparison"
+        current_implementation: "None"
+        
+      - name: "Embedded Newlines Detection"
+        spec_location: "FORM_GUIDE_SPEC.md:78-89"
+        implementation_status: "MISSING"
+        description: "No detection of multi-line data within CSV fields"
+        required_logic: "'\\n' in field or '\\r' in field"
+        current_implementation: "None"
+        
+      - name: "Data Type Validation"
+        spec_location: "FORM_GUIDE_SPEC.md:104-124"
+        implementation_status: "PARTIAL"
+        description: "Basic validation exists but missing weight bounds (20.0-40.0) and box number range (1-8)"
+        required_validation:
+          - "box_number: int, 1-8 range"
+          - "weight: float, 20.0-40.0 range"
+          - "dog_name: non-empty string"
+        current_implementation: "Column presence checking only"
+        
+      - name: "Pre-processing Pipeline"
+        spec_location: "FORM_GUIDE_SPEC.md:128-141"
+        implementation_status: "MISSING"
+        description: "No BOM removal or line ending normalization"
+        required_logic:
+          - "content.replace('\\ufeff', '')"
+          - "content.replace('\\r\\n', '\\n').replace('\\r', '\\n')"
+        current_implementation: "None"
+
+    partial_implementations:
+      - name: "Forward Fill Logic"
+        spec_location: "FORM_GUIDE_SPEC.md:29-34"
+        implementation_status: "IMPLEMENTED"
+        implementation_location: "csv_ingestion.py:449-496"
+        description: "Forward-fill for dog names exists in process_form_guide_format()"
+        gap: "Only handles dog_name, spec requires box_number forward-fill too"
+        
+      - name: "Required Fields Validation"
+        spec_location: "FORM_GUIDE_SPEC.md:93-97"
+        implementation_status: "PARTIAL"
+        implementation_location: "csv_ingestion.py:202-213, 372-403"
+        description: "Column existence validation implemented"
+        gap: "Missing specific data type and range validation"
+        
+      - name: "Error Handling"
+        spec_location: "FORM_GUIDE_SPEC.md:184-197"
+        implementation_status: "PARTIAL"
+        implementation_location: "csv_ingestion.py:354-360"
+        description: "Basic CSV parsing errors handled"
+        gap: "Missing quarantine conditions and recovery strategies"
+
+    missing_test_coverage:
+      - "No unit tests for mixed delimiter detection"
+      - "No tests for invisible character handling"
+      - "No tests for header drift scenarios"
+      - "No tests for embedded newlines"
+      - "No tests for data type validation bounds"
+      - "No tests for pre-processing pipeline"
+
+  recommendations:
+    high_priority:
+      - "Implement mixed delimiter detection with warnings"
+      - "Add pre-processing pipeline for BOM removal and line normalization"
+      - "Implement data type validation with proper bounds checking"
+      - "Add quarantine logic for files that fail validation"
+      
+    medium_priority:
+      - "Add invisible character detection and cleaning"
+      - "Implement header drift detection"
+      - "Add embedded newlines detection"
+      - "Extend forward-fill to box numbers"
+      
+    low_priority:
+      - "Add comprehensive unit tests for all parsing scenarios"
+      - "Implement parsing statistics tracking"
+      - "Add debug logging for parsing steps"

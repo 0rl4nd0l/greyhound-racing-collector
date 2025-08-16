@@ -16,13 +16,15 @@ Usage:
     python data_quality_fixer.py --validate   # Validate data quality
 """
 
-import sqlite3
-import pandas as pd
-import re
 import argparse
+import json
+import re
+import sqlite3
 from datetime import datetime
 from pathlib import Path
-import json
+
+import pandas as pd
+
 
 class DataQualityFixer:
     def __init__(self, db_path='greyhound_racing_data.db'):

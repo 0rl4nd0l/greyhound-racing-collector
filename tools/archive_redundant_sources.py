@@ -1,7 +1,7 @@
 
+import argparse
 import os
 import shutil
-import argparse
 from datetime import datetime
 
 # Define the archive directory for legacy ingestion scripts

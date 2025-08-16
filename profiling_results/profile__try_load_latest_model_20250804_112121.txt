@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T11:21:21.106761
+Total Time: 85.519s
+CPU Time: 96.036s
+I/O Time: 0.0ms
+Memory Peak: 94.36MB
+Function Calls: 12616580
+Bottlenecks: <20>(1634.000s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)(190.371s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)(111.160s), _io.open}(86.503s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:694(__init__)(81.298s)
+
+==================================================
+Detailed cProfile Output:
+         12616580 function calls (11804363 primitive calls) in 85.644 seconds
+
+   Ordered by: cumulative time
+   List reduced from 1634 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+9085/9083    0.311    0.000  190.371    0.021 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)
+6040/6038    0.237    0.000  111.160    0.018 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)
+ 5767/712    1.293    0.000   86.503    0.121 {built-in method _io.open}
+2709/1149    0.446    0.000   81.298    0.071 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:694(__init__)
+2709/1155    0.385    0.000   71.748    0.062 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/construction.py:423(dict_to_mgr)
+2707/2128    0.168    0.000   68.617    0.032 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/managers.py:2121(create_block_manager_from_column_arrays)
+2708/1722    0.389    0.000   67.182    0.039 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/construction.py:96(arrays_to_mgr)
+6039/6038    0.932    0.000   62.990    0.010 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)
+5412/2928    0.404    0.000   58.151    0.020 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1250(emit)
+     2689    0.243    0.000   52.502    0.020 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/handlers.py:71(emit)
+8134/2398    0.507    0.000   51.866    0.022 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1138(emit)
+   275595    1.437    0.000   44.476    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py:414(_iterencode)
+ 2692/779    0.206    0.000   39.297    0.050 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1575(__init__)
+ 2692/779    0.263    0.000   36.987    0.047 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1848(_make_engine)
+     6013    0.191    0.000   33.115    0.006 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle_utils.py:234(_read_bytes)
+2658/1485    0.335    0.000   29.229    0.020 /Users/orlandolee/greyhound_racing_collector/csv_ingestion.py:503(ingest_csv)
+9200/4847    1.725    0.000   28.300    0.006 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/series.py:389(__init__)
+556815/275595    3.508    0.000   26.435    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py:334(_iterencode_dict)
+2706/2389    0.341    0.000   21.223    0.009 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/managers.py:1782(_consolidate_inplace)
+283215/275415    1.735    0.000   19.936    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py:278(_iterencode_list)
+
+

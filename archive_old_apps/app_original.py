@@ -10,29 +10,32 @@ Author: AI Assistant
 Date: July 11, 2025
 """
 
-import os
-import sqlite3
+import hashlib
 import json
+import math
+import os
+import pickle
+import sqlite3
 import subprocess
 import sys
-import math
-from datetime import datetime, timedelta
-from pathlib import Path
-from flask import Flask, render_template, jsonify, request, redirect, url_for, flash
-from werkzeug.utils import secure_filename
-import pandas as pd
 import threading
 import time
-from logger import logger
-from enhanced_race_analyzer import EnhancedRaceAnalyzer
-from sportsbet_odds_integrator import SportsbetOddsIntegrator
-from venue_mapping_fix import GreyhoundVenueMapper
-from enhanced_data_integration import EnhancedDataIntegrator
-import pickle
-import hashlib
+from datetime import datetime, timedelta
+from pathlib import Path
 
+import pandas as pd
 # Load environment variables from .env file
 from dotenv import load_dotenv
+from flask import (Flask, flash, jsonify, redirect, render_template, request,
+                   url_for)
+from werkzeug.utils import secure_filename
+
+from enhanced_data_integration import EnhancedDataIntegrator
+from enhanced_race_analyzer import EnhancedRaceAnalyzer
+from logger import logger
+from sportsbet_odds_integrator import SportsbetOddsIntegrator
+from venue_mapping_fix import GreyhoundVenueMapper
+
 load_dotenv()
 
 app = Flask(__name__)
@@ -1797,9 +1800,9 @@ def api_test_historical_prediction():
             }), 400
         
         # Create temporary race file from database data for real prediction
-        import tempfile
         import csv
-        
+        import tempfile
+
         # Create temporary CSV file with race data
         temp_race_file = None
         try:
@@ -1825,8 +1828,9 @@ def api_test_historical_prediction():
             
             # Run real prediction using integrated unified predictor
             try:
-                from integrated_race_prediction_system import IntegratedRacePredictionSystem
-                
+                from integrated_race_prediction_system import \
+                    IntegratedRacePredictionSystem
+
                 # Use the integrated system for better predictions
                 integrated_system = IntegratedRacePredictionSystem()
                 
@@ -2514,8 +2518,9 @@ def api_predict_single_race():
         
         # Try to use unified predictor API directly (most efficient and integrated)
         try:
-            from unified_predictor import UnifiedPredictor, UnifiedPredictorConfig
-            
+            from unified_predictor import (UnifiedPredictor,
+                                           UnifiedPredictorConfig)
+
             # Initialize unified predictor
             config = UnifiedPredictorConfig()
             predictor = UnifiedPredictor(config)
@@ -3996,10 +4001,11 @@ def api_download_upcoming_race():
 def api_generate_report():
     """API endpoint to generate and download a comprehensive race analysis report"""
     try:
-        from flask import send_file
-        import io
         import csv
-        
+        import io
+
+        from flask import send_file
+
         # Get database stats and race data
         db_manager = DatabaseManager(DATABASE_PATH)
         
@@ -4206,10 +4212,11 @@ def ml_training_dashboard():
 def api_model_status():
     """Get current model status and performance metrics"""
     try:
-        import os
-        import joblib
         import json
+        import os
         from pathlib import Path
+
+        import joblib
         
         models_dir = Path('./comprehensive_trained_models')
         results_dir = Path('./comprehensive_model_results')
@@ -4484,8 +4491,9 @@ def run_training_background(training_type):
             # Run automated training directly using Python API
             try:
                 # Import the comprehensive system
-                from comprehensive_enhanced_ml_system import ComprehensiveEnhancedMLSystem
-                
+                from comprehensive_enhanced_ml_system import \
+                    ComprehensiveEnhancedMLSystem
+
                 # Initialize system
                 system = ComprehensiveEnhancedMLSystem()
                 
@@ -5065,9 +5073,10 @@ def api_check_data_quality():
 def api_export_model():
     """Export current trained model"""
     try:
-        from flask import send_file
-        import zipfile
         import io
+        import zipfile
+
+        from flask import send_file
         
         models_dir = Path('./comprehensive_trained_models')
         if not models_dir.exists():
@@ -5121,9 +5130,10 @@ def api_export_model():
 def api_download_training_report():
     """Download comprehensive training report"""
     try:
-        from flask import send_file
         import io
-        
+
+        from flask import send_file
+
         # Generate comprehensive training report
         report_content = io.StringIO()
         
@@ -5359,7 +5369,7 @@ def api_gpt_status():
     """API endpoint to check GPT integration status"""
     try:
         import os
-        
+
         # Check if OpenAI API key is available
         api_key_available = bool(os.getenv('OPENAI_API_KEY'))
         
@@ -5464,7 +5474,7 @@ def api_today_races_basic():
     try:
         # Use direct racing scraper for comprehensive coverage
         from direct_racing_scraper import get_today_races
-        
+
         # Get races for today from the main racing page (more comprehensive)
         print("🔍 Using direct racing scraper for comprehensive race coverage...")
         today_races = get_today_races()
@@ -6217,9 +6227,10 @@ def api_automation_logs():
 def api_automation_system_info():
     """API endpoint for system information"""
     try:
-        import psutil
         import platform
-        
+
+        import psutil
+
         # Get system information
         cpu_percent = psutil.cpu_percent(interval=1)
         memory = psutil.virtual_memory()
@@ -6641,7 +6652,8 @@ def api_download_and_predict_race():
             else:
                 # Fallback to weather-enhanced predictor
                 try:
-                    from weather_enhanced_predictor import WeatherEnhancedPredictor
+                    from weather_enhanced_predictor import \
+                        WeatherEnhancedPredictor
                     
                     print(f"🌤️ Using WeatherEnhancedPredictor for: {filepath}")
                     predictor = WeatherEnhancedPredictor()

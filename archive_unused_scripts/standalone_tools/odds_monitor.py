@@ -15,13 +15,14 @@ Features:
 - Graceful shutdown handling
 """
 
+import json
+import logging
 import signal
 import sys
 import time
-import json
 from datetime import datetime, timedelta
+
 from sportsbet_odds_integrator import SportsbetOddsIntegrator
-import logging
 
 # Setup logging
 logging.basicConfig(

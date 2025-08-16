@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T15:20:08.629593
+Total Time: 47.786s
+CPU Time: 44.292s
+I/O Time: 0.0ms
+Memory Peak: 301.39MB
+Function Calls: 11458160
+Bottlenecks: <20>(1715.000s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)(66.985s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)(59.615s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/calibration.py:709(predict_proba)(48.113s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)(42.661s)
+
+==================================================
+Detailed cProfile Output:
+         11458160 function calls (11335114 primitive calls) in 43.034 seconds
+
+   Ordered by: cumulative time
+   List reduced from 1715 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+30128/4259    0.534    0.000   66.985    0.016 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)
+    20062    0.246    0.000   59.615    0.003 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)
+     10/4    0.006    0.001   48.113   12.028 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/calibration.py:709(predict_proba)
+    20062    3.279    0.000   42.661    0.002 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)
+     20/9    0.003    0.000   36.275    4.031 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/parallel.py:54(__call__)
+     20/9    0.007    0.000   36.130    4.014 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1969(__call__)
+     10/4    0.003    0.000   34.949    8.737 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/_response.py:116(_get_response_values)
+10020/4143    1.009    0.000   29.166    0.007 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1670(_get_outputs)
+     10/5    0.001    0.000   24.935    4.987 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/ensemble/_forest.py:922(predict_proba)
+     10/9    0.002    0.000   23.877    2.653 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1403(_terminate_and_reset)
+     10/9    0.004    0.000   23.868    2.652 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/_parallel_backends.py:323(terminate)
+    20021    0.259    0.000   23.519    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle_utils.py:234(_read_bytes)
+     10/4    0.001    0.000   22.237    5.559 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/pipeline.py:859(predict_proba)
+    40/33    0.001    0.000   19.298    0.585 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/queues.py:389(put)
+     80/5    0.019    0.000   18.302    3.660 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/pool.py:97(worker)
+    42/37    0.004    0.000   16.351    0.442 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/queues.py:372(empty)
+    40/36    0.008    0.000   15.720    0.437 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/connection.py:182(send_bytes)
+    40/36    0.001    0.000   14.528    0.404 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/connection.py:406(_send_bytes)
+  119/115    0.021    0.000   14.356    0.125 {built-in method posix.write}
+    40/36    0.000    0.000   14.335    0.398 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/connection.py:381(_send)
+
+

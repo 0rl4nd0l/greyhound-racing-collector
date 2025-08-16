@@ -1,0 +1,39 @@
+Profile for _group_normalize_probabilities
+Timestamp: 2025-08-04T13:36:09.980542
+Total Time: 0.005s
+CPU Time: 0.006s
+I/O Time: 0.0ms
+Memory Peak: 0.07MB
+Function Calls: 1998
+Bottlenecks: <20>(144.000s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/pool.py:776(_set)(0.003s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:802(__call__)(0.003s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:835(_dispatch_new)(0.003s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1446(dispatch_next)(0.002s)
+
+==================================================
+Detailed cProfile Output:
+         1998 function calls in 0.005 seconds
+
+   Ordered by: cumulative time
+   List reduced from 144 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+       12    0.000    0.000    0.003    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/pool.py:776(_set)
+       12    0.000    0.000    0.003    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:802(__call__)
+       12    0.000    0.000    0.003    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:835(_dispatch_new)
+       12    0.000    0.000    0.002    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1446(dispatch_next)
+       12    0.000    0.000    0.002    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1457(dispatch_one_batch)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/pipeline_profiler.py:307(track_sequence_step)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/_utils.py:70(__call__)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:603(__call__)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/parallel.py:125(__call__)
+       16    0.000    0.000    0.001    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/parallel.py:73(<genexpr>)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/ensemble/_forest.py:724(_accumulate_prediction)
+       12    0.000    0.000    0.001    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1410(_dispatch)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/tree/_classes.py:1032(predict_proba)
+       16    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/ensemble/_forest.py:957(<genexpr>)
+        1    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/validation.py:1673(check_is_fitted)
+       12    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/_parallel_backends.py:334(submit)
+       14    0.000    0.000    0.000    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/queue.py:180(get)
+       32    0.000    0.000    0.000    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/functools.py:36(update_wrapper)
+       12    0.000    0.000    0.000    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/pool.py:453(apply_async)
+       16    0.000    0.000    0.000    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/queue.py:140(put)
+
+

@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T12:41:21.228125
+Total Time: 11.153s
+CPU Time: 10.557s
+I/O Time: 0.0ms
+Memory Peak: 111.86MB
+Function Calls: 2556326
+Bottlenecks: <20>(1168.000s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/serving.py:395(handle)(7.529s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:360(finish_request)(7.524s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:760(__init__)(7.520s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:641(wait)(4.842s)
+
+==================================================
+Detailed cProfile Output:
+         2556326 function calls (2507284 primitive calls) in 11.066 seconds
+
+   Ordered by: cumulative time
+   List reduced from 1168 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+     12/6    0.000    0.000    7.529    1.255 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/serving.py:395(handle)
+     13/6    0.004    0.000    7.524    1.254 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:360(finish_request)
+     13/6    0.001    0.000    7.520    1.253 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:760(__init__)
+       16    0.003    0.000    4.842    0.303 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:641(wait)
+     15/4    0.001    0.000    4.836    1.209 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:981(run)
+        1    0.000    0.000    4.788    4.788 /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:810(_try_load_latest_model)
+        1    0.051    0.051    4.785    4.785 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:674(load)
+    14/13    0.000    0.000    3.593    0.276 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:513(shutdown_request)
+6011/2880    0.296    0.000    3.437    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle_utils.py:234(_read_bytes)
+36173/17312    0.551    0.000    2.837    0.000 {method 'read' of '_io.BufferedReader' objects}
+     13/5    0.002    0.000    2.613    0.523 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:998(_bootstrap)
+       31    0.002    0.000    2.551    0.082 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/selectors.py:385(select)
+       31    0.365    0.012    2.545    0.082 {method 'poll' of 'select.poll' objects}
+     14/5    0.000    0.000    2.448    0.490 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/http/server.py:493(send_response)
+     14/5    0.000    0.000    2.445    0.489 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/serving.py:440(log_request)
+     14/5    0.001    0.000    2.443    0.489 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/serving.py:475(log)
+        1    0.000    0.000    2.195    2.195 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:613(_unpickle)
+        1    0.526    0.526    2.195    2.195 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:1230(load)
+   413382    0.889    0.000    1.538    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:281(read)
+     13/3    0.003    0.000    1.098    0.366 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/http/server.py:432(handle)
+
+

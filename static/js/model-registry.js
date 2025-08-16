@@ -120,7 +120,27 @@ function updateModelsTable(models) {
     });
 }
 
+function loadTrainableModels() {
+    fetch('/api/model/list_trainable')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const select = document.getElementById('train-model-select');
+                select.innerHTML = data.models.map(model => 
+                    `<option value="${model.model_id}">${model.name}</option>`
+                ).join('');
+            } else {
+                showNotification('Error loading trainable models', 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching trainable models:', error);
+            showNotification('Error loading trainable models', 'error');
+        });
+}
+
 function showTrainingModal() {
+    loadTrainableModels();
     const modal = new bootstrap.Modal(document.getElementById('trainingModal'));
     modal.show();
 }
@@ -132,7 +152,8 @@ function startModelTraining() {
     const data = {
         prediction_type: formData.get('prediction_type'),
         training_data_days: parseInt(formData.get('training_data_days')),
-        force_retrain: formData.get('force_retrain') === 'on'
+        force_retrain: formData.get('force_retrain') === 'on',
+        model_id: formData.get('model_id')
     };
     
     fetch('/api/model/training/trigger', {
@@ -147,8 +168,7 @@ function startModelTraining() {
         if (data.success) {
             showNotification('Model training initiated successfully', 'success');
             bootstrap.Modal.getInstance(document.getElementById('trainingModal')).hide();
-            // Refresh after a short delay to show new model
-            setTimeout(refreshModelRegistry, 2000);
+            pollTrainingStatus(data.job_id);
         } else {
             showNotification(`Training error: ${data.error}`, 'error');
         }
@@ -157,6 +177,36 @@ function startModelTraining() {
         console.error('Error starting training:', error);
         showNotification('Error starting model training', 'error');
     });
+}
+
+function pollTrainingStatus(jobId) {
+    const intervalId = setInterval(() => {
+        fetch(`/api/model/registry/status?job_id=${jobId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    if (data.status === 'completed') {
+                        clearInterval(intervalId);
+                        showNotification('Training completed successfully', 'success');
+                        refreshModelRegistry();
+                    } else {
+                        updateTrainingProgress(data);
+                    }
+                } else {
+                    showNotification('Error polling training status', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error polling training status:', error);
+                showNotification('Error polling training status', 'error');
+            });
+    }, 3000);
+
+    function updateTrainingProgress(data) {
+        const progressBar = document.getElementById('training-progress-bar');
+        progressBar.style.width = `${data.progress}%`;
+        progressBar.textContent = `${data.progress}%`;
+    }
 }
 
 async function showModelDetails(modelId) {

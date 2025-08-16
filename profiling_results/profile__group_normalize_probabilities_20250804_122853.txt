@@ -1,0 +1,39 @@
+Profile for _group_normalize_probabilities
+Timestamp: 2025-08-04T12:28:53.715840
+Total Time: 0.007s
+CPU Time: 0.007s
+I/O Time: 0.0ms
+Memory Peak: 0.06MB
+Function Calls: 1929
+Bottlenecks: <20>(152.000s), /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:617(_group_normalize_probabilities)(0.005s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/pool.py:776(_set)(0.003s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:802(__call__)(0.002s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:835(_dispatch_new)(0.002s)
+
+==================================================
+Detailed cProfile Output:
+         1929 function calls (1919 primitive calls) in 0.007 seconds
+
+   Ordered by: cumulative time
+   List reduced from 152 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.001    0.001    0.005    0.005 /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:617(_group_normalize_probabilities)
+       11    0.000    0.000    0.003    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/pool.py:776(_set)
+       11    0.000    0.000    0.002    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:802(__call__)
+       11    0.000    0.000    0.002    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:835(_dispatch_new)
+       11    0.000    0.000    0.002    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1446(dispatch_next)
+       11    0.000    0.000    0.002    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1457(dispatch_one_batch)
+       51    0.000    0.000    0.001    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1670(_get_outputs)
+       51    0.001    0.000    0.001    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1776(_retrieve)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/_utils.py:70(__call__)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:603(__call__)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/parallel.py:125(__call__)
+       11    0.000    0.000    0.001    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1410(_dispatch)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/ensemble/_forest.py:724(_accumulate_prediction)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/tree/_classes.py:1032(predict_proba)
+       11    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/_parallel_backends.py:334(submit)
+        1    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/validation.py:1673(check_is_fitted)
+       11    0.000    0.000    0.000    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/pool.py:453(apply_async)
+        1    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/numpy/_core/fromnumeric.py:4073(var)
+        8    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/parallel.py:73(<genexpr>)
+        1    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/numpy/_core/_methods.py:151(_var)
+
+

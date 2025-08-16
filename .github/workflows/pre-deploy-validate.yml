@@ -1,0 +1,32 @@
+name: Pre-Deploy Validation
+
+on:
+  workflow_dispatch:
+  # Optionally run before releases or deployments; uncomment as needed
+  # push:
+  #   branches: [ main ]
+  #   paths:
+  #     - 'upcoming_races/**'
+  #     - 'scripts/validate_upcoming_races.py'
+
+jobs:
+  validate-upcoming-races:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install minimal dependencies
+        run: |
+          python -m pip install --upgrade pip
+
+      - name: Run upcoming races validator (fail fast)
+        run: |
+          echo "🔎 Running pre-deploy validation for upcoming_races..."
+          python scripts/validate_upcoming_races.py --strict-future
+

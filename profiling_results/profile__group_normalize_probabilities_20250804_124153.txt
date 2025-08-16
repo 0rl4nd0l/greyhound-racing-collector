@@ -1,0 +1,39 @@
+Profile for _group_normalize_probabilities
+Timestamp: 2025-08-04T12:41:53.886995
+Total Time: 0.013s
+CPU Time: 0.013s
+I/O Time: 0.0ms
+Memory Peak: 0.12MB
+Function Calls: 1733
+Bottlenecks: <20>(361.000s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:10177(apply)(0.011s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/apply.py:864(apply)(0.011s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/apply.py:1061(apply_standard)(0.011s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/apply.py:1070(apply_series_generator)(0.011s)
+
+==================================================
+Detailed cProfile Output:
+         1733 function calls (1707 primitive calls) in 0.013 seconds
+
+   Ordered by: cumulative time
+   List reduced from 361 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    0.011    0.011 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:10177(apply)
+        1    0.000    0.000    0.011    0.011 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/apply.py:864(apply)
+        1    0.000    0.000    0.011    0.011 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/apply.py:1061(apply_standard)
+        1    0.000    0.000    0.011    0.011 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/apply.py:1070(apply_series_generator)
+        1    0.000    0.000    0.009    0.009 /Users/orlandolee/greyhound_racing_collector/temporal_feature_builder.py:104(<lambda>)
+        1    0.000    0.000    0.009    0.009 /Users/orlandolee/greyhound_racing_collector/temporal_feature_builder.py:55(get_race_timestamp)
+        1    0.000    0.000    0.009    0.009 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/tools/datetimes.py:678(to_datetime)
+        1    0.000    0.000    0.005    0.005 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/indexes/base.py:5385(__getitem__)
+        1    0.000    0.000    0.005    0.005 <frozen importlib._bootstrap>:480(_call_with_frames_removed)
+        1    0.000    0.000    0.005    0.005 {built-in method builtins.exec}
+        1    0.000    0.000    0.005    0.005 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/openai/types/beta/realtime/conversation_created_event.py:1(<module>)
+        2    0.000    0.000    0.005    0.003 {built-in method builtins.__build_class__}
+        1    0.000    0.000    0.004    0.004 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pydantic/_internal/_model_construction.py:83(__new__)
+        1    0.000    0.000    0.003    0.003 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/tools/datetimes.py:316(_convert_listlike_datetimes)
+        1    0.001    0.001    0.002    0.002 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/tools/datetimes.py:128(_guess_datetime_format_for_array)
+      2/1    0.000    0.000    0.002    0.002 /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:617(_group_normalize_probabilities)
+      2/1    0.000    0.000    0.002    0.002 /Users/orlandolee/greyhound_racing_collector/pipeline_profiler.py:714(__exit__)
+        1    0.000    0.000    0.002    0.002 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/apply.py:1242(series_generator)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pydantic/_internal/_typing_extra.py:230(get_cls_type_hints_lenient)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:3988(_ixs)
+
+

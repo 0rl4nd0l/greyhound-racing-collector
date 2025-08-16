@@ -1,0 +1,6 @@
+dog_name,sex,place,box_number,weight_kg,distance_m,race_date,track_code,grade,race_time,winning_time,bonus_points,first_section_time,margin,winner_two_greyhounds,performance_index_rating,starting_price
+Sky Chaser,B,4,1,28.8,342,2025-06-21,AP/K,M,21.24,19.89,19.64,4.82,19.25,BACARDI GIRL,2344,16.0
+Sky Chaser,B,5,7,28.9,342,2025-06-10,AP/K,M,21.27,20.19,19.41,4.86,15.5,Gabby Maisy,5,21.0
+Sky Chaser,B,5,2,29.2,342,2025-06-07,AP/K,M,21.8,20.5,19.84,4.75,18.5,BLAZIN' BON,5,14.0
+Sky Chaser,B,2,8,29.2,300,2025-06-03,MBS,M,17.9,17.75,16.68,4.64,2.0,Catching,1122,16.0
+Sky Chaser,B,2,4,29.5,300,2025-05-27,MBS,M,17.86,17.48,16.66,,5.25,Slip Me Fifty,2,26.0

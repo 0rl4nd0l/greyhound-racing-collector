@@ -1,0 +1,39 @@
+Profile for _group_normalize_probabilities
+Timestamp: 2025-08-04T13:39:28.731899
+Total Time: 0.007s
+CPU Time: 0.038s
+I/O Time: 0.0ms
+Memory Peak: 0.07MB
+Function Calls: 1167
+Bottlenecks: <20>(136.000s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/sql.py:141(_parse_date_columns)(0.004s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:1501(items)(0.004s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:4631(_get_item_cache)(0.003s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:3988(_ixs)(0.003s)
+
+==================================================
+Detailed cProfile Output:
+         1167 function calls (1163 primitive calls) in 0.006 seconds
+
+   Ordered by: cumulative time
+   List reduced from 136 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    0.004    0.004 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/sql.py:141(_parse_date_columns)
+       22    0.000    0.000    0.004    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:1501(items)
+       21    0.000    0.000    0.003    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:4631(_get_item_cache)
+       21    0.000    0.000    0.003    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:3988(_ixs)
+       21    0.000    0.000    0.001    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:4613(_box_col_values)
+       87    0.001    0.000    0.001    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/generic.py:6320(__setattr__)
+       22    0.000    0.000    0.001    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:678(_constructor_sliced_from_mgr)
+       22    0.001    0.000    0.001    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/managers.py:1012(iget)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/generic.py:807(_set_axis)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/indexes/base.py:7659(ensure_index)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/indexes/base.py:475(__new__)
+       21    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/generic.py:6255(__finalize__)
+       22    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/generic.py:339(_from_mgr)
+        1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}
+        1    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/construction.py:517(sanitize_array)
+        1    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/numpy/_core/fromnumeric.py:4073(var)
+        1    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/numpy/_core/_methods.py:151(_var)
+       23    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/generic.py:278(__init__)
+       21    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/series.py:1480(_set_as_cached)
+        1    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:617(_group_normalize_probabilities)
+
+

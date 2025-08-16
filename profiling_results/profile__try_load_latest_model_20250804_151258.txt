@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T15:12:58.725711
+Total Time: 52.281s
+CPU Time: 46.265s
+I/O Time: 0.0ms
+Memory Peak: 233.88MB
+Function Calls: 11477958
+Bottlenecks: <20>(1715.000s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)(113.421s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)(75.045s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle_utils.py:234(_read_bytes)(40.574s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/queues.py:372(empty)(40.153s)
+
+==================================================
+Detailed cProfile Output:
+         11477958 function calls (11320465 primitive calls) in 50.365 seconds
+
+   Ordered by: cumulative time
+   List reduced from 1715 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+20061/2423    0.257    0.000  113.421    0.047 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)
+    20062    3.987    0.000   75.045    0.004 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)
+    20021    0.313    0.000   40.574    0.002 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle_utils.py:234(_read_bytes)
+       45    0.002    0.000   40.153    0.892 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/queues.py:372(empty)
+    58/14    0.006    0.000   37.258    2.661 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/connection.py:1134(wait)
+    58/14    0.005    0.000   36.124    2.580 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/selectors.py:385(select)
+    58/14    0.004    0.000   36.113    2.579 {method 'poll' of 'select.poll' objects}
+10020/2055    0.085    0.000   34.865    0.017 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1670(_get_outputs)
+       45    0.002    0.000   32.096    0.713 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/connection.py:253(poll)
+120258/120220    1.831    0.000   26.605    0.000 {method 'read' of '_io.BufferedReader' objects}
+       45    0.001    0.000   23.912    0.531 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/connection.py:439(_poll)
+10000/418    0.215    0.000   22.214    0.053 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/_utils.py:70(__call__)
+       10    0.000    0.000   21.907    2.191 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1403(_terminate_and_reset)
+      2/1    0.000    0.000   21.317   21.317 /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:689(<lambda>)
+      2/1    0.000    0.000   21.317   21.317 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/calibration.py:480(predict_proba)
+     10/2    0.004    0.000   21.309   10.655 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/calibration.py:709(predict_proba)
+     10/2    0.002    0.000   21.247   10.623 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/_response.py:116(_get_response_values)
+     20/4    0.002    0.000   21.163    5.291 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/parallel.py:54(__call__)
+     10/2    0.001    0.000   21.075   10.538 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/pipeline.py:859(predict_proba)
+     10/2    0.001    0.000   21.067   10.534 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/ensemble/_forest.py:922(predict_proba)
+
+

@@ -8,7 +8,9 @@ handled when writing JSON files, preventing the creation of invalid JSON.
 
 import json
 import math
+
 import numpy as np
+
 
 class SafeJSONEncoder(json.JSONEncoder):
     """

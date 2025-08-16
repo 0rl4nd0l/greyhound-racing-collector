@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T11:38:33.482443
+Total Time: 13.470s
+CPU Time: 11.801s
+I/O Time: 0.0ms
+Memory Peak: 93.25MB
+Function Calls: 2964653
+Bottlenecks: <20>(1011.000s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)(19.636s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/http/server.py:534(end_headers)(6.234s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)(5.897s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py:414(_iterencode)(5.257s)
+
+==================================================
+Detailed cProfile Output:
+         2964653 function calls (2808710 primitive calls) in 16.947 seconds
+
+   Ordered by: cumulative time
+   List reduced from 1011 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+9082/1487    0.281    0.000   19.636    0.013 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)
+        2    0.000    0.000    6.234    3.117 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/http/server.py:534(end_headers)
+ 6037/983    0.140    0.000    5.897    0.006 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)
+    97145    0.544    0.000    5.257    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py:414(_iterencode)
+ 6037/983    1.206    0.000    4.846    0.005 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)
+196165/97145    1.323    0.000    3.655    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py:334(_iterencode_dict)
+        5    0.058    0.012    2.604    0.521 /Users/orlandolee/greyhound_racing_collector/app.py:3207(log_model_registry_debug)
+99685/97085    0.613    0.000    2.561    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py:278(_iterencode_list)
+ 6012/975    0.149    0.000    2.382    0.002 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle_utils.py:234(_read_bytes)
+36159/5882    0.523    0.000    1.820    0.000 {method 'read' of '_io.BufferedReader' objects}
+   413382    0.953    0.000    1.709    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:281(read)
+     9083    0.525    0.000    0.856    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:1754(load_build)
+351029/350574    0.789    0.000    0.824    0.000 {built-in method builtins.isinstance}
+97170/97034    0.400    0.000    0.757    0.000 {method 'write' of '_io.TextIOWrapper' objects}
+        1    0.001    0.001    0.744    0.744 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:998(_bootstrap)
+        1    0.001    0.001    0.727    0.727 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:360(finish_request)
+      2/1    0.000    0.000    0.689    0.689 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/flask/app.py:1529(__call__)
+      2/1    0.001    0.000    0.675    0.675 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/flask/app.py:1479(wsgi_app)
+   407340    0.640    0.000    0.640    0.000 {method 'read' of '_io.BytesIO' objects}
+      2/1    0.000    0.000    0.638    0.638 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/flask/app.py:904(full_dispatch_request)
+
+

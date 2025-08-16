@@ -17,11 +17,13 @@ Key improvements:
 """
 
 import re
-import requests
-from typing import Dict, List, Optional, Tuple, Any
-from bs4 import BeautifulSoup
-from datetime import datetime
 import time
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
+
+import requests
+from bs4 import BeautifulSoup
+
 
 class EnhancedTrackConditionExtractor:
     def __init__(self):

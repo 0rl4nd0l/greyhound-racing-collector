@@ -1,0 +1,39 @@
+Profile for build_leakage_safe_features
+Timestamp: 2025-08-04T14:32:02.526470
+Total Time: 252.614s
+CPU Time: 220.501s
+I/O Time: 0.0ms
+Memory Peak: 12.37MB
+Function Calls: 51343498
+Bottlenecks: <20>(931.000s), /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:273(build_leakage_safe_features)(252.563s), /Users/orlandolee/greyhound_racing_collector/temporal_feature_builder.py:343(build_features_for_race)(241.876s), /Users/orlandolee/greyhound_racing_collector/temporal_feature_builder.py:73(load_dog_historical_data)(143.659s), /Users/orlandolee/greyhound_racing_collector/temporal_feature_builder.py:124(create_historical_features)(78.764s)
+
+==================================================
+Detailed cProfile Output:
+         51343498 function calls (50624631 primitive calls) in 252.565 seconds
+
+   Ordered by: cumulative time
+   List reduced from 931 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.244    0.244  252.563  252.563 /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:273(build_leakage_safe_features)
+      491    0.853    0.002  241.876    0.493 /Users/orlandolee/greyhound_racing_collector/temporal_feature_builder.py:343(build_features_for_race)
+     2085    1.713    0.001  143.659    0.069 /Users/orlandolee/greyhound_racing_collector/temporal_feature_builder.py:73(load_dog_historical_data)
+     2085    3.719    0.002   78.764    0.038 /Users/orlandolee/greyhound_racing_collector/temporal_feature_builder.py:124(create_historical_features)
+     2085    0.082    0.000   78.040    0.037 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/sql.py:436(read_sql_query)
+     2085    0.065    0.000   77.930    0.037 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/sql.py:2717(read_query)
+     2085    0.202    0.000   72.006    0.035 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/sql.py:196(_wrap_result)
+     2085    0.564    0.000   50.572    0.024 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/sql.py:162(_convert_arrays_to_dataframe)
+     2085    0.034    0.000   42.284    0.020 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:10177(apply)
+     2085    0.061    0.000   42.105    0.020 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/apply.py:864(apply)
+     2085    0.038    0.000   42.008    0.020 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/apply.py:1061(apply_standard)
+     2302    0.186    0.000   40.794    0.018 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:694(__init__)
+     2085    1.552    0.001   37.993    0.018 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/construction.py:423(dict_to_mgr)
+     2085    0.249    0.000   36.742    0.018 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/apply.py:1070(apply_series_generator)
+   218857   11.758    0.000   35.868    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/construction.py:517(sanitize_array)
+     2302    0.256    0.000   34.671    0.015 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/construction.py:96(arrays_to_mgr)
+     9862    0.166    0.000   34.564    0.004 /Users/orlandolee/greyhound_racing_collector/temporal_feature_builder.py:55(get_race_timestamp)
+     9873    0.974    0.000   33.578    0.003 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/tools/datetimes.py:678(to_datetime)
+46312/42142    0.197    0.000   33.200    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/ops/common.py:62(new_method)
+     9371    0.029    0.000   32.794    0.003 /Users/orlandolee/greyhound_racing_collector/temporal_feature_builder.py:104(<lambda>)
+
+

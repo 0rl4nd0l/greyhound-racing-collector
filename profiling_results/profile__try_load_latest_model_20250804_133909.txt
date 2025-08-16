@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T13:39:09.997418
+Total Time: 50.219s
+CPU Time: 58.725s
+I/O Time: 0.0ms
+Memory Peak: 88.22MB
+Function Calls: 9593438
+Bottlenecks: <20>(1585.000s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)(80.741s), /Users/orlandolee/greyhound_racing_collector/csv_ingestion.py:220(validate_csv_schema)(62.445s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1990(__exit__)(51.687s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:868(read_csv)(50.540s)
+
+==================================================
+Detailed cProfile Output:
+         9593438 function calls (9128078 primitive calls) in 52.022 seconds
+
+   Ordered by: cumulative time
+   List reduced from 1585 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+6041/6038    0.236    0.000   80.741    0.013 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)
+ 2041/292    0.543    0.000   62.445    0.214 /Users/orlandolee/greyhound_racing_collector/csv_ingestion.py:220(validate_csv_schema)
+2041/1427    0.165    0.000   51.687    0.036 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1990(__exit__)
+ 2042/247    0.406    0.000   50.540    0.205 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:868(read_csv)
+     6013    0.182    0.000   46.272    0.008 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle_utils.py:234(_read_bytes)
+4106/2443    0.217    0.000   41.739    0.017 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_local.py:510(stat)
+ 2041/723    0.371    0.000   29.357    0.041 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/common.py:664(get_handle)
+6039/6038    0.830    0.000   23.166    0.004 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)
+  375/369    0.039    0.000   20.088    0.054 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/__init__.py:274(load)
+6138/3851    0.925    0.000   19.740    0.005 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/series.py:389(__init__)
+ 2041/407    0.287    0.000   17.849    0.044 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:583(_read)
+2041/1427    0.127    0.000   16.737    0.012 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1622(close)
+ 2043/434    2.069    0.001   16.160    0.037 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1907(read)
+     6039    0.029    0.000   15.621    0.003 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:1279(load_frame)
+222270/222268    0.939    0.000   14.498    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py:414(_iterencode)
+ 2045/284    0.330    0.000   13.449    0.047 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:694(__init__)
+2044/1791    0.094    0.000   13.029    0.007 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/managers.py:2121(create_block_manager_from_column_arrays)
+ 2044/284    0.302    0.000   12.871    0.045 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/construction.py:423(dict_to_mgr)
+ 2041/630    0.189    0.000   12.682    0.020 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1575(__init__)
+ 2045/566    0.288    0.000   12.009    0.021 /Users/orlandolee/greyhound_racing_collector/csv_ingestion.py:503(ingest_csv)
+
+

@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T15:44:58.409906
+Total Time: 50.698s
+CPU Time: 48.442s
+I/O Time: 0.0ms
+Memory Peak: 233.91MB
+Function Calls: 11359825
+Bottlenecks: <20>(1715.000s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle_utils.py:234(_read_bytes)(46.203s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)(44.729s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/_utils.py:70(__call__)(34.606s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:603(__call__)(33.723s)
+
+==================================================
+Detailed cProfile Output:
+         11359825 function calls (11195731 primitive calls) in 44.590 seconds
+
+   Ordered by: cumulative time
+   List reduced from 1715 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+    20021    0.274    0.000   46.203    0.002 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle_utils.py:234(_read_bytes)
+    20062    3.504    0.000   44.729    0.002 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)
+10000/871    0.146    0.000   34.606    0.040 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/_utils.py:70(__call__)
+10000/871    0.477    0.000   33.723    0.039 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:603(__call__)
+       10    0.002    0.000   31.902    3.190 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/pool.py:654(terminate)
+       30    0.004    0.000   30.561    1.019 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/util.py:197(__call__)
+120258/120213    1.208    0.000   29.467    0.000 {method 'read' of '_io.BufferedReader' objects}
+10020/1286    0.106    0.000   27.008    0.021 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1670(_get_outputs)
+      2/1    0.000    0.000   22.410   22.410 /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:689(<lambda>)
+      2/1    0.001    0.000   22.410   22.410 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/calibration.py:480(predict_proba)
+     20/2    0.001    0.000   22.384   11.192 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/parallel.py:54(__call__)
+     10/1    0.002    0.000   22.373   22.373 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/calibration.py:709(predict_proba)
+     10/1    0.002    0.000   22.371   22.371 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/_response.py:116(_get_response_values)
+     20/2    0.002    0.000   22.369   11.185 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1969(__call__)
+     10/1    0.001    0.000   22.361   22.361 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/pipeline.py:859(predict_proba)
+     10/1    0.004    0.000   22.355   22.355 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/ensemble/_forest.py:922(predict_proba)
+    110/1    0.013    0.000   22.239   22.239 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:998(_bootstrap)
+    110/1    0.011    0.000   22.238   22.238 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:1025(_bootstrap_inner)
+    110/1    0.011    0.000   22.238   22.238 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:981(run)
+     10/1    0.001    0.000   22.238   22.238 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/pool.py:527(_handle_tasks)
+
+

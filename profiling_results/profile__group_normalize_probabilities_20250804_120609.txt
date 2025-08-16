@@ -1,0 +1,39 @@
+Profile for _group_normalize_probabilities
+Timestamp: 2025-08-04T12:06:09.877971
+Total Time: 0.014s
+CPU Time: 0.014s
+I/O Time: 0.0ms
+Memory Peak: 0.07MB
+Function Calls: 2600
+Bottlenecks: <20>(146.000s), /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:617(_group_normalize_probabilities)(0.009s), /Users/orlandolee/greyhound_racing_collector/pipeline_profiler.py:714(__exit__)(0.008s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/pool.py:776(_set)(0.005s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/_utils.py:70(__call__)(0.005s)
+
+==================================================
+Detailed cProfile Output:
+         2600 function calls (2583 primitive calls) in 0.014 seconds
+
+   Ordered by: cumulative time
+   List reduced from 146 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+      2/1    0.000    0.000    0.009    0.009 /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:617(_group_normalize_probabilities)
+      2/1    0.000    0.000    0.008    0.008 /Users/orlandolee/greyhound_racing_collector/pipeline_profiler.py:714(__exit__)
+       13    0.000    0.000    0.005    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/pool.py:776(_set)
+        4    0.000    0.000    0.005    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/_utils.py:70(__call__)
+        4    0.000    0.000    0.005    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:603(__call__)
+       13    0.000    0.000    0.005    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:802(__call__)
+        4    0.000    0.000    0.005    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/parallel.py:125(__call__)
+       13    0.000    0.000    0.004    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:835(_dispatch_new)
+       13    0.000    0.000    0.004    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1446(dispatch_next)
+       13    0.001    0.000    0.004    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1457(dispatch_one_batch)
+        4    0.000    0.000    0.004    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/ensemble/_forest.py:724(_accumulate_prediction)
+        4    0.001    0.000    0.004    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/tree/_classes.py:1032(predict_proba)
+        4    0.000    0.000    0.003    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/validation.py:1673(check_is_fitted)
+      2/1    0.001    0.000    0.002    0.002 /Users/orlandolee/greyhound_racing_collector/pipeline_profiler.py:307(track_sequence_step)
+        4    0.000    0.000    0.002    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/_tags.py:367(get_tags)
+        4    0.001    0.000    0.002    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/_tags.py:303(_find_tags_provider)
+       16    0.000    0.000    0.001    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/parallel.py:73(<genexpr>)
+       13    0.000    0.000    0.001    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1410(_dispatch)
+       16    0.000    0.000    0.001    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/ensemble/_forest.py:957(<genexpr>)
+        4    0.000    0.000    0.001    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/validation.py:1635(_is_fitted)
+
+

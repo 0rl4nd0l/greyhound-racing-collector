@@ -1,0 +1,86 @@
+site_name: Greyhound Racing Predictor Documentation
+site_description: Comprehensive documentation for the Greyhound Racing Predictor system
+site_author: Orlando Lee
+site_url: https://github.com/orlandolee/greyhound_racing_collector
+
+repo_url: https://github.com/orlandolee/greyhound_racing_collector
+repo_name: greyhound_racing_collector
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - search.share
+    - content.code.copy
+  palette:
+    - scheme: default
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+  - admonition
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.tilde
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+  - mermaid2
+
+nav:
+  - Home: index.md
+  - Architecture:
+    - System Overview: architecture/system_overview.md
+    - Data Pipeline: architecture/data_pipeline.md
+    - ML Pipeline: architecture/ml_pipeline.md
+    - API Architecture: architecture/api_architecture.md
+  - Data Dictionary:
+    - Database Schema: data_dictionary/database_schema.md
+    - Feature Engineering: data_dictionary/feature_engineering.md
+    - Predictions: data_dictionary/predictions.md
+  - Monitoring:
+    - Prometheus Metrics: monitoring/prometheus_metrics.md
+    - Performance Monitoring: monitoring/performance.md
+    - Alerting: monitoring/alerting.md
+  - Model Governance:
+    - Champion/Challenger: governance/champion_challenger.md
+    - Rollback Strategy: governance/rollback_strategy.md
+    - Model Registry: governance/model_registry.md
+  - API Reference:
+    - Endpoints: api/endpoints.md
+    - Authentication: api/authentication.md
+    - Rate Limiting: api/rate_limiting.md
+  - Development:
+    - Setup Guide: development/setup.md
+    - Testing: development/testing.md
+    - Contributing: development/contributing.md

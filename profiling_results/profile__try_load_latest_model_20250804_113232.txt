@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T11:32:32.769150
+Total Time: 86.665s
+CPU Time: 85.304s
+I/O Time: 0.0ms
+Memory Peak: 98.14MB
+Function Calls: 10857410
+Bottlenecks: <20>(1713.000s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)(312.215s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1138(emit)(177.053s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_abc.py:442(exists)(172.073s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1250(emit)(161.308s)
+
+==================================================
+Detailed cProfile Output:
+         10857410 function calls (10299604 primitive calls) in 86.815 seconds
+
+   Ordered by: cumulative time
+   List reduced from 1713 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+9085/9083    0.296    0.000  312.215    0.034 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)
+7761/2514    0.455    0.000  177.053    0.070 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1138(emit)
+2546/1980    0.128    0.000  172.073    0.087 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_abc.py:442(exists)
+5162/2894    0.521    0.000  161.308    0.056 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1250(emit)
+ 2630/923    0.422    0.000  133.467    0.145 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:694(__init__)
+6040/6038    0.244    0.000  117.285    0.019 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)
+7759/3782    0.516    0.000  110.433    0.029 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1130(flush)
+ 2622/550    0.668    0.000  110.300    0.201 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1907(read)
+5082/3080    0.225    0.000  103.055    0.033 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_local.py:510(stat)
+2624/1737    0.201    0.000   95.783    0.055 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1990(__exit__)
+8281/4311    2.976    0.000   89.586    0.021 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/series.py:389(__init__)
+99618/60770    0.837    0.000   88.977    0.001 {method 'write' of '_io.TextIOWrapper' objects}
+2557/1602    0.474    0.000   88.573    0.055 {method '__exit__' of '_io._IOBase' objects}
+ 2559/717    0.989    0.000   87.792    0.122 {method 'execute' of 'sqlite3.Cursor' objects}
+     2558    0.330    0.000   86.353    0.034 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/handlers.py:71(emit)
+2624/1737    0.194    0.000   75.661    0.044 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1622(close)
+6040/6038    1.074    0.000   68.758    0.011 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)
+2627/2215    0.245    0.000   68.623    0.031 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/series.py:607(_init_dict)
+91866/91865    0.534    0.000   63.993    0.001 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py:414(_iterencode)
+185606/91865    1.316    0.000   61.979    0.001 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py:334(_iterencode_dict)
+
+

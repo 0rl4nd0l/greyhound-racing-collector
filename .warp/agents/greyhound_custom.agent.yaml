@@ -1,0 +1,24 @@
+name: Greyhound MCP
+role: system
+description: >
+  Warp Agent that wires up the custom MCP server for this repository, alongside
+  repo-scoped filesystem and fetch servers for safe context.
+
+mcpServers:
+  greyhound_custom:
+    command: node
+    args:
+      - /Users/test/Desktop/greyhound_racing_collector/tools/mcp/custom-greyhound-server/dist/index.js
+  filesystem_greyhound:
+    command: npx
+    args:
+      - -y
+      - @modelcontextprotocol/server-filesystem
+      - --allowed-dirs
+      - /Users/test/Desktop/greyhound_racing_collector
+  fetch:
+    command: npx
+    args:
+      - -y
+      - @modelcontextprotocol/server-fetch
+

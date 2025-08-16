@@ -1,0 +1,160 @@
+version: '3.8'
+
+services:
+  postgres-test:
+    image: postgres:15-alpine
+    container_name: greyhound_test_db
+    environment:
+      POSTGRES_DB: greyhound_test
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5433:5432"  # Use different port to avoid conflicts with production
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+      - ./tests/data/fixtures:/docker-entrypoint-initdb.d  # Load test data on startup
+    networks:
+      - test_network
+    command: postgres -c log_statement=all -c log_destination=stderr
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test_user -d greyhound_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis-test:
+    image: redis:7-alpine
+    container_name: greyhound_test_redis
+    ports:
+      - "6380:6379"  # Use different port to avoid conflicts
+    networks:
+      - test_network
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # Main Flask application for testing
+  flask-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: greyhound_test_app
+    environment:
+      - FLASK_ENV=testing
+      - DATABASE_URL=sqlite:///./test_greyhound_racing_data.db
+      - REDIS_URL=redis://redis-test:6379/0
+      - CELERY_BROKER_URL=redis://redis-test:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis-test:6379/0
+      - UPCOMING_RACES_DIR=/app/upcoming_races_temp
+    ports:
+      - "${DEFAULT_PORT}:${DEFAULT_PORT}"
+    volumes:
+      - .:/app
+      - ./test_data:/app/test_data
+      - ./test_upcoming_races:/app/upcoming_races_temp
+    networks:
+      - test_network
+    depends_on:
+      redis-test:
+        condition: service_healthy
+    command: >
+      sh -c "python -m flask run --host=0.0.0.0 --port=${DEFAULT_PORT:-5002} --debug"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${DEFAULT_PORT:-5002}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Celery worker for background tasks
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: greyhound_test_celery
+    environment:
+      - FLASK_ENV=testing
+      - DATABASE_URL=sqlite:///./test_greyhound_racing_data.db
+      - REDIS_URL=redis://redis-test:6379/0
+      - CELERY_BROKER_URL=redis://redis-test:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis-test:6379/0
+    volumes:
+      - .:/app
+      - ./test_data:/app/test_data
+      - ./test_upcoming_races:/app/upcoming_races_temp
+temp
+    networks:
+      - test_network
+    depends_on:
+      redis-test:
+        condition: service_healthy
+    command: >
+      sh -c "celery -A app.celery worker --loglevel=info --concurrency=2"
+    healthcheck:
+      test: ["CMD", "celery", "-A", "app.celery", "inspect", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # RQ worker as alternative to Celery
+  rq-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: greyhound_test_rq
+    environment:
+      - FLASK_ENV=testing
+      - DATABASE_URL=sqlite:///./test_greyhound_racing_data.db
+      - REDIS_URL=redis://redis-test:6379/1
+      - RQ_REDIS_URL=redis://redis-test:6379/1
+      - UPCOMING_RACES_DIR=/app/upcoming_races_temp
+    volumes:
+      - .:/app
+      - ./test_data:/app/test_data
+      - ./test_upcoming_races:/app/upcoming_races_temp
+    networks:
+      - test_network
+    depends_on:
+      redis-test:
+        condition: service_healthy
+    command: >
+      sh -c "celery -A app.celery worker --loglevel=info --concurrency=2"
+    profiles: ["rq"]  # Only start if using RQ instead of Celery
+
+  # Playwright test runner
+  playwright:
+    image: mcr.microsoft.com/playwright:v1.40.0-focal
+    container_name: greyhound_playwright
+    environment:
+      - CI=true
+      - BASE_URL=http://flask-app:${DEFAULT_PORT:-5002}
+      - FLASK_ENV=testing
+    volumes:
+      - .:/workspace
+      - ./test-results:/workspace/test-results
+      - ./playwright-report:/workspace/playwright-report
+    working_dir: /workspace
+    networks:
+      - test_network
+    depends_on:
+      flask-app:
+        condition: service_healthy
+    profiles: ["e2e"]  # Only start for E2E tests
+    command: >
+      sh -c "npm install && npx playwright install --with-deps && npx playwright test tests/playwright/e2e/"
+
+volumes:
+  postgres_test_data:
+    driver: local
+
+networks:
+  test_network:
+    driver: bridge

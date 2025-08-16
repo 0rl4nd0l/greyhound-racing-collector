@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T15:15:45.698387
+Total Time: 49.622s
+CPU Time: 45.500s
+I/O Time: 0.0ms
+Memory Peak: 233.95MB
+Function Calls: 11485772
+Bottlenecks: <20>(1715.000s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)(116.713s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)(84.926s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)(48.420s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle_utils.py:234(_read_bytes)(46.517s)
+
+==================================================
+Detailed cProfile Output:
+         11485772 function calls (11310027 primitive calls) in 42.837 seconds
+
+   Ordered by: cumulative time
+   List reduced from 1715 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+30128/3720    0.512    0.000  116.713    0.031 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)
+20061/2472    0.253    0.000   84.926    0.034 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)
+20061/2472    3.248    0.000   48.420    0.020 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)
+    20021    0.252    0.000   46.517    0.002 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle_utils.py:234(_read_bytes)
+    54/22    0.004    0.000   44.062    2.003 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/connection.py:1134(wait)
+    54/22    0.003    0.000   40.347    1.834 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/selectors.py:385(select)
+       40    0.005    0.000   34.633    0.866 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/queues.py:372(empty)
+       10    0.001    0.000   34.290    3.429 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1403(_terminate_and_reset)
+       30    0.002    0.000   32.933    1.098 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/util.py:197(__call__)
+       40    0.007    0.000   32.509    0.813 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/connection.py:253(poll)
+       30    0.002    0.000   32.390    1.080 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:1056(join)
+10000/141    0.198    0.000   29.621    0.210 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/_utils.py:70(__call__)
+       10    0.006    0.001   29.234    2.923 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/_parallel_backends.py:323(terminate)
+10020/1662    0.079    0.000   28.954    0.017 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1670(_get_outputs)
+       10    0.000    0.000   28.795    2.880 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/pool.py:654(terminate)
+       40    0.001    0.000   28.252    0.706 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/connection.py:439(_poll)
+10000/141    0.485    0.000   26.633    0.189 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:603(__call__)
+    54/22    0.006    0.000   26.624    1.210 {method 'poll' of 'select.poll' objects}
+       30    0.002    0.000   26.169    0.872 {method 'join' of '_thread._ThreadHandle' objects}
+     20/4    0.001    0.000   23.854    5.964 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/parallel.py:54(__call__)
+
+

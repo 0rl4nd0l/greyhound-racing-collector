@@ -5,7 +5,9 @@ Test the enhanced track condition extraction integration
 
 import os
 import sys
+
 from enhanced_comprehensive_processor import EnhancedComprehensiveProcessor
+
 
 def test_enhanced_extraction():
     """Test the enhanced track condition extraction"""

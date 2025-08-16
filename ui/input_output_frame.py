@@ -1,8 +1,11 @@
-from tkinter import Frame, Label, Entry, Button, StringVar
-from .constants import INPUT_OUTPUT_TITLE, URL_INSTRUCTION, FILENAME_INSTRUCTION, SCRAPE_BUTTON_TEXT, RESET_BUTTON_TEXT
-from .styles import (large_text_style, medium_text_style, small_text_style,
-                     large_entry_style, small_entry_style, primary_button_style,
-                     secondary_button_style, left_aligned_text_style)
+from tkinter import Button, Entry, Frame, Label, StringVar
+
+from .constants import (FILENAME_INSTRUCTION, INPUT_OUTPUT_TITLE,
+                        RESET_BUTTON_TEXT, SCRAPE_BUTTON_TEXT, URL_INSTRUCTION)
+from .styles import (large_entry_style, large_text_style,
+                     left_aligned_text_style, medium_text_style,
+                     primary_button_style, secondary_button_style,
+                     small_entry_style, small_text_style)
 
 
 class InputOutputFrame(Frame):
@@ -18,29 +21,42 @@ class InputOutputFrame(Frame):
         self.status_display = StringVar()
         self.message_display = StringVar()
 
-        self.title_label = Label(
-            self, text=INPUT_OUTPUT_TITLE, **large_text_style)
+        self.title_label = Label(self, text=INPUT_OUTPUT_TITLE, **large_text_style)
 
         self.url_label = Label(self, text=URL_INSTRUCTION, **medium_text_style)
 
         self.url_entry = Entry(self, **large_entry_style)
 
         self.filename_label = Label(
-            self, text=FILENAME_INSTRUCTION, **medium_text_style)
+            self, text=FILENAME_INSTRUCTION, **medium_text_style
+        )
 
         self.filename_entry = Entry(self, **large_entry_style)
 
         self.scrape_button = Button(
-            self, text=SCRAPE_BUTTON_TEXT, command=self.scrape_event, **primary_button_style)
+            self,
+            text=SCRAPE_BUTTON_TEXT,
+            command=self.scrape_event,
+            **primary_button_style
+        )
 
         self.reset_button = Button(
-            self, text=RESET_BUTTON_TEXT, command=self.reset_fields, **secondary_button_style)
+            self,
+            text=RESET_BUTTON_TEXT,
+            command=self.reset_fields,
+            **secondary_button_style
+        )
 
         self.status_display_label = Label(
-            self, textvariable=self.status_display, **medium_text_style)
+            self, textvariable=self.status_display, **medium_text_style
+        )
 
         self.message_display_label = Label(
-            self, textvariable=self.message_display, **small_text_style, **left_aligned_text_style)
+            self,
+            textvariable=self.message_display,
+            **small_text_style,
+            **left_aligned_text_style
+        )
 
         self.render_frame()
 
@@ -69,15 +85,15 @@ class InputOutputFrame(Frame):
     def run_scrape(self, url, filename, folder_name):
         try:
             scrape_result = self.scrape_callback(url, filename, folder_name)
-            self.update_status(scrape_result.get('status'))
-            self.update_message(scrape_result.get('message'))
+            self.update_status(scrape_result.get("status"))
+            self.update_message(scrape_result.get("message"))
         except Exception as e:
             self.update_status("Error")
             self.update_message(str(e))
 
     def reset_fields(self):
-        self.url_entry.delete(0, 'end')
-        self.filename_entry.delete(0, 'end')
+        self.url_entry.delete(0, "end")
+        self.filename_entry.delete(0, "end")
         self.status_display.set("")
         self.message_display.set("")
 

@@ -1,21 +1,19 @@
 
 import os
 import shutil
-import unittest
-from unittest.mock import patch
-from datetime import datetime
-
 # Add the tools directory to the Python path to import the script
 import sys
+import unittest
+from datetime import datetime
+from unittest.mock import patch
+
 tools_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'tools'))
 sys.path.append(tools_path)
 
-from archive_redundant_sources import (    
-    archive_legacy_scripts,
-    reverse_archiving,
-    LEGACY_INGESTION_DIR,
-    LEGACY_SCRIPTS
-)
+from archive_redundant_sources import (LEGACY_INGESTION_DIR, LEGACY_SCRIPTS,
+                                       archive_legacy_scripts,
+                                       reverse_archiving)
+
 
 class TestArchiveRedundantSources(unittest.TestCase):
 

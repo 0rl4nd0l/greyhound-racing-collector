@@ -769,3 +769,72 @@ footer {
 .historical-table tr:hover {
     background-color: #e9ecef;
 }
+
+/* Advisory Alert Classes */
+.alert-critical {
+    background-color: #f8d7da;
+    border-color: #f5c6cb;
+    color: #721c24;
+}
+
+.alert-warning {
+    background-color: #fff3cd;
+    border-color: #ffeaa7;
+    color: #856404;
+}
+
+.alert-info {
+    background-color: #d1ecf1;
+    border-color: #bee5eb;
+    color: #0c5460;
+}
+
+/* Advisory Summary Toggle Styles */
+.advisory-summary-toggle {
+    cursor: pointer;
+    position: relative;
+    user-select: none;
+}
+
+.advisory-summary-toggle::after {
+    content: '\25BC'; /* Downward arrow */
+    margin-left: 5px;
+    display: inline-block;
+    transform: rotate(0deg);
+    transition: transform 0.3s ease-in-out;
+    font-size: 0.8em;
+}
+
+.advisory-summary-toggle.open::after {
+    transform: rotate(-180deg); /* Rotates the arrow up */
+}
+
+/* Tooltip styling */
+.advisory-summary-toggle[data-tooltip]:hover::before {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: -30px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: #333;
+    color: #fff;
+    padding: 5px 10px;
+    border-radius: 3px;
+    white-space: nowrap;
+    font-size: 0.75rem;
+    z-index: 1000;
+    pointer-events: none;
+}
+
+.advisory-summary-toggle[data-tooltip]:hover::after {
+    content: '';
+    position: absolute;
+    top: -5px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-width: 5px;
+    border-style: solid;
+    border-color: #333 transparent transparent transparent;
+    z-index: 1000;
+    pointer-events: none;
+}

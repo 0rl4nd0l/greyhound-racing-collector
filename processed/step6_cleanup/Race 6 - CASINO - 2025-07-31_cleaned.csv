@@ -1,0 +1,35 @@
+Dog Name,Sex,PLC,BOX,WGT,DIST,DATE,TRACK,G,TIME,WIN,BON,1 SEC,MGN,W/2G,PIR,SP,day_of_week,month,track_code
+1. Watch The Show,D,3,2,28.6,484,2025-07-03,CASO,5,28.7,28.18,28.18,2.88,7.5,Keeper,544433,41.0,Thursday,July,CASO
+1. Watch The Show,D,7,2,28.4,350,2025-06-29,GRAF,5,20.69,19.82,19.73,4.33,12.25,Heroic Federer,5787,31.0,Sunday,June,GRAF
+1. Watch The Show,D,8,1,28.6,366,2025-06-18,CAPA,5,21.08,19.89,19.74,4.33,17.0,Salvatore,788,101.0,Wednesday,June,CAPA
+1. Watch The Show,D,5,2,29.0,620,2025-06-12,CASO,5,37.0,35.96,35.96,10.46,14.75,Elizabeth Fire,345555,14.0,Thursday,June,CASO
+1. Watch The Show,D,3,4,28.7,484,2025-06-05,CASO,5,28.03,27.69,27.69,2.85,4.75,Graceful Ethics,744433,61.0,Thursday,June,CASO
+2. Carbon Black,D,7,5,35.1,450,2025-05-11,GRAF,5,26.53,25.68,25.37,9.43,12.25,BOMB NOAH,6677,41.0,Sunday,May,GRAF
+2. Carbon Black,D,6,5,35.6,450,2025-04-27,GRAF,MX,26.67,26.02,25.5,9.43,9.25,Fiery Piastri,6,12.0,Sunday,April,GRAF
+2. Carbon Black,D,1,2,35.6,450,2025-04-20,GRAF,M,25.68,25.68,24.91,9.43,1.75,Magical Dee,1,2.6,Sunday,April,GRAF
+2. Carbon Black,D,5,8,35.9,450,2025-04-13,GRAF,M,26.32,25.58,25.22,10.04,10.5,Lady Jacqueline,3755,6.0,Sunday,April,GRAF
+3. Got No Goggles,B,2,8,25.9,411,2025-07-24,CASO,5,23.63,23.54,23.21,8.8,1.25,Jimary Promise,222,2.5,Thursday,July,CASO
+3. Got No Goggles,B,4,8,25.9,484,2025-07-17,CASO,5,28.41,27.86,27.86,2.84,7.75,Swift Grant,3444,6.0,Thursday,July,CASO
+3. Got No Goggles,B,6,7,25.7,484,2025-07-03,CASO,5,29.08,28.18,28.18,2.81,12.75,Keeper,266666,8.0,Thursday,July,CASO
+3. Got No Goggles,B,5,2,25.8,484,2025-06-24,CASO,5,28.18,27.67,27.57,2.8,7.25,Western Lies,434555,15.0,Tuesday,June,CASO
+3. Got No Goggles,B,3,4,25.7,484,2025-06-12,CASO,5,28.21,28.15,28.13,2.81,0.75,Swift Grant,333333,3.9,Thursday,June,CASO
+4. Rita Dutton,B,4,5,29.2,450,2025-07-27,GRAF,5,26.12,25.52,25.23,9.38,8.5,Burringbar Rebel,1644,7.0,Sunday,July,GRAF
+4. Rita Dutton,B,1,7,29.5,450,2025-06-17,GRAF,5,25.52,25.52,25.52,9.26,1.75,All Out Fire,6421,3.2,Tuesday,June,GRAF
+4. Rita Dutton,B,7,1,29.6,411,2025-06-03,CASO,5,24.57,23.41,23.29,9.58,16.5,Striped Mac,77777,1.75,Tuesday,June,CASO
+4. Rita Dutton,B,4,8,29.3,450,2025-05-25,GRAF,5,26.27,25.89,25.53,9.31,5.25,Major Flirt,8324,3.0,Sunday,May,GRAF
+4. Rita Dutton,B,5,7,27.9,350,2024-08-27,GRAF,5,20.6,20.06,20.06,4.28,7.75,Orson Storm,76655,3.4,Tuesday,August,GRAF
+6. Why A Macie,B,3,7,27.6,484,2025-07-24,CASO,4/5,27.76,27.64,27.64,2.85,1.75,Kooringa Rafael,5333,19.0,Thursday,July,CASO
+6. Why A Macie,B,2,3,27.8,484,2025-07-15,CASO,5,28.07,27.8,27.8,2.91,3.75,Kilara Chloe,7322,8.5,Tuesday,July,CASO
+6. Why A Macie,B,6,8,27.6,520,2025-06-30,QTT,5,30.92,30.38,30.2,5.3,7.75,Bad And Bertha,8786,12.0,Monday,June,QTT
+6. Why A Macie,B,7,6,27.7,484,2025-06-24,CASO,5,28.29,27.67,27.57,2.92,8.75,Western Lies,776677,16.0,Tuesday,June,CASO
+6. Why A Macie,B,4,2,27.3,520,2025-06-16,QTT,5,30.4,29.92,29.76,5.34,6.75,Mean Girl,8554,4.0,Monday,June,QTT
+7. Kooringa Millie,B,4,2,25.1,457,2025-07-26,QOT,5,26.15,26.0,25.6,4.42,2.0,Electric Man,3454,12.0,Saturday,July,QOT
+7. Kooringa Millie,B,1,4,25.2,484,2025-07-22,CASO,5,27.8,27.8,27.8,2.8,8.25,Gattlin Glass,111111,2.6,Tuesday,July,CASO
+7. Kooringa Millie,B,4,8,25.2,411,2025-07-17,CASO,4/5,24.02,23.75,23.27,8.94,3.75,Whiskey And Wine,544,8.5,Thursday,July,CASO
+7. Kooringa Millie,B,5,4,24.9,350,2025-07-13,GRAF,NG1-4,20.66,20.12,20.05,4.21,7.75,Annihilating,7755,19.0,Sunday,July,GRAF
+7. Kooringa Millie,B,2,4,25.1,352,2025-07-02,QOT,4,20.28,20.19,19.88,3.99,1.25,Out Of Austrian,462,21.0,Wednesday,July,QOT
+8. Blue Milk,D,2,2,31.0,450,2025-07-27,GRAF,5,25.85,25.52,25.23,9.37,4.75,Burringbar Rebel,2532,8.0,Sunday,July,GRAF
+8. Blue Milk,D,5,8,31.2,484,2025-07-15,CASO,5,28.45,27.8,27.8,2.81,9.25,Kilara Chloe,3655,5.0,Tuesday,July,CASO
+8. Blue Milk,D,5,5,31.1,450,2025-07-08,GRAF,5,25.82,25.34,25.34,9.32,6.75,I'M WHAT'S NEXT,4755,26.0,Tuesday,July,GRAF
+8. Blue Milk,D,3,7,31.4,450,2025-06-29,GRAF,4/5,25.82,25.44,25.44,9.27,5.25,FIFTY SHORT,2553,18.0,Sunday,June,GRAF
+8. Blue Milk,D,6,7,31.5,520,2025-06-23,QTT,5,30.78,30.49,29.74,5.25,4.25,Steel Rigging,6786,15.0,Monday,June,QTT

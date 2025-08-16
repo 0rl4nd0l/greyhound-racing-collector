@@ -1,0 +1,39 @@
+Profile for _group_normalize_probabilities
+Timestamp: 2025-08-04T12:06:04.691648
+Total Time: 0.006s
+CPU Time: 0.006s
+I/O Time: 0.0ms
+Memory Peak: 0.04MB
+Function Calls: 896
+Bottlenecks: <20>(105.000s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/pool.py:776(_set)(0.004s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:802(__call__)(0.003s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:835(_dispatch_new)(0.003s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1446(dispatch_next)(0.003s)
+
+==================================================
+Detailed cProfile Output:
+         896 function calls (892 primitive calls) in 0.006 seconds
+
+   Ordered by: cumulative time
+   List reduced from 105 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        5    0.000    0.000    0.004    0.001 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/pool.py:776(_set)
+        5    0.000    0.000    0.003    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:802(__call__)
+        5    0.000    0.000    0.003    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:835(_dispatch_new)
+        5    0.000    0.000    0.003    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1446(dispatch_next)
+        5    0.000    0.000    0.003    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1457(dispatch_one_batch)
+        5    0.000    0.000    0.001    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1410(_dispatch)
+        5    0.000    0.000    0.001    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/_parallel_backends.py:334(submit)
+        5    0.000    0.000    0.001    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/pool.py:453(apply_async)
+        5    0.000    0.000    0.001    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/pool.py:747(__init__)
+        5    0.001    0.000    0.001    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:592(__init__)
+        5    0.000    0.000    0.001    0.000 {method 'get' of '_queue.SimpleQueue' objects}
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/numpy/_core/fromnumeric.py:4073(var)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/numpy/_core/_methods.py:151(_var)
+        8    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/parallel.py:73(<genexpr>)
+        8    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/ensemble/_forest.py:957(<genexpr>)
+        6    0.000    0.000    0.000    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/queue.py:180(get)
+       17    0.000    0.000    0.000    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/functools.py:36(update_wrapper)
+        8    0.000    0.000    0.000    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/queue.py:140(put)
+        1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}
+        8    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/parallel.py:81(delayed)
+
+

@@ -6,8 +6,10 @@ BOM API Explorer
 Simple script to explore available BOM weather API endpoints and find working URLs.
 """
 
-import requests
 import json
+
+import requests
+
 
 def test_bom_endpoints():
     """Test various BOM API endpoint formats"""

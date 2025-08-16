@@ -1,0 +1,51 @@
+Dog Name,Sex,PLC,BOX,WGT,DIST,DATE,TRACK,G,TIME,WIN,BON,1 SEC,MGN,W/2G,PIR,SP,day_of_week,month,track_code
+1. Firehouse Mac,B,7,1,26.6,400,2025-07-03,MAND,LS6,23.81,23.1,22.75,6.7,10.0,Smooth Criminal,687,101.0,Thursday,July,MAND
+1. Firehouse Mac,B,5,7,26.7,300,2025-06-27,MAND,6,17.69,17.17,17.17,6.89,7.5,Glasgow Boy,75,91.0,Friday,June,MAND
+1. Firehouse Mac,B,8,7,27.1,400,2025-06-19,MAND,LS6,23.59,23.11,22.54,6.55,6.75,Cindy's Pride,658,91.0,Thursday,June,MAND
+1. Firehouse Mac,B,7,3,27.2,400,2025-06-12,MAND,6,23.47,22.5,22.5,6.7,13.75,Yunderup Sun,887,101.0,Thursday,June,MAND
+1. Firehouse Mac,B,7,4,26.9,400,2025-05-29,MAND,6,23.66,23.0,22.6,6.61,9.25,Colour Of Red,767,81.0,Thursday,May,MAND
+2. Full Of Suprises,D,4,3,31.6,400,2025-07-03,MAND,LS6,23.46,23.1,22.75,6.52,5.25,Smooth Criminal,224,16.0,Thursday,July,MAND
+2. Full Of Suprises,D,3,6,31.8,300,2025-06-27,MAND,6,17.53,17.17,17.17,6.81,5.25,Glasgow Boy,33,21.0,Friday,June,MAND
+2. Full Of Suprises,D,7,5,32.5,400,2025-06-19,MAND,LS6,23.59,23.11,22.54,6.48,6.75,Cindy's Pride,377,11.0,Thursday,June,MAND
+2. Full Of Suprises,D,4,8,32.6,300,2025-06-13,MAND,6,17.61,17.31,17.27,6.84,4.25,Mary Samsonite,54,12.0,Friday,June,MAND
+2. Full Of Suprises,D,4,7,32.6,300,2025-06-05,MAND,LS6,17.52,17.11,17.06,6.9,5.75,IDYLLIC PAIGE,54,61.0,Thursday,June,MAND
+3. Ripple Rhythm,B,5,7,27.9,297,2025-07-07,NOR,6,17.76,17.4,17.06,6.9,5.25,Happy Heels,555,41.0,Monday,July,NOR
+3. Ripple Rhythm,B,7,6,28.0,297,2025-06-30,NOR,6,18.16,17.69,16.99,6.9,6.5,Charos Royal,667,9.0,Monday,June,NOR
+3. Ripple Rhythm,B,3,4,28.1,297,2025-06-23,NOR,LS6,17.71,17.5,17.21,6.9,3.0,Surely,333,31.0,Monday,June,NOR
+3. Ripple Rhythm,B,8,7,28.2,297,2025-06-09,NOR,6,18.5,17.26,16.93,6.9,17.75,Cupid's Dream,888,26.0,Monday,June,NOR
+3. Ripple Rhythm,B,6,4,28.4,297,2025-06-02,NOR,6,18.32,17.44,17.12,6.9,12.5,Rocking Roma,676,26.0,Monday,June,NOR
+4. Pop's Pocket,B,7,4,24.2,297,2025-06-30,NOR,6,18.28,17.6,16.99,6.9,9.75,Cisco Ripple,777,14.0,Monday,June,NOR
+4. Pop's Pocket,B,4,2,24.2,297,2025-06-23,NOR,6,17.75,17.53,17.21,6.9,3.0,Charos Noble,654,41.0,Monday,June,NOR
+4. Pop's Pocket,B,4,2,24.0,300,2025-06-06,MAND,6,17.65,17.23,17.23,7.01,6.0,Bluey Brann,74,34.0,Friday,June,MAND
+4. Pop's Pocket,B,7,1,24.0,300,2025-05-29,MAND,6,17.93,17.35,17.15,6.93,8.25,Infrared Gem,77,101.0,Thursday,May,MAND
+4. Pop's Pocket,B,8,8,25.5,300,2025-04-23,MAND,6,18.5,17.42,17.04,7.44,15.5,Cyclonic Nick,88,51.0,Wednesday,April,MAND
+5. Uncompromised,D,4,5,32.0,300,2025-06-27,MAND,6,17.88,17.46,17.17,7.02,6.0,Spider Gwen,44,26.0,Friday,June,MAND
+5. Uncompromised,D,7,1,32.4,300,2025-06-19,MAND,6,18.17,17.3,17.08,7.13,12.25,Nullarbor Rat,77,18.0,Thursday,June,MAND
+5. Uncompromised,D,7,6,32.6,300,2025-06-05,MAND,LS6,17.93,17.11,17.06,7.07,11.75,IDYLLIC PAIGE,87,61.0,Thursday,June,MAND
+5. Uncompromised,D,7,5,32.3,300,2025-05-30,MAND,6,17.98,17.38,17.12,7.06,8.5,Chasing The Ace,87,34.0,Friday,May,MAND
+5. Uncompromised,D,8,8,32.2,300,2025-03-17,MAND,6,20.98,17.39,17.29,7.04,51.25,Spider Gwen,88,6.5,Monday,March,MAND
+6. Horoscope,B,4,2,24.9,300,2025-06-27,MAND,6,17.54,17.17,17.17,6.73,5.25,Glasgow Boy,24,9.5,Friday,June,MAND
+6. Horoscope,B,5,3,25.1,300,2025-06-20,MAND,6,18.03,17.57,17.34,7.04,6.5,Kingsbrae Extra,75,6.0,Friday,June,MAND
+6. Horoscope,B,3,1,25.1,297,2025-06-16,NOR,6,17.95,17.71,16.96,7.04,3.5,Send It Miles,233,3.3,Monday,June,NOR
+6. Horoscope,B,5,5,25.2,300,2025-06-05,MAND,LS6,17.53,17.11,17.06,6.72,6.0,IDYLLIC PAIGE,35,11.0,Thursday,June,MAND
+6. Horoscope,B,7,7,25.6,297,2025-06-02,NOR,6,18.26,17.53,17.12,6.72,10.25,Decent Guy,377,5.0,Monday,June,NOR
+7. Bow Bow Bullet,D,2,4,29.1,400,2025-07-03,MAND,LS6,23.38,23.1,22.75,6.64,4.0,Smooth Criminal,542,8.5,Thursday,July,MAND
+7. Bow Bow Bullet,D,2,7,28.8,400,2025-06-26,MAND,6,23.16,23.14,22.79,6.46,0.25,JUDGE JEBRYNAH,112,26.0,Thursday,June,MAND
+7. Bow Bow Bullet,D,3,1,29.0,400,2025-06-19,MAND,LS6,23.18,23.11,22.54,6.54,1.0,Cindy's Pride,523,3.5,Thursday,June,MAND
+7. Bow Bow Bullet,D,5,8,29.1,400,2025-06-12,MAND,6,23.17,22.5,22.5,6.44,9.5,Yunderup Sun,335,10.0,Thursday,June,MAND
+7. Bow Bow Bullet,D,5,5,28.9,300,2025-06-06,MAND,6,17.85,17.46,17.23,7.11,5.5,Bro Brann,85,5.0,Friday,June,MAND
+8. Bili From Forsea,D,5,7,33.3,400,2025-07-03,MAND,LS6,23.56,23.1,22.75,6.57,6.5,Smooth Criminal,335,71.0,Thursday,July,MAND
+8. Bili From Forsea,D,6,5,33.2,488,2025-06-26,MAND,5/6,28.42,27.73,27.73,5.98,9.75,SIN CITY MARV,6676,91.0,Thursday,June,MAND
+8. Bili From Forsea,D,6,3,33.2,400,2025-06-19,MAND,LS6,23.25,23.11,22.54,6.66,2.0,Cindy's Pride,866,31.0,Thursday,June,MAND
+8. Bili From Forsea,D,6,4,32.8,300,2025-06-06,MAND,6,17.88,17.46,17.23,7.11,6.0,Bro Brann,76,34.0,Friday,June,MAND
+8. Bili From Forsea,D,7,2,33.3,400,2025-05-22,MAND,LS6,23.27,22.81,22.73,6.7,6.5,Yunderup Sky,777,41.0,Thursday,May,MAND
+9. Corey Keeping,D,6,3,36.1,297,2025-06-30,NOR,6,18.26,17.6,16.99,6.7,9.25,Cisco Ripple,556,12.0,Monday,June,NOR
+9. Corey Keeping,D,7,8,36.1,297,2025-06-23,NOR,LS6,18.27,17.5,17.21,6.7,11.0,Surely,577,5.0,Monday,June,NOR
+9. Corey Keeping,D,8,7,35.8,297,2025-06-09,NOR,6,18.4,17.47,16.93,6.7,13.25,Sassy Deluxe,788,10.0,Monday,June,NOR
+9. Corey Keeping,D,4,6,35.9,297,2025-05-26,NOR,6,17.76,17.29,17.22,6.7,6.5,Elite General,334,11.0,Monday,May,NOR
+9. Corey Keeping,D,6,7,35.4,297,2025-05-19,NOR,6,18.47,17.38,17.1,6.7,15.5,IMPRESS KOEPKA,576,6.0,Monday,May,NOR
+10. Sunset Lightning,B,8,10,25.6,400,2025-07-03,MAND,LS6,23.92,23.1,22.75,6.61,11.75,Smooth Criminal,468,34.0,Thursday,July,MAND
+10. Sunset Lightning,B,7,4,26.0,400,2025-06-19,MAND,6,23.59,22.75,22.54,6.65,12.0,Better Half,887,34.0,Thursday,June,MAND
+10. Sunset Lightning,B,6,5,26.1,400,2025-06-05,MAND,6,23.11,22.82,22.65,6.52,4.25,Formula Fire,666,23.0,Thursday,June,MAND
+10. Sunset Lightning,B,6,1,26.3,400,2025-05-29,MAND,6,23.65,23.0,22.6,6.66,9.25,Colour Of Red,886,34.0,Thursday,May,MAND
+10. Sunset Lightning,B,4,7,25.8,509,2025-05-19,NOR,6,30.31,29.72,29.36,6.05,8.25,Cyclonic Ashley,35444,11.0,Monday,May,NOR

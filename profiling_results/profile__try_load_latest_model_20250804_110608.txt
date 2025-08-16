@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T11:06:08.739623
+Total Time: 80.912s
+CPU Time: 91.727s
+I/O Time: 0.0ms
+Memory Peak: 97.71MB
+Function Calls: 12160666
+Bottlenecks: <20>(2433.000s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)(92.876s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1250(emit)(91.119s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1990(__exit__)(90.651s), objects}(82.985s)
+
+==================================================
+Detailed cProfile Output:
+         12160666 function calls (11332718 primitive calls) in 84.209 seconds
+
+   Ordered by: cumulative time
+   List reduced from 2433 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+9089/9083    0.282    0.000   92.876    0.010 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)
+4990/2799    0.437    0.000   91.119    0.033 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1250(emit)
+2402/1615    0.179    0.000   90.651    0.056 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1990(__exit__)
+ 2427/720    0.413    0.000   82.985    0.115 {method 'execute' of 'sqlite3.Cursor' objects}
+6042/6038    0.230    0.000   77.953    0.013 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)
+2401/1615    0.145    0.000   75.952    0.047 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1622(close)
+2408/2396    0.259    0.000   69.844    0.029 /Users/orlandolee/greyhound_racing_collector/csv_ingestion.py:503(ingest_csv)
+2401/1616    0.160    0.000   61.099    0.038 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/common.py:131(close)
+2404/1110    0.394    0.000   58.262    0.052 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:694(__init__)
+7478/3707    0.371    0.000   52.793    0.014 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1130(flush)
+345476/345475    1.680    0.000   43.590    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py:414(_iterencode)
+2404/1114    0.347    0.000   42.226    0.038 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/construction.py:423(dict_to_mgr)
+9654/9652    0.170    0.000   39.428    0.004 /Users/orlandolee/greyhound_racing_collector/form_guide_csv_scraper.py:261(parse_filename_to_race_id)
+2405/1559    0.352    0.000   37.045    0.024 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/construction.py:96(arrays_to_mgr)
+ 2412/533    0.404    0.000   36.269    0.068 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:868(read_csv)
+2491/2486    0.209    0.000   35.251    0.014 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/handlers.py:71(emit)
+2400/1617    0.328    0.000   34.856    0.022 {method 'close' of '_io.TextIOWrapper' objects}
+6014/6013    0.173    0.000   32.143    0.005 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle_utils.py:234(_read_bytes)
+6041/6038    0.886    0.000   30.868    0.005 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)
+ 2412/533    0.281    0.000   28.369    0.053 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:583(_read)
+
+

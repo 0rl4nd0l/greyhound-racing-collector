@@ -11,25 +11,27 @@ Author: Orlando Lee
 Date: July 27, 2025
 """
 
-import sys
-import os
 import logging
+import os
+import sys
 import time
-import pandas as pd
 from datetime import datetime
-from typing import Optional, Dict, Any, Tuple
+from typing import Any, Dict, Optional, Tuple
+
+import pandas as pd
+# Our fallback Selenium scraper (simplified)
+from selenium.common.exceptions import NoSuchElementException, TimeoutException
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+
+# Import our ChromeDriver helper
+from drivers import get_chrome_driver, setup_selenium_driver_path
 
 # Professional API scraper
 from event_scraper import EventScraper
 from scraper_exception import ScraperException
 
-# Our fallback Selenium scraper (simplified)
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
 class HybridOddsScraper:
     """
@@ -195,16 +197,138 @@ class HybridOddsScraper:
         return None, False
     
     def _setup_driver(self) -> bool:
-        """Setup Chrome WebDriver."""
+        """Setup Chrome WebDriver using webdriver-manager."""
         try:
-            options = Options()
-            if self.use_headless:
-                options.add_argument('--headless')
+            # Use our drivers.py helper which includes webdriver-manager
+            setup_selenium_driver_path()
+            self.driver = get_chrome_driver(headless=self.use_headless)
+            self.driver.set_page_load_timeout(self.timeout)
+
+            return True
             
-            options.add_argument('--no-sandbox')
-            options.add_argument('--disable-dev-shm-usage')
-            options.add_argument('--disable-gpu')
-            options.add_argument('--window-size=1920,1080')
-            options.add_argument('--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36')\
+        except Exception as e:
+            self.logger.error(f"Failed to setup Chrome driver: {str(e)}")
+            return False
+    
+    def _cleanup_driver(self):
+        """Clean up WebDriver resources."""
+        if self.driver:
+            try:
+                self.driver.quit()
+            except:
+                pass
+            finally:
+                self.driver = None
+    
+    def _extract_odds_with_selenium(self) -> list:
+        """Extract odds using Selenium - simplified implementation."""
+        odds_data = []
+        
+        try:
+            # This is a simplified version - you'd need to adapt based on current DOM structure
+            # Look for runner containers
+            runner_containers = self.driver.find_elements(By.CSS_SELECTOR, \
+                "[data-automation-id*='runner'], .runner-card, .outcome-button")
             
-            self.driver = webdriver.Chrome(options=options)\n            self.driver.set_page_load_timeout(self.timeout)\n            return True\n            \n        except Exception as e:\n            self.logger.error(f\"Failed to setup Chrome driver: {str(e)}\")\n            return False\n    \n    def _cleanup_driver(self):\n        \"\"\"Clean up WebDriver resources.\"\"\"\n        if self.driver:\n            try:\n                self.driver.quit()\n            except:\n                pass\n            finally:\n                self.driver = None\n    \n    def _extract_odds_with_selenium(self) -> list:\n        \"\"\"Extract odds using Selenium - simplified implementation.\"\"\"\n        odds_data = []\n        \n        try:\n            # This is a simplified version - you'd need to adapt based on current DOM structure\n            # Look for runner containers\n            runner_containers = self.driver.find_elements(By.CSS_SELECTOR, \n                \"[data-automation-id*='runner'], .runner-card, .outcome-button\")\n            \n            self.logger.info(f\"Found {len(runner_containers)} potential runner elements\")\n            \n            for i, container in enumerate(runner_containers[:20]):  # Limit for testing\n                try:\n                    # Extract runner name\n                    name_element = container.find_element(By.CSS_SELECTOR, \n                        \"[data-automation-id*='name'], .runner-name, .selection-name\")\n                    runner_name = name_element.text.strip()\n                    \n                    # Extract odds\n                    odds_element = container.find_element(By.CSS_SELECTOR,\n                        \"[data-automation-id*='price'], .price, .odds\")\n                    odds_text = odds_element.text.strip()\n                    \n                    if runner_name and odds_text:\n                        odds_data.append({\n                            'runner_name': runner_name,\n                            'odds': odds_text,\n                            'market': 'Win',\n                            'selection_id': f'selenium_{i}',\n                            'market_id': 'win_market'\n                        })\n                        \n                except (NoSuchElementException, Exception) as e:\n                    # Skip this runner if we can't extract data\n                    continue\n            \n        except Exception as e:\n            self.logger.error(f\"Error extracting odds with Selenium: {str(e)}\")\n        \n        return odds_data\n    \n    def get_stats(self) -> Dict[str, Any]:\n        \"\"\"Get success statistics.\"\"\"\n        total_attempts = sum(self.success_stats.values())\n        \n        if total_attempts == 0:\n            return {'message': 'No scraping attempts yet'}\n        \n        api_total = self.success_stats['api_success'] + self.success_stats['api_failure']\n        selenium_total = self.success_stats['selenium_success'] + self.success_stats['selenium_failure']\n        \n        stats = {\n            'total_attempts': total_attempts,\n            'api_attempts': api_total,\n            'api_success_rate': (self.success_stats['api_success'] / api_total * 100) if api_total > 0 else 0,\n            'selenium_attempts': selenium_total,\n            'selenium_success_rate': (self.success_stats['selenium_success'] / selenium_total * 100) if selenium_total > 0 else 0,\n            'overall_success_rate': ((self.success_stats['api_success'] + self.success_stats['selenium_success']) / total_attempts * 100),\n            'last_method_used': self.last_method_used\n        }\n        \n        return stats\n    \n    def __del__(self):\n        \"\"\"Cleanup when object is destroyed.\"\"\"\n        self._cleanup_driver()\n\n\ndef demo_hybrid_scraper():\n    \"\"\"Demo the hybrid scraper.\"\"\"\n    print(\"=== Hybrid Odds Scraper Demo ===\")\n    print()\n    \n    # Initialize scraper\n    scraper = HybridOddsScraper(use_headless=True, timeout=20)\n    \n    # Test URLs - replace with current live races\n    test_urls = [\n        \"https://www.sportsbet.com.au/betting/greyhound-racing/australia-nz/sale/race-1-9443604\",\n        # Add more current URLs for testing\n    ]\n    \n    for url in test_urls:\n        print(f\"Testing: {url}\")\n        print(\"-\" * 80)\n        \n        # Scrape odds\n        odds_df, metadata = scraper.scrape_odds(url)\n        \n        # Display results\n        if metadata['success']:\n            print(f\"✅ Success using {metadata['method_used']} method\")\n            print(f\"   Markets: {metadata['markets_count']}\")\n            print(f\"   Selections: {metadata['selections_count']}\")\n            \n            if odds_df is not None:\n                print(\"\\n   Sample data:\")\n                print(odds_df.head().to_string())\n        else:\n            print(f\"❌ Failed: {metadata.get('error_message', 'Unknown error')}\")\n        \n        print()\n    \n    # Show statistics\n    stats = scraper.get_stats()\n    print(\"=== Scraping Statistics ===\")\n    for key, value in stats.items():\n        print(f\"{key}: {value}\")\n\n\nif __name__ == \"__main__\":\n    demo_hybrid_scraper()"
+            self.logger.info(f"Found {len(runner_containers)} potential runner elements")
+            
+            for i, container in enumerate(runner_containers[:20]):  # Limit for testing
+                try:
+                    # Extract runner name
+                    name_element = container.find_element(By.CSS_SELECTOR, \
+                        "[data-automation-id*='name'], .runner-name, .selection-name")
+                    runner_name = name_element.text.strip()
+                    
+                    # Extract odds
+                    odds_element = container.find_element(By.CSS_SELECTOR,\
+                        "[data-automation-id*='price'], .price, .odds")
+                    odds_text = odds_element.text.strip()
+                    
+                    if runner_name and odds_text:
+                        odds_data.append({
+                            'runner_name': runner_name,
+                            'odds': odds_text,
+                            'market': 'Win',
+                            'selection_id': f'selenium_{i}',
+                            'market_id': 'win_market'
+                        })
+                        
+                except (NoSuchElementException, Exception) as e:
+                    # Skip this runner if we can't extract data
+                    continue
+            
+        except Exception as e:
+            self.logger.error(f"Error extracting odds with Selenium: {str(e)}")
+        
+        return odds_data
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Get success statistics."""
+        total_attempts = sum(self.success_stats.values())
+        
+        if total_attempts == 0:
+            return {'message': 'No scraping attempts yet'}
+        
+        api_total = self.success_stats['api_success'] + self.success_stats['api_failure']
+        selenium_total = self.success_stats['selenium_success'] + self.success_stats['selenium_failure']
+        
+        stats = {
+            'total_attempts': total_attempts,
+            'api_attempts': api_total,
+            'api_success_rate': (self.success_stats['api_success'] / api_total * 100) if api_total > 0 else 0,
+            'selenium_attempts': selenium_total,
+            'selenium_success_rate': (self.success_stats['selenium_success'] / selenium_total * 100) if selenium_total > 0 else 0,
+            'overall_success_rate': ((self.success_stats['api_success'] + self.success_stats['selenium_success']) / total_attempts * 100),
+            'last_method_used': self.last_method_used
+        }
+        
+        return stats
+    
+    def __del__(self):
+        """Cleanup when object is destroyed."""
+        self._cleanup_driver()
+
+def demo_hybrid_scraper():
+    """Demo the hybrid scraper."""
+    print("=== Hybrid Odds Scraper Demo ===")
+    print()
+    
+    # Initialize scraper
+    scraper = HybridOddsScraper(use_headless=True, timeout=20)
+    
+    # Test URLs - replace with current live races
+    test_urls = [
+        "https://www.sportsbet.com.au/betting/greyhound-racing/australia-nz/sale/race-1-9443604",
+        # Add more current URLs for testing
+    ]
+    
+    for url in test_urls:
+        print(f"Testing: {url}")
+        print("-" * 80)
+        
+        # Scrape odds
+        odds_df, metadata = scraper.scrape_odds(url)
+        
+        # Display results
+        if metadata['success']:
+            print(f"✅ Success using {metadata['method_used']} method")
+            print(f"   Markets: {metadata['markets_count']}")
+            print(f"   Selections: {metadata['selections_count']}")
+            
+            if odds_df is not None:
+                print("\n   Sample data:")
+                print(odds_df.head().to_string())
+        else:
+            print(f"❌ Failed: {metadata.get('error_message', 'Unknown error')}")
+        
+        print()
+    
+    # Show statistics
+    stats = scraper.get_stats()
+    print("=== Scraping Statistics ===")
+    for key, value in stats.items():
+        print(f"{key}: {value}")
+
+
+if __name__ == "__main__":
+    demo_hybrid_scraper()

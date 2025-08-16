@@ -1,0 +1,39 @@
+Profile for _group_normalize_probabilities
+Timestamp: 2025-08-04T00:57:48.227036
+Total Time: 0.005s
+CPU Time: 0.004s
+I/O Time: 0.0ms
+Memory Peak: 0.13MB
+Function Calls: 181
+Bottlenecks: <20>(117.000s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1538(error)(0.002s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1640(_log)(0.002s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1666(handle)(0.001s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1720(callHandlers)(0.001s)
+
+==================================================
+Detailed cProfile Output:
+         181 function calls (175 primitive calls) in 0.004 seconds
+
+   Ordered by: cumulative time
+   List reduced from 117 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    0.002    0.002 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1538(error)
+        1    0.000    0.000    0.002    0.002 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1640(_log)
+        1    0.000    0.000    0.001    0.001 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1666(handle)
+        1    0.001    0.001    0.001    0.001 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1720(callHandlers)
+      2/1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/pipeline_profiler.py:307(track_sequence_step)
+        1    0.000    0.000    0.001    0.001 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_local.py:166(__fspath__)
+        1    0.000    0.000    0.001    0.001 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_local.py:227(__str__)
+        1    0.000    0.000    0.001    0.001 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_local.py:289(drive)
+        1    0.000    0.000    0.001    0.001 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_local.py:277(_raw_path)
+        1    0.001    0.001    0.001    0.001 <frozen posixpath>:72(join)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/pipeline_profiler.py:689(wrapper)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/pipeline_profiler.py:90(profile_function)
+        1    0.000    0.000    0.000    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1010(handle)
+        1    0.000    0.000    0.000    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1250(emit)
+        1    0.000    0.000    0.000    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1625(makeRecord)
+        1    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/psutil/__init__.py:318(__init__)
+      5/3    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/psutil/_common.py:498(wrapper)
+        1    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/psutil/__init__.py:321(_init)
+        1    0.000    0.000    0.000    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:298(__init__)
+      6/3    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/psutil/_psosx.py:346(wrapper)
+
+

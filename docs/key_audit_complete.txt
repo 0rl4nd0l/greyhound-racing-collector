@@ -1,0 +1,1210 @@
+./feature_engineering.py:142:                    f"Error creating features for dog {dog_data.get('name', 'unknown')}: {e}"
+./feature_engineering.py:685:        "name": "Test Dog",
+./run.py:177:                    f"🏆 Top pick: {results['predictions'][0]['dog_name'] if results['predictions'] else 'None'}"
+./enhanced_pipeline_v2.py:426:            if hasattr(current_race_row, "name") and current_race_row.name is not None:
+./enhanced_pipeline_v2.py:768:                        "dog_name": dog.get("dog_clean_name", ""),
+./enhanced_pipeline_v2.py:963:                results["winner"] = winner_info.get("name")
+./enhanced_pipeline_v2.py:1385:                            "name": clean_name,
+./enhanced_pipeline_v2.py:1418:                                    return {"name": text, "odds": None, "time": None}
+./enhanced_pipeline_v2.py:1434:                                    "name": potential_name,
+./enhanced_pipeline_v2.py:1733:                                    "name": parsed_info["clean_name"]
+./enhanced_pipeline_v2.py:1766:                                            {"position": position, "name": name}
+./enhanced_pipeline_v2.py:1798:                            results.append({"position": position, "name": name})
+./enhanced_pipeline_v2.py:2232:                "dog_name": str(row.get("Dog Name", "")).strip(),
+./enhanced_pipeline_v2.py:2251:            dog_data["dog_clean_name"] = self.clean_dog_name(dog_data["dog_name"])
+./enhanced_pipeline_v2.py:2271:                        dog_data["dog_clean_name"], result.get("name", "")
+./enhanced_pipeline_v2.py:2284:                        scraped_name = result.get("name", "")
+./enhanced_pipeline_v2.py:2311:                    self.dogs_match(dog_data["dog_clean_name"], result.get("name", ""))
+./enhanced_pipeline_v2.py:2458:                result_name = result.get("name", "")
+./enhanced_pipeline_v2.py:2674:                    "dog_name": dog["dog_clean_name"],
+./enhanced_pipeline_v2.py:2726:                key=lambda x: (x.get("_numeric_position", 999), x.get("dog_name", ""))
+./enhanced_pipeline_v2.py:2732:                    "dog_clean_name", winner.get("dog_name", "")
+./enhanced_pipeline_v2.py:2774:                dog.get("dog_name", "").strip()
+./enhanced_pipeline_v2.py:2776:                if dog.get("dog_name", "").strip()
+./enhanced_pipeline_v2.py:2793:                            f"   ❌ Data validation failed: Invalid finish position {pos_num} for {dog.get('dog_name', 'unknown')}"
+./enhanced_pipeline_v2.py:2912:                        dog["dog_name"],
+./prediction_pipeline_v3.py:294:                    logger.warning(f"SHAP explainability failed for {dog['name']}: {e}")
+./prediction_pipeline_v3.py:298:                    "dog_name": dog["name"],
+./prediction_pipeline_v3.py:444:                        "name": clean_name,
+./unified_predictor.py:412:                    f"🎯 Using latest model: {self.best_model_info['name']} (accuracy: {self.best_model_info.get('accuracy', 'N/A')})"
+./unified_predictor.py:489:                    "name": os.path.basename(best_model),
+./unified_predictor.py:840:                dog_name = dog_info["name"]
+./unified_predictor.py:858:                        "dog_name": dog_name,
+./unified_predictor.py:923:                            "name": current_dog_name,
+./unified_predictor.py:1046:                        f"Error predicting for {dog_info.get('name', 'unknown')}: {e}"
+./unified_predictor.py:1341:                        "name": clean_name,
+./unified_predictor.py:1383:                "dog_name": dog_name,
+./unified_predictor.py:1433:                        "dog_name": row[0],
+./unified_predictor.py:1462:            ml_score = self._get_ml_prediction_unified(features, dog_info["name"])
+./unified_predictor.py:1476:                "dog_name": dog_info["name"],
+./unified_predictor.py:1495:                    final_score, features, dog_info["name"]
+./unified_predictor.py:1502:                f"Error generating unified prediction for {dog_info.get('name', 'unknown')}: {e}"
+./unified_predictor.py:1803:            name_hash = hash(dog_info["name"]) % 1000
+./unified_predictor.py:2328:            dog_name = prediction.get("dog_name", "Unknown")
+./sportsbet_odds_integrator.py:312:                        venue_name = event.get("name", "Unknown")
+./sportsbet_odds_integrator.py:822:                            "dog_name": dog_name,
+./sportsbet_odds_integrator.py:867:                            "dog": runner["dog_name"],
+./sportsbet_odds_integrator.py:943:        # Strategy 4: Look for any data-automation-id containing 'name'
+./sportsbet_odds_integrator.py:946:                By.CSS_SELECTOR, "[data-automation-id*='name']"
+./sportsbet_odds_integrator.py:1223:                                    "[class*='runner'], [data-automation-id*='name']",
+./sportsbet_odds_integrator.py:1269:                            "[class*='runner'], [data-automation-id*='name']",
+./sportsbet_odds_integrator.py:1314:                            "[class*='runner'], [data-automation-id*='name']",
+./sportsbet_odds_integrator.py:1376:                                    "dog_name": dog_name,
+./sportsbet_odds_integrator.py:1602:                                "dog_name": dog_name,
+./sportsbet_odds_integrator.py:1910:                            "dog_name": dog_name,
+./sportsbet_odds_integrator.py:1987:                                        "dog_name": dog_name,
+./sportsbet_odds_integrator.py:2082:                                "dog_name": dog_name,
+./sportsbet_odds_integrator.py:2098:            "[data-automation-id*='name']",
+./sportsbet_odds_integrator.py:2103:            "[class*='name']",
+./sportsbet_odds_integrator.py:2602:                            print(f"    {dog['dog_name']}: ${dog['odds_decimal']:.2f}")
+./sportsbet_odds_integrator.py:2709:                            "dog_name": dog_name,
+./sportsbet_odds_integrator.py:2774:                    print(f"    {i+1}. {dog['dog_name']}: ${dog['odds_decimal']:.2f}")
+./sportsbet_odds_integrator.py:2850:                        dog_odds["dog_name"],
+./debug_logs/validation_test.py:85:                                    f"     👤 Sample runner: {runner.get('dog_name', 'N/A')} (Box {runner.get('box_number', 'N/A')})"
+./archive/test_parsing.py:48:            print(f"   Dog Name: {first_pred.get('dog_name', 'Unknown')}")
+./archive/test_parsing.py:57:                'dog_name': first_pred.get('dog_name', 'Unknown'),
+./archive/test_parsing.py:58:                'clean_name': first_pred.get('dog_name', 'Unknown'),
+./archive/test_parsing.py:71:                dog_name = pred.get('dog_name', 'Unknown')
+./archive/database_and_migrations/app_original.py:130:                'dog_name': dog[1],
+./archive/database_and_migrations/app_original.py:252:            'dog_name': dog_info[1],
+./archive/database_and_migrations/app_original.py:405:            'dog_name': dog_name,
+./archive/database_and_migrations/app_original.py:462:                'dog_name': dog[0],
+./archive/database_and_migrations/app_original.py:508:            'dog_name': 'dog_name',
+./archive/database_and_migrations/app_original.py:551:                'dog_name': dog[1],
+./archive/database_and_migrations/app_original.py:2381:                dog_name = pred.get('dog_name', 'Unknown')
+./archive/database_and_migrations/app_original.py:2809:            if dog.get('dog_name') == actual_winner_name:
+./archive/database_and_migrations/app_original.py:2811:                    'name': dog.get('dog_name'),
+./archive/database_and_migrations/app_original.py:2819:                'name': actual_winner_name,
+./archive/database_and_migrations/app_original.py:2849:                        'Dog Name': f"{dog.get('box_number', 1)}. {dog.get('dog_name', 'Unknown')}",
+./archive/database_and_migrations/app_original.py:2883:                    dog_name = dog.get('dog_name', f'Dog {i+1}')
+./archive/database_and_migrations/app_original.py:2910:                            'dog_name': dog_name,
+./archive/database_and_migrations/app_original.py:2938:            if pred.get('dog_name') == actual_winner_name:
+./archive/database_and_migrations/app_original.py:3113:                                        'dog_name': first_pred.get('dog_name', 'Unknown'),
+./archive/database_and_migrations/app_original.py:3114:                                        'clean_name': first_pred.get('dog_name', 'Unknown'),
+./archive/database_and_migrations/app_original.py:3121:                                        'dog_name': 'Unknown', 
+./archive/database_and_migrations/app_original.py:3197:                                            'dog_name': pred.get('dog_name', 'Unknown'),
+./archive/database_and_migrations/app_original.py:3198:                                            'clean_name': pred.get('dog_name', 'Unknown'),
+./archive/database_and_migrations/app_original.py:3780:                                'dog_name': first_pred.get('dog_name', 'Unknown'),
+./archive/database_and_migrations/app_original.py:3781:                                'clean_name': first_pred.get('dog_name', 'Unknown'),  # Frontend expects this field
+./archive/database_and_migrations/app_original.py:3953:                    top_pick_data = {'dog_name': 'Unknown', 'box_number': 'N/A', 'prediction_score': 0}
+./archive/database_and_migrations/app_original.py:3957:                            'dog_name': first_pred.get('dog_name', 'Unknown'),
+./archive/database_and_migrations/app_original.py:3972:                            'dog_name': pred.get('dog_name', 'Unknown'),
+./archive/database_and_migrations/app_original.py:4102:                first_pred.get('dog_name') or 
+./archive/database_and_migrations/app_original.py:4104:                first_pred.get('name') or 
+./archive/database_and_migrations/app_original.py:4158:                'dog_name': dog_name,
+./archive/database_and_migrations/app_original.py:4533:            enhanced_dog['clean_name'] = dog.get('dog_name', 'N/A')
+./archive/database_and_migrations/app_original.py:4907:        top_10_dogs = top_performers.head(10)['dog_name'].tolist()
+./archive/database_and_migrations/app_original.py:4911:            dog_data = analyzer.data[analyzer.data['dog_name'] == dog_name]
+./archive/database_and_migrations/app_original.py:4914:                'dog_name': dog_name,
+./archive/database_and_migrations/app_original.py:4963:                'data': analyzer.data.groupby(['dog_name', 'distance_numeric']).agg({
+./archive/database_and_migrations/app_original.py:4970:                'improving_dogs': analyzer.data[analyzer.data['form_trend'] > 0].groupby('dog_name').agg({
+./archive/database_and_migrations/app_original.py:4974:                'declining_dogs': analyzer.data[analyzer.data['form_trend'] < 0].groupby('dog_name').agg({
+./archive/database_and_migrations/app_original.py:5273:                report_content.write(f"{i}. {dog_data.get('dog_name', 'Unknown')} - "
+./archive/database_and_migrations/app_original.py:6880:            'dog_name': dog_name,
+./archive/database_and_migrations/app_original.py:6911:                'dog_name': record[0],
+./archive/database_and_migrations/app_original.py:6976:                                                'dog_name': pred.get('dog_name', 'Unknown'),
+./archive/database_and_migrations/app_original.py:6986:                                                'dog_name': pred.get('dog_name', 'Unknown'),
+./archive/database_and_migrations/app_original.py:7060:                        dog_clean_name = dog.get('dog_name', '').upper().replace(' ', '')
+./archive/database_and_migrations/app_original.py:7968:            'top_pick': {'dog_name': 'Unknown', 'prediction_score': 0}
+./archive/database_and_migrations/app_original.py:7981:                            'dog_name': predictions[0].get('dog_name', 'Unknown'),
+./archive/database_and_migrations/create_unified_database_original.py:228:            """, (race_info['name'], race_info['venue'], race_info['date'], 
+./archive/database_and_migrations/create_unified_database_original.py:235:            """, (race_info['name'], race_info['venue'], race_info['date']))
+./archive/database_and_migrations/create_unified_database_original.py:247:                    dog_name = self._get_column_value(row, ['Dog', 'Dog Name', 'dog_name'])
+./archive/database_and_migrations/create_unified_database_original.py:283:                    dog_name = self._get_column_value(row, ['Dog Name', 'Dog', 'dog_name'])
+./archive/database_and_migrations/create_unified_database_original.py:319:                        'name': parts[0].strip(),
+./archive/database_and_migrations/create_unified_database_original.py:329:                        'name': parts[0].strip(),
+./archive/database_and_migrations/prediction_pipeline_v3_original.py:178:                    'dog_name': dog['name'],
+./archive/database_and_migrations/prediction_pipeline_v3_original.py:246:                        'name': clean_name,
+./archive/ingestion_manager.py:261:                'dog_name': 'string',
+./archive/ingestion_manager.py:275:                'dog_name': 'string',
+./archive/ingestion_manager.py:509:            critical_columns.extend(['dog_name'])
+./archive/live_prediction_system.py:184:                    dog_info['name'] = name_elem.get_text(strip=True)
+./archive/live_prediction_system.py:208:                if dog_info.get('name'):
+./archive/live_prediction_system.py:229:                    'name': dog['name'],
+./archive/live_prediction_system.py:245:                        'dog_name': dog['name'],
+./archive/live_prediction_system.py:259:                self.logger.error(f"Error predicting for dog {dog['name']}: {e}")
+./archive/live_prediction_system.py:296:                    pred['dog_name'], pred['race_venue'], pred['race_number'],
+./archive/live_prediction_system.py:343:                self.logger.info(f"Top prediction: {sorted_preds[0]['dog_name']} - {sorted_preds[0]['predicted_probability']:.2%} chance")
+./archive/live_prediction_system.py:362:                    self.logger.info(f"  - {bet['dog_name']} @ {bet['market_odds']:.2f} (Edge: {bet['betting_recommendation'].get('edge', 0):.2%})")
+./archive/ingestion_legacy/enhanced_expert_form_scraper.py:255:                if (form.find('input', {'name': 'export_csv'}) or 
+./archive/ingestion_legacy/enhanced_expert_form_scraper.py:256:                    form.find('button', {'name': 'export_csv'}) or
+./archive/ingestion_legacy/enhanced_expert_form_scraper.py:284:                name = inp.get('name')
+./archive/ingestion_legacy/advanced_scraper.py:582:                'name': '',
+./archive/ingestion_legacy/advanced_scraper.py:596:                    dog_data['name'] = name_elem.get_text(strip=True)
+./archive/ingestion_legacy/advanced_scraper.py:647:            return dog_data if dog_data['name'] else None
+./archive/test_expert_form.py:80:                input_name = input_elem.get('name', '')
+./archive/test_expert_form.py:113:                form_guide_keywords = ['dog', 'name', 'weight', 'time', 'trainer', 'jockey', 'barrier', 'box']
+./archive/backup_verification.py:122:                            'name': filename,
+./archive/test_scripts_cleanup/test_unified_system.py:141:                        print(f'   🏆 Top pick: {top_pick.get("dog_name", "Unknown")} (Score: {top_pick.get("final_score", 0):.3f})')
+./archive/test_scripts_cleanup/test_unified_system.py:196:                    dog_name = pred.get('dog_name', 'Unknown')
+./archive/test_scripts_cleanup/test_complete_pipeline.py:53:            'name': 'Test Dog',
+./archive/test_scripts_cleanup/test_complete_pipeline.py:58:                    'dog_name': 'Test Dog',
+./archive/test_scripts_cleanup/test_complete_pipeline.py:69:                    'dog_name': 'Test Dog',
+./archive/test_scripts_cleanup/test_complete_pipeline.py:168:                print(f"✅ Top prediction: {top_prediction['dog_name']} - {top_prediction['prediction_score']:.3f}")
+./archive/test_scripts_cleanup/test_new_model.py:31:        'name': 'Strong Contender',
+./archive/test_scripts_cleanup/test_new_model.py:52:        'name': 'Average Performer',
+./archive/test_scripts_cleanup/test_new_model.py:73:        'name': 'Weak Competitor',
+./archive/test_scripts_cleanup/test_new_model.py:99:    print(f"{i}. {test_case['name']}:")
+./archive/test_scripts_cleanup/comprehensive_repair_and_test.py:405:                    {'dog_name': 'Test Dog 1', 'box_number': 1, 'weight': 32.5},
+./archive/test_scripts_cleanup/comprehensive_repair_and_test.py:406:                    {'dog_name': 'Test Dog 2', 'box_number': 2, 'weight': 31.0}
+./archive/test_scripts_cleanup/test_debug_features.py:54:            dog_name = prediction['dog_name']
+./archive/test_scripts_cleanup/test_ml_system_v3.py:61:            'name': 'Test Dog',
+./archive/test_scripts_cleanup/test_ml_system_v3.py:108:                print(f"  - Top pick: {top_pick['dog_name']} (prob: {top_pick['win_probability']:.3f})")
+./archive/test_scripts_cleanup/test_database_pipeline_integration.py:168:                    print(f"   {i}. {pred['dog_name']}: {pred['prediction_score']:.3f} ({pred['confidence_level']})")
+./archive/test_scripts_cleanup/test_model_registry_system.py:175:                    print(f"   🏆 Top pick: {top_pick['dog_name']}")
+./archive/test_scripts_cleanup/test_model_registry_system.py:223:            {'dog_name': 'Test Dog 1', 'prediction_score': 0.65, 'confidence_score': 0.7},
+./archive/test_scripts_cleanup/test_model_registry_system.py:224:            {'dog_name': 'Test Dog 2', 'prediction_score': 0.45, 'confidence_score': 0.6},
+./archive/test_scripts_cleanup/test_model_registry_system.py:225:            {'dog_name': 'Test Dog 3', 'prediction_score': 0.35, 'confidence_score': 0.5}
+./archive/test_csv_export.py:47:            if f.find('input', {'name': 'export_csv'}) or f.find('button', {'name': 'export_csv'}):
+./archive/test_csv_export.py:69:            name = input_elem.get('name')
+./archive/test_csv_download.py:46:            if f.find('input', {'name': 'export_csv'}) or f.find('button', {'name': 'export_csv'}):
+./archive/test_csv_download.py:63:            name = input_elem.get('name')
+./archive/scripts_2025_07_23/process_csv_files.py:350:                        dog_data['dog_name'],
+./archive/scripts_2025_07_23/process_csv_files.py:365:                    print(f"      🐕 {dog_data['dog_name']}: Box {dog_data['box_number']}, SP {dog_data.get('starting_price', 'N/A')}, Time {dog_data.get('time', 'N/A')}")
+./archive/scripts_2025_07_23/process_csv_files.py:411:            for col in ['Dog Name', 'dog_name', 'Dog', 'name']:
+./archive/scripts_2025_07_23/process_csv_files.py:496:                    'dog_name': dog_name,
+./archive/scripts_2025_07_23/race_result_analyzer.py:53:                        'name': dog_name,
+./archive/scripts_2025_07_23/race_result_analyzer.py:90:            dog_name = dog['name']
+./archive/scripts_2025_07_23/race_result_analyzer.py:286:        print(f"  - {dog['name']}")
+./archive/old_scripts/form_guide_csv_scraper_pre_regex_fix.py:735:                csv_input = f.find('input', {'name': 'export_csv'})
+./archive/old_scripts/form_guide_csv_scraper_pre_regex_fix.py:736:                csv_button = f.find('button', {'name': 'export_csv'})
+./archive/old_scripts/form_guide_csv_scraper_pre_regex_fix.py:777:                name = input_elem.get('name')
+./archive/old_scripts/form_guide_csv_scraper_pre_regex_fix.py:823:                        if any(header in first_line for header in ['dog', 'name', 'runner', 'placing']):
+./archive/old_scripts/form_guide_csv_scraper_pre_regex_fix.py:917:            expected_headers = ['dog name', 'dog', 'runner', 'name', 'placing', 'box']
+./archive/hybrid_odds_scraper.py:212:            self.driver = webdriver.Chrome(options=options)\n            self.driver.set_page_load_timeout(self.timeout)\n            return True\n            \n        except Exception as e:\n            self.logger.error(f\"Failed to setup Chrome driver: {str(e)}\")\n            return False\n    \n    def _cleanup_driver(self):\n        \"\"\"Clean up WebDriver resources.\"\"\"\n        if self.driver:\n            try:\n                self.driver.quit()\n            except:\n                pass\n            finally:\n                self.driver = None\n    \n    def _extract_odds_with_selenium(self) -> list:\n        \"\"\"Extract odds using Selenium - simplified implementation.\"\"\"\n        odds_data = []\n        \n        try:\n            # This is a simplified version - you'd need to adapt based on current DOM structure\n            # Look for runner containers\n            runner_containers = self.driver.find_elements(By.CSS_SELECTOR, \n                \"[data-automation-id*='runner'], .runner-card, .outcome-button\")\n            \n            self.logger.info(f\"Found {len(runner_containers)} potential runner elements\")\n            \n            for i, container in enumerate(runner_containers[:20]):  # Limit for testing\n                try:\n                    # Extract runner name\n                    name_element = container.find_element(By.CSS_SELECTOR, \n                        \"[data-automation-id*='name'], .runner-name, .selection-name\")\n                    runner_name = name_element.text.strip()\n                    \n                    # Extract odds\n                    odds_element = container.find_element(By.CSS_SELECTOR,\n                        \"[data-automation-id*='price'], .price, .odds\")\n                    odds_text = odds_element.text.strip()\n                    \n                    if runner_name and odds_text:\n                        odds_data.append({\n                            'runner_name': runner_name,\n                            'odds': odds_text,\n                            'market': 'Win',\n                            'selection_id': f'selenium_{i}',\n                            'market_id': 'win_market'\n                        })\n                        \n                except (NoSuchElementException, Exception) as e:\n                    # Skip this runner if we can't extract data\n                    continue\n            \n        except Exception as e:\n            self.logger.error(f\"Error extracting odds with Selenium: {str(e)}\")\n        \n        return odds_data\n    \n    def get_stats(self) -> Dict[str, Any]:\n        \"\"\"Get success statistics.\"\"\"\n        total_attempts = sum(self.success_stats.values())\n        \n        if total_attempts == 0:\n            return {'message': 'No scraping attempts yet'}\n        \n        api_total = self.success_stats['api_success'] + self.success_stats['api_failure']\n        selenium_total = self.success_stats['selenium_success'] + self.success_stats['selenium_failure']\n        \n        stats = {\n            'total_attempts': total_attempts,\n            'api_attempts': api_total,\n            'api_success_rate': (self.success_stats['api_success'] / api_total * 100) if api_total > 0 else 0,\n            'selenium_attempts': selenium_total,\n            'selenium_success_rate': (self.success_stats['selenium_success'] / selenium_total * 100) if selenium_total > 0 else 0,\n            'overall_success_rate': ((self.success_stats['api_success'] + self.success_stats['selenium_success']) / total_attempts * 100),\n            'last_method_used': self.last_method_used\n        }\n        \n        return stats\n    \n    def __del__(self):\n        \"\"\"Cleanup when object is destroyed.\"\"\"\n        self._cleanup_driver()\n\n\ndef demo_hybrid_scraper():\n    \"\"\"Demo the hybrid scraper.\"\"\"\n    print(\"=== Hybrid Odds Scraper Demo ===\")\n    print()\n    \n    # Initialize scraper\n    scraper = HybridOddsScraper(use_headless=True, timeout=20)\n    \n    # Test URLs - replace with current live races\n    test_urls = [\n        \"https://www.sportsbet.com.au/betting/greyhound-racing/australia-nz/sale/race-1-9443604\",\n        # Add more current URLs for testing\n    ]\n    \n    for url in test_urls:\n        print(f\"Testing: {url}\")\n        print(\"-\" * 80)\n        \n        # Scrape odds\n        odds_df, metadata = scraper.scrape_odds(url)\n        \n        # Display results\n        if metadata['success']:\n            print(f\"✅ Success using {metadata['method_used']} method\")\n            print(f\"   Markets: {metadata['markets_count']}\")\n            print(f\"   Selections: {metadata['selections_count']}\")\n            \n            if odds_df is not None:\n                print(\"\\n   Sample data:\")\n                print(odds_df.head().to_string())\n        else:\n            print(f\"❌ Failed: {metadata.get('error_message', 'Unknown error')}\")\n        \n        print()\n    \n    # Show statistics\n    stats = scraper.get_stats()\n    print(\"=== Scraping Statistics ===\")\n    for key, value in stats.items():\n        print(f\"{key}: {value}\")\n\n\nif __name__ == \"__main__\":\n    demo_hybrid_scraper()"
+./archive/test_scripts/retry_weather_service_test.py:28:        {"name": "Melbourne (The Meadows)", "code": "MEA"},
+./archive/test_scripts/retry_weather_service_test.py:29:        {"name": "Sydney (Wentworth Park)", "code": "W_PK"},
+./archive/test_scripts/retry_weather_service_test.py:30:        {"name": "Adelaide (Angle Park)", "code": "AP_K"},
+./archive/test_scripts/retry_weather_service_test.py:31:        {"name": "Perth (Cannington)", "code": "CANN"},
+./archive/test_scripts/retry_weather_service_test.py:32:        {"name": "Hobart", "code": "HOBT"}
+./archive/test_scripts/retry_weather_service_test.py:42:            print(f"\n🌍 Test {i}: {venue['name']}")
+./archive/test_scripts/debug_race_extraction.py:276:                    csv_inputs = form.find_all('input', {'name': re.compile(r'csv|export')})
+./archive/test_scripts/debug_race_extraction.py:277:                    csv_buttons = form.find_all('button', {'name': re.compile(r'csv|export')})
+./archive/test_scripts/debug_race_extraction.py:282:                            print(f"    Input: {inp.get('name')} = {inp.get('value')}")
+./archive/test_scripts/debug_race_extraction.py:284:                            print(f"    Button: {btn.get('name')} = {btn.get_text(strip=True)}")
+./archive/outdated_scripts/upcoming_race_predictor.py:86:            dog_name = str(row.get('dog_name', f'Dog_{idx+1}'))
+./archive/outdated_scripts/upcoming_race_predictor.py:102:                'dog_name': dog_name,
+./archive/outdated_scripts/upcoming_race_predictor.py:152:        dog_name = pred.get('dog_name', 'Unknown')
+./archive/outdated_scripts/comprehensive_prediction_pipeline.py:225:            required_columns = ['dog_name', 'box']
+./archive/outdated_scripts/comprehensive_prediction_pipeline.py:230:                alt_columns = {'Dog Name': 'dog_name', 'BOX': 'box', 'Box': 'box'}
+./archive/outdated_scripts/comprehensive_prediction_pipeline.py:594:            dog_name = dog_data['database_data'][0].get('dog_name', 'Unknown')
+./archive/outdated_scripts/comprehensive_prediction_pipeline.py:675:                'Dog Name': 'dog_name',
+./archive/outdated_scripts/comprehensive_prediction_pipeline.py:700:            dog_name = str(row['dog_name']).strip()
+./archive/outdated_scripts/comprehensive_prediction_pipeline.py:737:        print(f"🎯 Top pick: {final_predictions[0]['dog_name'] if final_predictions else 'None'}")
+./archive/outdated_scripts/comprehensive_prediction_pipeline.py:856:            dog_name = str(row['dog_name']).strip()
+./archive/outdated_scripts/comprehensive_prediction_pipeline.py:879:                'dog_name': clean_dog_name,
+./archive/outdated_scripts/comprehensive_prediction_pipeline.py:1385:                dog_name = pred['dog_name']
+./archive/outdated_scripts/comprehensive_prediction_pipeline.py:1388:                        'name': dog_name,
+./archive/outdated_scripts/comprehensive_prediction_pipeline.py:1408:                if gpt_insights and pred['dog_name'] in gpt_insights:
+./archive/outdated_scripts/comprehensive_prediction_pipeline.py:1409:                    gpt_data = gpt_insights[pred['dog_name']]
+./archive/outdated_scripts/comprehensive_prediction_pipeline.py:1454:                dog_name = dog['name']
+./archive/outdated_scripts/comprehensive_prediction_pipeline.py:1663:                print(f"{i}. {pred['dog_name']} (Box {pred['box_number']})")
+./archive/outdated_scripts/weather_enhanced_predictor.py:403:                dog_name = dog_info['name']
+./archive/outdated_scripts/weather_enhanced_predictor.py:416:                        race_results_df['dog_name'].str.upper() == dog_name.upper()
+./archive/outdated_scripts/weather_enhanced_predictor.py:454:                            'dog_name': dog_name,
+./archive/outdated_scripts/weather_enhanced_predictor.py:471:                            'dog_name': dog_name,
+./archive/outdated_scripts/weather_enhanced_predictor.py:488:                        'dog_name': dog_name,
+./archive/outdated_scripts/weather_enhanced_predictor.py:532:            print(f"🏆 Top pick: {predictions[0]['dog_name'] if predictions else 'None'}")
+./archive/outdated_scripts/weather_enhanced_predictor.py:564:            participating_dog_names = [dog['name'].upper() for dog in participating_dogs]
+./archive/outdated_scripts/weather_enhanced_predictor.py:604:                        'name': current_dog_name,
+./archive/outdated_scripts/weather_enhanced_predictor.py:1012:            print(f"⚠️ Error creating features for {dog_info['name']}: {e}")
+./archive/outdated_scripts/weather_enhanced_predictor.py:1064:                    'dog_name': dog['name'],
+./archive/outdated_scripts/weather_enhanced_predictor.py:1126:            print(f"{i}. {prediction['dog_name']} (Box {prediction['box_number']})")
+./archive/outdated_scripts/integrated_race_prediction_system.py:100:                            dog_name = pick.get('dog_name', 'Unknown')
+./archive/outdated_scripts/integrated_race_prediction_system.py:230:                print(f"      🥇 Winner Pick: {predictions[0].get('dog_name')} (Box {predictions[0].get('box_number')})")
+./archive/outdated_scripts/integrated_race_prediction_system.py:234:                    print(f"      🥈 Place Pick: {predictions[1].get('dog_name')} (Box {predictions[1].get('box_number')})")
+./archive/outdated_scripts/integrated_race_prediction_system.py:292:                        'dog_name': top_pick.get('dog_name'),
+./archive/outdated_scripts/integrated_race_prediction_system.py:333:                f.write(f"   {bet['dog_name']} (Box {bet['box_number']}) - Score: {bet['score']:.3f}\n")
+./archive/outdated_scripts/integrated_race_prediction_system.py:372:                        dog_name = pick.get('dog_name', 'Unknown')
+./archive/fasttrack_tests/test_fasttrack_scraper.py:40:            if 'name' in dog_data:
+./archive/fasttrack_tests/test_fasttrack_scraper.py:41:                print(f"   Dog name: {dog_data['name']}")
+./archive/enhanced_database_rebuilder.py:145:                    'dog_name': dog_name,
+./archive/enhanced_database_rebuilder.py:287:                    dog['dog_name'],
+./archive/legacy_scripts_step2/cleanup_unnecessary_files.py:135:                        'name': filename,
+./archive/legacy_scripts_step2/cleanup_unnecessary_files.py:141:                        'name': filename,
+./archive/legacy_scripts_step2/cleanup_unnecessary_files.py:147:                        'name': filename,
+./archive/legacy_scripts_step2/cleanup_unnecessary_files.py:155:                            'name': filename,
+./archive/legacy_scripts_step2/cleanup_unnecessary_files.py:161:                        'name': filename,
+./archive/legacy_scripts_step2/cleanup_unnecessary_files.py:169:                            'name': filename,
+./archive/legacy_scripts_step2/cleanup_unnecessary_files.py:180:                        'name': dir_path.name,
+./archive/legacy_scripts_step2/cleanup_unnecessary_files.py:186:                        'name': dir_path.name,
+./archive/legacy_scripts_step2/cleanup_unnecessary_files.py:254:            report += f"- {file_info['name']} ({file_info['size']}) {file_info['status']}\n"
+./archive/legacy_scripts_step2/cleanup_unnecessary_files.py:261:                report += f"- {file_info['name']} ({file_info['size']}) - Modified: {file_info['modified']}\n"
+./archive/legacy_scripts_step2/cleanup_unnecessary_files.py:267:                report += f"- {file_info['name']} ({file_info['size']}) - Modified: {file_info['modified']}\n"
+./archive/legacy_scripts_step2/cleanup_unnecessary_files.py:273:                report += f"- {file_info['name']} ({file_info['size']}) - {file_info['status']}\n"
+./archive/legacy_scripts_step2/cleanup_unnecessary_files.py:279:                report += f"- {file_info['name']} ({file_info['size']}) - Modified: {file_info['modified']}\n"
+./archive/legacy_scripts_step2/cleanup_unnecessary_files.py:285:                report += f"- {dir_info['name']} ({dir_info['size']}) {dir_info['status']}\n"
+./archive/legacy_scripts_step2/cleanup_unnecessary_files.py:291:                report += f"- {file_info['name']} ({file_info['size']}) - {file_info['status']}\n"
+./archive/legacy_scripts_step2/cleanup_unnecessary_files.py:297:                report += f"- {dir_info['name']} - {dir_info['status']}\n"
+./archive/legacy_scripts_step2/automated_deduplication.py:253:                'name': 'race_metadata',
+./archive/legacy_scripts_step2/automated_deduplication.py:258:                'name': 'dog_race_data', 
+./archive/legacy_scripts_step2/automated_deduplication.py:270:                table_name = table_info['name']
+./archive/legacy_scripts_step2/introspect_database.py:31:            'name': table_name,
+./archive/legacy_scripts_step2/introspect_database.py:44:                'name': col[1],
+./archive/legacy_scripts_step2/introspect_database.py:80:                'name': idx[1],
+./archive/legacy_scripts_step2/introspect_database.py:84:                'columns': [{'seqno': col[0], 'cid': col[1], 'name': col[2]} for col in index_columns]
+./archive/legacy_scripts_step2/file_inventory.py:64:                'name': file_path.name,
+./archive/comprehensive_database_fix.py:151:                    'dog_name': dog_name,
+./archive/comprehensive_database_fix.py:227:                    dog['dog_name'],
+./archive/test_url_fix.py:47:                    if form.find('input', {'name': 'export_csv'}) or form.find('button', {'name': 'export_csv'}):
+./archive/test_url_fix.py:63:                        name = input_elem.get('name')
+./archive/diagnostic_scripts_step2/system_diagnostic.py:128:                'name': node.name,
+./archive/diagnostic_scripts_step2/system_diagnostic.py:137:                'name': node.name,
+./archive/diagnostic_scripts_step2/system_diagnostic.py:156:                    'name': alias.name,
+./enhanced_race_analyzer.py:99:            self.data.groupby("dog_name")
+./enhanced_race_analyzer.py:112:            "dog_name",
+./enhanced_race_analyzer.py:141:        self.data = self.data.merge(dog_stats, on="dog_name", how="left")
+./enhanced_race_analyzer.py:144:        self.data["race_sequence"] = self.data.groupby("dog_name").cumcount() + 1
+./enhanced_race_analyzer.py:207:        for dog_name in self.data["dog_name"].unique():
+./enhanced_race_analyzer.py:208:            dog_mask = self.data["dog_name"] == dog_name
+./enhanced_race_analyzer.py:324:                for dog_name in self.data["dog_name"].unique():
+./enhanced_race_analyzer.py:325:                    dog_mask = self.data["dog_name"] == dog_name
+./enhanced_race_analyzer.py:434:        self.data = self.data.sort_values(["dog_name", "race_date"])
+./enhanced_race_analyzer.py:435:        self.data["recent_form"] = self.data.groupby("dog_name")[
+./enhanced_race_analyzer.py:441:            self.data.groupby("dog_name")["performance_score"]
+./enhanced_race_analyzer.py:692:            frequent_dogs.groupby("dog_name")
+./enhanced_race_analyzer.py:832:                "total_dogs": self.data["dog_name"].nunique(),
+./enhanced_race_analyzer.py:838:                    self.data[self.data["race_count"] == 1]["dog_name"].unique()
+./enhanced_race_analyzer.py:841:                    self.data[self.data["race_count"] > 3]["dog_name"].unique()
+./enhanced_race_analyzer.py:850:                    self.data["consistency_score"].idxmax(), "dog_name"
+./enhanced_race_analyzer.py:931:                f"  {row['dog_name']}: Score {row['composite_score']:.3f} "
+./advanced_ensemble_ml_system.py:799:            "name": "Test Champion",
+./file_manager_ui.py:206:                                "name": file_path.name,
+./file_manager_ui.py:382:                ["name", "category", "type", "size_mb", "directory", "modified"]
+./file_manager_ui.py:440:            track_pattern = race_files["name"].str.extract(r"Race_\d+_([A-Z_]+)_\d{4}")
+./file_manager_ui.py:458:                | (race_files["name"].str.contains("upcoming", case=False))
+./file_manager_ui.py:459:                | (race_files["name"].str.contains("Race", case=False))
+./file_manager_ui.py:468:                        options=upcoming_race_files["name"].tolist(),
+./file_manager_ui.py:476:                                upcoming_race_files["name"] == selected_race_file
+./file_manager_ui.py:519:                                                    "dog_name",
+./file_manager_ui.py:608:                                                            f"**{pred['dog_name']}** (Box {pred['box_number']})"
+./file_manager_ui.py:623:                                                            f"Analysis Details for {pred['dog_name']}"
+./file_manager_ui.py:648:                ["name", "category", "size_mb", "directory", "modified"]
+./file_manager_ui.py:715:                ["name", "category", "size_mb", "modified"]
+./file_manager_ui.py:826:            for file_name in expert_files["name"]:
+./file_manager_ui.py:874:                ["name", "size_mb", "directory", "modified"]
+./file_manager_ui.py:884:                    options=expert_files["name"].tolist(),
+./file_manager_ui.py:890:                        expert_files["name"] == selected_expert_file
+./file_manager_ui.py:932:                                "file": file_info["name"],
+./file_manager_ui.py:945:                            "file": file_info["name"],
+./file_manager_ui.py:1088:                df["name"].str.contains(search_term, case=False, na=False)
+./file_manager_ui.py:1102:                        display_cols = ["name", "size_mb", "directory", "modified"]
+./file_manager_ui.py:1164:                        ["name", "category", "type", "size_mb", "directory", "modified"]
+./test_roi_ensemble.py:98:                    logger.info(f"✅ Test prediction on real dog '{real_dog.get('name', 'Unknown')}': {prediction}")
+./sync_database_schema.py:157:            "dog_name": "TEXT",
+./sync_database_schema.py:262:        critical_dog_columns = ["race_id", "dog_name", "finish_position"]
+./initialize_database.py:373:                    for col in ["dog_name", "Dog", "Name", "Greyhound"]:
+./data_integrity_system.py:547:                        "dog_name": row[0],
+./example_roi_ensemble_usage.py:82:                "name": "Speed Champion",
+./example_roi_ensemble_usage.py:90:                "name": "Track Star",
+./example_roi_ensemble_usage.py:102:            logger.info(f"\n🐕 Dog {i}: {dog['name']}")
+./features/v3_trainer.py:41:        dog_name = data.get("dog_name", "")
+./prediction_sanity_integration.py:247:        {'dog_name': 'Test Dog 1', 'win_probability': 1.2, 'predicted_rank': 1},
+./prediction_sanity_integration.py:248:        {'dog_name': 'Test Dog 2', 'win_probability': 0.3, 'predicted_rank': 2}
+./tests/test_comprehensive_backend.py:236:        assert "dog_name" in data
+./tests/test_comprehensive_backend.py:438:            assert "dog_name" in dog
+./tests/test_comprehensive_backend.py:455:                assert "dog_name" in runner
+./tests/test_comprehensive_backend.py:712:            dog_name = search_data["dogs"][0]["dog_name"]
+./tests/test_feature_engineering.py:180:            "dog_name": "Test Dog 1",
+./tests/test_feature_engineering.py:188:            "dog_name": "Test Dog 2",
+./tests/test_feature_engineering.py:203:        print(f"✅ Generated {len(features)} features for {dog_stats['dog_name']}")
+./tests/fasttrack/test_fasttrack_parser.py:68:                "dog_name": str,
+./tests/fasttrack/test_fasttrack_parser.py:77:                "dog_name": str,
+./tests/fasttrack/test_fasttrack_parser.py:119:        expected_keys = ["dog_id", "name"]
+./tests/test_flask_api.py:161:                "dog_name",
+./tests/test_flask_api.py:247:                "dog_name",
+./tests/test_shap_integration.py:67:            'name': 'Test Dog',
+./tests/test_database_integrity.py:35:        required_columns = ["id", "race_id", "dog_name", "finish_position"]
+./tests/test_e2e.py:160:                    "dog_name": "TEST DOG A",
+./tests/test_e2e.py:208:            assert "dog_name" in top_pick or "name" in top_pick
+./tests/validate_ml_outputs.py:52:                dog_name = prediction.get("dog_name", f"Unknown Dog at index {i}")
+./tests/test_merged_prediction_logic.py:23:            "dog_name": "Dog A",
+./tests/test_merged_prediction_logic.py:31:            "dog_name": "Dog B",
+./tests/test_merged_prediction_logic.py:63:                "dog_name": "Dog A",
+./tests/test_merged_prediction_logic.py:74:                "dog_name": "Dog B",
+./tests/test_merged_prediction_logic.py:210:    dog_b_pred = next(p for p in merged_predictions if p["dog_name"] == "Dog B")
+./tests/automated_backtesting_system.py:199:                            "dog_name": dog_name,
+./tests/ml_backtesting_trainer_optimized.py:225:                        "dog_name": dog_name,
+./tests/ml_backtesting_trainer_optimized.py:540:            + ["is_winner", "is_placer", "race_date", "race_id", "dog_name"]
+./tests/ml_backtesting_trainer_optimized.py:823:                        "predicted_winner": predicted_winner["dog_name"],
+./tests/ml_backtesting_trainer_optimized.py:825:                        "actual_winner": actual_winner["dog_name"],
+./tests/ml_backtesting_trainer_optimized.py:826:                        "prediction_correct": predicted_winner["dog_name"]
+./tests/ml_backtesting_trainer_optimized.py:827:                        == actual_winner["dog_name"],
+./tests/ml_backtesting_trainer_optimized.py:829:                            race_data["dog_name"]
+./tests/ml_backtesting_trainer_optimized.py:830:                        ).index(actual_winner["dog_name"])
+./tests/ml_backtesting_trainer_optimized.py:1031:                    "name": best_win_model["model_name"],
+./tests/ml_backtesting_trainer_optimized.py:1036:                    "name": best_place_model["model_name"],
+./tests/ml_backtesting_trainer_optimized.py:1112:        print(f"   Win: {results['best_models']['win_model']['name']}")
+./tests/ml_backtesting_trainer_optimized.py:1113:        print(f"   Place: {results['best_models']['place_model']['name']}")
+./advanced_ml_system_v2.py:966:                            "dog_name": dog_name,
+./advanced_ml_system_v2.py:1185:                "dog_name",
+./advanced_ml_system_v2.py:2257:                                "dog_name": test_df.iloc[i]["dog_name"],
+./advanced_ml_system_v2.py:2298:                            f"      {i+1}. {case['dog_name']} - ML: {case['ml_score']:.3f}, Traditional: {case['traditional_score']:.3f}, Actual: {case['actual_winner']}"
+./advanced_ml_system_v2.py:2340:                    f"      [{i}/{len(race_data)}] {dog_data.get('dog_name', f'Dog {i}')}..."
+./advanced_ml_system_v2.py:2353:                        "dog_name": dog_data["dog_clean_name"],
+./advanced_ml_system_v2.py:2359:                    f"      ⚠️ Error predicting {dog_data.get('dog_name', f'Dog {i}')}: {e}"
+./advanced_ml_system_v2.py:2397:                f"{rank:<4} {pred['dog_name']:<20} {pred['win_probability']:.3f}      {pred['place_probability']:.3f}       {confidence_level:<12} {status}"
+./advanced_ml_system_v2.py:2412:            f"   🎯 Favorite: {predictions_df.iloc[0]['dog_name']} ({predictions_df.iloc[0]['win_probability']:.3f})"
+./advanced_ml_system_v2.py:2450:                            "name": current_dog_name,
+./advanced_ml_system_v2.py:2673:            print(f"⚠️ Error creating features for {dog_info['name']}: {e}")
+./comprehensive_enhanced_ml_system.py:951:                            "dog_name": dog_name,
+./comprehensive_enhanced_ml_system.py:1170:                "dog_name",
+./comprehensive_enhanced_ml_system.py:2242:                                "dog_name": test_df.iloc[i]["dog_name"],
+./comprehensive_enhanced_ml_system.py:2283:                            f"      {i+1}. {case['dog_name']} - ML: {case['ml_score']:.3f}, Traditional: {case['traditional_score']:.3f}, Actual: {case['actual_winner']}"
+./comprehensive_enhanced_ml_system.py:2325:                    f"      [{i}/{len(race_data)}] {dog_data.get('dog_name', f'Dog {i}')}..."
+./comprehensive_enhanced_ml_system.py:2338:                        "dog_name": dog_data["dog_clean_name"],
+./comprehensive_enhanced_ml_system.py:2344:                    f"      ⚠️ Error predicting {dog_data.get('dog_name', f'Dog {i}')}: {e}"
+./comprehensive_enhanced_ml_system.py:2382:                f"{rank:<4} {pred['dog_name']:<20} {pred['win_probability']:.3f}      {pred['place_probability']:.3f}       {confidence_level:<12} {status}"
+./comprehensive_enhanced_ml_system.py:2397:            f"   🎯 Favorite: {predictions_df.iloc[0]['dog_name']} ({predictions_df.iloc[0]['win_probability']:.3f})"
+./comprehensive_enhanced_ml_system.py:2435:                            "name": current_dog_name,
+./comprehensive_enhanced_ml_system.py:2658:            print(f"⚠️ Error creating features for {dog_info['name']}: {e}")
+./ml_system_v3.py:734:                dog_data["name"], dog_data
+./ml_system_v3.py:742:                f"Error getting traditional features for {dog_data.get('name', 'unknown')}: {e}"
+./create_unified_database.py:231:                    race_info["name"],
+./create_unified_database.py:245:                (race_info["name"], race_info["venue"], race_info["date"]),
+./create_unified_database.py:259:                        row, ["Dog", "Dog Name", "dog_name"]
+./create_unified_database.py:309:                        row, ["Dog Name", "Dog", "dog_name"]
+./create_unified_database.py:351:                        "name": parts[0].strip(),
+./create_unified_database.py:361:                        "name": parts[0].strip(),
+./enhanced_comprehensive_processor.py:421:            if hasattr(current_race_row, "name") and current_race_row.name is not None:
+./enhanced_comprehensive_processor.py:708:                        "dog_name": dog.get("dog_clean_name", ""),
+./enhanced_comprehensive_processor.py:785:                    f"   🐶 Processed dog: {dog['dog_name']} with finish position {dog.get('finish_position', 'N/A')}"
+./enhanced_comprehensive_processor.py:909:                results["winner"] = winner_info.get("name")
+./enhanced_comprehensive_processor.py:1331:                            "name": clean_name,
+./enhanced_comprehensive_processor.py:1364:                                    return {"name": text, "odds": None, "time": None}
+./enhanced_comprehensive_processor.py:1380:                                    "name": potential_name,
+./enhanced_comprehensive_processor.py:1679:                                    "name": parsed_info["clean_name"]
+./enhanced_comprehensive_processor.py:1712:                                            {"position": position, "name": name}
+./enhanced_comprehensive_processor.py:1744:                            results.append({"position": position, "name": name})
+./enhanced_comprehensive_processor.py:1987:                    if runner_data and runner_data.get("dog_name"):
+./enhanced_comprehensive_processor.py:1988:                        dog_name = runner_data["dog_name"]
+./enhanced_comprehensive_processor.py:2072:            runner_data["dog_name"] = self.clean_dog_name(dog_name)
+./enhanced_comprehensive_processor.py:2232:                                    data.get("name")
+./enhanced_comprehensive_processor.py:2234:                                    or data.get("dog_name")
+./enhanced_comprehensive_processor.py:2543:                "dog_name": str(row.get("Dog Name", "")).strip(),
+./enhanced_comprehensive_processor.py:2562:            dog_data["dog_clean_name"] = self.clean_dog_name(dog_data["dog_name"])
+./enhanced_comprehensive_processor.py:2582:                        dog_data["dog_clean_name"], result.get("name", "")
+./enhanced_comprehensive_processor.py:2595:                        scraped_name = result.get("name", "")
+./enhanced_comprehensive_processor.py:2622:                    self.dogs_match(dog_data["dog_clean_name"], result.get("name", ""))
+./enhanced_comprehensive_processor.py:2769:                result_name = result.get("name", "")
+./enhanced_comprehensive_processor.py:2985:                    "dog_name": dog["dog_clean_name"],
+./enhanced_comprehensive_processor.py:3037:                key=lambda x: (x.get("_numeric_position", 999), x.get("dog_name", ""))
+./enhanced_comprehensive_processor.py:3043:                    "dog_clean_name", winner.get("dog_name", "")
+./enhanced_comprehensive_processor.py:3085:                dog.get("dog_name", "").strip()
+./enhanced_comprehensive_processor.py:3087:                if dog.get("dog_name", "").strip()
+./enhanced_comprehensive_processor.py:3104:                            f"   ❌ Data validation failed: Invalid finish position {pos_num} for {dog.get('dog_name', 'unknown')}"
+./enhanced_comprehensive_processor.py:3223:                        dog["dog_name"],
+./direct_model_trainer.py:217:                    f"      {i}. {pred['dog_name']:15}: {pred['prediction_score']:.3f} ({confidence})"
+./traditional_analysis.py:129:                dog_name = dog_data.get("name", "").strip()
+./traditional_analysis.py:140:                    "dog_name": dog_name,
+./traditional_analysis.py:876:                "name": top_dog["dog_name"],
+./traditional_analysis.py:1025:    return analyzer._extract_ml_features(factors, {"name": dog_name})
+./traditional_analysis.py:1038:                "name": "SAMPLE DOG",
+./traditional_analysis.py:1053:            f"Top pick: {top_pick['dog_name']} - Score: {top_pick['traditional_score']:.3f}"
+./data_quality_improver.py:22:        data['fingerprint'] = data.apply(lambda row: hash((row['dog_name'], row['race_date'])), axis=1)
+./test_sanity_checks.py:11:            {'dog_name': 'Dog A', 'win_probability': 0.4, 'place_probability': 0.5, 'predicted_rank': 2},
+./test_sanity_checks.py:12:            {'dog_name': 'Dog B', 'win_probability': 0.6, 'place_probability': 0.4, 'predicted_rank': 1}
+./test_sanity_checks.py:20:            {'dog_name': 'Dog A', 'win_probability': 1.5, 'place_probability': 0.5, 'predicted_rank': 2}
+./test_sanity_checks.py:28:            {'dog_name': 'Dog A', 'win_probability': 0.001, 'predicted_rank': 2},
+./test_sanity_checks.py:29:            {'dog_name': 'Dog B', 'win_probability': 0.001, 'predicted_rank': 1}
+./test_sanity_checks.py:37:            {'dog_name': 'Dog A', 'win_probability': 0.9, 'predicted_rank': 2},
+./test_sanity_checks.py:38:            {'dog_name': 'Dog B', 'win_probability': 0.1, 'predicted_rank': 1}
+./test_sanity_checks.py:45:            {'dog_name': 'Dog A', 'win_probability': 0.4, 'predicted_rank': 1},
+./test_sanity_checks.py:46:            {'dog_name': 'Dog B', 'win_probability': 0.6, 'predicted_rank': 1}
+./prediction_orchestrator.py:144:                "dog_name": dog_data.get("name", "Unknown"),
+./prediction_orchestrator.py:236:        "name": "Lightning Bolt",
+./prediction_orchestrator.py:249:    print(f"\n🐕 Analyzing: {test_dog['name']}")
+./enhanced_data_integration.py:330:            dog_name = dog_stats.get("dog_name") or dog_stats.get("clean_name", "")
+./monitoring_server.py:227:            "name": "Greyhound Racing Monitoring API",
+./advanced_ai_analysis.py:507:                        "dog_name": dog["dog_clean_name"],
+./advanced_ai_analysis.py:611:                            f"{i+1}. **{dog['dog_name']}** (Box {dog['box_number']}) - {dog['predicted_win_probability']:.2%}\n"
+./comprehensive_prediction_pipeline.py:243:            required_columns = ["dog_name", "box"]
+./comprehensive_prediction_pipeline.py:248:                alt_columns = {"Dog Name": "dog_name", "BOX": "box", "Box": "box"}
+./comprehensive_prediction_pipeline.py:654:            dog_name = dog_data["database_data"][0].get("dog_name", "Unknown")
+./comprehensive_prediction_pipeline.py:745:                "Dog Name": "dog_name",
+./comprehensive_prediction_pipeline.py:772:            dog_name = str(row["dog_name"]).strip()
+./comprehensive_prediction_pipeline.py:818:            f"🎯 Top pick: {final_predictions[0]['dog_name'] if final_predictions else 'None'}"
+./comprehensive_prediction_pipeline.py:945:            dog_name = str(row["dog_name"]).strip()
+./comprehensive_prediction_pipeline.py:968:                "dog_name": clean_dog_name,
+./comprehensive_prediction_pipeline.py:1569:                dog_name = pred["dog_name"]
+./comprehensive_prediction_pipeline.py:1572:                        "name": dog_name,
+./comprehensive_prediction_pipeline.py:1596:                if gpt_insights and pred["dog_name"] in gpt_insights:
+./comprehensive_prediction_pipeline.py:1597:                    gpt_data = gpt_insights[pred["dog_name"]]
+./comprehensive_prediction_pipeline.py:1648:                dog_name = dog["name"]
+./comprehensive_prediction_pipeline.py:1906:                print(f"{i}. {pred['dog_name']} (Box {pred['box_number']})")
+./hybrid_odds_scraper.py:239:                        "[data-automation-id*='name'], .runner-name, .selection-name")
+./test_calibration_integration.py:48:        "name": "Test Dog",
+./feature_importance_backups/backup_20250731_192829/comprehensive_enhanced_ml_system.py:946:                            "dog_name": dog_name,
+./feature_importance_backups/backup_20250731_192829/comprehensive_enhanced_ml_system.py:1165:                "dog_name",
+./feature_importance_backups/backup_20250731_192829/comprehensive_enhanced_ml_system.py:2237:                                "dog_name": test_df.iloc[i]["dog_name"],
+./feature_importance_backups/backup_20250731_192829/comprehensive_enhanced_ml_system.py:2278:                            f"      {i+1}. {case['dog_name']} - ML: {case['ml_score']:.3f}, Traditional: {case['traditional_score']:.3f}, Actual: {case['actual_winner']}"
+./feature_importance_backups/backup_20250731_192829/comprehensive_enhanced_ml_system.py:2320:                    f"      [{i}/{len(race_data)}] {dog_data.get('dog_name', f'Dog {i}')}..."
+./feature_importance_backups/backup_20250731_192829/comprehensive_enhanced_ml_system.py:2333:                        "dog_name": dog_data["dog_clean_name"],
+./feature_importance_backups/backup_20250731_192829/comprehensive_enhanced_ml_system.py:2339:                    f"      ⚠️ Error predicting {dog_data.get('dog_name', f'Dog {i}')}: {e}"
+./feature_importance_backups/backup_20250731_192829/comprehensive_enhanced_ml_system.py:2377:                f"{rank:<4} {pred['dog_name']:<20} {pred['win_probability']:.3f}      {pred['place_probability']:.3f}       {confidence_level:<12} {status}"
+./feature_importance_backups/backup_20250731_192829/comprehensive_enhanced_ml_system.py:2392:            f"   🎯 Favorite: {predictions_df.iloc[0]['dog_name']} ({predictions_df.iloc[0]['win_probability']:.3f})"
+./feature_importance_backups/backup_20250731_192829/comprehensive_enhanced_ml_system.py:2430:                            "name": current_dog_name,
+./feature_importance_backups/backup_20250731_192829/comprehensive_enhanced_ml_system.py:2653:            print(f"⚠️ Error creating features for {dog_info['name']}: {e}")
+./feature_importance_backups/backup_20250731_192829/traditional_analysis.py:129:                dog_name = dog_data.get("name", "").strip()
+./feature_importance_backups/backup_20250731_192829/traditional_analysis.py:140:                    "dog_name": dog_name,
+./feature_importance_backups/backup_20250731_192829/traditional_analysis.py:874:                "name": top_dog["dog_name"],
+./feature_importance_backups/backup_20250731_192829/traditional_analysis.py:1023:    return analyzer._extract_ml_features(factors, {"name": dog_name})
+./feature_importance_backups/backup_20250731_192829/traditional_analysis.py:1036:                "name": "SAMPLE DOG",
+./feature_importance_backups/backup_20250731_192829/traditional_analysis.py:1051:            f"Top pick: {top_pick['dog_name']} - Score: {top_pick['traditional_score']:.3f}"
+./feature_importance_backups/backup_20250731_192829/comprehensive_prediction_pipeline.py:241:            required_columns = ["dog_name", "box"]
+./feature_importance_backups/backup_20250731_192829/comprehensive_prediction_pipeline.py:246:                alt_columns = {"Dog Name": "dog_name", "BOX": "box", "Box": "box"}
+./feature_importance_backups/backup_20250731_192829/comprehensive_prediction_pipeline.py:652:            dog_name = dog_data["database_data"][0].get("dog_name", "Unknown")
+./feature_importance_backups/backup_20250731_192829/comprehensive_prediction_pipeline.py:743:                "Dog Name": "dog_name",
+./feature_importance_backups/backup_20250731_192829/comprehensive_prediction_pipeline.py:770:            dog_name = str(row["dog_name"]).strip()
+./feature_importance_backups/backup_20250731_192829/comprehensive_prediction_pipeline.py:816:            f"🎯 Top pick: {final_predictions[0]['dog_name'] if final_predictions else 'None'}"
+./feature_importance_backups/backup_20250731_192829/comprehensive_prediction_pipeline.py:942:            dog_name = str(row["dog_name"]).strip()
+./feature_importance_backups/backup_20250731_192829/comprehensive_prediction_pipeline.py:965:                "dog_name": clean_dog_name,
+./feature_importance_backups/backup_20250731_192829/comprehensive_prediction_pipeline.py:1566:                dog_name = pred["dog_name"]
+./feature_importance_backups/backup_20250731_192829/comprehensive_prediction_pipeline.py:1569:                        "name": dog_name,
+./feature_importance_backups/backup_20250731_192829/comprehensive_prediction_pipeline.py:1593:                if gpt_insights and pred["dog_name"] in gpt_insights:
+./feature_importance_backups/backup_20250731_192829/comprehensive_prediction_pipeline.py:1594:                    gpt_data = gpt_insights[pred["dog_name"]]
+./feature_importance_backups/backup_20250731_192829/comprehensive_prediction_pipeline.py:1645:                dog_name = dog["name"]
+./feature_importance_backups/backup_20250731_192829/comprehensive_prediction_pipeline.py:1903:                print(f"{i}. {pred['dog_name']} (Box {pred['box_number']})")
+./feature_importance_backups/backup_20250731_192829/weather_enhanced_predictor.py:468:                dog_name = dog_info["name"]
+./feature_importance_backups/backup_20250731_192829/weather_enhanced_predictor.py:481:                        race_results_df["dog_name"].str.upper() == dog_name.upper()
+./feature_importance_backups/backup_20250731_192829/weather_enhanced_predictor.py:536:                                "dog_name": dog_name,
+./feature_importance_backups/backup_20250731_192829/weather_enhanced_predictor.py:567:                                "dog_name": dog_name,
+./feature_importance_backups/backup_20250731_192829/weather_enhanced_predictor.py:586:                            "dog_name": dog_name,
+./feature_importance_backups/backup_20250731_192829/weather_enhanced_predictor.py:646:                f"🏆 Top pick: {predictions[0]['dog_name'] if predictions else 'None'}"
+./feature_importance_backups/backup_20250731_192829/weather_enhanced_predictor.py:680:                dog["name"].upper() for dog in participating_dogs
+./feature_importance_backups/backup_20250731_192829/weather_enhanced_predictor.py:722:                            "name": current_dog_name,
+./feature_importance_backups/backup_20250731_192829/weather_enhanced_predictor.py:1203:            print(f"⚠️ Error creating features for {dog_info['name']}: {e}")
+./feature_importance_backups/backup_20250731_192829/weather_enhanced_predictor.py:1262:                        "dog_name": dog["name"],
+./feature_importance_backups/backup_20250731_192829/weather_enhanced_predictor.py:1328:            print(f"{i}. {prediction['dog_name']} (Box {prediction['box_number']})")
+./feature_importance_backups/backup_20250727_143335/comprehensive_enhanced_ml_system.py:678:                        'dog_name': dog_name,
+./feature_importance_backups/backup_20250727_143335/comprehensive_enhanced_ml_system.py:834:            target_columns = ['is_winner', 'is_placer', 'race_date', 'race_id', 'dog_name']
+./feature_importance_backups/backup_20250727_143335/comprehensive_enhanced_ml_system.py:1647:                            'dog_name': test_df.iloc[i]['dog_name'],
+./feature_importance_backups/backup_20250727_143335/comprehensive_enhanced_ml_system.py:1676:                        print(f"      {i+1}. {case['dog_name']} - ML: {case['ml_score']:.3f}, Traditional: {case['traditional_score']:.3f}, Actual: {case['actual_winner']}")
+./feature_importance_backups/backup_20250727_143335/comprehensive_enhanced_ml_system.py:1714:                print(f"      [{i}/{len(race_data)}] {dog_data.get('dog_name', f'Dog {i}')}...")
+./feature_importance_backups/backup_20250727_143335/comprehensive_enhanced_ml_system.py:1726:                    'dog_name': dog_data['dog_clean_name'],
+./feature_importance_backups/backup_20250727_143335/comprehensive_enhanced_ml_system.py:1731:                print(f"      ⚠️ Error predicting {dog_data.get('dog_name', f'Dog {i}')}: {e}")
+./feature_importance_backups/backup_20250727_143335/comprehensive_enhanced_ml_system.py:1765:            print(f"{rank:4} {pred['dog_name']:20} {pred['win_probability']:.3f}      {pred['place_probability']:.3f}       {confidence_level:12} {status}")
+./feature_importance_backups/backup_20250727_143335/comprehensive_enhanced_ml_system.py:1773:        print(f"   🎯 Favorite: {predictions_df.iloc[0]['dog_name']} ({predictions_df.iloc[0]['win_probability']:.3f})")
+./feature_importance_backups/backup_20250727_143335/comprehensive_enhanced_ml_system.py:1813:                        'name': current_dog_name,
+./feature_importance_backups/backup_20250727_143335/comprehensive_enhanced_ml_system.py:2010:            print(f"⚠️ Error creating features for {dog_info['name']}: {e}")
+./feature_importance_backups/backup_20250727_143335/traditional_analysis.py:129:                dog_name = dog_data.get("name", "").strip()
+./feature_importance_backups/backup_20250727_143335/traditional_analysis.py:140:                    "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_143335/traditional_analysis.py:874:                "name": top_dog["dog_name"],
+./feature_importance_backups/backup_20250727_143335/traditional_analysis.py:1023:    return analyzer._extract_ml_features(factors, {"name": dog_name})
+./feature_importance_backups/backup_20250727_143335/traditional_analysis.py:1036:                "name": "SAMPLE DOG",
+./feature_importance_backups/backup_20250727_143335/traditional_analysis.py:1051:            f"Top pick: {top_pick['dog_name']} - Score: {top_pick['traditional_score']:.3f}"
+./feature_importance_backups/backup_20250727_143335/comprehensive_prediction_pipeline.py:189:            required_columns = ["dog_name", "box"]
+./feature_importance_backups/backup_20250727_143335/comprehensive_prediction_pipeline.py:194:                alt_columns = {"Dog Name": "dog_name", "BOX": "box", "Box": "box"}
+./feature_importance_backups/backup_20250727_143335/comprehensive_prediction_pipeline.py:464:            dog_name = dog_data["database_data"][0].get("dog_name", "Unknown")
+./feature_importance_backups/backup_20250727_143335/comprehensive_prediction_pipeline.py:553:                "Dog Name": "dog_name",
+./feature_importance_backups/backup_20250727_143335/comprehensive_prediction_pipeline.py:580:            dog_name = str(row["dog_name"]).strip()
+./feature_importance_backups/backup_20250727_143335/comprehensive_prediction_pipeline.py:615:            f"🎯 Top pick: {final_predictions[0]['dog_name'] if final_predictions else 'None'}"
+./feature_importance_backups/backup_20250727_143335/comprehensive_prediction_pipeline.py:695:            dog_name = str(row["dog_name"]).strip()
+./feature_importance_backups/backup_20250727_143335/comprehensive_prediction_pipeline.py:718:                "dog_name": clean_dog_name,
+./feature_importance_backups/backup_20250727_143335/comprehensive_prediction_pipeline.py:1350:            print(f"{i}. {pred['dog_name']} (Box {pred['box_number']})")
+./feature_importance_backups/backup_20250727_143335/weather_enhanced_predictor.py:466:                dog_name = dog_info["name"]
+./feature_importance_backups/backup_20250727_143335/weather_enhanced_predictor.py:525:                                "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_143335/weather_enhanced_predictor.py:556:                                "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_143335/weather_enhanced_predictor.py:575:                            "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_143335/weather_enhanced_predictor.py:635:                f"🏆 Top pick: {predictions[0]['dog_name'] if predictions else 'None'}"
+./feature_importance_backups/backup_20250727_143335/weather_enhanced_predictor.py:669:                dog["name"].upper() for dog in participating_dogs
+./feature_importance_backups/backup_20250727_143335/weather_enhanced_predictor.py:711:                            "name": current_dog_name,
+./feature_importance_backups/backup_20250727_143335/weather_enhanced_predictor.py:936:            print(f"⚠️ Error creating features for {dog_info['name']}: {e}")
+./feature_importance_backups/backup_20250727_143335/weather_enhanced_predictor.py:994:                        "dog_name": dog["name"],
+./feature_importance_backups/backup_20250727_143335/weather_enhanced_predictor.py:1060:            print(f"{i}. {prediction['dog_name']} (Box {prediction['box_number']})")
+./feature_importance_backups/backup_20250730_181627/comprehensive_enhanced_ml_system.py:958:                            "dog_name": dog_name,
+./feature_importance_backups/backup_20250730_181627/comprehensive_enhanced_ml_system.py:1177:                "dog_name",
+./feature_importance_backups/backup_20250730_181627/comprehensive_enhanced_ml_system.py:2249:                                "dog_name": test_df.iloc[i]["dog_name"],
+./feature_importance_backups/backup_20250730_181627/comprehensive_enhanced_ml_system.py:2290:                            f"      {i+1}. {case['dog_name']} - ML: {case['ml_score']:.3f}, Traditional: {case['traditional_score']:.3f}, Actual: {case['actual_winner']}"
+./feature_importance_backups/backup_20250730_181627/comprehensive_enhanced_ml_system.py:2332:                    f"      [{i}/{len(race_data)}] {dog_data.get('dog_name', f'Dog {i}')}..."
+./feature_importance_backups/backup_20250730_181627/comprehensive_enhanced_ml_system.py:2345:                        "dog_name": dog_data["dog_clean_name"],
+./feature_importance_backups/backup_20250730_181627/comprehensive_enhanced_ml_system.py:2351:                    f"      ⚠️ Error predicting {dog_data.get('dog_name', f'Dog {i}')}: {e}"
+./feature_importance_backups/backup_20250730_181627/comprehensive_enhanced_ml_system.py:2389:                f"{rank:<4} {pred['dog_name']:<20} {pred['win_probability']:.3f}      {pred['place_probability']:.3f}       {confidence_level:<12} {status}"
+./feature_importance_backups/backup_20250730_181627/comprehensive_enhanced_ml_system.py:2404:            f"   🎯 Favorite: {predictions_df.iloc[0]['dog_name']} ({predictions_df.iloc[0]['win_probability']:.3f})"
+./feature_importance_backups/backup_20250730_181627/comprehensive_enhanced_ml_system.py:2442:                            "name": current_dog_name,
+./feature_importance_backups/backup_20250730_181627/comprehensive_enhanced_ml_system.py:2665:            print(f"⚠️ Error creating features for {dog_info['name']}: {e}")
+./feature_importance_backups/backup_20250730_181627/traditional_analysis.py:129:                dog_name = dog_data.get("name", "").strip()
+./feature_importance_backups/backup_20250730_181627/traditional_analysis.py:140:                    "dog_name": dog_name,
+./feature_importance_backups/backup_20250730_181627/traditional_analysis.py:874:                "name": top_dog["dog_name"],
+./feature_importance_backups/backup_20250730_181627/traditional_analysis.py:1023:    return analyzer._extract_ml_features(factors, {"name": dog_name})
+./feature_importance_backups/backup_20250730_181627/traditional_analysis.py:1036:                "name": "SAMPLE DOG",
+./feature_importance_backups/backup_20250730_181627/traditional_analysis.py:1051:            f"Top pick: {top_pick['dog_name']} - Score: {top_pick['traditional_score']:.3f}"
+./feature_importance_backups/backup_20250730_181627/comprehensive_prediction_pipeline.py:236:            required_columns = ["dog_name", "box"]
+./feature_importance_backups/backup_20250730_181627/comprehensive_prediction_pipeline.py:241:                alt_columns = {"Dog Name": "dog_name", "BOX": "box", "Box": "box"}
+./feature_importance_backups/backup_20250730_181627/comprehensive_prediction_pipeline.py:644:            dog_name = dog_data["database_data"][0].get("dog_name", "Unknown")
+./feature_importance_backups/backup_20250730_181627/comprehensive_prediction_pipeline.py:735:                "Dog Name": "dog_name",
+./feature_importance_backups/backup_20250730_181627/comprehensive_prediction_pipeline.py:762:            dog_name = str(row["dog_name"]).strip()
+./feature_importance_backups/backup_20250730_181627/comprehensive_prediction_pipeline.py:808:            f"🎯 Top pick: {final_predictions[0]['dog_name'] if final_predictions else 'None'}"
+./feature_importance_backups/backup_20250730_181627/comprehensive_prediction_pipeline.py:897:            dog_name = str(row["dog_name"]).strip()
+./feature_importance_backups/backup_20250730_181627/comprehensive_prediction_pipeline.py:920:                "dog_name": clean_dog_name,
+./feature_importance_backups/backup_20250730_181627/comprehensive_prediction_pipeline.py:1521:                dog_name = pred["dog_name"]
+./feature_importance_backups/backup_20250730_181627/comprehensive_prediction_pipeline.py:1524:                        "name": dog_name,
+./feature_importance_backups/backup_20250730_181627/comprehensive_prediction_pipeline.py:1548:                if gpt_insights and pred["dog_name"] in gpt_insights:
+./feature_importance_backups/backup_20250730_181627/comprehensive_prediction_pipeline.py:1549:                    gpt_data = gpt_insights[pred["dog_name"]]
+./feature_importance_backups/backup_20250730_181627/comprehensive_prediction_pipeline.py:1600:                dog_name = dog["name"]
+./feature_importance_backups/backup_20250730_181627/comprehensive_prediction_pipeline.py:1779:            print(f"{i}. {pred['dog_name']} (Box {pred['box_number']})")
+./feature_importance_backups/backup_20250730_181627/weather_enhanced_predictor.py:467:                dog_name = dog_info["name"]
+./feature_importance_backups/backup_20250730_181627/weather_enhanced_predictor.py:480:                        race_results_df["dog_name"].str.upper() == dog_name.upper()
+./feature_importance_backups/backup_20250730_181627/weather_enhanced_predictor.py:535:                                "dog_name": dog_name,
+./feature_importance_backups/backup_20250730_181627/weather_enhanced_predictor.py:566:                                "dog_name": dog_name,
+./feature_importance_backups/backup_20250730_181627/weather_enhanced_predictor.py:585:                            "dog_name": dog_name,
+./feature_importance_backups/backup_20250730_181627/weather_enhanced_predictor.py:645:                f"🏆 Top pick: {predictions[0]['dog_name'] if predictions else 'None'}"
+./feature_importance_backups/backup_20250730_181627/weather_enhanced_predictor.py:679:                dog["name"].upper() for dog in participating_dogs
+./feature_importance_backups/backup_20250730_181627/weather_enhanced_predictor.py:721:                            "name": current_dog_name,
+./feature_importance_backups/backup_20250730_181627/weather_enhanced_predictor.py:1202:            print(f"⚠️ Error creating features for {dog_info['name']}: {e}")
+./feature_importance_backups/backup_20250730_181627/weather_enhanced_predictor.py:1260:                        "dog_name": dog["name"],
+./feature_importance_backups/backup_20250730_181627/weather_enhanced_predictor.py:1326:            print(f"{i}. {prediction['dog_name']} (Box {prediction['box_number']})")
+./feature_importance_backups/backup_20250727_143926/comprehensive_enhanced_ml_system.py:885:                            "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_143926/comprehensive_enhanced_ml_system.py:1098:                "dog_name",
+./feature_importance_backups/backup_20250727_143926/comprehensive_enhanced_ml_system.py:2101:                                "dog_name": test_df.iloc[i]["dog_name"],
+./feature_importance_backups/backup_20250727_143926/comprehensive_enhanced_ml_system.py:2142:                            f"      {i+1}. {case['dog_name']} - ML: {case['ml_score']:.3f}, Traditional: {case['traditional_score']:.3f}, Actual: {case['actual_winner']}"
+./feature_importance_backups/backup_20250727_143926/comprehensive_enhanced_ml_system.py:2184:                    f"      [{i}/{len(race_data)}] {dog_data.get('dog_name', f'Dog {i}')}..."
+./feature_importance_backups/backup_20250727_143926/comprehensive_enhanced_ml_system.py:2197:                        "dog_name": dog_data["dog_clean_name"],
+./feature_importance_backups/backup_20250727_143926/comprehensive_enhanced_ml_system.py:2203:                    f"      ⚠️ Error predicting {dog_data.get('dog_name', f'Dog {i}')}: {e}"
+./feature_importance_backups/backup_20250727_143926/comprehensive_enhanced_ml_system.py:2241:                f"{rank:<4} {pred['dog_name']:<20} {pred['win_probability']:.3f}      {pred['place_probability']:.3f}       {confidence_level:<12} {status}"
+./feature_importance_backups/backup_20250727_143926/comprehensive_enhanced_ml_system.py:2256:            f"   🎯 Favorite: {predictions_df.iloc[0]['dog_name']} ({predictions_df.iloc[0]['win_probability']:.3f})"
+./feature_importance_backups/backup_20250727_143926/comprehensive_enhanced_ml_system.py:2294:                            "name": current_dog_name,
+./feature_importance_backups/backup_20250727_143926/comprehensive_enhanced_ml_system.py:2517:            print(f"⚠️ Error creating features for {dog_info['name']}: {e}")
+./feature_importance_backups/backup_20250727_143926/traditional_analysis.py:129:                dog_name = dog_data.get("name", "").strip()
+./feature_importance_backups/backup_20250727_143926/traditional_analysis.py:140:                    "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_143926/traditional_analysis.py:874:                "name": top_dog["dog_name"],
+./feature_importance_backups/backup_20250727_143926/traditional_analysis.py:1023:    return analyzer._extract_ml_features(factors, {"name": dog_name})
+./feature_importance_backups/backup_20250727_143926/traditional_analysis.py:1036:                "name": "SAMPLE DOG",
+./feature_importance_backups/backup_20250727_143926/traditional_analysis.py:1051:            f"Top pick: {top_pick['dog_name']} - Score: {top_pick['traditional_score']:.3f}"
+./feature_importance_backups/backup_20250727_143926/comprehensive_prediction_pipeline.py:189:            required_columns = ["dog_name", "box"]
+./feature_importance_backups/backup_20250727_143926/comprehensive_prediction_pipeline.py:194:                alt_columns = {"Dog Name": "dog_name", "BOX": "box", "Box": "box"}
+./feature_importance_backups/backup_20250727_143926/comprehensive_prediction_pipeline.py:464:            dog_name = dog_data["database_data"][0].get("dog_name", "Unknown")
+./feature_importance_backups/backup_20250727_143926/comprehensive_prediction_pipeline.py:553:                "Dog Name": "dog_name",
+./feature_importance_backups/backup_20250727_143926/comprehensive_prediction_pipeline.py:580:            dog_name = str(row["dog_name"]).strip()
+./feature_importance_backups/backup_20250727_143926/comprehensive_prediction_pipeline.py:615:            f"🎯 Top pick: {final_predictions[0]['dog_name'] if final_predictions else 'None'}"
+./feature_importance_backups/backup_20250727_143926/comprehensive_prediction_pipeline.py:695:            dog_name = str(row["dog_name"]).strip()
+./feature_importance_backups/backup_20250727_143926/comprehensive_prediction_pipeline.py:718:                "dog_name": clean_dog_name,
+./feature_importance_backups/backup_20250727_143926/comprehensive_prediction_pipeline.py:1350:            print(f"{i}. {pred['dog_name']} (Box {pred['box_number']})")
+./feature_importance_backups/backup_20250727_143926/weather_enhanced_predictor.py:466:                dog_name = dog_info["name"]
+./feature_importance_backups/backup_20250727_143926/weather_enhanced_predictor.py:525:                                "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_143926/weather_enhanced_predictor.py:556:                                "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_143926/weather_enhanced_predictor.py:575:                            "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_143926/weather_enhanced_predictor.py:635:                f"🏆 Top pick: {predictions[0]['dog_name'] if predictions else 'None'}"
+./feature_importance_backups/backup_20250727_143926/weather_enhanced_predictor.py:669:                dog["name"].upper() for dog in participating_dogs
+./feature_importance_backups/backup_20250727_143926/weather_enhanced_predictor.py:711:                            "name": current_dog_name,
+./feature_importance_backups/backup_20250727_143926/weather_enhanced_predictor.py:936:            print(f"⚠️ Error creating features for {dog_info['name']}: {e}")
+./feature_importance_backups/backup_20250727_143926/weather_enhanced_predictor.py:994:                        "dog_name": dog["name"],
+./feature_importance_backups/backup_20250727_143926/weather_enhanced_predictor.py:1060:            print(f"{i}. {prediction['dog_name']} (Box {prediction['box_number']})")
+./feature_importance_backups/backup_20250727_143548/comprehensive_enhanced_ml_system.py:887:                            "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_143548/comprehensive_enhanced_ml_system.py:1100:                "dog_name",
+./feature_importance_backups/backup_20250727_143548/comprehensive_enhanced_ml_system.py:2051:                                "dog_name": test_df.iloc[i]["dog_name"],
+./feature_importance_backups/backup_20250727_143548/comprehensive_enhanced_ml_system.py:2092:                            f"      {i+1}. {case['dog_name']} - ML: {case['ml_score']:.3f}, Traditional: {case['traditional_score']:.3f}, Actual: {case['actual_winner']}"
+./feature_importance_backups/backup_20250727_143548/comprehensive_enhanced_ml_system.py:2134:                    f"      [{i}/{len(race_data)}] {dog_data.get('dog_name', f'Dog {i}')}..."
+./feature_importance_backups/backup_20250727_143548/comprehensive_enhanced_ml_system.py:2147:                        "dog_name": dog_data["dog_clean_name"],
+./feature_importance_backups/backup_20250727_143548/comprehensive_enhanced_ml_system.py:2153:                    f"      ⚠️ Error predicting {dog_data.get('dog_name', f'Dog {i}')}: {e}"
+./feature_importance_backups/backup_20250727_143548/comprehensive_enhanced_ml_system.py:2191:                f"{rank:<4} {pred['dog_name']:<20} {pred['win_probability']:.3f}      {pred['place_probability']:.3f}       {confidence_level:<12} {status}"
+./feature_importance_backups/backup_20250727_143548/comprehensive_enhanced_ml_system.py:2206:            f"   🎯 Favorite: {predictions_df.iloc[0]['dog_name']} ({predictions_df.iloc[0]['win_probability']:.3f})"
+./feature_importance_backups/backup_20250727_143548/comprehensive_enhanced_ml_system.py:2244:                            "name": current_dog_name,
+./feature_importance_backups/backup_20250727_143548/comprehensive_enhanced_ml_system.py:2467:            print(f"⚠️ Error creating features for {dog_info['name']}: {e}")
+./feature_importance_backups/backup_20250727_143548/traditional_analysis.py:129:                dog_name = dog_data.get("name", "").strip()
+./feature_importance_backups/backup_20250727_143548/traditional_analysis.py:140:                    "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_143548/traditional_analysis.py:874:                "name": top_dog["dog_name"],
+./feature_importance_backups/backup_20250727_143548/traditional_analysis.py:1023:    return analyzer._extract_ml_features(factors, {"name": dog_name})
+./feature_importance_backups/backup_20250727_143548/traditional_analysis.py:1036:                "name": "SAMPLE DOG",
+./feature_importance_backups/backup_20250727_143548/traditional_analysis.py:1051:            f"Top pick: {top_pick['dog_name']} - Score: {top_pick['traditional_score']:.3f}"
+./feature_importance_backups/backup_20250727_143548/comprehensive_prediction_pipeline.py:189:            required_columns = ["dog_name", "box"]
+./feature_importance_backups/backup_20250727_143548/comprehensive_prediction_pipeline.py:194:                alt_columns = {"Dog Name": "dog_name", "BOX": "box", "Box": "box"}
+./feature_importance_backups/backup_20250727_143548/comprehensive_prediction_pipeline.py:464:            dog_name = dog_data["database_data"][0].get("dog_name", "Unknown")
+./feature_importance_backups/backup_20250727_143548/comprehensive_prediction_pipeline.py:553:                "Dog Name": "dog_name",
+./feature_importance_backups/backup_20250727_143548/comprehensive_prediction_pipeline.py:580:            dog_name = str(row["dog_name"]).strip()
+./feature_importance_backups/backup_20250727_143548/comprehensive_prediction_pipeline.py:615:            f"🎯 Top pick: {final_predictions[0]['dog_name'] if final_predictions else 'None'}"
+./feature_importance_backups/backup_20250727_143548/comprehensive_prediction_pipeline.py:695:            dog_name = str(row["dog_name"]).strip()
+./feature_importance_backups/backup_20250727_143548/comprehensive_prediction_pipeline.py:718:                "dog_name": clean_dog_name,
+./feature_importance_backups/backup_20250727_143548/comprehensive_prediction_pipeline.py:1350:            print(f"{i}. {pred['dog_name']} (Box {pred['box_number']})")
+./feature_importance_backups/backup_20250727_143548/weather_enhanced_predictor.py:466:                dog_name = dog_info["name"]
+./feature_importance_backups/backup_20250727_143548/weather_enhanced_predictor.py:525:                                "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_143548/weather_enhanced_predictor.py:556:                                "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_143548/weather_enhanced_predictor.py:575:                            "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_143548/weather_enhanced_predictor.py:635:                f"🏆 Top pick: {predictions[0]['dog_name'] if predictions else 'None'}"
+./feature_importance_backups/backup_20250727_143548/weather_enhanced_predictor.py:669:                dog["name"].upper() for dog in participating_dogs
+./feature_importance_backups/backup_20250727_143548/weather_enhanced_predictor.py:711:                            "name": current_dog_name,
+./feature_importance_backups/backup_20250727_143548/weather_enhanced_predictor.py:936:            print(f"⚠️ Error creating features for {dog_info['name']}: {e}")
+./feature_importance_backups/backup_20250727_143548/weather_enhanced_predictor.py:994:                        "dog_name": dog["name"],
+./feature_importance_backups/backup_20250727_143548/weather_enhanced_predictor.py:1060:            print(f"{i}. {prediction['dog_name']} (Box {prediction['box_number']})")
+./feature_importance_backups/backup_20250730_132236/comprehensive_enhanced_ml_system.py:959:                            "dog_name": dog_name,
+./feature_importance_backups/backup_20250730_132236/comprehensive_enhanced_ml_system.py:1178:                "dog_name",
+./feature_importance_backups/backup_20250730_132236/comprehensive_enhanced_ml_system.py:2250:                                "dog_name": test_df.iloc[i]["dog_name"],
+./feature_importance_backups/backup_20250730_132236/comprehensive_enhanced_ml_system.py:2291:                            f"      {i+1}. {case['dog_name']} - ML: {case['ml_score']:.3f}, Traditional: {case['traditional_score']:.3f}, Actual: {case['actual_winner']}"
+./feature_importance_backups/backup_20250730_132236/comprehensive_enhanced_ml_system.py:2333:                    f"      [{i}/{len(race_data)}] {dog_data.get('dog_name', f'Dog {i}')}..."
+./feature_importance_backups/backup_20250730_132236/comprehensive_enhanced_ml_system.py:2346:                        "dog_name": dog_data["dog_clean_name"],
+./feature_importance_backups/backup_20250730_132236/comprehensive_enhanced_ml_system.py:2352:                    f"      ⚠️ Error predicting {dog_data.get('dog_name', f'Dog {i}')}: {e}"
+./feature_importance_backups/backup_20250730_132236/comprehensive_enhanced_ml_system.py:2390:                f"{rank:<4} {pred['dog_name']:<20} {pred['win_probability']:.3f}      {pred['place_probability']:.3f}       {confidence_level:<12} {status}"
+./feature_importance_backups/backup_20250730_132236/comprehensive_enhanced_ml_system.py:2405:            f"   🎯 Favorite: {predictions_df.iloc[0]['dog_name']} ({predictions_df.iloc[0]['win_probability']:.3f})"
+./feature_importance_backups/backup_20250730_132236/comprehensive_enhanced_ml_system.py:2443:                            "name": current_dog_name,
+./feature_importance_backups/backup_20250730_132236/comprehensive_enhanced_ml_system.py:2666:            print(f"⚠️ Error creating features for {dog_info['name']}: {e}")
+./feature_importance_backups/backup_20250730_132236/traditional_analysis.py:129:                dog_name = dog_data.get("name", "").strip()
+./feature_importance_backups/backup_20250730_132236/traditional_analysis.py:140:                    "dog_name": dog_name,
+./feature_importance_backups/backup_20250730_132236/traditional_analysis.py:874:                "name": top_dog["dog_name"],
+./feature_importance_backups/backup_20250730_132236/traditional_analysis.py:1023:    return analyzer._extract_ml_features(factors, {"name": dog_name})
+./feature_importance_backups/backup_20250730_132236/traditional_analysis.py:1036:                "name": "SAMPLE DOG",
+./feature_importance_backups/backup_20250730_132236/traditional_analysis.py:1051:            f"Top pick: {top_pick['dog_name']} - Score: {top_pick['traditional_score']:.3f}"
+./feature_importance_backups/backup_20250730_132236/comprehensive_prediction_pipeline.py:209:            required_columns = ["dog_name", "box"]
+./feature_importance_backups/backup_20250730_132236/comprehensive_prediction_pipeline.py:214:                alt_columns = {"Dog Name": "dog_name", "BOX": "box", "Box": "box"}
+./feature_importance_backups/backup_20250730_132236/comprehensive_prediction_pipeline.py:566:            dog_name = dog_data["database_data"][0].get("dog_name", "Unknown")
+./feature_importance_backups/backup_20250730_132236/comprehensive_prediction_pipeline.py:657:                "Dog Name": "dog_name",
+./feature_importance_backups/backup_20250730_132236/comprehensive_prediction_pipeline.py:684:            dog_name = str(row["dog_name"]).strip()
+./feature_importance_backups/backup_20250730_132236/comprehensive_prediction_pipeline.py:719:            f"🎯 Top pick: {final_predictions[0]['dog_name'] if final_predictions else 'None'}"
+./feature_importance_backups/backup_20250730_132236/comprehensive_prediction_pipeline.py:799:            dog_name = str(row["dog_name"]).strip()
+./feature_importance_backups/backup_20250730_132236/comprehensive_prediction_pipeline.py:822:                "dog_name": clean_dog_name,
+./feature_importance_backups/backup_20250730_132236/comprehensive_prediction_pipeline.py:1525:            print(f"{i}. {pred['dog_name']} (Box {pred['box_number']})")
+./feature_importance_backups/backup_20250730_132236/weather_enhanced_predictor.py:467:                dog_name = dog_info["name"]
+./feature_importance_backups/backup_20250730_132236/weather_enhanced_predictor.py:526:                                "dog_name": dog_name,
+./feature_importance_backups/backup_20250730_132236/weather_enhanced_predictor.py:557:                                "dog_name": dog_name,
+./feature_importance_backups/backup_20250730_132236/weather_enhanced_predictor.py:576:                            "dog_name": dog_name,
+./feature_importance_backups/backup_20250730_132236/weather_enhanced_predictor.py:636:                f"🏆 Top pick: {predictions[0]['dog_name'] if predictions else 'None'}"
+./feature_importance_backups/backup_20250730_132236/weather_enhanced_predictor.py:670:                dog["name"].upper() for dog in participating_dogs
+./feature_importance_backups/backup_20250730_132236/weather_enhanced_predictor.py:712:                            "name": current_dog_name,
+./feature_importance_backups/backup_20250730_132236/weather_enhanced_predictor.py:1193:            print(f"⚠️ Error creating features for {dog_info['name']}: {e}")
+./feature_importance_backups/backup_20250730_132236/weather_enhanced_predictor.py:1251:                        "dog_name": dog["name"],
+./feature_importance_backups/backup_20250730_132236/weather_enhanced_predictor.py:1317:            print(f"{i}. {prediction['dog_name']} (Box {prediction['box_number']})")
+./feature_importance_backups/backup_20250727_190413/comprehensive_enhanced_ml_system.py:904:                            "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_190413/comprehensive_enhanced_ml_system.py:1117:                "dog_name",
+./feature_importance_backups/backup_20250727_190413/comprehensive_enhanced_ml_system.py:2189:                                "dog_name": test_df.iloc[i]["dog_name"],
+./feature_importance_backups/backup_20250727_190413/comprehensive_enhanced_ml_system.py:2230:                            f"      {i+1}. {case['dog_name']} - ML: {case['ml_score']:.3f}, Traditional: {case['traditional_score']:.3f}, Actual: {case['actual_winner']}"
+./feature_importance_backups/backup_20250727_190413/comprehensive_enhanced_ml_system.py:2272:                    f"      [{i}/{len(race_data)}] {dog_data.get('dog_name', f'Dog {i}')}..."
+./feature_importance_backups/backup_20250727_190413/comprehensive_enhanced_ml_system.py:2285:                        "dog_name": dog_data["dog_clean_name"],
+./feature_importance_backups/backup_20250727_190413/comprehensive_enhanced_ml_system.py:2291:                    f"      ⚠️ Error predicting {dog_data.get('dog_name', f'Dog {i}')}: {e}"
+./feature_importance_backups/backup_20250727_190413/comprehensive_enhanced_ml_system.py:2329:                f"{rank:<4} {pred['dog_name']:<20} {pred['win_probability']:.3f}      {pred['place_probability']:.3f}       {confidence_level:<12} {status}"
+./feature_importance_backups/backup_20250727_190413/comprehensive_enhanced_ml_system.py:2344:            f"   🎯 Favorite: {predictions_df.iloc[0]['dog_name']} ({predictions_df.iloc[0]['win_probability']:.3f})"
+./feature_importance_backups/backup_20250727_190413/comprehensive_enhanced_ml_system.py:2382:                            "name": current_dog_name,
+./feature_importance_backups/backup_20250727_190413/comprehensive_enhanced_ml_system.py:2605:            print(f"⚠️ Error creating features for {dog_info['name']}: {e}")
+./feature_importance_backups/backup_20250727_190413/traditional_analysis.py:129:                dog_name = dog_data.get("name", "").strip()
+./feature_importance_backups/backup_20250727_190413/traditional_analysis.py:140:                    "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_190413/traditional_analysis.py:874:                "name": top_dog["dog_name"],
+./feature_importance_backups/backup_20250727_190413/traditional_analysis.py:1023:    return analyzer._extract_ml_features(factors, {"name": dog_name})
+./feature_importance_backups/backup_20250727_190413/traditional_analysis.py:1036:                "name": "SAMPLE DOG",
+./feature_importance_backups/backup_20250727_190413/traditional_analysis.py:1051:            f"Top pick: {top_pick['dog_name']} - Score: {top_pick['traditional_score']:.3f}"
+./feature_importance_backups/backup_20250727_190413/comprehensive_prediction_pipeline.py:209:            required_columns = ["dog_name", "box"]
+./feature_importance_backups/backup_20250727_190413/comprehensive_prediction_pipeline.py:214:                alt_columns = {"Dog Name": "dog_name", "BOX": "box", "Box": "box"}
+./feature_importance_backups/backup_20250727_190413/comprehensive_prediction_pipeline.py:530:            dog_name = dog_data["database_data"][0].get("dog_name", "Unknown")
+./feature_importance_backups/backup_20250727_190413/comprehensive_prediction_pipeline.py:621:                "Dog Name": "dog_name",
+./feature_importance_backups/backup_20250727_190413/comprehensive_prediction_pipeline.py:648:            dog_name = str(row["dog_name"]).strip()
+./feature_importance_backups/backup_20250727_190413/comprehensive_prediction_pipeline.py:683:            f"🎯 Top pick: {final_predictions[0]['dog_name'] if final_predictions else 'None'}"
+./feature_importance_backups/backup_20250727_190413/comprehensive_prediction_pipeline.py:763:            dog_name = str(row["dog_name"]).strip()
+./feature_importance_backups/backup_20250727_190413/comprehensive_prediction_pipeline.py:786:                "dog_name": clean_dog_name,
+./feature_importance_backups/backup_20250727_190413/comprehensive_prediction_pipeline.py:1489:            print(f"{i}. {pred['dog_name']} (Box {pred['box_number']})")
+./feature_importance_backups/backup_20250727_190413/weather_enhanced_predictor.py:466:                dog_name = dog_info["name"]
+./feature_importance_backups/backup_20250727_190413/weather_enhanced_predictor.py:525:                                "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_190413/weather_enhanced_predictor.py:556:                                "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_190413/weather_enhanced_predictor.py:575:                            "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_190413/weather_enhanced_predictor.py:635:                f"🏆 Top pick: {predictions[0]['dog_name'] if predictions else 'None'}"
+./feature_importance_backups/backup_20250727_190413/weather_enhanced_predictor.py:669:                dog["name"].upper() for dog in participating_dogs
+./feature_importance_backups/backup_20250727_190413/weather_enhanced_predictor.py:711:                            "name": current_dog_name,
+./feature_importance_backups/backup_20250727_190413/weather_enhanced_predictor.py:936:            print(f"⚠️ Error creating features for {dog_info['name']}: {e}")
+./feature_importance_backups/backup_20250727_190413/weather_enhanced_predictor.py:994:                        "dog_name": dog["name"],
+./feature_importance_backups/backup_20250727_190413/weather_enhanced_predictor.py:1060:            print(f"{i}. {prediction['dog_name']} (Box {prediction['box_number']})")
+./feature_importance_backups/backup_20250727_142635/comprehensive_enhanced_ml_system.py:885:                            "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_142635/comprehensive_enhanced_ml_system.py:1098:                "dog_name",
+./feature_importance_backups/backup_20250727_142635/comprehensive_enhanced_ml_system.py:1980:                                "dog_name": test_df.iloc[i]["dog_name"],
+./feature_importance_backups/backup_20250727_142635/comprehensive_enhanced_ml_system.py:2021:                            f"      {i+1}. {case['dog_name']} - ML: {case['ml_score']:.3f}, Traditional: {case['traditional_score']:.3f}, Actual: {case['actual_winner']}"
+./feature_importance_backups/backup_20250727_142635/comprehensive_enhanced_ml_system.py:2097:                dog_name = dog_info["name"]
+./feature_importance_backups/backup_20250727_142635/comprehensive_enhanced_ml_system.py:2144:                                "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_142635/comprehensive_enhanced_ml_system.py:2162:                                "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_142635/comprehensive_enhanced_ml_system.py:2177:                            "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_142635/comprehensive_enhanced_ml_system.py:2262:                            "name": current_dog_name,
+./feature_importance_backups/backup_20250727_142635/comprehensive_enhanced_ml_system.py:2485:            print(f"⚠️ Error creating features for {dog_info['name']}: {e}")
+./feature_importance_backups/backup_20250727_142635/traditional_analysis.py:129:                dog_name = dog_data.get("name", "").strip()
+./feature_importance_backups/backup_20250727_142635/traditional_analysis.py:140:                    "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_142635/traditional_analysis.py:874:                "name": top_dog["dog_name"],
+./feature_importance_backups/backup_20250727_142635/traditional_analysis.py:1023:    return analyzer._extract_ml_features(factors, {"name": dog_name})
+./feature_importance_backups/backup_20250727_142635/traditional_analysis.py:1036:                "name": "SAMPLE DOG",
+./feature_importance_backups/backup_20250727_142635/traditional_analysis.py:1051:            f"Top pick: {top_pick['dog_name']} - Score: {top_pick['traditional_score']:.3f}"
+./feature_importance_backups/backup_20250727_142635/comprehensive_prediction_pipeline.py:189:            required_columns = ["dog_name", "box"]
+./feature_importance_backups/backup_20250727_142635/comprehensive_prediction_pipeline.py:194:                alt_columns = {"Dog Name": "dog_name", "BOX": "box", "Box": "box"}
+./feature_importance_backups/backup_20250727_142635/comprehensive_prediction_pipeline.py:464:            dog_name = dog_data["database_data"][0].get("dog_name", "Unknown")
+./feature_importance_backups/backup_20250727_142635/comprehensive_prediction_pipeline.py:553:                "Dog Name": "dog_name",
+./feature_importance_backups/backup_20250727_142635/comprehensive_prediction_pipeline.py:580:            dog_name = str(row["dog_name"]).strip()
+./feature_importance_backups/backup_20250727_142635/comprehensive_prediction_pipeline.py:615:            f"🎯 Top pick: {final_predictions[0]['dog_name'] if final_predictions else 'None'}"
+./feature_importance_backups/backup_20250727_142635/comprehensive_prediction_pipeline.py:695:            dog_name = str(row["dog_name"]).strip()
+./feature_importance_backups/backup_20250727_142635/comprehensive_prediction_pipeline.py:718:                "dog_name": clean_dog_name,
+./feature_importance_backups/backup_20250727_142635/comprehensive_prediction_pipeline.py:1350:            print(f"{i}. {pred['dog_name']} (Box {pred['box_number']})")
+./feature_importance_backups/backup_20250727_142635/weather_enhanced_predictor.py:466:                dog_name = dog_info["name"]
+./feature_importance_backups/backup_20250727_142635/weather_enhanced_predictor.py:525:                                "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_142635/weather_enhanced_predictor.py:556:                                "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_142635/weather_enhanced_predictor.py:575:                            "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_142635/weather_enhanced_predictor.py:635:                f"🏆 Top pick: {predictions[0]['dog_name'] if predictions else 'None'}"
+./feature_importance_backups/backup_20250727_142635/weather_enhanced_predictor.py:669:                dog["name"].upper() for dog in participating_dogs
+./feature_importance_backups/backup_20250727_142635/weather_enhanced_predictor.py:711:                            "name": current_dog_name,
+./feature_importance_backups/backup_20250727_142635/weather_enhanced_predictor.py:936:            print(f"⚠️ Error creating features for {dog_info['name']}: {e}")
+./feature_importance_backups/backup_20250727_142635/weather_enhanced_predictor.py:994:                        "dog_name": dog["name"],
+./feature_importance_backups/backup_20250727_142635/weather_enhanced_predictor.py:1060:            print(f"{i}. {prediction['dog_name']} (Box {prediction['box_number']})")
+./feature_importance_backups/backup_20250727_144108/comprehensive_enhanced_ml_system.py:884:                            "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_144108/comprehensive_enhanced_ml_system.py:1097:                "dog_name",
+./feature_importance_backups/backup_20250727_144108/comprehensive_enhanced_ml_system.py:2100:                                "dog_name": test_df.iloc[i]["dog_name"],
+./feature_importance_backups/backup_20250727_144108/comprehensive_enhanced_ml_system.py:2141:                            f"      {i+1}. {case['dog_name']} - ML: {case['ml_score']:.3f}, Traditional: {case['traditional_score']:.3f}, Actual: {case['actual_winner']}"
+./feature_importance_backups/backup_20250727_144108/comprehensive_enhanced_ml_system.py:2183:                    f"      [{i}/{len(race_data)}] {dog_data.get('dog_name', f'Dog {i}')}..."
+./feature_importance_backups/backup_20250727_144108/comprehensive_enhanced_ml_system.py:2196:                        "dog_name": dog_data["dog_clean_name"],
+./feature_importance_backups/backup_20250727_144108/comprehensive_enhanced_ml_system.py:2202:                    f"      ⚠️ Error predicting {dog_data.get('dog_name', f'Dog {i}')}: {e}"
+./feature_importance_backups/backup_20250727_144108/comprehensive_enhanced_ml_system.py:2240:                f"{rank:<4} {pred['dog_name']:<20} {pred['win_probability']:.3f}      {pred['place_probability']:.3f}       {confidence_level:<12} {status}"
+./feature_importance_backups/backup_20250727_144108/comprehensive_enhanced_ml_system.py:2255:            f"   🎯 Favorite: {predictions_df.iloc[0]['dog_name']} ({predictions_df.iloc[0]['win_probability']:.3f})"
+./feature_importance_backups/backup_20250727_144108/comprehensive_enhanced_ml_system.py:2293:                            "name": current_dog_name,
+./feature_importance_backups/backup_20250727_144108/comprehensive_enhanced_ml_system.py:2516:            print(f"⚠️ Error creating features for {dog_info['name']}: {e}")
+./feature_importance_backups/backup_20250727_144108/traditional_analysis.py:129:                dog_name = dog_data.get("name", "").strip()
+./feature_importance_backups/backup_20250727_144108/traditional_analysis.py:140:                    "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_144108/traditional_analysis.py:874:                "name": top_dog["dog_name"],
+./feature_importance_backups/backup_20250727_144108/traditional_analysis.py:1023:    return analyzer._extract_ml_features(factors, {"name": dog_name})
+./feature_importance_backups/backup_20250727_144108/traditional_analysis.py:1036:                "name": "SAMPLE DOG",
+./feature_importance_backups/backup_20250727_144108/traditional_analysis.py:1051:            f"Top pick: {top_pick['dog_name']} - Score: {top_pick['traditional_score']:.3f}"
+./feature_importance_backups/backup_20250727_144108/comprehensive_prediction_pipeline.py:189:            required_columns = ["dog_name", "box"]
+./feature_importance_backups/backup_20250727_144108/comprehensive_prediction_pipeline.py:194:                alt_columns = {"Dog Name": "dog_name", "BOX": "box", "Box": "box"}
+./feature_importance_backups/backup_20250727_144108/comprehensive_prediction_pipeline.py:464:            dog_name = dog_data["database_data"][0].get("dog_name", "Unknown")
+./feature_importance_backups/backup_20250727_144108/comprehensive_prediction_pipeline.py:553:                "Dog Name": "dog_name",
+./feature_importance_backups/backup_20250727_144108/comprehensive_prediction_pipeline.py:580:            dog_name = str(row["dog_name"]).strip()
+./feature_importance_backups/backup_20250727_144108/comprehensive_prediction_pipeline.py:615:            f"🎯 Top pick: {final_predictions[0]['dog_name'] if final_predictions else 'None'}"
+./feature_importance_backups/backup_20250727_144108/comprehensive_prediction_pipeline.py:695:            dog_name = str(row["dog_name"]).strip()
+./feature_importance_backups/backup_20250727_144108/comprehensive_prediction_pipeline.py:718:                "dog_name": clean_dog_name,
+./feature_importance_backups/backup_20250727_144108/comprehensive_prediction_pipeline.py:1350:            print(f"{i}. {pred['dog_name']} (Box {pred['box_number']})")
+./feature_importance_backups/backup_20250727_144108/weather_enhanced_predictor.py:466:                dog_name = dog_info["name"]
+./feature_importance_backups/backup_20250727_144108/weather_enhanced_predictor.py:525:                                "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_144108/weather_enhanced_predictor.py:556:                                "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_144108/weather_enhanced_predictor.py:575:                            "dog_name": dog_name,
+./feature_importance_backups/backup_20250727_144108/weather_enhanced_predictor.py:635:                f"🏆 Top pick: {predictions[0]['dog_name'] if predictions else 'None'}"
+./feature_importance_backups/backup_20250727_144108/weather_enhanced_predictor.py:669:                dog["name"].upper() for dog in participating_dogs
+./feature_importance_backups/backup_20250727_144108/weather_enhanced_predictor.py:711:                            "name": current_dog_name,
+./feature_importance_backups/backup_20250727_144108/weather_enhanced_predictor.py:936:            print(f"⚠️ Error creating features for {dog_info['name']}: {e}")
+./feature_importance_backups/backup_20250727_144108/weather_enhanced_predictor.py:994:                        "dog_name": dog["name"],
+./feature_importance_backups/backup_20250727_144108/weather_enhanced_predictor.py:1060:            print(f"{i}. {prediction['dog_name']} (Box {prediction['box_number']})")
+./feature_importance_backups/backup_20250730_104529/comprehensive_enhanced_ml_system.py:959:                            "dog_name": dog_name,
+./feature_importance_backups/backup_20250730_104529/comprehensive_enhanced_ml_system.py:1178:                "dog_name",
+./feature_importance_backups/backup_20250730_104529/comprehensive_enhanced_ml_system.py:2250:                                "dog_name": test_df.iloc[i]["dog_name"],
+./feature_importance_backups/backup_20250730_104529/comprehensive_enhanced_ml_system.py:2291:                            f"      {i+1}. {case['dog_name']} - ML: {case['ml_score']:.3f}, Traditional: {case['traditional_score']:.3f}, Actual: {case['actual_winner']}"
+./feature_importance_backups/backup_20250730_104529/comprehensive_enhanced_ml_system.py:2333:                    f"      [{i}/{len(race_data)}] {dog_data.get('dog_name', f'Dog {i}')}..."
+./feature_importance_backups/backup_20250730_104529/comprehensive_enhanced_ml_system.py:2346:                        "dog_name": dog_data["dog_clean_name"],
+./feature_importance_backups/backup_20250730_104529/comprehensive_enhanced_ml_system.py:2352:                    f"      ⚠️ Error predicting {dog_data.get('dog_name', f'Dog {i}')}: {e}"
+./feature_importance_backups/backup_20250730_104529/comprehensive_enhanced_ml_system.py:2390:                f"{rank:<4} {pred['dog_name']:<20} {pred['win_probability']:.3f}      {pred['place_probability']:.3f}       {confidence_level:<12} {status}"
+./feature_importance_backups/backup_20250730_104529/comprehensive_enhanced_ml_system.py:2405:            f"   🎯 Favorite: {predictions_df.iloc[0]['dog_name']} ({predictions_df.iloc[0]['win_probability']:.3f})"
+./feature_importance_backups/backup_20250730_104529/comprehensive_enhanced_ml_system.py:2443:                            "name": current_dog_name,
+./feature_importance_backups/backup_20250730_104529/comprehensive_enhanced_ml_system.py:2666:            print(f"⚠️ Error creating features for {dog_info['name']}: {e}")
+./feature_importance_backups/backup_20250730_104529/traditional_analysis.py:129:                dog_name = dog_data.get("name", "").strip()
+./feature_importance_backups/backup_20250730_104529/traditional_analysis.py:140:                    "dog_name": dog_name,
+./feature_importance_backups/backup_20250730_104529/traditional_analysis.py:874:                "name": top_dog["dog_name"],
+./feature_importance_backups/backup_20250730_104529/traditional_analysis.py:1023:    return analyzer._extract_ml_features(factors, {"name": dog_name})
+./feature_importance_backups/backup_20250730_104529/traditional_analysis.py:1036:                "name": "SAMPLE DOG",
+./feature_importance_backups/backup_20250730_104529/traditional_analysis.py:1051:            f"Top pick: {top_pick['dog_name']} - Score: {top_pick['traditional_score']:.3f}"
+./feature_importance_backups/backup_20250730_104529/comprehensive_prediction_pipeline.py:209:            required_columns = ["dog_name", "box"]
+./feature_importance_backups/backup_20250730_104529/comprehensive_prediction_pipeline.py:214:                alt_columns = {"Dog Name": "dog_name", "BOX": "box", "Box": "box"}
+./feature_importance_backups/backup_20250730_104529/comprehensive_prediction_pipeline.py:566:            dog_name = dog_data["database_data"][0].get("dog_name", "Unknown")
+./feature_importance_backups/backup_20250730_104529/comprehensive_prediction_pipeline.py:657:                "Dog Name": "dog_name",
+./feature_importance_backups/backup_20250730_104529/comprehensive_prediction_pipeline.py:684:            dog_name = str(row["dog_name"]).strip()
+./feature_importance_backups/backup_20250730_104529/comprehensive_prediction_pipeline.py:719:            f"🎯 Top pick: {final_predictions[0]['dog_name'] if final_predictions else 'None'}"
+./feature_importance_backups/backup_20250730_104529/comprehensive_prediction_pipeline.py:799:            dog_name = str(row["dog_name"]).strip()
+./feature_importance_backups/backup_20250730_104529/comprehensive_prediction_pipeline.py:822:                "dog_name": clean_dog_name,
+./feature_importance_backups/backup_20250730_104529/comprehensive_prediction_pipeline.py:1525:            print(f"{i}. {pred['dog_name']} (Box {pred['box_number']})")
+./feature_importance_backups/backup_20250730_104529/weather_enhanced_predictor.py:467:                dog_name = dog_info["name"]
+./feature_importance_backups/backup_20250730_104529/weather_enhanced_predictor.py:526:                                "dog_name": dog_name,
+./feature_importance_backups/backup_20250730_104529/weather_enhanced_predictor.py:557:                                "dog_name": dog_name,
+./feature_importance_backups/backup_20250730_104529/weather_enhanced_predictor.py:576:                            "dog_name": dog_name,
+./feature_importance_backups/backup_20250730_104529/weather_enhanced_predictor.py:636:                f"🏆 Top pick: {predictions[0]['dog_name'] if predictions else 'None'}"
+./feature_importance_backups/backup_20250730_104529/weather_enhanced_predictor.py:670:                dog["name"].upper() for dog in participating_dogs
+./feature_importance_backups/backup_20250730_104529/weather_enhanced_predictor.py:712:                            "name": current_dog_name,
+./feature_importance_backups/backup_20250730_104529/weather_enhanced_predictor.py:1193:            print(f"⚠️ Error creating features for {dog_info['name']}: {e}")
+./feature_importance_backups/backup_20250730_104529/weather_enhanced_predictor.py:1251:                        "dog_name": dog["name"],
+./feature_importance_backups/backup_20250730_104529/weather_enhanced_predictor.py:1317:            print(f"{i}. {prediction['dog_name']} (Box {prediction['box_number']})")
+./comprehensive_form_data_collector.py:394:                                "dog_name": dog_name,
+./comprehensive_form_data_collector.py:403:                        {"dog_name": dog_name, "error": str(e)}
+./comprehensive_form_data_collector.py:436:                "dog_name": dog_name,
+./comprehensive_form_data_collector.py:488:            return {"success": False, "error": str(e), "dog_name": dog_name}
+./train_real_data.py:65:                    min(20, max(1, len(str(row.get("dog_name", ""))))), 1, 20
+./outdated_scripts/upcoming_race_predictor_test.py:1113:                    "dog_name": dog_name,
+./outdated_scripts/upcoming_race_predictor_test.py:1210:            print(f"   {i+1}. {pred['dog_name']} (Box {pred['box_number']})")
+./outdated_scripts/upcoming_race_predictor_test.py:1221:                print(f"\n   {pred['dog_name']}:")
+./outdated_scripts/enhanced_ml_system.py:383:                            "dog_name": dog_name,
+./outdated_scripts/enhanced_ml_system.py:505:                "dog_name",
+./outdated_scripts/ultimate_comprehensive_analysis.py:204:                        "dog_name": "count",
+./outdated_scripts/ultimate_comprehensive_analysis.py:233:                            "dog_name": "count",
+./outdated_scripts/ultimate_comprehensive_analysis.py:261:                        "dog_name": "count",
+./outdated_scripts/ultimate_comprehensive_analysis.py:507:                            "dog_name": "count",
+./outdated_scripts/ultimate_comprehensive_analysis.py:1044:                        "dog_name": "count",
+./outdated_scripts/ultimate_comprehensive_analysis.py:1196:                    "dog_name",
+./outdated_scripts/ultimate_comprehensive_analysis.py:1213:                        "dog_name",
+./outdated_scripts/upcoming_race_predictor_clean.py:1482:            dog_name = prediction.get('clean_name', prediction.get('dog_name', ''))
+./outdated_scripts/upcoming_race_predictor_clean.py:1497:                        'dog_name': dog_name,
+./outdated_scripts/upcoming_race_predictor_clean.py:1536:            dog_name = prediction.get('clean_name', prediction.get('dog_name', ''))
+./outdated_scripts/upcoming_race_predictor_clean.py:1548:                    'dog_name': dog_name,
+./outdated_scripts/upcoming_race_predictor_clean.py:1783:                    'dog_name': dog_name,
+./outdated_scripts/upcoming_race_predictor_clean.py:1937:                        print(f"      {i+1}. {pred['dog_name']} (Box {pred['box_number']}) - {pred['prediction_score']:.1%} - {pred['recommended_bet']} [Confidence: {confidence:.1%}]{factors_str}")
+./outdated_scripts/upcoming_race_predictor_clean.py:1944:                            print(f"      🎯 {vb['dog_name']}: {vb['value_percentage']:.1f}% value - {vb['recommendation']}")
+./outdated_scripts/upcoming_race_predictor_clean.py:2008:                    print(f"      {i+1}. {pred['dog_name']} (Box {pred['box_number']}) - {pred['prediction_score']:.1%} - {pred['recommended_bet']} [Confidence: {confidence:.1%}]{factors_str}")
+./outdated_scripts/upcoming_race_predictor_clean.py:2031:        return [f"{p['dog_name']} - {p['prediction_score']:.0%} chance to win ({p['recommended_bet']})"
+./outdated_scripts/comprehensive_form_guide_processor.py:131:                        "name": actual_name,
+./outdated_scripts/comprehensive_form_guide_processor.py:383:        csv_dogs = {dog["name"]: dog for dog in csv_data.get("dogs", [])}
+./outdated_scripts/comprehensive_form_guide_processor.py:386:            dog_name = dog.get("name", "")
+./outdated_scripts/comprehensive_form_guide_processor.py:405:            dog.get("name", "") for dog in combined_data.get("dogs_data", [])
+./outdated_scripts/comprehensive_form_guide_processor.py:411:                    "name": dog_name,
+./outdated_scripts/comprehensive_form_guide_processor.py:453:                        "dog_name": dog.get("name"),
+./outdated_scripts/comprehensive_form_guide_processor.py:494:                    if "name" in dog_data:
+./outdated_scripts/comprehensive_form_guide_processor.py:495:                        dog_data["dog_name"] = dog_data.pop("name")
+./outdated_scripts/upcoming_race_predictor.py:2297:            dog_name = prediction.get("clean_name", prediction.get("dog_name", ""))
+./outdated_scripts/upcoming_race_predictor.py:2316:                        "dog_name": dog_name,
+./outdated_scripts/upcoming_race_predictor.py:2357:            dog_name = prediction.get("clean_name", prediction.get("dog_name", ""))
+./outdated_scripts/upcoming_race_predictor.py:2371:                    "dog_name": dog_name,
+./outdated_scripts/upcoming_race_predictor.py:2664:                    "dog_name": dog_name,
+./outdated_scripts/upcoming_race_predictor.py:2833:                            f"      {i+1}. {pred['dog_name']} (Box {pred['box_number']}) - {pred['prediction_score']:.1%} - {pred['recommended_bet']} [Confidence: {confidence:.1%}]{factors_str}"
+./outdated_scripts/upcoming_race_predictor.py:2842:                                f"      🎯 {vb['dog_name']}: {vb['value_percentage']:.1f}% value - {vb['recommendation']}"
+./outdated_scripts/upcoming_race_predictor.py:2919:                        f"      {i+1}. {pred['dog_name']} (Box {pred['box_number']}) - {pred['prediction_score']:.1%} - {pred['recommended_bet']} [Confidence: {confidence:.1%}]{factors_str}"
+./outdated_scripts/upcoming_race_predictor.py:2949:            f"{p['dog_name']} - {p['prediction_score']:.0%} chance to win ({p['recommended_bet']})"
+./outdated_scripts/enhanced_odds_collector.py:246:            weather_name = weather_elem.get_attribute("name")
+./outdated_scripts/enhanced_odds_collector.py:312:                    rug_name = box_elem.get_attribute("name")
+./outdated_scripts/enhanced_odds_collector.py:324:                    dog_data["dog_name"] = dog_link.text.strip()
+./outdated_scripts/enhanced_odds_collector.py:326:                        dog_data["dog_name"]
+./outdated_scripts/enhanced_odds_collector.py:336:                    dog_data["dog_name"] = None
+./outdated_scripts/enhanced_odds_collector.py:455:                if dog_data.get("dog_name"):  # Only add if we have a dog name
+./outdated_scripts/enhanced_odds_collector.py:490:                            rug_name = rug_elem.get_attribute("name")
+./outdated_scripts/enhanced_odds_collector.py:661:                        dog.get("dog_name"),
+./outdated_scripts/data_confidence_system.py:231:                    "dog_name": row["dog_name"],
+./outdated_scripts/prediction_agent/ai_enhanced_prediction.py:42:                "name": pred["greyhound_name"],
+./outdated_scripts/prediction_agent/smart_prediction.py:174:                "name": pred["greyhound_name"],
+./outdated_scripts/prediction_agent/ultimate_prediction.py:222:                "name": pred["greyhound_name"],
+./demo_sanity_checks.py:32:            'dog_name': 'Lightning Bolt',
+./demo_sanity_checks.py:38:            'dog_name': 'Thunder Strike',
+./demo_sanity_checks.py:44:            'dog_name': 'Wind Runner',
+./demo_sanity_checks.py:50:            'dog_name': 'Storm Chaser',
+./demo_sanity_checks.py:67:            'dog_name': 'Speed Demon',
+./demo_sanity_checks.py:73:            'dog_name': 'Fast Track',
+./demo_sanity_checks.py:90:            'dog_name': 'Top Dog',
+./demo_sanity_checks.py:95:            'dog_name': 'Underdog',
+./demo_sanity_checks.py:111:            'dog_name': 'Racer A',
+./demo_sanity_checks.py:116:            'dog_name': 'Racer B',
+./monitoring_api.py:197:                                    "dog_name", "Unknown"
+./monitoring_api.py:620:                    predicted_winner = predictions[0].get("dog_name", "")
+./sanity_checks.py:59:            dog_name = p.get('dog_name', f'Unknown Dog {i}')
+./app.py:242:                    "dog_name": dog[1],
+./app.py:422:            "dog_name": dog_info[1],
+./app.py:770:            "dog_name": dog_name,
+./app.py:847:                    "dog_name": dog[0],
+./app.py:901:            "dog_name": "dog_name",
+./app.py:948:                    "dog_name": dog[1],
+./app.py:1227:                        "dog_name": safe_convert(runner[0], str, "Unknown"),
+./app.py:2277:                col_name = col["name"]
+./app.py:4101:            if dog.get("dog_name") == actual_winner_name:
+./app.py:4103:                    "name": dog.get("dog_name"),
+./app.py:4111:                "name": actual_winner_name,
+./app.py:4145:                        "Dog Name": f"{dog.get('box_number', 1)}. {dog.get('dog_name', 'Unknown')}",
+./app.py:4185:                    dog_name = dog.get("dog_name", f"Dog {i+1}")
+./app.py:4215:                                "dog_name": dog_name,
+./app.py:4248:            if pred.get("dog_name") == actual_winner_name:
+./app.py:4452:                                        "dog_name": first_pred.get(
+./app.py:4453:                                            "dog_name", "Unknown"
+./app.py:4456:                                            "dog_name", "Unknown"
+./app.py:4470:                                        "dog_name": "Unknown",
+./app.py:4604:                                                "dog_name": pred.get(
+./app.py:4605:                                                    "dog_name", "Unknown"
+./app.py:4608:                                                    "dog_name", "Unknown"
+./app.py:5675:                        "dog_name": "Unknown",
+./app.py:5682:                            "dog_name": first_pred.get("dog_name", "Unknown"),
+./app.py:5701:                                    "dog_name": pred.get("dog_name", "Unknown"),
+./app.py:5859:                first_pred.get("dog_name")
+./app.py:5861:                or first_pred.get("name")
+./app.py:5917:                "dog_name": dog_name,
+./app.py:6440:            enhanced_dog["clean_name"] = dog.get("dog_name", "N/A")
+./app.py:6875:        top_10_dogs = top_performers.head(10)["dog_name"].tolist()
+./app.py:6879:            dog_data = analyzer.data[analyzer.data["dog_name"] == dog_name]
+./app.py:6882:                "dog_name": dog_name,
+./app.py:6947:                "data": analyzer.data.groupby(["dog_name", "distance_numeric"])
+./app.py:6958:                .groupby("dog_name")
+./app.py:6964:                .groupby("dog_name")
+./app.py:7358:                    f"{i}. {dog_data.get('dog_name', 'Unknown')} - "
+./app.py:9322:                "dog_name": dog_name,
+./app.py:9361:                    "dog_name": record[0],
+./app.py:9443:                                                    "dog_name": pred.get(
+./app.py:9444:                                                        "dog_name", "Unknown"
+./app.py:9464:                                                    "dog_name": pred.get(
+./app.py:9465:                                                        "dog_name", "Unknown"
+./app.py:9565:                            dog.get("dog_name", "").upper().replace(" ", "")
+./app.py:10721:            "top_pick": {"dog_name": "Unknown", "prediction_score": 0},
+./app.py:10734:                            "dog_name": predictions[0].get("dog_name", "Unknown"),
+./ml_env/lib/python3.13/site-packages/pip/_internal/network/session.py:105:        "installer": {"name": "pip", "version": __version__},
+./ml_env/lib/python3.13/site-packages/pip/_internal/network/session.py:108:            "name": platform.python_implementation(),
+./ml_env/lib/python3.13/site-packages/pip/_internal/network/session.py:112:    if data["implementation"]["name"] == "CPython":
+./ml_env/lib/python3.13/site-packages/pip/_internal/network/session.py:114:    elif data["implementation"]["name"] == "PyPy":
+./ml_env/lib/python3.13/site-packages/pip/_internal/network/session.py:121:    elif data["implementation"]["name"] == "Jython":
+./ml_env/lib/python3.13/site-packages/pip/_internal/network/session.py:124:    elif data["implementation"]["name"] == "IronPython":
+./ml_env/lib/python3.13/site-packages/pip/_internal/network/session.py:135:                zip(["name", "version", "id"], linux_distribution),
+./ml_env/lib/python3.13/site-packages/pip/_internal/network/session.py:150:        data["distro"] = {"name": "macOS", "version": platform.mac_ver()[0]}
+./ml_env/lib/python3.13/site-packages/pip/_internal/network/session.py:153:        data.setdefault("system", {})["name"] = platform.system()
+./ml_env/lib/python3.13/site-packages/pip/_internal/utils/logging.py:296:                    "name": subprocess_logger.name,
+./ml_env/lib/python3.13/site-packages/pip/_internal/utils/logging.py:300:                    "name": subprocess_logger.name,
+./ml_env/lib/python3.13/site-packages/pip/_internal/models/candidate.py:12:    __slots__ = ["name", "version", "link"]
+./ml_env/lib/python3.13/site-packages/pip/_internal/models/candidate.py:19:        object.__setattr__(self, "name", name)
+./ml_env/lib/python3.13/site-packages/pip/_internal/models/wheel.py:60:            self.name = legacy_wheel_info.group("name").replace("_", "-")
+./ml_env/lib/python3.13/site-packages/pip/_internal/cli/cmdoptions.py:53:    group  -- assumed to be dict with 'name' and 'options' keys
+./ml_env/lib/python3.13/site-packages/pip/_internal/cli/cmdoptions.py:56:    option_group = OptionGroup(parser, group["name"])
+./ml_env/lib/python3.13/site-packages/pip/_internal/cli/cmdoptions.py:1093:    "name": "General Options",
+./ml_env/lib/python3.13/site-packages/pip/_internal/cli/cmdoptions.py:1125:    "name": "Package Index Options",
+./ml_env/lib/python3.13/site-packages/pip/_internal/cli/req_command.py:290:            opts = {"name": self.name}
+./ml_env/lib/python3.13/site-packages/pip/_internal/resolution/resolvelib/candidates.py:209:                "name",
+./ml_env/lib/python3.13/site-packages/pip/_internal/vcs/versioncontrol.py:179:        if not hasattr(cls, "name"):
+./ml_env/lib/python3.13/site-packages/pip/_internal/locations/_distutils.py:50:    dist_args: Dict[str, Union[str, List[str]]] = {"name": dist_name}
+./ml_env/lib/python3.13/site-packages/pip/_internal/commands/list.py:378:            "name": dist.raw_name,
+./ml_env/lib/python3.13/site-packages/pip/_internal/commands/index.py:138:                "name": query,
+./ml_env/lib/python3.13/site-packages/pip/_internal/commands/debug.py:33:        show_value("name", implementation_name)
+./ml_env/lib/python3.13/site-packages/pip/_internal/commands/search.py:75:            hits = pypi.search({"name": query, "summary": query}, "or")
+./ml_env/lib/python3.13/site-packages/pip/_internal/commands/search.py:93:        name = hit["name"]
+./ml_env/lib/python3.13/site-packages/pip/_internal/commands/search.py:99:                "name": name,
+./ml_env/lib/python3.13/site-packages/pip/_internal/commands/search.py:146:                    len(hit["name"]) + len(highest_version(hit.get("versions", ["-"])))
+./ml_env/lib/python3.13/site-packages/pip/_internal/commands/search.py:154:        name = hit["name"]
+./ml_env/lib/python3.13/site-packages/pip/_internal/commands/install.py:390:                    (r.metadata["name"], r.metadata["version"])
+./ml_env/lib/python3.13/site-packages/pip/_internal/commands/install.py:471:            installed.sort(key=operator.attrgetter("name"))
+./ml_env/lib/python3.13/site-packages/pip/_internal/metadata/importlib/_compat.py:84:        raise BadMetadata(dist, reason="invalid metadata entry 'name'")
+./ml_env/lib/python3.13/site-packages/pip/_vendor/distlib/locators.py:249:        If it is, a dictionary is returned with keys "name", "version",
+./ml_env/lib/python3.13/site-packages/pip/_vendor/distlib/locators.py:280:                            "name": wheel.name,
+./ml_env/lib/python3.13/site-packages/pip/_vendor/distlib/locators.py:306:                                "name": name,
+./ml_env/lib/python3.13/site-packages/pip/_vendor/distlib/locators.py:349:        name = info.pop("name")
+./ml_env/lib/python3.13/site-packages/pip/_vendor/distlib/locators.py:453:            metadata.name = data["name"]
+./ml_env/lib/python3.13/site-packages/pip/_vendor/distlib/locators.py:498:            md.name = data["name"]
+./ml_env/lib/python3.13/site-packages/pip/_vendor/distlib/locators.py:924:                        result.add(info["name"])
+./ml_env/lib/python3.13/site-packages/pip/_vendor/distlib/locators.py:955:                    data["name"],
+./ml_env/lib/python3.13/site-packages/pip/_vendor/distlib/metadata.py:729:        "name": (),
+./ml_env/lib/python3.13/site-packages/pip/_vendor/distlib/metadata.py:748:        "name": (NAME_MATCHER, ("legacy",)),
+./ml_env/lib/python3.13/site-packages/pip/_vendor/distlib/metadata.py:799:    common_keys = set(("name", "version", "license", "keywords", "summary"))
+./ml_env/lib/python3.13/site-packages/pip/_vendor/distlib/metadata.py:1044:        for k in ("name", "version", "license", "summary", "description", "classifier"):
+./ml_env/lib/python3.13/site-packages/pip/_vendor/distlib/metadata.py:1068:        "name": "Name",
+./ml_env/lib/python3.13/site-packages/pip/_vendor/distlib/metadata.py:1074:        ("extensions", "python.project", "contacts", 0, "name"): "Author",
+./ml_env/lib/python3.13/site-packages/pip/_vendor/distlib/index.py:334:        fields = [(":action", "doc_upload"), ("name", name), ("version", version)]
+./ml_env/lib/python3.13/site-packages/pip/_vendor/distlib/index.py:530:            terms = {"name": terms}
+./ml_env/lib/python3.13/site-packages/pip/_vendor/distlib/util.py:753:        name = d["name"]
+./ml_env/lib/python3.13/site-packages/pip/_vendor/distlib/util.py:917:    return d["name"].strip().lower(), d["ver"]
+./ml_env/lib/python3.13/site-packages/pip/_vendor/distro/__init__.py:26:    "name",
+./ml_env/lib/python3.13/site-packages/pip/_vendor/distro/distro.py:859:            self.os_release_attr("name")
+./ml_env/lib/python3.13/site-packages/pip/_vendor/distro/distro.py:861:            or self.distro_release_attr("name")
+./ml_env/lib/python3.13/site-packages/pip/_vendor/distro/distro.py:862:            or self.uname_attr("name")
+./ml_env/lib/python3.13/site-packages/pip/_vendor/distro/distro.py:869:                name = self.distro_release_attr("name") or self.uname_attr("name")
+./ml_env/lib/python3.13/site-packages/pip/_vendor/distro/distro.py:1234:            props["name"] = name
+./ml_env/lib/python3.13/site-packages/pip/_vendor/distro/distro.py:1286:                if "name" not in distro_info:
+./ml_env/lib/python3.13/site-packages/pip/_vendor/distro/distro.py:1297:        if "cloudlinux" in distro_info.get("name", "").lower():
+./ml_env/lib/python3.13/site-packages/pip/_vendor/distro/distro.py:1340:            distro_info["name"] = matches.group(3)[::-1]
+./ml_env/lib/python3.13/site-packages/pip/_vendor/distro/distro.py:1346:            distro_info["name"] = line.strip()
+./ml_env/lib/python3.13/site-packages/pip/_vendor/typing_extensions.py:3865:            Employee = collections.namedtuple('Employee', ['name', 'id'])
+./ml_env/lib/python3.13/site-packages/pip/_vendor/typing_extensions.py:3872:            Employee = NamedTuple('Employee', [('name', str), ('id', int)])
+./retrain_ml_models.py:49:                        "name": dog["name"],
+./retrain_ml_models.py:64:                        features["dog_name"] = dog["name"]
+./retrain_ml_models.py:95:        if col not in ["target", "dog_name", "race_date", "race_file"]
+./retrain_ml_models.py:334:            print(f"     {i+1}. {pred['dog_name']:15}: {pred['prediction_score']:.3f}")
+./advanced_system_analyzer.py:177:                    "name": model_data.get("model_name", "Unknown"),
+./advanced_system_analyzer.py:713:            print(f"  • Model: {mp['name']}")
+./archive_old_apps/app_original.py:1344:                    dog_name = pred.get('dog_name', 'Unknown')
+./archive_old_apps/app_original.py:1780:            if dog.get('dog_name') == actual_winner_name:
+./archive_old_apps/app_original.py:1782:                    'name': dog.get('dog_name'),
+./archive_old_apps/app_original.py:1790:                'name': actual_winner_name,
+./archive_old_apps/app_original.py:1820:                        'Dog Name': f"{dog.get('box_number', 1)}. {dog.get('dog_name', 'Unknown')}",
+./archive_old_apps/app_original.py:1855:                    dog_name = dog.get('dog_name', f'Dog {i+1}')
+./archive_old_apps/app_original.py:1882:                            'dog_name': dog_name,
+./archive_old_apps/app_original.py:1910:            if pred.get('dog_name') == actual_winner_name:
+./archive_old_apps/app_original.py:2085:                                        'dog_name': first_pred.get('dog_name', 'Unknown'),
+./archive_old_apps/app_original.py:2086:                                        'clean_name': first_pred.get('dog_name', 'Unknown'),
+./archive_old_apps/app_original.py:2093:                                        'dog_name': 'Unknown', 
+./archive_old_apps/app_original.py:2169:                                            'dog_name': pred.get('dog_name', 'Unknown'),
+./archive_old_apps/app_original.py:2170:                                            'clean_name': pred.get('dog_name', 'Unknown'),
+./archive_old_apps/app_original.py:2667:                                'dog_name': first_pred.get('dog_name', 'Unknown'),
+./archive_old_apps/app_original.py:2668:                                'clean_name': first_pred.get('dog_name', 'Unknown'),  # Frontend expects this field
+./archive_old_apps/app_original.py:2840:                    top_pick_data = {'dog_name': 'Unknown', 'box_number': 'N/A', 'prediction_score': 0}
+./archive_old_apps/app_original.py:2844:                            'dog_name': first_pred.get('dog_name', 'Unknown'),
+./archive_old_apps/app_original.py:2859:                            'dog_name': pred.get('dog_name', 'Unknown'),
+./archive_old_apps/app_original.py:2989:                first_pred.get('dog_name') or 
+./archive_old_apps/app_original.py:2991:                first_pred.get('name') or 
+./archive_old_apps/app_original.py:3045:                'dog_name': dog_name,
+./archive_old_apps/app_original.py:3420:            enhanced_dog['clean_name'] = dog.get('dog_name', 'N/A')
+./archive_old_apps/app_original.py:3794:        top_10_dogs = top_performers.head(10)['dog_name'].tolist()
+./archive_old_apps/app_original.py:3798:            dog_data = analyzer.data[analyzer.data['dog_name'] == dog_name]
+./archive_old_apps/app_original.py:3801:                'dog_name': dog_name,
+./archive_old_apps/app_original.py:3850:                'data': analyzer.data.groupby(['dog_name', 'distance_numeric']).agg({
+./archive_old_apps/app_original.py:3857:                'improving_dogs': analyzer.data[analyzer.data['form_trend'] > 0].groupby('dog_name').agg({
+./archive_old_apps/app_original.py:3861:                'declining_dogs': analyzer.data[analyzer.data['form_trend'] < 0].groupby('dog_name').agg({
+./archive_old_apps/app_original.py:4095:                report_content.write(f"{i}. {dog_data.get('dog_name', 'Unknown')} - "
+./archive_old_apps/app_original.py:5706:            'dog_name': dog_name,
+./archive_old_apps/app_original.py:5737:                'dog_name': record[0],
+./archive_old_apps/app_original.py:5803:                        dog_clean_name = dog.get('dog_name', '').upper().replace(' ', '')
+./archive_old_apps/app_original.py:6708:            'top_pick': {'dog_name': 'Unknown', 'prediction_score': 0}
+./archive_old_apps/app_original.py:6721:                            'dog_name': predictions[0].get('dog_name', 'Unknown'),
+./test_single_prediction.py:46:                    f"   🏆 Top pick: {top_pick.get('dog_name', 'N/A')} ({top_pick.get('prediction_score', 0):.3f})"
+./archive_unused_scripts/old_ml_systems/comprehensive_ml_predictor.py:154:                dog_name = dog_info['name']
+./archive_unused_scripts/old_ml_systems/comprehensive_ml_predictor.py:196:                            'dog_name': dog_name,
+./archive_unused_scripts/old_ml_systems/comprehensive_ml_predictor.py:209:                            'dog_name': dog_name,
+./archive_unused_scripts/old_ml_systems/comprehensive_ml_predictor.py:221:                        'dog_name': dog_name,
+./archive_unused_scripts/old_ml_systems/comprehensive_ml_predictor.py:257:            print(f"🏆 Top pick: {predictions[0]['dog_name'] if predictions else 'None'}")
+./archive_unused_scripts/old_ml_systems/comprehensive_ml_predictor.py:289:            participating_dog_names = [dog['name'].upper() for dog in participating_dogs]
+./archive_unused_scripts/old_ml_systems/comprehensive_ml_predictor.py:310:                        (dog['name'] for dog in participating_dogs if dog['name'].upper() == dog_name.upper()),
+./archive_unused_scripts/old_ml_systems/comprehensive_ml_predictor.py:410:                        'name': current_dog_name,
+./archive_unused_scripts/old_ml_systems/comprehensive_ml_predictor.py:482:                        dog_info['name'], race_context, self.db_path
+./archive_unused_scripts/old_ml_systems/comprehensive_ml_predictor.py:485:                    print(f"   🎯 Traditional analysis for {dog_info['name']}: {traditional_features.get('traditional_overall_score', 0):.3f}")
+./archive_unused_scripts/old_ml_systems/comprehensive_ml_predictor.py:488:                    print(f"   ⚠️ Traditional analysis failed for {dog_info['name']}: {e}")
+./archive_unused_scripts/old_ml_systems/comprehensive_ml_predictor.py:637:            print(f"⚠️ Error creating features for {dog_info['name']}: {e}")
+./archive_unused_scripts/old_ml_systems/comprehensive_ml_predictor.py:740:                    'dog_name': dog['name'],
+./archive_unused_scripts/old_ml_systems/comprehensive_ml_predictor.py:788:            print(f"{i}. {prediction['dog_name']} - Score: {prediction['prediction_score']:.3f} (Confidence: {prediction['confidence']:.2f})")
+./archive_unused_scripts/data_processing/comprehensive_csv_enhanced_processor.py:212:                        'dog_name': current_dog,
+./archive_unused_scripts/data_processing/enhanced_data_processor.py:432:                        enhanced_record['dog_name'],
+./archive_unused_scripts/data_processing/enhanced_data_processor.py:468:                'dog_name': ['Dog Name', 'Dog', 'Runner', 'Name'],
+./archive_unused_scripts/data_processing/enhanced_data_processor.py:497:                if standard_field == 'dog_name':
+./archive_unused_scripts/data_processing/enhanced_data_processor.py:498:                    enhanced_record['dog_name'] = value or ''
+./archive_unused_scripts/data_processing/enhanced_data_processor.py:545:                            sectional_record['dog_name'],
+./archive_unused_scripts/data_processing/enhanced_data_processor.py:573:                'dog_name': '',
+./archive_unused_scripts/data_processing/enhanced_data_processor.py:585:            dog_name_fields = ['dog name', 'dog', 'runner', 'name']
+./archive_unused_scripts/data_processing/enhanced_data_processor.py:588:                    record['dog_name'] = dog_data[field]
+./archive_unused_scripts/data_processing/enhanced_data_processor.py:609:            return record if record['dog_name'] else None
+./archive_unused_scripts/data_processing/correct_venue_analysis.py:60:        dog_overall_stats = df.groupby('dog_name').agg({
+./archive_unused_scripts/data_processing/correct_venue_analysis.py:65:        dog_overall_stats.columns = ['dog_name', 'overall_avg_position', 'total_races', 'avg_field_size']
+./archive_unused_scripts/data_processing/correct_venue_analysis.py:73:        dog_venue_stats = df.groupby(['dog_name', 'venue']).agg({
+./archive_unused_scripts/data_processing/correct_venue_analysis.py:78:        dog_venue_stats.columns = ['dog_name', 'venue', 'venue_avg_position', 'venue_races', 'venue_avg_field_size']
+./archive_unused_scripts/data_processing/correct_venue_analysis.py:86:        comparison = dog_venue_stats.merge(dog_overall_stats, on='dog_name')
+./archive_unused_scripts/data_processing/correct_venue_analysis.py:106:            'dog_name': 'nunique'
+./archive_unused_scripts/data_processing/correct_venue_analysis.py:192:                dog = spec['dog_name']
+./archive_unused_scripts/data_processing/investigate_expert_form_data.py:102:                name = inp.get('name', '')
+./archive_unused_scripts/data_processing/investigate_expert_form_data.py:137:            if form.find('input', {'name': 'export_csv'}) or form.find('button', {'name': 'export_csv'}):
+./archive_unused_scripts/data_processing/investigate_expert_form_data.py:161:            name = inp.get('name')
+./archive_unused_scripts/data_processing/data_integrity_checker.py:89:                    'dog_name': row['dog_name'],
+./archive_unused_scripts/data_processing/data_integrity_checker.py:196:                        'dog_name': row['dog_name'],
+./archive_unused_scripts/data_processing/enhanced_race_processor.py:93:            else:\n                results = self._process_unknown_format(df, race_info)\n            \n            # Validate results\n            validation_results = self._validate_race_results(results)\n            \n            # Store in database if validation passes\n            if validation_results['is_valid']:\n                self._store_race_results(results, race_info)\n                status = 'success'\n            else:\n                self._store_with_quality_issues(results, race_info, validation_results)\n                status = 'success_with_issues'\n            \n            return {\n                'status': status,\n                'race_id': race_info.get('race_id'),\n                'data_format': data_format,\n                'dogs_processed': len(results),\n                'validation': validation_results,\n                'processing_timestamp': datetime.now().isoformat()\n            }\n            \n        except Exception as e:\n            self.logger.error(f\"Error processing race results from {file_path}: {e}\")\n            return {\n                'status': 'error',\n                'error': str(e),\n                'processing_timestamp': datetime.now().isoformat()\n            }\n    \n    def _process_navigator_results(self, df: pd.DataFrame, race_info: Dict) -> List[Dict]:\n        \"\"\"Process navigator-style results with first/second/third/fourth columns\"\"\"\n        results = []\n        \n        # Get race result information\n        if len(df) > 0:\n            row = df.iloc[0]\n            \n            # Extract placings\n            placings = {\n                1: row.get('first', '').strip(),\n                2: row.get('second', '').strip(),\n                3: row.get('third', '').strip(),\n                4: row.get('fourth', '').strip()\n            }\n            \n            # Handle dead heats and create position mapping\n            position_map = self._create_position_map_from_placings(placings)\n            \n            # Extract other race data\n            margins = self._parse_margins(row.get('margins', ''))\n            race_time = row.get('time', '')\n            field_size = int(row.get('field_size', 0)) if row.get('field_size') else 0\n            \n            # Create results for each dog\n            for dog_name, position in position_map.items():\n                if dog_name:  # Skip empty names\n                    results.append({\n                        'dog_name': dog_name,\n                        'clean_name': self._clean_dog_name(dog_name),\n                        'finish_position': position,\n                        'race_time': race_time,\n                        'margin': margins.get(dog_name),\n                        'trainer': self._get_trainer_for_position(row, position),\n                        'data_source': 'navigator_results'\n                    })\n        \n        return results\n    \n    def _process_form_guide(self, df: pd.DataFrame, race_info: Dict) -> List[Dict]:\n        \"\"\"Process form guide data - this contains historical data, not race results\"\"\"\n        # Form guides don't contain race results for the current race\n        # They contain historical performance data\n        self.logger.warning(\"Form guide detected - this contains historical data, not race results\")\n        \n        results = []\n        for _, row in df.iterrows():\n            dog_name = str(row.get('Dog Name', '')).strip()\n            if dog_name and dog_name != '\"\"':\n                results.append({\n                    'dog_name': dog_name,\n                    'clean_name': self._clean_dog_name(dog_name),\n                    'finish_position': None,  # No actual race result available\n                    'box_number': row.get('BOX'),\n                    'weight': row.get('WGT'),\n                    'data_source': 'form_guide',\n                    'data_quality_note': 'Form guide data - no race results available'\n                })\n        \n        return results\n    \n    def _process_standard_results(self, df: pd.DataFrame, race_info: Dict) -> List[Dict]:\n        \"\"\"Process standard results format with position column\"\"\"\n        results = []\n        \n        for _, row in df.iterrows():\n            dog_name = str(row.get('Dog Name', row.get('dog_name', ''))).strip()\n            if dog_name:\n                position_col = 'position' if 'position' in df.columns else 'finish_position'\n                position = row.get(position_col)\n                \n                results.append({\n                    'dog_name': dog_name,\n                    'clean_name': self._clean_dog_name(dog_name),\n                    'finish_position': str(position) if position is not None else None,\n                    'box_number': row.get('box_number', row.get('BOX')),\n                    'weight': row.get('weight', row.get('WGT')),\n                    'race_time': row.get('time', row.get('TIME')),\n                    'margin': row.get('margin', row.get('MGN')),\n                    'trainer': row.get('trainer', row.get('TRAINER')),\n                    'data_source': 'standard_results'\n                })\n        \n        return results\n    \n    def _process_unknown_format(self, df: pd.DataFrame, race_info: Dict) -> List[Dict]:\n        \"\"\"Process unknown format with best-effort extraction\"\"\"\n        results = []\n        self.logger.warning(f\"Unknown data format detected, attempting best-effort extraction\")\n        \n        # Try to find dog names and any position information\n        name_columns = [col for col in df.columns if 'name' in col.lower() or 'dog' in col.lower()]\n        position_columns = [col for col in df.columns if any(term in col.lower() for term in ['pos', 'plc', 'place', 'finish'])]\n        \n        name_col = name_columns[0] if name_columns else df.columns[0]\n        position_col = position_columns[0] if position_columns else None\n        \n        for _, row in df.iterrows():\n            dog_name = str(row.get(name_col, '')).strip()\n            if dog_name and dog_name != '\"\"':\n                position = row.get(position_col) if position_col else None\n                \n                results.append({\n                    'dog_name': dog_name,\n                    'clean_name': self._clean_dog_name(dog_name),\n                    'finish_position': str(position) if position is not None else None,\n                    'data_source': 'unknown_format',\n                    'data_quality_note': f'Extracted from unknown format using column: {name_col}'\n                })\n        \n        return results\n    \n    def _create_position_map_from_placings(self, placings: Dict[int, str]) -> Dict[str, str]:\n        \"\"\"Create position mapping with dead heat handling\"\"\"\n        position_map = {}\n        \n        for position, dog_name in placings.items():\n            if dog_name:\n                # Check if this dog is already assigned a position (dead heat)\n                if dog_name in position_map:\n                    # Mark as dead heat\n                    existing_pos = position_map[dog_name].rstrip('=')\n                    position_map[dog_name] = f\"{existing_pos}=\"\n                else:\n                    position_map[dog_name] = str(position)\n        \n        return position_map\n    \n    def _parse_margins(self, margins_str: str) -> Dict[str, str]:\n        \"\"\"Parse margins string into dictionary\"\"\"\n        margins = {}\n        if margins_str:\n            # This would need to be implemented based on the specific format\n            # For now, return empty dict\n            pass\n        return margins\n    \n    def _get_trainer_for_position(self, row: pd.Series, position: str) -> str:\n        \"\"\"Get trainer name for a specific position\"\"\"\n        trainer_cols = {\n            '1': 'first_trainer',\n            '2': 'second_trainer', \n            '3': 'third_trainer',\n            '4': 'fourth_trainer'\n        }\n        \n        position_num = position.rstrip('=')\n        trainer_col = trainer_cols.get(position_num)\n        return row.get(trainer_col, '') if trainer_col else ''\n    \n    def _clean_dog_name(self, name: str) -> str:\n        \"\"\"Clean dog name for consistent storage\"\"\"\n        if not name:\n            return ''\n        \n        # Remove box numbers, quotes, and extra spaces\n        cleaned = re.sub(r'^[\"\\d\\.\\s]+', '', str(name))\n        cleaned = re.sub(r'[\"\\s]+$', '', cleaned)\n        cleaned = cleaned.replace('NBT', '').strip()\n        return cleaned.upper()\n    \n    def _validate_race_results(self, results: List[Dict]) -> Dict[str, Any]:\n        \"\"\"Validate race results for data quality\"\"\"\n        validation = {\n            'is_valid': True,\n            'warnings': [],\n            'errors': []\n        }\n        \n        if not results:\n            validation['errors'].append('No race results found')\n            validation['is_valid'] = False\n            return validation\n        \n        # Check for missing positions\n        positions = [r['finish_position'] for r in results if r['finish_position']]\n        if not positions:\n            validation['warnings'].append('No finish positions found')\n        else:\n            # Check for position 1 (winner)\n            position_nums = [int(p.rstrip('=')) for p in positions if p and p.rstrip('=').isdigit()]\n            if 1 not in position_nums:\n                validation['warnings'].append('No winner (position 1) found')\n            \n            # Check for gaps in positions\n            if position_nums:\n                expected_positions = set(range(1, max(position_nums) + 1))\n                actual_positions = set(position_nums)\n                missing_positions = expected_positions - actual_positions\n                if missing_positions:\n                    validation['warnings'].append(f'Missing positions: {sorted(missing_positions)}')\n        \n        # Check for duplicate dog names\n        dog_names = [r['clean_name'] for r in results if r['clean_name']]\n        duplicates = [name for name in set(dog_names) if dog_names.count(name) > 1]\n        if duplicates:\n            validation['warnings'].append(f'Duplicate dog names: {duplicates}')\n        \n        return validation\n    \n    def _store_race_results(self, results: List[Dict], race_info: Dict):\n        \"\"\"Store validated race results in database\"\"\"\n        conn = sqlite3.connect(self.db_path)\n        cursor = conn.cursor()\n        \n        try:\n            race_id = race_info.get('race_id', 'unknown')\n            \n            # Insert/update race metadata\n            cursor.execute(\"\"\"\n                INSERT OR REPLACE INTO race_metadata (\n                    race_id, venue, race_number, race_date, field_size,\n                    extraction_timestamp, data_source, race_status\n                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)\n            \"\"\", (\n                race_id,\n                race_info.get('venue', 'Unknown'),\n                race_info.get('race_number', 0),\n                race_info.get('date_str', datetime.now().strftime('%Y-%m-%d')),\n                len(results),\n                datetime.now().isoformat(),\n                'enhanced_race_processor',\n                'completed'\n            ))\n            \n            # Insert dog race data\n            for result in results:\n                cursor.execute(\"\"\"\n                    INSERT OR REPLACE INTO dog_race_data (\n                        race_id, dog_name, dog_clean_name, box_number, finish_position,\n                        trainer_name, weight, individual_time, margin,\n                        extraction_timestamp, data_source, data_quality_note\n                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n                \"\"\", (\n                    race_id,\n                    result['dog_name'],\n                    result['clean_name'],\n                    result.get('box_number'),\n                    result.get('finish_position'),\n                    result.get('trainer'),\n                    result.get('weight'),\n                    result.get('race_time'),\n                    result.get('margin'),\n                    datetime.now().isoformat(),\n                    result.get('data_source', 'enhanced_race_processor'),\n                    result.get('data_quality_note')\n                ))\n            \n            conn.commit()\n            self.logger.info(f\"Stored race results for {race_id}: {len(results)} dogs\")\n            \n        except Exception as e:\n            conn.rollback()\n            self.logger.error(f\"Error storing race results: {e}\")\n            raise\n        finally:\n            conn.close()\n    \n    def _store_with_quality_issues(self, results: List[Dict], race_info: Dict, validation: Dict):\n        \"\"\"Store race results with quality issue markers\"\"\"\n        # Mark race as needing review\n        race_info['race_status'] = 'needs_review'\n        race_info['data_quality_note'] = '; '.join(validation['warnings'] + validation['errors'])\n        \n        # Add quality notes to each result\n        for result in results:\n            if not result.get('data_quality_note'):\n                result['data_quality_note'] = 'Stored with data quality issues'\n        \n        self._store_race_results(results, race_info)\n        self.logger.warning(f\"Stored race {race_info.get('race_id')} with quality issues: {race_info['data_quality_note']}\")\n\ndef process_race_file(file_path: str, db_path: str = 'greyhound_racing_data.db') -> Dict:\n    \"\"\"Convenience function to process a single race file\"\"\"\n    processor = EnhancedRaceProcessor(db_path)\n    return processor.process_race_results(Path(file_path))\n\nif __name__ == \"__main__\":\n    # Test the processor\n    import sys\n    \n    if len(sys.argv) > 1:\n        file_path = sys.argv[1]\n        result = process_race_file(file_path)\n        print(json.dumps(result, indent=2))\n    else:\n        print(\"Usage: python enhanced_race_processor.py <race_file.csv>\")\n        \n        # Test with navigator results file\n        navigator_file = Path('form_guides/navigator_race_results.csv')\n        if navigator_file.exists():\n            print(\"\\n🧪 Testing with navigator results file...\")\n            result = process_race_file(str(navigator_file))\n            print(json.dumps(result, indent=2))
+./archive_unused_scripts/data_processing/robust_venue_analysis.py:72:        dog_venues = df.groupby('dog_name')['venue'].nunique()
+./archive_unused_scripts/data_processing/robust_venue_analysis.py:78:            'dog_name': 'nunique',
+./archive_unused_scripts/data_processing/robust_venue_analysis.py:106:        dog_venue_counts = df.groupby('dog_name')['venue'].nunique()
+./archive_unused_scripts/data_processing/robust_venue_analysis.py:113:        multi_venue_data = df[df['dog_name'].isin(multi_venue_dogs)].copy()
+./archive_unused_scripts/data_processing/robust_venue_analysis.py:116:        dog_overall = multi_venue_data.groupby('dog_name').agg({
+./archive_unused_scripts/data_processing/robust_venue_analysis.py:120:        dog_overall.columns = ['dog_name', 'overall_avg_position', 'overall_avg_field_size']
+./archive_unused_scripts/data_processing/robust_venue_analysis.py:126:        dog_venue_performance = multi_venue_data.groupby(['dog_name', 'venue']).agg({
+./archive_unused_scripts/data_processing/robust_venue_analysis.py:130:        dog_venue_performance.columns = ['dog_name', 'venue', 'venue_avg_position', 'venue_races', 'venue_avg_field_size']
+./archive_unused_scripts/data_processing/robust_venue_analysis.py:136:        comparison = dog_venue_performance.merge(dog_overall, on='dog_name')
+./archive_unused_scripts/data_processing/robust_venue_analysis.py:145:                'dog_name': 'nunique'
+./archive_unused_scripts/data_processing/robust_venue_analysis.py:164:            'dog_name': 'nunique',
+./archive_unused_scripts/data_processing/enhanced_race_processor_fixed.py:178:                        'dog_name': dog_name,
+./archive_unused_scripts/data_processing/enhanced_race_processor_fixed.py:219:                    'dog_name': dog_name,
+./archive_unused_scripts/data_processing/enhanced_race_processor_fixed.py:236:            dog_name = str(row.get('Dog Name', row.get('dog_name', ''))).strip()
+./archive_unused_scripts/data_processing/enhanced_race_processor_fixed.py:242:                    'dog_name': dog_name,
+./archive_unused_scripts/data_processing/enhanced_race_processor_fixed.py:261:        name_columns = [col for col in df.columns if 'name' in col.lower() or 'dog' in col.lower()]
+./archive_unused_scripts/data_processing/enhanced_race_processor_fixed.py:273:                    'dog_name': dog_name,
+./archive_unused_scripts/data_processing/enhanced_race_processor_fixed.py:436:                        result['dog_name'],
+./archive_unused_scripts/standalone_tools/live_odds_dashboard.py:233:                    x='dog_name',
+./archive_unused_scripts/standalone_tools/live_odds_dashboard.py:236:                    labels={'odds_decimal': 'Odds ($)', 'dog_name': 'Dog'}
+./archive_unused_scripts/standalone_tools/live_odds_dashboard.py:242:                display_data = race_data[['box_number', 'dog_name', 'odds_decimal', 'odds_fractional']].copy()
+./archive_unused_scripts/standalone_tools/traditional_analysis.py:126:                dog_name = dog_data.get('name', '').strip()
+./archive_unused_scripts/standalone_tools/traditional_analysis.py:135:                    'dog_name': dog_name,
+./archive_unused_scripts/standalone_tools/traditional_analysis.py:793:                'name': top_dog['dog_name'],
+./archive_unused_scripts/standalone_tools/traditional_analysis.py:932:    return analyzer._extract_ml_features(factors, {'name': dog_name})
+./archive_unused_scripts/standalone_tools/traditional_analysis.py:944:            {'name': 'SAMPLE DOG', 'box_number': 1, 'trainer': 'J. Smith', 'weight': '30.5kg'}
+./archive_unused_scripts/standalone_tools/traditional_analysis.py:954:        print(f"Top pick: {top_pick['dog_name']} - Score: {top_pick['traditional_score']:.3f}")
+./archive_unused_scripts/standalone_tools/explore_bom_api.py:60:                            station_name = obs_data['header'][0].get('name', 'Unknown')
+./archive_unused_scripts/test_scripts/test_real_weather.py:57:                print(f"   📍 Station: {data['observations']['header'][0]['name']}")
+./archive_unused_scripts/test_scripts/test_sportsbet_debug.py:86:                        venue_name = event.get('name', 'Unknown')
+./archive_unused_scripts/test_scripts/test_weather_predictor.py:86:                    print(f"  {j}. {pred['dog_name']} (Box {pred['box_number']})")
+./archive_unused_scripts/test_scripts/test_weather_predictor.py:102:                    'top_pick': predictions[0]['dog_name'] if predictions else 'None',
+./archive_unused_scripts/test_scripts/comprehensive_weather_test.py:251:                'name': 'Perfect Conditions',
+./archive_unused_scripts/test_scripts/comprehensive_weather_test.py:256:                'name': 'Hot Weather',
+./archive_unused_scripts/test_scripts/comprehensive_weather_test.py:261:                'name': 'Cold Weather',
+./archive_unused_scripts/test_scripts/comprehensive_weather_test.py:266:                'name': 'Rainy Conditions',
+./archive_unused_scripts/test_scripts/comprehensive_weather_test.py:271:                'name': 'Extreme Weather',
+./archive_unused_scripts/test_scripts/comprehensive_weather_test.py:300:                    self.print_test(f"Adjustment {scenario['name']}", "PASS", 
+./archive_unused_scripts/test_scripts/comprehensive_weather_test.py:304:                    self.print_test(f"Adjustment {scenario['name']}", "FAIL", 
+./archive_unused_scripts/test_scripts/comprehensive_weather_test.py:309:                self.print_test(f"Adjustment {scenario['name']}", "FAIL", f"Exception: {str(e)}")
+./archive_unused_scripts/test_scripts/comprehensive_weather_test.py:312:                    'test': f'adjustment_{scenario["name"]}',
+./archive_unused_scripts/fix_scripts/fix_box_numbers.py:93:            dog_name = prediction.get('dog_name', '').upper()
+./archive_unused_scripts/fix_scripts/fix_box_numbers.py:112:            dog_name = top_pick.get('dog_name', '').upper()
+./openai_enhanced_analyzer.py:666:                consensus_data["strong_consensus"].append(pred["dog_name"])
+./openai_enhanced_analyzer.py:668:                consensus_data["conflicting_signals"].append(pred["dog_name"])
+./openai_enhanced_analyzer.py:670:                consensus_data["weak_consensus"].append(pred["dog_name"])
+./openai_enhanced_analyzer.py:722:                "dog_name": pred["dog_name"],
+./openai_enhanced_analyzer.py:727:                    pred["dog_name"], enhancement_text
+./json_utils.py:138:            "dog_name": pred.get("dog_name", ""),
+./sportsbook_implementations/betrivers.py:60:        return json_response["events"][0]["name"]
+./sportsbook_implementations/betrivers.py:72:            market_group = market["betOfferType"]["name"]
+./sportsbook_implementations/caesars.py:43:        return self._remove_bars(json_response["name"])
+./sportsbook_implementations/caesars.py:54:                market_name = self._remove_bars(market["name"])
+./sportsbook_implementations/caesars.py:61:                        outcome_name = self._remove_bars(outcome["name"])
+./sportsbook_implementations/ladbrokes.py:40:        return json_response["events"][event_id]["name"]
+./sportsbook_implementations/ladbrokes.py:56:                    name=entrant["name"],
+./sportsbook_implementations/ladbrokes.py:66:                    name=market["name"],
+./sportsbook_implementations/pointsbet.py:42:        return json_response["name"]
+./sportsbook_implementations/pointsbet.py:60:                        outcome_name = outcome["name"]
+./sportsbook_implementations/superbook.py:45:        return json_response["name"]
+./sportsbook_implementations/superbook.py:55:            market_group = market_groups["name"]
+./sportsbook_implementations/superbook.py:58:                    market_name = market["name"]
+./sportsbook_implementations/superbook.py:63:                        outcome_name = outcome["name"]
+./sportsbook_implementations/draftkings.py:36:        return json_response["event"]["name"]
+./sportsbook_implementations/sportsbet.py:48:            market_group = market_grouping["name"]
+./sportsbook_implementations/sportsbet.py:55:                market_name = market["name"]
+./sportsbook_implementations/sportsbet.py:60:                    selection_name = outcome["name"]
+./sportsbook_implementations/betmgm.py:47:        return json_response["fixture"]["name"]["value"]
+./sportsbook_implementations/betmgm.py:70:                market_name = market["name"]["value"]
+./sportsbook_implementations/betmgm.py:72:                market_group = market["grouping"]["detailed"][0].get("name", None)
+./sportsbook_implementations/betmgm.py:77:                        outcome_name = outcome["name"]["value"]
+./sportsbook_implementations/tab.py:38:        return json_response["name"]
+./sportsbook_implementations/tab.py:56:                        outcome_name = outcome["name"]
+./schema_diff.py:114:                {"name": col_name, "type": col_type, "pk": is_pk, "notnull": is_notnull}
+./schema_diff.py:129:            "name": match.group(1),
+./schema_diff.py:226:        expected_cols = {col["name"]: col for col in expected_table["columns"]}
+./schema_diff.py:227:        actual_cols = {col["name"]: col for col in actual_table["columns"]}
+./schema_diff.py:284:            (idx["name"], tuple(sorted(idx["columns"])))
+./schema_diff.py:289:            (idx["name"], tuple(sorted([c["name"] for c in idx["columns"]])))
+./schema_diff.py:291:            if not idx["name"].startswith("sqlite_autoindex")
+./schema_diff.py:325:                    report.append(f"- `{col['name']}` ({col['type']})")
+./schema_diff.py:330:                    report.append(f"- `{col['name']}` ({col['type']})")
+./schema_diff.py:365:                    f"ALTER TABLE {table} ADD COLUMN {col['name']} {col['type']};"
+./weather_enhanced_predictor.py:468:                dog_name = dog_info["name"]
+./weather_enhanced_predictor.py:481:                        race_results_df["dog_name"].str.upper() == dog_name.upper()
+./weather_enhanced_predictor.py:536:                                "dog_name": dog_name,
+./weather_enhanced_predictor.py:567:                                "dog_name": dog_name,
+./weather_enhanced_predictor.py:586:                            "dog_name": dog_name,
+./weather_enhanced_predictor.py:646:                f"🏆 Top pick: {predictions[0]['dog_name'] if predictions else 'None'}"
+./weather_enhanced_predictor.py:680:                dog["name"].upper() for dog in participating_dogs
+./weather_enhanced_predictor.py:722:                            "name": current_dog_name,
+./weather_enhanced_predictor.py:1208:            print(f"⚠️ Error creating features for {dog_info['name']}: {e}")
+./weather_enhanced_predictor.py:1267:                        "dog_name": dog["name"],
+./weather_enhanced_predictor.py:1333:            print(f"{i}. {prediction['dog_name']} (Box {prediction['box_number']})")
+./automated_monitor.py:151:                    f"   Dog: {bet.get('dog_name', 'Unknown')}\n"
+./gpt_prediction_enhancer.py:502:                        "name": actual_name,
+./gpt_prediction_enhancer.py:573:                name=dog_data.get("name", "Unknown"),
+./gpt_prediction_enhancer.py:753:            dog_name = ml_pred.get("dog_name", "").upper()
+./test_ev_calculation.py:34:                "name": "Strong Value Bet",
+./test_ev_calculation.py:40:                "name": "Marginal Value Bet", 
+./test_ev_calculation.py:46:                "name": "No Value (Overpriced)",
+./test_ev_calculation.py:52:                "name": "Low Confidence",
+./test_ev_calculation.py:60:            print(f"\n📊 Testing: {scenario['name']}")
+./test_ev_calculation.py:144:            "name": "EV Test Champion",
+./test_ev_calculation.py:157:        print(f"   Testing prediction for: {test_dog['name']}")
+./sportsbet_recent_races_scraper.py:522:                "winner_name": winner_info.get("name"),
+./sportsbet_recent_races_scraper.py:722:        winner_info = {"name": None, "odds": None, "margin": None}
+./sportsbet_recent_races_scraper.py:754:                        winner_info["name"] = winner_name
+./upcoming_race_browser.py:836:                header in first_line for header in ["dog name", "dog", "runner", "name"]
+./upcoming_race_browser.py:997:                        attrs={"name": re.compile("csv|export", re.I)},
+./upcoming_race_browser.py:1035:                            name = input_elem.get("name")
+./database_maintenance.py:54:                "dog_name",
+./database_maintenance.py:62:                "dog_name",
+./database_maintenance.py:115:                        "name": "SQLite Integrity Check",
+./database_maintenance.py:123:                        "name": "SQLite Integrity Check",
+./database_maintenance.py:137:                        "name": "Foreign Key Constraints",
+./database_maintenance.py:145:                        "name": "Foreign Key Constraints",
+./database_maintenance.py:174:                        "name": "Schema Validation",
+./database_maintenance.py:182:                        "name": "Schema Validation",
+./database_maintenance.py:208:                        "name": "Orphaned Records Check",
+./database_maintenance.py:216:                        "name": "Orphaned Records Check",
+./database_maintenance.py:256:                        "name": "Data Consistency Check",
+./database_maintenance.py:264:                        "name": "Data Consistency Check",
+./database_maintenance.py:275:                    "name": "Index Integrity",
+./database_maintenance.py:412:                    "name": "VACUUM",
+./database_maintenance.py:426:                    "name": "ANALYZE",
+./database_maintenance.py:440:                    "name": "REINDEX",
+./database_maintenance.py:460:                        "name": "PRAGMA_OPTIMIZATION",
+./database_maintenance.py:546:                    "name": "ANALYZE_TABLES",
+./database_maintenance.py:648:                                "name": f'CLEANUP_TEMP_{temp_dir.replace("./", "").upper()}',
+./database_maintenance.py:670:                                "name": "TRUNCATE_LOG",
+./database_maintenance.py:703:                            "name": "CLEANUP_OLD_BACKUPS",
+./database_maintenance.py:727:                            "name": "DROP_TEMP_TABLE",
+./comprehensive_sanity_demo.py:238:        {'dog_name': 'Champion', 'win_probability': 0.4, 'place_probability': 0.7, 'predicted_rank': 1},
+./comprehensive_sanity_demo.py:239:        {'dog_name': 'Runner-up', 'win_probability': 0.3, 'place_probability': 0.6, 'predicted_rank': 2},
+./comprehensive_sanity_demo.py:240:        {'dog_name': 'Third Place', 'win_probability': 0.2, 'place_probability': 0.5, 'predicted_rank': 3},
+./comprehensive_sanity_demo.py:241:        {'dog_name': 'Fourth', 'win_probability': 0.1, 'place_probability': 0.4, 'predicted_rank': 4}
+./comprehensive_sanity_demo.py:250:        {'dog_name': 'Bad Prob', 'win_probability': 1.5, 'place_probability': -0.1, 'predicted_rank': 2},
+./comprehensive_sanity_demo.py:251:        {'dog_name': 'Duplicate Rank', 'win_probability': 0.8, 'place_probability': 0.9, 'predicted_rank': 1},
+./comprehensive_sanity_demo.py:252:        {'dog_name': 'Wrong Rank', 'win_probability': 0.9, 'place_probability': 0.8, 'predicted_rank': 1},
+./comprehensive_sanity_demo.py:253:        {'dog_name': 'NaN Issue', 'win_probability': float('nan'), 'place_probability': 0.5, 'predicted_rank': 3}
+./src/collectors/fasttrack_scraper.py:228:            dog_details["name"] = name_tag.text.strip()
+./src/collectors/fasttrack_scraper.py:382:                    dog_data["dog_name"] = name_elem.text.strip()
+./src/collectors/adapters/fasttrack_adapter.py:68:                    "dogs", "dog_name", dog_perf.get("dog_name")
+./src/collectors/adapters/fasttrack_adapter.py:71:                    logger.warning(f"Dog not found: {dog_perf.get('dog_name')}")
+./integrated_odds_ml_system.py:181:                                    "dog_name": pred.get("dog_name", ""),
+./integrated_odds_ml_system.py:183:                                        pred.get("dog_name", "")
+./integrated_odds_ml_system.py:426:                    f"Dog: {bet['dog_name']}\n"
+./integrated_odds_ml_system.py:577:                f"   {i}. {bet.get('dog_name', 'Unknown')}: {bet.get('value_percentage', 0):.1f}% value"

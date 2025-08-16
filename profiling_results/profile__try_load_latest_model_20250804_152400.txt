@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T15:24:00.937526
+Total Time: 57.588s
+CPU Time: 51.247s
+I/O Time: 0.0ms
+Memory Peak: 233.78MB
+Function Calls: 11455356
+Bottlenecks: <20>(1603.000s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)(102.506s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle_utils.py:234(_read_bytes)(95.977s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)(71.226s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:1056(join)(43.173s)
+
+==================================================
+Detailed cProfile Output:
+         11455356 function calls (11272067 primitive calls) in 49.099 seconds
+
+   Ordered by: cumulative time
+   List reduced from 1603 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+20061/2064    0.272    0.000  102.506    0.050 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)
+    20021    0.322    0.000   95.977    0.005 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle_utils.py:234(_read_bytes)
+20061/2064    3.983    0.000   71.226    0.035 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)
+       30    0.003    0.000   43.173    1.439 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:1056(join)
+   120254    1.604    0.000   41.862    0.000 {method 'read' of '_io.BufferedReader' objects}
+     80/3    0.006    0.000   35.443   11.814 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/pool.py:97(worker)
+    40/39    0.004    0.000   34.427    0.883 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/queues.py:372(empty)
+       30    0.002    0.000   31.300    1.043 {method 'join' of '_thread._ThreadHandle' objects}
+    30/29    0.001    0.000   31.191    1.076 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/util.py:197(__call__)
+     10/9    0.001    0.000   30.672    3.408 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1403(_terminate_and_reset)
+     10/9    0.005    0.001   30.671    3.408 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/_parallel_backends.py:323(terminate)
+10020/991    0.085    0.000   26.535    0.027 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1670(_get_outputs)
+    40/39    0.002    0.000   24.734    0.634 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/connection.py:253(poll)
+10000/282    0.140    0.000   23.681    0.084 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/_utils.py:70(__call__)
+    40/39    0.002    0.000   23.364    0.599 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/connection.py:439(_poll)
+     20/3    0.001    0.000   22.528    7.509 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/parallel.py:54(__call__)
+     20/3    0.003    0.000   22.521    7.507 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1969(__call__)
+     10/1    0.002    0.000   22.472   22.472 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/calibration.py:709(predict_proba)
+     10/2    0.002    0.000   22.470   11.235 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/ensemble/_forest.py:922(predict_proba)
+       20    0.001    0.000   22.100    1.105 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/synchronize.py:84(_cleanup)
+
+

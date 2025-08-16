@@ -12,7 +12,9 @@ Date: July 24, 2025
 
 import os
 from pathlib import Path
+
 from enhanced_race_processor_fixed import EnhancedRaceProcessor
+
 
 def batch_process_form_guides(limit=5):
     """Process form guide files in batches with file movement"""

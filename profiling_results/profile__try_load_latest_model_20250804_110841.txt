@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T11:08:41.417394
+Total Time: 65.016s
+CPU Time: 75.013s
+I/O Time: 0.0ms
+Memory Peak: 86.63MB
+Function Calls: 10348316
+Bottlenecks: <20>(1570.000s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1138(emit)(159.202s), /Users/orlandolee/greyhound_racing_collector/csv_ingestion.py:503(ingest_csv)(146.052s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1250(emit)(142.583s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)(123.826s)
+
+==================================================
+Detailed cProfile Output:
+         10348316 function calls (9835169 primitive calls) in 65.008 seconds
+
+   Ordered by: cumulative time
+   List reduced from 1570 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+7233/2329    0.470    0.000  159.202    0.068 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1138(emit)
+2382/2375    0.246    0.000  146.052    0.061 /Users/orlandolee/greyhound_racing_collector/csv_ingestion.py:503(ingest_csv)
+4816/2673    0.366    0.000  142.583    0.053 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1250(emit)
+9086/9083    0.270    0.000  123.826    0.014 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)
+2385/1621    0.155    0.000   87.546    0.054 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1990(__exit__)
+6039/6038    0.202    0.000   75.391    0.012 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)
+2390/1855    0.115    0.000   71.800    0.039 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_abc.py:442(exists)
+4775/2896    0.220    0.000   70.532    0.024 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_local.py:510(stat)
+2397/2389    0.168    0.000   69.116    0.029 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/handlers.py:71(emit)
+5731/3230    0.618    0.000   66.351    0.021 {built-in method posix.stat}
+38560/19355    0.699    0.000   65.854    0.003 {method 'read' of '_io.BufferedReader' objects}
+ 5158/700    1.287    0.000   65.853    0.094 {built-in method _io.open}
+7230/3465    0.316    0.000   53.753    0.016 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1130(flush)
+ 2389/893    0.239    0.000   44.995    0.050 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1907(read)
+2383/2205    0.044    0.000   42.007    0.019 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/series.py:5784(isna)
+2391/1169    0.328    0.000   39.605    0.034 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:694(__init__)
+2383/1621    0.151    0.000   34.726    0.021 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1622(close)
+2389/1179    0.288    0.000   27.617    0.023 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/construction.py:423(dict_to_mgr)
+2381/1621    0.174    0.000   26.622    0.016 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/common.py:131(close)
+2385/1624    0.326    0.000   23.203    0.014 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/construction.py:96(arrays_to_mgr)
+
+

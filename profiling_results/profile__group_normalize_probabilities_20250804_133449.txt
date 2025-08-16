@@ -1,0 +1,39 @@
+Profile for _group_normalize_probabilities
+Timestamp: 2025-08-04T13:34:49.812111
+Total Time: 0.002s
+CPU Time: 0.002s
+I/O Time: 0.0ms
+Memory Peak: 0.03MB
+Function Calls: 213
+Bottlenecks: <20>(80.000s), /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:617(_group_normalize_probabilities)(0.001s), /Users/orlandolee/greyhound_racing_collector/pipeline_profiler.py:714(__exit__)(0.001s), /Users/orlandolee/greyhound_racing_collector/pipeline_profiler.py:307(track_sequence_step)(0.001s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/pool.py:776(_set)(0.001s)
+
+==================================================
+Detailed cProfile Output:
+         213 function calls (212 primitive calls) in 0.002 seconds
+
+   Ordered by: cumulative time
+   List reduced from 80 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+      2/1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:617(_group_normalize_probabilities)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/pipeline_profiler.py:714(__exit__)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/pipeline_profiler.py:307(track_sequence_step)
+        2    0.000    0.000    0.001    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/pool.py:776(_set)
+        2    0.000    0.000    0.001    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:802(__call__)
+        2    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:835(_dispatch_new)
+        2    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1446(dispatch_next)
+        2    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1457(dispatch_one_batch)
+        1    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/numpy/_core/fromnumeric.py:4073(var)
+        1    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/numpy/_core/_methods.py:151(_var)
+        2    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1410(_dispatch)
+        1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}
+        2    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/_parallel_backends.py:334(submit)
+        2    0.000    0.000    0.000    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:620(set)
+        2    0.000    0.000    0.000    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/pool.py:453(apply_async)
+        4    0.000    0.000    0.000    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:398(notify)
+        4    0.000    0.000    0.000    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:318(_is_owned)
+        2    0.000    0.000    0.000    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:428(notify_all)
+        6    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/numpy/_core/fromnumeric.py:69(_wrapreduction)
+        4    0.000    0.000    0.000    0.000 {method 'acquire' of '_thread.lock' objects}
+
+

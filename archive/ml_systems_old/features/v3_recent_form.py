@@ -1,0 +1,44 @@
+import numpy as np
+
+
+class V3RecentFormFeatures:
+    """Feature group for recent performance and form analysis."""
+
+    def __init__(self):
+        self.version = "v3.0"
+
+    def create_features(self, data):
+        """Creates recent form-based features from input data."""
+        features = {}
+        recent_form = data.get("recent_form", [])
+
+        if not recent_form:
+            return self.get_default_features()
+
+        # Calculate recent form trend
+        if len(recent_form) >= 3:
+            x = np.arange(len(recent_form))
+            slope = np.polyfit(x, recent_form, 1)[0]
+            features["form_trend_slope"] = -slope  # Negative slope = improving
+        else:
+            features["form_trend_slope"] = 0
+
+        # Weighted recent performance
+        weights = np.exp(-0.1 * np.arange(len(recent_form)))  # Exponential decay
+        
+        # Ensure recent_form is a 1D array and weights match in length
+        recent_form = np.asarray(recent_form).flatten()
+        if len(weights) != len(recent_form):
+            weights = weights[:len(recent_form)]  # Truncate weights if needed
+        
+        try:
+            features["weighted_recent_position"] = np.average(recent_form, weights=weights, axis=0)
+        except (ValueError, ZeroDivisionError):
+            # Fallback to simple average if weighted average fails
+            features["weighted_recent_position"] = np.mean(recent_form) if len(recent_form) > 0 else 4.0
+
+        return features
+
+    def get_default_features(self):
+        """Return default values for recent form-based features."""
+        return {"form_trend_slope": 0, "weighted_recent_position": 4.0}

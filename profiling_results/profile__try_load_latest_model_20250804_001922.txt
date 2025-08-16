@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T00:19:22.614800
+Total Time: 7.011s
+CPU Time: 6.629s
+I/O Time: 0.0ms
+Memory Peak: 35.07MB
+Function Calls: 2429771
+Bottlenecks: <20>(1051.000s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:998(_bootstrap)(2.333s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/http/server.py:493(send_response)(2.297s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/serving.py:259(write)(2.181s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:513(shutdown_request)(2.015s)
+
+==================================================
+Detailed cProfile Output:
+         2429771 function calls (2364063 primitive calls) in 6.275 seconds
+
+   Ordered by: cumulative time
+   List reduced from 1051 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+     11/4    0.001    0.000    2.333    0.583 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:998(_bootstrap)
+     12/8    0.001    0.000    2.297    0.287 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/http/server.py:493(send_response)
+     11/7    0.001    0.000    2.181    0.312 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/serving.py:259(write)
+       11    0.001    0.000    2.015    0.183 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:513(shutdown_request)
+       11    0.005    0.000    1.918    0.174 {method 'shutdown' of '_socket.socket' objects}
+   413382    0.613    0.000    1.097    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:281(read)
+     6039    0.150    0.000    0.875    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:1279(load_frame)
+     9083    0.324    0.000    0.534    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:1754(load_build)
+    30/27    0.002    0.000    0.479    0.018 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1250(emit)
+     12/8    0.000    0.000    0.478    0.060 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/serving.py:440(log_request)
+    45/22    0.004    0.000    0.451    0.020 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1010(handle)
+     12/8    0.001    0.000    0.449    0.056 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/serving.py:475(log)
+     15/8    0.003    0.000    0.427    0.053 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1509(info)
+   286256    0.419    0.000    0.419    0.000 {built-in method builtins.isinstance}
+     15/8    0.002    0.000    0.416    0.052 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1640(_log)
+9206/8985    0.138    0.000    0.408    0.000 {built-in method builtins.next}
+    45/35    0.009    0.000    0.405    0.012 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1138(emit)
+   407340    0.403    0.000    0.403    0.000 {method 'read' of '_io.BytesIO' objects}
+     12/8    0.000    0.000    0.378    0.047 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/_internal.py:78(_log)
+     15/8    0.000    0.000    0.367    0.046 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1666(handle)
+
+

@@ -21,7 +21,8 @@ function highlightActiveNavItem() {
     const currentPath = window.location.pathname;
     const navLinks = document.querySelectorAll('nav a');
     
-    navLinks.forEach(link => {
+    // Use Array.from to ensure forEach is available on all browsers
+    Array.from(navLinks).forEach(link => {
         if (link.getAttribute('href') === currentPath) {
             link.style.backgroundColor = 'rgba(255,255,255,0.3)';
         }
@@ -31,7 +32,8 @@ function highlightActiveNavItem() {
 function initializeRefreshButtons() {
     const refreshButtons = document.querySelectorAll('[data-refresh]');
     
-    refreshButtons.forEach(button => {
+    // Use Array.from to ensure forEach is available on all browsers
+    Array.from(refreshButtons).forEach(button => {
         button.addEventListener('click', function() {
             const target = this.getAttribute('data-refresh');
             refreshSection(target);
@@ -96,7 +98,8 @@ async function fetchRecentRaces(limit = 10) {
     try {
         const response = await fetch(`/api/recent_races?limit=${limit}`);
         const data = await response.json();
-        return data.races;
+        const racesArray = Array.isArray(data.races) ? data.races : Object.values(data.races || {});
+        return racesArray;
     } catch (error) {
         console.error('Error fetching recent races:', error);
         return [];

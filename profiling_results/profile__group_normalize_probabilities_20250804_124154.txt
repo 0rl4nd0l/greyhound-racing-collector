@@ -1,0 +1,39 @@
+Profile for _group_normalize_probabilities
+Timestamp: 2025-08-04T12:41:54.422346
+Total Time: 0.003s
+CPU Time: 0.003s
+I/O Time: 0.0ms
+Memory Peak: 0.02MB
+Function Calls: 127
+Bottlenecks: <20>(68.000s), importlib._bootstrap>:911(_load_unlocked)(0.001s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/numpy/_core/fromnumeric.py:4073(var)(0.001s)
+
+==================================================
+Detailed cProfile Output:
+         127 function calls in 0.002 seconds
+
+   Ordered by: cumulative time
+   List reduced from 68 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    0.001    0.001 <frozen importlib._bootstrap>:911(_load_unlocked)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/numpy/_core/fromnumeric.py:4073(var)
+        1    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/numpy/_core/_methods.py:151(_var)
+        1    0.000    0.000    0.000    0.000 <frozen importlib._bootstrap_external>:1020(exec_module)
+        1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}
+        1    0.000    0.000    0.000    0.000 <frozen importlib._bootstrap>:806(module_from_spec)
+        1    0.000    0.000    0.000    0.000 <frozen importlib._bootstrap>:733(_init_module_attrs)
+        6    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/numpy/_core/fromnumeric.py:69(_wrapreduction)
+        2    0.000    0.000    0.000    0.000 <frozen importlib._bootstrap_external>:513(cache_from_source)
+        8    0.000    0.000    0.000    0.000 {method 'reduce' of 'numpy.ufunc' objects}
+        1    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/pipeline_profiler.py:698(track_sequence)
+        1    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:617(_group_normalize_probabilities)
+        2    0.000    0.000    0.000    0.000 <frozen importlib._bootstrap>:632(cached)
+        1    0.000    0.000    0.000    0.000 <frozen importlib._bootstrap_external>:642(_get_cached)
+        3    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/numpy/_core/fromnumeric.py:3052(max)
+        1    0.000    0.000    0.000    0.000 {built-in method builtins.__build_class__}
+        1    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/numpy/_core/_methods.py:76(_count_reduce_items)
+        1    0.000    0.000    0.000    0.000 <frozen importlib._bootstrap_external>:1619(_get_spec)
+        2    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/numpy/_core/fromnumeric.py:3190(min)
+        2    0.000    0.000    0.000    0.000 <frozen importlib._bootstrap_external>:137(_path_split)
+
+

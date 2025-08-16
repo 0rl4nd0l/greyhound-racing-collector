@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T12:31:25.383371
+Total Time: 10.041s
+CPU Time: 8.662s
+I/O Time: 0.0ms
+Memory Peak: 86.35MB
+Function Calls: 2361820
+Bottlenecks: <20>(1000.000s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/selectors.py:385(select)(8.333s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:690(process_request_thread)(6.083s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:641(wait)(5.978s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:327(wait)(5.976s)
+
+==================================================
+Detailed cProfile Output:
+         2361820 function calls (2360819 primitive calls) in 10.043 seconds
+
+   Ordered by: cumulative time
+   List reduced from 1000 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+       26    0.859    0.033    8.333    0.321 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/selectors.py:385(select)
+      9/4    0.001    0.000    6.083    1.521 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:690(process_request_thread)
+    14/13    0.001    0.000    5.978    0.460 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:641(wait)
+       17    0.000    0.000    5.976    0.352 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:327(wait)
+    82/67    0.001    0.000    5.976    0.089 {method 'acquire' of '_thread.lock' objects}
+       11    0.000    0.000    5.971    0.543 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/wsgi.py:255(__next__)
+        4    0.000    0.000    5.971    1.493 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/wrappers/response.py:31(_iter_encoded)
+        2    0.000    0.000    5.971    2.985 /Users/orlandolee/greyhound_racing_collector/app.py:6311(generate_prediction_stream)
+        1    0.000    0.000    5.971    5.971 /Users/orlandolee/greyhound_racing_collector/prediction_strategy_manager.py:516(predict_races_streaming)
+        1    0.000    0.000    5.965    5.965 /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:810(_try_load_latest_model)
+      2/1    0.077    0.038    5.958    5.958 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:674(load)
+        1    0.000    0.000    4.933    4.933 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:613(_unpickle)
+        1    1.146    1.146    4.933    4.933 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:1230(load)
+9086/9083    0.153    0.000    4.637    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)
+6041/6038    0.061    0.000    3.218    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)
+6040/6038    1.157    0.000    3.037    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)
+   413382    0.957    0.000    1.704    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:281(read)
+       26    0.238    0.009    1.181    0.045 {method 'poll' of 'select.poll' objects}
+     9083    0.491    0.000    0.986    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:1754(load_build)
+   407340    0.631    0.000    0.631    0.000 {method 'read' of '_io.BytesIO' objects}
+
+

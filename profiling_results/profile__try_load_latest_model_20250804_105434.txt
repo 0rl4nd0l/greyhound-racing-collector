@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T10:54:34.379936
+Total Time: 58.010s
+CPU Time: 67.347s
+I/O Time: 0.0ms
+Memory Peak: 91.09MB
+Function Calls: 10291511
+Bottlenecks: <20>(2462.000s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1622(close)(89.251s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)(82.604s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_local.py:529(open)(78.914s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/common.py:131(close)(76.188s)
+
+==================================================
+Detailed cProfile Output:
+         10291511 function calls (9855106 primitive calls) in 57.989 seconds
+
+   Ordered by: cumulative time
+   List reduced from 2462 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+1971/1377    0.112    0.000   89.251    0.065 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1622(close)
+9092/9083    0.219    0.000   82.604    0.009 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)
+ 1933/715    0.141    0.000   78.914    0.110 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_local.py:529(open)
+1969/1377    0.117    0.000   76.188    0.055 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/common.py:131(close)
+1973/1377    0.128    0.000   61.297    0.045 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1990(__exit__)
+6044/6038    0.190    0.000   60.943    0.010 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)
+ 1932/225    0.143    0.000   59.771    0.266 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_abc.py:621(read_bytes)
+2063/1043    0.277    0.000   57.691    0.055 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:694(__init__)
+4214/2511    0.353    0.000   54.334    0.022 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1250(emit)
+6311/2224    0.328    0.000   51.386    0.023 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1138(emit)
+ 1969/675    0.142    0.000   51.006    0.076 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1575(__init__)
+2036/1045    0.281    0.000   46.336    0.044 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/construction.py:423(dict_to_mgr)
+1950/1632    0.069    0.000   44.474    0.027 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_abc.py:442(exists)
+2097/2093    0.143    0.000   38.422    0.018 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/handlers.py:71(emit)
+ 1967/675    0.172    0.000   34.036    0.050 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1848(_make_engine)
+7781/4710    1.226    0.000   30.937    0.007 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/series.py:389(__init__)
+1939/1660    0.210    0.000   30.754    0.019 /Users/orlandolee/greyhound_racing_collector/csv_ingestion.py:503(ingest_csv)
+2062/1392    0.246    0.000   29.544    0.021 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/construction.py:96(arrays_to_mgr)
+6307/3350    0.278    0.000   28.066    0.008 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1130(flush)
+ 1962/795    0.328    0.000   26.928    0.034 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/common.py:664(get_handle)
+
+

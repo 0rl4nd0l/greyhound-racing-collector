@@ -5,7 +5,9 @@ class ScraperException(Exception):
     CONNECTION_ERROR = "Connection error encountered when trying to request sportsbook's API. Check your internet connection."
     TIMEOUT_ERROR = "Request sportsbook's API timed out."
     UNEXPECTED_HTTP_ERROR = "Unexpected HTTP error when hitting the sportsbook's API: Status code {status_code}"
-    UNEXPECTED_REQUEST_ERROR = "Unexpected error when hitting the sportsbook's API: {ex}"
+    UNEXPECTED_REQUEST_ERROR = (
+        "Unexpected error when hitting the sportsbook's API: {ex}"
+    )
     ODDS_PARSING_ERROR = "The request to the API was successful, but we were unable to parse odds from the response. If the match is live, perhaps all markets were suspended? If this is occurring repeatedly for one sportsbook, potentially their site has changed."
     INVALID_URL_ERROR = "URL input is not a valid website URL"
 

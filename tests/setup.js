@@ -4,8 +4,31 @@
  */
 
 import '@testing-library/jest-dom';
+import nock from 'nock';
+
 // Global test configuration
 beforeEach(() => {
+  // Enforce mocked OpenAI by default in Node tests
+  if (!process.env.OPENAI_USE_LIVE) process.env.OPENAI_USE_LIVE = '0';
+
+  // If not using live, set up nock mocks
+  if (process.env.OPENAI_USE_LIVE !== '1') {
+    nock.disableNetConnect();
+    // Allow localhost for Playwright/Jest requests
+    nock.enableNetConnect((host) => /(^|\.)localhost(:\d+)?$/.test(host) || /^127\.0\.0\.1(:\d+)?$/.test(host));
+
+    // Mock OpenAI Responses API
+    nock('https://api.openai.com')
+      .persist()
+      .post('/v1/responses')
+      .reply(200, { output_text: 'mocked', usage: { total_tokens: 1 } });
+
+    // Mock OpenAI Chat Completions API
+    nock('https://api.openai.com')
+      .persist()
+      .post('/v1/chat/completions')
+      .reply(200, { choices: [{ message: { content: 'mocked' } }], usage: { total_tokens: 1 } });
+  }
   
   // Mock localStorage
   const localStorageMock = {
@@ -60,6 +83,12 @@ afterEach(() => {
   
   // Clear all mocks
   jest.clearAllMocks();
+
+  // Clean nock unless live
+  if (process.env.OPENAI_USE_LIVE !== '1') {
+    nock.cleanAll();
+    nock.enableNetConnect();
+  }
 });
 
 // Custom matchers for better assertions

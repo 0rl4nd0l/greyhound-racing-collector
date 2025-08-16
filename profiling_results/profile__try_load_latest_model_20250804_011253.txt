@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T01:12:53.742212
+Total Time: 13.898s
+CPU Time: 14.103s
+I/O Time: 0.0ms
+Memory Peak: 30.15MB
+Function Calls: 3283284
+Bottlenecks: <20>(2601.000s), genericpath>:89(getmtime)(16.588s), posix.stat}(13.381s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/selectors.py:385(select)(13.253s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:641(wait)(12.660s)
+
+==================================================
+Detailed cProfile Output:
+         3283284 function calls (3242738 primitive calls) in 14.337 seconds
+
+   Ordered by: cumulative time
+   List reduced from 2601 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+ 1325/982    0.276    0.000   16.588    0.017 <frozen genericpath>:89(getmtime)
+ 1422/986    0.175    0.000   13.381    0.014 {built-in method posix.stat}
+       43    0.020    0.000   13.253    0.308 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/selectors.py:385(select)
+    27/23    0.001    0.000   12.660    0.550 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:641(wait)
+    33/29    0.008    0.000   12.657    0.436 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:327(wait)
+  6038/64    0.235    0.000   11.872    0.185 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)
+    32/23    0.000    0.000   10.661    0.464 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/wsgi.py:255(__next__)
+    24/16    0.000    0.000   10.660    0.666 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/wrappers/response.py:31(_iter_encoded)
+  859/426    0.382    0.000   10.262    0.024 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/__init__.py:274(load)
+     6013    0.256    0.000    9.191    0.002 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle_utils.py:234(_read_bytes)
+  875/260    0.415    0.000    6.987    0.027 {built-in method _io.open}
+  864/432    0.185    0.000    4.275    0.010 {method 'read' of '_io.TextIOWrapper' objects}
+     3010    0.089    0.000    3.611    0.001 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/html/parser.py:379(parse_endtag)
+    19/18    0.001    0.000    3.107    0.173 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/selectors.py:563(close)
+      162    0.011    0.000    3.104    0.019 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:4276(__setitem__)
+  874/646    0.188    0.000    2.466    0.004 {method '__exit__' of '_io._IOBase' objects}
+     3060    0.013    0.000    2.338    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/bs4/builder/_htmlparser.py:160(handle_endtag)
+      3/2    0.009    0.003    2.319    1.159 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/bs4/__init__.py:122(__init__)
+     3056    0.271    0.000    2.169    0.001 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/html/parser.py:301(parse_starttag)
+       13    0.008    0.001    2.159    0.166 /Users/orlandolee/greyhound_racing_collector/temporal_feature_builder.py:124(create_historical_features)
+
+

@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T13:34:47.167584
+Total Time: 11.175s
+CPU Time: 11.052s
+I/O Time: 0.0ms
+Memory Peak: 86.49MB
+Function Calls: 2988976
+Bottlenecks: <20>(1612.000s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)(73.487s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)(40.835s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)(18.831s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle_utils.py:234(_read_bytes)(14.796s)
+
+==================================================
+Detailed cProfile Output:
+         2988976 function calls (2950471 primitive calls) in 11.173 seconds
+
+   Ordered by: cumulative time
+   List reduced from 1612 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+9085/9083    0.777    0.000   73.487    0.008 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)
+     6038    0.210    0.000   40.835    0.007 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)
+     6038    0.770    0.000   18.831    0.003 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)
+     6013    0.253    0.000   14.796    0.002 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle_utils.py:234(_read_bytes)
+36185/36056    0.450    0.000   12.263    0.000 {method 'read' of '_io.BufferedReader' objects}
+       15    0.006    0.000   11.442    0.763 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/http/server.py:493(send_response)
+      2/1    0.000    0.000   10.021   10.021 /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:810(_try_load_latest_model)
+      2/1    0.048    0.024   10.019   10.019 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:674(load)
+      2/1    0.000    0.000    9.970    9.970 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:613(_unpickle)
+      2/1    0.645    0.323    9.969    9.969 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:1230(load)
+     15/4    0.002    0.000    6.446    1.611 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:360(finish_request)
+     15/4    0.001    0.000    6.446    1.611 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:760(__init__)
+     15/4    0.002    0.000    6.445    1.611 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/serving.py:395(handle)
+     15/4    0.004    0.000    6.445    1.611 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/http/server.py:432(handle)
+     15/4    0.002    0.000    6.415    1.604 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:690(process_request_thread)
+  379/371    0.115    0.000    6.140    0.017 {built-in method _io.open}
+     3176    0.231    0.000    4.125    0.001 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/html/parser.py:301(parse_starttag)
+       15    0.000    0.000    2.414    0.161 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/selectors.py:540(select)
+  375/368    0.041    0.000    2.321    0.006 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/__init__.py:274(load)
+     3176    0.057    0.000    1.923    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/bs4/builder/_htmlparser.py:105(handle_starttag)
+
+

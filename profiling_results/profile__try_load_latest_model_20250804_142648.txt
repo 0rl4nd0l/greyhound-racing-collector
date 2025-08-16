@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T14:26:48.455529
+Total Time: 23.354s
+CPU Time: 19.266s
+I/O Time: 0.0ms
+Memory Peak: 82.53MB
+Function Calls: 3731120
+Bottlenecks: <20>(1721.000s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1670(_get_outputs)(26.480s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/queues.py:372(empty)(17.822s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/connection.py:253(poll)(16.739s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1403(_terminate_and_reset)(15.989s)
+
+==================================================
+Detailed cProfile Output:
+         3731120 function calls (3620602 primitive calls) in 26.503 seconds
+
+   Ordered by: cumulative time
+   List reduced from 1721 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+3012/1034    0.075    0.000   26.480    0.026 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1670(_get_outputs)
+       27    0.002    0.000   17.822    0.660 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/queues.py:372(empty)
+       27    0.001    0.000   16.739    0.620 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/connection.py:253(poll)
+        6    0.000    0.000   15.989    2.665 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1403(_terminate_and_reset)
+        6    0.006    0.001   15.987    2.665 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/_parallel_backends.py:323(terminate)
+       27    0.001    0.000   14.919    0.553 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/connection.py:439(_poll)
+       18    0.001    0.000   13.135    0.730 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:1056(join)
+     12/4    0.003    0.000   12.160    3.040 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/parallel.py:54(__call__)
+     12/4    0.001    0.000   12.084    3.021 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1969(__call__)
+      6/2    0.002    0.000   12.080    6.040 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/calibration.py:709(predict_proba)
+      6/2    0.001    0.000   12.068    6.034 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/_response.py:116(_get_response_values)
+      6/2    0.001    0.000   12.061    6.031 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/pipeline.py:859(predict_proba)
+      6/2    0.000    0.000   12.022    6.011 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/ensemble/_forest.py:922(predict_proba)
+2938/1101    0.166    0.000   11.718    0.011 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1776(_retrieve)
+        6    0.002    0.000   11.428    1.905 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/pool.py:654(terminate)
+       18    0.003    0.000   11.263    0.626 {method 'join' of '_thread._ThreadHandle' objects}
+       12    0.000    0.000   10.008    0.834 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/validation.py:1417(column_or_1d)
+        6    0.000    0.000   10.006    1.668 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/preprocessing/_label.py:80(fit)
+       18    0.002    0.000    9.364    0.520 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/util.py:197(__call__)
+      6/2    0.002    0.000    8.950    4.475 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/pool.py:573(_handle_results)
+
+

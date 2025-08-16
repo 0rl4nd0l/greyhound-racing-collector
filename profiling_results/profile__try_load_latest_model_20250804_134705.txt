@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T13:47:05.410737
+Total Time: 60.939s
+CPU Time: 69.984s
+I/O Time: 0.0ms
+Memory Peak: 86.95MB
+Function Calls: 10575507
+Bottlenecks: <20>(1647.000s), /Users/orlandolee/greyhound_racing_collector/csv_ingestion.py:503(ingest_csv)(126.918s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:694(__init__)(77.646s), /Users/orlandolee/greyhound_racing_collector/csv_ingestion.py:220(validate_csv_schema)(77.059s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1990(__exit__)(72.255s)
+
+==================================================
+Detailed cProfile Output:
+         10575507 function calls (9967613 primitive calls) in 60.933 seconds
+
+   Ordered by: cumulative time
+   List reduced from 1647 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+2226/2215    0.309    0.000  126.918    0.057 /Users/orlandolee/greyhound_racing_collector/csv_ingestion.py:503(ingest_csv)
+2218/1169    0.401    0.000   77.646    0.066 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:694(__init__)
+ 2221/466    0.726    0.000   77.059    0.165 /Users/orlandolee/greyhound_racing_collector/csv_ingestion.py:220(validate_csv_schema)
+2213/1516    0.216    0.000   72.255    0.048 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1990(__exit__)
+ 2220/526    0.491    0.000   58.532    0.111 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:868(read_csv)
+2217/1172    0.350    0.000   44.024    0.038 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/construction.py:423(dict_to_mgr)
+ 2217/317    0.234    0.000   42.127    0.133 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1575(__init__)
+4449/2620    0.231    0.000   36.232    0.014 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_local.py:510(stat)
+ 2216/317    0.243    0.000   36.050    0.114 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1848(_make_engine)
+6041/6038    0.897    0.000   34.400    0.006 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)
+2216/1482    0.324    0.000   34.177    0.023 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/construction.py:96(arrays_to_mgr)
+ 2219/526    0.311    0.000   32.797    0.062 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:583(_read)
+6014/6013    0.223    0.000   31.510    0.005 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle_utils.py:234(_read_bytes)
+2213/1517    0.149    0.000   30.364    0.020 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1622(close)
+   310183    1.397    0.000   29.392    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py:414(_iterencode)
+ 6040/216    0.294    0.000   27.847    0.129 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)
+2226/1667    0.114    0.000   19.901    0.012 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_abc.py:442(exists)
+ 2213/555    0.307    0.000   19.639    0.035 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1907(read)
+620589/310183    3.264    0.000   19.596    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py:334(_iterencode_dict)
+  808/714    0.043    0.000   18.250    0.026 <frozen genericpath>:89(getmtime)
+
+

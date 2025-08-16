@@ -11,10 +11,12 @@ Author: AI Assistant
 Date: July 25, 2025
 """
 
-import os
 import glob
+import os
 from pathlib import Path
+
 from weather_enhanced_predictor import WeatherEnhancedPredictor
+
 
 def find_upcoming_race_files():
     """Find all upcoming race CSV files"""

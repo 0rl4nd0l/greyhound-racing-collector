@@ -1,0 +1,36 @@
+Dog Name,Sex,PLC,BOX,WGT,DIST,DATE,TRACK,G,TIME,WIN,BON,1 SEC,MGN,W/2G,PIR,SP,day_of_week,month,track_code
+1. Cyclonic Ashley,B,2,2,25.9,509,2025-07-14,NOR,4/5/6,29.92,29.42,29.42,5.95,7.0,Aston Ruler,55542,6.0,Monday,July,NOR
+1. Cyclonic Ashley,B,1,7,25.6,509,2025-07-07,NOR,4/5/6,29.96,29.96,28.93,5.95,1.5,Arctic Crop,55531,4.6,Monday,July,NOR
+1. Cyclonic Ashley,B,4,4,25.3,488,2025-07-01,MAND,5,27.86,27.71,27.66,5.97,2.0,Must Be Speedy,6664,23.0,Tuesday,July,MAND
+1. Cyclonic Ashley,B,6,2,25.4,520,2025-06-25,CANN,5,31.08,29.88,29.88,5.73,17.25,Michigan,83376,16.0,Wednesday,June,CANN
+1. Cyclonic Ashley,B,3,3,25.4,520,2025-06-18,CANN,4/5,30.34,29.9,29.9,5.76,6.25,Michigan,65543,23.0,Wednesday,June,CANN
+2. Fire Fly Lane,B,6,1,27.2,601,2025-07-12,CANN,5,35.54,34.77,34.77,9.98,11.0,Fast Byte,235566,4.8,Saturday,July,CANN
+2. Fire Fly Lane,B,2,8,27.2,601,2025-07-05,CANN,4/5,35.09,34.55,34.55,10.02,7.75,Tilly Rose,443332,2.9,Saturday,July,CANN
+2. Fire Fly Lane,B,1,6,27.2,601,2025-06-28,CANN,5,34.85,34.85,34.4,9.9,0.75,King Kuna,222221,6.5,Saturday,June,CANN
+2. Fire Fly Lane,B,4,5,27.2,520,2025-06-18,CANN,4/5,30.35,29.9,29.9,5.76,6.25,Michigan,77754,71.0,Wednesday,June,CANN
+2. Fire Fly Lane,B,4,8,27.0,488,2025-06-12,MAND,5/6,28.3,27.76,27.76,6.04,7.75,Don't Tell Dasha,7554,8.0,Thursday,June,MAND
+3. ASTON SMOKEY,D,3,2,32.7,520,2025-07-12,CANN,5,30.62,30.31,29.66,5.78,4.25,Slick Angel,76443,1.8,Saturday,July,CANN
+3. ASTON SMOKEY,D,1,8,32.7,601,2025-06-28,CANN,OPEN,34.4,34.4,34.4,9.55,0.125,Sunset Comanche,111111,4.4,Saturday,June,CANN
+3. ASTON SMOKEY,D,1,4,32.9,601,2025-06-21,CANN,OPEN,34.65,34.65,34.55,9.67,2.75,Fast Byte,111111,3.9,Saturday,June,CANN
+3. ASTON SMOKEY,D,1,8,32.8,601,2025-06-14,CANN,4/5,34.46,34.46,34.46,9.7,6.0,King Kuna,221111,2.7,Saturday,June,CANN
+3. ASTON SMOKEY,D,1,2,33.1,509,2025-06-09,NOR,FFA,29.28,29.28,29.28,5.84,2.5,Fletcher Keeping,32221,1.8,Monday,June,NOR
+4. Jett's Rocket,D,3,7,30.7,509,2025-07-14,NOR,5/6,30.1,30.01,29.42,5.95,1.25,Frantic Phyllis,44443,14.0,Monday,July,NOR
+4. Jett's Rocket,D,6,6,30.8,509,2025-07-07,NOR,4/5/6,30.16,29.47,28.93,6.05,9.75,Aston Ruler,77766,61.0,Monday,July,NOR
+4. Jett's Rocket,D,6,5,31.0,297,2025-06-30,NOR,6,18.09,17.69,16.99,6.05,5.75,Charos Royal,576,7.0,Monday,June,NOR
+4. Jett's Rocket,D,6,5,31.1,297,2025-06-23,NOR,6,18.26,17.53,17.21,6.05,10.25,Charos Noble,566,16.0,Monday,June,NOR
+4. Jett's Rocket,D,6,7,30.8,297,2025-06-16,NOR,6,18.01,17.42,16.96,6.05,8.25,Luxio Wave,476,26.0,Monday,June,NOR
+6. Tilly Rose,B,3,8,26.5,601,2025-07-12,CANN,5,35.29,34.77,34.77,10.13,7.5,Fast Byte,764333,2.8,Saturday,July,CANN
+6. Tilly Rose,B,1,2,26.5,601,2025-07-05,CANN,4/5,34.55,34.55,34.55,9.72,7.75,Fire Fly Lane,111111,1.8,Saturday,July,CANN
+6. Tilly Rose,B,4,1,26.5,715,2025-06-28,CANN,FFA,42.38,41.88,41.88,5.62,7.0,Iron Works,111114,8.5,Saturday,June,CANN
+6. Tilly Rose,B,4,2,26.0,715,2025-06-21,CANN,4/5,42.58,42.33,42.33,5.78,3.5,Tommy The Lion,533334,4.2,Saturday,June,CANN
+6. Tilly Rose,B,3,3,26.0,601,2025-06-14,CANN,4/5,34.97,34.46,34.46,9.93,7.25,ASTON SMOKEY,456653,4.8,Saturday,June,CANN
+7. West On Sidney,D,1,1,35.8,520,2025-07-12,CANN,OPEN,29.66,29.66,29.66,5.54,5.5,Bangor Tiger,21111,1.32,Saturday,July,CANN
+7. West On Sidney,D,1,4,35.6,520,2025-07-05,CANN,OPEN,29.62,29.62,29.62,5.65,5.25,Bastianini,42211,1.65,Saturday,July,CANN
+7. West On Sidney,D,5,8,35.8,601,2025-06-21,CANN,OPEN,35.25,34.55,34.55,9.86,10.0,Bezzecchi,644555,2.0,Saturday,June,CANN
+7. West On Sidney,D,3,4,35.6,520,2025-06-14,CANN,OPEN,29.66,29.57,29.57,5.62,1.25,Bezzecchi,74333,2.6,Saturday,June,CANN
+7. West On Sidney,D,1,7,35.6,520,2025-06-07,CANN,OPEN,29.64,29.64,29.56,5.66,2.0,Sunset Capone,85541,2.7,Saturday,June,CANN
+8. All About Jake,D,5,5,30.0,509,2025-07-14,NOR,5/6,30.27,30.01,29.42,5.99,3.75,Frantic Phyllis,55555,1.85,Monday,July,NOR
+8. All About Jake,D,7,3,30.2,520,2025-07-02,CANN,5/6,30.88,29.95,29.95,5.63,13.25,Sunset Owlet,57777,8.0,Wednesday,July,CANN
+8. All About Jake,D,5,4,30.5,520,2025-06-25,CANN,5/6,31.04,30.02,29.88,5.71,14.5,West On Gnocchi,65555,9.0,Wednesday,June,CANN
+8. All About Jake,D,6,5,30.4,509,2025-06-16,NOR,5/6,30.34,29.67,29.26,5.89,9.5,Aston Ruler,45666,6.5,Monday,June,NOR
+8. All About Jake,D,1,3,30.5,601,2025-05-31,CANN,NOV,34.88,34.88,34.88,9.75,0.25,Tilly Rose,111111,9.0,Saturday,May,CANN

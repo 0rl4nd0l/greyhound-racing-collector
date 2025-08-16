@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T13:38:19.508529
+Total Time: 57.625s
+CPU Time: 65.463s
+I/O Time: 0.0ms
+Memory Peak: 88.44MB
+Function Calls: 10654816
+Bottlenecks: <20>(2584.000s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)(120.334s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)(76.592s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:694(__init__)(70.882s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_local.py:510(stat)(57.514s)
+
+==================================================
+Detailed cProfile Output:
+         10654816 function calls (8644603 primitive calls) in 74.429 seconds
+
+   Ordered by: cumulative time
+   List reduced from 2584 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+9085/4229    0.309    0.000  120.334    0.028 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)
+6038/2808    0.279    0.000   76.592    0.027 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)
+ 1951/793    0.324    0.000   70.882    0.089 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:694(__init__)
+3881/2321    0.175    0.000   57.514    0.025 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_local.py:510(stat)
+ 1942/392    0.268    0.000   57.063    0.146 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1907(read)
+1951/1091    0.304    0.000   53.125    0.049 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/construction.py:423(dict_to_mgr)
+ 1943/229    0.166    0.000   48.106    0.210 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1575(__init__)
+1943/1029    0.089    0.000   47.815    0.046 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_abc.py:442(exists)
+ 1924/102    0.553    0.000   42.660    0.418 /Users/orlandolee/greyhound_racing_collector/csv_ingestion.py:220(validate_csv_schema)
+  1938/53    0.380    0.000   37.978    0.717 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:868(read_csv)
+6037/2807    0.914    0.000   33.500    0.012 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)
+1953/1342    0.271    0.000   30.542    0.023 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/construction.py:96(arrays_to_mgr)
+ 1904/719    0.183    0.000   30.226    0.042 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_local.py:529(open)
+ 1945/594    0.223    0.000   23.061    0.039 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1848(_make_engine)
+  1939/54    8.769    0.005   21.356    0.395 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:583(_read)
+1953/1664    0.184    0.000   21.286    0.013 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/managers.py:2121(create_block_manager_from_column_arrays)
+   182565    0.825    0.000   17.871    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py:414(_iterencode)
+  375/370    0.037    0.000   17.177    0.046 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/__init__.py:274(load)
+365235/182565    1.941    0.000   15.169    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py:334(_iterencode_dict)
+3677/3097    0.041    0.000   12.948    0.004 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/validation.py:1673(check_is_fitted)
+
+

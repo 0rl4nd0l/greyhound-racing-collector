@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T10:35:52.177686
+Total Time: 13.650s
+CPU Time: 13.381s
+I/O Time: 0.0ms
+Memory Peak: 88.70MB
+Function Calls: 3472988
+Bottlenecks: <20>(2162.000s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)(53.621s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)(18.671s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/serving.py:259(write)(11.468s), _io.open}(10.735s)
+
+==================================================
+Detailed cProfile Output:
+         3472988 function calls (3398224 primitive calls) in 13.296 seconds
+
+   Ordered by: cumulative time
+   List reduced from 2162 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+9082/5692    0.833    0.000   53.621    0.009 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)
+6037/3783    0.231    0.000   18.671    0.005 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)
+       10    0.001    0.000   11.468    1.147 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/serving.py:259(write)
+  397/383    0.173    0.000   10.735    0.028 {built-in method _io.open}
+     6039    0.028    0.000    9.294    0.002 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:1279(load_frame)
+       10    0.006    0.001    9.145    0.914 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/http/server.py:493(send_response)
+       20    0.000    0.000    8.958    0.448 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:844(write)
+       20    0.004    0.000    8.957    0.448 {method 'sendall' of '_socket.socket' objects}
+     10/1    0.001    0.000    8.943    8.943 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:360(finish_request)
+     10/1    0.002    0.000    8.943    8.943 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:760(__init__)
+     6013    0.266    0.000    8.501    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle_utils.py:234(_read_bytes)
+6037/3783    0.883    0.000    6.454    0.002 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)
+36176/36076    0.414    0.000    4.691    0.000 {method 'read' of '_io.BufferedReader' objects}
+  399/396    0.048    0.000    4.465    0.011 {method '__exit__' of '_io._IOBase' objects}
+  929/852    0.049    0.000    4.224    0.005 <frozen genericpath>:89(getmtime)
+  971/890    0.100    0.000    3.851    0.004 {built-in method posix.stat}
+     3056    0.219    0.000    2.609    0.001 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/html/parser.py:301(parse_starttag)
+       10    0.000    0.000    2.408    0.241 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:505(get_request)
+       10    0.000    0.000    2.407    0.241 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socket.py:288(accept)
+       10    0.001    0.000    2.401    0.240 {method '_accept' of '_socket.socket' objects}
+
+

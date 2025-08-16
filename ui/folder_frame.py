@@ -1,7 +1,9 @@
-from tkinter import Frame, Label, Button, StringVar
-from tkinter import filedialog
-from .constants import FOLDER_FRAME_TITLE, FOLDER_BUTTON_TEXT, FOLDER_SUBMIT_BUTTON_TEXT
-from .styles import small_text_style, medium_text_style, primary_button_style, ternary_button_style
+from tkinter import Button, Frame, Label, StringVar, filedialog
+
+from .constants import (FOLDER_BUTTON_TEXT, FOLDER_FRAME_TITLE,
+                        FOLDER_SUBMIT_BUTTON_TEXT)
+from .styles import (medium_text_style, primary_button_style, small_text_style,
+                     ternary_button_style)
 
 
 class FolderFrame(Frame):
@@ -14,16 +16,26 @@ class FolderFrame(Frame):
         self.folder_display = StringVar()
 
         self.instruction_label = Label(
-            self, text=FOLDER_FRAME_TITLE, **medium_text_style)
+            self, text=FOLDER_FRAME_TITLE, **medium_text_style
+        )
 
         self.folder_button = Button(
-            self, text=FOLDER_BUTTON_TEXT, command=self.browse_folder, **ternary_button_style)
+            self,
+            text=FOLDER_BUTTON_TEXT,
+            command=self.browse_folder,
+            **ternary_button_style
+        )
 
         self.folder_display_label = Label(
-            self, textvariable=self.folder_display, **small_text_style)
+            self, textvariable=self.folder_display, **small_text_style
+        )
 
-        self.next_button = Button(self, text=FOLDER_SUBMIT_BUTTON_TEXT,
-                                  command=self.next_frame_callback, **primary_button_style)
+        self.next_button = Button(
+            self,
+            text=FOLDER_SUBMIT_BUTTON_TEXT,
+            command=self.next_frame_callback,
+            **primary_button_style
+        )
 
         self.render_frame()
 

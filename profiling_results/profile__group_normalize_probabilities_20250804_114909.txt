@@ -1,0 +1,39 @@
+Profile for _group_normalize_probabilities
+Timestamp: 2025-08-04T11:49:09.449356
+Total Time: 0.008s
+CPU Time: 0.008s
+I/O Time: 0.0ms
+Memory Peak: 0.06MB
+Function Calls: 2042
+Bottlenecks: <20>(208.000s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1010(handle)(0.007s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1138(emit)(0.007s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/handlers.py:71(emit)(0.007s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1250(emit)(0.007s)
+
+==================================================
+Detailed cProfile Output:
+         2042 function calls (2010 primitive calls) in 0.007 seconds
+
+   Ordered by: cumulative time
+   List reduced from 208 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        2    0.000    0.000    0.007    0.003 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1010(handle)
+        2    0.000    0.000    0.007    0.003 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1138(emit)
+        1    0.000    0.000    0.007    0.007 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/handlers.py:71(emit)
+        1    0.000    0.000    0.007    0.007 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1250(emit)
+        2    0.000    0.000    0.007    0.003 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1130(flush)
+        1    0.000    0.000    0.007    0.007 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/sql.py:196(_wrap_result)
+        1    0.000    0.000    0.007    0.007 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/sql.py:162(_convert_arrays_to_dataframe)
+        1    0.000    0.000    0.006    0.006 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:694(__init__)
+        1    0.000    0.000    0.006    0.006 /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:617(_group_normalize_probabilities)
+       18    0.000    0.000    0.002    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/indexing.py:2529(__setitem__)
+      3/2    0.001    0.000    0.002    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/series.py:389(__init__)
+       18    0.000    0.000    0.002    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/series.py:1431(_set_value)
+       18    0.000    0.000    0.002    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/series.py:1424(_set_values)
+       18    0.000    0.000    0.001    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/managers.py:372(setitem)
+       22    0.000    0.000    0.001    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/construction.py:517(sanitize_array)
+       18    0.000    0.000    0.001    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/managers.py:317(apply)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/series.py:5784(isna)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/generic.py:8712(isna)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/dtypes/missing.py:101(isna)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/dtypes/missing.py:184(_isna)
+
+

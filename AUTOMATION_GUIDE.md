@@ -9,7 +9,9 @@ This automation system provides complete hands-off operation of your greyhound r
 - **Automatic Data Collection**: Collects upcoming races from multiple venues
 - **Live Odds Integration**: Updates live odds from Sportsbet throughout the day
 - **Race Processing**: Processes historical race results automatically
-- **ML Training & Backtesting**: Keeps prediction models up-to-date
+- **ML Training & Backtesting**: Keeps prediction models up-to-date using Optuna Bayesian optimization
+- **Advanced ML Pipeline**: Integrated SMOTE-NC, focal loss, and Platt calibration
+- **MLflow Integration**: Automated experiment tracking and model registry
 - **Report Generation**: Creates comprehensive analysis reports
 - **Database Maintenance**: Automated backups and integrity checks
 - **Value Bet Detection**: Identifies betting opportunities automatically
@@ -20,7 +22,7 @@ This automation system provides complete hands-off operation of your greyhound r
 - **14:00** - Afternoon routine (process, analyze)
 - **20:00** - Evening routine (ML, reports, maintenance)
 - **Every 2 hours (9-22)** - Live odds updates
-- **Sundays 22:00** - Weekly comprehensive ML training
+- **Sundays 22:00** - Weekly comprehensive ML training with Optuna optimization
 
 ## Installation
 
@@ -29,7 +31,15 @@ This automation system provides complete hands-off operation of your greyhound r
 First, ensure you have the required Python packages:
 
 ```bash
+# Create virtual environment (recommended)
+python3 -m venv venv
+source venv/bin/activate
+
+# Install core dependencies
 pip3 install schedule selenium requests beautifulsoup4 pandas numpy scikit-learn
+
+# Install ML optimization dependencies
+pip3 install optuna mlflow imbalanced-learn seaborn
 ```
 
 ### 2. Install as macOS Service
