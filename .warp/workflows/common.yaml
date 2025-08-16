@@ -8,6 +8,11 @@ workflows:
     inputs:
       - name: test_path
         default: tests/test_flask_api.py
+  - name: Pytest (node id)
+    command: pytest {{node_id}} -v
+    inputs:
+      - name: node_id
+        default: tests/test_flask_api.py::TestAPI::test_health_endpoint
   - name: Pytest (keyword filter)
     command: pytest -k "{{pattern}}" -v
     inputs:
@@ -17,12 +22,22 @@ workflows:
     command: make schema-monitor
   - name: Schema baseline
     command: make schema-baseline
+  - name: Schema tests
+    command: make schema-tests
   - name: Security checks
     command: make security
   - name: Playwright install
     command: npx playwright install --with-deps
-  - name: Playwright run e2e
+  - name: Playwright run e2e (headless)
     command: npx playwright test tests/playwright/e2e/workflow-*.spec.js
+  - name: Playwright run e2e (headed)
+    command: npx playwright test --headed tests/playwright/e2e/workflow-*.spec.js
+  - name: Locust baseline
+    command: locust --headless -u 10 -r 1 -f load_tests/locustfile.py --run-time 2m --csv=perf-test-report
+  - name: Docker build
+    command: docker build -t greyhound-predictor .
+  - name: Docker run (API 5002)
+    command: docker run --rm -it -p 5002:5002 -e PORT=5002 -e UPCOMING_RACES_DIR=/app/upcoming_races_temp -v "$(pwd)/upcoming_races_temp:/app/upcoming_races_temp" greyhound-predictor
   - name: Lint (flake8)
     command: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
   - name: Format check (black)
