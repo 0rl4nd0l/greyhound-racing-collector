@@ -111,4 +111,5 @@ Key references
   - FASTTRACK_INTEGRATION_GUIDE.md and FORM_GUIDE_SPEC.md: data source details and CSV specs
   - PIPELINE_SUMMARY.md and data_dictionary/*: pipeline and feature definitions
 - .github/workflows/*.yml: authoritative CI commands for linting, testing, migrations, and performance checks
+- Warp workflows: .warp/workflows/common.yaml (quick actions for pytest, schema checks, security, and Playwright)
 
