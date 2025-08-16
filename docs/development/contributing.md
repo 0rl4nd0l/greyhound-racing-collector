@@ -34,6 +34,14 @@ We strive to create a welcoming and inclusive community for everyone.
 
 ## Pull Requests
 
+### Pre-push docs hook (local behavior)
+- This repo may have a local `.git/hooks/pre-push` script that runs a Python documentation update/validation step.
+- If Python is not available in your shell at push time, the hook can fail. In that case, either:
+  - Ensure `python` is on PATH (e.g., activate your venv), or
+  - Temporarily bypass the hook for a single push: `git push --no-verify`
+- Optional convention: you can define an environment flag to skip the docs hook locally when needed:
+  - `SKIP_DOCS_HOOK=1 git push`
+
 ### Before Making a Pull Request
 - Ensure all tests pass (`pytest`).
 - Verify coding style and conventions are met.

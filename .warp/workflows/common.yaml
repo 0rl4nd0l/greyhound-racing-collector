@@ -1,0 +1,31 @@
+name: Common Dev Tasks
+version: 1
+workflows:
+  - name: Pytest (all)
+    command: pytest -v --cov=. --cov-report=term-missing
+  - name: Pytest (single file)
+    command: pytest {{test_path}} -v
+    inputs:
+      - name: test_path
+        default: tests/test_flask_api.py
+  - name: Pytest (keyword filter)
+    command: pytest -k "{{pattern}}" -v
+    inputs:
+      - name: pattern
+        default: temporal or leakage
+  - name: Schema monitor
+    command: make schema-monitor
+  - name: Schema baseline
+    command: make schema-baseline
+  - name: Security checks
+    command: make security
+  - name: Playwright install
+    command: npx playwright install --with-deps
+  - name: Playwright run e2e
+    command: npx playwright test tests/playwright/e2e/workflow-*.spec.js
+  - name: Lint (flake8)
+    command: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+  - name: Format check (black)
+    command: black --check --diff .
+  - name: Import sort check (isort)
+    command: isort --check-only --diff .
