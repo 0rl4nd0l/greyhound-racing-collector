@@ -6,10 +6,11 @@ Greyhound Racing Dashboard - Debug Version
 Simplified Flask app to isolate import/initialization issues.
 """
 
+import json
 import os
 import sqlite3
-import json
 from datetime import datetime
+
 from flask import Flask, jsonify
 
 # Basic Flask app setup

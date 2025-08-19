@@ -1,0 +1,44 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Snapshot Tests API response processing snapshots: api-response-processing 1`] = `
+{
+  "firstRaceRunners": 3,
+  "predictionsCount": 1,
+  "racesCount": 2,
+  "statsAccuracy": 0.847,
+  "storageFormatted": "4.51 GB",
+}
+`;
+
+exports[`Snapshot Tests formatFileSize output snapshots: file-size-formatting 1`] = `
+[
+  {
+    "input": 0,
+    "output": "0 Bytes",
+  },
+  {
+    "input": 512,
+    "output": "512 Bytes",
+  },
+  {
+    "input": 1024,
+    "output": "1 KB",
+  },
+  {
+    "input": 1536,
+    "output": "1.5 KB",
+  },
+  {
+    "input": 1048576,
+    "output": "1 MB",
+  },
+  {
+    "input": 5242880,
+    "output": "5 MB",
+  },
+  {
+    "input": 1073741824,
+    "output": "1 GB",
+  },
+]
+`;

@@ -1,0 +1,39 @@
+Profile for _group_normalize_probabilities
+Timestamp: 2025-08-04T12:49:35.327583
+Total Time: 0.044s
+CPU Time: 0.040s
+I/O Time: 0.0ms
+Memory Peak: 0.16MB
+Function Calls: 7560
+Bottlenecks: <20>(415.000s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1538(error)(0.029s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1640(_log)(0.029s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1666(handle)(0.028s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1720(callHandlers)(0.028s)
+
+==================================================
+Detailed cProfile Output:
+         7560 function calls (7077 primitive calls) in 0.043 seconds
+
+   Ordered by: cumulative time
+   List reduced from 415 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    0.029    0.029 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1538(error)
+        1    0.000    0.000    0.029    0.029 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1640(_log)
+        1    0.000    0.000    0.028    0.028 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1666(handle)
+        1    0.000    0.000    0.028    0.028 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1720(callHandlers)
+        1    0.000    0.000    0.026    0.026 /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:716(_create_explainability_metadata)
+        1    0.000    0.000    0.017    0.017 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:11692(mean)
+        1    0.000    0.000    0.017    0.017 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/generic.py:12432(mean)
+      3/2    0.002    0.001    0.017    0.009 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1010(handle)
+       20    0.001    0.000    0.010    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/blocks.py:400(reduce)
+        1    0.000    0.000    0.008    0.008 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1250(emit)
+        1    0.000    0.000    0.008    0.008 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1138(emit)
+       20    0.000    0.000    0.008    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:11465(blk_func)
+       20    0.001    0.000    0.008    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/nanops.py:111(f)
+      408    0.001    0.000    0.008    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py:414(_iterencode)
+  816/408    0.003    0.000    0.006    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py:334(_iterencode_dict)
+       22    0.000    0.000    0.006    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/nanops.py:389(new_func)
+       19    0.002    0.000    0.006    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/nanops.py:671(nanmean)
+        1    0.000    0.000    0.005    0.005 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1130(flush)
+        1    0.000    0.000    0.005    0.005 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:4067(__getitem__)
+        1    0.001    0.001    0.005    0.005 {method 'flush' of '_io.TextIOWrapper' objects}
+
+

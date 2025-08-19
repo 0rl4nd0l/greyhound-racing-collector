@@ -8,10 +8,12 @@ with the grade and distance information that was missing from the original proce
 """
 
 import os
-import sqlite3
-import pandas as pd
 import re
+import sqlite3
 from datetime import datetime
+
+import pandas as pd
+
 
 def extract_race_info_from_csv(filepath, df):
     """Extract race information from CSV filename and data"""

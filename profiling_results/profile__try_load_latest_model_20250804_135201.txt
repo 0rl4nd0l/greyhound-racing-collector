@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T13:52:01.165606
+Total Time: 9.829s
+CPU Time: 9.065s
+I/O Time: 0.0ms
+Memory Peak: 97.42MB
+Function Calls: 2402113
+Bottlenecks: <20>(309.000s), /Users/orlandolee/greyhound_racing_collector/utils/file_integrity_guardian.py:153(validate_file)(21.282s), /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:810(_try_load_latest_model)(9.777s), /Users/orlandolee/greyhound_racing_collector/utils/file_integrity_guardian.py:107(validate_csv_structure)(4.659s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)(4.433s)
+
+==================================================
+Detailed cProfile Output:
+         2402113 function calls (2400643 primitive calls) in 9.827 seconds
+
+   Ordered by: cumulative time
+   List reduced from 309 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+      507    0.214    0.000   21.282    0.042 /Users/orlandolee/greyhound_racing_collector/utils/file_integrity_guardian.py:153(validate_file)
+      2/1    0.002    0.001    9.777    9.777 /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:810(_try_load_latest_model)
+      507    0.366    0.001    4.659    0.009 /Users/orlandolee/greyhound_racing_collector/utils/file_integrity_guardian.py:107(validate_csv_structure)
+     9083    0.233    0.000    4.433    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)
+      507    0.049    0.000    4.227    0.008 <frozen genericpath>:16(exists)
+     6038    0.077    0.000    2.740    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)
+1015/1014    0.607    0.001    2.613    0.003 {method '__exit__' of '_io._IOBase' objects}
+     6038    0.830    0.000    2.069    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)
+     1014    0.357    0.000    1.893    0.002 <frozen genericpath>:84(getsize)
+ 1014/998    0.501    0.000    1.792    0.002 {built-in method _io.open}
+     3046    0.469    0.000    1.498    0.000 {built-in method builtins.next}
+   413382    0.826    0.000    1.480    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:281(read)
+      506    0.046    0.000    1.149    0.002 /Users/orlandolee/greyhound_racing_collector/utils/file_integrity_guardian.py:68(check_file_corruption)
+        1    0.000    0.000    0.941    0.941 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:613(_unpickle)
+        1    0.198    0.198    0.941    0.941 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:1230(load)
+     9083    0.447    0.000    0.722    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:1754(load_build)
+36665/35223    0.502    0.000    0.671    0.000 {method 'read' of '_io.BufferedReader' objects}
+     6013    0.110    0.000    0.654    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle_utils.py:234(_read_bytes)
+   407340    0.556    0.000    0.556    0.000 {method 'read' of '_io.BytesIO' objects}
+     1524    0.238    0.000    0.548    0.000 {built-in method posix.stat}
+
+

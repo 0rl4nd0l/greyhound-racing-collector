@@ -3,12 +3,14 @@
 Debug script to test track condition extraction from race pages
 """
 
+import re
 import sys
 import time
+
+from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-from bs4 import BeautifulSoup
-import re
+
 
 def setup_driver():
     """Setup Chrome driver for testing"""

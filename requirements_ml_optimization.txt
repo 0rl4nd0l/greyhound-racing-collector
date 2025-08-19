@@ -1,0 +1,35 @@
+# Greyhound Racing Predictor - ML Optimization Dependencies
+# Use: pip install -r requirements_ml_optimization.txt
+
+# Core ML Optimization Libraries
+optuna==4.4.0                    # Bayesian hyperparameter optimization
+mlflow==3.1.4                    # ML experiment tracking and model registry
+imbalanced-learn==0.13.0         # SMOTE-NC and other imbalance techniques
+seaborn==0.13.2                  # Statistical data visualization
+
+# Core Scientific Computing (if not already installed)
+pandas>=2.0.0
+numpy>=1.20.0
+scikit-learn>=1.6.0
+matplotlib>=3.4.0
+
+# Database and Data Processing
+sqlite3                          # Built into Python
+joblib>=1.0.0                    # Model serialization
+
+# Flask and Web Framework (if not already installed)
+flask>=3.0.0
+flask-cors>=4.0.0
+
+# Testing and Development
+pytest>=7.0.0
+pytest-cov>=4.0.0
+
+# Optional: MLflow UI dependencies (auto-installed with mlflow)
+# gunicorn>=20.0.0               # Production WSGI server for MLflow
+# alembic>=1.5.0                 # Database migrations (included with mlflow)
+
+# Optional: Advanced ML libraries for future enhancements
+# xgboost>=2.0.0                 # Gradient boosting framework
+# catboost>=1.2.0                # Categorical boosting framework
+# lightgbm>=4.0.0                # Light gradient boosting framework

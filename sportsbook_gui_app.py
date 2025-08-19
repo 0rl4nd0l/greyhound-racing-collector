@@ -1,4 +1,5 @@
 from tkinter import Tk
+
 from event_scraper import EventScraper
 from scraper_exception import ScraperException
 from ui.disclaimer_frame import DisclaimerFrame
@@ -37,7 +38,8 @@ class App:
         center_y = int((screen_height / 2) - (self.WINDOW_HEIGHT / 2))
 
         self.root.geometry(
-            f"{self.WINDOW_WIDTH}x{self.WINDOW_HEIGHT}+{center_x}+{center_y}")
+            f"{self.WINDOW_WIDTH}x{self.WINDOW_HEIGHT}+{center_x}+{center_y}"
+        )
 
     def render_frames(self):
         self.disclaimer_frame.show()
@@ -55,8 +57,8 @@ class App:
     def scrape_event(self, url, filename, folder_name):
 
         try:
-            if not filename.endswith('.csv'):
-                filename += '.csv'
+            if not filename.endswith(".csv"):
+                filename += ".csv"
 
             csv_outfile = f"{folder_name}/{filename}"
 
@@ -64,13 +66,14 @@ class App:
 
             self.scraper.scrape(url, csv_outfile)
 
-            formatted_message = '\n'.join(
-                [f"{k}: {v}" for k, v in self.scraper.get_summary().items()])
+            formatted_message = "\n".join(
+                [f"{k}: {v}" for k, v in self.scraper.get_summary().items()]
+            )
 
-            return {'status': "Success!", 'message': formatted_message}
+            return {"status": "Success!", "message": formatted_message}
 
         except ScraperException as exception:
-            return {'status': "Error!", 'message': exception}
+            return {"status": "Error!", "message": exception}
 
 
 if __name__ == "__main__":

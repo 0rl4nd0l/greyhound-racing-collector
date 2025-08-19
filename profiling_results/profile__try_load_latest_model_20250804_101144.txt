@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T10:11:44.980957
+Total Time: 7.212s
+CPU Time: 6.822s
+I/O Time: 0.0ms
+Memory Peak: 108.84MB
+Function Calls: 2337692
+Bottlenecks: <20>(723.000s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:998(_bootstrap)(7.207s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:1025(_bootstrap_inner)(7.207s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:981(run)(7.207s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/concurrent/futures/thread.py:70(_worker)(7.207s)
+
+==================================================
+Detailed cProfile Output:
+         2337692 function calls (2337659 primitive calls) in 7.212 seconds
+
+   Ordered by: cumulative time
+   List reduced from 723 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+      2/1    0.001    0.001    7.207    7.207 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:998(_bootstrap)
+      2/1    0.000    0.000    7.207    7.207 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:1025(_bootstrap_inner)
+      2/1    0.000    0.000    7.207    7.207 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:981(run)
+        1    0.000    0.000    7.207    7.207 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/concurrent/futures/thread.py:70(_worker)
+        1    0.000    0.000    7.207    7.207 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/concurrent/futures/thread.py:54(run)
+        1    0.000    0.000    7.207    7.207 /Users/orlandolee/greyhound_racing_collector/prediction_strategy_manager.py:523(worker_with_streaming)
+        1    0.000    0.000    7.203    7.203 /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:707(_try_load_latest_model)
+      2/1    0.065    0.033    7.202    7.202 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:674(load)
+        1    0.000    0.000    7.074    7.074 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:613(_unpickle)
+        1    1.762    1.762    7.070    7.070 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:1230(load)
+     9083    0.113    0.000    2.660    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)
+     6038    0.036    0.000    1.893    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)
+     6038    0.813    0.000    1.852    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)
+   413382    0.743    0.000    1.326    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:281(read)
+     9083    0.387    0.000    0.614    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:1754(load_build)
+   407340    0.499    0.000    0.499    0.000 {method 'read' of '_io.BytesIO' objects}
+   279781    0.497    0.000    0.497    0.000 {built-in method builtins.isinstance}
+    86464    0.093    0.000    0.402    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:1659(load_binget)
+36159/36158    0.332    0.000    0.351    0.000 {method 'read' of '_io.BufferedReader' objects}
+     6013    0.044    0.000    0.330    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle_utils.py:234(_read_bytes)
+
+

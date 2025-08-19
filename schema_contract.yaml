@@ -1,0 +1,91 @@
+tables:
+  race_metadata:
+    columns:
+      - name: id
+        type: INTEGER
+        constraints:
+          - PRIMARY KEY
+          - AUTOINCREMENT
+      - name: race_id
+        type: TEXT
+        constraints:
+          - UNIQUE
+      - name: venue
+        type: TEXT
+      - name: race_number
+        type: INTEGER
+      - name: race_date
+        type: DATE
+      - name: race_name
+        type: TEXT
+      - name: grade
+        type: TEXT
+      - name: distance
+        type: TEXT
+      - name: track_condition
+        type: TEXT
+      - name: weather
+        type: TEXT
+      - name: temperature
+        type: REAL
+      - name: humidity
+        type: REAL
+      - name: wind_speed
+        type: REAL
+      - name: wind_direction
+        type: TEXT
+      - name: track_record
+        type: TEXT
+      - name: prize_money_total
+        type: REAL
+      - name: prize_money_breakdown
+        type: TEXT
+      - name: race_time
+        type: TEXT
+      - name: field_size
+        type: INTEGER
+      - name: url
+        type: TEXT
+      - name: extraction_timestamp
+        type: DATETIME
+      - name: data_source
+        type: TEXT
+      - name: winner_name
+        type: TEXT
+      - name: winner_odds
+        type: REAL
+      - name: winner_margin
+        type: REAL
+      - name: race_status
+        type: TEXT
+      - name: data_quality_note
+        type: TEXT
+      - name: actual_field_size
+        type: INTEGER
+      - name: scratched_count
+        type: INTEGER
+      - name: scratch_rate
+        type: REAL
+      - name: box_analysis
+        type: TEXT
+      - name: weather_condition
+        type: TEXT
+      - name: precipitation
+        type: REAL
+      - name: pressure
+        type: REAL
+      - name: visibility
+        type: REAL
+      - name: weather_location
+        type: TEXT
+      - name: weather_timestamp
+        type: DATETIME
+      - name: weather_adjustment_factor
+        type: REAL
+      - name: sportsbet_url
+        type: TEXT
+      - name: venue_slug
+        type: TEXT
+      - name: start_datetime
+        type: DATETIME
+

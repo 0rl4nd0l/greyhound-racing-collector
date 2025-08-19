@@ -1,0 +1,39 @@
+Profile for _group_normalize_probabilities
+Timestamp: 2025-08-04T13:39:26.889297
+Total Time: 0.010s
+CPU Time: 0.011s
+I/O Time: 0.0ms
+Memory Peak: 0.08MB
+Function Calls: 2719
+Bottlenecks: <20>(170.000s), /Users/orlandolee/greyhound_racing_collector/csv_ingestion.py:503(ingest_csv)(0.009s), /Users/orlandolee/greyhound_racing_collector/csv_ingestion.py:220(validate_csv_schema)(0.008s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_abc.py:442(exists)(0.008s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_local.py:510(stat)(0.008s)
+
+==================================================
+Detailed cProfile Output:
+         2719 function calls (2675 primitive calls) in 0.009 seconds
+
+   Ordered by: cumulative time
+   List reduced from 170 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    0.009    0.009 /Users/orlandolee/greyhound_racing_collector/csv_ingestion.py:503(ingest_csv)
+        1    0.000    0.000    0.008    0.008 /Users/orlandolee/greyhound_racing_collector/csv_ingestion.py:220(validate_csv_schema)
+        1    0.000    0.000    0.008    0.008 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_abc.py:442(exists)
+        1    0.000    0.000    0.008    0.008 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_local.py:510(stat)
+        1    0.000    0.000    0.008    0.008 {built-in method posix.stat}
+      2/1    0.000    0.000    0.007    0.007 /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:617(_group_normalize_probabilities)
+      2/1    0.000    0.000    0.007    0.007 /Users/orlandolee/greyhound_racing_collector/pipeline_profiler.py:714(__exit__)
+      2/1    0.000    0.000    0.007    0.007 /Users/orlandolee/greyhound_racing_collector/pipeline_profiler.py:307(track_sequence_step)
+      9/2    0.000    0.000    0.006    0.003 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/_utils.py:70(__call__)
+      9/2    0.000    0.000    0.006    0.003 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:603(__call__)
+      8/2    0.000    0.000    0.006    0.003 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/parallel.py:125(__call__)
+      8/2    0.000    0.000    0.006    0.003 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/ensemble/_forest.py:724(_accumulate_prediction)
+        8    0.000    0.000    0.003    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/validation.py:1673(check_is_fitted)
+       10    0.000    0.000    0.002    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/pool.py:776(_set)
+        8    0.000    0.000    0.002    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/_tags.py:367(get_tags)
+       10    0.000    0.000    0.002    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:802(__call__)
+        8    0.001    0.000    0.002    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/_tags.py:303(_find_tags_provider)
+       10    0.000    0.000    0.002    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:835(_dispatch_new)
+       10    0.000    0.000    0.002    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1446(dispatch_next)
+       10    0.000    0.000    0.002    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/parallel.py:1457(dispatch_one_batch)
+
+

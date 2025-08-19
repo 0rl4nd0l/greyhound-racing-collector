@@ -1,0 +1,35 @@
+/* FontAwesome Core Styles - for pseudo-element support */
+@import url('../../../node_modules/@fortawesome/fontawesome-svg-core/styles.css');
+
+/* Additional custom styles for FontAwesome compatibility */
+.fa-fw {
+  width: 1.25em;
+  text-align: center;
+}
+
+.fa-spin {
+  animation: fa-spin 2s infinite linear;
+}
+
+@keyframes fa-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* Size modifiers */
+.fa-2x { font-size: 2em; }
+.fa-3x { font-size: 3em; }
+.fa-4x { font-size: 4em; }
+.fa-5x { font-size: 5em; }
+
+/* Brand colors for better visual consistency */
+.text-primary { color: #007bff; }
+.text-success { color: #28a745; }
+.text-warning { color: #ffc107; }
+.text-danger { color: #dc3545; }
+.text-info { color: #17a2b8; }
+.text-secondary { color: #6c757d; }

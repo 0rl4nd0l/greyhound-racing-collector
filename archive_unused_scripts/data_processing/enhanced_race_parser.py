@@ -13,11 +13,13 @@ Key improvements:
 4. Validation of extracted information
 """
 
-import re
 import logging
+import re
 from datetime import datetime
-from typing import Dict, Optional, Any
+from typing import Any, Dict, Optional
+
 import pandas as pd
+
 
 class EnhancedRaceParser:
     def __init__(self):

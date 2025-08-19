@@ -12,10 +12,11 @@ False positives include:
 - Track conditions that appear in the race URL (indicating sponsorship text)
 """
 
-import sqlite3
 import re
+import sqlite3
 from datetime import datetime
-from typing import List, Dict, Tuple
+from typing import Dict, List, Tuple
+
 
 class TrackConditionCleaner:
     def __init__(self, db_path: str = "greyhound_racing_data.db"):

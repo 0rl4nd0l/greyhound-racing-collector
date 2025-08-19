@@ -1,6 +1,8 @@
-from tkinter import Frame, Label, Button
-from .constants import DISCLAIMER_TITLE, DISCLAIMER_TEXT, DISCLAIMER_BUTTON_TEXT
-from .styles import large_text_style, small_text_style, primary_button_style
+from tkinter import Button, Frame, Label
+
+from .constants import (DISCLAIMER_BUTTON_TEXT, DISCLAIMER_TEXT,
+                        DISCLAIMER_TITLE)
+from .styles import large_text_style, primary_button_style, small_text_style
 
 
 class DisclaimerFrame(Frame):
@@ -11,9 +13,14 @@ class DisclaimerFrame(Frame):
 
         self.title = Label(self, text=DISCLAIMER_TITLE, **large_text_style)
         self.disclaimer_label = Label(
-            self, text=DISCLAIMER_TEXT, justify='left', **small_text_style)
-        self.accept_button = Button(self, text=DISCLAIMER_BUTTON_TEXT,
-                                    command=self.next_frame_callback, **primary_button_style)
+            self, text=DISCLAIMER_TEXT, justify="left", **small_text_style
+        )
+        self.accept_button = Button(
+            self,
+            text=DISCLAIMER_BUTTON_TEXT,
+            command=self.next_frame_callback,
+            **primary_button_style
+        )
 
         self.render_frame()
 

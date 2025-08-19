@@ -1,0 +1,39 @@
+Profile for _group_normalize_probabilities
+Timestamp: 2025-08-04T13:39:24.710385
+Total Time: 0.011s
+CPU Time: 0.013s
+I/O Time: 0.0ms
+Memory Peak: 0.32MB
+Function Calls: 719
+Bottlenecks: <20>(196.000s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:4067(__getitem__)(0.006s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/generic.py:4161(_take_with_is_copy)(0.005s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/generic.py:4046(take)(0.005s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/managers.py:869(take)(0.005s)
+
+==================================================
+Detailed cProfile Output:
+         719 function calls (698 primitive calls) in 0.012 seconds
+
+   Ordered by: cumulative time
+   List reduced from 196 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    0.006    0.006 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:4067(__getitem__)
+        1    0.000    0.000    0.005    0.005 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/generic.py:4161(_take_with_is_copy)
+        1    0.000    0.000    0.005    0.005 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/generic.py:4046(take)
+        1    0.000    0.000    0.005    0.005 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/managers.py:869(take)
+        1    0.000    0.000    0.005    0.005 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/managers.py:623(reindex_indexer)
+      2/1    0.001    0.001    0.004    0.004 /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:617(_group_normalize_probabilities)
+       11    0.000    0.000    0.001    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/array_algos/take.py:59(take_nd)
+        9    0.000    0.000    0.001    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/blocks.py:1353(take_nd)
+      2/1    0.003    0.002    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/pipeline_profiler.py:714(__exit__)
+        1    0.001    0.001    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/pipeline_profiler.py:307(track_sequence_step)
+       11    0.001    0.000    0.001    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/array_algos/take.py:120(_take_nd_ndarray)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/indexes/base.py:6198(_get_indexer_strict)
+       21    0.001    0.000    0.001    0.000 {method 'reduce' of 'numpy.ufunc' objects}
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/numpy/_core/fromnumeric.py:4073(var)
+        2    0.000    0.000    0.001    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/indexes/base.py:3827(get_indexer)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/numpy/_core/_methods.py:151(_var)
+        2    0.000    0.000    0.000    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_local.py:227(__str__)
+        1    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/indexes/base.py:6174(get_indexer_for)
+        1    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/base_parser.py:115(__init__)
+        6    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/numpy/_core/fromnumeric.py:69(_wrapreduction)
+
+
