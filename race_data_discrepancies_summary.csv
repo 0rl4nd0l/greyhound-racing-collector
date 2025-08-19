@@ -1,0 +1,2 @@
+total_csv_files,total_log_entries,missing_log_entries_count,log_only_races_count,conflicting_fields_count,files_with_logs,files_without_logs
+36,1124,33,2,1,3,33

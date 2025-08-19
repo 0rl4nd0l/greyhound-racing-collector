@@ -13,7 +13,9 @@ Date: July 24, 2025
 import os
 import sqlite3
 from pathlib import Path
+
 from upcoming_race_predictor import UpcomingRacePredictor
+
 
 def test_enhanced_integration():
     """Test the enhanced race processor integration"""

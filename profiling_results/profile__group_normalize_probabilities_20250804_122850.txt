@@ -1,0 +1,39 @@
+Profile for _group_normalize_probabilities
+Timestamp: 2025-08-04T12:28:50.914562
+Total Time: 0.008s
+CPU Time: 0.007s
+I/O Time: 0.0ms
+Memory Peak: 0.03MB
+Function Calls: 690
+Bottlenecks: <20>(99.000s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/contextlib.py:145(__exit__)(0.007s), builtins.next}(0.007s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/pipeline.py:44(_raise_or_warn_if_not_fitted)(0.006s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/validation.py:1673(check_is_fitted)(0.006s)
+
+==================================================
+Detailed cProfile Output:
+         690 function calls (682 primitive calls) in 0.008 seconds
+
+   Ordered by: cumulative time
+   List reduced from 99 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    0.007    0.007 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/contextlib.py:145(__exit__)
+        1    0.000    0.000    0.007    0.007 {built-in method builtins.next}
+        1    0.000    0.000    0.006    0.006 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/pipeline.py:44(_raise_or_warn_if_not_fitted)
+        1    0.000    0.000    0.006    0.006 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/validation.py:1673(check_is_fitted)
+        1    0.001    0.001    0.006    0.006 /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:617(_group_normalize_probabilities)
+        1    0.001    0.001    0.005    0.005 /Users/orlandolee/greyhound_racing_collector/pipeline_profiler.py:714(__exit__)
+        7    0.001    0.000    0.002    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/utils/_tags.py:303(_find_tags_provider)
+        1    0.000    0.000    0.002    0.002 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/ensemble/_forest.py:1002(__sklearn_tags__)
+      2/1    0.001    0.001    0.002    0.002 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/base.py:539(__sklearn_tags__)
+      3/2    0.000    0.000    0.001    0.001 {built-in method builtins.all}
+        2    0.000    0.000    0.001    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/compose/_column_transformer.py:1319(__sklearn_tags__)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/ensemble/_forest.py:715(__sklearn_tags__)
+        2    0.000    0.000    0.001    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/compose/_column_transformer.py:1322(<genexpr>)
+        1    0.000    0.000    0.001    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/pipeline.py:1233(<genexpr>)
+        1    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/numpy/_core/fromnumeric.py:4073(var)
+        1    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/numpy/_core/_methods.py:151(_var)
+      174    0.000    0.000    0.000    0.000 {built-in method builtins.vars}
+        7    0.000    0.000    0.000    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/sklearn/base.py:419(__sklearn_tags__)
+        1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}
+       58    0.000    0.000    0.000    0.000 {built-in method builtins.any}
+
+

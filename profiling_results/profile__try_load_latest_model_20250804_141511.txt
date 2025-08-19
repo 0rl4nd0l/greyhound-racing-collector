@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T14:15:11.160561
+Total Time: 56.980s
+CPU Time: 57.107s
+I/O Time: 0.0ms
+Memory Peak: 90.10MB
+Function Calls: 10336144
+Bottlenecks: <20>(3936.000s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py:414(_iterencode)(59.243s), /Users/orlandolee/greyhound_racing_collector/utils/race_file_utils.py:151(parse_filename_to_race_id)(53.039s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/queues.py:372(empty)(47.406s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle_utils.py:234(_read_bytes)(46.082s)
+
+==================================================
+Detailed cProfile Output:
+         10336144 function calls (8920582 primitive calls) in 71.347 seconds
+
+   Ordered by: cumulative time
+   List reduced from 3936 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+680470/680469    3.464    0.000   59.243    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py:414(_iterencode)
+    12860    0.371    0.000   53.039    0.004 /Users/orlandolee/greyhound_racing_collector/utils/race_file_utils.py:151(parse_filename_to_race_id)
+    55/54    0.006    0.000   47.406    0.878 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/queues.py:372(empty)
+6017/6013    0.559    0.000   46.082    0.008 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle_utils.py:234(_read_bytes)
+    49/17    0.000    0.000   43.730    2.572 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/wrappers/response.py:31(_iter_encoded)
+    35/13    0.000    0.000   43.730    3.364 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/wsgi.py:255(__next__)
+        2    0.000    0.000   43.730   21.865 /Users/orlandolee/greyhound_racing_collector/app.py:6638(generate_prediction_stream)
+        1    0.000    0.000   43.730   43.730 /Users/orlandolee/greyhound_racing_collector/prediction_strategy_manager.py:516(predict_races_streaming)
+    55/54    0.004    0.000   43.376    0.803 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/connection.py:253(poll)
+1361160/680469    7.993    0.000   40.382    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py:334(_iterencode_dict)
+36240/35637    1.449    0.000   36.190    0.001 {method 'read' of '_io.BufferedReader' objects}
+   164/45    0.011    0.000   35.994    0.800 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:641(wait)
+   172/53    0.054    0.000   35.983    0.679 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/threading.py:327(wait)
+   187/16    0.012    0.000   35.804    2.238 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/generic.py:6482(astype)
+18889/8579    0.054    0.000   35.499    0.004 {method 'acquire' of '_thread.lock' objects}
+6043/6038    1.468    0.000   35.356    0.006 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)
+9093/1908    1.094    0.000   33.738    0.018 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)
+    55/54    0.007    0.000   33.533    0.621 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/connection.py:439(_poll)
+    12128    0.290    0.000   31.701    0.003 /Users/orlandolee/greyhound_racing_collector/utils/date_parsing.py:12(parse_date_flexible)
+   329/56    0.039    0.000   30.477    0.544 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1010(handle)
+
+

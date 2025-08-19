@@ -51,7 +51,7 @@ Thumbs.db
 # Logs
 *.log
 logs/
-geckodriver.log
+/geckodriver.log
 
 # Database files
 *.db
@@ -137,6 +137,10 @@ dmypy.json
 /quarantine/
 /system_analysis/
 /sportsbook_implementations/
+
+# Frontend dependencies and build outputs
+/node_modules/
+/site/
 
 # Report and analysis files
 *.json

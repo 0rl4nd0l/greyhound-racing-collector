@@ -14,13 +14,14 @@ Author: AI Assistant
 Date: July 25, 2025
 """
 
-import sqlite3
-import pandas as pd
-from datetime import datetime, timedelta
-import time
-import sys
 import os
+import sqlite3
+import sys
+import time
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional
+
+import pandas as pd
 
 # Import the weather service
 try:

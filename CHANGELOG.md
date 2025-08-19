@@ -1,5 +1,30 @@
 # Greyhound Predictor Changelog
 
+## [v3.1.0] - 2025-08-04
+
+### Added
+
+- **Step 4: Strength Index Generation System**: 
+  - Implemented `step4_strength_index_generator.py` to generate comparative strength scores for all dogs
+  - **Weighted Linear Formula**: Domain knowledge-based scoring with Ballarat-specific enhancements (1.5x multiplier)
+  - **Gradient Boosting Regressor**: ML-based approach trained on synthetic performance targets
+  - **Score Normalization**: Min-Max scaling to 0-100 range for cross-dog comparison
+  - **Model Persistence**: Save/load capability for trained models
+  - Generated strength scores for 5 dogs with comprehensive ranking system
+  - Enhanced weighting for Ballarat track performance features
+  - Feature importance analysis and cross-validation metrics
+
+### Results
+- **Linear Weighted Method**: Successfully generated differentiated scores (0-100 range)
+- **Top Performer**: HANDOVER (100.00 score) - excellent consistency and time reliability
+- **Model Output**: Saved trained gradient boosting model for future predictions
+- **Documentation**: Created comprehensive implementation summary with usage examples
+
+## [v3.0.1] - 2025-07-31
+
+### Fixed
+-   **Form Guide CSV Scraper**: Fixed regex patterns to correctly recognize race dates and filenames, resolving "Unknown" entries in data processing.
+
 ## [v3.0.0] - 2025-07-26
 
 This major update focuses on a comprehensive refactoring of the entire system, from the database to the prediction pipeline and the Flask API. The primary goals were to unify scattered data sources, improve prediction accuracy, enhance system stability, and provide a more robust and developer-friendly platform.

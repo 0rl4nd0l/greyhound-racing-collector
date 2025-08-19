@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-04T11:04:42.414739
+Total Time: 59.780s
+CPU Time: 68.028s
+I/O Time: 0.0ms
+Memory Peak: 84.77MB
+Function Calls: 9332247
+Bottlenecks: <20>(1566.000s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)(137.073s), /Users/orlandolee/greyhound_racing_collector/csv_ingestion.py:503(ingest_csv)(93.565s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:694(__init__)(88.840s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/handlers.py:71(emit)(70.088s)
+
+==================================================
+Detailed cProfile Output:
+         9332247 function calls (8914999 primitive calls) in 63.021 seconds
+
+   Ordered by: cumulative time
+   List reduced from 1566 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+9084/9083    0.256    0.000  137.073    0.015 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)
+2213/2208    0.241    0.000   93.565    0.042 /Users/orlandolee/greyhound_racing_collector/csv_ingestion.py:503(ingest_csv)
+2220/1029    0.321    0.000   88.840    0.086 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/frame.py:694(__init__)
+2222/2220    1.351    0.001   70.088    0.032 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/handlers.py:71(emit)
+6039/6038    0.174    0.000   68.736    0.011 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)
+2219/1034    0.309    0.000   45.705    0.044 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/construction.py:423(dict_to_mgr)
+2214/1556    0.151    0.000   43.300    0.028 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1990(__exit__)
+     6013    0.146    0.000   43.259    0.007 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle_utils.py:234(_read_bytes)
+    87165    0.420    0.000   35.270    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py:414(_iterencode)
+2214/1556    0.134    0.000   34.814    0.022 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py:1622(close)
+     2220    0.065    0.000   34.787    0.016 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/handlers.py:189(shouldRollover)
+ 2209/900    0.381    0.000   33.630    0.037 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/common.py:664(get_handle)
+2214/1559    0.129    0.000   29.686    0.019 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/io/common.py:131(close)
+2218/1461    0.301    0.000   29.349    0.020 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/construction.py:96(arrays_to_mgr)
+4426/2790    0.188    0.000   27.356    0.010 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_local.py:510(stat)
+6706/3367    0.363    0.000   25.021    0.007 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/logging/__init__.py:1138(emit)
+175985/87165    1.029    0.000   22.815    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py:334(_iterencode_dict)
+2217/1767    0.109    0.000   19.945    0.011 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/pandas/core/internals/managers.py:2121(create_block_manager_from_column_arrays)
+2216/1757    0.089    0.000   18.109    0.010 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pathlib/_abc.py:442(exists)
+2211/1565    0.360    0.000   18.106    0.012 {method 'close' of 'sqlite3.Connection' objects}
+
+

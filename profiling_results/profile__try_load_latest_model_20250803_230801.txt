@@ -1,0 +1,39 @@
+Profile for _try_load_latest_model
+Timestamp: 2025-08-03T23:08:01.393111
+Total Time: 6.092s
+CPU Time: 5.875s
+I/O Time: 0.0ms
+Memory Peak: 36.16MB
+Function Calls: 2382792
+Bottlenecks: <20>(905.000s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)(13.332s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)(9.056s), /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)(8.898s), /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:360(finish_request)(4.501s)
+
+==================================================
+Detailed cProfile Output:
+         2382792 function calls (2381807 primitive calls) in 6.084 seconds
+
+   Ordered by: cumulative time
+   List reduced from 905 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+9087/9083    0.442    0.000   13.332    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:438(load_build)
+6040/6038    0.036    0.000    9.056    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:259(read)
+6039/6038    0.591    0.000    8.898    0.001 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:159(read_array)
+     10/4    0.001    0.000    4.501    1.125 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:360(finish_request)
+     10/4    0.000    0.000    4.489    1.122 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:760(__init__)
+     10/4    0.001    0.000    4.488    1.122 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/serving.py:395(handle)
+6014/6013    0.077    0.000    2.898    0.000 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle_utils.py:234(_read_bytes)
+36168/36097    0.268    0.000    2.806    0.000 {method 'read' of '_io.BufferedReader' objects}
+        9    0.002    0.000    2.262    0.251 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/selectors.py:499(register)
+     10/4    0.006    0.001    2.226    0.556 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/http/server.py:432(handle)
+     10/4    0.001    0.000    2.053    0.513 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socketserver.py:690(process_request_thread)
+       13    0.000    0.000    1.899    0.146 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/wsgi.py:255(__next__)
+        6    0.000    0.000    1.898    0.316 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/werkzeug/wrappers/response.py:31(_iter_encoded)
+        2    0.000    0.000    1.898    0.949 /Users/orlandolee/greyhound_racing_collector/app.py:6160(generate_prediction_stream)
+        1    0.000    0.000    1.898    1.898 /Users/orlandolee/greyhound_racing_collector/prediction_strategy_manager.py:440(predict_races_streaming)
+        1    0.000    0.000    1.870    1.870 /Users/orlandolee/greyhound_racing_collector/ml_system_v4.py:607(_try_load_latest_model)
+        1    0.022    0.022    1.869    1.869 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:674(load)
+      2/1    0.000    0.000    1.840    1.840 /Users/orlandolee/greyhound_racing_collector/venv/lib/python3.13/site-packages/joblib/numpy_pickle.py:613(_unpickle)
+      2/1    0.862    0.431    1.840    1.840 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:1230(load)
+   413382    0.594    0.000    1.060    0.000 /usr/local/Cellar/python@3.13/3.13.3_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/pickle.py:281(read)
+
+

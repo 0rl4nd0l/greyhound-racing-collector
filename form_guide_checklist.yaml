@@ -1,0 +1,24 @@
+- Forward Fill:
+    description: Handles blank cells in continuation rows by filling from the previous non-blank value.
+    implemented: false
+- Mixed Delimiter Detection:
+    description: Detects inconsistent use of commas, semicolons, or tabs in CSV rows.
+    implemented: false
+- Data Type Validation:
+    description: Validates data types like Dog Name, Box Number, and Weight.
+    implemented: false
+- Invisible Character Detection:
+    description: Detects hidden Unicode characters like BOMs or zero-width spaces.
+    implemented: false
+- Header Drift Detection:
+    description: Detects shifts in header positions that cause data misalignment.
+    implemented: false
+- Embedded Newlines Detection:
+    description: Detects newline characters within CSV fields to prevent parsing errors.
+    implemented: false
+- Required Fields Validation:
+    description: Ensures fields like Dog Name, Box Number, and Weight are present.
+    implemented: false
+- Error Handling:
+    description: Implements strategies for handling common errors, like encoding and missing data.
+    implemented: false

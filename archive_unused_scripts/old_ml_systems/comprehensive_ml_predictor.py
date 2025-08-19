@@ -17,16 +17,19 @@ Author: AI Assistant
 Date: July 25, 2025
 """
 
-import os
-import sys
 import json
-import numpy as np
-import pandas as pd
-from json_utils import safe_json_dump, safe_mean, safe_correlation, safe_float
+import os
+import sqlite3
+import sys
+import warnings
 from datetime import datetime, timedelta
 from pathlib import Path
-import sqlite3
-import warnings
+
+import numpy as np
+import pandas as pd
+
+from json_utils import safe_correlation, safe_float, safe_json_dump, safe_mean
+
 warnings.filterwarnings('ignore')
 
 # Import the comprehensive enhanced ML system
@@ -39,7 +42,8 @@ except ImportError as e:
 
 # Import traditional analysis system
 try:
-    from traditional_analysis import TraditionalRaceAnalyzer, get_traditional_ml_features
+    from traditional_analysis import (TraditionalRaceAnalyzer,
+                                      get_traditional_ml_features)
     TRADITIONAL_ANALYSIS_AVAILABLE = True
 except ImportError as e:
     print(f"❌ Traditional analysis system not available: {e}")
@@ -48,8 +52,8 @@ except ImportError as e:
 # Import scikit-learn for prediction
 try:
     import joblib
-    from sklearn.preprocessing import RobustScaler, LabelEncoder
     from sklearn.impute import KNNImputer
+    from sklearn.preprocessing import LabelEncoder, RobustScaler
     SKLEARN_AVAILABLE = True
 except ImportError:
     SKLEARN_AVAILABLE = False
@@ -177,7 +181,8 @@ class ComprehensiveMLPredictor:
                                     'grade': 'Grade 5',
                                     'track_condition': 'Good'
                                 }
-                                from traditional_analysis import calculate_traditional_score
+                                from traditional_analysis import \
+                                    calculate_traditional_score
                                 traditional_score = calculate_traditional_score(
                                     dog_name, race_context, self.db_path
                                 )
