@@ -278,6 +278,30 @@ body {
     color: white;
 }
 
+/* Accessibility: color contrast improvements */
+.badge.bg-info,
+.badge.bg-warning { color: #212529; /* dark text improves contrast on lighter badges */ }
+.badge.bg-success { color: #ffffff !important; background-color: #0f5132 !important; }
+.bg-light .text-muted { color: #495057 !important; }
+.bg-light .text-success { color: #0f5132 !important; }
+
+/* Navbar and card header contrast improvements */
+.navbar.navbar-dark.bg-primary { background-color: #0a58ca !important; }
+.navbar-dark .navbar-brand, .navbar-dark .navbar-nav .nav-link { color: #ffffff !important; }
+
+.bg-primary { background-color: #0a58ca !important; }
+.bg-success { background-color: #146c43 !important; }
+.bg-info { background-color: #087990 !important; }
+
+/* Warning backgrounds should use dark text for contrast */
+.bg-warning { color: #212529 !important; }
+.bg-warning .card-body, .bg-warning .mb-0, .bg-warning .text-white-50 { color: #212529 !important; }
+
+/* Improve low-contrast helper text on colored cards */
+.bg-primary .text-white-50,
+.bg-success .text-white-50,
+.bg-info .text-white-50 { color: #f8f9fa !important; opacity: 1 !important; }
+
 /* ML Insights */
 .insights-grid {
     display: grid;

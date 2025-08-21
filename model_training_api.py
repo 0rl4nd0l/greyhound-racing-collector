@@ -51,18 +51,9 @@ def trigger_training():
         training_data_days = data.get('training_data_days', 30)
         force_retrain = data.get('force_retrain', False)
         
-        # If model_id is omitted, get best model for prediction type
+        # If model_id is omitted, default to comprehensive training
         if not model_id:
-            try:
-                registry = get_model_registry()
-                best_models = registry.get_best_models()
-                model_id = best_models.get(prediction_type, {}).get('model_id')
-                
-                if not model_id:
-                    # Default to comprehensive training if no specific model found
-                    model_id = 'comprehensive_training'
-            except Exception as e:
-                model_id = 'comprehensive_training'  # Fallback
+            model_id = 'comprehensive_training'
         
         # Generate unique job ID
         job_id = f"training_{uuid.uuid4().hex[:8]}_{int(time.time())}"
@@ -83,11 +74,15 @@ def trigger_training():
             'thread': None
         }
         
-        # Start training in background thread
+        # Start training in background thread with correct parameters
         thread = threading.Thread(
-            target=retrain_worker, 
-            args=(model_id, job_id, training_data_days, force_retrain),
-            daemon=True
+            target=retrain_worker,
+            args=(job_id, model_id, {
+                'training_data_days': training_data_days,
+                'force_retrain': force_retrain,
+                'prediction_type': prediction_type,
+            }),
+            daemon=True,
         )
         thread.start()
         
@@ -96,7 +91,7 @@ def trigger_training():
         training_jobs[job_id]['started_at'] = datetime.now().isoformat()
         
         return jsonify({
-            'success': True, 
+            'success': True,
             'job_id': job_id,
             'message': f'Training job {job_id} started for model {model_id}'
         })
@@ -110,48 +105,93 @@ def trigger_training():
 
 @model_training_bp.route('/api/model/registry/status', methods=['GET'])
 def get_registry_status():
-    """Return full registry dump plus current training_jobs.
+    """Return registry info and training job status. If job_id is provided, return a flattened status.
     
-    Returns: {
-        models: [...],
-        training_jobs: { job_id: {id, progress, status} }
-    }
+    Query Params:
+        job_id (optional): When provided, returns {success, status, progress, ...}
+    
+    NOTE: This endpoint also returns fields expected by the frontend ML Training page:
+      - best_models: mapping of prediction_type -> model summary
+      - all_models: array of model summaries
+      - total_models: integer
+    This keeps backward compatibility while aligning with static/js/model-registry.js.
     """
     try:
+        job_id_param = request.args.get('job_id')
+        
         # Get model registry status
         registry = get_model_registry()
-        models = []
+        models_internal = []
+        raw_models = []
         
         try:
             raw_models = registry.list_models()
             for model in raw_models:
                 if hasattr(model, '__dict__'):
-                    # Convert model object to dictionary
+                    # Canonical internal shape (snake_case) for API consumers
                     model_dict = {
                         'model_id': getattr(model, 'model_id', 'unknown'),
                         'model_name': getattr(model, 'model_name', 'Unknown'),
                         'model_type': getattr(model, 'model_type', 'Unknown'),
                         'version': getattr(model, 'training_timestamp', 'Unknown'),
-                        'prediction_type': getattr(model, 'model_type', 'win'),  # Infer from type
+                        'prediction_type': getattr(model, 'prediction_type', getattr(model, 'model_type', 'win')),
                         'created_at': getattr(model, 'training_timestamp', 'Unknown'),
                         'accuracy': getattr(model, 'accuracy', 0.0),
                         'auc': getattr(model, 'auc', 0.0),
                         'f1_score': getattr(model, 'f1_score', 0.0),
+                        'performance_score': getattr(model, 'performance_score', getattr(model, 'accuracy', 0.0)),
                         'is_active': getattr(model, 'is_active', False),
                         'is_best': getattr(model, 'is_best', False),
                         'training_samples': getattr(model, 'training_samples', 0),
                         'features_count': getattr(model, 'features_count', 0)
                     }
-                    models.append(model_dict)
+                    models_internal.append(model_dict)
                 elif isinstance(model, dict):
-                    models.append(model)
+                    # Already a dict from registry
+                    m = model.copy()
+                    if 'performance_score' not in m:
+                        # derive performance_score if only accuracy present
+                        m['performance_score'] = m.get('accuracy', 0.0)
+                    # ensure prediction_type present
+                    m['prediction_type'] = m.get('prediction_type', m.get('model_type', 'win'))
+                    models_internal.append(m)
         except Exception as e:
-            models = [{'error': f'Failed to load models: {str(e)}'}]
+            models_internal = [{'error': f'Failed to load models: {str(e)}'}]
         
-        # Get current training jobs status
+        # Derive frontend-aligned fields
+        all_models = []
+        best_models = {}
+        try:
+            for m in models_internal:
+                if 'error' in m:
+                    continue
+                # Frontend expects: model_id, prediction_type, version, performance_score, created_at, is_active
+                all_models.append({
+                    'model_id': m.get('model_id', 'unknown'),
+                    'prediction_type': m.get('prediction_type', 'win'),
+                    'version': m.get('version', 'Unknown'),
+                    'performance_score': m.get('performance_score', m.get('accuracy', 0.0)),
+                    'created_at': m.get('created_at', datetime.now().isoformat()),
+                    'is_active': bool(m.get('is_active', False)),
+                })
+                if m.get('is_best'):
+                    # Provide a richer object for best_models cards
+                    pred_type = m.get('prediction_type', 'win')
+                    best_models[pred_type] = {
+                        'model_id': m.get('model_id', 'unknown'),
+                        'version': m.get('version', 'Unknown'),
+                        'performance_score': m.get('performance_score', m.get('accuracy', 0.0)),
+                        'created_at': m.get('created_at', datetime.now().isoformat()),
+                    }
+        except Exception:
+            # Keep empty on failure; UI is resilient
+            all_models = []
+            best_models = {}
+        
+        # Build jobs status map
         jobs_status = {}
-        for job_id, job in training_jobs.items():
-            jobs_status[job_id] = {
+        for jid, job in training_jobs.items():
+            jobs_status[jid] = {
                 'id': job['id'],
                 'status': job['status'],
                 'progress': job['progress'],
@@ -160,18 +200,39 @@ def get_registry_status():
                 'created_at': job.get('created_at'),
                 'started_at': job.get('started_at'),
                 'completed_at': job.get('completed_at'),
-                'error_message': job.get('error_message')
+                'error_message': job.get('error_message'),
             }
+        
+        # If polling for a specific job, return a flattened response expected by the UI
+        if job_id_param and job_id_param in training_jobs:
+            job = jobs_status[job_id_param]
+            return jsonify({
+                'success': True,
+                'job_id': job['id'],
+                'status': job['status'],
+                'progress': job['progress'],
+                'model_id': job['model_id'],
+                'prediction_type': job['prediction_type'],
+                'created_at': job['created_at'],
+                'started_at': job['started_at'],
+                'completed_at': job['completed_at'],
+                'error_message': job['error_message'],
+            })
         
         return jsonify({
             'success': True,
-            'models': models,
+            # Original fields (backward compatible)
+            'models': models_internal,
             'training_jobs': jobs_status,
             'registry_info': {
-                'total_models': len(models),
+                'total_models': len(models_internal),
                 'active_jobs': len([j for j in training_jobs.values() if j['status'] == 'running']),
-                'timestamp': datetime.now().isoformat()
-            }
+                'timestamp': datetime.now().isoformat(),
+            },
+            # Frontend-aligned fields used by static/js/model-registry.js
+            'best_models': best_models,
+            'all_models': all_models,
+            'total_models': len(models_internal),
         })
         
     except Exception as e:
@@ -291,102 +352,99 @@ def retrain_worker(job_id: str, model_id: str, params: Dict[str, Any]):
     """Background worker function for model retraining.
     
     Updates training_jobs[job_id] with progress and status.
-    Calls existing run_training_background or a light wrapper.
+    Calls existing run_training_background or conditional V4 trainer if available.
     """
     try:
         if job_id not in training_jobs:
             return
-            
-        job = training_jobs[job_id]
         
-        # Update job status
+        job = training_jobs[job_id]
         job['status'] = 'running'
         job['progress'] = 10
         
-        # Import the existing training function
+        # Ensure registry is available for potential registration/metadata
         try:
-            # Try to import the existing run_training_background from the main app
-            # We'll need to avoid circular imports
-            import sys
-            import os
-            
-            # Add current directory to path to import app functions
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            if current_dir not in sys.path:
-                sys.path.append(current_dir)
-            
-            job['progress'] = 30
-            
-            # Call the appropriate training function based on model_id
-            if model_id == 'comprehensive_training':
-                # Comprehensive training logic
+            registry = get_model_registry()
+        except Exception:
+            registry = None
+        
+        # Import training functions lazily to avoid circular imports
+        import sys, os
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        if current_dir not in sys.path:
+            sys.path.append(current_dir)
+        
+        job['progress'] = 30
+        
+        # Decide training path
+        if model_id == 'comprehensive_training':
+            # Prefer MLSystemV4 conditional trainer if present
+            try:
+                from train_model_v4 import ConditionalRetrainingManager  # type: ignore
                 job['progress'] = 50
+                manager = ConditionalRetrainingManager()
+                # Minimal training call; implement a simple always-train for test mode
+                retrain_needed, details = True, {}
+                start_ts = time.time()
+                # Use MLSystemV4's own training method if exposed; otherwise fallback to retrain_ml_models
+                trained = False
                 try:
-                    from retrain_ml_models import retrain_models, extract_training_data, prepare_training_data
-                    # Load metadata and data slice
-                    metadata = registry.get_model_metadata(model_id)
-                    training_samples = extract_training_data()
-                    X, y, feature_columns = prepare_training_data(training_samples, metadata)
-                    job['progress'] = 70
-                    results = retrain_models(X, y, feature_columns)
-                    job['progress'] = 90
-                    if results:
-                        job['status'] = 'completed'
-                        job['progress'] = 100
-                        job['completed_at'] = datetime.now().isoformat()
-                        # Register new model
-                        registry.register_model(model_id, metadata)
+                    # Prefer the explicit ConditionalRetrainingManager API
+                    if hasattr(manager, 'execute_retraining'):
+                        trained = bool(manager.execute_retraining())
+                    # Fallbacks for future expansions
+                    elif hasattr(manager, 'ml_system') and hasattr(manager.ml_system, 'train_model'):
+                        trained = bool(manager.ml_system.train_model())
+                    elif hasattr(manager, 'train_all'):
+                        manager.train_all()
+                        trained = True
                     else:
-                        job['status'] = 'failed'
-                        job['error_message'] = 'Training completed but no results returned'
-                except Exception as training_error:
+                        raise AttributeError('No MLSystemV4 training method available on manager (expected execute_retraining)')
+                except Exception as v4_err:
+                    # Do NOT fallback to legacy retrainer; fail fast and report clearly
+                    trained = False
+                    job['error_message'] = f'MLSystemV4 training error: {v4_err}'
+                duration = time.time() - start_ts
+                job['progress'] = 90
+                if trained:
+                    job['status'] = 'completed'
+                    job['progress'] = 100
+                    job['completed_at'] = datetime.now().isoformat()
+                else:
                     job['status'] = 'failed'
-                    job['error_message'] = f'Training error: {str(training_error)}'
-            else:
-                # Custom model training - call existing run_training_background
-                job['progress'] = 50
-                
-                try:
-                    # Import existing training function carefully to avoid circular imports
-                    from app import run_training_background
-                    
-                    job['progress'] = 70
-                    
-                    # Call existing training function
-                    result = run_training_background(model_id)
-                    
-                    job['progress'] = 90
-                    
-                    # Check global training status from app.py
-                    from app import training_status as global_training_status
-                    
-                    if global_training_status.get('completed', False):
-                        job['status'] = 'completed'
-                        job['progress'] = 100
-                        job['completed_at'] = datetime.now().isoformat()
-                    elif global_training_status.get('error'):
-                        job['status'] = 'failed'
-                        job['error_message'] = global_training_status.get('error')
-                    else:
-                        job['status'] = 'completed'  # Assume success if no error
-                        job['progress'] = 100
-                        job['completed_at'] = datetime.now().isoformat()
-                        
-                except Exception as training_error:
+                    if not job.get('error_message'):
+                        job['error_message'] = 'Training did not complete'
+            except Exception as training_error:
+                job['status'] = 'failed'
+                job['error_message'] = f'Training error: {str(training_error)}'
+        else:
+            # Custom model_id path via app.run_training_background if present
+            job['progress'] = 50
+            try:
+                from app import run_training_background  # type: ignore
+                job['progress'] = 70
+                run_training_background(model_id)
+                job['progress'] = 90
+                from app import training_status as global_training_status  # type: ignore
+                if getattr(global_training_status, 'get', None) and global_training_status.get('completed', False):
+                    job['status'] = 'completed'
+                    job['progress'] = 100
+                    job['completed_at'] = datetime.now().isoformat()
+                elif getattr(global_training_status, 'get', None) and global_training_status.get('error'):
                     job['status'] = 'failed'
-                    job['error_message'] = f'Custom training error: {str(training_error)}'
-                    
-        except ImportError as e:
-            job['status'] = 'failed'
-            job['error_message'] = f'Failed to import training modules: {str(e)}'
-            
+                    job['error_message'] = global_training_status.get('error')
+                else:
+                    job['status'] = 'completed'
+                    job['progress'] = 100
+                    job['completed_at'] = datetime.now().isoformat()
+            except Exception as training_error:
+                job['status'] = 'failed'
+                job['error_message'] = f'Custom training error: {str(training_error)}'
     except Exception as e:
         if job_id in training_jobs:
             training_jobs[job_id]['status'] = 'failed'
             training_jobs[job_id]['error_message'] = f'Worker error: {str(e)}'
-        
     finally:
-        # Clean up thread reference
         if job_id in training_jobs and 'thread' in training_jobs[job_id]:
             training_jobs[job_id]['thread'] = None
 

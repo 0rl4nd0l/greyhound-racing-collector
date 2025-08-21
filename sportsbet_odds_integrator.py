@@ -23,10 +23,9 @@ from typing import Dict, List, Optional, Tuple
 
 import requests
 
-try:
-    from playwright.sync_api import sync_playwright
-except ImportError:
-    sync_playwright = None
+# IMPORTANT: Avoid importing Playwright at module import time to satisfy module_guard
+# We will lazily import it only within methods that need it.
+sync_playwright = None  # set at runtime on-demand
 try:
     import redis
 except ImportError:
@@ -35,8 +34,15 @@ import threading
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
-import pandas as pd
-import schedule
+# Optional heavy dependency - make pandas optional for constrained test envs
+try:
+    import pandas as pd  # noqa: F401
+except Exception:  # pragma: no cover
+    pd = None
+try:
+    import schedule  # noqa: F401
+except Exception:  # pragma: no cover
+    schedule = None
 
 
 class SportsbetOddsIntegrator:
@@ -168,7 +174,20 @@ class SportsbetOddsIntegrator:
         conn.close()
 
     def fetch_odds(self):
-        """Fetch odds using headless Playwright"""
+        """Fetch odds using headless Playwright.
+        Lazily imports Playwright to avoid loading it during app startup.
+        """
+        # Optional: allow disabling any browser automation in prediction-only mode
+        if os.environ.get('PREDICTION_IMPORT_MODE', 'prediction_only') == 'prediction_only':
+            raise RuntimeError("Browser automation disabled in prediction_only mode")
+        # Lazy import to avoid module_guard violations at startup
+        global sync_playwright
+        if sync_playwright is None:
+            try:
+                from playwright.sync_api import sync_playwright as _sp
+                sync_playwright = _sp
+            except Exception as e:
+                raise RuntimeError(f"Playwright not available: {e}")
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
@@ -3052,6 +3071,9 @@ class SportsbetOddsIntegrator:
 
     def start_continuous_monitoring(self):
         """Start continuous odds monitoring"""
+        if schedule is None:
+            print("⚠️ schedule module not available; continuous monitoring disabled")
+            return
         print("🚀 Starting continuous odds monitoring...")
 
         # Schedule regular updates

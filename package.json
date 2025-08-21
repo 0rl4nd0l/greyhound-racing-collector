@@ -37,7 +37,10 @@
     "watch:js": "terser static/js/main.js -o static/dist/js/bundle.js --compress --mangle --watch",
     "watch:assets": "npm run watch:css & npm run watch:js",
     "lint": "eslint static/js/**/*.js tests/**/*.js",
-    "format": "prettier --write static/js/**/*.js tests/**/*.js"
+    "format": "prettier --write static/js/**/*.js tests/**/*.js",
+    "e2e:train": "playwright test tests/e2e/ml-training/train-model.spec.ts",
+    "e2e:predict-v4": "playwright test tests/e2e/ml-training/predict-v4-model-version.spec.ts",
+    "e2e:all": "playwright test"
   },
   "dependencies": {
     "jspdf": "^3.0.1",

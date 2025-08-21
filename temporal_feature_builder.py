@@ -28,6 +28,11 @@ class TemporalFeatureBuilder:
     
     def __init__(self, db_path: str = "greyhound_racing_data.db"):
         self.db_path = db_path
+        # Lookback days can be overridden via env var
+        try:
+            self.default_lookback_days = int(os.getenv('GREYHOUND_LOOKBACK_DAYS', '365'))
+        except Exception:
+            self.default_lookback_days = 365
         
         # Define feature categories for temporal separation
         self.pre_race_features = {
@@ -71,10 +76,14 @@ class TemporalFeatureBuilder:
             return pd.to_datetime(race_row['race_date'])
     
     def load_dog_historical_data(self, dog_name: str, target_timestamp: datetime, 
-                                lookback_days: int = 180) -> pd.DataFrame:
+                                lookback_days: int = None) -> pd.DataFrame:
         """Load historical race data for a dog, excluding target race."""
         try:
+            if lookback_days is None:
+                lookback_days = self.default_lookback_days
             conn = sqlite3.connect(self.db_path)
+
+            cutoff_date = (target_timestamp - timedelta(days=lookback_days)).strftime('%Y-%m-%d')
             
             query = """
             SELECT 
@@ -87,18 +96,62 @@ class TemporalFeatureBuilder:
             LEFT JOIN race_metadata r ON d.race_id = r.race_id
             LEFT JOIN enhanced_expert_data e ON d.race_id = e.race_id 
                 AND d.dog_clean_name = e.dog_clean_name
-            WHERE d.dog_clean_name = ?
-                AND r.race_date IS NOT NULL
-                AND d.finish_position IS NOT NULL
-                AND date(r.race_date) >= date(?, '-180 days')
-            ORDER BY r.race_date DESC, r.race_time DESC
-            LIMIT 50
-            """
+                    WHERE d.dog_clean_name = ?
+                        AND r.race_date IS NOT NULL
+                        AND d.finish_position IS NOT NULL
+                        AND date(r.race_date) >= date(?)
+                    ORDER BY r.race_date DESC, r.race_time DESC
+                    LIMIT 100
+                    """
             
-            historical_data = pd.read_sql_query(query, conn, params=[dog_name, target_timestamp.strftime('%Y-%m-%d')])
+            historical_data = pd.read_sql_query(query, conn, params=[dog_name, cutoff_date])
+            raw_count = len(historical_data)
             conn.close()
+
+            logger.debug(
+                f"DB query @ {self.db_path} for dog='{dog_name}' as of {target_timestamp.date()}: raw_rows={raw_count}"
+            )
+            
+            # Fallback: retry with sanitized name if no rows
+            if historical_data.empty:
+                try:
+                    sanitized = (
+                        str(dog_name)
+                        .replace('"','')
+                        .replace("'", '')
+                        .replace('`','')
+                        .replace('’','')
+                        .strip()
+                        .upper()
+                    )
+                    query_fallback = """
+                    SELECT 
+                        d.*,
+                        r.venue, r.grade, r.distance, r.track_condition, r.weather,
+                        r.temperature, r.humidity, r.wind_speed, r.field_size,
+                        r.race_date, r.race_time, r.winner_name, r.winner_odds, r.winner_margin,
+                        e.pir_rating, e.first_sectional, e.win_time, e.bonus_time
+                    FROM dog_race_data d
+                    LEFT JOIN race_metadata r ON d.race_id = r.race_id
+                    LEFT JOIN enhanced_expert_data e ON d.race_id = e.race_id 
+                        AND d.dog_clean_name = e.dog_clean_name
+                    WHERE REPLACE(REPLACE(REPLACE(REPLACE(d.dog_clean_name,'"',''),"'",''),'`',''),'’','') = ?
+                        AND r.race_date IS NOT NULL
+                        AND d.finish_position IS NOT NULL
+                        AND date(r.race_date) >= date(?)
+                    ORDER BY r.race_date DESC, r.race_time DESC
+                    LIMIT 100
+                    """
+                    historical_data = pd.read_sql_query(query_fallback, conn, params=[sanitized, cutoff_date])
+                    raw_count = len(historical_data)
+                    logger.debug(
+                        f"Fallback DB query for sanitized dog='{sanitized}': raw_rows={raw_count}"
+                    )
+                except Exception as _e:
+                    logger.debug(f"Fallback query failed: {_e}")
             
             if historical_data.empty:
+                logger.info(f"No historical rows found in DB for dog='{dog_name}'")
                 return pd.DataFrame()
             
             # Filter to only races before target timestamp
@@ -116,7 +169,16 @@ class TemporalFeatureBuilder:
             # Sort by timestamp (most recent first)
             historical_data = historical_data.sort_values('race_timestamp', ascending=False)
             
-            logger.debug(f"Loaded {len(historical_data)} historical races for {dog_name}")
+            filt_count = len(historical_data)
+            if filt_count == 0:
+                logger.info(
+                    f"Historical rows filtered to zero for dog='{dog_name}' (cutoff {cutoff_date.date()} -> {target_timestamp.date()})"
+                )
+            else:
+                logger.debug(
+                    f"Historical rows after time filter for dog='{dog_name}': {filt_count} (of raw {raw_count})"
+                )
+            
             return historical_data
         
         except Exception as e:
@@ -391,6 +453,14 @@ class TemporalFeatureBuilder:
                 dog_row['dog_clean_name'], 
                 target_timestamp
             )
+
+            # Temporary debug: per-dog historical rows
+            try:
+                logger.debug(
+                    f"Dog '{dog_row['dog_clean_name']}' -> hist_rows={len(historical_data)} venue={dog_row.get('venue')} grade={dog_row.get('grade')} dist={dog_row.get('distance')}"
+                )
+            except Exception:
+                pass
             
             historical_features = self.create_historical_features(
                 historical_data,

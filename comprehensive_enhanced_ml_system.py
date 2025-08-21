@@ -207,36 +207,27 @@ class ComprehensiveEnhancedMLSystem:
             self.imbalanced_models = {}
 
         # Feature importance insights (from previous analysis)
-        self.high_impact_features = [
-            "market_confidence",
-            "recent_form_avg",
-            "avg_position",
-            "win_rate",
-        ]
+        self.high_impact_features = ['market_confidence', 'avg_position', 'recent_form_avg', 'win_rate', 'place_rate']
 
-        self.stable_features = [
-            "box_versatility",
-            "current_weight",
-            "position_consistency",
-            "avg_weight",
-            "avg_class_rating",
-            "recent_races_last_30d",
-            "track_condition_encoded",
-            "distance_numeric",
-        ]
+        self.stable_features = ['distance_experience', 'box_versatility', 'time_consistency', 'recent_races_last_30d', 'position_consistency', 'avg_time', 'best_time', 'preferred_boxes_count']
 
         print("🚀 Comprehensive Enhanced ML Model System Initialized")
 
-    def load_form_guide_data(self):
-        """Load comprehensive form guide data using the new CSV ingestion layer"""
+    def load_form_guide_data(self, min_profiles_threshold: int = 500):
+        """Load comprehensive form guide data using the new CSV ingestion layer.
+        Applies a quality gate to ensure we have enough dog profiles for training.
+
+        min_profiles_threshold: minimum number of dog profiles required to proceed
+        """
         try:
             print(f"📊 Loading form guide data using robust CSV ingestion layer...")
             
             # Import the new CSV ingestion system
             from csv_ingestion import create_ingestor, FormGuideCsvIngestionError
             
-            # Create ingestor with moderate validation (balanced approach)
-            ingestor = create_ingestor("moderate")
+            # Create ingestor with lenient validation to maximize ingestion success
+            ingestion_mode = "lenient"
+            ingestor = create_ingestor(ingestion_mode)
             
             form_data = {}  # Dictionary to store all dog form data
             csv_files = []
@@ -333,19 +324,34 @@ class ComprehensiveEnhancedMLSystem:
             print(f"📈 Total historical races: {total_races}")
             print(f"📊 Average races per dog: {avg_races:.1f}")
             
+            # If nothing was ingested, automatically fall back to legacy loader
+            if len(form_data) == 0:
+                print("⚠️ No dog profiles loaded from CSV ingestion; falling back to legacy loader...")
+                return self._load_form_guide_data_legacy()
+
+            # Apply quality gate; if below threshold, switch to legacy loader once
+            if len(form_data) < min_profiles_threshold or avg_races < 2.0:
+                print(
+                    f"⚠️ Dog profiles below threshold (profiles={len(form_data)}, avg_races={avg_races:.1f}). "
+                    "Attempting legacy loader fallback..."
+                )
+                legacy_data = self._load_form_guide_data_legacy()
+                if len(legacy_data) >= len(form_data):
+                    form_data = legacy_data
+                    total_races = sum(len(races) for races in form_data.values())
+                    avg_races = total_races / len(form_data) if form_data else 0
+                    print(
+                        f"✅ Legacy loader improved coverage: profiles={len(form_data)}, avg_races={avg_races:.1f}"
+                    )
+                else:
+                    print(
+                        f"ℹ️ Legacy loader did not improve coverage (legacy={len(legacy_data)}). Keeping lenient data."
+                    )
+
             # Validate that Dog Name -> dog_name mapping worked correctly
             sample_dog_names = list(form_data.keys())[:5]
             print(f"📋 Sample dog names (showing proper mapping): {sample_dog_names}")
 
-            return form_data
-
-        except ImportError as e:
-            print(f"❌ CSV ingestion layer not available: {e}")
-            print("   Falling back to legacy CSV loading...")
-            return self._load_form_guide_data_legacy()
-        except Exception as e:
-            print(f"❌ Error loading form guide data: {e}")
-            return {}
             return form_data
 
         except ImportError as e:

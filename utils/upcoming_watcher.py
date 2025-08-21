@@ -5,16 +5,11 @@ import threading
 from pathlib import Path
 from typing import Optional, Callable, List
 
-try:
-    from watchdog.observers import Observer
-    from watchdog.events import FileSystemEventHandler, FileSystemEvent
-    WATCHDOG_AVAILABLE = True
-except Exception:
-    # Soft dependency; allow import even if watchdog isn't installed
-    Observer = object  # type: ignore
-    FileSystemEventHandler = object  # type: ignore
-    FileSystemEvent = object  # type: ignore
-    WATCHDOG_AVAILABLE = False
+# NOTE: Avoid importing watchdog at module import time. Lazy import inside start_upcoming_watcher.
+Observer = object  # type: ignore
+FileSystemEventHandler = object  # type: ignore
+FileSystemEvent = object  # type: ignore
+WATCHDOG_AVAILABLE = False
 
 from config.paths import UPCOMING_RACES_DIR
 
@@ -108,9 +103,19 @@ def start_upcoming_watcher(
     Watch UPCOMING_RACES_DIR for new/updated CSVs and invoke on_change(changed_paths)
     after a debounced quiet period. Returns Observer if started, else None.
     """
+    # Lazy import watchdog only if we intend to start the watcher
+    global WATCHDOG_AVAILABLE, Observer, FileSystemEventHandler, FileSystemEvent
     if not WATCHDOG_AVAILABLE:
-        print("[upcoming-watcher] watchdog not installed; skipping directory watcher.")
-        return None
+        try:
+            from watchdog.observers import Observer as _Observer  # type: ignore
+            from watchdog.events import FileSystemEventHandler as _FileSystemEventHandler, FileSystemEvent as _FileSystemEvent  # type: ignore
+            Observer = _Observer
+            FileSystemEventHandler = _FileSystemEventHandler
+            FileSystemEvent = _FileSystemEvent
+            WATCHDOG_AVAILABLE = True
+        except Exception:
+            print("[upcoming-watcher] watchdog not installed; skipping directory watcher.")
+            return None
 
     upcoming_dir = upcoming_dir or UPCOMING_RACES_DIR
 
