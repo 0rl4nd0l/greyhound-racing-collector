@@ -147,3 +147,4 @@ dmypy.json
 !package.json
 !requirements.json
 !config.json.example
+archive/

@@ -70,7 +70,7 @@ document.addEventListener('DOMContentLoaded', () => {
         sortOrder: 'race_date|desc',
         filters: {},
         isLoading: false,
-        viewMode: 'regular', // 'regular' or 'upcoming'
+        viewMode: 'upcoming', // 'regular' or 'upcoming'
     };
 
     const elements = {
@@ -86,20 +86,43 @@ document.addEventListener('DOMContentLoaded', () => {
         viewToggleButton: document.getElementById('view-toggle-button'),
         viewModeLabel: document.getElementById('view-mode-label'),
     };
-    
-    // Check for missing elements and log them
+
+    // Fallback bindings for differing template IDs/structure
+    if (!elements.racesTableBody) {
+        elements.racesTableBody = document.querySelector('#upcoming-races-table tbody') ||
+                                   document.querySelector('tbody#upcoming-races-body') ||
+                                   document.querySelector('.upcoming-races tbody') ||
+                                   document.querySelector('main tbody') ||
+                                   document.querySelector('tbody');
+        if (elements.racesTableBody) {
+            console.log('Using fallback racesTableBody selector');
+        }
+    }
+    if (!elements.selectAllCheckbox) {
+        elements.selectAllCheckbox = document.querySelector('#upcoming-races-table thead input[type="checkbox"], thead input[type="checkbox"]');
+        if (elements.selectAllCheckbox) {
+            console.log('Using fallback selectAllCheckbox selector');
+        }
+    }
+    if (!elements.paginationControls) {
+        elements.paginationControls = document.getElementById('upcoming-pagination') ||
+                                      document.querySelector('.pagination-controls') ||
+                                      document.createElement('div');
+    }
+
+    // Check for missing elements and log them (non-fatal except for table body)
     const missingElements = [];
     Object.keys(elements).forEach(key => {
         if (!elements[key]) {
             missingElements.push(key);
-            console.warn(`Missing DOM element: ${key} (ID: ${key.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, '')})`);
+            console.warn(`Missing DOM element: ${key}`);
         }
     });
-    
-    if (missingElements.length > 0) {
-        console.error('Interactive Races: Missing required DOM elements:', missingElements);
-        showToast(`Interactive Races failed to initialize due to missing elements: ${missingElements.join(', ')}`, 'danger');
-        return; // Exit early if critical elements are missing
+
+    if (!elements.racesTableBody) {
+        console.error('Interactive Races: races table body not found – cannot render races');
+        showToast('Page markup missing races table body. Please refresh or report this issue.', 'danger');
+        return;
     }
 
     // Initialize the page
@@ -154,7 +177,10 @@ state.races = Array.isArray(data.races) ? data.races : Object.values(data.races 
 
         elements.racesTableBody.innerHTML = '';
         if (paginatedRaces.length === 0) {
-            elements.racesTableBody.innerHTML = '<tr><td colspan="8" class="text-center">No races found.</td></tr>';
+            // Determine column span from header if possible
+            const table = elements.racesTableBody.closest('table');
+            const headerCols = table && table.querySelectorAll('thead th') ? table.querySelectorAll('thead th').length : 8;
+            elements.racesTableBody.innerHTML = `<tr><td colspan="${headerCols}" class="text-center">No races found.</td></tr>`;
             return;
         }
 
@@ -217,7 +243,9 @@ state.races = Array.isArray(data.races) ? data.races : Object.values(data.races 
 
         if (elements.selectAllCheckbox) {
             elements.selectAllCheckbox.addEventListener('change', (e) => {
-                const checkboxes = document.querySelectorAll('.race-checkbox');
+                const table = elements.racesTableBody ? elements.racesTableBody.closest('table') : null;
+                const scope = table || document;
+                const checkboxes = scope.querySelectorAll('.race-checkbox');
                 checkboxes.forEach(checkbox => checkbox.checked = e.target.checked);
             });
         }
@@ -622,17 +650,32 @@ state.races = Array.isArray(data.races) ? data.races : Object.values(data.races 
         
         // Use Array.from to ensure forEach is available on all browsers
         Array.from(results).forEach((result, index) => {
+            // Normalize enhanced endpoint shape: some endpoints return { success, prediction: { predictions: [...] } }
+            const success = !!result.success;
+            const predictions = Array.isArray(result.predictions)
+                ? result.predictions
+                : (result.prediction && Array.isArray(result.prediction.predictions) ? result.prediction.predictions : []);
+            const raceFilenameFromNested = result.prediction && result.prediction.race_info && result.prediction.race_info.filename;
+            const displayRaceId = result.race_filename || result.race_id || raceFilenameFromNested || `Race ${index + 1}`;
+
             const resultDiv = document.createElement('div');
-            resultDiv.className = `alert ${result.success ? 'alert-success' : 'alert-danger'} mb-3`;
+            resultDiv.className = `alert ${success ? 'alert-success' : 'alert-danger'} mb-3`;
             
-            if (result.success && result.predictions && result.predictions.length > 0) {
-                const predictions = result.predictions;
-                const topPick = predictions[0]; // First prediction is the top pick
+            if (success && predictions && predictions.length > 0) {
+                const sortedPreds = Array.isArray(predictions)
+                    ? [...predictions].sort((a, b) => Number(b.final_score || b.prediction_score || b.win_probability || b.confidence || 0) - Number(a.final_score || a.prediction_score || a.win_probability || a.confidence || 0))
+                    : [];
+                const topPick = sortedPreds.length ? sortedPreds[0] : predictions[0];
                 
                 if (topPick) {
-                    const winProb = topPick.final_score || topPick.win_probability || topPick.confidence || 0;
+                    const winProb = Number(topPick.win_prob || topPick.normalized_win_probability || topPick.final_score || topPick.win_probability || topPick.confidence || 0);
                     const dogName = topPick.dog_name || topPick.name || 'Unknown';
-                    const raceInfo = result.race_filename || result.race_id || `Race ${index + 1}`;
+                    const raceInfo = displayRaceId;
+
+                    // Build an encoded name for direct API link (strip .csv)
+                    const linkNameRaw = (result.race_filename || (raceFilenameFromNested || '')).replace(/\.csv$/i, '') || (result.race_id || '');
+                    const encodedName = encodeURIComponent(String(linkNameRaw));
+                    const apiHref = encodedName ? `/api/prediction_detail/${encodedName}` : '#';
                     
                     resultDiv.innerHTML = `
                         <div class="d-flex justify-content-between align-items-start">
@@ -648,6 +691,8 @@ state.races = Array.isArray(data.races) ? data.races : Object.values(data.races 
                                     <i class="fas fa-info-circle"></i> 
                                     ${predictions.length} dogs analyzed
                                     ${result.predictor_used ? ` | Predictor: ${result.predictor_used}` : ''}
+                                    ${encodedName ? ` | <a class="link-secondary" href="${apiHref}" target="_blank" rel="noopener noreferrer"><i class="fas fa-file-code"></i> Raw JSON</a>` : ''}
+                                    | <a href="#" class="link-primary" onclick="return __ensureExpandAndRender(${index});"><i class="fas fa-eye"></i> View Details</a>
                                 </small>
                             </div>
                             <button class="btn btn-sm btn-outline-primary" 
@@ -669,8 +714,9 @@ state.races = Array.isArray(data.races) ? data.races : Object.values(data.races 
                     `;
                 }
             } else {
-                const errorMessage = result.message || result.error || 'Unknown error occurred';
-                const raceInfo = result.race_id || `Race ${index + 1}`;
+                // Prefer nested message if present; otherwise show top-level
+                const errorMessage = (result && (result.message || result.error)) || 'Unknown error occurred';
+                const raceInfo = displayRaceId;
                 
                 resultDiv.innerHTML = `
                     <h6 class="alert-heading">
@@ -683,6 +729,29 @@ state.races = Array.isArray(data.races) ? data.races : Object.values(data.races 
             }
             
             elements.predictionResultsBody.appendChild(resultDiv);
+
+            // Auto-fetch and render details for each successful result to avoid relying on click binding timing
+            if (result.success) {
+                (async () => {
+                    try {
+                        const btn = resultDiv.querySelector('button[data-expanded]');
+                        const detailsDiv = resultDiv.querySelector(`#details-${index}`);
+                        if (!btn || !detailsDiv) return;
+                        // If already populated, skip
+                        if (detailsDiv.innerHTML.trim() !== '') return;
+                        // Reuse toggleDetails logic by simulating expand state
+                        await window.__fetchAndRenderDetails(index);
+                        // Set expanded UI state
+                        detailsDiv.style.display = 'block';
+                        btn.setAttribute('data-expanded', 'true');
+                        const icon = btn.querySelector('i');
+                        if (icon) icon.className = 'fas fa-chevron-up';
+                        btn.innerHTML = '<i class="fas fa-chevron-up"></i> Hide';
+                    } catch (e) {
+                        console.warn('Auto details render failed', e);
+                    }
+                })();
+            }
         });
         
         // Add summary at the bottom
@@ -700,8 +769,222 @@ state.races = Array.isArray(data.races) ? data.races : Object.values(data.races 
         elements.predictionResultsBody.appendChild(summaryDiv);
     }
     
+    // Ensure details panel is expanded and rendered (safe public helper)
+    window.__ensureExpandAndRender = async function(index) {
+        try {
+            const detailsDiv = document.getElementById(`details-${index}`);
+            if (detailsDiv) {
+                detailsDiv.style.display = 'block';
+            }
+            await window.__fetchAndRenderDetails(index);
+        } catch (e) {
+            console.warn('ensureExpandAndRender failed', e);
+            try { showToast('Failed to load details', 'warning'); } catch {}
+        }
+        return false;
+    };
+
+    // Internal helper to fetch and render details into the details div (id resolves via index)
+    window.__fetchAndRenderDetails = async function(index) {
+        const detailsDiv = document.getElementById(`details-${index}`);
+        if (!detailsDiv) return;
+        // Avoid double-loading
+        if (detailsDiv.getAttribute('data-loaded') === 'true' && detailsDiv.innerHTML.trim() !== '') return;
+        detailsDiv.innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin"></i> Loading details...</div>';
+
+        const resultIndex = parseInt(index);
+        const currentResults = window.currentPredictionResults || [];
+        const detailsResult = currentResults[resultIndex];
+
+        try {
+            const nestedFilename = detailsResult && detailsResult.prediction && detailsResult.prediction.race_info && detailsResult.prediction.race_info.filename;
+            const rawName = (detailsResult && (detailsResult.race_filename || (detailsResult.race_id || '') )) || (nestedFilename || '');
+            let raceNameForApi = String(rawName)
+                .replace(/\.csv$/i, '')
+                .replace(/^prediction_/, '')
+                .replace(/\.json$/i, '');
+
+            if (raceNameForApi) {
+                const resp = await fetchWithErrorHandling(`/api/prediction_detail/${encodeURIComponent(raceNameForApi)}`);
+                const data = await resp.json();
+                if (data && data.success && data.prediction) {
+                    const pred = data.prediction;
+                    const raceCtx = pred.race_context || {};
+                    const enhanced = pred.enhanced_predictions || pred.predictions || [];
+                    const enhancedSorted = Array.isArray(enhanced)
+                        ? [...enhanced].sort((a, b) => {
+                            const sa = Number(a.final_score || a.prediction_score || a.confidence || 0);
+                            const sb = Number(b.final_score || b.prediction_score || b.confidence || 0);
+                            return sb - sa;
+                          })
+                        : [];
+                    const topPick = pred.top_pick || (enhancedSorted.length ? enhancedSorted[0] : (enhanced.length ? enhanced[0] : null));
+
+                    let detailsHTML = '';
+                    // Summary header with actions
+                    const rawApiUrl = `/api/prediction_detail/${encodeURIComponent(raceNameForApi)}`;
+                    const downloadJsonName = `prediction_${raceNameForApi}.json`;
+                    const downloadJsonHref = `data:application/json;charset=utf-8,${encodeURIComponent(JSON.stringify(pred, null, 2))}`;
+                    detailsHTML += `
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                          <div><strong>Venue:</strong> ${raceCtx.venue || 'Unknown'} | <strong>Date:</strong> ${raceCtx.race_date || 'Unknown'} | <strong>Distance:</strong> ${raceCtx.distance || 'Unknown'} | <strong>Grade:</strong> ${raceCtx.grade || 'Unknown'}</div>
+                          <div class="d-flex gap-2">
+                            <a class="btn btn-sm btn-outline-secondary" href="${rawApiUrl}" target="_blank" rel="noopener noreferrer"><i class="fas fa-file-code"></i> View raw JSON (API)</a>
+                            <a class="btn btn-sm btn-outline-secondary" href="${downloadJsonHref}" download="${downloadJsonName}"><i class="fas fa-download"></i> Download JSON</a>
+                          </div>
+                        </div>`;
+
+                    // Technical summary of prediction pipeline (enhanced visibility)
+                    try {
+                        const predictor = pred.predictor_used || pred.model_used || 'Unknown';
+                        const methodsArr = Array.isArray(pred.prediction_methods_used) ? pred.prediction_methods_used : (pred.prediction_method ? [pred.prediction_method] : []);
+                        const methodsStr = methodsArr.length ? methodsArr.join(', ') : 'Unknown';
+                        const analysisVersion = pred.analysis_version || pred.version || 'Unknown';
+                        const timestamp = pred.prediction_timestamp || pred.timestamp || '';
+                        const totalDogs = Array.isArray(enhanced) ? enhanced.length : (Array.isArray(pred.predictions) ? pred.predictions.length : 0);
+                        const dataSources = (() => {
+                            try {
+                                const src = pred.data_sources || pred.sources || {};
+                                if (Array.isArray(src)) return src.join(', ');
+                                if (src && typeof src === 'object') return Object.keys(src).join(', ');
+                            } catch {}
+                            return '';
+                        })();
+
+                        detailsHTML += `
+                          <div class="card mb-2">
+                            <div class="card-body p-2">
+                              <div class="row g-2 small">
+                                <div class="col-md-6"><strong>Predictor:</strong> ${predictor}</div>
+                                <div class="col-md-6"><strong>Methods:</strong> ${methodsStr}</div>
+                                <div class="col-md-6"><strong>Analysis Version:</strong> ${analysisVersion}</div>
+                                <div class="col-md-6"><strong>Prediction Time:</strong> ${timestamp || 'N/A'}</div>
+                                <div class="col-md-6"><strong>Dogs Analyzed:</strong> ${totalDogs}</div>
+                                ${dataSources ? `<div class="col-12"><strong>Data Sources:</strong> ${dataSources}</div>` : ''}
+                              </div>
+                            </div>
+                          </div>`;
+                    } catch (e) {
+                        console.warn('Failed to render technical summary', e);
+                    }
+
+                    if (topPick) {
+                        let tpName = topPick.dog_name || topPick.clean_name || 'Unknown';
+                        let tpScore = Number(topPick.final_score || topPick.prediction_score || topPick.confidence || 0);
+                        let tpBox = topPick.box_number || topPick.box || 'N/A';
+                        // Fallback: if no numeric score on top_pick, derive from first runner
+                        if ((!isFinite(tpScore) || tpScore === 0) && Array.isArray(enhanced) && enhanced.length) {
+                            const first = enhanced[0];
+                            tpName = tpName !== 'Unknown' ? tpName : (first.dog_name || first.clean_name || tpName);
+                            tpScore = Number(first.final_score || first.prediction_score || first.confidence || tpScore);
+                            tpBox = tpBox !== 'N/A' ? tpBox : (first.box_number || first.box || tpBox);
+                        }
+                        detailsHTML += `
+                          <div class="card mb-2">
+                            <div class="card-body p-2">
+                              <h6 class="mb-1"><i class="fas fa-trophy text-warning"></i> Top Pick: ${tpName}</h6>
+                              <small>Box: ${tpBox} | Confidence: ${(tpScore*100).toFixed(1)}%</small>
+                              ${Array.isArray(topPick.key_factors) && topPick.key_factors.length ? `<div class="mt-2"><small><strong>Key factors:</strong> ${topPick.key_factors.slice(0,5).join('; ')}</small></div>` : ''}
+                            </div>
+                          </div>`;
+                    }
+
+                    if (Array.isArray(enhancedSorted) && enhancedSorted.length) {
+                        detailsHTML += '<div class="row">';
+                        enhancedSorted.forEach((d, idx) => {
+                            const name = d.dog_name || d.clean_name || 'Unknown';
+                            const score = Number(d.final_score || d.prediction_score || d.confidence || 0);
+                            const box = d.box_number || d.box || 'N/A';
+                            const extra = Array.isArray(d.key_factors) && d.key_factors.length ? `<div class="mt-1"><small>${d.key_factors.slice(0,3).join(' • ')}</small></div>` : '';
+                            detailsHTML += `
+                              <div class="col-md-6 mb-2">
+                                <div class="card card-sm">
+                                  <div class="card-body p-2">
+                                    <h6 class="card-title mb-1">${idx + 1}. ${name}</h6>
+                                    <p class="card-text mb-1"><small>Box: ${box} | Confidence: ${(score*100).toFixed(1)}%</small></p>
+                                    ${extra}
+                                  </div>
+                                </div>
+                              </div>`;
+                        });
+                        detailsHTML += '</div>';
+                    }
+
+                    // Optional advisory
+                    try {
+                        const advResp = await fetchWithErrorHandling('/api/generate_advisory', {
+                            method: 'POST',
+                            body: JSON.stringify({ prediction_data: pred })
+                        });
+                        const advData = await advResp.json();
+                        if (advData) {
+                            const advisory = advData.advisory || advData.enhancement || advData;
+                            const getSummary = (obj) => {
+                                try {
+                                    if (typeof obj === 'string') return obj.split('\n')[0].slice(0, 200);
+                                    if (obj && typeof obj === 'object') {
+                                        if (obj.summary) return String(obj.summary).slice(0, 200);
+                                        if (Array.isArray(obj.bullets) && obj.bullets.length) return String(obj.bullets[0]).slice(0, 200);
+                                        if (obj.message) return String(obj.message).slice(0, 200);
+                                        // Suppress JSON fragments in compact banner
+                                        return '';
+                                    }
+                                } catch {}
+                                return '';
+                            };
+                            const summaryText = getSummary(advisory);
+                            if (summaryText) {
+                                detailsHTML = `\n<div class="alert alert-info py-1 px-2 mb-2"><i class="fas fa-lightbulb me-1"></i>${summaryText}</div>` + detailsHTML;
+                            }
+                        }
+                    } catch {}
+
+                    detailsDiv.innerHTML = detailsHTML || '<p class="text-muted">No detailed prediction data available.</p>';
+                    detailsDiv.setAttribute('data-loaded', 'true');
+                    try { console.log('Details loaded for index', index); showToast('Details loaded', 'success'); } catch {}
+                    return;
+                }
+            }
+        } catch (e) {
+            console.warn('Rich prediction details fetch failed, falling back to minimal render', e);
+        }
+
+        // Fallback minimal render
+        const currentResults2 = window.currentPredictionResults || [];
+        const resultFallback = currentResults2[index];
+        if (resultFallback && resultFallback.predictions && resultFallback.predictions.length > 0) {
+            let detailsHTML = '<div class="row">';
+            Array.from(resultFallback.predictions).forEach((prediction, idx) => {
+                const winProb = prediction.final_score || prediction.win_probability || prediction.confidence || 0;
+                const dogName = prediction.dog_name || prediction.name || 'Unknown';
+                const boxNumber = prediction.box_number || prediction.box || 'N/A';
+                detailsHTML += `
+                    <div class="col-md-6 mb-2">
+                        <div class="card card-sm">
+                            <div class="card-body p-2">
+                                <h6 class="card-title mb-1">${idx + 1}. ${dogName}</h6>
+                                <p class="card-text mb-1">
+                                    <small>Box: ${boxNumber} | Confidence: ${(winProb * 100).toFixed(1)}%</small>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            detailsHTML += '</div>';
+            if (resultFallback.message) {
+                detailsHTML += `<div class="mt-2"><small class="text-muted"><i class="fas fa-info-circle"></i> ${resultFallback.message}</small></div>`;
+            }
+            detailsDiv.innerHTML = detailsHTML;
+            detailsDiv.setAttribute('data-loaded', 'true');
+        } else {
+            detailsDiv.innerHTML = '<p class="text-muted">No detailed prediction data available.</p>';
+            detailsDiv.setAttribute('data-loaded', 'true');
+        }
+    };
+
     // Toggle prediction details
-    window.toggleDetails = function(button, index) {
+    window.toggleDetails = async function(button, index) {
         const detailsDiv = document.getElementById(`details-${index}`);
         const icon = button.querySelector('i');
         const isExpanded = button.getAttribute('data-expanded') === 'true';
@@ -711,57 +994,219 @@ state.races = Array.isArray(data.races) ? data.races : Object.values(data.races 
             icon.className = 'fas fa-chevron-down';
             button.innerHTML = '<i class="fas fa-chevron-down"></i> Details';
             button.setAttribute('data-expanded', 'false');
-        } else {
-            detailsDiv.style.display = 'block';
-            icon.className = 'fas fa-chevron-up';
-            button.innerHTML = '<i class="fas fa-chevron-up"></i> Hide';
-            button.setAttribute('data-expanded', 'true');
-            
-            // Load detailed information if not already loaded
-            if (detailsDiv.innerHTML.trim() === '') {
-                detailsDiv.innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin"></i> Loading details...</div>';
-                
-                // Get the result data from the current results array
-                const resultIndex = parseInt(index);
-                const currentResults = window.currentPredictionResults || [];
-                const result = currentResults[resultIndex];
-                
-                setTimeout(() => {
-                    if (result && result.predictions && result.predictions.length > 0) {
-                        let detailsHTML = '<div class="row">';
-                        
-                        // Use Array.from to ensure forEach is available on all browsers
-                        Array.from(result.predictions).forEach((prediction, idx) => {
-                            const winProb = prediction.final_score || prediction.win_probability || prediction.confidence || 0;
-                            const dogName = prediction.dog_name || prediction.name || 'Unknown';
-                            const boxNumber = prediction.box_number || prediction.box || 'N/A';
-                            
-                            detailsHTML += `
-                                <div class="col-md-6 mb-2">
-                                    <div class="card card-sm">
-                                        <div class="card-body p-2">
-                                            <h6 class="card-title mb-1">${idx + 1}. ${dogName}</h6>
-                                            <p class="card-text mb-1">
-                                                <small>Box: ${boxNumber} | Confidence: ${(winProb * 100).toFixed(1)}%</small>
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
-                            `;
-                        });
-                        
-                        detailsHTML += '</div>';
-                        
-                        if (result.message) {
-                            detailsHTML += `<div class="mt-2"><small class="text-muted"><i class="fas fa-info-circle"></i> ${result.message}</small></div>`;
-                        }
-                        
-                        detailsDiv.innerHTML = detailsHTML;
-                    } else {
-                        detailsDiv.innerHTML = '<p class="text-muted">No detailed prediction data available.</p>';
+            return;
+        }
+
+        // Expand
+        detailsDiv.style.display = 'block';
+        icon.className = 'fas fa-chevron-up';
+        button.innerHTML = '<i class="fas fa-chevron-up"></i> Hide';
+        button.setAttribute('data-expanded', 'true');
+        
+        // Load detailed information if not already loaded
+        if (detailsDiv.innerHTML.trim() !== '') {
+            return;
+        }
+
+        detailsDiv.innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin"></i> Loading details...</div>';
+        
+        // Get the result data from the current results array
+        const resultIndex = parseInt(index);
+        const currentResults = window.currentPredictionResults || [];
+        const detailResult = currentResults[resultIndex];
+
+        // If we have a race filename, try to fetch rich details from the backend
+        // Fallback to local minimal render otherwise
+        try {
+            const nestedFilename = detailResult && detailResult.prediction && detailResult.prediction.race_info && detailResult.prediction.race_info.filename;
+            const rawName = (detailResult && (detailResult.race_filename || (detailResult.race_id || '') ) ) || (nestedFilename || '');
+            let raceNameForApi = String(rawName)
+                .replace(/\.csv$/i, '')
+                .replace(/^prediction_/, '')
+                .replace(/\.json$/i, '');
+
+            if (raceNameForApi) {
+                const resp = await fetchWithErrorHandling(`/api/prediction_detail/${encodeURIComponent(raceNameForApi)}`);
+                const data = await resp.json();
+                if (data && data.success && data.prediction) {
+                    const pred = data.prediction;
+                    const raceCtx = pred.race_context || {};
+                    const enhanced = pred.enhanced_predictions || pred.predictions || [];
+                    const enhancedSorted = Array.isArray(enhanced)
+                        ? [...enhanced].sort((a, b) => {
+                            const sa = Number(a.final_score || a.prediction_score || a.confidence || 0);
+                            const sb = Number(b.final_score || b.prediction_score || b.confidence || 0);
+                            return sb - sa;
+                          })
+                        : [];
+                    const topPick = pred.top_pick || (enhancedSorted.length ? enhancedSorted[0] : null);
+
+                    let detailsHTML = '';
+                    // Summary header with actions
+                    const rawApiUrl = `/api/prediction_detail/${encodeURIComponent(raceNameForApi)}`;
+                    const downloadJsonName = `prediction_${raceNameForApi}.json`;
+                    const downloadJsonHref = `data:application/json;charset=utf-8,${encodeURIComponent(JSON.stringify(pred, null, 2))}`;
+                    detailsHTML += `
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                          <div><strong>Venue:</strong> ${raceCtx.venue || 'Unknown'} | <strong>Date:</strong> ${raceCtx.race_date || 'Unknown'} | <strong>Distance:</strong> ${raceCtx.distance || 'Unknown'} | <strong>Grade:</strong> ${raceCtx.grade || 'Unknown'}</div>
+                          <div class="d-flex gap-2">
+                            <a class="btn btn-sm btn-outline-secondary" href="${rawApiUrl}" target="_blank" rel="noopener noreferrer"><i class="fas fa-file-code"></i> View raw JSON (API)</a>
+                            <a class="btn btn-sm btn-outline-secondary" href="${downloadJsonHref}" download="${downloadJsonName}"><i class="fas fa-download"></i> Download JSON</a>
+                          </div>
+                        </div>`;
+
+                    // Technical summary of prediction pipeline (enhanced visibility)
+                    try {
+                        const predictor = pred.predictor_used || pred.model_used || 'Unknown';
+                        const methodsArr = Array.isArray(pred.prediction_methods_used) ? pred.prediction_methods_used : (pred.prediction_method ? [pred.prediction_method] : []);
+                        const methodsStr = methodsArr.length ? methodsArr.join(', ') : 'Unknown';
+                        const analysisVersion = pred.analysis_version || pred.version || 'Unknown';
+                        const timestamp = pred.prediction_timestamp || pred.timestamp || '';
+                        const totalDogs = Array.isArray(enhanced) ? enhanced.length : (Array.isArray(pred.predictions) ? pred.predictions.length : 0);
+                        const dataSources = (() => {
+                            try {
+                                const src = pred.data_sources || pred.sources || {};
+                                if (Array.isArray(src)) return src.join(', ');
+                                if (src && typeof src === 'object') return Object.keys(src).join(', ');
+                            } catch {}
+                            return '';
+                        })();
+
+                        detailsHTML += `
+                          <div class="card mb-2">
+                            <div class="card-body p-2">
+                              <div class="row g-2 small">
+                                <div class="col-md-6"><strong>Predictor:</strong> ${predictor}</div>
+                                <div class="col-md-6"><strong>Methods:</strong> ${methodsStr}</div>
+                                <div class="col-md-6"><strong>Analysis Version:</strong> ${analysisVersion}</div>
+                                <div class="col-md-6"><strong>Prediction Time:</strong> ${timestamp || 'N/A'}</div>
+                                <div class="col-md-6"><strong>Dogs Analyzed:</strong> ${totalDogs}</div>
+                                ${dataSources ? `<div class="col-12"><strong>Data Sources:</strong> ${dataSources}</div>` : ''}
+                              </div>
+                            </div>
+                          </div>`;
+                    } catch (e) {
+                        console.warn('Failed to render technical summary', e);
                     }
-                }, 500);
+
+                    // Top pick card
+                    if (topPick) {
+                        let tpName = topPick.dog_name || topPick.clean_name || 'Unknown';
+                        let tpScore = Number(topPick.final_score || topPick.prediction_score || topPick.confidence || 0);
+                        let tpBox = topPick.box_number || topPick.box || 'N/A';
+                        if ((!isFinite(tpScore) || tpScore === 0) && Array.isArray(enhanced) && enhanced.length) {
+                            const first = enhanced[0];
+                            tpName = tpName !== 'Unknown' ? tpName : (first.dog_name || first.clean_name || tpName);
+                            tpScore = Number(first.final_score || first.prediction_score || first.confidence || tpScore);
+                            tpBox = tpBox !== 'N/A' ? tpBox : (first.box_number || first.box || tpBox);
+                        }
+                        detailsHTML += `
+                          <div class="card mb-2">
+                            <div class="card-body p-2">
+                              <h6 class="mb-1"><i class="fas fa-trophy text-warning"></i> Top Pick: ${tpName}</h6>
+                              <small>Box: ${tpBox} | Confidence: ${(tpScore*100).toFixed(1)}%</small>
+                              ${Array.isArray(topPick.key_factors) && topPick.key_factors.length ? `<div class="mt-2"><small><strong>Key factors:</strong> ${topPick.key_factors.slice(0,5).join('; ')}</small></div>` : ''}
+                            </div>
+                          </div>`;
+                    }
+
+                    // Runners grid
+                    if (Array.isArray(enhancedSorted) && enhancedSorted.length) {
+                        detailsHTML += '<div class="row">';
+                        enhancedSorted.forEach((d, idx) => {
+                            const name = d.dog_name || d.clean_name || 'Unknown';
+                            const score = Number(d.final_score || d.prediction_score || d.confidence || 0);
+                            const box = d.box_number || d.box || 'N/A';
+                            const extra = Array.isArray(d.key_factors) && d.key_factors.length ? `<div class="mt-1"><small>${d.key_factors.slice(0,3).join(' • ')}</small></div>` : '';
+                            detailsHTML += `
+                              <div class="col-md-6 mb-2">
+                                <div class="card card-sm">
+                                  <div class="card-body p-2">
+                                    <h6 class="card-title mb-1">${idx + 1}. ${name}</h6>
+                                    <p class="card-text mb-1"><small>Box: ${box} | Confidence: ${(score*100).toFixed(1)}%</small></p>
+                                    ${extra}
+                                  </div>
+                                </div>
+                              </div>`;
+                        });
+                        detailsHTML += '</div>';
+                    }
+
+                    // Try to fetch advisory (compact summary + full card)
+                    try {
+                        const advResp = await fetchWithErrorHandling('/api/generate_advisory', {
+                            method: 'POST',
+                            body: JSON.stringify({ prediction_data: pred })
+                        });
+                        const advData = await advResp.json();
+                        if (advData) {
+                            const advisory = advData.advisory || advData.enhancement || advData;
+                            const getSummary = (obj) => {
+                                try {
+                                    if (typeof obj === 'string') return obj.split('\n')[0].slice(0, 200);
+                                    if (obj && typeof obj === 'object') {
+                                        if (obj.summary) return String(obj.summary).slice(0, 200);
+                                        if (Array.isArray(obj.bullets) && obj.bullets.length) return String(obj.bullets[0]).slice(0, 200);
+                                        if (obj.message) return String(obj.message).slice(0, 200);
+                                        // Suppress JSON fragments in compact banner
+                                        return '';
+                                    }
+                                } catch {}
+                                return '';
+                            };
+                            const summaryText = getSummary(advisory);
+                            if (summaryText) {
+                                detailsHTML = `\n<div class="alert alert-info py-1 px-2 mb-2"><i class="fas fa-lightbulb me-1"></i>${summaryText}</div>` + detailsHTML;
+                            }
+                            const pretty = (() => { try { return JSON.stringify(advisory, null, 2); } catch { return String(advisory); } })();
+                            detailsHTML += `
+                                <div class="card mt-2">
+                                  <div class="card-header p-2"><i class="fas fa-lightbulb"></i> Advisory</div>
+                                  <div class="card-body p-2">
+                                    <pre class="mb-0" style="white-space: pre-wrap;">${pretty}</pre>
+                                  </div>
+                                </div>`;
+                        }
+                    } catch (e) {
+                        console.warn('Advisory fetch failed', e);
+                    }
+
+                    detailsDiv.innerHTML = detailsHTML || '<p class="text-muted">No detailed prediction data available.</p>';
+                    return;
+                }
             }
+        } catch (e) {
+            console.warn('Rich prediction details fetch failed, falling back to minimal render', e);
+            try { showToast('Failed to load rich details; showing minimal info', 'warning'); } catch {}
+        }
+
+        // Fallback: minimal render from in-memory result
+        if (detailResult && detailResult.predictions && detailResult.predictions.length > 0) {
+            let detailsHTML = '<div class="row">';
+            Array.from(detailResult.predictions).forEach((prediction, idx) => {
+                const winProb = prediction.final_score || prediction.win_probability || prediction.confidence || 0;
+                const dogName = prediction.dog_name || prediction.name || 'Unknown';
+                const boxNumber = prediction.box_number || prediction.box || 'N/A';
+                detailsHTML += `
+                    <div class="col-md-6 mb-2">
+                        <div class="card card-sm">
+                            <div class="card-body p-2">
+                                <h6 class="card-title mb-1">${idx + 1}. ${dogName}</h6>
+                                <p class="card-text mb-1">
+                                    <small>Box: ${boxNumber} | Confidence: ${(winProb * 100).toFixed(1)}%</small>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            detailsHTML += '</div>';
+            if (detailResult.message) {
+                detailsHTML += `<div class="mt-2"><small class="text-muted"><i class="fas fa-info-circle"></i> ${detailResult.message}</small></div>`;
+            }
+            detailsDiv.innerHTML = detailsHTML;
+        } else {
+            detailsDiv.innerHTML = '<p class="text-muted">No detailed prediction data available.</p>';
         }
     };
 
@@ -882,6 +1327,12 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     if (missingElements.length > 0) {
+        // If the primary container for this second block isn't present, this page doesn't use it.
+        // Quietly exit to avoid noisy warnings on pages that only use the first block/table view.
+        if (!elements.racesContainer) {
+            return; // no-op on this page
+        }
+        // Otherwise log once for debugging
         console.warn('Second Interactive Races block: Some elements are missing:', missingElements);
     }
 
@@ -904,11 +1355,129 @@ document.addEventListener('DOMContentLoaded', function() {
         };
     }
 
-    // Fetch races function (placeholder - implement based on your API)
+    // Venue display name mapper for common codes
+    const VENUE_DISPLAY = {
+        'AP_K': 'Angle Park',
+        'APTH': 'Albion Park',
+        'APWE': 'Albion Park',
+        'BAL': 'Ballarat',
+        'BEN': 'Bendigo',
+        'CANN': 'Cannington',
+        'CASO': 'Casino',
+        'DAPT': 'Dapto',
+        'GEE': 'Geelong',
+        'GAWL': 'Gawler',
+        'GRDN': 'The Gardens',
+        'HEA': 'Healesville',
+        'HOBT': 'Hobart',
+        'HOR': 'Horsham',
+        'MAND': 'Mandurah',
+        'MEA': 'The Meadows',
+        'MOUNT': 'Mount Gambier',
+        'MURR': 'Murray Bridge',
+        'NOR': 'Northam',
+        'RICH': 'Richmond',
+        'SAL': 'Sale',
+        'SAN': 'Sandown Park',
+        'SHEP': 'Shepparton',
+        'TRA': 'Traralgon',
+        'WAR': 'Warrnambool',
+        'W_PK': 'Wentworth Park',
+        'WPK': 'Wentworth Park'
+    };
+
+    function prettyVenue(venue) {
+        if (!venue) return 'Unknown';
+        const key = String(venue).toUpperCase().trim();
+        return VENUE_DISPLAY[key] || venue;
+    }
+
+    function renderRaces() {
+        if (!elements.racesContainer) return;
+        elements.racesContainer.innerHTML = '';
+
+        if (!state.races || state.races.length === 0) {
+            if (elements.noResultsMessage) elements.noResultsMessage.style.display = 'block';
+            return;
+        }
+        if (elements.noResultsMessage) elements.noResultsMessage.style.display = 'none';
+
+        state.races.forEach(race => {
+            const card = document.createElement('div');
+            card.className = 'race-card expanded'; // expanded by default
+
+            const venueName = prettyVenue(race.venue);
+            const raceTitle = `${venueName} - Race ${race.race_number}`;
+            const meta = `${race.race_date || ''} | ${race.distance || ''} | ${race.grade || ''}`;
+
+            // Sort and filter runners if present
+            const runners = Array.isArray(race.runners) ? race.runners.slice() : [];
+            const validRunners = runners.filter(r => r && r.dog_name && r.dog_name.toLowerCase() !== 'vacant' && r.dog_name.toLowerCase() !== 'empty');
+            validRunners.sort((a,b) => (a.predicted_rank || 99) - (b.predicted_rank || 99));
+
+            const runnersHtml = validRunners.map(r => {
+                const winProb = Math.max(0, Math.min(1, Number(r.win_probability || r.confidence || 0)));
+                const placeProb = Math.max(0, Math.min(1, Number(r.place_probability || (winProb * 1.8 > 1 ? 1 : winProb * 1.8))));
+                const odds = r.odds || r.odds_decimal || '';
+                return `
+                    <li class="runner-entry">
+                        <div class="runner-number">${r.box_number || r.box || ''}</div>
+                        <div class="runner-info">
+                            <div class="runner-name">${r.dog_name || 'Unknown'}<span class="runner-odds">${odds ? '$' + odds : ''}</span></div>
+                            <div>
+                                <div class="win-bar" style="width: ${(winProb*100).toFixed(1)}%;" title="Win: ${(winProb*100).toFixed(1)}%"></div>
+                                <div class="place-bar" style="width: ${(placeProb*100).toFixed(1)}%;" title="Place: ${(placeProb*100).toFixed(1)}%"></div>
+                            </div>
+                        </div>
+                    </li>`;
+            }).join('');
+
+            card.innerHTML = `
+                <div class="race-card-header">
+                    <div>
+                        <div class="race-title">${raceTitle}</div>
+                        <div class="race-meta">${meta}</div>
+                    </div>
+                    <button class="btn-expand" aria-label="Toggle details">Details</button>
+                </div>
+                <div class="race-card-body">
+                    <ul class="runners-list">${runnersHtml}</ul>
+                </div>
+            `;
+
+            // toggle behavior (kept but default expanded)
+            const header = card.querySelector('.race-card-header');
+            header.addEventListener('click', () => {
+                card.classList.toggle('expanded');
+            });
+
+            elements.racesContainer.appendChild(card);
+        });
+    }
+
+    // Fetch races from backend API and then render
     async function fetchRaces() {
-        // This function should be implemented to fetch races from your API
-        // For now, it's a placeholder that does nothing
-        console.log('fetchRaces called - implement based on your API requirements');
+        try {
+            elements.isLoading = true;
+            if (elements.loadingSpinner) elements.loadingSpinner.style.display = 'block';
+
+            const { sortBy, order, page, perPage, searchQuery } = state.filters;
+            const url = `/api/races/paginated?sort_by=${encodeURIComponent(sortBy)}&order=${encodeURIComponent(order)}&page=${page}&per_page=${perPage}&search=${encodeURIComponent(searchQuery || '')}`;
+            const resp = await fetchWithErrorHandling(url, { method: 'GET' });
+            const data = await resp.json();
+
+            state.races = Array.isArray(data.races) ? data.races : [];
+            state.pagination = data.pagination || {};
+            renderRaces();
+        } catch (e) {
+            console.warn('Failed to load races', e);
+            state.races = [];
+            renderRaces();
+            showToast('Failed to load races. Please try again.', 'warning');
+        } finally {
+            elements.isLoading = false;
+            if (elements.loadingSpinner) elements.loadingSpinner.style.display = 'none';
+        }
     }
 
     function setupEventListeners() {

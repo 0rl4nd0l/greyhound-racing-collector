@@ -5,16 +5,12 @@ import threading
 from pathlib import Path
 from typing import Optional, Callable
 
-try:
-    from watchdog.observers import Observer
-    from watchdog.events import FileSystemEventHandler, FileSystemEvent
-    WATCHDOG_AVAILABLE = True
-except Exception:
-    # Soft dependency; module can be imported even if watchdog isn't installed
-    Observer = object  # type: ignore
-    FileSystemEventHandler = object  # type: ignore
-    FileSystemEvent = object  # type: ignore
-    WATCHDOG_AVAILABLE = False
+# NOTE: Do not import watchdog at module import time to avoid loading it in prediction-only processes.
+# We'll import it lazily inside start_download_watcher if enabled.
+Observer = object  # type: ignore
+FileSystemEventHandler = object  # type: ignore
+FileSystemEvent = object  # type: ignore
+WATCHDOG_AVAILABLE = False
 
 from ingestion.ingest_race_csv import ingest_form_guide_csv
 from config.paths import DOWNLOADS_WATCH_DIR, UPCOMING_RACES_DIR, ARCHIVE_DIR
@@ -111,9 +107,19 @@ def start_download_watcher(downloads_dir: Optional[Path] = None,
 
     Returns the Observer if started, else None (e.g., watchdog not installed).
     """
+    # Lazy import watchdog only if we intend to start the watcher
+    global WATCHDOG_AVAILABLE, Observer, FileSystemEventHandler, FileSystemEvent
     if not WATCHDOG_AVAILABLE:
-        print("[watcher] watchdog not installed; skipping Downloads watcher.")
-        return None
+        try:
+            from watchdog.observers import Observer as _Observer  # type: ignore
+            from watchdog.events import FileSystemEventHandler as _FileSystemEventHandler, FileSystemEvent as _FileSystemEvent  # type: ignore
+            Observer = _Observer
+            FileSystemEventHandler = _FileSystemEventHandler
+            FileSystemEvent = _FileSystemEvent
+            WATCHDOG_AVAILABLE = True
+        except Exception:
+            print("[watcher] watchdog not installed; skipping Downloads watcher.")
+            return None
 
     downloads_dir = downloads_dir or DOWNLOADS_WATCH_DIR
 

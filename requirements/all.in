@@ -1,0 +1,11 @@
+# Master requirements file - includes all layers
+# For comprehensive development and production environment
+
+-r base.in
+-r ml.in
+-r web.in
+-r worker.in
+-r database.in
+-r test.in
+-r dev.in
+-r perf.in

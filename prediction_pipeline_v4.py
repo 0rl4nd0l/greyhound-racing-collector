@@ -18,8 +18,30 @@ logger = logging.getLogger(__name__)
 
 class PredictionPipelineV4:
     def __init__(self, db_path="greyhound_racing_data.db"):
-        self.db_path = db_path
-        self.ml_system_v4 = MLSystemV4(db_path)
+        # Resolve database path intelligently
+        resolved_db = os.getenv('GREYHOUND_DB_PATH') or db_path
+        candidates = [
+            resolved_db,
+            os.path.join('.', resolved_db) if not os.path.isabs(resolved_db) else resolved_db,
+            os.path.join('.', 'greyhound_racing_data.db'),
+            os.path.join('.', 'databases', 'comprehensive_greyhound_data.db'),
+            os.path.join('.', 'databases', 'greyhound_racing_data.db'),
+        ]
+        chosen = None
+        for cand in candidates:
+            try:
+                if cand and os.path.isfile(cand):
+                    chosen = cand
+                    break
+            except Exception:
+                continue
+        self.db_path = chosen or resolved_db
+        if not os.path.isfile(self.db_path):
+            logger.warning(f"⚠️ Database not found at {self.db_path}. Historical features may be empty. Set GREYHOUND_DB_PATH to fix.")
+        else:
+            logger.info(f"🗄️ Using database: {self.db_path}")
+
+        self.ml_system_v4 = MLSystemV4(self.db_path)
         logger.info("🚀 Prediction Pipeline V4 - Advanced System Initialized")
 
     def predict_race_file(self, race_file_path: str) -> dict:
@@ -29,6 +51,9 @@ class PredictionPipelineV4:
         )
 
         # Pre-prediction module sanity check
+        # IMPORTANT: This call ensures no historical-data collectors, scrapers, or heavy frameworks
+        # are imported during prediction. Module guard enforces prediction_only import policy.
+        # Keep this import local and NEVER at module top-level to avoid false positives in tests.
         try:
             from utils import module_guard
             module_guard.pre_prediction_sanity_check(
@@ -50,7 +75,10 @@ class PredictionPipelineV4:
             }
 
         try:
-            # Use CSV ingestion to read race data
+            # Use CSV ingestion to read race data (prediction-only safe component)
+            # NOTE: CsvIngestion reads a single race CSV (race data) and does not load
+            # historical results. Keep ingestion imports narrow to avoid pulling in
+            # broader scraping frameworks at prediction time.
             ingestion = CsvIngestion(race_file_path)
             parsed_race, validation_report = ingestion.parse_csv()
             
@@ -109,9 +137,20 @@ class PredictionPipelineV4:
         
         # Create mapped DataFrame with required columns
         mapped_data = []
+
+        # Normalizers for consistent joins
+        def _normalize_dog_name(name: str) -> str:
+            if name is None:
+                return ''
+            s = str(name)
+            # Normalize common unicode punctuation and remove quotes/apostrophes/backticks
+            for a, b in [("\u201c", ''), ("\u201d", ''), ("\u2018", ''), ("\u2019", ''), ("\u2013", '-'), ("\u2014", '-')]:
+                s = s.replace(a, b)
+            s = s.replace('"','').replace("'", '').replace('`','')
+            return s.strip()
         
         for _, row in race_data.iterrows():
-            dog_name = str(row.get('Dog Name', '')).strip()
+            dog_name = _normalize_dog_name(row.get('Dog Name', ''))
             if not dog_name or dog_name.startswith('""') or dog_name.lower() in ['nan', 'none', '']:
                 continue  # Skip empty rows
             
@@ -128,6 +167,10 @@ class PredictionPipelineV4:
             except (ValueError, TypeError):
                 box_number = 1
                 clean_dog_name = dog_name
+
+            # Final normalization to match DB dog_clean_name conventions
+            clean_dog_name = ' '.join(clean_dog_name.split())  # collapse whitespace
+            clean_dog_name = clean_dog_name.upper()
             
             # Safely convert numeric values with proper error handling
             def safe_float_convert(value, default=0.0):
@@ -147,8 +190,8 @@ class PredictionPipelineV4:
                 'weight': safe_float_convert(row.get('WGT'), 30.0),
                 'starting_price': safe_float_convert(row.get('SP'), 3.0),
                 'trainer_name': str(row.get('TRAINER', 'Unknown')),
-                'venue': venue,
-                'grade': str(row.get('G', 'G5')),
+                'venue': str(venue).upper().replace(' ', '_'),
+                'grade': str(row.get('G', 'G5')).upper(),
                 'track_condition': 'Good',  # Default value
                 'weather': 'Fine',  # Default value
                 'temperature': 20.0,  # Default value

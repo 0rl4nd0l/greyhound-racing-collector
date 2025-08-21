@@ -1,0 +1,1673 @@
+[2025-08-21 17:57:16 +1000] [29057] [INFO] Starting gunicorn 23.0.0
+[2025-08-21 17:57:16 +1000] [29057] [INFO] Listening at: http://127.0.0.1:5000 (29057)
+[2025-08-21 17:57:16 +1000] [29057] [INFO] Using worker: gthread
+[2025-08-21 17:57:16 +1000] [29100] [INFO] Booting worker with pid: 29100
+2025-08-21 17:57:40,570 - db_performance_optimizer - INFO - 🔗 SQLite Connection Pool initialized:
+2025-08-21 17:57:40,572 - db_performance_optimizer - INFO -    📊 Pool size: 20
+2025-08-21 17:57:40,573 - db_performance_optimizer - INFO -    📁 Database: greyhound_racing_data.db
+2025-08-21 17:57:40,574 - db_performance_optimizer - INFO -    ⏱️ Timeout: 30.0s
+2025-08-21 17:57:40,575 - db_performance_optimizer - INFO - 🚀 Database optimization initialized
+2025-08-21 17:57:40,579 - root - INFO - [MODEL_REGISTRY] Initializing model registry system...
+2025-08-21 17:57:40,582 - system - INFO - [MODEL_REGISTRY] [MODEL_REGISTRY] Initializing model registry system...
+2025-08-21 17:57:40,756 - model_registry - INFO - 🗂️  Model Registry initialized: 3 models tracked
+2025-08-21 17:57:40,759 - root - INFO - [MODEL_REGISTRY] Model registry initialized successfully: 3 models tracked
+2025-08-21 17:57:40,762 - system - INFO - [MODEL_REGISTRY] [MODEL_REGISTRY] Model registry initialized successfully: 3 models tracked
+2025-08-21 17:57:49,642 - process - INFO - 🚀 Starting enhanced single race prediction process...
+2025-08-21 17:57:49,671 - process - INFO - Found race file 'Race 1 - BAL - 2025-08-20.csv' in /Users/test/Desktop/greyhound_racing_collector/upcoming_races
+2025-08-21 17:57:49,699 - process - INFO - 🔍 Step 1: Enhancing data for Race 1 - BAL - 2025-08-20.csv before prediction...
+2025-08-21 17:57:49,725 - process - INFO - 📊 File size: 2418 bytes
+2025-08-21 17:57:49,766 - process - INFO - ✅ CSV validation passed - 17 columns detected
+2025-08-21 17:57:49,792 - process - INFO - ✅ Step 1 completed in 0.07 seconds
+2025-08-21 17:57:49,822 - process - INFO - 🔍 Step 2: Running prediction pipeline for race Race 1 - BAL - 2025-08-20.csv...
+2025-08-21 17:57:49,849 - process - INFO - Using PredictionPipelineV4 for Race 1 - BAL - 2025-08-20.csv
+2025-08-21 17:57:49,876 - prediction_pipeline_v4 - INFO - 🗄️ Using database: greyhound_racing_data.db
+2025-08-21 17:57:49,877 - ml_system_v4 - INFO - 🗄️ MLSystemV4 using database: greyhound_racing_data.db
+2025-08-21 17:57:49,931 - ml_system_v4 - INFO - 📥 Loaded model from Model Registry (best model)
+2025-08-21 17:57:49,932 - ml_system_v4 - INFO - 🛡️ ML System V4 initialized with temporal leakage protection
+2025-08-21 17:57:49,933 - prediction_pipeline_v4 - INFO - 🚀 Prediction Pipeline V4 - Advanced System Initialized
+2025-08-21 17:57:49,934 - prediction_pipeline_v4 - INFO - 🚀 Starting prediction for: Race 1 - BAL - 2025-08-20.csv using ML System V4
+2025-08-21 17:57:50,027 - prediction_pipeline_v4 - INFO - 📋 Mapped 7 dogs for ML System V4 prediction
+2025-08-21 17:57:50,112 - temporal_feature_builder - INFO - Building leakage-safe features for race Race 1 - BAL - 2025-08-20
+2025-08-21 17:57:50,134 - temporal_feature_builder - INFO - No historical rows found in DB for dog='CACO MAGIC'
+2025-08-21 17:57:50,164 - temporal_feature_builder - INFO - No historical rows found in DB for dog='ELECTROJET'
+2025-08-21 17:57:50,224 - temporal_feature_builder - INFO - No historical rows found in DB for dog='SMOOTH BLAST'
+2025-08-21 17:57:50,232 - temporal_feature_builder - INFO - No historical rows found in DB for dog='SPRING QUIZ'
+2025-08-21 17:57:50,239 - temporal_feature_builder - INFO - No historical rows found in DB for dog='ASTON TRUST'
+2025-08-21 17:57:50,242 - temporal_feature_builder - INFO - Built features for 7 dogs in race Race 1 - BAL - 2025-08-20
+2025-08-21 17:57:50,247 - ml_system_v4 - INFO - 💾 Cached features for Race 1 - BAL - 2025-08-20 -> Race_1_-_BAL_-_2025-08-20__bc7b527a_8d0b81f44891fe60235a5de433b0de7f.pkl
+2025-08-21 17:57:50,248 - temporal_feature_builder - INFO - Validating temporal integrity...
+2025-08-21 17:57:50,249 - temporal_feature_builder - INFO - Found 12 historical features
+2025-08-21 17:57:50,250 - temporal_feature_builder - INFO - ✅ Temporal integrity validation passed
+2025-08-21 17:57:50,252 - ml_system_v4 - WARNING - Extra features (will be dropped): {'race_time'}
+2025-08-21 17:57:50,364 - ml_system_v4 - INFO - ✅ Race prediction complete for Race 1 - BAL - 2025-08-20: 7 dogs
+2025-08-21 17:57:50,366 - prediction_pipeline_v4 - INFO - ✅ Prediction successful for Race 1 - BAL - 2025-08-20
+2025-08-21 17:57:50,367 - process - INFO - Successfully used PredictionPipelineV4 for Race 1 - BAL - 2025-08-20.csv
+2025-08-21 18:05:06,928 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 9.70ms
+2025-08-21 18:05:06,945 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 3.31ms
+2025-08-21 18:05:07,009 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 11.31ms
+2025-08-21 18:05:07,029 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 2.91ms
+2025-08-21 18:05:08,937 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 9.00ms
+2025-08-21 18:05:08,956 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 4.48ms
+2025-08-21 18:05:09,237 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 12.02ms
+2025-08-21 18:05:09,376 - process - INFO - [BG:bg_dd21e209_1755763509] Starting CSV download task
+🚫 All profiling functionality has been disabled to prevent conflicts
+📋 Enhanced Logger initialized - Log directory: logs
+🔍 Debug mode: DISABLED
+🚀 CSV ingestion system available
+✅ Unified form guide ingestion available
+🚀 Endpoint optimization enabled (caching + optimized queries)
+🚀 Database performance optimization enabled
+⚠️ Strategy Manager not available
+🚀 Batch prediction pipeline available
+🚀 Background task system available
+🚀 Asset management system available
+🚀 Model training API blueprint available
+🛡️ Guardian Service available
+🚀 ML System V4 (Advanced) available
+🛡️ Module guard startup check passed
+✅ Asset management system initialized successfully
+🎯 Model Training API routes registered successfully
+ℹ️ Downloads watcher disabled or ingestion unavailable
+ℹ️ Upcoming races watcher disabled via WATCH_UPCOMING=0
+✅ Database performance optimization initialized
+✅ Model registry initialized successfully: 3 models tracked
+🗄️ Initializing database manager...
+✅ Database manager initialized successfully with database: greyhound_racing_data.db
+🛡️ File Integrity Guardian initialized
+📁 Quarantine directory: ./quarantine
+📏 CSV size limits: 10 bytes to 50.0MB
+🔗 Incremental hashing enabled with 64KB chunks
+💾 Hash cache loaded: 0 files
+🏁 Upcoming Race Browser initialized
+📂 Upcoming races directory: ./upcoming_races
+🔍 Fetching upcoming races for the next 0 days...
+   🌐 Scraping live data for 2025-08-21 to get real race times...
+🔍 Scraping live races for 2025-08-21...
+   📋 Found 133 cached races for 2025-08-21
+   ✅ Added 133 cached races to results
+   🔄 Enhancing cached races with live times...
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/dapto/2025-08-21/2 (attempt 1)
+     ⚠️ Race page not found (404)
+   🌐 Fetching: https://www.thedogs.com.au/racing/2025-08-21
+   🔍 Found 169 potential race links
+   📊 Processing races for 14 venues
+     🏟️ Processing 11 races for richmond-straight
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/richmond-straight/2025-08-21/1/mark-hughes-foundation-maiden?trial=false (attempt 1)
+     🏟️ Processing 12 races for casino
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/casino/2025-08-21/1/richmond-valley-tyres-maiden?trial=false (attempt 1)
+     🏟️ Processing 10 races for wentworth-park
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/wentworth-park/2025-08-21/1/nsw-gbota-welcome-maiden?trial=false (attempt 1)
+     ✅ Found race time: 2:35 PM (from page text - 24hr)
+     🏟️ Processing 12 races for dapto
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/dapto/2025-08-21/1/dapto-loyalty-1-5-win-heat-1-h?trial=false (attempt 1)
+     ✅ Found race time: 12:34 PM (from page text - 24hr)
+     🏟️ Processing 19 races for shepparton
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/shepparton/2025-08-21/1/14-races-today-250-rank?trial=false (attempt 1)
+     ✅ Found race time: 6:52 PM (from page text - 24hr)
+     🏟️ Processing 12 races for ladbrokes-q-straight
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/ladbrokes-q-straight/2025-08-21/1/ladbrokes-odds-surge?trial=false (attempt 1)
+     ✅ Found race time: 7:04 PM (from page text - 24hr)
+     🏟️ Processing 11 races for mount-gambier
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/mount-gambier/2025-08-21/1/williams-crane-hire-maiden-stake-pr2-division1?trial=false (attempt 1)
+     ✅ Found race time: 11:46 AM (from page text - 24hr)
+     🏟️ Processing 12 races for warragul
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/warragul/2025-08-21/1/paua-of-buddy-at-stud-300-rank?trial=false (attempt 1)
+     ✅ Found race time: 10:48 AM (from page text - 24hr)
+     🏟️ Processing 13 races for warrnambool
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/warrnambool/2025-08-21/1/13-races-tonight?trial=false (attempt 1)
+     ✅ Found race time: 5:05 PM (from page text - 24hr)
+     🏟️ Processing 10 races for ladbrokes-q2-parklands
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/ladbrokes-q2-parklands/2025-08-21/1/ladbrokes-srm-in-multis?trial=false (attempt 1)
+     ✅ Found race time: 3:11 PM (from page text - 24hr)
+     🏟️ Processing 12 races for sandown
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/sandown/2025-08-21/1/armstrong-farm-services?trial=false (attempt 1)
+     ✅ Found race time: 11:59 AM (from page text - 24hr)
+     🏟️ Processing 12 races for angle-park
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/angle-park/2025-08-21/1/the-dogcast-stake-cta-division1?trial=false (attempt 1)
+     ✅ Found race time: 6:42 PM (from page text - 24hr)
+     🏟️ Processing 11 races for hobart
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/hobart/2025-08-21/1/hands-off-our-hounds-division1?trial=false (attempt 1)
+     ✅ Found race time: 6:58 PM (from page text - 24hr)
+     🏟️ Processing 12 races for mandurah
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/mandurah/2025-08-21/1/free-entry-tabtouch-park?trial=false (attempt 1)
+     ✅ Found race time: 7:07 PM (from page text - 24hr)
+     ✅ Found race time: 7:22 PM (from page text - 24hr)
+     ✅ Found race time: 7:19 PM (from page text - 24hr)
+   📊 Found 169 total races across 14 venues
+   🌐 Found 169 live races from main page for 2025-08-21
+   ➕ Added 31 additional live races to cached races
+   📊 Total races found: 164 (Cached: 133, Live: 169)
+   ✅ Found 164 live races for 2025-08-21
+   ⏰ Skipping past race: Race 1 - Casino - 2025-08-21 at 2:35 PM
+   ⏰ Skipping past race: Race 2 - Caso - 2025-08-21 at 1:25 PM
+   ⏰ Skipping past race: Race 3 - Caso - 2025-08-21 at 1:50 PM
+   ⏰ Skipping past race: Race 4 - Caso - 2025-08-21 at 2:15 PM
+   ⏰ Skipping past race: Race 5 - Caso - 2025-08-21 at 2:40 PM
+   ⏰ Skipping past race: Race 6 - Caso - 2025-08-21 at 3:05 PM
+   ⏰ Skipping past race: Race 7 - Caso - 2025-08-21 at 3:30 PM
+   ⏰ Skipping past race: Race 8 - Caso - 2025-08-21 at 3:55 PM
+   ⏰ Skipping past race: Race 9 - Caso - 2025-08-21 at 4:20 PM
+   ⏰ Skipping past race: Race 10 - Caso - 2025-08-21 at 4:45 PM
+   ⏰ Skipping past race: Race 11 - Caso - 2025-08-21 at 5:10 PM
+   ⏰ Skipping past race: Race 1 - Dapto - 2025-08-21 at 1:00 PM
+   ⏰ Skipping past race: Race 2 - Dapto - 2025-08-21 at 1:25 PM
+   ⏰ Skipping past race: Race 3 - Dapto - 2025-08-21 at 1:50 PM
+   ⏰ Skipping past race: Race 4 - Dapto - 2025-08-21 at 2:15 PM
+   ⏰ Skipping past race: Race 5 - Dapto - 2025-08-21 at 2:40 PM
+   ⏰ Skipping past race: Race 6 - Dapto - 2025-08-21 at 3:05 PM
+   ⏰ Skipping past race: Race 7 - Dapto - 2025-08-21 at 3:30 PM
+   ⏰ Skipping past race: Race 8 - Dapto - 2025-08-21 at 3:55 PM
+   ⏰ Skipping past race: Race 9 - Dapto - 2025-08-21 at 4:20 PM
+   ⏰ Skipping past race: Race 10 - Dapto - 2025-08-21 at 4:45 PM
+   ⏰ Skipping past race: Race 11 - Dapto - 2025-08-21 at 5:10 PM
+   ⏰ Skipping past race: Race 12 - Dapto - 2025-08-21 at 5:35 PM
+   ⏰ Skipping past race: Race 2 - Hobart - 2025-08-21 at 1:25 PM
+   ⏰ Skipping past race: Race 3 - Hobart - 2025-08-21 at 1:50 PM
+   ⏰ Skipping past race: Race 4 - Hobart - 2025-08-21 at 2:15 PM
+   ⏰ Skipping past race: Race 5 - Hobart - 2025-08-21 at 2:40 PM
+   ⏰ Skipping past race: Race 6 - Hobart - 2025-08-21 at 3:05 PM
+   ⏰ Skipping past race: Race 7 - Hobart - 2025-08-21 at 3:30 PM
+   ⏰ Skipping past race: Race 8 - Hobart - 2025-08-21 at 3:55 PM
+   ⏰ Skipping past race: Race 9 - Hobart - 2025-08-21 at 4:20 PM
+   ⏰ Skipping past race: Race 10 - Hobart - 2025-08-21 at 4:45 PM
+   ⏰ Skipping past race: Race 11 - Hobart - 2025-08-21 at 5:10 PM
+   ⏰ Skipping past race: Race 1 - Ladbrokes Q Straight - 2025-08-21 at 1:00 PM
+   ⏰ Skipping past race: Race 2 - Ladbrokes Q Straight - 2025-08-21 at 12:08 PM
+   ⏰ Skipping past race: Race 3 - Ladbrokes Q Straight - 2025-08-21 at 1:50 PM2025-08-21 18:05:12,606 - process - INFO - [BG:bg_dd21e209_1755763509] CSV download task completed
+2025-08-21 18:05:13,433 - process - INFO - [BG:bg_5484ffb8_1755763513] Processing single file: test_data.csv
+2025-08-21 18:05:13,486 - errors - ERROR - [BG:bg_5484ffb8_1755763513] File processing error: File not found: test_data.csv
+2025-08-21 18:05:17,911 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 11.29ms
+2025-08-21 18:05:17,931 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 2.39ms
+2025-08-21 18:05:18,083 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 13.83ms
+2025-08-21 18:05:18,221 - process - INFO - 🎯 Starting comprehensive race predictions for all upcoming races...
+2025-08-21 18:05:18,224 - process - INFO - 🎯 Starting comprehensive race predictions for all upcoming races...
+2025-08-21 18:05:18,227 - process - INFO - 🎯 Starting comprehensive race predictions for all upcoming races...
+2025-08-21 18:05:18,272 - errors - ERROR - ❌ ComprehensivePredictionPipeline not available.
+2025-08-21 18:05:18,301 - errors - ERROR - ❌ ComprehensivePredictionPipeline not available.
+2025-08-21 18:05:18,335 - errors - ERROR - ❌ ComprehensivePredictionPipeline not available.
+2025-08-21 18:05:21,583 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 7.68ms
+2025-08-21 18:05:21,614 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 3.57ms
+2025-08-21 18:05:21,768 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 13.40ms
+2025-08-21 18:05:51,767 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 14.26ms
+2025-08-21 18:06:23,146 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 11.04ms
+2025-08-21 18:06:23,183 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 4.11ms
+2025-08-21 18:06:23,357 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 13.92ms
+2025-08-21 18:06:23,498 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:06:23,544 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:06:25,143 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 9.29ms
+2025-08-21 18:06:25,165 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 4.00ms
+2025-08-21 18:06:25,346 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 15.67ms
+2025-08-21 18:06:27,379 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 9.10ms
+2025-08-21 18:06:27,450 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 3.10ms
+2025-08-21 18:06:27,639 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 10.11ms
+2025-08-21 18:06:57,633 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 8.50ms
+2025-08-21 18:12:21,284 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 6.39ms
+2025-08-21 18:12:21,380 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 2.22ms
+2025-08-21 18:12:21,413 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 8.26ms
+2025-08-21 18:12:21,427 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 2.12ms
+2025-08-21 18:12:23,087 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 9.83ms
+2025-08-21 18:12:23,107 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 2.64ms
+2025-08-21 18:12:23,309 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:12:23,344 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 27.89ms
+2025-08-21 18:12:23,385 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:12:38,284 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:12:38,318 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:12:53,280 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:12:53,313 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 23.66ms
+2025-08-21 18:12:53,348 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:13:08,275 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:13:08,311 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:13:24,551 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 11.49ms
+2025-08-21 18:13:24,576 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 3.92ms
+2025-08-21 18:13:24,936 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:13:24,975 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 24.94ms
+2025-08-21 18:13:25,011 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:13:28,436 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 10.04ms
+2025-08-21 18:13:28,462 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 4.14ms
+2025-08-21 18:13:28,829 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:13:28,855 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 24.68ms
+2025-08-21 18:13:28,892 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:13:43,816 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:13:43,856 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:13:58,815 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:13:58,845 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 22.53ms
+2025-08-21 18:13:58,876 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:14:13,815 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:14:13,847 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:14:29,778 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 10.41ms
+2025-08-21 18:14:29,815 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 4.00ms
+2025-08-21 18:14:29,976 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:14:30,005 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 27.98ms
+2025-08-21 18:14:30,042 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:14:30,089 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:14:30,125 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:14:31,446 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 8.50ms
+2025-08-21 18:14:31,478 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 2.57ms
+2025-08-21 18:14:31,628 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:14:31,663 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 29.05ms
+2025-08-21 18:14:31,699 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:14:33,078 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 9.69ms
+2025-08-21 18:14:33,098 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 2.68ms
+2025-08-21 18:14:33,230 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:14:33,271 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 31.25ms
+2025-08-21 18:14:33,300 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:14:48,228 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:14:48,255 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:15:03,231 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:15:03,261 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 22.04ms
+2025-08-21 18:15:03,301 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:15:18,227 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:15:18,253 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:19:15,660 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 14.72ms
+2025-08-21 18:19:15,693 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 6.11ms
+2025-08-21 18:19:15,731 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 14.39ms
+2025-08-21 18:19:15,752 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 3.22ms
+2025-08-21 18:19:17,401 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 12.46ms
+2025-08-21 18:19:17,424 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 3.40ms
+2025-08-21 18:19:17,719 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:19:17,776 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 42.51ms
+2025-08-21 18:19:17,809 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:19:32,719 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:19:32,763 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:19:47,719 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:19:47,762 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 28.80ms
+2025-08-21 18:19:47,796 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:20:02,721 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:20:02,792 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:20:08,290 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 13.36ms
+2025-08-21 18:20:08,352 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 4.23ms
+2025-08-21 18:20:08,554 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:20:08,635 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 72.69ms
+2025-08-21 18:20:08,648 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:20:14,651 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 15.16ms
+2025-08-21 18:20:14,681 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 5.33ms
+2025-08-21 18:20:14,853 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:20:14,916 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 55.48ms
+2025-08-21 18:20:14,940 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:20:29,853 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:20:29,902 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:20:44,853 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:20:44,887 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 24.20ms
+2025-08-21 18:20:44,923 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:20:59,853 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:20:59,897 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:21:16,154 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 18.93ms
+2025-08-21 18:21:16,199 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 4.73ms
+2025-08-21 18:21:16,388 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:21:16,445 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 43.94ms
+2025-08-21 18:21:16,473 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:21:16,542 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:21:16,601 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:21:18,492 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 12.72ms
+2025-08-21 18:21:18,563 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 8.20ms
+2025-08-21 18:21:18,752 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:21:18,791 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 27.95ms
+2025-08-21 18:21:18,843 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:21:20,788 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 17.60ms
+2025-08-21 18:21:20,834 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 7.07ms
+2025-08-21 18:21:21,050 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:21:21,124 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 17.75ms
+2025-08-21 18:21:21,137 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:21:36,016 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:21:36,057 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:21:51,016 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:21:51,052 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 26.99ms
+2025-08-21 18:21:51,088 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:22:06,012 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:22:06,051 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:31:26,744 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 12.99ms
+2025-08-21 18:31:26,761 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 3.51ms
+2025-08-21 18:31:26,784 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 10.58ms
+2025-08-21 18:31:26,799 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 2.26ms
+2025-08-21 18:31:28,202 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 7.47ms
+2025-08-21 18:31:28,218 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 2.35ms
+2025-08-21 18:31:28,406 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:31:28,437 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 29.35ms
+2025-08-21 18:31:28,475 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:31:43,398 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:31:43,429 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:31:58,396 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:31:58,435 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 29.37ms
+2025-08-21 18:31:58,438 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:32:13,396 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:32:13,423 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:32:29,470 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 10.70ms
+2025-08-21 18:32:29,498 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 7.23ms
+2025-08-21 18:32:29,664 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:32:29,716 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 42.93ms
+2025-08-21 18:32:29,745 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:32:33,138 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 9.80ms
+2025-08-21 18:32:33,157 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 2.60ms
+2025-08-21 18:32:33,296 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:32:33,336 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 35.82ms
+2025-08-21 18:32:33,370 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:32:48,282 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:32:48,312 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:33:03,281 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:33:03,319 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:33:03,322 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 27.73ms
+2025-08-21 18:33:18,282 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:33:18,310 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:33:34,317 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 14.94ms
+2025-08-21 18:33:34,399 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 5.07ms
+2025-08-21 18:33:34,553 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:33:34,615 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 47.29ms
+2025-08-21 18:33:34,641 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:33:34,687 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:33:34,724 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:33:36,162 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 12.86ms
+2025-08-21 18:33:36,237 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 2.47ms
+2025-08-21 18:33:36,421 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:33:36,458 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 25.73ms
+2025-08-21 18:33:36,519 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:33:37,966 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 10.02ms
+2025-08-21 18:33:38,009 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 3.23ms
+2025-08-21 18:33:38,158 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:33:38,190 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 29.87ms
+2025-08-21 18:33:38,227 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:33:53,146 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:33:53,174 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:34:08,147 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:34:08,181 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 29.87ms
+2025-08-21 18:34:08,185 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:34:23,147 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:34:23,180 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:38:49,115 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 8.95ms
+2025-08-21 18:38:49,129 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 2.16ms
+2025-08-21 18:38:49,148 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 8.66ms
+2025-08-21 18:38:49,164 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 2.66ms
+2025-08-21 18:38:50,435 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 8.26ms
+2025-08-21 18:38:50,472 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 4.30ms
+2025-08-21 18:38:50,641 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:38:50,690 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 46.96ms
+2025-08-21 18:38:50,737 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:39:05,620 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:39:05,654 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:39:20,620 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:39:20,660 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 32.27ms
+2025-08-21 18:39:20,666 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:39:35,620 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:39:35,651 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:39:51,876 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 8.62ms
+2025-08-21 18:39:51,946 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 3.31ms
+2025-08-21 18:39:52,143 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:39:52,165 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 23.31ms
+2025-08-21 18:39:52,214 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:39:55,599 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 9.75ms
+2025-08-21 18:39:55,625 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 2.71ms
+2025-08-21 18:39:55,777 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:39:55,814 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 30.50ms
+2025-08-21 18:39:55,851 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:40:10,769 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:40:10,797 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:40:25,772 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:40:25,804 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 28.90ms
+2025-08-21 18:40:25,818 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:40:40,772 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:40:40,810 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:40:57,030 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 7.25ms
+2025-08-21 18:40:57,062 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 2.72ms
+2025-08-21 18:40:57,230 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:40:57,268 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 24.61ms
+2025-08-21 18:40:57,302 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:40:57,338 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:40:57,367 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:40:58,720 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 7.69ms
+2025-08-21 18:40:58,834 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 3.17ms
+2025-08-21 18:40:59,016 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:40:59,064 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 43.26ms
+2025-08-21 18:40:59,097 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:41:00,419 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 7.89ms
+2025-08-21 18:41:00,463 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 2.89ms
+2025-08-21 18:41:00,583 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:41:00,625 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 36.74ms
+2025-08-21 18:41:00,646 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:41:15,581 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:41:15,608 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:41:30,590 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:41:30,625 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 33.34ms
+2025-08-21 18:41:30,635 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:41:45,581 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:41:45,606 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:45:33,493 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 11.80ms
+2025-08-21 18:45:33,596 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 4.97ms
+2025-08-21 18:45:33,632 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 16.34ms
+2025-08-21 18:45:33,650 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 3.95ms
+2025-08-21 18:45:35,367 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 7.74ms
+2025-08-21 18:45:35,391 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 6.05ms
+2025-08-21 18:45:35,625 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:45:35,670 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 39.16ms
+2025-08-21 18:45:35,721 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:45:50,611 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:45:50,638 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:46:05,611 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:46:05,650 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:46:05,652 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 15.21ms
+2025-08-21 18:46:20,611 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 18:46:20,639 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 19:30:25,165 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 30.69ms
+2025-08-21 19:30:25,289 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 3.71ms
+2025-08-21 19:30:43,654 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 19:30:43,718 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 19:31:53,916 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 19:31:53,948 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 19:31:55,974 - errors - ERROR - An unhandled exception occurred: 405 Method Not Allowed: The method is not allowed for the requested URL. - 405 Method Not Allowed: The method is not allowed for the requested URL.
+2025-08-21 19:31:56,013 - errors - ERROR - Exception details for: An unhandled exception occurred: 405 Method Not Allowed: The method is not allowed for the requested URL.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 624, in match
+    raise MethodNotAllowed(valid_methods=list(e.have_match_for)) from None
+werkzeug.exceptions.MethodNotAllowed: 405 Method Not Allowed: The method is not allowed for the requested URL.
+2025-08-21 19:32:45,030 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 19:32:45,068 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 19:33:15,228 - errors - ERROR - An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again. - 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+2025-08-21 19:33:15,259 - errors - ERROR - Exception details for: An unhandled exception occurred: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+Traceback (most recent call last):
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 891, in dispatch_request
+    self.raise_routing_exception(req)
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/app.py", line 500, in raise_routing_exception
+    raise request.routing_exception  # type: ignore[misc]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/flask/ctx.py", line 362, in match_request
+    result = self.url_adapter.match(return_rule=True)  # type: ignore
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/test/Desktop/greyhound_racing_collector/.venv311_skl17/lib/python3.11/site-packages/werkzeug/routing/map.py", line 629, in match
+    raise NotFound() from None
+werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
+[2025-08-21 19:33:28 +1000] [29057] [INFO] Handling signal: term
+[2025-08-21 19:33:29 +1000] [29100] [INFO] Worker exiting (pid: 29100)
+
+   ⏰ Skipping past race: Race 4 - Ladbrokes Q Straight - 2025-08-21 at 2:15 PM
+   ⏰ Skipping past race: Race 5 - Ladbrokes Q Straight - 2025-08-21 at 2:40 PM
+   ⏰ Skipping past race: Race 6 - Ladbrokes Q Straight - 2025-08-21 at 3:05 PM
+   ⏰ Skipping past race: Race 7 - Ladbrokes Q Straight - 2025-08-21 at 3:30 PM
+   ⏰ Skipping past race: Race 8 - Ladbrokes Q Straight - 2025-08-21 at 3:55 PM
+   ⏰ Skipping past race: Race 9 - Ladbrokes Q Straight - 2025-08-21 at 4:20 PM
+   ⏰ Skipping past race: Race 10 - Ladbrokes Q Straight - 2025-08-21 at 4:45 PM
+   ⏰ Skipping past race: Race 11 - Ladbrokes Q Straight - 2025-08-21 at 5:10 PM
+   ⏰ Skipping past race: Race 12 - Ladbrokes Q Straight - 2025-08-21 at 5:35 PM
+   ⏰ Skipping past race: Race 2 - Mandurah - 2025-08-21 at 1:25 PM
+   ⏰ Skipping past race: Race 3 - Mandurah - 2025-08-21 at 1:50 PM
+   ⏰ Skipping past race: Race 4 - Mandurah - 2025-08-21 at 2:15 PM
+   ⏰ Skipping past race: Race 5 - Mandurah - 2025-08-21 at 2:40 PM
+   ⏰ Skipping past race: Race 6 - Mandurah - 2025-08-21 at 3:05 PM
+   ⏰ Skipping past race: Race 7 - Mandurah - 2025-08-21 at 3:30 PM
+   ⏰ Skipping past race: Race 8 - Mandurah - 2025-08-21 at 3:55 PM
+   ⏰ Skipping past race: Race 9 - Mandurah - 2025-08-21 at 4:20 PM
+   ⏰ Skipping past race: Race 10 - Mandurah - 2025-08-21 at 4:45 PM
+   ⏰ Skipping past race: Race 11 - Mandurah - 2025-08-21 at 5:10 PM
+   ⏰ Skipping past race: Race 12 - Mandurah - 2025-08-21 at 5:35 PM
+   ⏰ Skipping past race: Race 1 - Mount Gambier - 2025-08-21 at 11:59 AM
+   ⏰ Skipping past race: Race 2 - Mount Gambier - 2025-08-21 at 1:25 PM
+   ⏰ Skipping past race: Race 3 - Mount Gambier - 2025-08-21 at 1:50 PM
+   ⏰ Skipping past race: Race 4 - Mount Gambier - 2025-08-21 at 2:15 PM
+   ⏰ Skipping past race: Race 5 - Mount Gambier - 2025-08-21 at 2:40 PM
+   ⏰ Skipping past race: Race 6 - Mount Gambier - 2025-08-21 at 3:05 PM
+   ⏰ Skipping past race: Race 7 - Mount Gambier - 2025-08-21 at 3:30 PM
+   ⏰ Skipping past race: Race 8 - Mount Gambier - 2025-08-21 at 3:55 PM
+   ⏰ Skipping past race: Race 9 - Mount Gambier - 2025-08-21 at 4:20 PM
+   ⏰ Skipping past race: Race 10 - Mount Gambier - 2025-08-21 at 4:45 PM
+   ⏰ Skipping past race: Race 11 - Mount Gambier - 2025-08-21 at 5:10 PM
+   ⏰ Skipping past race: Race 1 - Richmond Straight - 2025-08-21 at 1:00 PM
+   ⏰ Skipping past race: Race 2 - Richmond Straight - 2025-08-21 at 1:25 PM
+   ⏰ Skipping past race: Race 3 - Richmond Straight - 2025-08-21 at 1:50 PM
+   ⏰ Skipping past race: Race 4 - Richmond Straight - 2025-08-21 at 2:15 PM
+   ⏰ Skipping past race: Race 5 - Richmond Straight - 2025-08-21 at 2:40 PM
+   ⏰ Skipping past race: Race 6 - Richmond Straight - 2025-08-21 at 3:05 PM
+   ⏰ Skipping past race: Race 7 - Richmond Straight - 2025-08-21 at 3:30 PM
+   ⏰ Skipping past race: Race 8 - Richmond Straight - 2025-08-21 at 3:55 PM
+   ⏰ Skipping past race: Race 9 - Richmond Straight - 2025-08-21 at 4:20 PM
+   ⏰ Skipping past race: Race 10 - Richmond Straight - 2025-08-21 at 3:52 PM
+   ⏰ Skipping past race: Race 11 - Richmond Straight - 2025-08-21 at 5:10 PM
+   ⏰ Skipping past race: Race 1 - Sandown - 2025-08-21 at 1:00 PM
+   ⏰ Skipping past race: Race 2 - Sandown - 2025-08-21 at 1:25 PM
+   ⏰ Skipping past race: Race 3 - Sandown - 2025-08-21 at 1:50 PM
+   ⏰ Skipping past race: Race 4 - Sandown - 2025-08-21 at 2:15 PM
+   ⏰ Skipping past race: Race 5 - Sandown - 2025-08-21 at 2:40 PM
+   ⏰ Skipping past race: Race 6 - Sandown - 2025-08-21 at 3:05 PM
+   ⏰ Skipping past race: Race 7 - Sandown - 2025-08-21 at 3:30 PM
+   ⏰ Skipping past race: Race 8 - Sandown - 2025-08-21 at 3:55 PM
+   ⏰ Skipping past race: Race 9 - Sandown - 2025-08-21 at 4:20 PM
+   ⏰ Skipping past race: Race 10 - Sandown - 2025-08-21 at 4:45 PM
+   ⏰ Skipping past race: Race 11 - Sandown - 2025-08-21 at 5:10 PM
+   ⏰ Skipping past race: Race 12 - Sandown - 2025-08-21 at 5:35 PM
+   ⏰ Skipping past race: Race 1 - Shepparton - 2025-08-21 at 1:00 PM
+   ⏰ Skipping past race: Race 2 - Shepparton - 2025-08-21 at 1:25 PM
+   ⏰ Skipping past race: Race 3 - Shepparton - 2025-08-21 at 1:50 PM
+   ⏰ Skipping past race: Race 4 - Shepparton - 2025-08-21 at 2:15 PM
+   ⏰ Skipping past race: Race 5 - Shepparton - 2025-08-21 at 2:40 PM
+   ⏰ Skipping past race: Race 6 - Shepparton - 2025-08-21 at 3:05 PM
+   ⏰ Skipping past race: Race 7 - Shepparton - 2025-08-21 at 3:30 PM
+   ⏰ Skipping past race: Race 8 - Shepparton - 2025-08-21 at 3:55 PM
+   ⏰ Skipping past race: Race 9 - Shepparton - 2025-08-21 at 4:20 PM
+   ⏰ Skipping past race: Race 10 - Shepparton - 2025-08-21 at 4:45 PM
+   ⏰ Skipping past race: Race 11 - Shepparton - 2025-08-21 at 2:28 PM
+   ⏰ Skipping past race: Race 12 - Shepparton - 2025-08-21 at 5:35 PM
+   ⏰ Skipping past race: Race 1 - Warrnambool - 2025-08-21 at 1:00 PM
+   ⏰ Skipping past race: Race 2 - Warrnambool - 2025-08-21 at 1:25 PM
+   ⏰ Skipping past race: Race 3 - Warrnambool - 2025-08-21 at 1:50 PM
+   ⏰ Skipping past race: Race 4 - Warrnambool - 2025-08-21 at 2:15 PM
+   ⏰ Skipping past race: Race 5 - Warrnambool - 2025-08-21 at 2:40 PM
+   ⏰ Skipping past race: Race 6 - Warrnambool - 2025-08-21 at 3:05 PM
+   ⏰ Skipping past race: Race 7 - Warrnambool - 2025-08-21 at 3:30 PM
+   ⏰ Skipping past race: Race 9 - Warrnambool - 2025-08-21 at 4:20 PM
+   ⏰ Skipping past race: Race 10 - Warrnambool - 2025-08-21 at 4:45 PM
+   ⏰ Skipping past race: Race 11 - Warrnambool - 2025-08-21 at 5:10 PM
+   ⏰ Skipping past race: Race 12 - Warrnambool - 2025-08-21 at 5:35 PM
+   ⏰ Skipping past race: Race 1 - Warragul - 2025-08-21 at 1:00 PM
+   ⏰ Skipping past race: Race 2 - Warragul - 2025-08-21 at 1:25 PM
+   ⏰ Skipping past race: Race 3 - Warragul - 2025-08-21 at 1:50 PM
+   ⏰ Skipping past race: Race 4 - Warragul - 2025-08-21 at 2:15 PM
+   ⏰ Skipping past race: Race 5 - Warragul - 2025-08-21 at 2:40 PM
+   ⏰ Skipping past race: Race 6 - Warragul - 2025-08-21 at 3:05 PM
+   ⏰ Skipping past race: Race 7 - Warragul - 2025-08-21 at 3:30 PM
+   ⏰ Skipping past race: Race 8 - Warragul - 2025-08-21 at 3:55 PM
+   ⏰ Skipping past race: Race 9 - Warragul - 2025-08-21 at 4:20 PM
+   ⏰ Skipping past race: Race 10 - Warragul - 2025-08-21 at 4:45 PM
+   ⏰ Skipping past race: Race 11 - Warragul - 2025-08-21 at 5:10 PM
+   ⏰ Skipping past race: Race 12 - Warragul - 2025-08-21 at 5:35 PM
+   ⏰ Skipping past race: Race 1 - Wentworth Park - 2025-08-21 at 1:00 PM
+   ⏰ Skipping past race: Race 2 - Wentworth Park - 2025-08-21 at 1:25 PM
+   ⏰ Skipping past race: Race 3 - Wentworth Park - 2025-08-21 at 1:50 PM
+   ⏰ Skipping past race: Race 4 - Wentworth Park - 2025-08-21 at 2:15 PM
+   ⏰ Skipping past race: Race 5 - Wentworth Park - 2025-08-21 at 2:40 PM
+   ⏰ Skipping past race: Race 6 - Wentworth Park - 2025-08-21 at 3:05 PM
+   ⏰ Skipping past race: Race 7 - Wentworth Park - 2025-08-21 at 3:30 PM
+   ⏰ Skipping past race: Race 8 - Wentworth Park - 2025-08-21 at 3:55 PM
+   ⏰ Skipping past race: Race 9 - Wentworth Park - 2025-08-21 at 4:20 PM
+   ⏰ Skipping past race: Race 10 - Wentworth Park - 2025-08-21 at 4:45 PM
+✅ Found 29 upcoming races (filtered past races, sorted by time)
+[2025-08-21 19:33:31 +1000] [29057] [INFO] Shutting down: Master
