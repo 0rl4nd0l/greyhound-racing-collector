@@ -120,14 +120,15 @@ module.exports = defineConfig({
 
   /* Run your local dev server before starting the tests */
   webServer: {
-    command: 'PORT=5002 ./.venv/bin/python app.py --host 127.0.0.1 --port 5002',
-    url: 'http://127.0.0.1:5002',
+    command: 'PORT=5002 ./.venv/bin/python app.py --host ********* --port 5002',
+    url: 'http://*********:5002',
     reuseExistingServer: !process.env.CI,
     timeout: 180000,
     env: {
       FLASK_ENV: 'testing',
       MODULE_GUARD_STRICT: '0',
-      PREDICTION_IMPORT_MODE: 'relaxed'
+      PREDICTION_IMPORT_MODE: 'relaxed',
+      ENABLE_ENDPOINT_DROPDOWNS: '1'
     }
   },
 });

@@ -1,0 +1,3 @@
+dog_clean_name,box_number,weight,trainer,venue,grade,distance,race_date,race_time
+Test Dog,1,30.5,Test Trainer,UNKNOWN,5,500,2025-08-04,14:00
+Test Dog 2,2,31.0,Test Trainer 2,UNKNOWN,5,500,2025-08-04,14:00

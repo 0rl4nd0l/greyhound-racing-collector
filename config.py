@@ -23,13 +23,13 @@ class Config:
     
     # Feature flags and modes
     # Controls whether any results scraping modules (race winners, weather, live browsers)
-    # can be imported/used by the main Flask app. Defaults to disabled for isolation.
-    ENABLE_RESULTS_SCRAPERS = os.environ.get('ENABLE_RESULTS_SCRAPERS', '0') not in ('0', 'false', 'False')
-    # Controls whether live upcoming race scraping is allowed (as opposed to CSV-only)
-    ENABLE_LIVE_SCRAPING = os.environ.get('ENABLE_LIVE_SCRAPING', '0') not in ('0', 'false', 'False')
+    # can be imported/used by the main Flask app. Defaults to ENABLED for full functionality out-of-the-box.
+    ENABLE_RESULTS_SCRAPERS = os.environ.get('ENABLE_RESULTS_SCRAPERS', '1') not in ('0', 'false', 'False')
+    # Controls whether live upcoming race scraping is allowed (as opposed to CSV-only). Defaults to ENABLED.
+    ENABLE_LIVE_SCRAPING = os.environ.get('ENABLE_LIVE_SCRAPING', '1') not in ('0', 'false', 'False')
     # Distinguish clean prediction-only vs historical workflows
-    # Values: 'prediction_only' or 'historical'. Default to prediction_only to avoid scrapers.
-    PREDICTION_IMPORT_MODE = os.environ.get('PREDICTION_IMPORT_MODE', 'prediction_only')
+    # Values: 'prediction_only' or 'historical'. Default to 'historical' for full feature set when running python3 app.py.
+    PREDICTION_IMPORT_MODE = os.environ.get('PREDICTION_IMPORT_MODE', 'historical')
     
     # Directory paths
     BASE_DIR = Path(__file__).parent
@@ -54,6 +54,9 @@ class Config:
     ]
     COMPRESS_LEVEL = 6  # Default compression level
     COMPRESS_MIN_SIZE = 500  # Don't compress responses smaller than 500 bytes
+    # Prefer gzip across all environments; disable Brotli by default for test compatibility
+    COMPRESS_ALGORITHM = 'gzip'
+    COMPRESS_BR = False
 
 
 class DevelopmentConfig(Config):

@@ -217,6 +217,34 @@ export PORT=8080
 python app.py
 ```
 
+### UI Modes and Feature Flags
+
+The web UI supports a simplified and an advanced mode, plus an opt-in dynamic endpoints menu.
+
+- UI_MODE: Controls navigation complexity and some heavy assets.
+  - simple (default): Minimal top-level nav (Dashboard, Upcoming, Predict, Logs).
+  - advanced: Full navigation (Races, Analysis, AI/ML, System, Help, etc.).
+
+  Examples:
+  - macOS/Linux
+    - UI_MODE=simple python app.py
+    - UI_MODE=advanced python app.py
+  - Windows PowerShell
+    - $env:UI_MODE='simple'; python app.py
+    - $env:UI_MODE='advanced'; python app.py
+
+- ENABLE_ENDPOINT_DROPDOWNS: Toggle the dynamic endpoints dropdown toolbar (opt-in).
+  - 0 (default): Disabled.
+  - 1: Enabled. Injects a menu that enumerates available Flask endpoints for quick navigation (primarily for dev/testing).
+
+  Examples:
+  - macOS/Linux: ENABLE_ENDPOINT_DROPDOWNS=1 python app.py
+  - Windows PowerShell: $env:ENABLE_ENDPOINT_DROPDOWNS='1'; python app.py
+
+Notes:
+- All advanced routes remain accessible by direct URL in both modes; only visibility in the navbar changes.
+- CI can set UI_MODE=advanced to exercise the full UI surface.
+
 ##### Port Conflict Resolution
 
 If you encounter "port already in use" errors, use these troubleshooting commands:
@@ -900,6 +928,8 @@ Set these environment variables (e.g., in a .env file or via the shell) to contr
   - Description: Enables a dev-only dropdown toolbar in the UI that lists all server endpoints by category. Useful for QA; keep disabled in prod.
   - Default: 0
   - Example: ENABLE_ENDPOINT_DROPDOWNS=1
+  - Note (2025-08-28): The dropdowns are no longer auto-enabled in testing/debug modes; enable explicitly via the env var when needed. The /api/endpoints route and endpoints-menu.js remain available behind this flag.
+  - CI: The UI E2E job in .github/workflows/backend-tests.yml is currently disabled with `if: ${{ false }}`. Remove that guard to re-enable the UI E2E job.
 - TESTING
   - Description: Enables various test helpers and routes when true. Keep false in normal runs.
   - Default: false

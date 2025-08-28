@@ -7,6 +7,12 @@ from pathlib import Path
 import json
 import joblib
 from datetime import datetime
+import sys
+from pathlib import Path as _P
+
+# Ensure project root is on sys.path
+sys.path.insert(0, str(_P(__file__).resolve().parents[1]))
+
 from model_registry import get_model_registry
 from sklearn.preprocessing import FunctionTransformer
 

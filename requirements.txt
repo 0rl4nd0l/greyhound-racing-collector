@@ -1,0 +1,7 @@
+-r requirements/constraints-unified.txt
+
+Flask>=2.3.2
+Flask-CORS>=4.0.0
+Flask-SocketIO>=5.3.4
+python-socketio>=5.8.0
+python-engineio>=4.7.0

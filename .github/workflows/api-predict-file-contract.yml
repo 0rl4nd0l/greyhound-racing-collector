@@ -1,0 +1,48 @@
+name: API Predict File Contract
+
+on:
+  push:
+    branches: [ main, develop, requirements-update ]
+  pull_request:
+    branches: [ main, develop, requirements-update ]
+
+jobs:
+  predict-file-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TESTING: true
+      UPCOMING_RACES_DIR: ./upcoming_races_temp
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-flask
+
+      - name: Prepare test directories
+        run: |
+          mkdir -p ${UPCOMING_RACES_DIR}
+          mkdir -p logs processed historical_races
+
+      - name: Run /api/predict_file contract tests
+        run: |
+          pytest -q tests/test_api_predict_file.py
+

@@ -124,7 +124,44 @@ def start_upcoming_watcher(
         names = ", ".join(p.name for p in paths)
         print(f"[upcoming-watcher] Detected changes: {names}")
 
-    handler = UpcomingHandler(on_change or default_on_change, debounce_seconds)
+    # Define a real handler subclassing watchdog's FileSystemEventHandler to ensure proper dispatch
+    class _RealUpcomingHandler(FileSystemEventHandler):  # type: ignore[misc]
+        def __init__(self, on_change_cb: Callable[[List[Path]], None], debounce_seconds: float = 1.0):
+            super().__init__()
+            self._changed: List[Path] = []
+            self._on_change = on_change_cb
+            self._debounce = Debounce(debounce_seconds, self._emit)
+
+        def on_created(self, event: FileSystemEvent):  # type: ignore[override]
+            self._maybe_collect(event)
+
+        def on_moved(self, event: FileSystemEvent):  # type: ignore[override]
+            self._maybe_collect(event)
+
+        def on_modified(self, event: FileSystemEvent):  # type: ignore[override]
+            self._maybe_collect(event)
+
+        def _maybe_collect(self, event: FileSystemEvent) -> None:
+            try:
+                if getattr(event, "is_directory", False):
+                    return
+                p = Path(getattr(event, "dest_path", None) or getattr(event, "src_path", ""))
+                if not p or p.suffix.lower() != CSV_SUFFIX or is_partial_or_hidden(p):
+                    return
+                self._changed.append(p)
+                self._debounce.trigger()
+            except Exception:
+                pass
+
+        def _emit(self) -> None:
+            changed = list({p.resolve() for p in self._changed})
+            self._changed.clear()
+            try:
+                self._on_change(changed)
+            except Exception:
+                pass
+
+    handler = _RealUpcomingHandler(on_change or default_on_change, debounce_seconds)
     observer: Observer = Observer()  # type: ignore[assignment]
     observer.schedule(handler, str(upcoming_dir), recursive=False)
     observer.start()

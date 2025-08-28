@@ -137,6 +137,12 @@ class EnhancedPredictionService:
                         'source_file': race_file_path,
                         'timestamp': datetime.now().isoformat()
                     }
+
+                    # Set predictor metadata defaults for UI/consumers
+                    result.setdefault('predictor_used', 'EnhancedPredictionService')
+                    if not result.get('prediction_methods_used'):
+                        result['prediction_methods_used'] = ['ml_system']
+                    result.setdefault('analysis_version', 'ML System V4')
                     
                     # Calculate quality metrics
                     quality_metrics = self._calculate_prediction_quality(predictions)

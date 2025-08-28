@@ -521,7 +521,7 @@ def main():
                         "--calibration", calibration,
                         "--promote"
                     ]
-                    if args.max_races and int(args.max_races) \u003e 0:
+                    if args.max_races and int(args.max_races) > 0:
                         cmd.extend(["--max-races", str(int(args.max_races))])
                     env = os.environ.copy()
                     env.setdefault("PYTHONPATH", str(Path.cwd()))
