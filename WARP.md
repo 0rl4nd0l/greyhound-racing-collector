@@ -17,7 +17,9 @@ Quickstart
 - Environment variables commonly used (see README.md for details)
   - export UPCOMING_RACES_DIR=./upcoming_races_temp
   - export DATABASE_URL=sqlite:///greyhound_racing_data.db
-  - export TESTING=true
+  - export TESTING=false
+  - export ENABLE_ENDPOINT_DROPDOWNS=0   # set to 1 only when you want the dev endpoints toolbar
+  - export DISABLE_ASSET_MINIFY=1        # avoids jsmin/cssmin requirement; unset for minified bundles
 
 Common commands
 Backend install and setup
@@ -96,6 +98,9 @@ Docker (optional)
       -e UPCOMING_RACES_DIR=/app/upcoming_races_temp \
       -v "$(pwd)/upcoming_races_temp:/app/upcoming_races_temp" \
       greyhound-predictor
+- Makefile quick runs (recommended):
+  - make run-docker-api                 # toolbar OFF, minify disabled by default
+  - make run-docker-api-dev-toolbar     # toolbar ON for QA (ENABLE_ENDPOINT_DROPDOWNS=1, TESTING=true)
 - Health check inside the container is configured; once running, check:
   - curl http://localhost:5002/api/health
 - Notes:

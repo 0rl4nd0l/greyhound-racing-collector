@@ -1,0 +1,13 @@
+# Performance testing dependencies
+# Load testing, monitoring, and performance utilities
+
+# Load testing framework
+locust>=2.37.0
+
+# High-performance networking
+gevent>=25.5.0
+geventhttpclient>=2.3.0
+
+# Optional: Advanced profiling
+# py-spy>=0.3.0        # Production profiler
+# memory-profiler>=0.61.0  # Memory usage profiling

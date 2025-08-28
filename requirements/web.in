@@ -1,0 +1,31 @@
+# Web framework dependencies
+# Flask API, optional alternative frameworks, and web utilities
+
+# Flask stack (primary)
+Flask>=3.1.0
+flask-cors>=6.0.0
+Flask-Login>=0.6.3
+Flask-Compress>=1.15
+Werkzeug>=3.1.0
+
+# Flask extensions and utilities
+Flask-Assets>=2.1.0
+Jinja2>=3.1.0
+MarkupSafe>=3.0.0
+itsdangerous>=2.2.0
+blinker>=1.9.0
+
+# Alternative framework (optional)
+# litestar>=2.16.0
+# uvicorn>=0.35.0
+# fastapi>=0.116.0  # Only if actually used
+
+# WebSocket support (if needed)
+# python-socketio>=5.13.0
+# python-engineio>=4.12.0
+
+# Authentication and security
+# Authlib>=1.6.0  # Only if OAuth needed
+
+# Asset management
+# webassets>=2.0  # Only if asset pipeline used

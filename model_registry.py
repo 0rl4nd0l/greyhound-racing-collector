@@ -420,38 +420,51 @@ class ModelRegistry:
                 except Exception as e:
                     logger.warning(f"Error loading from symlinks: {e}")
 
-            # Fallback: find best model from index
-            best_model_id = None
-            best_score = -1
+            # Fallback: find candidate best models from index, preferring explicit is_best
+            candidates: List[Tuple[str, float, ModelMetadata]] = []
 
             for model_id, model_data in self.model_index.items():
-                if model_data.get("is_best", False) and model_data.get(
-                    "is_active", True
-                ):
-                    best_model_id = model_id
-                    break
-                elif model_data.get("is_active", True):
-                    try:
-                        metadata = ModelMetadata(**model_data)
-                        score = self._calculate_model_score(metadata)
-                        if score > best_score:
-                            best_score = score
-                            best_model_id = model_id
-                    except Exception:
-                        continue
+                if not isinstance(model_data, dict):
+                    continue
+                if not model_data.get("is_active", True):
+                    continue
+                try:
+                    metadata = ModelMetadata(**model_data)
+                    score = self._calculate_model_score(metadata)
+                    # Boost explicitly marked best to the top by adding a large epsilon
+                    if model_data.get("is_best", False):
+                        score += 1e6
+                    candidates.append((model_id, score, metadata))
+                except Exception:
+                    continue
 
-            if not best_model_id:
+            if not candidates:
                 logger.warning("No active models found in registry")
                 return None
 
-            # Load the best model
-            model_data = self.model_index[best_model_id]
-            metadata = ModelMetadata(**model_data)
+            # Sort by score descending (explicit best first)
+            candidates.sort(key=lambda x: x[1], reverse=True)
 
-            model = joblib.load(metadata.model_file_path)
-            scaler = joblib.load(metadata.scaler_file_path)
+            # Iterate candidates until we find one with existing files
+            for model_id, _score, metadata in candidates:
+                model_path = Path(metadata.model_file_path)
+                scaler_path = Path(metadata.scaler_file_path)
+                if not (model_path.exists() and scaler_path.exists()):
+                    logger.warning(
+                        f"Skipping registry model '{model_id}' due to missing files: "
+                        f"model_exists={model_path.exists()}, scaler_exists={scaler_path.exists()}"
+                    )
+                    continue
+                try:
+                    model = joblib.load(model_path)
+                    scaler = joblib.load(scaler_path)
+                    return model, scaler, metadata
+                except Exception as e:
+                    logger.warning(f"Failed loading registry model '{model_id}': {e}")
+                    continue
 
-            return model, scaler, metadata
+            logger.error("Error loading best model: no valid artifacts found among candidates")
+            return None
 
         except Exception as e:
             logger.error(f"Error loading best model: {e}")
@@ -475,6 +488,34 @@ class ModelRegistry:
 
         except Exception as e:
             logger.error(f"Error loading model {model_id}: {e}")
+            return None
+
+    def get_best_model_metadata(self) -> Optional[ModelMetadata]:
+        """Get metadata for the best model without loading the actual model."""
+        try:
+            # Find the best model from index
+            for model_id, model_data in self.model_index.items():
+                if isinstance(model_data, dict) and model_data.get("is_best", False):
+                    return ModelMetadata(**model_data)
+            
+            # Fallback: calculate best model
+            candidates = []
+            for model_id, model_data in self.model_index.items():
+                if isinstance(model_data, dict) and model_data.get("is_active", True):
+                    try:
+                        metadata = ModelMetadata(**model_data)
+                        score = self._calculate_model_score(metadata)
+                        candidates.append((model_id, score, metadata))
+                    except Exception:
+                        continue
+            
+            if candidates:
+                candidates.sort(key=lambda x: x[1], reverse=True)
+                return candidates[0][2]
+                
+            return None
+        except Exception as e:
+            logger.error(f"Error getting best model metadata: {e}")
             return None
 
     def get_most_recent(self, prediction_type: str) -> Optional[ModelMetadata]:

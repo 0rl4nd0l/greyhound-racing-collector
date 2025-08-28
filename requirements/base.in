@@ -1,0 +1,33 @@
+# Core runtime dependencies for greyhound racing data collection
+# Base scraping, data I/O, configuration and basic server functionality
+
+# Web scraping and HTTP requests
+requests==2.32.4
+httpx==0.28.1
+urllib3==2.5.0
+beautifulsoup4==4.13.4
+lxml==6.0.0
+soupsieve==2.7
+selenium==4.34.2
+webdriver-manager==4.0.2
+playwright==1.54.0
+pytesseract==0.3.13
+
+# Environment and configuration
+python-dotenv==1.0.1
+pydantic>=2.7,<3.0
+schedule==1.2.2
+pytz==2025.2
+
+# Data processing foundations
+pandas==2.3.1
+numpy>=1.26.0,<2.0
+
+# Reliability and error handling
+tenacity>=8.2,<9.0
+
+# Basic logging and monitoring
+tqdm==4.67.1
+
+# System utilities
+psutil>=6.1.0

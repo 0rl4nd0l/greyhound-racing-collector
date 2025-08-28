@@ -1,0 +1,21 @@
+# Development tool dependencies
+# Linting, formatting, security scanning, code quality
+
+# Code formatting and linting
+black>=24.2.0
+flake8>=7.0.0
+isort>=5.13.0
+
+# Type checking
+mypy>=1.8.0
+
+# Security scanning
+bandit>=1.8.0        # Security vulnerability scanner
+safety>=3.6.0        # Dependency vulnerability checker
+
+# Code quality and hooks
+pre-commit>=3.6.0    # Git hooks management
+
+# Documentation generation
+# mkdocs>=1.5.0        # Only if using MkDocs
+# mkdocs-material>=9.0  # Material theme

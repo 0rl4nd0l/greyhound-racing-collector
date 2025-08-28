@@ -202,7 +202,7 @@ def retrain_models(X, y, feature_columns):
         }
 
         # Register the model in the registry
-model_id = registry.register_model(
+        model_id = registry.register_model(
             model_obj=best_model["model"],
             scaler_obj=ml_system.scaler,
             model_name=best_model_name,
