@@ -169,7 +169,7 @@ class PredictionButtonManager {
             // Include runtime TGR toggle from UI
             requestBody.tgr_enabled = this.getTgrEnabled();
 
-            const response = await fetch('/api/predict_single_race_enhanced', {
+            let response = await fetch('/api/predict_single_race_enhanced', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -178,7 +178,64 @@ class PredictionButtonManager {
             });
 
             if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                // Attempt smart fallback when file is missing (404)
+                let errText = '';
+                let errJson = null;
+                try { errText = await response.text(); } catch {}
+                try { errJson = errText ? JSON.parse(errText) : null; } catch {}
+
+                const isMissingFile = response.status === 404 && errJson && (errJson.error_type === 'file_not_found' || /file not found/i.test(errJson.message||''));
+                if (isMissingFile) {
+                    // Use available context to download then predict
+                    const venue = button.dataset.venue || '';
+                    const raceNumber = button.dataset.raceNumber || '';
+                    const raceUrl = button.dataset.raceUrl || '';
+
+                    if (raceUrl || (venue && raceNumber)) {
+                        this.setButtonLoading(button, 'Downloading...');
+                        try {
+                            const dlResp = await fetch('/api/download_and_predict_race', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(raceUrl ? { race_url: raceUrl } : { venue, race_number: String(raceNumber).trim() })
+                            });
+                            const dlData = await dlResp.json();
+                            if (!dlResp.ok || !dlData || dlData.success !== true) {
+                                const msg = (dlData && (dlData.message || dlData.error)) || `HTTP ${dlResp.status}`;
+                                throw new Error(`Download failed: ${msg}`);
+                            }
+                            // Now re-run prediction with the downloaded filename if available
+                            const fname = dlData.filename || requestBody.race_filename || '';
+                            if (fname) {
+                                this.setButtonLoading(button, 'Predicting...');
+                                const pr = await fetch('/api/predict_single_race_enhanced', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ race_filename: fname, tgr_enabled: this.getTgrEnabled() })
+                                });
+                                const prData = await pr.json();
+                                if (!pr.ok || !prData || prData.success !== true) {
+                                    const msg = (prData && (prData.message || prData.error)) || `HTTP ${pr.status}`;
+                                    throw new Error(`Prediction failed: ${msg}`);
+                                }
+                                this.setButtonSuccess(button, 'Predicted!');
+                                this.showSuccessToast('Download + Predict completed');
+                                this.displayPredictionResult(prData);
+                                setTimeout(() => {
+                                    button.innerHTML = originalText;
+                                    button.classList.remove('btn-success');
+                                    button.classList.add('btn-primary');
+                                    button.disabled = false;
+                                }, 3000);
+                                return; // handled fallback
+                            }
+                        } catch (fallbackErr) {
+                            console.warn('Fallback download+predict failed', fallbackErr);
+                            throw new Error(`HTTP ${response.status}: ${errText || response.statusText}`);
+                        }
+                    }
+                }
+                throw new Error(`HTTP ${response.status}: ${errText || response.statusText}`);
             }
 
             const result = await response.json();

@@ -464,12 +464,15 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Build actions based on whether a local CSV is present
             const hasLocalCsv = !!(race.filename && String(race.filename).trim());
+            const venueAttr = `data-venue="${safeVenue(race.venue)}"`;
+            const raceNumAttr = `data-race-number="${raceNum}"`;
+            const raceUrlAttr = `data-race-url="${String(race.url || '')}"`;
             const actionsHtml = hasLocalCsv
-                ? `<button class="btn btn-sm btn-primary predict-btn" data-race-id="${race.race_id}" ${raceFilenamAttr}>Predict</button>`
+                ? `<button class="btn btn-sm btn-primary predict-btn" data-race-id="${race.race_id}" ${raceFilenamAttr} ${venueAttr} ${raceNumAttr} ${raceUrlAttr}>Predict</button>`
                 : `<button class="btn btn-sm btn-warning download-predict-btn" 
-                        data-venue="${safeVenue(race.venue)}" 
-                        data-race-number="${raceNum}"
-                        data-race-url="${String(race.url || '')}">
+                        ${venueAttr} 
+                        ${raceNumAttr}
+                        ${raceUrlAttr}>
                         <i class="fas fa-download"></i> Download + Predict
                    </button>`;
 
