@@ -576,8 +576,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 evt.preventDefault();
                 const venue = dlPredictBtn.getAttribute('data-venue') || '';
                 const raceNumber = dlPredictBtn.getAttribute('data-race-number') || '';
+                const raceUrl = dlPredictBtn.getAttribute('data-race-url') || '';
                 try {
-                    await downloadAndPredictRace(dlPredictBtn, { venue, raceNumber });
+                    await downloadAndPredictRace(dlPredictBtn, { venue, raceNumber, raceUrl });
                 } catch (e) {
                     console.warn('downloadAndPredictRace failed', e);
                 }
@@ -639,14 +640,47 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Download + Predict helper
-    async function downloadAndPredictRace(button, { venue, raceNumber }) {
-        if (!venue || !String(raceNumber).trim()) {
-            showToast('Missing venue or race number', 'warning');
-            return;
-        }
+    async function downloadAndPredictRace(button, { venue, raceNumber, raceUrl }) {
         const original = button.innerHTML;
         try {
             button.disabled = true;
+            // Fast path: if we have a race URL, download directly then run the in-process enhanced predictor
+            if (raceUrl && raceUrl.trim()) {
+                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Downloading...';
+                const dlResp = await fetchWithErrorHandling('/api/download_upcoming_race', {
+                    method: 'POST',
+                    body: JSON.stringify({ race_url: raceUrl.trim() })
+                });
+                const dlData = await dlResp.json();
+                if (!dlData || dlData.success !== true || !dlData.filename) {
+                    const msg = (dlData && (dlData.message || dlData.error)) || 'Unknown download error';
+                    showToast(`Download failed: ${msg}`, 'danger');
+                    return;
+                }
+                // Predict using the enhanced single-race endpoint (faster than comprehensive subprocess)
+                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Predicting...';
+                const prResp = await fetchWithErrorHandling('/api/predict_single_race_enhanced', {
+                    method: 'POST',
+                    body: JSON.stringify({ race_filename: dlData.filename })
+                });
+                const prData = await prResp.json();
+                if (!prData || prData.success !== true) {
+                    const msg = (prData && (prData.message || prData.error)) || 'Unknown prediction error';
+                    showToast(`Prediction failed: ${msg}`, 'danger');
+                    // Show degraded payload if present to aid debugging
+                    displayPredictionResults([prData || { success: false, message: msg }]);
+                    return;
+                }
+                showToast('Download + Predict completed', prData.degraded ? 'warning' : 'success');
+                displayPredictionResults([prData]);
+                return;
+            }
+
+            // Fallback path: no URL available, use combined endpoint (may be slower)
+            if (!venue || !String(raceNumber).trim()) {
+                showToast('Missing venue or race number', 'warning');
+                return;
+            }
             button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Working...';
             const resp = await fetchWithErrorHandling('/api/download_and_predict_race', {
                 method: 'POST',
@@ -1763,7 +1797,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             const name = d.dog_name || d.clean_name || 'Unknown';
                             const score = Number(d.win_prob || d.normalized_win_probability || d.final_score || d.prediction_score || d.win_probability || d.confidence || 0);
                             const box = d.box_number || d.box || 'N/A';
-                            const extra = Array.isArray(d.key_factors) && d.key_factors.length ? `<div class="mt-1"><small>${d.key_factors.slice(0,3).join(' • ')}</small></div>` : '';
+                            const extra = Array.isArray(d.key_factors) && d.key_factors.length ? `<div class=\"mt-1\"><small>${d.key_factors.slice(0,3).join(' • ')}</small></div>` : '';
                             detailsHTML += `
                               <div class="col-md-6 mb-2">
                                 <div class="card card-sm">
@@ -1777,6 +1811,49 @@ document.addEventListener('DOMContentLoaded', () => {
                         });
                         detailsHTML += '</div>';
                     }
+
+                    // Official results (if available)
+                    try {
+                        const resultsAvailable = !!(pred.results_available || (Array.isArray(pred.actual_placings) && pred.actual_placings.length > 0));
+                        if (resultsAvailable) {
+                            const rawPlacings = Array.isArray(pred.actual_placings) ? pred.actual_placings.slice() : [];
+                            const sortedPlacings = rawPlacings.sort((a,b) => {
+                                const ap = Number(a.finish_position || a.position || 99);
+                                const bp = Number(b.finish_position || b.position || 99);
+                                return ap - bp;
+                            });
+                            const winner = (pred.race_results && pred.race_results.winner_name) ? pred.race_results.winner_name : (sortedPlacings[0] ? (sortedPlacings[0].dog_name || 'Unknown') : null);
+                            const winnerOdds = pred.race_results && pred.race_results.winner_odds ? pred.race_results.winner_odds : null;
+                            const winnerMargin = pred.race_results && pred.race_results.winner_margin ? pred.race_results.winner_margin : null;
+                            const evalBlock = (pred.evaluation && (pred.evaluation.winner_predicted || pred.evaluation.top3_hit))
+                                ? `<div class=\"mt-1\">${pred.evaluation.winner_predicted ? '<span class=\"badge bg-success me-1\"><i class=\"fas fa-check\"></i> Winner predicted</span>' : ''}${pred.evaluation.top3_hit ? '<span class=\"badge bg-info\">Top 3 hit</span>' : ''}</div>`
+                                : '';
+
+                            let listHTML = '';
+                            if (sortedPlacings.length) {
+                                listHTML = '<ol class="mb-0 ps-3">' + sortedPlacings.map((p) => {
+                                    const pos = p.finish_position || p.position || '?';
+                                    const nm = p.dog_name || 'Unknown';
+                                    const bx = (p.box_number !== undefined && p.box_number !== null) ? ` (Box ${p.box_number})` : '';
+                                    const t = (p.individual_time ? ` — ${p.individual_time}s` : '');
+                                    const m = (p.margin ? `, ${p.margin}` : '');
+                                    return `<li><strong>${nm}</strong>${bx}${t}${m}</li>`;
+                                }).join('') + '</ol>';
+                            }
+
+                            detailsHTML += `
+                              <div class="card mt-2">
+                                <div class="card-header p-2 d-flex justify-content-between align-items-center">
+                                  <div><i class="fas fa-flag-checkered"></i> Official Results</div>
+                                  ${evalBlock}
+                                </div>
+                                <div class="card-body p-2">
+                                  ${winner ? `<div class=\"mb-2\"><strong>Winner:</strong> ${winner}${winnerOdds ? ` (Odds: ${winnerOdds})` : ''}${winnerMargin ? `, Margin: ${winnerMargin}` : ''}</div>` : ''}
+                                  ${listHTML || '<div class=\"text-muted\">No placings available</div>'}
+                                </div>
+                              </div>`;
+                        }
+                    } catch (e) { console.warn('results render failed', e); }
 
                     // Try to fetch advisory (compact summary + full card)
                     try {
