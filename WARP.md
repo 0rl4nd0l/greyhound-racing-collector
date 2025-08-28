@@ -98,6 +98,9 @@ Docker (optional)
       -e UPCOMING_RACES_DIR=/app/upcoming_races_temp \
       -v "$(pwd)/upcoming_races_temp:/app/upcoming_races_temp" \
       greyhound-predictor
+- Makefile quick runs (recommended):
+  - make run-docker-api                 # toolbar OFF, minify disabled by default
+  - make run-docker-api-dev-toolbar     # toolbar ON for QA (ENABLE_ENDPOINT_DROPDOWNS=1, TESTING=true)
 - Health check inside the container is configured; once running, check:
   - curl http://localhost:5002/api/health
 - Notes:
