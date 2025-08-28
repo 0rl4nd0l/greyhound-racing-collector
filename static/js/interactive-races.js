@@ -1812,8 +1812,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         detailsHTML += '</div>';
                     }
 
-                    // Official results (if available)
+                    // Official results (if available) + DB fallback
                     try {
+                        let rendered = false;
                         const resultsAvailable = !!(pred.results_available || (Array.isArray(pred.actual_placings) && pred.actual_placings.length > 0));
                         if (resultsAvailable) {
                             const rawPlacings = Array.isArray(pred.actual_placings) ? pred.actual_placings.slice() : [];
@@ -1852,6 +1853,91 @@ document.addEventListener('DOMContentLoaded', () => {
                                   ${listHTML || '<div class=\"text-muted\">No placings available</div>'}
                                 </div>
                               </div>`;
+                            rendered = true;
+                        }
+                        if (!rendered) {
+                            try {
+                                const ctx = pred.race_context || pred.race_info || {};
+                                const venue = ctx.venue || '';
+                                const date = ctx.race_date || ctx.date || '';
+                                const raceNum = ctx.race_number || '';
+                                if (venue && date && raceNum) {
+                                    const qs = new URLSearchParams({ venue: String(venue), date: String(date), race_number: String(raceNum) });
+                                    const res = await fetchWithErrorHandling(`/api/races/results?${qs.toString()}`);
+                                    const data = await res.json();
+                                    if (data && data.success && Array.isArray(data.results) && data.results.length) {
+                                        const sortedPlacings = data.results.slice().sort((a,b) => Number(a.finish_position||a.position||99) - Number(b.finish_position||b.position||99));
+                                        const winner = data.winner_name || (sortedPlacings[0] ? (sortedPlacings[0].dog_name || 'Unknown') : null);
+                                        const winnerOdds = data.winner_odds || null;
+                                        const winnerMargin = data.winner_margin || null;
+                                        const evalBlock = (pred.evaluation && (pred.evaluation.winner_predicted || pred.evaluation.top3_hit))
+                                            ? `<div class=\"mt-1\">${pred.evaluation.winner_predicted ? '<span class=\"badge bg-success me-1\"><i class=\"fas fa-check\"></i> Winner predicted</span>' : ''}${pred.evaluation.top3_hit ? '<span class=\"badge bg-info\">Top 3 hit</span>' : ''}</div>`
+                                            : '';
+                                        const listHTML = '<ol class="mb-0 ps-3">' + sortedPlacings.map((p) => {
+                                            const nm = p.dog_name || 'Unknown';
+                                            const bx = (p.box_number !== undefined && p.box_number !== null) ? ` (Box ${p.box_number})` : '';
+                                            const t = (p.individual_time ? ` — ${p.individual_time}s` : '');
+                                            const m = (p.margin ? `, ${p.margin}` : '');
+                                            return `<li><strong>${nm}</strong>${bx}${t}${m}</li>`;
+                                        }).join('') + '</ol>';
+                                        detailsHTML += `
+                                          <div class="card mt-2">
+                                            <div class="card-header p-2 d-flex justify-content-between align-items-center">
+                                              <div><i class="fas fa-flag-checkered"></i> Official Results</div>
+                                              ${evalBlock}
+                                            </div>
+                                            <div class="card-body p-2">
+                                              ${winner ? `<div class=\"mb-2\"><strong>Winner:</strong> ${winner}${winnerOdds ? ` (Odds: ${winnerOdds})` : ''}${winnerMargin ? `, Margin: ${winnerMargin}` : ''}</div>` : ''}
+                                              ${listHTML || '<div class=\"text-muted\">No placings available</div>'}
+                                            </div>
+                                          </div>`;
+                                        rendered = true;
+                                    }
+                                }
+                            } catch (err) { console.warn('fallback results fetch failed', err); }
+                        }
+                    } catch (e) { console.warn('results render failed', e); }
+
+                    // Optional advisory
+                    try {
+                                const ctx = pred.race_context || pred.race_info || {};
+                                const venue = ctx.venue || '';
+                                const date = ctx.race_date || ctx.date || '';
+                                const raceNum = ctx.race_number || '';
+                                if (venue && date && raceNum) {
+                                    const qs = new URLSearchParams({ venue: String(venue), date: String(date), race_number: String(raceNum) });
+                                    const res = await fetchWithErrorHandling(`/api/races/results?${qs.toString()}`);
+                                    const data = await res.json();
+                                    if (data && data.success && Array.isArray(data.results) && data.results.length) {
+                                        const sortedPlacings = data.results.slice().sort((a,b) => Number(a.finish_position||a.position||99) - Number(b.finish_position||b.position||99));
+                                        const winner = data.winner_name || (sortedPlacings[0] ? (sortedPlacings[0].dog_name || 'Unknown') : null);
+                                        const winnerOdds = data.winner_odds || null;
+                                        const winnerMargin = data.winner_margin || null;
+                                        const evalBlock = (pred.evaluation && (pred.evaluation.winner_predicted || pred.evaluation.top3_hit))
+                                            ? `<div class=\"mt-1\">${pred.evaluation.winner_predicted ? '<span class=\"badge bg-success me-1\"><i class=\"fas fa-check\"></i> Winner predicted</span>' : ''}${pred.evaluation.top3_hit ? '<span class=\"badge bg-info\">Top 3 hit</span>' : ''}</div>`
+                                            : '';
+                                        const listHTML = '<ol class="mb-0 ps-3">' + sortedPlacings.map((p) => {
+                                            const nm = p.dog_name || 'Unknown';
+                                            const bx = (p.box_number !== undefined && p.box_number !== null) ? ` (Box ${p.box_number})` : '';
+                                            const t = (p.individual_time ? ` — ${p.individual_time}s` : '');
+                                            const m = (p.margin ? `, ${p.margin}` : '');
+                                            return `<li><strong>${nm}</strong>${bx}${t}${m}</li>`;
+                                        }).join('') + '</ol>';
+                                        detailsHTML += `
+                                          <div class="card mt-2">
+                                            <div class="card-header p-2 d-flex justify-content-between align-items-center">
+                                              <div><i class="fas fa-flag-checkered"></i> Official Results</div>
+                                              ${evalBlock}
+                                            </div>
+                                            <div class="card-body p-2">
+                                              ${winner ? `<div class=\"mb-2\"><strong>Winner:</strong> ${winner}${winnerOdds ? ` (Odds: ${winnerOdds})` : ''}${winnerMargin ? `, Margin: ${winnerMargin}` : ''}</div>` : ''}
+                                              ${listHTML || '<div class=\"text-muted\">No placings available</div>'}
+                                            </div>
+                                          </div>`;
+                                        rendered = true;
+                                    }
+                                }
+                            } catch (err) { console.warn('fallback results fetch failed', err); }
                         }
                     } catch (e) { console.warn('results render failed', e); }
 
