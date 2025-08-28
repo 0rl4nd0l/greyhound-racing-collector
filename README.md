@@ -892,6 +892,18 @@ Note on archive-first policy
 
 Set these environment variables (e.g., in a .env file or via the shell) to control paths and behavior.
 
+- DISABLE_ASSET_MINIFY
+  - Description: When set to 1, skip webassets minification filters to avoid optional deps (jsmin/cssmin). Recommended for local/dev unless you need minified bundles.
+  - Default: 1
+  - Example: DISABLE_ASSET_MINIFY=1
+- ENABLE_ENDPOINT_DROPDOWNS
+  - Description: Enables a dev-only dropdown toolbar in the UI that lists all server endpoints by category. Useful for QA; keep disabled in prod.
+  - Default: 0
+  - Example: ENABLE_ENDPOINT_DROPDOWNS=1
+- TESTING
+  - Description: Enables various test helpers and routes when true. Keep false in normal runs.
+  - Default: false
+  - Example: TESTING=false
 - UPCOMING_RACES_DIR
   - Description: Directory the UI/API enumerates for upcoming race CSVs
   - Default: ./upcoming_races (some setups use ./upcoming_races_temp)
@@ -915,9 +927,16 @@ Set these environment variables (e.g., in a .env file or via the shell) to contr
 
 Example .env
 
+# Core
 UPCOMING_RACES_DIR=./upcoming_races
 PREDICTIONS_DIR=./predictions
 ARCHIVE_ROOT=./archive
+
+# UI/dev toggles
+DISABLE_ASSET_MINIFY=1
+ENABLE_ENDPOINT_DROPDOWNS=0
+TESTING=false
+
 # Optional automation (set only if you run a watcher)
 DOWNLOADS_WATCH_DIR=~/Downloads
 
