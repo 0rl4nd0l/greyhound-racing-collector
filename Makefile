@@ -87,6 +87,26 @@ security:
 e2e-prepare:
 	docker-compose -f docker-compose.test.yml run --rm playwright npx playwright install-deps
 
+# Run the Flask API normally (toolbar off by default)
+.PHONY: run-api
+run-api:
+	@echo "Starting Flask app on port $${PORT:-5002} (toolbar off)"
+	PORT=$${PORT:-5002} \
+	ENABLE_ENDPOINT_DROPDOWNS=$${ENABLE_ENDPOINT_DROPDOWNS:-0} \
+	DISABLE_ASSET_MINIFY=$${DISABLE_ASSET_MINIFY:-1} \
+	TESTING=$${TESTING:-false} \
+	$(PYTHON) app.py
+
+# Run the Flask API with the dev endpoints toolbar enabled (QA convenience)
+.PHONY: run-api-dev-toolbar
+run-api-dev-toolbar:
+	@echo "Starting Flask app with dev toolbar (ENABLE_ENDPOINT_DROPDOWNS=1, TESTING=true) on port $${PORT:-5002}"
+	PORT=$${PORT:-5002} \
+	ENABLE_ENDPOINT_DROPDOWNS=1 \
+	TESTING=true \
+	DISABLE_ASSET_MINIFY=$${DISABLE_ASSET_MINIFY:-1} \
+	$(PYTHON) app.py
+
 # Clean up environment
 clean:
 	rm -rf $(VENV)

@@ -17,7 +17,9 @@ Quickstart
 - Environment variables commonly used (see README.md for details)
   - export UPCOMING_RACES_DIR=./upcoming_races_temp
   - export DATABASE_URL=sqlite:///greyhound_racing_data.db
-  - export TESTING=true
+  - export TESTING=false
+  - export ENABLE_ENDPOINT_DROPDOWNS=0   # set to 1 only when you want the dev endpoints toolbar
+  - export DISABLE_ASSET_MINIFY=1        # avoids jsmin/cssmin requirement; unset for minified bundles
 
 Common commands
 Backend install and setup
