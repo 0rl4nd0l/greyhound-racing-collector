@@ -526,6 +526,49 @@ class PredictionButtonManager {
                     detailsHTML += '<p class="text-muted">No detailed runners available.</p>';
                 }
 
+                // Official results (if available)
+                try {
+                    const resultsAvailable = !!(pred.results_available || (Array.isArray(pred.actual_placings) && pred.actual_placings.length > 0));
+                    if (resultsAvailable) {
+                        const rawPlacings = Array.isArray(pred.actual_placings) ? pred.actual_placings.slice() : [];
+                        const sortedPlacings = rawPlacings.sort((a,b) => {
+                            const ap = Number(a.finish_position || a.position || 99);
+                            const bp = Number(b.finish_position || b.position || 99);
+                            return ap - bp;
+                        });
+                        const winner = (pred.race_results && pred.race_results.winner_name) ? pred.race_results.winner_name : (sortedPlacings[0] ? (sortedPlacings[0].dog_name || 'Unknown') : null);
+                        const winnerOdds = pred.race_results && pred.race_results.winner_odds ? pred.race_results.winner_odds : null;
+                        const winnerMargin = pred.race_results && pred.race_results.winner_margin ? pred.race_results.winner_margin : null;
+                        const evalBlock = (pred.evaluation && (pred.evaluation.winner_predicted || pred.evaluation.top3_hit))
+                            ? `<div class=\"mt-1\">${pred.evaluation.winner_predicted ? '<span class=\"badge bg-success me-1\"><i class=\"fas fa-check\"></i> Winner predicted</span>' : ''}${pred.evaluation.top3_hit ? '<span class=\"badge bg-info\">Top 3 hit</span>' : ''}</div>`
+                            : '';
+
+                        let listHTML = '';
+                        if (sortedPlacings.length) {
+                            listHTML = '<ol class="mb-0 ps-3">' + sortedPlacings.map((p) => {
+                                const pos = p.finish_position || p.position || '?';
+                                const nm = p.dog_name || 'Unknown';
+                                const bx = (p.box_number !== undefined && p.box_number !== null) ? ` (Box ${p.box_number})` : '';
+                                const t = (p.individual_time ? ` — ${p.individual_time}s` : '');
+                                const m = (p.margin ? `, ${p.margin}` : '');
+                                return `<li><strong>${nm}</strong>${bx}${t}${m}</li>`;
+                            }).join('') + '</ol>';
+                        }
+
+                        detailsHTML += `
+                          <div class="card mt-2">
+                            <div class="card-header p-2 d-flex justify-content-between align-items-center">
+                              <div><i class="fas fa-flag-checkered"></i> Official Results</div>
+                              ${evalBlock}
+                            </div>
+                            <div class="card-body p-2">
+                              ${winner ? `<div class=\"mb-2\"><strong>Winner:</strong> ${winner}${winnerOdds ? ` (Odds: ${winnerOdds})` : ''}${winnerMargin ? `, Margin: ${winnerMargin}` : ''}</div>` : ''}
+                              ${listHTML || '<div class=\"text-muted\">No placings available</div>'}
+                            </div>
+                          </div>`;
+                    }
+                } catch (e) { console.warn('results render failed', e); }
+
                 container.innerHTML = detailsHTML;
             } else {
                 container.innerHTML = `<div class="alert alert-warning">Could not load prediction details for ${raceName}</div>`;
