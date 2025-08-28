@@ -87,6 +87,45 @@ security:
 e2e-prepare:
 	docker-compose -f docker-compose.test.yml run --rm playwright npx playwright install-deps
 
+# Docker image configuration
+DOCKER_IMAGE ?= greyhound-predictor
+DOCKER_PORT ?= 5002
+DOCKER_RACES_DIR ?= $(shell pwd)/upcoming_races_temp
+
+# Build Docker image
+.PHONY: docker-build
+docker-build:
+	@echo "Building Docker image: $(DOCKER_IMAGE)"
+	docker build -t $(DOCKER_IMAGE) .
+
+# Run the API in Docker (toolbar off by default)
+.PHONY: run-docker-api
+run-docker-api: docker-build
+	@echo "Running $(DOCKER_IMAGE) on http://localhost:$(DOCKER_PORT) (toolbar off)"
+	docker run --rm -it \
+		-p $(DOCKER_PORT):5002 \
+		-e PORT=5002 \
+		-e UPCOMING_RACES_DIR=/app/upcoming_races_temp \
+		-e ENABLE_ENDPOINT_DROPDOWNS=0 \
+		-e DISABLE_ASSET_MINIFY=$${DISABLE_ASSET_MINIFY:-1} \
+		-e TESTING=$${TESTING:-false} \
+		-v "$(DOCKER_RACES_DIR):/app/upcoming_races_temp" \
+		$(DOCKER_IMAGE)
+
+# Run the API in Docker with dev toolbar enabled
+.PHONY: run-docker-api-dev-toolbar
+run-docker-api-dev-toolbar: docker-build
+	@echo "Running $(DOCKER_IMAGE) on http://localhost:$(DOCKER_PORT) with dev toolbar (ENABLE_ENDPOINT_DROPDOWNS=1, TESTING=true)"
+	docker run --rm -it \
+		-p $(DOCKER_PORT):5002 \
+		-e PORT=5002 \
+		-e UPCOMING_RACES_DIR=/app/upcoming_races_temp \
+		-e ENABLE_ENDPOINT_DROPDOWNS=1 \
+		-e DISABLE_ASSET_MINIFY=$${DISABLE_ASSET_MINIFY:-1} \
+		-e TESTING=true \
+		-v "$(DOCKER_RACES_DIR):/app/upcoming_races_temp" \
+		$(DOCKER_IMAGE)
+
 # Run the Flask API normally (toolbar off by default)
 .PHONY: run-api
 run-api:
