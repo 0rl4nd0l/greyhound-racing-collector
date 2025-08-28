@@ -44,6 +44,8 @@ section {
 
 /* Card Styles */
 .card {
+    background: var(--card-bg);
+    color: var(--text-color);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius-lg);
     box-shadow: var(--shadow-md);
@@ -438,6 +440,27 @@ tr:hover {
     font-size: 0.9rem;
     color: #6c757d;
 }
+
+/* Dark mode overrides to ensure readability across custom components */
+html[data-theme="dark"] body { color: var(--text-color); background-color: var(--neutral-bg); }
+html[data-theme="dark"] h1, html[data-theme="dark"] h2, html[data-theme="dark"] h3, html[data-theme="dark"] h4, html[data-theme="dark"] h5, html[data-theme="dark"] h6 {
+  color: var(--text-color) !important;
+  border-color: var(--border-color) !important;
+}
+html[data-theme="dark"] section,
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .log-container,
+html[data-theme="dark"] .race-card,
+html[data-theme="dark"] table,
+html[data-theme="dark"] th,
+html[data-theme="dark"] td {
+  background: var(--card-bg) !important;
+  color: var(--text-color) !important;
+  border-color: var(--border-color) !important;
+}
+html[data-theme="dark"] th { background-color: var(--neutral-bg) !important; }
+html[data-theme="dark"] .race-title { color: var(--text-color) !important; }
+html[data-theme="dark"] .race-meta { color: var(--text-light) !important; }
 
 /* Race Cards */
 .race-card {
@@ -932,4 +955,61 @@ footer {
     border-color: #333 transparent transparent transparent;
     z-index: 1000;
     pointer-events: none;
+}
+
+/* Dark mode overrides for Bootstrap and layout components */
+[data-theme="dark"] body {
+    background-color: var(--neutral-bg);
+    color: var(--text-color);
+}
+
+[data-theme="dark"] .bg-light {
+    background-color: #2d2d2d !important;
+    color: var(--text-color) !important;
+}
+
+[data-theme="dark"] .card {
+    background-color: var(--card-bg) !important;
+    color: var(--text-color) !important;
+    border-color: var(--border-color) !important;
+}
+
+[data-theme="dark"] .dropdown-menu {
+    background-color: var(--card-bg);
+    color: var(--text-color);
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .table {
+    color: var(--text-color);
+    background-color: var(--card-bg);
+}
+
+[data-theme="dark"] .table th,
+[data-theme="dark"] .table td {
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .table thead th {
+    background-color: #333333;
+    color: var(--text-color);
+}
+
+[data-theme="dark"] .table-hover tbody tr:hover {
+    background-color: #2a2a2a;
+}
+
+[data-theme="dark"] .form-control,
+[data-theme="dark"] .form-select,
+[data-theme="dark"] .form-control:focus,
+[data-theme="dark"] .form-select:focus {
+    background-color: #1f1f1f;
+    color: var(--text-color);
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .modal-content {
+    background-color: var(--card-bg);
+    color: var(--text-color);
+    border-color: var(--border-color);
 }

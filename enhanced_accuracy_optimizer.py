@@ -128,29 +128,38 @@ class AdvancedEnsemblePredictor:
         self.calibrators = {}
         
     def load_models(self):
-        """Load and validate all available models."""
+        """Load and validate all available models.
+        
+        Respects registry active flags; only active models are considered.
+        """
         from model_registry import ModelRegistry
         
         registry = ModelRegistry()
         
-        # Load all models, not just the best one
+        # Load only active models from registry listing
         loaded_count = 0
-        for model_id, metadata in registry.model_index.items():
+        try:
+            candidates = registry.list_models(active_only=True)
+        except Exception:
+            candidates = []
+        
+        for meta in candidates:
             try:
-                model_tuple = registry.get_model_by_id(model_id)
+                # Use model_id from metadata to fetch concrete artifacts
+                model_tuple = registry.get_model_by_id(meta.model_id)
                 if model_tuple:
-                    model, scaler, meta = model_tuple
-                    self.models[model_id] = {
+                    model, scaler, meta_loaded = model_tuple
+                    self.models[meta_loaded.model_id] = {
                         'model': model,
                         'scaler': scaler,
-                        'metadata': meta,
-                        'weight': meta.accuracy if hasattr(meta, 'accuracy') else 0.5
+                        'metadata': meta_loaded,
+                        'weight': getattr(meta_loaded, 'accuracy', 0.5)
                     }
-                    self.model_weights[model_id] = meta.accuracy if hasattr(meta, 'accuracy') else 0.5
+                    self.model_weights[meta_loaded.model_id] = getattr(meta_loaded, 'accuracy', 0.5)
                     loaded_count += 1
-                    logger.info(f"✅ Loaded model: {model_id} (accuracy: {meta.accuracy:.3f})")
+                    logger.info(f"✅ Loaded model: {meta_loaded.model_id} (accuracy: {meta_loaded.accuracy:.3f})")
             except Exception as e:
-                logger.warning(f"Failed to load model {model_id}: {e}")
+                logger.warning(f"Failed to load model {getattr(meta, 'model_id', '<unknown>')}: {e}")
         
         logger.info(f"🤖 Ensemble loaded with {loaded_count} models")
         return loaded_count > 0
@@ -161,58 +170,230 @@ class AdvancedEnsemblePredictor:
         if not self.models:
             if not self.load_models():
                 raise ValueError("No models available for ensemble prediction")
-        
-        predictions = []
-        model_predictions = {}
-        
-        # Collect predictions from each model
+
+        # Preserve dog names for presentation
+        names = None
+        if 'dog_clean_name' in features.columns:
+            try:
+                names = features['dog_clean_name'].astype(str).tolist()
+            except Exception:
+                try:
+                    names = features['dog_clean_name'].tolist()
+                except Exception:
+                    names = None
+
+        # Prepare a base feature frame with categorical defaults and numeric coercion
+        base_features = features.copy()
+        try:
+            cat_defaults = {
+                'venue': 'UNKNOWN',
+                'grade': '5',
+                'track_condition': 'Good',
+                'weather': 'Fine',
+                'trainer_name': 'Unknown',
+            }
+            for col, default in cat_defaults.items():
+                if col not in base_features.columns:
+                    base_features[col] = default
+                else:
+                    base_features[col] = base_features[col].astype(str)
+                    base_features[col] = base_features[col].replace({'0': default, 'nan': default})
+                    base_features[col] = base_features[col].where(base_features[col].notna(), other=default)
+        except Exception as _e:
+            logger.debug(f"Categorical default fill skipped due to: {_e}")
+
+        try:
+            num_cols = base_features.select_dtypes(include=['number']).columns
+            if len(num_cols) > 0:
+                base_features[num_cols] = base_features[num_cols].astype('float64').fillna(0.0)
+        except Exception as _e:
+            logger.debug(f"Numeric NA cleanup skipped due to: {_e}")
+
+        predictions: List[Dict[str, Any]] = []
+        model_predictions: Dict[str, Any] = {}
+
+        # Collect predictions from each model using its own contract
         for model_id, model_data in self.models.items():
             try:
                 model = model_data['model']
                 scaler = model_data['scaler']
-                
+                metadata = model_data.get('metadata')
+
+                expected_features = None
+                contract_path = None
+                required_columns_order: List[str] = []
+
+                # Resolve contract path from metadata if available
+                try:
+                    artifact_path = getattr(metadata, 'model_file_path', None)
+                    if artifact_path and os.path.exists(artifact_path):
+                        # Prefer contract named after artifact stem
+                        stem = Path(artifact_path).name
+                        stem_json = Path('docs/model_contracts') / f"{Path(stem).with_suffix('').name}.json"
+                        if stem_json.exists():
+                            contract_path = stem_json
+                    # Fallback: contract named after model_id
+                    if contract_path is None:
+                        mid = getattr(metadata, 'model_id', None)
+                        if mid:
+                            mid_json = Path('docs/model_contracts') / f"{mid}.json"
+                            if mid_json.exists():
+                                contract_path = mid_json
+                    # Fallback: known ExtraTrees contract
+                    if contract_path is None:
+                        et_contract = Path('docs/model_contracts/V4_ExtraTrees_20250819.json')
+                        if et_contract.exists():
+                            contract_path = et_contract
+                except Exception as _e:
+                    logger.debug(f"Contract resolution failed for {model_id}: {_e}")
+
+                if contract_path and Path(contract_path).exists():
+                    try:
+                        with open(contract_path, 'r') as f:
+                            contract = json.load(f)
+                        expected_features = contract.get('features')
+                        if isinstance(expected_features, list):
+                            required_columns_order.extend([c for c in expected_features if c not in required_columns_order])
+                            logger.debug(f"📜 Loaded contract for {model_id}: {len(expected_features)} features from {contract_path}")
+                    except Exception as _e:
+                        logger.warning(f"Failed to load contract for {model_id} at {contract_path}: {_e}")
+
+                # Build per-model frame with TGR compatibility mapping
+                per_model_df = base_features.copy()
+
+                # Build a combined required column set/order from contract, scaler, and registry metadata
+                try:
+                    # Add scaler-declared input columns if present
+                    scaler_cols = []
+                    if hasattr(scaler, 'feature_names_in_') and getattr(scaler, 'feature_names_in_') is not None:
+                        scaler_cols = list(getattr(scaler, 'feature_names_in_'))
+                    for c in scaler_cols:
+                        if c not in required_columns_order:
+                            required_columns_order.append(c)
+
+                    # Add registry metadata feature_names if present
+                    meta_cols = []
+                    if metadata and hasattr(metadata, 'feature_names') and getattr(metadata, 'feature_names'):
+                        meta_cols = list(getattr(metadata, 'feature_names'))
+                    for c in meta_cols:
+                        if c not in required_columns_order:
+                            required_columns_order.append(c)
+
+                    # If GradientBoosting model, ensure known TGR feature set is present in the required order
+                    if isinstance(model_id, str) and 'GradientBoosting' in model_id:
+                        tgr_all = [
+                            'tgr_total_races','tgr_recent_races','tgr_avg_finish_position','tgr_best_finish_position',
+                            'tgr_win_rate','tgr_place_rate','tgr_consistency','tgr_form_trend','tgr_recent_avg_position',
+                            'tgr_recent_best_position','tgr_preferred_distance','tgr_preferred_distance_avg','tgr_preferred_distance_races',
+                            'tgr_venues_raced','tgr_days_since_last_race','tgr_last_race_position','tgr_has_comments','tgr_sentiment_score'
+                        ]
+                        for c in tgr_all:
+                            if c not in required_columns_order:
+                                required_columns_order.append(c)
+                except Exception as _e:
+                    logger.debug(f"Failed to augment required columns for {model_id}: {_e}")
+
+                # Augment missing tgr_* columns from existing features (compatibility shim)
+                try:
+                    tgr_map = {
+                        'tgr_win_rate': 'historical_win_rate',
+                        'tgr_place_rate': 'historical_place_rate',
+                        'tgr_avg_finish_position': 'historical_avg_position',
+                        'tgr_best_finish_position': 'historical_best_position',
+                        'tgr_recent_avg_position': 'historical_avg_position',
+                        'tgr_recent_best_position': 'historical_best_position',
+                        'tgr_days_since_last_race': 'days_since_last_race',
+                        'tgr_venues_raced': 'venue_experience',
+                        'tgr_preferred_distance_avg': 'best_distance_avg_position',
+                        'tgr_preferred_distance': 'target_distance',
+                        'tgr_preferred_distance_races': 'race_frequency',
+                        'tgr_recent_races': 'race_frequency',
+                        'tgr_consistency': 'historical_time_consistency',
+                        'tgr_form_trend': 'historical_form_trend',
+                    }
+
+                    # Decide the set of columns to ensure
+                    ensure_cols = required_columns_order if required_columns_order else (expected_features or [])
+                    # For GradientBoosting, force the known TGR set to be ensured as well
+                    if isinstance(model_id, str) and 'GradientBoosting' in model_id:
+                        gb_tgr = [
+                            'tgr_total_races','tgr_recent_races','tgr_avg_finish_position','tgr_best_finish_position',
+                            'tgr_win_rate','tgr_place_rate','tgr_consistency','tgr_form_trend','tgr_recent_avg_position',
+                            'tgr_recent_best_position','tgr_preferred_distance','tgr_preferred_distance_avg','tgr_preferred_distance_races',
+                            'tgr_venues_raced','tgr_days_since_last_race','tgr_last_race_position','tgr_has_comments','tgr_sentiment_score'
+                        ]
+                        for c in gb_tgr:
+                            if c not in ensure_cols:
+                                required_columns_order.append(c)
+                                ensure_cols = required_columns_order
+
+                    # Map from existing features
+                    for tgt, src in tgr_map.items():
+                        if ((ensure_cols and tgt in ensure_cols) or (not ensure_cols and tgt in per_model_df.columns)) and tgt not in per_model_df.columns and src in per_model_df.columns:
+                            per_model_df[tgt] = per_model_df[src]
+
+                    # Ensure any remaining expected tgr_* columns exist
+                    for col in ensure_cols:
+                        if isinstance(col, str) and col.startswith('tgr_') and col not in per_model_df.columns:
+                            per_model_df[col] = 0.0
+                except Exception as _e:
+                    logger.debug(f"TGR compatibility mapping skipped for {model_id}: {_e}")
+
+                # Reindex to match final required order if we have one; add missing columns with NaN/0.0 already handled above
+                if required_columns_order:
+                    per_model_df = per_model_df.reindex(columns=required_columns_order)
+                elif expected_features:
+                    per_model_df = per_model_df.reindex(columns=expected_features)
+
+                # Final NA guard and dtype normalization per model
+                try:
+                    num_cols_model = per_model_df.select_dtypes(include=['number']).columns
+                    if len(num_cols_model) > 0:
+                        per_model_df[num_cols_model] = per_model_df[num_cols_model].astype('float64').fillna(0.0)
+                except Exception as _e:
+                    logger.debug(f"Final NA guard skipped for {model_id}: {_e}")
+
                 # Scale features if scaler available
                 if scaler:
-                    scaled_features = scaler.transform(features)
-                    scaled_df = pd.DataFrame(scaled_features, columns=features.columns, index=features.index)
+                    scaled_features = scaler.transform(per_model_df)
+                    scaled_df = pd.DataFrame(scaled_features, columns=per_model_df.columns, index=per_model_df.index)
                 else:
-                    scaled_df = features
-                
+                    scaled_df = per_model_df
+
                 # Generate predictions
                 if hasattr(model, 'predict_proba'):
                     probs = model.predict_proba(scaled_df)
                     win_probs = probs[:, 1] if probs.shape[1] > 1 else probs[:, 0]
                 else:
                     win_probs = model.predict(scaled_df)
-                
+
                 model_predictions[model_id] = win_probs
-                
             except Exception as e:
                 logger.warning(f"Model {model_id} prediction failed: {e}")
                 continue
-        
+
         if not model_predictions:
             raise ValueError("All ensemble models failed to generate predictions")
-        
+
         # Dynamic weighted ensemble
         ensemble_probs = self._calculate_weighted_ensemble(model_predictions, race_id)
-        
+
         # Generate final predictions with calibration
-        for i, (_, row) in enumerate(features.iterrows()):
+        for i, (_, row) in enumerate(base_features.iterrows()):
             try:
                 win_prob = float(ensemble_probs[i])
-                
+
                 # Apply calibration
                 calibrated_win_prob = self._apply_calibration(win_prob, race_id)
-                
+
                 # Calculate place probability (correlated but not identical)
                 place_prob = min(0.9, calibrated_win_prob * 2.5 + 0.1)
-                
+
                 # Add confidence and uniqueness factors
                 confidence = self._calculate_confidence(calibrated_win_prob, model_predictions, i)
-                
+
                 prediction = {
-                    'dog_clean_name': row.get('dog_clean_name', f'Dog_{i}'),
+                    'dog_clean_name': (names[i] if names and i < len(names) else row.get('dog_clean_name', f'Dog_{i}')),
                     'box_number': int(row.get('box_number', i + 1)),
                     'win_probability': round(float(calibrated_win_prob), 4),
                     'place_probability': round(float(place_prob), 4),
@@ -222,16 +403,15 @@ class AdvancedEnsemblePredictor:
                     'race_id': race_id,
                     'prediction_timestamp': datetime.now().isoformat()
                 }
-                
+
                 predictions.append(prediction)
-                
             except Exception as e:
                 logger.warning(f"Failed to process dog {i}: {e}")
                 continue
-        
+
         # Normalize probabilities within race
         predictions = self._normalize_race_probabilities(predictions)
-        
+
         return predictions
     
     def _calculate_weighted_ensemble(self, model_predictions: Dict, race_id: str) -> np.ndarray:
@@ -547,13 +727,28 @@ def integrate_enhanced_accuracy(ml_system_v4):
     original_predict_race = ml_system_v4.predict_race if hasattr(ml_system_v4, 'predict_race') else None
     
     def enhanced_predict_race(race_data: pd.DataFrame, race_id: str, market_odds: Dict[str, float] = None) -> Dict[str, Any]:
-        """Enhanced predict_race with accuracy optimization."""
+        """Enhanced predict_race with accuracy optimization.
         
+        This builds leakage-safe V4 features via the MLSystemV4 pipeline first,
+        then feeds the aligned feature matrix into the ensemble optimizer.
+        """
         try:
-            # Generate optimized predictions
-            result = accuracy_optimizer.generate_optimized_predictions(race_data, race_id)
-            
-            if result['success']:
+            # 1) Build leakage-safe features using the V4 system (with cache)
+            features_df = ml_system_v4.build_features_for_race_with_cache(race_data, race_id)
+            if features_df is None or features_df.empty:
+                raise ValueError("Feature building returned empty result")
+
+            # 2) Validate temporal integrity (defense-in-depth)
+            try:
+                ml_system_v4.temporal_builder.validate_temporal_integrity(features_df, race_data)
+            except Exception as _e:
+                # Non-fatal: log and proceed, original MLSystemV4 would raise
+                logger.warning(f"Temporal integrity validation warning for {race_id}: {_e}")
+
+            # 3) Generate optimized predictions using the ensemble on features
+            result = accuracy_optimizer.generate_optimized_predictions(features_df, race_id)
+
+            if result.get('success'):
                 return result
             else:
                 # Fallback to original if available
@@ -562,7 +757,6 @@ def integrate_enhanced_accuracy(ml_system_v4):
                     return original_predict_race(race_data, race_id, market_odds)
                 else:
                     return result
-        
         except Exception as e:
             logger.error(f"Enhanced prediction failed: {e}")
             if original_predict_race:

@@ -28,7 +28,7 @@
     // Initialize the dashboard
     function init() {
         setupEventListeners();
-        initCharts();
+        if (typeof initializeCharts === 'function') { initializeCharts(); }
         loadDashboardData();
         loadAutoRefreshState();
         // Initialize backtesting log integration if DOM elements exist
@@ -41,6 +41,25 @@
     function setupEventListeners() {
         // track which promotion timestamps we've toasted to avoid duplicates
         window.__promotionToastSeen = window.__promotionToastSeen || new Set();
+        // Backtesting controls
+        const startBacktestingBtn = document.getElementById('start-backtesting');
+        const modeSel = document.getElementById('backtest-mode');
+        if (modeSel) {
+            modeSel.addEventListener('change', updateBacktestControlsVisibility);
+            // Initialize visibility
+            updateBacktestControlsVisibility();
+        }
+        if (startBacktestingBtn) {
+            startBacktestingBtn.addEventListener('click', startBacktesting);
+        }
+        const copyCurlBtn = document.getElementById('copy-backtesting-curl');
+        if (copyCurlBtn) {
+            copyCurlBtn.addEventListener('click', (e) => copyBacktestingCurlToClipboard(e));
+        }
+        const copyJsonBtn = document.getElementById('copy-backtesting-json');
+        if (copyJsonBtn) {
+            copyJsonBtn.addEventListener('click', (e) => copyBacktestingJsonToClipboard(e));
+        }
         // Diagnostics run button (if present)
         const diagRunBtn = document.getElementById('diagnostics-run-btn');
         const diagMaxRaces = document.getElementById('diagnostics-max-races');
@@ -200,8 +219,7 @@
         try {
             await Promise.all([
                 loadRaces(),
-                loadPredictions(),
-                loadHistoricalAccuracy()
+                loadPredictions()
             ]);
             updateUI();
         } catch (error) {
@@ -398,6 +416,146 @@
         }, 5000);
     }
 
+    // Backtesting: start action
+    async function startBacktesting() {
+        try {
+            const btn = document.getElementById('start-backtesting');
+            const statusEl = byIds(['backtesting-status','training-status']);
+            const logsEl = byIds(['backtesting-logs','training-logs']);
+            const modeSel = document.getElementById('backtest-mode');
+            const monthsEl = document.getElementById('backtest-months-back');
+            const rollingEl = document.getElementById('backtest-rolling-days');
+            const retrainEl = document.getElementById('backtest-retrain-freq');
+            const topkEl = document.getElementById('backtest-top-k');
+
+            const modeRaw = (modeSel && modeSel.value) || 'standard';
+            const mode = (modeRaw === 'walk_forward' || modeRaw === 'walk-forward' || modeRaw === 'walkforward') ? 'walk_forward' : 'standard';
+            const months_back = monthsEl ? parseInt(monthsEl.value || '6', 10) : 6;
+
+            const payload = { mode: mode === 'walk_forward' ? 'walk_forward' : 'standard', months_back };
+            if (mode === 'walk_forward') {
+                if (rollingEl) payload.walk_rolling_days = parseInt(rollingEl.value || '180', 10);
+                if (retrainEl) payload.walk_retrain_freq = String(retrainEl.value || 'daily');
+                if (topkEl) payload.walk_top_k = parseInt(topkEl.value || '3', 10);
+            }
+
+            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...'; }
+            if (statusEl) statusEl.textContent = `Starting ${payload.mode === 'walk_forward' ? 'walk-forward' : 'standard'} backtest...`;
+            if (logsEl) {
+                if (logsEl.tagName === 'PRE' || logsEl.tagName === 'TEXTAREA' || logsEl.tagName === 'CODE') {
+                    logsEl.textContent = '';
+                } else {
+                    const pre = logsEl.querySelector('pre');
+                    if (pre) pre.textContent = ''; else logsEl.innerHTML = '';
+                }
+            }
+
+            const resp = await fetch('/api/backtesting', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await resp.json();
+            if (!data.success) throw new Error(data.message || 'Failed to start backtesting');
+
+            if (statusEl) statusEl.textContent = 'Backtesting started. Streaming logs...';
+            // Ensure SSE stream is (re)initialized
+            initBacktestingLogsIntegration();
+        } catch (err) {
+            console.error('Backtesting start error:', err);
+            showAlert(`Backtesting failed to start: ${err.message}`, 'danger');
+            const statusEl = byIds(['backtesting-status','training-status']);
+            if (statusEl) statusEl.textContent = `Error: ${err.message}`;
+        } finally {
+            const btn = document.getElementById('start-backtesting');
+            if (btn) btn.disabled = false, btn.innerHTML = '<i class="fas fa-play"></i> Start Backtesting';
+        }
+    }
+
+    function updateBacktestControlsVisibility() {
+        const modeSel = document.getElementById('backtest-mode');
+        const adv = document.getElementById('walk-forward-advanced');
+        const val = (modeSel && modeSel.value) || 'standard';
+        const isWF = (val === 'walk_forward' || val === 'walk-forward' || val === 'walkforward');
+        if (adv) {
+            if (isWF) adv.classList.remove('d-none'); else adv.classList.add('d-none');
+        }
+    }
+
+    // Build current payload from form
+    function buildBacktestingPayloadFromForm() {
+        const modeSel = document.getElementById('backtest-mode');
+        const monthsEl = document.getElementById('backtest-months-back');
+        const rollingEl = document.getElementById('backtest-rolling-days');
+        const retrainEl = document.getElementById('backtest-retrain-freq');
+        const topkEl = document.getElementById('backtest-top-k');
+        const modeRaw = (modeSel && modeSel.value) || 'standard';
+        const mode = (modeRaw === 'walk_forward' || modeRaw === 'walk-forward' || modeRaw === 'walkforward') ? 'walk_forward' : 'standard';
+        const payload = { mode, months_back: monthsEl ? parseInt(monthsEl.value || '6', 10) : 6 };
+        if (mode === 'walk_forward') {
+            if (rollingEl) payload.walk_rolling_days = parseInt(rollingEl.value || '180', 10);
+            if (retrainEl) payload.walk_retrain_freq = String(retrainEl.value || 'daily');
+            if (topkEl) payload.walk_top_k = parseInt(topkEl.value || '3', 10);
+        }
+        return payload;
+    }
+
+    // Build curl command from current form
+    function buildBacktestingCurlFromForm(oneLine = false) {
+        const origin = window.location.origin;
+        const payload = buildBacktestingPayloadFromForm();
+        const jsonPretty = JSON.stringify(payload, null, 2);
+        const jsonCompact = JSON.stringify(payload);
+        const jsonForShellPretty = jsonPretty.replace(/'/g, "'\\''");
+        const jsonForShellCompact = jsonCompact.replace(/'/g, "'\\''");
+        if (oneLine) {
+            return `curl -X POST \"${origin}/api/backtesting\" -H \"Content-Type: application/json\" -d '${jsonForShellCompact}'`;
+        }
+        return `curl -X POST \"${origin}/api/backtesting\" \\
+  -H \"Content-Type: application/json\" \\
+  -d '${jsonForShellPretty}'`;
+    }
+
+    async function copyBacktestingCurlToClipboard(evt) {
+        try {
+            const oneLineChk = document.getElementById('curl-one-line');
+            const oneLine = !!(oneLineChk && oneLineChk.checked);
+            const cmd = buildBacktestingCurlFromForm(oneLine);
+            await navigator.clipboard.writeText(cmd);
+            showCopiedHint(evt && evt.currentTarget ? evt.currentTarget : document.getElementById('copy-backtesting-curl'), oneLine ? 'One-line cURL copied!' : 'cURL copied!');
+        } catch (e) {
+            console.error('Clipboard error:', e);
+            showAlert('Failed to copy cURL', 'danger');
+        }
+    }
+
+    async function copyBacktestingJsonToClipboard(evt) {
+        try {
+            const payload = buildBacktestingPayloadFromForm();
+            const json = JSON.stringify(payload, null, 2);
+            await navigator.clipboard.writeText(json);
+            showCopiedHint(evt && evt.currentTarget ? evt.currentTarget : document.getElementById('copy-backtesting-json'), 'JSON copied!');
+        } catch (e) {
+            console.error('Clipboard error:', e);
+            showAlert('Failed to copy JSON', 'danger');
+        }
+    }
+
+    function showCopiedHint(targetEl, message) {
+        try {
+            if (!targetEl || !targetEl.parentNode) return showAlert(message || 'Copied', 'success');
+            const existing = targetEl.parentNode.querySelector('.copied-hint');
+            if (existing) existing.remove();
+            const span = document.createElement('span');
+            span.className = 'copied-hint ms-2 text-success small fw-semibold';
+            span.textContent = message || 'Copied!';
+            targetEl.insertAdjacentElement('afterend', span);
+            setTimeout(() => { try { span.remove(); } catch(_) {} }, 1500);
+        } catch (_) {
+            showAlert(message || 'Copied', 'success');
+        }
+    }
+
     // Backtesting logs integration
     function byIds(ids) {
         for (const id of ids) {
@@ -574,7 +732,7 @@
         const isTrainingPanel = logsEl.id === 'training-logs';
         if (isTrainingPanel) {
             logsEl.innerHTML = '';
-            entries.forEach(entry =e {
+            entries.forEach(entry => {
                 const ts = entry.timestamp ? new Date(entry.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
                 const level = entry.level || 'INFO';
                 const levelClass = level === 'ERROR' ? 'text-danger' : level === 'WARNING' ? 'text-warning' : 'text-info';
@@ -599,7 +757,7 @@
         // Auto-scroll to bottom
         if (typeof logsEl.scrollTop === 'number') {
             logsEl.scrollTop = logsEl.scrollHeight;
-        } else if (logsEl.firstChild e typeof logsEl.firstChild.scrollTop === 'number') {
+        } else if (logsEl.firstChild && typeof logsEl.firstChild.scrollTop === 'number') {
             logsEl.firstChild.scrollTop = logsEl.firstChild.scrollHeight;
         }
     }
@@ -609,7 +767,7 @@
         let msg = raw;
         try {
             const maybe = JSON.parse(raw);
-            if (maybe e typeof maybe === 'object') msg = maybe;
+            if (maybe && typeof maybe === 'object') msg = maybe;
         } catch(_) {}
         const isTrainingPanel = logsEl.id === 'training-logs';
         if (isTrainingPanel) {
@@ -656,6 +814,12 @@
     window.generateAdvisoryManually = generateAdvisoryManually;
     window.initBacktestingLogsIntegration = initBacktestingLogsIntegration;
 
+    // Initialize Bootstrap tooltips if available
+    try {
+        const ttEls = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        ttEls.forEach(el => { try { new bootstrap.Tooltip(el); } catch(_) {} });
+    } catch(_) {}
+
     init();
     };
     if (document.readyState === 'loading') {
@@ -663,6 +827,229 @@
     } else {
         run();
     }
+})();
+
+// --- V4 Extras: Evaluation summary + Feature contracts UI widgets ---
+(function(){
+  function el(tag, attrs = {}, children = []) {
+    const node = document.createElement(tag);
+    Object.entries(attrs || {}).forEach(([k, v]) => node.setAttribute(k, v));
+    (Array.isArray(children) ? children : [children]).forEach(c => {
+      if (c == null) return;
+      if (typeof c === 'string') node.appendChild(document.createTextNode(c));
+      else node.appendChild(c);
+    });
+    return node;
+  }
+
+  async function fetchJSON(url) {
+    const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+    return await res.json();
+  }
+
+  async function renderEvalSummary(containerId = 'v4-eval-summary', win = 500) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = '';
+    try {
+      const data = await fetchJSON(`/api/v4/eval/summary/latest?window=${encodeURIComponent(String(win))}`);
+      if (!data || data.success === false) throw new Error((data && (data.error || data.message)) || 'Unknown error');
+      const pre = el('pre', { class: 'code' }, JSON.stringify(data.summary || data, null, 2));
+      container.appendChild(pre);
+    } catch (e) {
+      container.appendChild(el('div', { class: 'error text-danger small' }, `Failed to load evaluation summary: ${e.message}`));
+    }
+  }
+
+  async function renderContractsList(containerId = 'v4-contracts-list') {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = '';
+    try {
+      const data = await fetchJSON('/api/v4/models/contracts');
+      if (!data || data.success === false) throw new Error((data && (data.error || data.message)) || 'Unknown error');
+      const ul = el('ul', { class: 'list-unstyled mb-0' });
+      const contracts = Array.isArray(data.contracts) ? data.contracts : [];
+      if (contracts.length === 0) {
+        container.appendChild(el('div', { class: 'text-muted' }, 'No contracts found. Train a model to generate one.'));
+      } else {
+        contracts.forEach(c => {
+          const li = el('li', { class: 'mb-1' });
+          const link = el('a', { href: '#', 'data-name': c.name }, c.name + (c.modified ? ` (updated ${c.modified})` : ''));
+          link.addEventListener('click', async (ev) => {
+            ev.preventDefault();
+            await renderContractDetail('v4-contract-detail', c.name);
+          });
+          li.appendChild(link);
+          ul.appendChild(li);
+        });
+        container.appendChild(ul);
+      }
+    } catch (e) {
+      container.appendChild(el('div', { class: 'error text-danger small' }, `Failed to list contracts: ${e.message}`));
+    }
+  }
+
+  async function renderContractDetail(containerId = 'v4-contract-detail', contractName = 'v4_feature_contract.json') {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = '';
+    try {
+      const data = await fetchJSON(`/api/v4/models/contracts/${encodeURIComponent(contractName)}`);
+      if (!data || data.success === false) throw new Error((data && (data.error || data.message)) || 'Unknown error');
+      const pre = el('pre', { class: 'code' }, JSON.stringify(data.contract || data, null, 2));
+      container.appendChild(pre);
+    } catch (e) {
+      container.appendChild(el('div', { class: 'error text-danger small' }, `Failed to load contract: ${e.message}`));
+    }
+  }
+
+  function bindRefreshContract(buttonId = 'refresh-v4-contract') {
+    const btn = document.getElementById(buttonId);
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      const orig = btn.textContent;
+      btn.textContent = 'Refreshing...';
+      try {
+        const res = await fetch('/api/v4/models/contracts/refresh', { method: 'POST' });
+        const data = await res.json();
+        if (!data || data.success === false) throw new Error((data && (data.error || data.message)) || 'Unknown error');
+        await renderContractsList('v4-contracts-list');
+        await renderContractDetail('v4-contract-detail', 'v4_feature_contract.json');
+      } catch (e) {
+        alert('Failed to refresh contract: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = orig || 'Refresh Contract';
+      }
+    });
+  }
+
+  // Render validation result into a container
+  function renderContractValidation(containerId, payload, statusCode) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = '';
+    if (!payload) { container.textContent = 'No response'; return; }
+
+    if (payload.error) {
+      container.innerHTML = `<div class="text-danger">${payload.error}</div>`;
+      return;
+    }
+
+    const { matched, strict, diff, path } = payload;
+    const hdr = document.createElement('div');
+    hdr.className = 'mb-2';
+    const statusText = matched ? (strict ? 'Matched (Strict)' : 'Matched') : (strict ? 'Mismatch (Strict)' : 'Mismatched');
+    hdr.innerHTML = `<strong>Status:</strong> ${statusText} ${path ? `<small class="text-muted">(${path})</small>` : ''}`;
+    container.appendChild(hdr);
+
+    if (!diff) return;
+
+    const makeList = (title, arr) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'mb-2';
+      const h = document.createElement('div');
+      h.innerHTML = `<strong>${title}</strong>`;
+      wrap.appendChild(h);
+      if (!arr || arr.length === 0) {
+        const p = document.createElement('div'); p.className = 'text-muted small'; p.textContent = 'None'; wrap.appendChild(p);
+      } else {
+        const ul = document.createElement('ul'); ul.className = 'small mb-0';
+        arr.forEach(v => { const li = document.createElement('li'); li.textContent = v; ul.appendChild(li); });
+        wrap.appendChild(ul);
+      }
+      return wrap;
+    };
+
+    const blocks = [];
+    try {
+      blocks.push(makeList('Categorical - Missing', (diff.categorical && diff.categorical.missing) || []));
+      blocks.push(makeList('Categorical - Extra', (diff.categorical && diff.categorical.extra) || []));
+      blocks.push(makeList('Numerical - Missing', (diff.numerical && diff.numerical.missing) || []));
+      blocks.push(makeList('Numerical - Extra', (diff.numerical && diff.numerical.extra) || []));
+    } catch(_) {}
+
+    const sig = document.createElement('div');
+    sig.className = 'mb-2';
+    const sMatch = diff.signature_match === true;
+    sig.innerHTML = `<strong>Signature:</strong> ${sMatch ? 'Match' : 'Mismatch'}${diff.expected_signature ? `<br><small class="text-muted">expected: ${diff.expected_signature}</small>` : ''}${diff.current_signature ? `<br><small class="text-muted">current: ${diff.current_signature}</small>` : ''}`;
+
+    container.appendChild(sig);
+    blocks.forEach(b => container.appendChild(b));
+
+    // Footer note
+    const note = document.createElement('div'); note.className = 'mt-2 text-muted small';
+    note.textContent = statusCode === 409 ? 'Strict check returned 409 due to mismatch.' : 'OK';
+    container.appendChild(note);
+  }
+
+  function updateContractStatusBadge(badgeId, matched, strict, statusCode) {
+    const badge = document.getElementById(badgeId);
+    if (!badge) return;
+    badge.className = 'badge';
+    if (matched === true) {
+      badge.classList.add('bg-success');
+      badge.textContent = strict ? 'Stable (strict)' : 'Stable';
+    } else if (statusCode === 409 || strict) {
+      badge.classList.add('bg-danger');
+      badge.textContent = 'Mismatch';
+    } else {
+      badge.classList.add('bg-warning');
+      badge.textContent = 'Diffs';
+    }
+  }
+
+  async function runContractCheck({ strict = false, containerId = 'v4-contract-validation-result', badgeId = 'v4-contract-status-badge' } = {}) {
+    try {
+      const url = strict ? '/api/v4/models/contracts/check?strict=1' : '/api/v4/models/contracts/check';
+      const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+      const body = await res.json();
+      renderContractValidation(containerId, body, res.status);
+      if (typeof body.matched === 'boolean') updateContractStatusBadge(badgeId, body.matched, !!body.strict, res.status);
+    } catch (e) {
+      renderContractValidation('v4-contract-validation-result', { error: e.message }, 0);
+      updateContractStatusBadge('v4-contract-status-badge', false, false, 0);
+    }
+  }
+
+  function bindValidateContract(buttonId = 'validate-v4-contract', strictToggleId = 'validate-v4-strict', containerId = 'v4-contract-validation-result', badgeId = 'v4-contract-status-badge') {
+    const btn = document.getElementById(buttonId);
+    const chk = document.getElementById(strictToggleId);
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+      btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Validating...';
+      try {
+        const strict = !!(chk && chk.checked);
+        await runContractCheck({ strict, containerId, badgeId });
+      } catch (e) {
+        renderContractValidation(containerId, { error: e.message }, 0);
+      } finally {
+        btn.disabled = false; btn.textContent = orig || 'Validate';
+      }
+    });
+  }
+
+  function autoInit() {
+    // Only run if any of the containers exist on the page
+    const any = document.getElementById('v4-eval-summary') || document.getElementById('v4-contracts-list') || document.getElementById('v4-contract-detail') || document.getElementById('refresh-v4-contract');
+    if (!any) return;
+    renderEvalSummary('v4-eval-summary', 500);
+    renderContractsList('v4-contracts-list');
+    renderContractDetail('v4-contract-detail', 'v4_feature_contract.json');
+    bindRefreshContract('refresh-v4-contract');
+    bindValidateContract('validate-v4-contract', 'validate-v4-strict', 'v4-contract-validation-result', 'v4-contract-status-badge');
+    // Run an initial non-strict check to populate the badge/status
+    runContractCheck({ strict: false, containerId: 'v4-contract-validation-result', badgeId: 'v4-contract-status-badge' });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', autoInit);
+  } else {
+    autoInit();
+  }
 })();
 
 function initializeCharts() {
@@ -690,8 +1077,10 @@ function initializeCharts() {
             onClick: (event, elements) => {
                 if (elements.length > 0) {
                     const raceIndex = elements[0].index;
-                    const race = raceData.predicted[raceIndex];
-                    showPredictionDetail(race.race_name);
+                    const race = (window.raceData && window.raceData.predicted) ? window.raceData.predicted[raceIndex] : null;
+                    if (race) {
+                        showPredictionDetail(race.race_name);
+                    }
                 }
             }
         }
@@ -753,7 +1142,7 @@ function updateCharts(predictedRaces) {
     // Update Win Probability Chart
     const winProbChart = window.charts.winProbabilityChart;
     winProbChart.data.labels = predictedRaces.map(r => r.race_name);
-    winProbChart.data.datasets[0].data = predictedRaces.map(r => r.top_pick ? r.top_pick.prediction_score : 0);
+    winProbChart.data.datasets[0].data = predictedRaces.map(r => (r.top_pick && (r.top_pick.win_prob || r.top_pick.prediction_score)) ? (r.top_pick.win_prob || r.top_pick.prediction_score) : 0);
     winProbabilityChart.update();
 
     // Update Confidence Pie Chart
@@ -778,7 +1167,7 @@ function updateHistoricalAccuracyChart(accuracyData) {
 }
 
 function showPredictionDetail(raceName) {
-    const race = raceData.predicted.find(r => r.race_name === raceName);
+    const race = (window.raceData && window.raceData.predicted) ? window.raceData.predicted.find(r => r.race_name === raceName) : null;
     if (!race) return;
 
     const modalBody = document.getElementById('predictionDetailContent');

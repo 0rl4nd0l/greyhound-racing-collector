@@ -1,6 +1,9 @@
 import hashlib
 import os
+import json
+import logging
 from datetime import datetime
+from pathlib import Path
 
 # Optional heavy deps: make safe for constrained test envs without numpy/pandas/scipy
 try:  # pragma: no cover - environment dependent
@@ -149,3 +152,173 @@ class FeatureStore:
                 # Skip columns that can't be compared
                 continue
         return drifts
+
+    def load_v4_model_contract(self):
+        """Load the V4 model feature contract."""
+        contract_path = Path("docs/model_contracts/V4_ExtraTrees_20250819.json")
+        
+        if not contract_path.exists():
+            # Fallback to relative path resolution
+            contract_path = Path(__file__).parent.parent / "docs/model_contracts/V4_ExtraTrees_20250819.json"
+        
+        if not contract_path.exists():
+            raise FileNotFoundError(
+                f"V4 model contract not found at {contract_path}. "
+                "Run inspect_model_features.py to generate it."
+            )
+        
+        with open(contract_path, 'r') as f:
+            contract = json.load(f)
+        
+        return contract['features']
+
+    def enforce_v4_contract(self, features_df, log_missing=True):
+        """Enforce V4 model contract by reindexing DataFrame to match expected features.
+        
+        Args:
+            features_df: DataFrame with computed features
+            log_missing: Whether to log missing columns that are backfilled with NaN
+            
+        Returns:
+            DataFrame with columns reordered and missing columns filled with NaN
+        """
+        if pd is None:
+            raise ImportError("pandas required for contract enforcement")
+        
+        try:
+            expected_features = self.load_v4_model_contract()
+        except FileNotFoundError as e:
+            if log_missing:
+                logging.warning(f"Could not load V4 contract: {e}")
+            return features_df
+        
+        # Get current columns
+        current_columns = set(features_df.columns)
+        expected_columns = set(expected_features)
+        
+        # Find missing columns
+        missing_columns = expected_columns - current_columns
+        extra_columns = current_columns - expected_columns
+        
+        if missing_columns and log_missing:
+            logging.warning(
+                f"Missing {len(missing_columns)} features for V4 model: {sorted(missing_columns)[:5]}..."
+            )
+        
+        if extra_columns and log_missing:
+            logging.debug(
+                f"Extra {len(extra_columns)} features not used by V4 model: {sorted(extra_columns)[:5]}..."
+            )
+        
+        # Reindex to match contract (adds missing columns with NaN)
+        contract_aligned_df = features_df.reindex(columns=expected_features)
+        
+        # Apply dtype casting for consistency
+        contract_aligned_df = self._cast_feature_dtypes(contract_aligned_df)
+        
+        # Log successful alignment
+        if log_missing:
+            missing_count = contract_aligned_df.isnull().sum().sum()
+            logging.info(
+                f"✅ Aligned {len(contract_aligned_df.columns)} features to V4 contract "
+                f"({missing_count} NaN values introduced for missing features)"
+            )
+        
+        return contract_aligned_df
+
+    def _cast_feature_dtypes(self, df):
+        """Cast feature columns to appropriate dtypes for model consistency.
+        
+        Important: avoid pandas nullable integer dtypes (Int64) because they use
+        pandas.NA, which can cause issues when downstream scikit-learn transformers
+        materialize numpy arrays. We prefer float64 for all numeric features and
+        replace missing values for count-like fields with 0.0.
+        """
+        if pd is None or df.empty:
+            return df
+        
+        # Define expected dtypes for different feature categories
+        count_like_features = {
+            'box_number', 'field_size', 'venue_experience', 'grade_experience'
+        }
+        
+        float_features = {
+            'distance', 'weight', 'temperature', 'humidity', 'wind_speed',
+            'historical_avg_position', 'historical_best_position', 'historical_win_rate',
+            'historical_place_rate', 'historical_form_trend', 'historical_avg_time',
+            'historical_best_time', 'historical_time_consistency', 'target_distance',
+            'venue_specific_avg_position', 'venue_specific_win_rate', 'venue_best_position',
+            'grade_specific_avg_position', 'grade_specific_win_rate', 'days_since_last_race',
+            'race_frequency', 'best_distance_avg_position', 'best_distance_win_rate'
+        }
+        
+        bool_features = {'distance_adjusted_time'}
+        
+        # Apply dtype casting
+        for col in df.columns:
+            try:
+                if col in count_like_features:
+                    # Cast to float64 and fill missing with 0.0 to avoid pandas.NA
+                    df[col] = pd.to_numeric(df[col], errors='coerce').astype('float64').fillna(0.0)
+                elif col in float_features:
+                    df[col] = pd.to_numeric(df[col], errors='coerce').astype('float64')
+                elif col in bool_features:
+                    df[col] = df[col].astype('bool')
+                # String features (venue, grade, etc.) are left as-is
+            except Exception as e:
+                logging.debug(f"Could not cast dtype for column {col}: {e}")
+        
+        # Final safety: ensure no pandas.NA remain in numeric columns
+        try:
+            numeric_cols = df.select_dtypes(include=['number']).columns
+            if len(numeric_cols) > 0:
+                df[numeric_cols] = df[numeric_cols].astype('float64')
+        except Exception as e:
+            logging.debug(f"Numeric dtype normalization failed: {e}")
+        
+        return df
+
+    def validate_v4_features(self, features_df):
+        """Validate that features DataFrame is ready for V4 model prediction.
+        
+        Returns:
+            dict with validation results
+        """
+        if pd is None:
+            return {'valid': False, 'error': 'pandas not available'}
+        
+        try:
+            expected_features = self.load_v4_model_contract()
+        except FileNotFoundError:
+            return {'valid': False, 'error': 'V4 contract file not found'}
+        
+        current_columns = set(features_df.columns)
+        expected_columns = set(expected_features)
+        
+        missing_columns = expected_columns - current_columns
+        
+        if missing_columns:
+            return {
+                'valid': False,
+                'error': f'Missing required columns: {sorted(missing_columns)}',
+                'missing_columns': list(missing_columns),
+                'current_columns': list(current_columns)
+            }
+        
+        # Check for NaN values in critical features
+        critical_features = {
+            'box_number', 'weight', 'distance', 'venue', 'grade'
+        }
+        
+        nan_critical = []
+        for col in critical_features:
+            if col in features_df.columns and features_df[col].isnull().any():
+                nan_critical.append(col)
+        
+        return {
+            'valid': True,
+            'feature_count': len(features_df.columns),
+            'missing_columns': [],
+            'nan_critical_features': nan_critical,
+            'total_nan_values': features_df.isnull().sum().sum()
+        }
