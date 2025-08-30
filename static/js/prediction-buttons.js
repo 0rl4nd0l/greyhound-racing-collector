@@ -191,13 +191,13 @@ class PredictionButtonManager {
                     const raceNumber = button.dataset.raceNumber || '';
                     const raceUrl = button.dataset.raceUrl || '';
 
-                    if (raceUrl || (venue && raceNumber)) {
+                    if (raceUrl) {
                         this.setButtonLoading(button, 'Downloading...');
                         try {
-                            const dlResp = await fetch('/api/download_and_predict_race', {
+                            const dlResp = await fetch('/api/download_upcoming_race', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(raceUrl ? { race_url: raceUrl } : { venue, race_number: String(raceNumber).trim() })
+                                body: JSON.stringify({ race_url: raceUrl })
                             });
                             const dlData = await dlResp.json();
                             if (!dlResp.ok || !dlData || dlData.success !== true) {
@@ -543,12 +543,13 @@ class PredictionButtonManager {
             }
 
             container.style.display = 'block';
-            container.innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin"></i> Loading details...</div>';
+            container.innerHTML = '<div class=\"text-center\"><i class=\"fas fa-spinner fa-spin\"></i> Loading details...</div>';
 
             const data = await this._fetchPredictionDetail(raceName);
             if (data && data.success && data.prediction) {
                 const pred = data.prediction;
                 const raceCtx = pred.race_context || {};
+                const gptMeta = pred.gpt_rerank && pred.gpt_rerank.applied ? pred.gpt_rerank : null;
                 const enhanced = pred.enhanced_predictions || pred.predictions || [];
                 const items = Array.isArray(enhanced) ? enhanced.slice(0, 10) : [];
 
@@ -560,19 +561,37 @@ class PredictionButtonManager {
                       </div>
                     </div>`;
 
+                // GPT rerank summary if available
+                if (gptMeta) {
+                    const alphaTxt = (gptMeta.alpha !== undefined) ? `alpha=${gptMeta.alpha}` : '';
+                    const tokTxt = (gptMeta.tokens_used !== undefined) ? `tokens=${gptMeta.tokens_used}` : '';
+                    const metaLine = [alphaTxt, tokTxt].filter(Boolean).join(' • ');
+                    detailsHTML += `
+                        <div class=\"card mb-2 border-info\">
+                          <div class=\"card-body p-2\">
+                            <span class=\"badge bg-info\"><i class=\"fas fa-robot\"></i> GPT rerank applied</span>
+                            ${metaLine ? `<small class=\"text-muted ms-2\">${metaLine}</small>` : ''}
+                          </div>
+                        </div>`;
+                }
+
                 if (items.length) {
                     detailsHTML += '<div class="row">';
                     items.forEach((d, idx) => {
                         const name = d.dog_name || d.clean_name || 'Unknown';
                         const score = Number(d.final_score || d.prediction_score || d.confidence || 0);
                         const box = d.box_number || d.box || 'N/A';
+                        const gptScore = (d.gpt_score !== undefined && d.gpt_score !== null) ? Number(d.gpt_score) : null;
                         const extra = Array.isArray(d.key_factors) && d.key_factors.length ? `<div class=\"mt-1\"><small>${d.key_factors.slice(0,3).join(' • ')}</small></div>` : '';
+                        const probLine = gptScore !== null
+                            ? `<small>Box: ${box} | Win: ${(score*100).toFixed(1)}% | GPT: ${(gptScore*100).toFixed(1)}%</small>`
+                            : `<small>Box: ${box} | Confidence: ${(score*100).toFixed(1)}%</small>`;
                         detailsHTML += `
                           <div class="col-md-6 mb-2">
                             <div class="card card-sm">
                               <div class="card-body p-2">
-                                <h6 class="card-title mb-1">${idx + 1}. ${name}</h6>
-                                <p class="card-text mb-1"><small>Box: ${box} | Confidence: ${(score*100).toFixed(1)}%</small></p>
+                                <h6 class=\"card-title mb-1\">${idx + 1}. ${name}</h6>
+                                <p class=\"card-text mb-1\">${probLine}</p>
                                 ${extra}
                               </div>
                             </div>
@@ -635,7 +654,8 @@ class PredictionButtonManager {
                             const raceNum = ctx.race_number || '';
                             if (venue && date && raceNum) {
                                 const qs = new URLSearchParams({ venue: String(venue), date: String(date), race_number: String(raceNum) });
-                                const res = await fetchWithErrorHandling(`/api/races/results?${qs.toString()}`);
+                                const res = await fetch(`/api/races/results?${qs.toString()}`);
+                                if (!res.ok) { throw new Error(`HTTP ${res.status}`); }
                                 const data = await res.json();
                                 if (data && data.success && Array.isArray(data.results) && data.results.length) {
                                     const sortedPlacings = data.results.slice().sort((a,b) => Number(a.finish_position||a.position||99) - Number(b.finish_position||b.position||99));
@@ -706,8 +726,11 @@ class PredictionButtonManager {
                 const winProb = topPick.final_score || topPick.win_probability || topPick.confidence || 0;
                 const dogName = topPick.dog_name || topPick.name || 'Unknown';
                 const total = predictions.length;
+                // Surface GPT rerank meta when available
+                const gptMeta = (result && result.gpt_rerank) || (result && result.prediction && result.prediction.gpt_rerank) || null;
+                const gptBadge = (gptMeta && gptMeta.applied) ? `<span class=\"badge bg-info ms-2\" title=\"GPT rerank applied${gptMeta.alpha!==undefined?`, alpha=${gptMeta.alpha}`:''}${gptMeta.tokens_used!==undefined?`, tokens=${gptMeta.tokens_used}`:''}\">GPT Rerank</span>` : '';
                 return `
-                    <div class="alert ${result.degraded ? 'alert-warning' : 'alert-success'} mb-3">
+                    <div class=\"alert ${result.degraded ? 'alert-warning' : 'alert-success'} mb-3\">
                         <div class="d-flex justify-content-between align-items-start">
                             <div>
                                 <h6 class="alert-heading mb-1">
@@ -722,9 +745,10 @@ class PredictionButtonManager {
                                     ${total} dogs analyzed
                                     ${result.predictor_used ? ` | Predictor: ${result.predictor_used}` : ''}
                                     ${raceNameForApi ? ` | <a class="link-secondary" href="/api/prediction_detail/${encodeURIComponent(raceNameForApi)}" target="_blank" rel="noopener noreferrer"><i class="fas fa-file-code"></i> Raw JSON</a>` : ''}
+                                ${gptBadge}
                                 </small>
                             </div>
-                            <button class="btn btn-sm btn-outline-primary pred-details-btn" data-race="${raceNameForApi}" data-target="pb-details-${index}" data-expanded="false">
+                            <button class=\"btn btn-sm btn-outline-primary pred-details-btn\" data-race=\"${raceNameForApi}\" data-target=\"pb-details-${index}\" data-expanded=\"false\">
                                 <i class="fas fa-chevron-down"></i> Details
                             </button>
                         </div>
