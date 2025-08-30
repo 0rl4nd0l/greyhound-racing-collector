@@ -6,7 +6,7 @@ A comprehensive machine learning system for predicting greyhound race outcomes u
 
 For common commands and a high-level architecture overview, see WARP.md.
 
-See also: reports/prediction_system_analysis.md for the full ML System V4 prediction flow, math, environment toggles, EV example, and failure modes.
+See also: [V4 Prediction System Analysis](reports/prediction_system_analysis.md) — full prediction flow, formulas (normalization, confidence, EV), environment toggles, and failure modes.
 
 ## Key Features
 
