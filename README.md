@@ -6,6 +6,8 @@ A comprehensive machine learning system for predicting greyhound race outcomes u
 
 For common commands and a high-level architecture overview, see WARP.md.
 
+See also: reports/prediction_system_analysis.md for the full ML System V4 prediction flow, math, environment toggles, EV example, and failure modes.
+
 ## Key Features
 
 This pipeline provides end-to-end functionality for:
@@ -392,6 +394,8 @@ The advisory system is designed to integrate seamlessly with the prediction work
 ## API Documentation
 
 The application provides a comprehensive RESTful API for interacting with the prediction system and its data. Below are the key endpoints.
+
+Tip: To validate V4 feature contracts via the UI, see docs/CONTRACT_VALIDATION.md (UI-based validation).
 
 ### Upcoming Races CSVs (source of truth)
 - Folder path: `./upcoming_races`
