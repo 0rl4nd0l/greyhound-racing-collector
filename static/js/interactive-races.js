@@ -82,6 +82,39 @@ function showToast(message, type = 'info') {
     }, 5000);
 }
 
+// Ensure we can render prediction results even if the template forgot to include the container
+function ensurePredictionResultsElements() {
+    try {
+        let container = document.getElementById('prediction-results-container');
+        let body = document.getElementById('prediction-results-body');
+        if (!container || !body) {
+            const main = document.querySelector('main') || document.body;
+            const mountAfter = document.querySelector('#upcoming-races-table') || document.querySelector('table') || main.firstElementChild;
+            const wrapper = document.createElement('div');
+            wrapper.id = 'prediction-results-container';
+            wrapper.className = 'mt-3';
+            wrapper.innerHTML = `
+                <div class="card">
+                    <div class="card-header"><i class="fas fa-magic"></i> Prediction Results</div>
+                    <div class="card-body">
+                        <div id="prediction-results-body"></div>
+                    </div>
+                </div>`;
+            if (mountAfter && mountAfter.parentNode) {
+                mountAfter.parentNode.insertBefore(wrapper, mountAfter.nextSibling);
+            } else {
+                main.appendChild(wrapper);
+            }
+            container = wrapper;
+            body = wrapper.querySelector('#prediction-results-body');
+        }
+        return { container, body };
+    } catch (e) {
+        console.warn('Could not ensure prediction results container', e);
+        return { container: null, body: null };
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const state = {
         races: [],
@@ -413,7 +446,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td>${grade}</td>
                     <td><small>${ts || ''}</small></td>
                     <td>
-                        <button class="btn btn-sm btn-outline-primary predict-btn" data-race-filename="${filename}"${ridAttr}>
+                        <button class="btn btn-sm btn-outline-primary predict-btn" data-race-filename="${filename}"${ridAttr} title="Re-run prediction using local cached CSV (no download)">
                             <i class="fas fa-redo"></i> Re-Predict
                         </button>
                     </td>
@@ -466,15 +499,23 @@ document.addEventListener('DOMContentLoaded', () => {
             const hasLocalCsv = !!(race.filename && String(race.filename).trim());
             const venueAttr = `data-venue="${safeVenue(race.venue)}"`;
             const raceNumAttr = `data-race-number="${raceNum}"`;
-            const raceUrlAttr = `data-race-url="${String(race.url || '')}"`;
+            const raceUrlVal = String(race.url || '');
+            const raceUrlAttr = `data-race-url="${raceUrlVal}"`;
+            const downloadOnlyBtn = raceUrlVal
+                ? `<button class="btn btn-sm btn-outline-secondary ms-1 download-csv-btn" ${raceUrlAttr} title="Download CSV only (no prediction)"><i class="fas fa-file-download"></i> Download CSV</button>`
+                : '';
             const actionsHtml = hasLocalCsv
-                ? `<button class="btn btn-sm btn-primary predict-btn" data-race-id="${race.race_id}" ${raceFilenamAttr} ${venueAttr} ${raceNumAttr} ${raceUrlAttr}>Predict</button>`
-                : `<button class="btn btn-sm btn-warning download-predict-btn" 
-                        ${venueAttr} 
-                        ${raceNumAttr}
-                        ${raceUrlAttr}>
-                        <i class="fas fa-download"></i> Download + Predict
-                   </button>`;
+                ? `<button class="btn btn-sm btn-primary predict-btn" data-race-id="${race.race_id}" ${raceFilenamAttr} ${venueAttr} ${raceNumAttr} ${raceUrlAttr} title="Predict using local cached CSV (no download)">Predict only</button>`
+                : `<div class="d-inline-flex align-items-center">
+                        <button class="btn btn-sm btn-warning download-predict-btn" 
+                            ${venueAttr} 
+                            ${raceNumAttr}
+                            ${raceUrlAttr}
+                            title="Download fresh CSV and then run prediction">
+                            <i class="fas fa-download"></i> Download + Predict
+                        </button>
+                        ${downloadOnlyBtn}
+                   </div>`;
 
             row.innerHTML = `
                 <td><input type="checkbox" class="race-checkbox" data-race-id="${race.race_id}" ${raceFilenamAttr}></td>
@@ -842,11 +883,18 @@ document.addEventListener('DOMContentLoaded', () => {
                         total = data.total_found || total;
                         const fn = (r.filename || '').trim();
                         const rn = (r.race_name || '').trim();
-                        if (fn && predictedFilenameSet && predictedFilenameSet.has(fn)) {
-                            return; // skip predicted by filename
-                        }
-                        if (!fn && rn && predictedNameSet && predictedNameSet.has(rn)) {
-                            return; // optional skip by race name
+                        // Only skip predicted races if we actually have a non-empty predicted set from disk
+                        const hasPredicted = (
+                            (predictedFilenameSet && typeof predictedFilenameSet.size === 'number' && predictedFilenameSet.size > 0) ||
+                            (predictedNameSet && typeof predictedNameSet.size === 'number' && predictedNameSet.size > 0)
+                        );
+                        if (hasPredicted) {
+                            if (fn && predictedFilenameSet && predictedFilenameSet.has(fn)) {
+                                return; // skip predicted by filename
+                            }
+                            if (!fn && rn && predictedNameSet && predictedNameSet.has(rn)) {
+                                return; // optional skip by race name
+                            }
                         }
                         const key = fn || r.race_id || `${r.venue || ''}_${r.race_date || r.date || ''}_${r.race_number || ''}`;
                         r._mel_ts_sec = computeMelbourneTimestampSeconds(r);
@@ -1251,6 +1299,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Display prediction results with enhanced formatting
     function displayPredictionResults(results) {
+        try {
+            const ensured = ensurePredictionResultsElements();
+            if (ensured && ensured.container && ensured.body) {
+                elements.predictionResultsContainer = ensured.container;
+                elements.predictionResultsBody = ensured.body;
+                try { elements.predictionResultsContainer.style.display = 'block'; } catch {}
+            }
+        } catch (e) { /* non-fatal */ }
         if (!elements.predictionResultsBody) {
             console.error('predictionResultsBody element not found');
             return;
@@ -1357,6 +1413,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     const linkNameRaw = (result.race_filename || (raceFilenameFromNested || '')).replace(/\.csv$/i, '') || (result.race_id || '');
                     const encodedName = encodeURIComponent(String(linkNameRaw));
                     const apiHref = encodedName ? `/api/prediction_detail/${encodedName}` : '#';
+                    // GPT rerank badge (top-level or nested) for summary card
+                    const gptMeta = (result && result.gpt_rerank) || (result && result.prediction && result.prediction.gpt_rerank) || null;
+                    const gptBadge = (gptMeta && gptMeta.applied)
+                        ? `<span class=\"badge bg-info ms-2\" title=\"GPT rerank applied${gptMeta.alpha!==undefined?`, alpha=${gptMeta.alpha}`:''}${gptMeta.tokens_used!==undefined?`, tokens=${gptMeta.tokens_used}`:''}\"><i class=\"fas fa-robot\"></i> GPT Rerank</span>`
+                        : '';
                     
                     resultDiv.innerHTML = `
                         <div class="d-flex justify-content-between align-items-start">
@@ -1372,8 +1433,9 @@ document.addEventListener('DOMContentLoaded', () => {
                                     <i class="fas fa-info-circle"></i> 
                                     ${predictions.length} dogs analyzed
                                     ${result.predictor_used ? ` | Predictor: ${result.predictor_used}` : ''}
-                                    ${encodedName ? ` | <a class="link-secondary" href="${apiHref}" target="_blank" rel="noopener noreferrer"><i class="fas fa-file-code"></i> Raw JSON</a>` : ''}
-                                    | <a href="#" class="link-primary" onclick="return __ensureExpandAndRender(${index});"><i class="fas fa-eye"></i> View Details</a>
+                                    ${encodedName ? ` | <a class=\"link-secondary\" href=\"${apiHref}\" target=\"_blank\" rel=\"noopener noreferrer\"><i class=\"fas fa-file-code\"></i> Raw JSON</a>` : ''}
+                                    ${gptBadge ? ` ${gptBadge}` : ''}
+                                    | <a href=\"#\" class=\"link-primary\" onclick=\"return __ensureExpandAndRender(${index});\"><i class=\"fas fa-eye\"></i> View Details</a>
                                 </small>
                             </div>
                             <button class="btn btn-sm btn-outline-primary" 
@@ -1459,6 +1521,9 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.predictionResultsBody.appendChild(summaryDiv);
     }
     
+    // Test-only export hook: expose displayPredictionResults when explicitly enabled
+    try { if (window && window.ENABLE_UI_EXPORTS) { window.displayPredictionResults = displayPredictionResults; } } catch (e) {}
+    
     // Ensure details panel is expanded and rendered (safe public helper)
     window.__ensureExpandAndRender = async function(index) {
         try {
@@ -1519,6 +1584,23 @@ document.addEventListener('DOMContentLoaded', () => {
                             <a class="btn btn-sm btn-outline-secondary" href="${downloadJsonHref}" download="${downloadJsonName}"><i class="fas fa-download"></i> Download JSON</a>
                           </div>
                         </div>`;
+
+                    // GPT rerank summary (badge) if available
+                    try {
+                        const gptMeta = (pred && pred.gpt_rerank && pred.gpt_rerank.applied) ? pred.gpt_rerank : null;
+                        if (gptMeta) {
+                            const alphaTxt = (gptMeta.alpha !== undefined) ? `alpha=${gptMeta.alpha}` : '';
+                            const tokTxt = (gptMeta.tokens_used !== undefined) ? `tokens=${gptMeta.tokens_used}` : '';
+                            const metaLine = [alphaTxt, tokTxt].filter(Boolean).join(' • ');
+                            detailsHTML += `
+                              <div class=\"card mb-2 border-info\"> 
+                                <div class=\"card-body p-2\">
+                                  <span class=\"badge bg-info\"><i class=\"fas fa-robot\"></i> GPT rerank applied</span>
+                                  ${metaLine ? `<small class=\"text-muted ms-2\">${metaLine}</small>` : ''}
+                                </div>
+                              </div>`;
+                        }
+                    } catch (e) { /* non-fatal */ }
 
                     // Technical summary of prediction pipeline (enhanced visibility)
                     try {
@@ -1738,6 +1820,23 @@ document.addEventListener('DOMContentLoaded', () => {
                           </div>
                         </div>`;
 
+                    // GPT rerank summary (badge) if available
+                    try {
+                        const gptMeta = (pred && pred.gpt_rerank && pred.gpt_rerank.applied) ? pred.gpt_rerank : null;
+                        if (gptMeta) {
+                            const alphaTxt = (gptMeta.alpha !== undefined) ? `alpha=${gptMeta.alpha}` : '';
+                            const tokTxt = (gptMeta.tokens_used !== undefined) ? `tokens=${gptMeta.tokens_used}` : '';
+                            const metaLine = [alphaTxt, tokTxt].filter(Boolean).join(' • ');
+                            detailsHTML += `
+                              <div class=\"card mb-2 border-info\"> 
+                                <div class=\"card-body p-2\">
+                                  <span class=\"badge bg-info\"><i class=\"fas fa-robot\"></i> GPT rerank applied</span>
+                                  ${metaLine ? `<small class=\"text-muted ms-2\">${metaLine}</small>` : ''}
+                                </div>
+                              </div>`;
+                        }
+                    } catch (e) { /* non-fatal */ }
+
                     // Technical summary of prediction pipeline (enhanced visibility)
                     try {
                         const predictor = pred.predictor_used || pred.model_used || 'Unknown';
@@ -1901,48 +2000,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     } catch (e) { console.warn('results render failed', e); }
 
-                    // Optional advisory
-                    try {
-                                const ctx = pred.race_context || pred.race_info || {};
-                                const venue = ctx.venue || '';
-                                const date = ctx.race_date || ctx.date || '';
-                                const raceNum = ctx.race_number || '';
-                                if (venue && date && raceNum) {
-                                    const qs = new URLSearchParams({ venue: String(venue), date: String(date), race_number: String(raceNum) });
-                                    const res = await fetchWithErrorHandling(`/api/races/results?${qs.toString()}`);
-                                    const data = await res.json();
-                                    if (data && data.success && Array.isArray(data.results) && data.results.length) {
-                                        const sortedPlacings = data.results.slice().sort((a,b) => Number(a.finish_position||a.position||99) - Number(b.finish_position||b.position||99));
-                                        const winner = data.winner_name || (sortedPlacings[0] ? (sortedPlacings[0].dog_name || 'Unknown') : null);
-                                        const winnerOdds = data.winner_odds || null;
-                                        const winnerMargin = data.winner_margin || null;
-                                        const evalBlock = (pred.evaluation && (pred.evaluation.winner_predicted || pred.evaluation.top3_hit))
-                                            ? `<div class=\"mt-1\">${pred.evaluation.winner_predicted ? '<span class=\"badge bg-success me-1\"><i class=\"fas fa-check\"></i> Winner predicted</span>' : ''}${pred.evaluation.top3_hit ? '<span class=\"badge bg-info\">Top 3 hit</span>' : ''}</div>`
-                                            : '';
-                                        const listHTML = '<ol class="mb-0 ps-3">' + sortedPlacings.map((p) => {
-                                            const nm = p.dog_name || 'Unknown';
-                                            const bx = (p.box_number !== undefined && p.box_number !== null) ? ` (Box ${p.box_number})` : '';
-                                            const t = (p.individual_time ? ` — ${p.individual_time}s` : '');
-                                            const m = (p.margin ? `, ${p.margin}` : '');
-                                            return `<li><strong>${nm}</strong>${bx}${t}${m}</li>`;
-                                        }).join('') + '</ol>';
-                                        detailsHTML += `
-                                          <div class="card mt-2">
-                                            <div class="card-header p-2 d-flex justify-content-between align-items-center">
-                                              <div><i class="fas fa-flag-checkered"></i> Official Results</div>
-                                              ${evalBlock}
-                                            </div>
-                                            <div class="card-body p-2">
-                                              ${winner ? `<div class=\"mb-2\"><strong>Winner:</strong> ${winner}${winnerOdds ? ` (Odds: ${winnerOdds})` : ''}${winnerMargin ? `, Margin: ${winnerMargin}` : ''}</div>` : ''}
-                                              ${listHTML || '<div class=\"text-muted\">No placings available</div>'}
-                                            </div>
-                                          </div>`;
-                                        rendered = true;
-                                    }
-                                }
-                            } catch (err) { console.warn('fallback results fetch failed', err); }
-                        }
-                    } catch (e) { console.warn('results render failed', e); }
 
                     // Try to fetch advisory (compact summary + full card)
                     try {

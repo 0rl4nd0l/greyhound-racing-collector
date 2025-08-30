@@ -16,6 +16,7 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional
 from pathlib import Path
 import pandas as pd
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -84,17 +85,31 @@ class EnhancedPredictionService:
                 # Add additional quality metrics
                 if 'predictions' in result:
                     predictions = result['predictions']
+
+                    # Optionally apply GPT rerank (light blend) behind feature flag
+                    try:
+                        if str(os.getenv('USE_GPT_RERANK', '1')).lower() in ('1','true','yes'):
+                            alpha_env = os.getenv('GPT_RERANK_ALPHA', '0.2')
+                            try:
+                                alpha = float(alpha_env)
+                            except Exception:
+                                alpha = 0.2
+                            alpha = max(0.0, min(0.5, alpha))
+                            result = self._gpt_rerank_blend(result, alpha)
+                    except Exception:
+                        # Never fail predictions due to reranker issues
+                        pass
                     
                     # Calculate prediction quality metrics
-                    quality_metrics = self._calculate_prediction_quality(predictions)
+                    quality_metrics = self._calculate_prediction_quality(result.get('predictions') or predictions)
                     result['quality_metrics'] = quality_metrics
                     
                     # Validate uniqueness (already done in ML System V4 if accuracy optimizer available)
-                    uniqueness_score = self._validate_prediction_uniqueness(predictions, race_id)
+                    uniqueness_score = self._validate_prediction_uniqueness(result.get('predictions') or predictions, race_id)
                     result['uniqueness_score'] = uniqueness_score
                     
                     # Add prediction recommendations
-                    recommendations = self._generate_prediction_recommendations(predictions, quality_metrics)
+                    recommendations = self._generate_prediction_recommendations(result.get('predictions') or predictions, quality_metrics)
                     result['recommendations'] = recommendations
                 
                 logger.info(f"✅ Enhanced predictions generated for {race_id}")
@@ -144,16 +159,30 @@ class EnhancedPredictionService:
                         result['prediction_methods_used'] = ['ml_system']
                     result.setdefault('analysis_version', 'ML System V4')
                     
+                    # Optionally apply GPT rerank (light blend) behind feature flag
+                    try:
+                        if str(os.getenv('USE_GPT_RERANK', '1')).lower() in ('1','true','yes'):
+                            alpha_env = os.getenv('GPT_RERANK_ALPHA', '0.2')
+                            try:
+                                alpha = float(alpha_env)
+                            except Exception:
+                                alpha = 0.2
+                            alpha = max(0.0, min(0.5, alpha))
+                            result = self._gpt_rerank_blend(result, alpha)
+                    except Exception:
+                        # Never fail predictions due to reranker issues
+                        pass
+                    
                     # Calculate quality metrics
-                    quality_metrics = self._calculate_prediction_quality(predictions)
+                    quality_metrics = self._calculate_prediction_quality(result.get('predictions') or predictions)
                     result['quality_metrics'] = quality_metrics
                     
                     # Validate uniqueness
-                    uniqueness_score = self._validate_prediction_uniqueness(predictions, race_id)
+                    uniqueness_score = self._validate_prediction_uniqueness(result.get('predictions') or predictions, race_id)
                     result['uniqueness_score'] = uniqueness_score
                     
                     # Generate recommendations
-                    recommendations = self._generate_prediction_recommendations(predictions, quality_metrics)
+                    recommendations = self._generate_prediction_recommendations(result.get('predictions') or predictions, quality_metrics)
                     result['recommendations'] = recommendations
             
             return result
@@ -173,6 +202,110 @@ class EnhancedPredictionService:
                 'race_file': race_file_path
             }
     
+    def _gpt_rerank_blend(self, prediction_result: Dict[str, Any], alpha: float = 0.2) -> Dict[str, Any]:
+        """Blend GPT reranker scores into model predictions conservatively.
+        alpha is the GPT weight (0..0.5). Returns an updated prediction_result.
+        """
+        try:
+            preds = prediction_result.get('predictions') or prediction_result.get('enhanced_predictions') or []
+            if not isinstance(preds, list) or not preds:
+                return prediction_result
+            # Prepare compact payload
+            race_info = prediction_result.get('race_info') or (prediction_result.get('summary') or {}).get('race_info') or {}
+            def _base_prob(p: Dict[str, Any]) -> float:
+                v = p.get('win_prob') or p.get('normalized_win_probability') or p.get('win_probability') or p.get('final_score') or p.get('prediction_score') or p.get('confidence') or 0.0
+                try:
+                    x = float(v)
+                except Exception:
+                    x = 0.0
+                if x > 1.5:
+                    x = x / 100.0
+                return max(0.0, x)
+            runners = []
+            for p in preds:
+                try:
+                    runners.append({
+                        'dog_name': p.get('dog_name') or p.get('clean_name') or p.get('name'),
+                        'box_number': p.get('box_number') or p.get('box'),
+                        'win_prob': _base_prob(p),
+                        'csv_win_rate': float(p.get('csv_win_rate') or 0.0),
+                        'csv_place_rate': float(p.get('csv_place_rate') or 0.0),
+                        'avg_finish_position': float(p.get('csv_avg_finish_position') or 10.0),
+                    })
+                except Exception:
+                    continue
+            if not runners:
+                return prediction_result
+            # Call GPT reranker
+            try:
+                from services.gpt_service import GPTService
+                gpt = GPTService()
+                resp = gpt.enhance_predictions({'race_info': race_info, 'runners': runners})
+            except Exception:
+                resp = {'scores': []}
+            scores = resp.get('scores') or []
+            if not isinstance(scores, list) or not scores:
+                return prediction_result
+            score_map = {}
+            for s in scores:
+                try:
+                    nm = (s.get('dog_name') or '').strip().upper()
+                    sc = float(s.get('gpt_score') or 0.0)
+                except Exception:
+                    continue
+                if not nm:
+                    continue
+                if sc < 0:
+                    sc = 0.0
+                if sc > 1:
+                    sc = sc / 100.0 if sc > 1.5 else 1.0
+                score_map[nm] = sc
+            if not score_map:
+                return prediction_result
+            mean_g = sum(score_map.values()) / max(1, len(score_map))
+            # Blend and renormalize
+            blended = []
+            for p in preds:
+                name = (p.get('dog_name') or p.get('clean_name') or p.get('name') or '').strip().upper()
+                base = _base_prob(p)
+                g = score_map.get(name, mean_g)
+                new_score = max(0.0, (1.0 - alpha) * base + alpha * g)
+                p['gpt_score'] = g
+                p['final_score'] = new_score
+                blended.append(p)
+            total = sum(x.get('final_score', 0.0) for x in blended)
+            if total <= 0:
+                eq = 1.0 / len(blended)
+                for p in blended:
+                    p['win_prob'] = eq
+            else:
+                for p in blended:
+                    p['win_prob'] = float(p.get('final_score', 0.0)) / total
+            for p in blended:
+                # Ensure commonly used keys exist for downstream consumers
+                p.setdefault('win_prob_norm', p.get('win_prob', 0.0))
+                p.setdefault('place_prob', min(1.0, p.get('win_prob', 0.0) * 1.6))
+            prediction_result['predictions'] = blended
+            meta = prediction_result.setdefault('gpt_rerank', {})
+            meta.update({'alpha': float(alpha), 'applied': True, 'timestamp': datetime.now().isoformat()})
+            # Carry through token usage from GPT call if available
+            try:
+                tok = (resp.get('_meta') or {}).get('tokens_used')
+                if tok is not None:
+                    meta['tokens_used'] = int(tok)
+            except Exception:
+                pass
+            # Mark method used for UI transparency
+            try:
+                methods = prediction_result.setdefault('prediction_methods_used', [])
+                if isinstance(methods, list) and 'gpt_rerank' not in methods:
+                    methods.append('gpt_rerank')
+            except Exception:
+                pass
+            return prediction_result
+        except Exception:
+            return prediction_result
+
     def _calculate_prediction_quality(self, predictions: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Calculate comprehensive quality metrics for predictions."""
         
