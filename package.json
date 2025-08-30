@@ -14,10 +14,12 @@
     "cypress:run:chrome": "cypress run --browser chrome",
     "test:e2e": "cypress run",
     "test:e2e:headless": "cypress run --headless",
+    "test:e2e:endpoints-menu": "cypress run --spec cypress/e2e/endpoints-menu.cy.js",
     "test:playwright": "playwright test",
     "test:playwright:ui": "playwright test --ui",
     "test:playwright:headed": "playwright test --headed",
     "test:playwright:debug": "playwright test --debug",
+    "test:playwright:local": "playwright test --config=playwright.local-no-server.config.js",
     "test:responsive": "playwright test tests/playwright/responsive-components.spec.js",
     "test:responsive:mobile": "playwright test tests/playwright/responsive-components.spec.js --project=chromium-mobile",
     "test:responsive:tablet": "playwright test tests/playwright/responsive-components.spec.js --project=chromium-tablet",
@@ -36,8 +38,13 @@
     "watch:css": "postcss static/css/main.css -o static/dist/css/bundle.css --use autoprefixer --watch",
     "watch:js": "terser static/js/main.js -o static/dist/js/bundle.js --compress --mangle --watch",
     "watch:assets": "npm run watch:css & npm run watch:js",
+    "dev:ui": "vite --config static/vite.config.mjs",
+    "build:ui": "vite build --config static/vite.config.mjs",
     "lint": "eslint static/js/**/*.js tests/**/*.js",
-    "format": "prettier --write static/js/**/*.js tests/**/*.js"
+    "format": "prettier --write static/js/**/*.js tests/**/*.js",
+    "e2e:train": "playwright test tests/e2e/ml-training/train-model.spec.ts",
+    "e2e:predict-v4": "playwright test tests/e2e/ml-training/predict-v4-model-version.spec.ts",
+    "e2e:all": "playwright test"
   },
   "dependencies": {
     "jspdf": "^3.0.1",
@@ -73,7 +80,8 @@
     "prettier": "^3.0.0",
     "terser": "^5.20.0",
     "webpack": "^5.101.0",
-    "webpack-cli": "^6.0.1"
+    "webpack-cli": "^6.0.1",
+    "vite": "^5.4.0"
   },
   "jest": {
     "testEnvironment": "jsdom",

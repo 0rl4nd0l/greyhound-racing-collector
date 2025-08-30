@@ -8,7 +8,11 @@ import re
 import csv
 from datetime import datetime
 from typing import Dict, Any, Optional, Union
-import pandas as pd
+# Optional heavy dependency - make pandas optional in constrained test envs
+try:
+    import pandas as pd  # noqa: F401
+except Exception:  # pragma: no cover
+    pd = None
 
 
 def parse_race_csv_meta(file_path: str) -> Dict[str, Any]:
@@ -246,6 +250,8 @@ def _extract_from_csv_data(file_path: str) -> Optional[Dict[str, Any]]:
     
     try:
         # Try pandas first for robust CSV handling
+        if pd is None:
+            raise ImportError("pandas not available")
         df = pd.read_csv(file_path, nrows=50)  # Only read first 50 rows for efficiency
         
         # Clean up the dataframe - remove rows where all values are empty quotes

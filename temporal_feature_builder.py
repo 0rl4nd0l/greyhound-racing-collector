@@ -23,11 +23,22 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# Import TGR integration if available
+try:
+    from tgr_prediction_integration import TGRPredictionIntegrator
+except ImportError:
+    TGRPredictionIntegrator = None
+
 class TemporalFeatureBuilder:
     """Builds features with strict temporal separation to prevent data leakage."""
     
     def __init__(self, db_path: str = "greyhound_racing_data.db"):
         self.db_path = db_path
+        # Lookback days can be overridden via env var
+        try:
+            self.default_lookback_days = int(os.getenv('GREYHOUND_LOOKBACK_DAYS', '365'))
+        except Exception:
+            self.default_lookback_days = 365
         
         # Define feature categories for temporal separation
         self.pre_race_features = {
@@ -52,6 +63,61 @@ class TemporalFeatureBuilder:
         self.cache_dir.mkdir(exist_ok=True)
         self.enable_caching = True
         
+        # Initialize TGR integration if available and permitted by import mode
+        self.tgr_integrator = None
+        self._tgr_all_feature_names = []
+        try:
+            mode = os.getenv('PREDICTION_IMPORT_MODE', 'prediction_only')
+            enable_results_scrapers = os.getenv('ENABLE_RESULTS_SCRAPERS', '0') not in ('0', 'false', 'False')
+            tgr_flag = os.getenv('TGR_ENABLED', '0') not in ('0', 'false', 'False')
+            allow_tgr = tgr_flag or ((mode != 'prediction_only') and enable_results_scrapers)
+            use_scraper = (mode != 'prediction_only') and enable_results_scrapers
+        except Exception:
+            mode = 'prediction_only'
+            tgr_flag = False
+            allow_tgr = False
+            use_scraper = False
+        if TGRPredictionIntegrator and allow_tgr:
+            try:
+                # Enable DB-only TGR during prediction; allow scraper only in non-prediction mode
+                self.tgr_integrator = TGRPredictionIntegrator(
+                    db_path=self.db_path,
+                    enable_tgr_lookup=True,
+                    use_scraper=use_scraper
+                )
+                reason = "TGR_ENABLED=1" if tgr_flag else f"mode={mode}, ENABLE_RESULTS_SCRAPERS={enable_results_scrapers}"
+                if use_scraper:
+                    logger.info(f"✅ TGR integration initialized (scraper enabled) via {reason}")
+                else:
+                    logger.info(f"✅ TGR integration initialized in DB-only mode via {reason}")
+                # Cache full TGR feature name set for consistent inclusion
+                try:
+                    self._tgr_all_feature_names = list(self.tgr_integrator.get_feature_names())
+                except Exception:
+                    self._tgr_all_feature_names = []
+            except Exception as e:
+                logger.warning(f"Could not initialize TGR integration: {e}")
+                self.tgr_integrator = None
+        else:
+            logger.info("ℹ️ TGR integration disabled (set TGR_ENABLED=1 to override)")
+        
+        # Runtime toggle for including TGR features (default depends on integrator availability)
+        try:
+            self._tgr_runtime_enabled = bool(self.tgr_integrator)
+        except Exception:
+            self._tgr_runtime_enabled = False
+        
+    def set_tgr_enabled(self, enabled: bool) -> None:
+        """Enable/disable inclusion of TGR features at runtime without reinitializing.
+        This does not start scraping; it only toggles use of DB-derived TGR features when available.
+        """
+        try:
+            self._tgr_runtime_enabled = bool(enabled)
+            status = "enabled" if self._tgr_runtime_enabled else "disabled"
+            logger.info(f"TGR feature inclusion runtime toggle {status}")
+        except Exception as e:
+            logger.debug(f"Failed to set TGR runtime toggle: {e}")
+        
     def get_race_timestamp(self, race_row: pd.Series) -> datetime:
         """Get race timestamp, preferring race_time over race_date."""
         try:
@@ -71,10 +137,14 @@ class TemporalFeatureBuilder:
             return pd.to_datetime(race_row['race_date'])
     
     def load_dog_historical_data(self, dog_name: str, target_timestamp: datetime, 
-                                lookback_days: int = 180) -> pd.DataFrame:
+                                lookback_days: int = None) -> pd.DataFrame:
         """Load historical race data for a dog, excluding target race."""
         try:
+            if lookback_days is None:
+                lookback_days = self.default_lookback_days
             conn = sqlite3.connect(self.db_path)
+
+            cutoff_date = (target_timestamp - timedelta(days=lookback_days)).strftime('%Y-%m-%d')
             
             query = """
             SELECT 
@@ -87,18 +157,62 @@ class TemporalFeatureBuilder:
             LEFT JOIN race_metadata r ON d.race_id = r.race_id
             LEFT JOIN enhanced_expert_data e ON d.race_id = e.race_id 
                 AND d.dog_clean_name = e.dog_clean_name
-            WHERE d.dog_clean_name = ?
-                AND r.race_date IS NOT NULL
-                AND d.finish_position IS NOT NULL
-                AND date(r.race_date) >= date(?, '-180 days')
-            ORDER BY r.race_date DESC, r.race_time DESC
-            LIMIT 50
-            """
+                    WHERE d.dog_clean_name = ?
+                        AND r.race_date IS NOT NULL
+                        AND d.finish_position IS NOT NULL
+                        AND date(r.race_date) >= date(?)
+                    ORDER BY r.race_date DESC, r.race_time DESC
+                    LIMIT 100
+                    """
             
-            historical_data = pd.read_sql_query(query, conn, params=[dog_name, target_timestamp.strftime('%Y-%m-%d')])
+            historical_data = pd.read_sql_query(query, conn, params=[dog_name, cutoff_date])
+            raw_count = len(historical_data)
             conn.close()
+
+            logger.debug(
+                f"DB query @ {self.db_path} for dog='{dog_name}' as of {target_timestamp.date()}: raw_rows={raw_count}"
+            )
+            
+            # Fallback: retry with sanitized name if no rows
+            if historical_data.empty:
+                try:
+                    sanitized = (
+                        str(dog_name)
+                        .replace('"','')
+                        .replace("'", '')
+                        .replace('`','')
+                        .replace('’','')
+                        .strip()
+                        .upper()
+                    )
+                    query_fallback = """
+                    SELECT 
+                        d.*,
+                        r.venue, r.grade, r.distance, r.track_condition, r.weather,
+                        r.temperature, r.humidity, r.wind_speed, r.field_size,
+                        r.race_date, r.race_time, r.winner_name, r.winner_odds, r.winner_margin,
+                        e.pir_rating, e.first_sectional, e.win_time, e.bonus_time
+                    FROM dog_race_data d
+                    LEFT JOIN race_metadata r ON d.race_id = r.race_id
+                    LEFT JOIN enhanced_expert_data e ON d.race_id = e.race_id 
+                        AND d.dog_clean_name = e.dog_clean_name
+                    WHERE REPLACE(REPLACE(REPLACE(REPLACE(d.dog_clean_name,'"',''),"'",''),'`',''),'’','') = ?
+                        AND r.race_date IS NOT NULL
+                        AND d.finish_position IS NOT NULL
+                        AND date(r.race_date) >= date(?)
+                    ORDER BY r.race_date DESC, r.race_time DESC
+                    LIMIT 100
+                    """
+                    historical_data = pd.read_sql_query(query_fallback, conn, params=[sanitized, cutoff_date])
+                    raw_count = len(historical_data)
+                    logger.debug(
+                        f"Fallback DB query for sanitized dog='{sanitized}': raw_rows={raw_count}"
+                    )
+                except Exception as _e:
+                    logger.debug(f"Fallback query failed: {_e}")
             
             if historical_data.empty:
+                logger.info(f"No historical rows found in DB for dog='{dog_name}'")
                 return pd.DataFrame()
             
             # Filter to only races before target timestamp
@@ -116,7 +230,16 @@ class TemporalFeatureBuilder:
             # Sort by timestamp (most recent first)
             historical_data = historical_data.sort_values('race_timestamp', ascending=False)
             
-            logger.debug(f"Loaded {len(historical_data)} historical races for {dog_name}")
+            filt_count = len(historical_data)
+            if filt_count == 0:
+                logger.info(
+                    f"Historical rows filtered to zero for dog='{dog_name}' (cutoff {cutoff_date.date()} -> {target_timestamp.date()})"
+                )
+            else:
+                logger.debug(
+                    f"Historical rows after time filter for dog='{dog_name}': {filt_count} (of raw {raw_count})"
+                )
+            
             return historical_data
         
         except Exception as e:
@@ -355,7 +478,10 @@ class TemporalFeatureBuilder:
             'days_since_last_race': 30.0,
             'race_frequency': 2.0,
             'best_distance_avg_position': 4.5,
-            'best_distance_win_rate': 0.125
+            'best_distance_win_rate': 0.125,
+            # V4 contract fields that must exist even without historical times
+            'distance_adjusted_time': False,
+            'target_distance': 0.0,
         }
     
     def build_features_for_race(self, race_data: pd.DataFrame, target_race_id: str) -> pd.DataFrame:
@@ -385,12 +511,45 @@ class TemporalFeatureBuilder:
                         f"found in target race features for {dog_row['dog_clean_name']} "
                         f"in race {target_race_id}"
                     )
+
+            # Prefer CSV-embedded historical metrics if present on the incoming race row
+            csv_features = {}
+            try:
+                csv_races = pd.to_numeric(dog_row.get('csv_historical_races'), errors='coerce')
+                if pd.notna(csv_races) and int(csv_races) > 0:
+                    if pd.notna(dog_row.get('csv_avg_finish_position')):
+                        csv_features['historical_avg_position'] = float(dog_row.get('csv_avg_finish_position'))
+                    if pd.notna(dog_row.get('csv_best_finish_position')):
+                        csv_features['historical_best_position'] = float(dog_row.get('csv_best_finish_position'))
+                    if pd.notna(dog_row.get('csv_win_rate')):
+                        csv_features['historical_win_rate'] = float(dog_row.get('csv_win_rate'))
+                    if pd.notna(dog_row.get('csv_place_rate')):
+                        csv_features['historical_place_rate'] = float(dog_row.get('csv_place_rate'))
+                    if pd.notna(dog_row.get('csv_avg_time')):
+                        csv_features['historical_avg_time'] = float(dog_row.get('csv_avg_time'))
+                    if pd.notna(dog_row.get('csv_best_time')):
+                        # Best time may be string like "30.12"; coerce to float if possible
+                        try:
+                            csv_features['historical_best_time'] = float(dog_row.get('csv_best_time'))
+                        except Exception:
+                            pass
+            except Exception:
+                # Soft-fail CSV enrichment
+                csv_features = {}
             
-            # Load historical data and create historical features
+            # Load historical data from DB (supplementary to CSV)
             historical_data = self.load_dog_historical_data(
                 dog_row['dog_clean_name'], 
                 target_timestamp
             )
+
+            # Temporary debug: per-dog historical rows
+            try:
+                logger.debug(
+                    f"Dog '{dog_row['dog_clean_name']}' -> hist_rows={len(historical_data)} venue={dog_row.get('venue')} grade={dog_row.get('grade')} dist={dog_row.get('distance')}"
+                )
+            except Exception:
+                pass
             
             historical_features = self.create_historical_features(
                 historical_data,
@@ -399,7 +558,45 @@ class TemporalFeatureBuilder:
                 target_distance=pd.to_numeric(dog_row.get('distance'), errors='coerce')
             )
             
+            # Combine features: CSV-derived values take precedence over DB-derived ones when present
             features.update(historical_features)
+            if csv_features:
+                features.update({k: v for k, v in csv_features.items() if v is not None})
+            
+            # Add TGR features if TGR integration is available and runtime toggle is enabled
+            if self.tgr_integrator and getattr(self, '_tgr_runtime_enabled', False):
+                try:
+                    tgr_features = self.tgr_integrator._get_tgr_historical_features(
+                        dog_row['dog_clean_name'], 
+                        target_timestamp
+                    )
+                    # Ensure all expected TGR fields are present with defaults
+                    try:
+                        expected_tgr = self._tgr_all_feature_names or self.tgr_integrator.get_feature_names()
+                        defaults = self.tgr_integrator._get_default_tgr_features()
+                    except Exception:
+                        expected_tgr, defaults = [], {}
+                    if expected_tgr:
+                        for col in expected_tgr:
+                            if col not in tgr_features:
+                                # Fill from defaults (if provided) else 0.0
+                                tgr_features[col] = defaults.get(col, 0.0)
+                    # Cast numeric-like values to float where appropriate
+                    for k, v in list(tgr_features.items()):
+                        if isinstance(v, (int, float)):
+                            tgr_features[k] = float(v)
+                    features.update(tgr_features)
+                    logger.debug(f"Added {len(tgr_features)} TGR features for {dog_row['dog_clean_name']}")
+                except Exception as e:
+                    logger.warning(f"Failed to get TGR features for {dog_row['dog_clean_name']}: {e}")
+                    # Best-effort: ensure expected TGR fields exist with defaults if integrator present
+                    try:
+                        defaults = self.tgr_integrator._get_default_tgr_features()
+                        for col, val in defaults.items():
+                            if col not in features:
+                                features[col] = val
+                    except Exception:
+                        pass
             
             # Add metadata
             features['race_id'] = target_race_id

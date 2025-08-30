@@ -21,6 +21,11 @@ class Config:
     # Database settings
     DATABASE_PATH = os.environ.get('DATABASE_PATH') or 'greyhound_racing_data.db'
 
+    # Feature flags and modes (defaults aligned with live UI usage; CI/tests override via env)
+    ENABLE_RESULTS_SCRAPERS = str(os.environ.get('ENABLE_RESULTS_SCRAPERS', '1')).lower() not in ('0', 'false', 'no', 'off')
+    ENABLE_LIVE_SCRAPING = str(os.environ.get('ENABLE_LIVE_SCRAPING', '1')).lower() not in ('0', 'false', 'no', 'off')
+    PREDICTION_IMPORT_MODE = os.environ.get('PREDICTION_IMPORT_MODE', 'historical')
+
     # Directory paths
     BASE_DIR = Path(__file__).resolve().parents[1]
     UNPROCESSED_DIR = str(BASE_DIR / 'unprocessed')
@@ -44,6 +49,9 @@ class Config:
     ]
     COMPRESS_LEVEL = 6  # Default compression level
     COMPRESS_MIN_SIZE = 500  # Don't compress responses smaller than 500 bytes
+    # Prefer gzip across all environments; disable Brotli by default for test compatibility
+    COMPRESS_ALGORITHM = 'gzip'
+    COMPRESS_BR = False
 
 
 class DevelopmentConfig(Config):

@@ -66,6 +66,10 @@ jobs:
         pip install -r requirements.txt
         pip install -r requirements-test.txt
 
+    - name: Validate ML environment versions
+      run: |
+        python scripts/validate_env.py
+
     - name: Validate upcoming_races CSVs
       run: |
         echo "🔎 Validating upcoming_races CSVs..."

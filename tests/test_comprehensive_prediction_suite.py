@@ -13,6 +13,8 @@ This test suite includes:
 import unittest
 import logging
 import sqlite3
+import json
+from sklearn.metrics import roc_auc_score
 from ml_system_v4 import MLSystemV4
 
 # Setup logging

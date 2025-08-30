@@ -12,7 +12,9 @@ from flask_assets import Bundle, Environment
 from flask_compress import Compress
 
 def init_assets(app):
-    """Initialize asset management and compression for the Flask app."""
+    """Initialize asset management and compression for the Flask app.
+    Falls back gracefully when optional minification filters are unavailable.
+    """
     
     # Initialize Flask-Assets
     assets = Environment(app)
@@ -33,6 +35,29 @@ def init_assets(app):
     os.makedirs(os.path.join(app.static_folder, 'dist', 'css'), exist_ok=True)
     os.makedirs(os.path.join(app.static_folder, 'dist', 'js'), exist_ok=True)
     
+    # Helper: check if a filter is available (import succeeds) and not explicitly disabled
+    def _filter_available(name: str) -> bool:
+        if str(os.environ.get('DISABLE_ASSET_MINIFY', '0')).lower() in ('1', 'true', 'yes'):
+            return False
+        try:
+            if name == 'jsmin':
+                import jsmin  # type: ignore
+            elif name == 'cssmin':
+                import cssmin  # type: ignore
+            elif name == 'autoprefixer':
+                # webassets' autoprefixer filter shells out to the Node tool; just assume optional
+                # Skip import-time validation to avoid hard dependency
+                return False  # prefer to skip silently unless explicitly enabled later
+            else:
+                return False
+            return True
+        except Exception:
+            return False
+    
+    def _filters_csv(names):
+        available = [n for n in names if _filter_available(n)]
+        return ','.join(available) if available else None
+    
     # CSS Bundle - concatenate all CSS files
     css_bundle = Bundle(
         'css/variables.css',
@@ -41,7 +66,7 @@ def init_assets(app):
         'css/utilities.css',
         'css/ml-dashboard.css',
         'css/interactive-races.css',
-        filters='cssmin,autoprefixer',
+        filters=_filters_csv(['cssmin']),
         output='dist/css/bundle-%(version)s.css'
     )
     
@@ -51,7 +76,7 @@ def init_assets(app):
         'js/sidebar.js',
         'js/loading-utils.js',
         'js/prediction-buttons.js',
-        filters='jsmin',
+        filters=_filters_csv(['jsmin']),
         output='dist/js/bundle-%(version)s.js'
     )
     
@@ -60,7 +85,7 @@ def init_assets(app):
         'js/ml-dashboard.js',
         'js/model-registry.js',
         'js/monitoring.js',
-        filters='jsmin',
+        filters=_filters_csv(['jsmin']),
         output='dist/js/dashboard-%(version)s.js'
     )
     
@@ -69,7 +94,7 @@ def init_assets(app):
         'js/interactive-races.js',
         'js/dogs_analysis.js',
         'js/predictions_v2.js',
-        filters='jsmin',
+        filters=_filters_csv(['jsmin']),
         output='dist/js/interactive-%(version)s.js'
     )
     
@@ -77,7 +102,7 @@ def init_assets(app):
     utils_js_bundle = Bundle(
         'js/advisoryUtils.js',
         'js/null-safe-sorting-example.js',
-        filters='jsmin',
+        filters=_filters_csv(['jsmin']),
         output='dist/js/utils-%(version)s.js'
     )
     
@@ -202,13 +227,21 @@ class AssetManager:
         return f"/static/{filename}"
     
     def css_bundle_url(self):
-        """Get the URL for the CSS bundle."""
-        if self.assets and 'css_bundle' in self.assets:
-            return self.assets['css_bundle'].urls()[0]
-        return "/static/dist/css/bundle.css"
+        """Get the URL for the CSS bundle, with safe fallback when building fails."""
+        try:
+            if self.assets and 'css_bundle' in self.assets:
+                return self.assets['css_bundle'].urls()[0]
+        except Exception:
+            # Fall back to unbundled stylesheet
+            return "/static/css/main.css"
+        return "/static/css/main.css"
     
     def js_bundle_url(self):
-        """Get the URL for the JS bundle."""
-        if self.assets and 'js_bundle' in self.assets:
-            return self.assets['js_bundle'].urls()[0]
-        return "/static/dist/js/bundle.js"
+        """Get the URL for the JS bundle, with safe fallback when building fails."""
+        try:
+            if self.assets and 'js_bundle' in self.assets:
+                return self.assets['js_bundle'].urls()[0]
+        except Exception:
+            # Fall back to unbundled script
+            return "/static/js/main.js"
+        return "/static/js/main.js"

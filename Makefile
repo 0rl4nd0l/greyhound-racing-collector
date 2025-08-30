@@ -1,21 +1,72 @@
 # Makefile for the Greyhound Racing Collector project
+# Updated for unified environment structure
 
-.PHONY: test e2e perf security schema-tests schema-baseline schema-monitor
+.PHONY: help init deps lock test lint format e2e perf security schema-tests schema-baseline schema-monitor contract-validate contract-validate-api install-hooks clean
 
-# Install and update dependencies
-install:
-	pip install --upgrade pip
-	pip install -r requirements.txt
-	pip install -r requirements-test.txt
+VENV := .venv
+PYTHON := $(VENV)/bin/python
+PIP := $(VENV)/bin/pip
+PYTEST := $(VENV)/bin/pytest
+REQUIREMENTS_DIR := requirements
+
+help:
+	@echo "Available targets:"
+	@echo "  init                 - Create virtual environment and install dependencies"
+	@echo "  deps                 - Reinstall dependencies from lock file"
+	@echo "  lock                 - Recompile requirements lock file from .in files"
+	@echo "  install              - Legacy target (use 'deps' instead)"
+	@echo "  test                 - Run test suite"
+	@echo "  lint                 - Run linting checks"
+	@echo "  format               - Format code with black and isort"
+	@echo "  security             - Run security scans"
+	@echo "  e2e                  - Run end-to-end tests"
+	@echo "  perf                 - Run performance tests"
+	@echo "  schema-*             - Schema monitoring commands"
+	@echo "  contract-validate    - Validate feature contract (python mode, strict)"
+	@echo "  contract-validate-api- Validate feature contract via API at CONTRACT_API_URL (strict)"
+	@echo "  install-hooks        - Install git hooks (pre-push contract validation)"
+	@echo "  clean                - Remove virtual environment"
+
+$(VENV)/bin/python:
+	python3.11 -m venv $(VENV)
+
+init: $(VENV)/bin/python
+	$(PIP) install --upgrade pip setuptools wheel
+	$(PIP) install -r $(REQUIREMENTS_DIR)/requirements.lock
+	$(VENV)/bin/playwright install
+
+# Install and update dependencies (legacy compatibility)
+install: deps
+
+deps:
+	$(PIP) install -r $(REQUIREMENTS_DIR)/requirements.lock
+
+lock:
+	cd $(REQUIREMENTS_DIR) && $(PIP) install pip-tools
+	cd $(REQUIREMENTS_DIR) && pip-compile --resolver=backtracking --strip-extras -q -o requirements.lock -c constraints-unified.txt all.in
+
+# Linting and formatting
+lint:
+	$(VENV)/bin/black --check --diff .
+	$(VENV)/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+	$(VENV)/bin/isort --check-only --diff .
+
+format:
+	$(VENV)/bin/black .
+	$(VENV)/bin/isort .
 
 # Run all tests
 test:
-	pytest tests/unit/ tests/integration/ --cov=.
+	$(PYTEST) tests/unit/ tests/integration/ --cov=.
 
 # Run database schema consistency tests
-schema-tests:
-	@echo "Running database schema consistency tests..."
-	pytest tests/test_database_schema_consistency.py -v
+schema-prepare:
+	@echo "Bootstrapping clean development database from models.py..."
+	$(PYTHON) scripts/bootstrap_test_db.py
+
+schema-tests: schema-prepare
+	@echo "Running database schema consistency tests (standalone)..."
+	$(PYTHON) tests/test_database_schema_consistency.py
 
 # Create baseline schema snapshot
 schema-baseline:
@@ -40,5 +91,88 @@ security:
 	bandit -r .
 	safety check
 
+# Contract validation (python mode, no server)
+contract-validate:
+	@echo "Validating feature contract (python mode, strict)..."
+	$(PYTHON) scripts/verify_feature_contract.py --refresh --strict --json
+
+# Contract validation via API (requires running server)
+# Use CONTRACT_API_URL to override base URL (default http://localhost:$(PORT))
+CONTRACT_API_URL ?= http://localhost:$(PORT)
+contract-validate-api:
+	@echo "Validating feature contract via API at $(CONTRACT_API_URL) (strict)..."
+	$(PYTHON) scripts/verify_feature_contract.py --mode api --url $(CONTRACT_API_URL) --strict --json
+
+# Install git hooks (pre-push validation)
+install-hooks:
+	@echo "Installing pre-push git hook for contract validation..."
+	@mkdir -p .git/hooks
+	@cp scripts/git-hooks/pre-push .git/hooks/pre-push
+	@chmod +x .git/hooks/pre-push
+	@echo "Installed .git/hooks/pre-push"
+
 e2e-prepare:
 	docker-compose -f docker-compose.test.yml run --rm playwright npx playwright install-deps
+
+# Docker image configuration
+DOCKER_IMAGE ?= greyhound-predictor
+DOCKER_PORT ?= 5002
+DOCKER_RACES_DIR ?= $(shell pwd)/upcoming_races_temp
+
+# Build Docker image
+.PHONY: docker-build
+docker-build:
+	@echo "Building Docker image: $(DOCKER_IMAGE)"
+	docker build -t $(DOCKER_IMAGE) .
+
+# Run the API in Docker (toolbar off by default)
+.PHONY: run-docker-api
+run-docker-api: docker-build
+	@echo "Running $(DOCKER_IMAGE) on http://localhost:$(DOCKER_PORT) (toolbar off)"
+	docker run --rm -it \
+		-p $(DOCKER_PORT):5002 \
+		-e PORT=5002 \
+		-e UPCOMING_RACES_DIR=/app/upcoming_races_temp \
+		-e ENABLE_ENDPOINT_DROPDOWNS=0 \
+		-e DISABLE_ASSET_MINIFY=$${DISABLE_ASSET_MINIFY:-1} \
+		-e TESTING=$${TESTING:-false} \
+		-v "$(DOCKER_RACES_DIR):/app/upcoming_races_temp" \
+		$(DOCKER_IMAGE)
+
+# Run the API in Docker with dev toolbar enabled
+.PHONY: run-docker-api-dev-toolbar
+run-docker-api-dev-toolbar: docker-build
+	@echo "Running $(DOCKER_IMAGE) on http://localhost:$(DOCKER_PORT) with dev toolbar (ENABLE_ENDPOINT_DROPDOWNS=1, TESTING=true)"
+	docker run --rm -it \
+		-p $(DOCKER_PORT):5002 \
+		-e PORT=5002 \
+		-e UPCOMING_RACES_DIR=/app/upcoming_races_temp \
+		-e ENABLE_ENDPOINT_DROPDOWNS=1 \
+		-e DISABLE_ASSET_MINIFY=$${DISABLE_ASSET_MINIFY:-1} \
+		-e TESTING=true \
+		-v "$(DOCKER_RACES_DIR):/app/upcoming_races_temp" \
+		$(DOCKER_IMAGE)
+
+# Run the Flask API normally (toolbar off by default)
+.PHONY: run-api
+run-api:
+	@echo "Starting Flask app on port $${PORT:-5002} (toolbar off)"
+	PORT=$${PORT:-5002} \
+	ENABLE_ENDPOINT_DROPDOWNS=$${ENABLE_ENDPOINT_DROPDOWNS:-0} \
+	DISABLE_ASSET_MINIFY=$${DISABLE_ASSET_MINIFY:-1} \
+	TESTING=$${TESTING:-false} \
+	$(PYTHON) app.py
+
+# Run the Flask API with the dev endpoints toolbar enabled (QA convenience)
+.PHONY: run-api-dev-toolbar
+run-api-dev-toolbar:
+	@echo "Starting Flask app with dev toolbar (ENABLE_ENDPOINT_DROPDOWNS=1, TESTING=true) on port $${PORT:-5002}"
+	PORT=$${PORT:-5002} \
+	ENABLE_ENDPOINT_DROPDOWNS=1 \
+	TESTING=true \
+	DISABLE_ASSET_MINIFY=$${DISABLE_ASSET_MINIFY:-1} \
+	$(PYTHON) app.py
+
+# Clean up environment
+clean:
+	rm -rf $(VENV)

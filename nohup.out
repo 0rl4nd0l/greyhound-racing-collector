@@ -1,0 +1,39 @@
+2025-08-19 16:53:19,938 - db_performance_optimizer - INFO - 🔗 SQLite Connection Pool initialized:
+2025-08-19 16:53:19,939 - db_performance_optimizer - INFO -    📊 Pool size: 20
+2025-08-19 16:53:19,939 - db_performance_optimizer - INFO -    📁 Database: greyhound_racing_data.db
+2025-08-19 16:53:19,939 - db_performance_optimizer - INFO -    ⏱️ Timeout: 30.0s
+2025-08-19 16:53:19,940 - db_performance_optimizer - INFO - 🚀 Database optimization initialized
+2025-08-19 16:53:19,943 - root - INFO - [MODEL_REGISTRY] Initializing model registry system...
+2025-08-19 16:53:19,943 - system - INFO - [MODEL_REGISTRY] [MODEL_REGISTRY] Initializing model registry system...
+2025-08-19 16:53:19,988 - model_registry - INFO - 🗂️  Model Registry initialized: 2 models tracked
+2025-08-19 16:53:19,988 - root - INFO - [MODEL_REGISTRY] Model registry initialized successfully: 2 models tracked
+2025-08-19 16:53:19,988 - system - INFO - [MODEL_REGISTRY] [MODEL_REGISTRY] Model registry initialized successfully: 2 models tracked
+🚫 All profiling functionality has been disabled to prevent conflicts
+📋 Enhanced Logger initialized - Log directory: logs
+🔍 Debug mode: DISABLED
+🚀 CSV ingestion system available
+✅ Unified form guide ingestion available
+🚀 Endpoint optimization enabled (caching + optimized queries)
+🚀 Database performance optimization enabled
+⚠️ Strategy Manager not available
+🚀 Batch prediction pipeline available
+🚀 Background task system available
+🚀 Asset management system available
+🚀 Model training API blueprint available
+🛡️ Guardian Service available
+🚀 ML System V4 (Advanced) available
+🛡️ Module guard startup check skipped via DISABLE_STARTUP_GUARD=1
+✅ Asset management system initialized successfully
+🎯 Model Training API routes registered successfully
+[watcher] Watching /Users/test/Downloads for new form guide CSVs...
+✅ Downloads watcher started
+[upcoming-watcher] Watching /Users/test/Desktop/greyhound_racing_collector/data/upcoming_races for CSV changes...
+✅ Upcoming races watcher started
+✅ Database performance optimization initialized
+✅ Model registry initialized successfully: 2 models tracked
+🗄️ Initializing database manager...
+✅ Database manager initialized successfully with database: greyhound_racing_data.db
+ * Serving Flask app 'app'
+ * Debug mode: off
+Address already in use
+Port 5002 is in use by another program. Either identify and stop that program, or start the server with a different port.

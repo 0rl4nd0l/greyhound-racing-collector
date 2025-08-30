@@ -6,6 +6,8 @@ A comprehensive machine learning system for predicting greyhound race outcomes u
 
 For common commands and a high-level architecture overview, see WARP.md.
 
+See also: [V4 Prediction System Analysis](reports/prediction_system_analysis.md) — full prediction flow, formulas (normalization, confidence, EV), environment toggles, and failure modes.
+
 ## Key Features
 
 This pipeline provides end-to-end functionality for:
@@ -217,6 +219,34 @@ export PORT=8080
 python app.py
 ```
 
+### UI Modes and Feature Flags
+
+The web UI supports a simplified and an advanced mode, plus an opt-in dynamic endpoints menu.
+
+- UI_MODE: Controls navigation complexity and some heavy assets.
+  - simple (default): Minimal top-level nav (Dashboard, Upcoming, Predict, Logs).
+  - advanced: Full navigation (Races, Analysis, AI/ML, System, Help, etc.).
+
+  Examples:
+  - macOS/Linux
+    - UI_MODE=simple python app.py
+    - UI_MODE=advanced python app.py
+  - Windows PowerShell
+    - $env:UI_MODE='simple'; python app.py
+    - $env:UI_MODE='advanced'; python app.py
+
+- ENABLE_ENDPOINT_DROPDOWNS: Toggle the dynamic endpoints dropdown toolbar (opt-in).
+  - 0 (default): Disabled.
+  - 1: Enabled. Injects a menu that enumerates available Flask endpoints for quick navigation (primarily for dev/testing).
+
+  Examples:
+  - macOS/Linux: ENABLE_ENDPOINT_DROPDOWNS=1 python app.py
+  - Windows PowerShell: $env:ENABLE_ENDPOINT_DROPDOWNS='1'; python app.py
+
+Notes:
+- All advanced routes remain accessible by direct URL in both modes; only visibility in the navbar changes.
+- CI can set UI_MODE=advanced to exercise the full UI surface.
+
 ##### Port Conflict Resolution
 
 If you encounter "port already in use" errors, use these troubleshooting commands:
@@ -364,6 +394,8 @@ The advisory system is designed to integrate seamlessly with the prediction work
 ## API Documentation
 
 The application provides a comprehensive RESTful API for interacting with the prediction system and its data. Below are the key endpoints.
+
+Tip: To validate V4 feature contracts via the UI, see docs/CONTRACT_VALIDATION.md (UI-based validation).
 
 ### Upcoming Races CSVs (source of truth)
 - Folder path: `./upcoming_races`
@@ -892,6 +924,20 @@ Note on archive-first policy
 
 Set these environment variables (e.g., in a .env file or via the shell) to control paths and behavior.
 
+- DISABLE_ASSET_MINIFY
+  - Description: When set to 1, skip webassets minification filters to avoid optional deps (jsmin/cssmin). Recommended for local/dev unless you need minified bundles.
+  - Default: 1
+  - Example: DISABLE_ASSET_MINIFY=1
+- ENABLE_ENDPOINT_DROPDOWNS
+  - Description: Enables a dev-only dropdown toolbar in the UI that lists all server endpoints by category. Useful for QA; keep disabled in prod.
+  - Default: 0
+  - Example: ENABLE_ENDPOINT_DROPDOWNS=1
+  - Note (2025-08-28): The dropdowns are no longer auto-enabled in testing/debug modes; enable explicitly via the env var when needed. The /api/endpoints route and endpoints-menu.js remain available behind this flag.
+  - CI: The UI E2E job in .github/workflows/backend-tests.yml is currently disabled with `if: ${{ false }}`. Remove that guard to re-enable the UI E2E job.
+- TESTING
+  - Description: Enables various test helpers and routes when true. Keep false in normal runs.
+  - Default: false
+  - Example: TESTING=false
 - UPCOMING_RACES_DIR
   - Description: Directory the UI/API enumerates for upcoming race CSVs
   - Default: ./upcoming_races (some setups use ./upcoming_races_temp)
@@ -915,9 +961,16 @@ Set these environment variables (e.g., in a .env file or via the shell) to contr
 
 Example .env
 
+# Core
 UPCOMING_RACES_DIR=./upcoming_races
 PREDICTIONS_DIR=./predictions
 ARCHIVE_ROOT=./archive
+
+# UI/dev toggles
+DISABLE_ASSET_MINIFY=1
+ENABLE_ENDPOINT_DROPDOWNS=0
+TESTING=false
+
 # Optional automation (set only if you run a watcher)
 DOWNLOADS_WATCH_DIR=~/Downloads
 

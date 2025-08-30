@@ -256,6 +256,43 @@ def get_endpoint_cache() -> EndpointCache:
     return _cache_instance
 
 
+def _json_safe(value):
+    """Recursively convert values to JSON-serializable forms.
+    - bytes -> utf-8 string (with errors='replace')
+    - datetime -> isoformat string
+    - sets/tuples -> lists
+    - objects with __str__ -> string fallback
+    """
+    try:
+        from datetime import datetime as _dt
+    except Exception:
+        _dt = None
+
+    if value is None:
+        return None
+    if isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, bytes):
+        try:
+            return value.decode('utf-8', errors='replace')
+        except Exception:
+            return str(value)
+    if _dt is not None and isinstance(value, _dt):
+        try:
+            return value.isoformat()
+        except Exception:
+            return str(value)
+    if isinstance(value, dict):
+        return { _json_safe(k): _json_safe(v) for k, v in value.items() }
+    if isinstance(value, (list, tuple, set)):
+        return [ _json_safe(v) for v in value ]
+    # Fallback to string representation
+    try:
+        return str(value)
+    except Exception:
+        return None
+
+
 def cached_endpoint(key_func=None, ttl=30):
     """
     Decorator for caching Flask endpoint responses with ETag support
@@ -302,13 +339,38 @@ def cached_endpoint(key_func=None, ttl=30):
             # Execute the original function
             result = func(*args, **kwargs)
             
-            # Extract data from response for caching
+            # Extract data from response for caching (support dicts and (dict, status))
+            data = None
+            status = None
+            headers = None
+            
             if hasattr(result, 'get_json'):
-                data = result.get_json()
-            elif isinstance(result, tuple) and len(result) >= 1:
-                data = result[0].get_json()
-            else:
-                data = result
+                try:
+                    data = result.get_json()
+                except Exception:
+                    data = None
+            
+            if data is None and isinstance(result, tuple) and len(result) >= 1:
+                first = result[0]
+                status = result[1] if len(result) > 1 else None
+                headers = result[2] if len(result) > 2 else None
+                if hasattr(first, 'get_json'):
+                    try:
+                        data = first.get_json()
+                    except Exception:
+                        data = None
+                if data is None:
+                    # If first element is already a dict, use it directly
+                    if isinstance(first, dict):
+                        data = first
+            
+            if data is None:
+                # Fallback: if the view returned a plain dict, accept it
+                if isinstance(result, dict):
+                    data = result
+                else:
+                    # As a last resort, do not cache unknown types
+                    return result
             
             # Add next_refresh timestamp to response
             if isinstance(data, dict):
@@ -319,11 +381,19 @@ def cached_endpoint(key_func=None, ttl=30):
                     'cache_key': cache_key[:32]  # Truncated for security
                 }
             
+            # Sanitize to JSON-safe payload before caching/returning
+            safe_data = _json_safe(data)
+
             # Cache the data
-            etag = cache.set(cache_key, data, ttl)
+            etag = cache.set(cache_key, safe_data, ttl)
             
             # Return response with cache headers
-            response = jsonify(data)
+            response = jsonify(safe_data)
+            if status is not None:
+                response.status_code = status
+            if headers:
+                for k, v in headers.items():
+                    response.headers[k] = v
             response.headers['ETag'] = etag
             response.headers['Cache-Control'] = f'max-age={ttl}'
             response.headers['X-Cache'] = 'MISS'

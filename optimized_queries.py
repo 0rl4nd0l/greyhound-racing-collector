@@ -187,6 +187,61 @@ class OptimizedQueries:
             logger.debug(f"📊 Comprehensive system stats retrieved in {query_time*1000:.2f}ms")
             return stats
     
+    def get_recent_races_optimized(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Return recent races ordered by race_date DESC with a limit.
+        Provides a minimal schema compatible with API expectations.
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT 
+                        race_id,
+                        venue,
+                        race_number,
+                        race_date,
+                        race_name,
+                        grade,
+                        distance,
+                        field_size,
+                        winner_name,
+                        winner_odds,
+                        winner_margin,
+                        url,
+                        extraction_timestamp,
+                        track_condition
+                    FROM race_metadata
+                    WHERE race_date IS NOT NULL
+                    ORDER BY race_date DESC, race_time DESC
+                    LIMIT ?
+                    """,
+                    (limit,)
+                )
+                rows = cursor.fetchall()
+                races = []
+                for r in rows:
+                    races.append({
+                        'race_id': r['race_id'] if 'race_id' in r.keys() else r[0],
+                        'venue': r['venue'] if 'venue' in r.keys() else r[1],
+                        'race_number': r['race_number'] if 'race_number' in r.keys() else r[2],
+                        'race_date': r['race_date'] if 'race_date' in r.keys() else r[3],
+                        'race_name': r['race_name'] if 'race_name' in r.keys() else r[4],
+                        'grade': r['grade'] if 'grade' in r.keys() else r[5],
+                        'distance': r['distance'] if 'distance' in r.keys() else r[6],
+                        'field_size': r['field_size'] if 'field_size' in r.keys() else r[7],
+                        'winner_name': r['winner_name'] if 'winner_name' in r.keys() else r[8],
+                        'winner_odds': r['winner_odds'] if 'winner_odds' in r.keys() else r[9],
+                        'winner_margin': r['winner_margin'] if 'winner_margin' in r.keys() else r[10],
+                        'url': r['url'] if 'url' in r.keys() else r[11],
+                        'extraction_timestamp': r['extraction_timestamp'] if 'extraction_timestamp' in r.keys() else r[12],
+                        'track_condition': r['track_condition'] if 'track_condition' in r.keys() else r[13],
+                    })
+                return races
+        except Exception:
+            logger.exception("Failed to fetch recent races (optimized)")
+            return []
+
     def get_optimized_model_metrics(self) -> List[Dict[str, Any]]:
         """
         Get model registry metrics with optimized queries
