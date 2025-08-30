@@ -1,7 +1,7 @@
 # Makefile for the Greyhound Racing Collector project
 # Updated for unified environment structure
 
-.PHONY: help init deps lock test lint format e2e perf security schema-tests schema-baseline schema-monitor clean
+.PHONY: help init deps lock test lint format e2e perf security schema-tests schema-baseline schema-monitor contract-validate contract-validate-api install-hooks clean
 
 VENV := .venv
 PYTHON := $(VENV)/bin/python
@@ -11,18 +11,21 @@ REQUIREMENTS_DIR := requirements
 
 help:
 	@echo "Available targets:"
-	@echo "  init           - Create virtual environment and install dependencies"
-	@echo "  deps           - Reinstall dependencies from lock file"
-	@echo "  lock           - Recompile requirements lock file from .in files"
-	@echo "  install        - Legacy target (use 'deps' instead)"
-	@echo "  test           - Run test suite"
-	@echo "  lint           - Run linting checks"
-	@echo "  format         - Format code with black and isort"
-	@echo "  security       - Run security scans"
-	@echo "  e2e            - Run end-to-end tests"
-	@echo "  perf           - Run performance tests"
-	@echo "  schema-*       - Schema monitoring commands"
-	@echo "  clean          - Remove virtual environment"
+	@echo "  init                 - Create virtual environment and install dependencies"
+	@echo "  deps                 - Reinstall dependencies from lock file"
+	@echo "  lock                 - Recompile requirements lock file from .in files"
+	@echo "  install              - Legacy target (use 'deps' instead)"
+	@echo "  test                 - Run test suite"
+	@echo "  lint                 - Run linting checks"
+	@echo "  format               - Format code with black and isort"
+	@echo "  security             - Run security scans"
+	@echo "  e2e                  - Run end-to-end tests"
+	@echo "  perf                 - Run performance tests"
+	@echo "  schema-*             - Schema monitoring commands"
+	@echo "  contract-validate    - Validate feature contract (python mode, strict)"
+	@echo "  contract-validate-api- Validate feature contract via API at CONTRACT_API_URL (strict)"
+	@echo "  install-hooks        - Install git hooks (pre-push contract validation)"
+	@echo "  clean                - Remove virtual environment"
 
 $(VENV)/bin/python:
 	python3.11 -m venv $(VENV)
@@ -57,9 +60,13 @@ test:
 	$(PYTEST) tests/unit/ tests/integration/ --cov=.
 
 # Run database schema consistency tests
-schema-tests:
-	@echo "Running database schema consistency tests..."
-	pytest tests/test_database_schema_consistency.py -v
+schema-prepare:
+	@echo "Bootstrapping clean development database from models.py..."
+	$(PYTHON) scripts/bootstrap_test_db.py
+
+schema-tests: schema-prepare
+	@echo "Running database schema consistency tests (standalone)..."
+	$(PYTHON) tests/test_database_schema_consistency.py
 
 # Create baseline schema snapshot
 schema-baseline:
@@ -83,6 +90,26 @@ perf:
 security:
 	bandit -r .
 	safety check
+
+# Contract validation (python mode, no server)
+contract-validate:
+	@echo "Validating feature contract (python mode, strict)..."
+	$(PYTHON) scripts/verify_feature_contract.py --refresh --strict --json
+
+# Contract validation via API (requires running server)
+# Use CONTRACT_API_URL to override base URL (default http://localhost:$(PORT))
+CONTRACT_API_URL ?= http://localhost:$(PORT)
+contract-validate-api:
+	@echo "Validating feature contract via API at $(CONTRACT_API_URL) (strict)..."
+	$(PYTHON) scripts/verify_feature_contract.py --mode api --url $(CONTRACT_API_URL) --strict --json
+
+# Install git hooks (pre-push validation)
+install-hooks:
+	@echo "Installing pre-push git hook for contract validation..."
+	@mkdir -p .git/hooks
+	@cp scripts/git-hooks/pre-push .git/hooks/pre-push
+	@chmod +x .git/hooks/pre-push
+	@echo "Installed .git/hooks/pre-push"
 
 e2e-prepare:
 	docker-compose -f docker-compose.test.yml run --rm playwright npx playwright install-deps
