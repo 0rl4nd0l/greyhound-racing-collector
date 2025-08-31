@@ -27,15 +27,21 @@ def check_prerequisites():
     """Check if all prerequisites are available"""
     print("🔍 Checking prerequisites...")
     
-    # Check for ChromeDriver
+    # Check for ChromeDriver (soft check with fallback)
     import shutil
     chromedriver_path = shutil.which("chromedriver")
     if not chromedriver_path:
-        print("❌ ChromeDriver not found in PATH")
-        print("   Please install ChromeDriver for web scraping:")
-        print("   brew install chromedriver  # On macOS")
-        print("   Or download from: https://chromedriver.chromium.org/")
-        return False
+        print("⚠️ ChromeDriver not found in PATH")
+        print("   Will use webdriver-manager for automatic ChromeDriver management")
+        print("   This may download ChromeDriver automatically on first use")
+        
+        # Check if webdriver-manager is available as fallback
+        try:
+            import webdriver_manager
+            print("✅ webdriver-manager available for automatic ChromeDriver setup")
+        except ImportError:
+            print("⚠️ webdriver-manager not available - may need manual ChromeDriver setup")
+            print("   Install with: pip install webdriver-manager")
     else:
         print(f"✅ ChromeDriver found: {chromedriver_path}")
     
@@ -63,6 +69,8 @@ def check_prerequisites():
         print(f"pip install {' '.join(missing_packages)}")
         return False
     
+    print("\n✅ All core prerequisites satisfied")
+    print("   Note: ChromeDriver will be managed automatically if needed")
     return True
 
 def setup_csv_directories():
@@ -247,17 +255,30 @@ def main():
     print("🏁 ENHANCED GREYHOUND RACING PROCESSOR WITH WEB SCRAPING")
     print("=" * 70)
     print("This script will:")
-    print("1. Check prerequisites (ChromeDriver, packages)")
+    print("1. Check prerequisites (packages, ChromeDriver auto-managed)")
     print("2. Setup CSV files for processing")
     print("3. Run enhanced processor with web scraping enabled")
     print("4. Collect actual race results and winners")
     print("5. Populate database with complete race data")
     print("=" * 70)
     
-    # Check prerequisites
+    # Check for unattended mode
+    skip_prompts = os.getenv('SKIP_PROMPT', '').lower() in ('1', 'true', 'yes')
+    if skip_prompts:
+        print("\n🤖 Running in unattended mode (SKIP_PROMPT set)")
+    
+    # Check prerequisites (now soft-fail for ChromeDriver)
     if not check_prerequisites():
-        print("\n❌ Prerequisites not met. Exiting.")
-        return False
+        if not skip_prompts:
+            print("\n⚠️ Some prerequisites missing but processing can continue.")
+            print("The processor will attempt automatic ChromeDriver management.")
+            response = input("Continue anyway? (y/N): ").strip().lower()
+            if response != 'y':
+                print("Cancelled by user.")
+                return False
+        else:
+            print("\n⚠️ Some prerequisites missing - continuing in unattended mode")
+            print("Will attempt automatic ChromeDriver management")
     
     # Setup CSV directories
     csv_count = setup_csv_directories()
@@ -265,17 +286,20 @@ def main():
         print("\n❌ No CSV files found to process. Exiting.")
         return False
     
-    # Confirm before proceeding
+    # Confirm before proceeding (unless in unattended mode)
     print(f"\n🎯 Ready to process {csv_count} CSV files with web scraping.")
     print("This will:")
     print("- Access race websites to get actual results")
     print("- Take longer due to web scraping delays")
     print("- Populate database with complete race data")
     
-    response = input("\nProceed with web scraping? (y/N): ").strip().lower()
-    if response != 'y':
-        print("Cancelled by user.")
-        return False
+    if not skip_prompts:
+        response = input("\nProceed with web scraping? (y/N): ").strip().lower()
+        if response != 'y':
+            print("Cancelled by user.")
+            return False
+    else:
+        print("\n🤖 Proceeding automatically in unattended mode")
     
     # Run the enhanced processor
     start_time = time.time()

@@ -20,7 +20,68 @@ import logging
 import warnings
 from ml_system_v4 import MLSystemV4
 from temporal_feature_builder import TemporalFeatureBuilder
-from test_prediction_only import create_mock_trained_model
+# Try to import helper from sibling test; fall back to local inline implementation if unavailable
+try:
+    from test_prediction_only import create_mock_trained_model  # type: ignore
+except Exception:
+    try:
+        from tests.test_prediction_only import create_mock_trained_model  # type: ignore
+    except Exception:
+        # Inline minimal fallback to avoid import issues when running this test in isolation
+        from sklearn.ensemble import ExtraTreesClassifier
+        from sklearn.calibration import CalibratedClassifierCV
+        from sklearn.preprocessing import OneHotEncoder
+        from sklearn.compose import ColumnTransformer
+        from sklearn.pipeline import Pipeline
+        from datetime import datetime
+
+        def create_mock_trained_model(system: MLSystemV4):
+            logger.info("Creating inline mock trained model (fallback)...")
+            # Minimal feature sets
+            system.feature_columns = [
+                'box_number', 'weight', 'distance', 'historical_avg_position',
+                'historical_win_rate', 'venue_specific_avg_position', 'days_since_last_race'
+            ]
+            system.numerical_columns = [
+                'box_number', 'weight', 'distance', 'historical_avg_position',
+                'historical_win_rate', 'venue_specific_avg_position', 'days_since_last_race'
+            ]
+            system.categorical_columns = ['venue']
+            preprocessor = ColumnTransformer(
+                transformers=[
+                    ('num', 'passthrough', system.numerical_columns),
+                    ('cat', OneHotEncoder(handle_unknown='ignore', sparse_output=False), system.categorical_columns)
+                ],
+                remainder='drop'
+            )
+            base_model = ExtraTreesClassifier(n_estimators=10, random_state=42)
+            pipeline = Pipeline([
+                ('preprocessor', preprocessor),
+                ('classifier', base_model)
+            ])
+            n_samples = 50
+            mock_X = pd.DataFrame({
+                'box_number': np.random.randint(1, 9, n_samples),
+                'weight': np.random.uniform(28, 35, n_samples),
+                'distance': np.random.choice([400, 500, 600], n_samples),
+                'historical_avg_position': np.random.uniform(1, 8, n_samples),
+                'historical_win_rate': np.random.uniform(0, 0.3, n_samples),
+                'venue_specific_avg_position': np.random.uniform(1, 8, n_samples),
+                'days_since_last_race': np.random.uniform(7, 30, n_samples),
+                'venue': np.random.choice(['DAPT', 'GEE', 'WAR'], n_samples)
+            })
+            mock_y = np.random.choice([0, 1], n_samples, p=[0.875, 0.125])
+            calibrated_pipeline = CalibratedClassifierCV(pipeline, method='isotonic', cv=3)
+            calibrated_pipeline.fit(mock_X, mock_y)
+            system.calibrated_pipeline = calibrated_pipeline
+            system.model_info = {
+                'model_type': 'Mock_ExtraTreesClassifier_Calibrated',
+                'test_accuracy': 0.85,
+                'test_auc': 0.70,
+                'trained_at': datetime.now().isoformat()
+            }
+            logger.info("✅ Inline mock model created and trained")
+            return True
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)

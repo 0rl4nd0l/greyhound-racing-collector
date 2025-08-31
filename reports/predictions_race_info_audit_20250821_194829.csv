@@ -1,0 +1,638 @@
+file_path,has_race_info,has_distance,has_grade,distance_value,grade_value,distance_type,grade_type,distance_anomaly,race_url,track,date,race_number,status,reason
+predictions/comprehensive_prediction_1_TAREE_2025-07-26_20250726_143613.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/prediction_Race_3_-_LADBROKES-Q-STRAIGHT_-_2025-08-21_enhanced_20250821_175305.json,True,True,True,350m,M,str,str,String format: 350m,,QST,2025-08-14,3,OK,Complete race_info
+predictions/prediction_Race_10_-_BEN_-_2025-08-20_enhanced_20250820_173304.json,True,True,True,390m,Grade 5,str,str,String format: 390m,,SHEPPARTON,2025-08-13,10,OK,Complete race_info
+predictions/prediction_Race_9_-_LADBROKES-Q1-LAKESIDE_-_2025-08-20_enhanced_20250820_174106.json,True,True,True,366m,5,str,str,String format: 366m,,CAPA,2025-07-27,9,OK,Complete race_info
+predictions/prediction_Race 6 - DUBBO - 2025-07-26.json,True,True,True,400m,Grade 5,str,str,String format: 400m,,DUBBO,2025-07-26,6,OK,Complete race_info
+predictions/prediction_Race_10_-_BEN_-_2025-08-20_enhanced_20250820_173241.json,True,True,True,390m,Grade 5,str,str,String format: 390m,,SHEPPARTON,2025-08-13,10,OK,Complete race_info
+predictions/prediction_Race_6_-_CAPALABA_-_27_July_2025.json,True,True,True,457m,Grade 5,str,str,String format: 457m,,CAPALABA,27 July 2025,6,OK,Complete race_info
+predictions/prediction_Race_10_-_AP_K_-_2025-08-04_comprehensive_20250811_175352.json,True,True,True,530m,Grade 5,str,str,String format: 530m,,AP_K,2025-08-04,10,OK,Complete race_info
+predictions/prediction_Race_1_-_AP_K_-_2025-08-04_comprehensive_20250804_015149.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP_K,2025-08-04,1,OK,Complete race_info
+predictions/comprehensive_prediction_1_TAREE_2025-07-26_20250726_142956.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/prediction_Race_6_-_MEA_-_26_July_2025_comprehensive_20250803_223537.json,True,True,True,730m,Grade S/E Heat,str,str,String format: 730m,,MEA,26 July 2025,6,OK,Complete race_info
+predictions/prediction_RACE_4_2025-08-11_weather_enhanced_20250803_225852.json,True,False,False,,,None,None,,,RACE,2025-08-11,4,MISSING,Missing both distance and grade
+predictions/prediction_20250730162231_Race 7 - CASINO - 2025-07-24.json,True,True,True,450m,Grade 5,str,str,String format: 450m,,CASINO,2025-07-24,20250730162231_7,OK,Complete race_info
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250820_172606.json,True,True,True,457m,5,str,str,String format: 457m,,QOT,2025-08-12,7,OK,Complete race_info
+predictions/prediction_Race_1_-_AP_K_-_01_July_2025_comprehensive_20250804_112806.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP_K,01 July 2025,1,OK,Complete race_info
+predictions/prediction_Race_11_-_BEN_-_2025-08-20_enhanced_20250820_174830.json,True,True,True,390m,Grade 5,str,str,String format: 390m,,SHEPPARTON,2025-08-14,11,OK,Complete race_info
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250820_170142.json,True,True,True,457m,5,str,str,String format: 457m,,QOT,2025-08-12,7,OK,Complete race_info
+predictions/prediction_test_race_1_comprehensive_20250812_190128.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-12,UNKNOWN,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race 1 - TAREE - 2025-07-26_20250726_144809.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/prediction_example_id_comprehensive_20250804_013459.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-04,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race 1 - SAN - 2025-07-24.json,True,True,True,435m,Tier 3 - Maiden,str,str,String format: 435m,,SAN,2025-07-24,,OK,Complete race_info
+predictions/prediction_Race_09_CASO_2025-07-26.json,True,True,True,300m,Grade 5,str,str,String format: 300m,,CASINO,2025-07-30,UNKNOWN,OK,Complete race_info
+predictions/prediction_batch_chunk_0_1754852025_comprehensive_20250811_045517.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-11,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250820_163312.json,True,False,False,,,None,None,,,QOT,2025-08-12,7,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race 1 - TAREE - 2025-07-26_20250726_144433.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/prediction_test_race_1_comprehensive_20250812_192247.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-12,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_1_-_GOULBURN_-_2025-08-22_enhanced_20250821_192256.json,True,True,True,350m,M,str,str,String format: 350m,,GOUL,2025-08-15,1,OK,Complete race_info
+predictions/prediction_example_comprehensive_20250802_123516.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-02,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_01_WAR_2025-07-25.json,True,True,True,460m,Grade Maiden,str,str,String format: 460m,,WARRAGUL,2025-07-26,UNKNOWN,OK,Complete race_info
+predictions/prediction_Race_06_UNKNOWN_2025-07-23_01.json,True,True,True,340m,Grade 4/5,str,str,String format: 340m,,GUNN,2025-07-30,UNKNOWN,OK,Complete race_info
+predictions/prediction_Race_11_-_CASO_-_22_July_2025_comprehensive_20250730_202645.json,True,True,True,300m,Grade 5,str,str,String format: 300m,,CASO,22 July 2025,11,OK,Complete race_info
+predictions/prediction_Race_5_-_MOUNT_-_27_July_2025.json,True,True,True,305m,Grade 5,str,str,String format: 305m,,MOUNT,27 July 2025,5,OK,Complete race_info
+predictions/prediction_UNKNOWN_0_2025-08-03_weather_enhanced_20250803_124343.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-03,0,MISSING,Missing both distance and grade
+predictions/comprehensive_prediction_1_TAREE_2025-07-26_20250726_131107.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/prediction_Race_3_-_LADBROKES-Q-STRAIGHT_-_2025-08-21_enhanced_20250821_175542.json,True,True,True,350m,M,str,str,String format: 350m,,QST,2025-08-14,3,OK,Complete race_info
+predictions/prediction_Race_07_WAR_2025-07-24.json,True,True,True,400m,Grade Grade 5,str,str,String format: 400m,,WARRAGUL,2025-07-30,UNKNOWN,OK,Complete race_info
+predictions/prediction_Race 5 - BAL - 2025-07-23.json,True,False,False,,,None,None,,,BAL,2025-07-23,,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_01_WAR_2025-07-25_20250726_144908.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race 4 - LADBROKES-Q-STRAIGHT - 2025-07-25.json,True,False,False,,,None,None,,,LADBROKES_Q_STRAIGHT,2025-07-25,,MISSING,Missing both distance and grade
+predictions/prediction_Race_1_-_AP_K_-_2025-08-04_comprehensive_20250804_020030.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP_K,2025-08-04,1,OK,Complete race_info
+predictions/prediction_Race 2 - AP_K - 2025-07-25.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP/K,2025-07-26,UNKNOWN,OK,Complete race_info
+predictions/Analysis_ML_SAN_2025-07-24_121553.json,True,False,False,,,None,None,,,SAN,2025-07-24,11,MISSING,Missing both distance and grade
+predictions/prediction_Race_9_-_GOULBURN_-_2025-08-22_enhanced_20250821_191725.json,True,True,True,350m,NG1-4,str,str,String format: 350m,,GOUL,2025-07-25,9,OK,Complete race_info
+predictions/prediction_Race_2_-_SHEPPARTON_-_2025-08-04_comprehensive_20250809_180444.json,True,True,True,425m,Grade Grade 5 T3,str,str,String format: 425m,,SHEPPARTON,2025-08-04,2,OK,Complete race_info
+predictions/unified_prediction_Race_08_WAR_2025-07-25_20250726_144543.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_1_-_AP_K_-_01_July_2025_comprehensive_20250804_014653.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP_K,01 July 2025,1,OK,Complete race_info
+predictions/prediction_Race_2_-_AP_K_-_2025-08-04_comprehensive_20250804_015556.json,True,True,True,530m,Grade TG1-6W,str,str,String format: 530m,,AP_K,2025-08-04,2,OK,Complete race_info
+predictions/prediction_Race_03_AP_K_2025-07-25.json,True,True,True,342m,Grade TG1-4W,str,str,String format: 342m,,AP/K,2025-07-26,UNKNOWN,OK,Complete race_info
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250820_165120.json,True,True,True,457m,5,str,str,String format: 457m,,QOT,2025-08-12,7,OK,Complete race_info
+predictions/unified_prediction_Race_11_SAN_2025-07-24_20250726_144932.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_04_GRDN_2025-07-25_20250726_145119.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race 4 - BAL - 2025-07-30.json,True,True,True,450m,Grade Mixed 6/7 Heat,str,str,String format: 450m,,BAL,2025-07-30,4,OK,Complete race_info
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250820_165225.json,True,True,True,457m,5,str,str,String format: 457m,,QOT,2025-08-12,7,OK,Complete race_info
+predictions/prediction_Race 6 - AP_K - 2025-07-25.json,True,True,True,342m,Grade 5,str,str,String format: 342m,,AP/K,2025-07-26,UNKNOWN,OK,Complete race_info
+predictions/unified_prediction_Race 1 - TAREE - 2025-07-26_20250726_145107.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_11_SAN_2025-07-24_20250726_145134.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_03_WAR_2025-07-25.json,True,True,True,400m,Grade Tier 3 - Maiden,str,str,String format: 400m,,WARRAGUL,2025-07-26,UNKNOWN,OK,Complete race_info
+predictions/prediction_Race_2_-_BULLI_-_2025-08-19_enhanced_20250820_165016.json,True,False,False,,,None,None,,,RICH,2025-08-12,2,MISSING,Missing both distance and grade
+predictions/prediction_Race_1_-_WAR_-_25_July_2025.json,True,True,True,460m,Grade Maiden,str,str,String format: 460m,,WAR,25 July 2025,1,OK,Complete race_info
+predictions/prediction_test_race_1_comprehensive_20250809_180536.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-09,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_06_AP_K_2025-07-25.json,True,True,True,342m,Grade 5,str,str,String format: 342m,,AP/K,2025-07-26,UNKNOWN,OK,Complete race_info
+predictions/prediction_Race_11_SAN_2025-07-24.json,True,True,True,515m,Grade Grade 5,str,str,String format: 515m,,SANDOWN,2025-07-26,UNKNOWN,OK,Complete race_info
+predictions/prediction_test_race_1_comprehensive_20250813_160051.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-13,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race 2 - DAPT - 22 August 2025.json,True,False,False,,,None,None,,,DAPT,2025-07-23,2,MISSING,Missing both distance and grade
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250820_171158.json,True,True,True,457m,5,str,str,String format: 457m,,QOT,2025-08-12,7,OK,Complete race_info
+predictions/prediction_Race_1_-_BROKEN-HILL_-_2025-08-03_comprehensive_20250803_122343.json,True,True,True,375m,Grade M,str,str,String format: 375m,,BROKEN-HILL,2025-08-03,1,OK,Complete race_info
+predictions/prediction_Race_1_-_WAR_-_2025-07-31_comprehensive_20250731_184446.json,True,True,True,400m,Grade Maiden,str,str,String format: 400m,,WAR,2025-07-31,1,OK,Complete race_info
+predictions/prediction_Race_1_-_AP_K_-_01_July_2025_comprehensive_20250804_120014.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP_K,01 July 2025,1,OK,Complete race_info
+predictions/unified_prediction_Race 3 - RICH - 2025-07-30_20250730_194017.json,True,True,True,320m,Grade 4/5,str,str,String format: 320m,,RICH,2025-07-30,3,OK,Complete race_info
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250819_183104.json,True,False,False,,,None,None,,,QOT,2025-08-12,7,MISSING,Missing both distance and grade
+predictions/prediction_example_id_comprehensive_20250804_085116.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-04,UNKNOWN,MISSING,Missing both distance and grade
+predictions/test_prediction_1755689853.json,True,False,False,,,None,None,,,,,,MISSING,Missing both distance and grade
+predictions/prediction_Race_1_-_R_-_1970-01-01_3684_comprehensive_20250812_180507.json,True,True,True,515m,Grade Grade 5,str,str,String format: 515m,,__R_,1970-01-01__3684,1,OK,Complete race_info
+predictions/prediction_Race_11_CASO_2025-07-26.json,True,True,True,300m,Grade 5,str,str,String format: 300m,,CASINO,2025-07-30,UNKNOWN,OK,Complete race_info
+predictions/prediction_Race 1 - RICH - 2025-07-27.json,True,True,True,320m,Grade M,str,str,String format: 320m,,RICH,2025-07-27,1,OK,Complete race_info
+predictions/prediction_20250727_194319_Race_01_BAL_2025-07-26.json,True,True,True,390m,Grade Grade 7,str,str,String format: 390m,,BALLARAT,2025-07-30,UNKNOWN,OK,Complete race_info
+predictions/prediction_20250730162248_Race 1 - BROKEN-HILL - 2025-07-27.json,True,True,True,375m,Grade MX,str,str,String format: 375m,,BROKEN-HILL,2025-07-27,20250730162248_1,OK,Complete race_info
+predictions/prediction_Race 10 - CAPALABA - 2025-07-27.json,True,True,True,300m,Grade 5,str,str,String format: 300m,,CAPALABA,2025-07-27,10,OK,Complete race_info
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250820_161322.json,True,False,False,,,None,None,,,QOT,2025-08-12,7,MISSING,Missing both distance and grade
+predictions/prediction_test_race_1_comprehensive_20250814_174640.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-14,UNKNOWN,MISSING,Missing both distance and grade
+predictions/comprehensive_prediction_1_TAREE_2025-07-26_20250726_144122.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/prediction_Race_1_-_AP_K_-_2025-08-04_comprehensive_20250804_015105.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP_K,2025-08-04,1,OK,Complete race_info
+predictions/prediction_Race_8_-_DUBBO_-_28_July_2025.json,True,True,True,318m,Grade 5,str,str,String format: 318m,,DUBBO,28 July 2025,8,OK,Complete race_info
+predictions/prediction_Race_9_-_HOBT_-_2025-07-31_comprehensive_20250802_122124.json,True,True,True,278m,Grade 5,str,str,String format: 278m,,HOBT,2025-07-31,9,OK,Complete race_info
+predictions/unified_prediction_Race_03_AP_K_2025-07-25_20250726_145021.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_1_-_AP_K_-_01_July_2025_comprehensive_20250804_121941.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP_K,01 July 2025,1,OK,Complete race_info
+predictions/unified_prediction_Race_04_LADBROKES_2025-07-25_20250726_144958.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_4_-_GARD_-_11_Aug_2025_comprehensive_20250804_120658.json,True,False,False,,,None,None,,,GRDN,11 Aug 2025,4,MISSING,Missing both distance and grade
+predictions/prediction_Race 2 - AP_K - 2025-07-24.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP/K,2025-07-26,UNKNOWN,OK,Complete race_info
+predictions/prediction_Race_07_UNKNOWN_2025-07-23.json,True,True,True,340m,Grade 5,str,str,String format: 340m,,GUNN,2025-07-30,UNKNOWN,OK,Complete race_info
+predictions/prediction_Race 9 - MOUNT - 2025-07-27.json,True,True,True,410m,Grade Mixed 4/5,str,str,String format: 410m,,MOUNT,2025-07-27,9,OK,Complete race_info
+predictions/unified_prediction_Race_07_AP_K_2025-07-25_20250726_144829.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_9_-_HOBT_-_2025-07-31_comprehensive_20250802_123129.json,True,True,True,278m,Grade 5,str,str,String format: 278m,,HOBT,2025-07-31,9,OK,Complete race_info
+predictions/prediction_Race_01_UNKNOWN_2025-07-23_01.json,True,True,True,460m,Grade Maiden,str,str,String format: 460m,,GEE,2025-07-30,UNKNOWN,OK,Complete race_info
+predictions/unified_prediction_Race 5 - BAL - 2025-07-30_20250730_194214.json,True,True,True,660m,Grade Restricted Win Heat,str,str,String format: 660m,,BAL,2025-07-30,5,OK,Complete race_info
+predictions/prediction_20250730162248_Race 1 - RICH - 2025-07-27.json,True,True,True,320m,Grade M,str,str,String format: 320m,,RICH,2025-07-27,20250730162248_1,OK,Complete race_info
+predictions/prediction_Race_03_GRDN_2025-07-25.json,True,True,True,400m,Grade M2/M3,str,str,String format: 400m,,GOSFORD,2025-07-30,UNKNOWN,OK,Complete race_info
+predictions/unified_prediction_Race_06_AP_K_2025-07-25_20250726_144832.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_3_-_LADBROKES-Q-STRAIGHT_-_2025-08-21_enhanced_20250821_183102.json,True,True,True,350m,M,str,str,String format: 350m,,QST,2025-08-14,3,OK,Complete race_info
+predictions/prediction_test_race_2_comprehensive_20250809_180016.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-09,UNKNOWN,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_02_AP_K_2025-07-25_20250726_144934.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250820_163201.json,True,False,False,,,None,None,,,QOT,2025-08-12,7,MISSING,Missing both distance and grade
+predictions/prediction_Race 8 - LADBROKES-Q-STRAIGHT - 2025-07-25.json,True,False,False,,,None,None,,,LADBROKES_Q_STRAIGHT,2025-07-25,8,MISSING,Missing both distance and grade
+predictions/prediction_Race 1 - WARRAGUL - 2025-07-25.json,True,False,False,,,None,None,,,WARRAGUL,2025-07-25,,MISSING,Missing both distance and grade
+predictions/prediction_Race_1_-_AP_K_-_2025-08-15_comprehensive_20250820_163128.json,True,False,False,,,None,None,,,AP_K,2025-08-15,1,MISSING,Missing both distance and grade
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250820_171953.json,True,True,True,457m,5,str,str,String format: 457m,,QOT,2025-08-12,7,OK,Complete race_info
+predictions/prediction_Race_01_BAL_2025-07-25.json,True,True,True,545m,Grade Grade 5,str,str,String format: 545m,,BALLARAT,2025-07-26,UNKNOWN,OK,Complete race_info
+predictions/prediction_test_race_2_comprehensive_20250809_170254.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-09,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250820_171115.json,True,False,False,,,None,None,,,QOT,2025-08-12,7,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_01_BAL_2025-07-26_20250726_145129.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_08_WAR_2025-07-25_20250726_144827.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_07_LADBROKES_2025-07-25_20250726_144842.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_04_LADBROKES_2025-07-25_20250726_144915.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_03_WAR_2025-07-25_20250726_145126.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race 1 - SAN - 2025-07-25.json,True,False,False,,,None,None,,,SAN,2025-07-25,1,MISSING,Missing both distance and grade
+predictions/prediction_Race 2 - TAREE - 2025-07-26.json,True,True,True,300m,Grade M,str,str,String format: 300m,,TAREE,2025-07-26,2,OK,Complete race_info
+predictions/comprehensive_prediction_1_TAREE_2025-07-26_20250726_143346.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/comprehensive_prediction_3_TAREE_2025-07-26_20250726_154010.json,True,False,False,,,None,None,,,TAREE,2025-07-26,3,MISSING,Missing both distance and grade
+predictions/prediction_20250730162248_Race 4 - CAPALABA - 2025-07-27.json,True,True,True,366m,Grade 5,str,str,String format: 366m,,CAPALABA,2025-07-27,20250730162248_4,OK,Complete race_info
+predictions/prediction_Race_8_-_DUBBO_-_2025-08-23_enhanced_20250821_191438.json,True,True,True,400m,NG1-4,str,str,String format: 400m,,DUBO,2025-08-09,8,OK,Complete race_info
+predictions/prediction_Race_1_-_AP_K_-_2025-08-04_comprehensive_20250804_015148.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP_K,2025-08-04,1,OK,Complete race_info
+predictions/unified_prediction_20250727_194319_Race_01_BAL_2025-07-26_20250730_181127.json,True,True,True,390m,Grade Grade 7,str,str,String format: 390m,,BALLARAT,2025-07-30,UNKNOWN,OK,Complete race_info
+predictions/prediction_example_comprehensive_20250802_122445.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-02,UNKNOWN,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_03_WAR_2025-07-25_20250726_144546.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_example_id_comprehensive_20250804_004800.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-04,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_07_UNKNOWN_2025-07-24.json,True,True,True,450m,Grade 5,str,str,String format: 450m,,GRAF,2025-07-30,UNKNOWN,OK,Complete race_info
+predictions/prediction_20250730162248_Race 10 - MOUNT - 2025-07-27.json,True,True,True,512m,Grade TG5+W,str,str,String format: 512m,,MOUNT,2025-07-27,20250730162248_10,OK,Complete race_info
+predictions/prediction_Race_02_AP_K_2025-07-25.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP/K,2025-07-26,UNKNOWN,OK,Complete race_info
+predictions/prediction_test_race_1_comprehensive_20250813_165014.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-13,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_20250730162248_Race 4 - GRAFTON - 2025-07-27.json,True,True,True,300m,Grade 5,str,str,String format: 300m,,GRAFTON,2025-07-27,20250730162248_4,OK,Complete race_info
+predictions/prediction_Race_1_-_AP_K_-_01_July_2025_comprehensive_20250804_014655.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP_K,01 July 2025,1,OK,Complete race_info
+predictions/prediction_UNKNOWN_0_2025-08-02_weather_enhanced_20250802_175524.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-02,0,MISSING,Missing both distance and grade
+predictions/prediction_Race_2_-_AP_K_-_2025-08-04_comprehensive_20250804_091015.json,True,True,True,530m,Grade TG1-6W,str,str,String format: 530m,,AP_K,2025-08-04,2,OK,Complete race_info
+predictions/prediction_weather_enhanced_1_TAREE_2025-07-26.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/prediction_20250730162248_Race 10 - LAUNCESTON - 2025-07-28.json,True,True,True,278m,Grade 5,str,str,String format: 278m,,LAUNCESTON,2025-07-28,20250730162248_10,OK,Complete race_info
+predictions/prediction_Test_Race_1_BAL_2025-07-25.json,True,True,True,545m,Grade Grade 5,str,str,String format: 545m,,BALLARAT,2025-07-26,UNKNOWN,OK,Complete race_info
+predictions/prediction_Race_2_-_AP_K_-_2025-08-04_comprehensive_20250804_020219.json,True,True,True,530m,Grade TG1-6W,str,str,String format: 530m,,AP_K,2025-08-04,2,OK,Complete race_info
+predictions/prediction_Race 5 - LADBROKES-Q1-LAKESIDE - 2025-07-30.json,True,True,True,390m,Grade 5,str,str,String format: 390m,,LADBROKES-Q1-LAKESIDE,2025-07-30,5,OK,Complete race_info
+predictions/prediction_20250727_194319_Race_02_AP_K_2025-07-25.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP/K,2025-07-30,UNKNOWN,OK,Complete race_info
+predictions/unified_prediction_Race_07_LADBROKES_2025-07-25_20250726_145022.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_05_BAL_2025-07-23.json,True,True,True,425m,Grade Mixed 3/4,str,str,String format: 425m,,BEN,2025-07-30,UNKNOWN,OK,Complete race_info
+predictions/unified_prediction_Race_04_LADBROKES_2025-07-25_20250726_144820.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race 11 - SAN - 2025-07-24.json,True,True,True,515m,Grade 5,str,str,String format: 515m,,SAN,2025-07-24,,OK,Complete race_info
+predictions/prediction_BAL_8_20250726.json,True,True,True,500m,Grade Grade 5 T3,str,str,String format: 500m,,BAL,2025-07-26,8,OK,Complete race_info
+predictions/prediction_Race 3 - BAL - 2025-07-26.json,True,True,True,425m,Grade Grade 5,str,str,String format: 425m,,BAL,2025-07-26,3,OK,Complete race_info
+predictions/prediction_Race_07_AP_K_2025-07-25.json,True,True,True,350m,Grade 6,str,str,String format: 350m,,MBS,2025-07-26,UNKNOWN,OK,Complete race_info
+predictions/prediction_test_race_1_comprehensive_20250813_144231.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-13,UNKNOWN,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_07_AP_K_2025-07-25_20250726_145008.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_08_LADBROKES_2025-07-25.json,True,True,True,350m,Grade 5,str,str,String format: 350m,,QST,2025-07-30,UNKNOWN,OK,Complete race_info
+predictions/unified_prediction_Race_08_WAR_2025-07-25_20250726_145006.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_test_race_1_comprehensive_20250813_162315.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-13,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_example_comprehensive_20250803_112321.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-03,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250819_185038.json,True,False,False,,,None,None,,,QOT,2025-08-12,7,MISSING,Missing both distance and grade
+predictions/prediction_Race_1_-_AP_K_-_01_July_2025_comprehensive_20250804_090150.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP_K,01 July 2025,1,OK,Complete race_info
+predictions/prediction_Race_10_-_CAPALABA_-_27_July_2025.json,True,True,True,300m,Grade 5,str,str,String format: 300m,,CAPALABA,27 July 2025,10,OK,Complete race_info
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250819_182600.json,True,False,False,,,None,None,,,QOT,2025-08-12,7,MISSING,Missing both distance and grade
+predictions/prediction_Race_1_-_MEADOWS_-_2025-08-23_enhanced_20250821_191129.json,True,True,True,525m,Maiden,str,str,String format: 525m,,THE_MEADOWS,2025-08-14,1,OK,Complete race_info
+predictions/unified_prediction_Race_01_BAL_2025-07-25_20250726_144931.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_12_-_BAL_-_2025-08-04_comprehensive_20250811_180742.json,True,True,True,460m,Grade Mixed 6/7,str,str,String format: 460m,,BAL,2025-08-04,12,OK,Complete race_info
+predictions/prediction_RACE_4_2025-08-11_weather_enhanced_20250803_233312.json,True,False,False,,,None,None,,,RACE,2025-08-11,4,MISSING,Missing both distance and grade
+predictions/prediction_Race_10_-_LAUNCESTON_-_28_July_2025_comprehensive_20250731_162113.json,True,True,True,278m,Grade 5,str,str,String format: 278m,,LAUNCESTON,28 July 2025,10,OK,Complete race_info
+predictions/prediction_Race_2_-_AP_K_-_2025-08-04_comprehensive_20250811_182424.json,True,True,True,530m,Grade TG1-6W,str,str,String format: 530m,,AP_K,2025-08-04,2,OK,Complete race_info
+predictions/unified_prediction_Race_03_AP_K_2025-07-25_20250726_144841.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_20250730162248_Race 1 - GRAFTON - 2025-07-27.json,True,True,True,350m,Grade M,str,str,String format: 350m,,GRAFTON,2025-07-27,20250730162248_1,OK,Complete race_info
+predictions/prediction_Race_06_BAL_2025-07-23.json,True,True,True,400m,Grade Mixed 4/5,str,str,String format: 400m,,GEE,2025-07-30,UNKNOWN,OK,Complete race_info
+predictions/prediction_UNKNOWN_0_2025-08-03_weather_enhanced_20250803_232138.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-03,0,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_02_AP_K_2025-07-25_20250726_145135.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race 4 - BEN - 2025-07-23.json,True,False,False,,,None,None,,,BEN,2025-07-23,,MISSING,Missing both distance and grade
+predictions/prediction_Race 2 - BAL - 2025-07-23.json,True,False,False,,,None,None,,,BAL,2025-07-23,,MISSING,Missing both distance and grade
+predictions/prediction_test_race_2_comprehensive_20250812_182717.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-12,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race 4 - GRDN - 2025-07-25.json,True,True,True,400m,Grade 5,str,str,String format: 400m,,GOSFORD,2025-07-26,UNKNOWN,OK,Complete race_info
+predictions/prediction_Race 4 - LADBROKES-Q1-LAKESIDE - 2025-07-26.json,True,True,True,550m,Grade R/W,str,str,String format: 550m,,LADBROKES-Q1-LAKESIDE,2025-07-26,4,OK,Complete race_info
+predictions/prediction_20250730162231_Race 8 - WPK - 2025-07-24.json,True,True,True,516m,Grade 5,str,str,String format: 516m,,WPK,2025-07-24,20250730162231_8,OK,Complete race_info
+predictions/prediction_Race_3_-_RICH_-_2025-07-30_comprehensive_20250730_210737.json,True,True,True,320m,Grade 4/5,str,str,String format: 320m,,RICH,2025-07-30,3,OK,Complete race_info
+predictions/prediction_Race_11_-_CASO_-_22_July_2025.json,True,True,True,300m,Grade 5,str,str,String format: 300m,,CASO,22 July 2025,11,OK,Complete race_info
+predictions/prediction_UNKNOWN_0_2025-08-03_weather_enhanced_20250803_130828.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-03,0,MISSING,Missing both distance and grade
+predictions/prediction_Race_9_-_GOULBURN_-_2025-08-22_enhanced_20250821_184110.json,True,True,True,350m,NG1-4,str,str,String format: 350m,,GOUL,2025-07-25,9,OK,Complete race_info
+predictions/unified_prediction_Race 5 - LADBROKES-Q1-LAKESIDE - 2025-07-30_20250730_163011.json,False,False,False,,,None,None,,,,,,MISSING,No race_info field
+predictions/prediction_Race_08_WAR_2025-07-25.json,True,True,True,400m,Grade Grade 5,str,str,String format: 400m,,WARRAGUL,2025-07-26,UNKNOWN,OK,Complete race_info
+predictions/prediction_Race_1_-_AP_K_-_01_July_2025_comprehensive_20250804_005526.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP_K,01 July 2025,1,OK,Complete race_info
+predictions/prediction_Race_12_-_QOT_-_22_July_2025.json,True,False,False,,,None,None,,,QOT,2025-07-23,,MISSING,Missing both distance and grade
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250820_163355.json,True,False,False,,,None,None,,,QOT,2025-08-12,7,MISSING,Missing both distance and grade
+predictions/prediction_Race_1_-_SAL_-_27_July_2025.json,True,True,True,400m,Grade Maiden,str,str,String format: 400m,,SAL,27 July 2025,1,OK,Complete race_info
+predictions/prediction_Race_1_-_AP_K_-_01_July_2025_comprehensive_20250804_121527.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP_K,01 July 2025,1,OK,Complete race_info
+predictions/unified_prediction_Race_03_WAR_2025-07-25_20250726_145009.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_weather_enhanced_0_GUNN_2025-07-30.json,True,False,False,,,None,None,,,GUNN,2025-07-30,0,MISSING,Missing both distance and grade
+predictions/prediction_Race_6_-_AP_K_-_2025-08-22_enhanced_20250821_183107.json,True,True,True,342m,TG1-4W,str,str,String format: 342m,,AP/K,2025-07-29,6,OK,Complete race_info
+predictions/prediction_Race_2_-_AP_K_-_2025-08-04_comprehensive_20250804_114444.json,True,True,True,530m,Grade TG1-6W,str,str,String format: 530m,,AP_K,2025-08-04,2,OK,Complete race_info
+predictions/unified_prediction_Race_06_AP_K_2025-07-25_20250726_144926.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_3_-_LADBROKES-Q-STRAIGHT_-_2025-08-21_enhanced_20250821_183850.json,True,True,True,350m,M,str,str,String format: 350m,,QST,2025-08-14,3,OK,Complete race_info
+predictions/prediction_test_race_2_comprehensive_20250814_174536.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-14,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_example_comprehensive_20250804_015337.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-04,UNKNOWN,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_04_AP_K_2025-07-25_20250726_144929.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_03_GRDN_2025-07-25_20250726_144914.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_11_SAN_2025-07-24_20250726_144554.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_10_-_AP_K_-_2025-08-04_comprehensive_20250811_200955.json,True,True,True,530m,Grade 5,str,str,String format: 530m,,AP_K,2025-08-04,10,OK,Complete race_info
+predictions/prediction_Race 7 - WARRAGUL - 2025-07-24.json,True,False,False,,,None,None,,,WARRAGUL,2025-07-24,,MISSING,Missing both distance and grade
+predictions/comprehensive_prediction_1_TAREE_2025-07-26_20250726_143803.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250820_161703.json,True,False,False,,,None,None,,,QOT,2025-08-12,7,MISSING,Missing both distance and grade
+predictions/prediction_20250730162247_Race 3 - DUBBO - 2025-07-26.json,True,True,True,516m,Grade MX,str,str,String format: 516m,,DUBBO,2025-07-26,20250730162247_3,OK,Complete race_info
+predictions/prediction_TEST_VEN_3_2025-08-03_weather_enhanced_20250803_215819.json,True,False,False,,,None,None,,,TEST_VEN,2025-08-03,3,MISSING,Missing both distance and grade
+predictions/prediction_Race_1_-_BAL_-_2025-08-20_enhanced_20250820_164200.json,True,False,False,,,None,None,,,BAL,2025-08-13,1,MISSING,Missing both distance and grade
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250820_172206.json,True,True,True,457m,5,str,str,String format: 457m,,QOT,2025-08-12,7,OK,Complete race_info
+predictions/unified_prediction_Race_08_WAR_2025-07-25_20250726_145123.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_11_SAN_2025-07-24_20250726_145017.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_04_GRDN_2025-07-25_20250726_145000.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race 6 - ROCKHAMPTON - 2025-07-27.json,True,True,True,407m,Grade 5,str,str,String format: 407m,,ROCKHAMPTON,2025-07-27,6,OK,Complete race_info
+predictions/unified_prediction_Race_04_GRDN_2025-07-25_20250726_144538.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_1_-_BROKEN-HILL_-_2025-08-03_comprehensive_20250803_124024.json,True,True,True,375m,Grade M,str,str,String format: 375m,,BROKEN-HILL,2025-08-03,1,OK,Complete race_info
+predictions/prediction_20250730162248_Race 2 - GRDN - 2025-07-26.json,True,True,True,520m,Grade 5,str,str,String format: 520m,,GRDN,2025-07-26,20250730162248_2,OK,Complete race_info
+predictions/comprehensive_prediction_1_TAREE_2025-07-26_20250726_143205.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/prediction_Race_6_-_AP_K_-_2025-08-22_enhanced_20250821_194744.json,True,True,True,342m,TG1-4W,str,str,String format: 342m,,AP/K,2025-07-29,6,OK,Complete race_info
+predictions/prediction_Race 8 - BAL - 2025-07-26.json,True,True,True,500m,Grade Grade 5 T3,str,str,String format: 500m,,BAL,2025-07-26,8,OK,Complete race_info
+predictions/prediction_Race_1_-_BAL_-_2025-08-20_enhanced_20250820_164611.json,True,False,False,,,None,None,,,BAL,2025-08-13,1,MISSING,Missing both distance and grade
+predictions/prediction_RACE_4_2025-08-11_weather_enhanced_20250803_232943.json,True,False,False,,,None,None,,,RACE,2025-08-11,4,MISSING,Missing both distance and grade
+predictions/prediction_20250730162248_Race 2 - TAREE - 2025-07-26.json,True,True,True,300m,Grade M,str,str,String format: 300m,,TAREE,2025-07-26,20250730162248_2,OK,Complete race_info
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250820_172705.json,True,True,True,457m,5,str,str,String format: 457m,,QOT,2025-08-12,7,OK,Complete race_info
+predictions/prediction_Race 1 - AP_K - 22 August 2025.json,True,False,False,,,None,None,,,AP_K,2025-07-23,,MISSING,Missing both distance and grade
+predictions/prediction_Race_6_-_CASINO_-_2025-07-31_comprehensive_20250731_202301.json,True,True,True,484m,Grade 5,str,str,String format: 484m,,CASINO,2025-07-31,6,OK,Complete race_info
+predictions/prediction_Race_1_-_AP_K_-_01_July_2025_comprehensive_20250804_121341.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP_K,01 July 2025,1,OK,Complete race_info
+predictions/prediction_Race_11_-_DAPT_-_2025-08-21_enhanced_20250821_182523.json,True,True,True,297m,5,str,str,String format: 297m,,DAPTO,2025-07-24,11,OK,Complete race_info
+predictions/prediction_example_id_comprehensive_20250804_110258.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-04,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_6_-_CASINO_-_2025-07-31_comprehensive_20250731_191357.json,True,True,True,484m,Grade 5,str,str,String format: 484m,,CASINO,2025-07-31,6,OK,Complete race_info
+predictions/prediction_Race 8 - TAREE - 2025-07-26.json,True,True,True,300m,Grade 5,str,str,String format: 300m,,TAREE,2025-07-26,8,OK,Complete race_info
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250819_183102.json,True,False,False,,,None,None,,,QOT,2025-08-12,7,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_07_LADBROKES_2025-07-25_20250726_144937.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_20250730162247_Race_1_-_TAREE_-_2025-07-26.json,True,True,True,300m,Grade M,str,str,String format: 300m,,TAREE,2025-07-30,UNKNOWN,OK,Complete race_info
+predictions/prediction_Race_03_BAL_2025-07-23.json,True,True,True,500m,Grade Maiden,str,str,String format: 500m,,BEN,2025-07-30,UNKNOWN,OK,Complete race_info
+predictions/prediction_Race 8 - CAPALABA - 2025-07-27.json,True,True,True,366m,Grade 5,str,str,String format: 366m,,CAPALABA,2025-07-27,8,OK,Complete race_info
+predictions/prediction_20250730162231_Race 5 - WARRAGUL - 2025-07-24.json,True,True,True,460m,Grade Grade 5,str,str,String format: 460m,,WARRAGUL,2025-07-24,20250730162231_5,OK,Complete race_info
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-20_enhanced_20250820_172940.json,True,True,True,352m,5,str,str,String format: 352m,,QOT,2025-07-16,7,OK,Complete race_info
+predictions/prediction_20250730162231_Race 1 - DAPT - 2025-07-24.json,True,True,True,324m,Grade M,str,str,String format: 324m,,DAPT,2025-07-24,20250730162231_1,OK,Complete race_info
+predictions/prediction_Race 6 - CAPALABA - 2025-07-27.json,True,True,True,457m,Grade 5,str,str,String format: 457m,,CAPALABA,2025-07-27,6,OK,Complete race_info
+predictions/prediction_Race 7 - LADBROKES-Q-STRAIGHT - 2025-07-25.json,True,False,False,,,None,None,,,LADBROKES_Q_STRAIGHT,2025-07-25,7,MISSING,Missing both distance and grade
+predictions/prediction_Race_7_-_WARRAGUL_-_24_July_2025.json,True,True,True,400m,Grade Grade 5,str,str,String format: 400m,,WARRAGUL,24 July 2025,7,OK,Complete race_info
+predictions/prediction_Race 10 - MOUNT - 2025-07-27.json,True,True,True,512m,Grade TG5+W,str,str,String format: 512m,,MOUNT,2025-07-27,10,OK,Complete race_info
+predictions/prediction_test_race_2_comprehensive_20250813_162204.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-13,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_07_LADBROKES_2025-07-25.json,True,True,True,300m,Grade 5,str,str,String format: 300m,,QST,2025-07-26,UNKNOWN,OK,Complete race_info
+predictions/prediction_Race_4_-_GARD_-_11_Aug_2025_comprehensive_20250811_181433.json,True,False,False,,,None,None,,,GRDN,11 Aug 2025,4,MISSING,Missing both distance and grade
+predictions/prediction_20250730162248_Race 9 - MOUNT - 2025-07-27.json,True,True,True,410m,Grade Mixed 4/5,str,str,String format: 410m,,MOUNT,2025-07-27,20250730162248_9,OK,Complete race_info
+predictions/prediction_Race_10_-_AP_K_-_2025-08-04_comprehensive_20250809_171001.json,True,True,True,530m,Grade 5,str,str,String format: 530m,,AP_K,2025-08-04,10,OK,Complete race_info
+predictions/unified_prediction_Race 1 - TAREE - 2025-07-26_20250726_144947.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/prediction_Race_1_-_BAL_-_2025-08-20_enhanced_20250821_175750.json,True,True,True,450m,Mixed 6/7,str,str,String format: 450m,,BALLARAT,2025-08-13,1,OK,Complete race_info
+predictions/prediction_Race_1_-_AP_K_-_01_July_2025_comprehensive_20250804_014654.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP_K,01 July 2025,1,OK,Complete race_info
+predictions/prediction_Race 6 - BAL - 2025-07-23.json,True,False,False,,,None,None,,,BAL,2025-07-23,,MISSING,Missing both distance and grade
+predictions/prediction_Race 2 - GRDN - 2025-07-26.json,True,True,True,520m,Grade 5,str,str,String format: 520m,,GRDN,2025-07-26,2,OK,Complete race_info
+predictions/prediction_Race 3 - DUBBO - 2025-07-26.json,True,True,True,516m,Grade MX,str,str,String format: 516m,,DUBBO,2025-07-26,3,OK,Complete race_info
+predictions/prediction_Race_2_-_AP_K_-_2025-08-04_comprehensive_20250804_015814.json,True,True,True,530m,Grade TG1-6W,str,str,String format: 530m,,AP_K,2025-08-04,2,OK,Complete race_info
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250820_194523.json,True,True,True,457m,5,str,str,String format: 457m,,QOT,2025-08-12,7,OK,Complete race_info
+predictions/prediction_Race 8 - HEA - 2025-07-27.json,True,True,True,300m,Grade Free For All,str,str,String format: 300m,,HEA,2025-07-27,8,OK,Complete race_info
+predictions/prediction_test_race_2_comprehensive_20250813_153959.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-13,UNKNOWN,MISSING,Missing both distance and grade
+predictions/comprehensive_prediction_1_TAREE_2025-07-26_20250726_143248.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/prediction_Race 3 - AP_K - 2025-07-25.json,True,False,False,,,None,None,,,AP_K,2025-07-25,,MISSING,Missing both distance and grade
+predictions/prediction_Race_9_-_LADBROKES-Q1-LAKESIDE_-_2025-08-20_enhanced_20250820_174418.json,True,True,True,366m,5,str,str,String format: 366m,,CAPA,2025-07-27,9,OK,Complete race_info
+predictions/unified_prediction_Race_03_GRDN_2025-07-25_20250726_144534.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race 1 - TAREE - 2025-07-26.json,True,True,True,300m,Grade M,str,str,String format: 300m,,TAREE,2025-07-26,1,OK,Complete race_info
+predictions/prediction_weather_enhanced_0_UNKNOWN_2025-07-30.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-30,0,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_08_LADBROKES_2025-07-25_20250726_144912.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_5_-_QOT_-_22_July_2025.json,True,False,False,,,None,None,,,QOT,2025-07-23,,MISSING,Missing both distance and grade
+predictions/prediction_Race_1_-_BROKEN-HILL_-_2025-08-03_comprehensive_20250803_114809.json,True,True,True,375m,Grade M,str,str,String format: 375m,,BROKEN-HILL,2025-08-03,1,OK,Complete race_info
+predictions/prediction_Race_1_-_BAL_-_2025-08-15_enhanced_20250820_163515.json,True,False,False,,,None,None,,,BAL,2025-08-15,1,MISSING,Missing both distance and grade
+predictions/prediction_20250730162247_Race_01_WAR_2025-07-25.json,True,True,True,460m,Grade Maiden,str,str,String format: 460m,,WARRAGUL,2025-07-30,UNKNOWN,OK,Complete race_info
+predictions/comprehensive_prediction_1_TAREE_2025-07-26_20250726_141935.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_01_WAR_2025-07-25_20250726_144812.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_1_-_AP_K_-_2025-08-04_comprehensive_20250804_120415.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP_K,2025-08-04,1,OK,Complete race_info
+predictions/prediction_Race 1 - BAL - 2025-07-26.json,True,True,True,390m,Grade Grade 7,str,str,String format: 390m,,BALLARAT,2025-07-26,UNKNOWN,OK,Complete race_info
+predictions/prediction_example_comprehensive_20250802_124234.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-02,UNKNOWN,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_06_AP_K_2025-07-25_20250726_145011.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_02_AP_K_2025-07-25_20250726_144839.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_1_-_AP_K_-_2025-08-04_comprehensive_20250804_090556.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP_K,2025-08-04,1,OK,Complete race_info
+predictions/prediction_Race_10_-_AP_K_-_2025-08-04_comprehensive_20250809_170214.json,True,True,True,530m,Grade 5,str,str,String format: 530m,,AP_K,2025-08-04,10,OK,Complete race_info
+predictions/unified_prediction_Race 1 - TAREE - 2025-07-26_20250726_145744.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/prediction_example_id_comprehensive_20250804_115034.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-04,UNKNOWN,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_08_LADBROKES_2025-07-25_20250726_145114.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_11_-_DAPT_-_2025-08-21_enhanced_20250821_182721.json,True,True,True,297m,5,str,str,String format: 297m,,DAPTO,2025-07-24,11,OK,Complete race_info
+predictions/comprehensive_prediction_1_TAREE_2025-07-26_20250726_143524.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/prediction_Race_10_-_AP_K_-_2025-08-04_comprehensive_20250809_172415.json,True,True,True,530m,Grade 5,str,str,String format: 530m,,AP_K,2025-08-04,10,OK,Complete race_info
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250820_194424.json,True,True,True,457m,5,str,str,String format: 457m,,QOT,2025-08-12,7,OK,Complete race_info
+predictions/prediction_Race_11_-_TAREE_-_2025-08-02_comprehensive_20250802_175259.json,True,True,True,340m,Grade 5,str,str,String format: 340m,,TAREE,2025-08-02,11,OK,Complete race_info
+predictions/prediction_test_race_2_comprehensive_20250813_160001.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-13,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race 1 - BROKEN-HILL - 2025-07-27.json,True,True,True,375m,Grade MX,str,str,String format: 375m,,BROKEN-HILL,2025-07-27,1,OK,Complete race_info
+predictions/prediction_Race 9 - TAREE - 2025-07-26.json,True,True,True,336m,Grade 5,str,str,String format: 336m,,TAREE,2025-07-26,9,OK,Complete race_info
+predictions/prediction_Race 12 - ROCKHAMPTON - 2025-07-27.json,True,True,True,407m,Grade 5,str,str,String format: 407m,,ROCKHAMPTON,2025-07-27,12,OK,Complete race_info
+predictions/prediction_Race_1_-_AP_K_-_2025-08-04_comprehensive_20250811_181300.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP_K,2025-08-04,1,OK,Complete race_info
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250819_185041.json,True,False,False,,,None,None,,,QOT,2025-08-12,7,MISSING,Missing both distance and grade
+predictions/prediction_RACE_4_2025-08-11_weather_enhanced_20250803_225335.json,True,False,False,,,None,None,,,RACE,2025-08-11,4,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race 1 - TAREE - 2025-07-26.json,True,True,True,300m,Grade M,str,str,String format: 300m,,TAREE,2025-07-26,1,OK,Complete race_info
+predictions/prediction_test_race_2_comprehensive_20250814_172750.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-14,UNKNOWN,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_07_LADBROKES_2025-07-25_20250726_144559.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_01_WAR_2025-07-25_20250726_145110.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_test_race_2_comprehensive_20250813_164900.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-13,UNKNOWN,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race 1 - TAREE - 2025-07-26_20250726_144905.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/prediction_Race_06_UNKNOWN_2025-07-23.json,True,True,True,320m,Grade 4/5,str,str,String format: 320m,,WAGA,2025-07-30,UNKNOWN,OK,Complete race_info
+predictions/unified_prediction_Race_03_GRDN_2025-07-25_20250726_144956.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race 9 - LADBROKES-Q1-LAKESIDE - 2025-07-30.json,True,True,True,350m,Grade 5,str,str,String format: 350m,,LADBROKES-Q1-LAKESIDE,2025-07-30,9,OK,Complete race_info
+predictions/unified_prediction_Race_04_GRDN_2025-07-25_20250726_144917.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250820_172815.json,True,True,True,457m,5,str,str,String format: 457m,,QOT,2025-08-12,7,OK,Complete race_info
+predictions/prediction_Race_3_-_LADBROKES-Q-STRAIGHT_-_2025-08-21_enhanced_20250821_183107.json,True,True,True,350m,M,str,str,String format: 350m,,QST,2025-08-14,3,OK,Complete race_info
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250819_182435.json,True,False,False,,,None,None,,,QOT,2025-08-12,7,MISSING,Missing both distance and grade
+predictions/prediction_20250730162248_Race_02_AP_K_2025-07-25.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP/K,2025-07-30,UNKNOWN,OK,Complete race_info
+predictions/comprehensive_prediction_1_TAREE_2025-07-26_20250726_135402.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/prediction_Race_04_GRDN_2025-07-25.json,True,True,True,400m,Grade 5,str,str,String format: 400m,,GOSFORD,2025-07-30,UNKNOWN,OK,Complete race_info
+predictions/prediction_20250730162248_Race 3 - TAREE - 2025-07-26.json,True,True,True,336m,Grade 5,str,str,String format: 336m,,TAREE,2025-07-26,20250730162248_3,OK,Complete race_info
+predictions/prediction_test_race_2_comprehensive_20250809_172450.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-09,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race 9 - BEN - 2025-07-23.json,True,True,True,425m,Tier 3 - Grade 7,str,str,String format: 425m,,BEN,2025-07-23,,OK,Complete race_info
+predictions/prediction_20250730162247_Race 1 - TAREE - 2025-07-26.json,True,True,True,300m,Grade M,str,str,String format: 300m,,TAREE,2025-07-26,20250730162247_1,OK,Complete race_info
+predictions/prediction_Race_4_-_AP_K_-_2025-08-04_comprehensive_20250809_180808.json,True,True,True,530m,Grade 4/5,str,str,String format: 530m,,AP_K,2025-08-04,4,OK,Complete race_info
+predictions/prediction_Race_12_-_ROCKHAMPTON_-_27_July_2025.json,True,True,True,407m,Grade 5,str,str,String format: 407m,,ROCKHAMPTON,27 July 2025,12,OK,Complete race_info
+predictions/prediction_weather_enhanced_1_BAL_2025-07-26.json,True,True,True,390m,Grade 7,str,str,String format: 390m,,BAL,2025-07-26,1,OK,Complete race_info
+predictions/prediction_Race 7 - CAPALABA - 2025-07-27.json,True,True,True,366m,Grade OPEN,str,str,String format: 366m,,CAPALABA,2025-07-27,7,OK,Complete race_info
+predictions/unified_prediction_Race_01_BAL_2025-07-26_20250726_145012.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_2_-_AP_K_-_2025-08-12_comprehensive_20250812_200737.json,True,True,True,300m,Grade 6,str,str,String format: 300m,,AP_K,2025-08-12,2,OK,Complete race_info
+predictions/prediction_Race_1_-_AP_K_-_2025-08-15_comprehensive_20250820_164851.json,True,False,False,,,None,None,,,AP_K,2025-08-15,1,MISSING,Missing both distance and grade
+predictions/prediction_20250730162248_Race 10 - CAPALABA - 2025-07-27.json,True,True,True,300m,Grade 5,str,str,String format: 300m,,CAPALABA,2025-07-27,20250730162248_10,OK,Complete race_info
+predictions/unified_prediction_Race_07_AP_K_2025-07-25_20250726_144545.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_10_-_LAUNCESTON_-_28_July_2025_comprehensive_20250730_213425.json,True,True,True,278m,Grade 5,str,str,String format: 278m,,LAUNCESTON,28 July 2025,10,OK,Complete race_info
+predictions/comprehensive_prediction_1_TAREE_2025-07-26_20250726_142102.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/prediction_Race_8_-_GAWL_-_2025-08-19_enhanced_20250819_184233.json,True,False,False,,,None,None,,,AP/K,2025-08-07,8,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_08_LADBROKES_2025-07-25_20250726_144532.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/comprehensive_prediction_1_TAREE_2025-07-26_20250726_143713.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/prediction_Race 5 - SAL - 2025-07-27.json,True,True,True,515m,Grade Free For All,str,str,String format: 515m,,SAL,2025-07-27,5,OK,Complete race_info
+predictions/prediction_Race 8 - DAPT - 2025-07-24.json,True,True,True,720m,5,str,str,String format: 720m,,DAPT,2025-07-24,,OK,Complete race_info
+predictions/unified_prediction_Race_04_AP_K_2025-07-25_20250726_144551.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_9_-_CASO_-_22_July_2025.json,True,False,False,,,None,None,,,CASO,2025-07-23,,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_06_AP_K_2025-07-25_20250726_144548.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_20250730162247_Race 9 - TAREE - 2025-07-26.json,True,True,True,336m,Grade 5,str,str,String format: 336m,,TAREE,2025-07-26,20250730162247_9,OK,Complete race_info
+predictions/prediction_Race_05_QOT_2025-07-26.json,True,True,True,300m,Grade 6,str,str,String format: 300m,,QST,2025-07-30,UNKNOWN,OK,Complete race_info
+predictions/prediction_Race 2 - MOUNT - 2025-07-27.json,True,True,True,410m,Grade Grade 5,str,str,String format: 410m,,MOUNT,2025-07-27,2,OK,Complete race_info
+predictions/prediction_Race_4_-_GARD_-_11_Aug_2025_comprehensive_20250804_020027.json,True,False,False,,,None,None,,,GRDN,11 Aug 2025,4,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_01_BAL_2025-07-25_20250726_144553.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_9_-_GOULBURN_-_2025-08-22_enhanced_20250821_192012.json,True,True,True,350m,NG1-4,str,str,String format: 350m,,GOUL,2025-07-25,9,OK,Complete race_info
+predictions/prediction_Race_9_-_HOBT_-_2025-07-31_comprehensive_20250802_171325.json,True,True,True,278m,Grade 5,str,str,String format: 278m,,HOBT,2025-07-31,9,OK,Complete race_info
+predictions/prediction_Race_1_-_WAR_-_2025-07-31_comprehensive_20250731_184823.json,True,True,True,400m,Grade Maiden,str,str,String format: 400m,,WAR,2025-07-31,1,OK,Complete race_info
+predictions/prediction_Race 5 - MOUNT - 2025-07-27.json,True,True,True,305m,Grade 5,str,str,String format: 305m,,MOUNT,2025-07-27,5,OK,Complete race_info
+predictions/prediction_Race 2 - ROCKHAMPTON - 2025-07-27.json,True,True,True,457m,Grade M,str,str,String format: 457m,,ROCKHAMPTON,2025-07-27,2,OK,Complete race_info
+predictions/unified_prediction_20250727_194319_Race_02_AP_K_2025-07-25_20250730_181148.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP/K,2025-07-30,UNKNOWN,OK,Complete race_info
+predictions/prediction_weather_enhanced_0_WAR_2025-07-30.json,True,False,False,,,None,None,,,WAR,2025-07-30,0,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race 10 - LAUNCESTON - 2025-07-28_20250730_155920.json,True,True,True,278,Grade 5,int,str,,,LCTN,2025-07-30,0,OK,Complete race_info
+predictions/prediction_Race_10_-_AP_K_-_2025-08-04_comprehensive_20250809_181349.json,True,True,True,530m,Grade 5,str,str,String format: 530m,,AP_K,2025-08-04,10,OK,Complete race_info
+predictions/prediction_Race 1 - SAN - 2025-07-21.json,True,True,True,460m,Maiden,str,str,String format: 460m,,SAN,2025-07-21,1,OK,Complete race_info
+predictions/prediction_example_comprehensive_20250804_110644.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-04,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_2_-_SHEPPARTON_-_2025-08-04_comprehensive_20250811_175956.json,True,True,True,425m,Grade Grade 5 T3,str,str,String format: 425m,,SHEPPARTON,2025-08-04,2,OK,Complete race_info
+predictions/prediction_Race 5 - BAL - 2025-07-30.json,True,True,True,660m,Grade Restricted Win Heat,str,str,String format: 660m,,BAL,2025-07-30,5,OK,Complete race_info
+predictions/unified_prediction_Race_01_BAL_2025-07-26_20250726_144550.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_1_-_AP_K_-_2025-08-04_comprehensive_20250804_113840.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP_K,2025-08-04,1,OK,Complete race_info
+predictions/prediction_test_race_2_comprehensive_20250813_155913.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-13,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_UNKNOWN_0_2025-08-02_weather_enhanced_20250802_173538.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-02,0,MISSING,Missing both distance and grade
+predictions/prediction_example_comprehensive_20250804_013832.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-04,UNKNOWN,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race 1 - TAREE - 2025-07-26_20250726_144524.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/prediction_Race_1_-_BROKEN-HILL_-_2025-08-03_comprehensive_20250803_105716.json,True,True,True,375m,Grade M,str,str,String format: 375m,,BROKEN-HILL,2025-08-03,1,OK,Complete race_info
+predictions/prediction_Race_9_-_HOBT_-_2025-07-31_comprehensive_20250802_122854.json,True,True,True,278m,Grade 5,str,str,String format: 278m,,HOBT,2025-07-31,9,OK,Complete race_info
+predictions/unified_prediction_Race_04_LADBROKES_2025-07-25_20250726_145117.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race 4 - CAPALABA - 2025-07-27.json,True,True,True,366m,Grade 5,str,str,String format: 366m,,CAPALABA,2025-07-27,4,OK,Complete race_info
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250820_170254.json,True,True,True,457m,5,str,str,String format: 457m,,QOT,2025-08-12,7,OK,Complete race_info
+predictions/prediction_test_race_2_comprehensive_20250809_171050.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-09,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race 5 - BAL - 2025-07-26.json,True,True,True,450m,Grade Grade 5 T3,str,str,String format: 450m,,BAL,2025-07-26,5,OK,Complete race_info
+predictions/integrated_analysis_20250727_184316.json,False,False,False,,,None,None,,,,,,MISSING,No race_info field
+predictions/unified_prediction_Race_03_WAR_2025-07-25_20250726_144924.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_01_BAL_2025-07-26_20250726_144927.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_test_race_1_comprehensive_20250814_172856.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-14,UNKNOWN,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_03_AP_K_2025-07-25_20250726_145137.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_04_AP_K_2025-07-25.json,True,True,True,530m,Grade 6,str,str,String format: 530m,,AP/K,2025-07-26,UNKNOWN,OK,Complete race_info
+predictions/prediction_Race_1_-_BAL_-_2025-08-20_enhanced_20250820_163532.json,True,False,False,,,None,None,,,BAL,2025-08-13,1,MISSING,Missing both distance and grade
+predictions/prediction_Race 4 - BAL - 2025-07-23.json,True,True,True,400m,Free For All,str,str,String format: 400m,,BAL,2025-07-23,,OK,Complete race_info
+predictions/prediction_Race_04_BEN_2025-07-23.json,True,True,True,300m,Grade Tier 3 - Maiden,str,str,String format: 300m,,HEA,2025-07-30,UNKNOWN,OK,Complete race_info
+predictions/prediction_Race_1_-_AP_K_-_2025-08-15_comprehensive_20250820_164149.json,True,False,False,,,None,None,,,AP_K,2025-08-15,1,MISSING,Missing both distance and grade
+predictions/prediction_Race_1_-_WAR_-_2025-07-31_comprehensive_20250731_202143.json,True,True,True,400m,Grade Maiden,str,str,String format: 400m,,WAR,2025-07-31,1,OK,Complete race_info
+predictions/prediction_20250730162231_Race 1 - WPK - 2025-07-24.json,True,True,True,365m,Grade M,str,str,String format: 365m,,WPK,2025-07-24,20250730162231_1,OK,Complete race_info
+predictions/prediction_test_race_2_comprehensive_20250811_175451.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-11,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race 8 - WARRAGUL - 2025-07-25.json,True,False,False,,,None,None,,,WARRAGUL,2025-07-25,8,MISSING,Missing both distance and grade
+predictions/prediction_Race_1_-_TAREE_-_26_July_2025.json,True,True,True,300m,Grade M,str,str,String format: 300m,,TAREE,26 July 2025,1,OK,Complete race_info
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250820_172658.json,True,True,True,457m,5,str,str,String format: 457m,,QOT,2025-08-12,7,OK,Complete race_info
+predictions/prediction_TEST_VEN_3_2025-08-03_weather_enhanced_20250803_215817.json,True,False,False,,,None,None,,,TEST_VEN,2025-08-03,3,MISSING,Missing both distance and grade
+predictions/prediction_example_comprehensive_20250804_085255.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-04,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_1_-_AP_K_-_2025-08-12_comprehensive_20250812_180752.json,True,True,True,300m,Grade M,str,str,String format: 300m,,AP_K,2025-08-12,1,OK,Complete race_info
+predictions/unified_prediction_Race_04_AP_K_2025-07-25_20250726_144835.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_4_-_GARD_-_11_Aug_2025_comprehensive_20250804_090725.json,True,False,False,,,None,None,,,GRDN,11 Aug 2025,4,MISSING,Missing both distance and grade
+predictions/prediction_example_id_comprehensive_20250803_224529.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-03,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_20250730162231_Race 2 - AP_K - 2025-07-24.json,True,True,True,530m,Grade 5,str,str,String format: 530m,,AP_K,2025-07-24,20250730162231_2,OK,Complete race_info
+predictions/prediction_Race 5 - DUBBO - 2025-07-26.json,True,True,True,400m,Grade 5,str,str,String format: 400m,,DUBBO,2025-07-26,5,OK,Complete race_info
+predictions/prediction_Race_10_-_BAL_-_2025-08-04_comprehensive_20250811_182157.json,True,True,True,390m,Grade Mixed 6/7,str,str,String format: 390m,,BAL,2025-08-04,10,OK,Complete race_info
+predictions/unified_prediction_Race_08_LADBROKES_2025-07-25_20250726_144817.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_01_BAL_2025-07-25_20250726_144836.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_1_-_AP_K_-_01_July_2025_comprehensive_20250804_122241.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP_K,01 July 2025,1,OK,Complete race_info
+predictions/prediction_Race 5 - WARRAGUL - 2025-07-24.json,True,False,False,,,None,None,,,WARRAGUL,2025-07-24,,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race 9 - BEN - 2025-07-30_20250730_163614.json,False,False,False,,,None,None,,,,,,MISSING,No race_info field
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250819_184554.json,True,False,False,,,None,None,,,QOT,2025-08-12,7,MISSING,Missing both distance and grade
+predictions/comprehensive_prediction_3_TAREE_2025-07-26_20250726_154608.json,True,False,False,,,None,None,,,TAREE,2025-07-26,3,MISSING,Missing both distance and grade
+predictions/prediction_test_race_2_comprehensive_20250812_192149.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-12,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_11_-_DAPT_-_2025-08-21_enhanced_20250821_183157.json,True,True,True,297m,5,str,str,String format: 297m,,DAPTO,2025-07-24,11,OK,Complete race_info
+predictions/prediction_Race_1_-_BAL_-_2025-08-20_enhanced_20250820_164141.json,True,False,False,,,None,None,,,BAL,2025-08-13,1,MISSING,Missing both distance and grade
+predictions/prediction_RACE_4_2025-08-11_weather_enhanced_20250803_230541.json,True,False,False,,,None,None,,,RACE,2025-08-11,4,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_02_AP_K_2025-07-25_20250726_145019.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250819_184158.json,True,False,False,,,None,None,,,QOT,2025-08-12,7,MISSING,Missing both distance and grade
+predictions/prediction_Race 7 - BAL - 2025-07-23.json,True,False,False,,,None,None,,,BAL,2025-07-23,,MISSING,Missing both distance and grade
+predictions/prediction_Race_04_LADBROKES_2025-07-25.json,True,True,True,352m,Grade 5,str,str,String format: 352m,,QOT,2025-07-30,UNKNOWN,OK,Complete race_info
+predictions/prediction_Race_3_-_LADBROKES-Q-STRAIGHT_-_2025-08-21_enhanced_20250821_183044.json,True,True,True,350m,M,str,str,String format: 350m,,QST,2025-08-14,3,OK,Complete race_info
+predictions/prediction_Race 3 - TAREE - 2025-07-26.json,True,True,True,336m,Grade 5,str,str,String format: 336m,,TAREE,2025-07-26,3,OK,Complete race_info
+predictions/prediction_Race 3 - RICH - 2025-07-30.json,True,True,True,320m,Grade 4/5,str,str,String format: 320m,,RICH,2025-07-30,3,OK,Complete race_info
+predictions/prediction_Race_10_-_AP_K_-_2025-08-04_comprehensive_20250809_175925.json,True,True,True,530m,Grade 5,str,str,String format: 530m,,AP_K,2025-08-04,10,OK,Complete race_info
+predictions/prediction_example_comprehensive_20250804_004935.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-04,UNKNOWN,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_04_AP_K_2025-07-25_20250726_145014.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_9_-_MOUNT_-_27_July_2025.json,True,True,True,410m,Grade Mixed 4/5,str,str,String format: 410m,,MOUNT,27 July 2025,9,OK,Complete race_info
+predictions/prediction_Race 3 - TAREE - 2025-07-30.json,True,True,True,515m,Grade 5,str,str,String format: 515m,,TAREE,2025-07-30,3,OK,Complete race_info
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250820_170357.json,True,False,False,,,None,None,,,QOT,2025-08-12,7,MISSING,Missing both distance and grade
+predictions/prediction_Race_01_BAL_2025-07-26.json,True,True,True,390m,Grade Grade 7,str,str,String format: 390m,,BALLARAT,2025-07-26,UNKNOWN,OK,Complete race_info
+predictions/prediction_Race_1_-_AP_K_-_2025-08-04_comprehensive_20250804_005825.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP_K,2025-08-04,1,OK,Complete race_info
+predictions/unified_prediction_Race 10 - NOWRA - 2025-07-28_20250730_160453.json,True,True,True,297,Grade 5,int,str,,,DAPT,2025-07-30,0,OK,Complete race_info
+predictions/prediction_20250730162248_Race 6 - ROCKHAMPTON - 2025-07-27.json,True,True,True,407m,Grade 5,str,str,String format: 407m,,ROCKHAMPTON,2025-07-27,20250730162248_6,OK,Complete race_info
+predictions/prediction_Race_01_UNKNOWN_2025-07-23.json,True,True,True,457m,Grade MX,str,str,String format: 457m,,TEMA,2025-07-30,UNKNOWN,OK,Complete race_info
+predictions/prediction_Race_2_-_BULLI_-_2025-08-19_enhanced_20250820_171935.json,True,True,True,320m,M,str,str,String format: 320m,,RICHMOND,2025-08-12,2,OK,Complete race_info
+predictions/unified_prediction_Race_03_AP_K_2025-07-25_20250726_144557.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_1_-_BROKEN-HILL_-_2025-08-03_comprehensive_20250803_120520.json,True,True,True,375m,Grade M,str,str,String format: 375m,,BROKEN-HILL,2025-08-03,1,OK,Complete race_info
+predictions/prediction_test_race_1_comprehensive_20250813_162235.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-13,UNKNOWN,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_07_LADBROKES_2025-07-25_20250726_145138.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_test_race_1_comprehensive_20250812_182802.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-12,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_09_BEN_2025-07-23.json,True,True,True,425m,Grade Tier 3 - Grade 7,str,str,String format: 425m,,BEN,2025-07-30,UNKNOWN,OK,Complete race_info
+predictions/prediction_test_race_2_comprehensive_20250813_144112.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-13,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_1_-_AP_K_-_2025-08-04_comprehensive_20250804_115803.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP_K,2025-08-04,1,OK,Complete race_info
+predictions/prediction_20250730162247_Race 1 - HEA - 2025-07-27.json,True,True,True,300m,Grade Restricted Win Heat,str,str,String format: 300m,,HEA,2025-07-27,20250730162247_1,OK,Complete race_info
+predictions/prediction_example_comprehensive_20250802_122554.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-02,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_weather_enhanced_6_ROCKHAMPTON_2025-07-27.json,True,False,False,,,None,None,,,ROCKHAMPTON,2025-07-27,6,MISSING,Missing both distance and grade
+predictions/prediction_test_race_2_comprehensive_20250809_181444.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-09,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_20250730162248_Race 11 - HEA - 2025-07-27.json,True,True,True,350m,Grade Mixed 4/5,str,str,String format: 350m,,HEA,2025-07-27,20250730162248_11,OK,Complete race_info
+predictions/prediction_Race_4_-_GARD_-_11_Aug_2025_comprehensive_20250804_013310.json,True,False,False,,,None,None,,,GRDN,11 Aug 2025,4,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_11_SAN_2025-07-24_20250726_144838.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_test_race_2_comprehensive_20250812_190041.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-12,UNKNOWN,MISSING,Missing both distance and grade
+predictions/comprehensive_prediction_1_TAREE_2025-07-26_20250726_131559.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/prediction_Race_8_-_GAWL_-_2025-08-19_enhanced_20250819_184716.json,True,False,False,,,None,None,,,AP/K,2025-08-07,8,MISSING,Missing both distance and grade
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250819_184553.json,True,False,False,,,None,None,,,QOT,2025-08-12,7,MISSING,Missing both distance and grade
+predictions/prediction_Race_11_-_MUSWELLBROOK_-_2025-08-23_enhanced_20250821_192725.json,True,True,True,300m,5,str,str,String format: 300m,,TAREE,2025-08-13,11,OK,Complete race_info
+predictions/prediction_Race_1_-_AP_K_-_01_July_2025_comprehensive_20250811_181000.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP_K,01 July 2025,1,OK,Complete race_info
+predictions/prediction_Race 4 - GRAFTON - 2025-07-27.json,True,True,True,300m,Grade 5,str,str,String format: 300m,,GRAFTON,2025-07-27,4,OK,Complete race_info
+predictions/unified_prediction_Race_04_LADBROKES_2025-07-25_20250726_144536.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_4_-_AP_K_-_2025-08-04_comprehensive_20250811_180308.json,True,True,True,530m,Grade 4/5,str,str,String format: 530m,,AP_K,2025-08-04,4,OK,Complete race_info
+predictions/prediction_example_comprehensive_20250803_225003.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-03,UNKNOWN,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_08_LADBROKES_2025-07-25_20250726_144955.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race 1 - MOUNT - 2025-07-24.json,True,True,True,342m,M,str,str,String format: 342m,,MOUNT,2025-07-24,1,OK,Complete race_info
+predictions/unified_prediction_Race_03_AP_K_2025-07-25_20250726_144936.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_example_comprehensive_20250804_115334.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-04,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_5_-_SAL_-_27_July_2025.json,True,True,True,515m,Grade Free For All,str,str,String format: 515m,,SAL,27 July 2025,5,OK,Complete race_info
+predictions/prediction_Race 11 - HEA - 2025-07-27.json,True,True,True,350m,Grade Mixed 4/5,str,str,String format: 350m,,HEA,2025-07-27,11,OK,Complete race_info
+predictions/prediction_Race_1_-_RICH_-_27_July_2025.json,True,True,True,320m,Grade M,str,str,String format: 320m,,RICH,27 July 2025,1,OK,Complete race_info
+predictions/prediction_Race_10_-_BEN_-_2025-08-20_enhanced_20250820_174031.json,True,True,True,390m,Grade 5,str,str,String format: 390m,,SHEPPARTON,2025-08-13,10,OK,Complete race_info
+predictions/unified_prediction_Race_02_AP_K_2025-07-25_20250726_144556.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race 6 - BAL - 2025-07-26.json,True,True,True,460m,Grade Grade 5,str,str,String format: 460m,,BAL,2025-07-26,6,OK,Complete race_info
+predictions/prediction_Race_1_-_AP_K_-_2025-08-04_comprehensive_20250804_015147.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP_K,2025-08-04,1,OK,Complete race_info
+predictions/prediction_Race_12_BEN_2025-07-23.json,True,True,True,390m,Grade Grade 7,str,str,String format: 390m,,SHE,2025-07-30,UNKNOWN,OK,Complete race_info
+predictions/unified_prediction_Race 4 - BAL - 2025-07-30_20250730_194217.json,True,True,True,450m,Grade Mixed 6/7 Heat,str,str,String format: 450m,,BAL,2025-07-30,4,OK,Complete race_info
+predictions/prediction_Race_2_-_AP_K_-_25_July_2025.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP_K,25 July 2025,2,OK,Complete race_info
+predictions/prediction_Race 4 - LADBROKES-Q-STRAIGHT - 2025-07-27.json,True,True,True,300m,Grade M,str,str,String format: 300m,,LADBROKES-Q-STRAIGHT,2025-07-27,4,OK,Complete race_info
+predictions/unified_prediction_Race 6 - GUNNEDAH - 2025-07-30_20250730_164159.json,False,False,False,,,None,None,,,,,,MISSING,No race_info field
+predictions/prediction_Race_1_-_BROKEN-HILL_-_2025-08-03_comprehensive_20250803_110924.json,True,True,True,375m,Grade M,str,str,String format: 375m,,BROKEN-HILL,2025-08-03,1,OK,Complete race_info
+predictions/prediction_Race 1 - DAPT - 2025-07-24.json,True,True,True,324m,M,str,str,String format: 324m,,DAPT,2025-07-24,,OK,Complete race_info
+predictions/unified_prediction_Race_04_GRDN_2025-07-25_20250726_144822.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race 1 - DUBBO - 2025-07-28.json,True,True,True,340m,Grade M,str,str,String format: 340m,,DUBBO,2025-07-28,1,OK,Complete race_info
+predictions/prediction_weather_enhanced_Unknown_Unknown_Unknown.json,True,False,False,,,None,None,,,UNKNOWN,Unknown,Unknown,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_01_BAL_2025-07-26_20250726_144833.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_07_AP_K_2025-07-25_20250726_145125.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_1_-_BAL_-_2025-08-20_enhanced_20250820_165008.json,True,False,False,,,None,None,,,BAL,2025-08-13,1,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race 13 - BEN - 2025-07-30_20250730_181257.json,True,True,True,425m,Grade Grade 5,str,str,String format: 425m,,BEN,2025-07-30,13,OK,Complete race_info
+predictions/unified_prediction_Race 11 - DUBBO - 2025-07-28_20250730_161044.json,True,True,True,400,Grade 5,int,str,,,DUBBO,2025-07-30,0,OK,Complete race_info
+predictions/unified_prediction_Race_04_AP_K_2025-07-25_20250726_145131.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/test_prediction_1754727837.json,True,False,False,,,None,None,,,,,,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_01_BAL_2025-07-25_20250726_145132.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_test_race_2_comprehensive_20250813_162129.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-13,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_1_-_AP_K_-_01_July_2025_comprehensive_20250804_015903.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP_K,01 July 2025,1,OK,Complete race_info
+predictions/prediction_Race 13 - BEN - 2025-07-30.json,True,True,True,425m,Grade Grade 5,str,str,String format: 425m,,BEN,2025-07-30,13,OK,Complete race_info
+predictions/unified_prediction_Race_06_AP_K_2025-07-25_20250726_145128.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race 2 - BROKEN-HILL - 2025-07-27.json,True,True,True,525m,Grade 5,str,str,String format: 525m,,BROKEN-HILL,2025-07-27,2,OK,Complete race_info
+predictions/prediction_Race_4_-_GARD_-_11_Aug_2025_comprehensive_20250804_114041.json,True,False,False,,,None,None,,,GRDN,11 Aug 2025,4,MISSING,Missing both distance and grade
+predictions/prediction_Race 3 - BAL - 2025-07-23.json,True,False,False,,,None,None,,,BAL,2025-07-23,,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_07_AP_K_2025-07-25_20250726_144923.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_1_-_BAL_-_2025-08-15_enhanced_20250819_182636.json,True,False,False,,,None,None,,,BAL,2025-08-15,1,MISSING,Missing both distance and grade
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250820_184458.json,True,True,True,457m,5,str,str,String format: 457m,,QOT,2025-08-12,7,OK,Complete race_info
+predictions/Analysis_ML_AP_K_2025-07-25_121553.json,True,False,False,,,None,None,,,AP_K,2025-07-25,2,MISSING,Missing both distance and grade
+predictions/prediction_20250730162231_upcoming_race_sample_comprehensive_20250811_181716.json,True,True,True,525m,Grade Grade 6,str,str,String format: 525m,,GOSFORD,2025-08-11,UNKNOWN,OK,Complete race_info
+predictions/prediction_20250730162248_Race 5 - DUBBO - 2025-07-26.json,True,True,True,400m,Grade 5,str,str,String format: 400m,,DUBBO,2025-07-26,20250730162248_5,OK,Complete race_info
+predictions/unified_prediction_Race_01_WAR_2025-07-25_20250726_144950.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_weather_enhanced_0_QOT_2025-07-30.json,True,False,False,,,None,None,,,QOT,2025-07-30,0,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_03_GRDN_2025-07-25_20250726_144818.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_RACE_4_2025-08-11_weather_enhanced_20250803_224626.json,True,False,False,,,None,None,,,RACE,2025-08-11,4,MISSING,Missing both distance and grade
+predictions/comprehensive_prediction_1_TAREE_2025-07-26_20250726_143722.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/prediction_example_comprehensive_20250802_123221.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-02,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race 3 - WARRAGUL - 2025-07-25.json,True,False,False,,,None,None,,,WARRAGUL,2025-07-25,,MISSING,Missing both distance and grade
+predictions/prediction_20250730162248_Race_04_BAL_2025-07-23.json,True,True,True,400m,Grade Free For All,str,str,String format: 400m,,WARRAGUL,2025-07-30,UNKNOWN,OK,Complete race_info
+predictions/prediction_Race_4_-_GARD_-_11_Aug_2025_comprehensive_20250804_013311.json,True,False,False,,,None,None,,,GRDN,11 Aug 2025,4,MISSING,Missing both distance and grade
+predictions/prediction_Race 1 - MOUNT - 2025-07-13.json,True,True,True,390m,Maiden,str,str,String format: 390m,,MOUNT,2025-07-13,1,OK,Complete race_info
+predictions/prediction_test_race_2_comprehensive_20250813_153843.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-13,UNKNOWN,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_03_GRDN_2025-07-25_20250726_145116.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_test_race_1_comprehensive_20250813_160136.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-13,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_weather_enhanced_0_GEE_2025-07-30.json,True,False,False,,,None,None,,,GEE,2025-07-30,0,MISSING,Missing both distance and grade
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250820_163852.json,True,False,False,,,None,None,,,QOT,2025-08-12,7,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_01_WAR_2025-07-25_20250726_144527.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_UNKNOWN_0_2025-08-03_weather_enhanced_20250803_231711.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-03,0,MISSING,Missing both distance and grade
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250820_171300.json,True,True,True,457m,5,str,str,String format: 457m,,QOT,2025-08-12,7,OK,Complete race_info
+predictions/prediction_20250730162248_Race 5 - MOUNT - 2025-07-27.json,True,True,True,305m,Grade 5,str,str,String format: 305m,,MOUNT,2025-07-27,20250730162248_5,OK,Complete race_info
+predictions/prediction_Race 2 - BAL - 2025-07-26.json,True,True,True,390m,Grade Mixed 6/7,str,str,String format: 390m,,BAL,2025-07-26,2,OK,Complete race_info
+predictions/prediction_Race_4_-_GARD_-_11_Aug_2025_comprehensive_20250804_015302.json,True,False,False,,,None,None,,,GRDN,11 Aug 2025,4,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race 9 - LADBROKES-Q1-LAKESIDE - 2025-07-30_20250730_175515.json,False,False,False,,,None,None,,,,,,MISSING,No race_info field
+predictions/prediction_Race_8_-_DUBBO_-_2025-08-23_enhanced_20250821_192739.json,True,True,True,400m,NG1-4,str,str,String format: 400m,,DUBO,2025-08-09,8,OK,Complete race_info
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250819_184118.json,True,False,False,,,None,None,,,QOT,2025-08-12,7,MISSING,Missing both distance and grade
+predictions/prediction_Race_1_-_AP_K_-_01_July_2025_comprehensive_20250804_003818.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP_K,01 July 2025,1,OK,Complete race_info
+predictions/prediction_test_race_1_comprehensive_20250811_180049.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-11,UNKNOWN,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_08_WAR_2025-07-25_20250726_144921.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/comprehensive_prediction_1_TAREE_2025-07-26_20250726_141528.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_03_WAR_2025-07-25_20250726_144830.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250820_162541.json,True,False,False,,,None,None,,,QOT,2025-08-12,7,MISSING,Missing both distance and grade
+predictions/prediction_Race_7_-_LADBROKES-Q1-LAKESIDE_-_2025-08-19_enhanced_20250819_184159.json,True,False,False,,,None,None,,,QOT,2025-08-12,7,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race 3 - TAREE - 2025-07-30_20250730_194219.json,True,True,True,515m,Grade 5,str,str,String format: 515m,,TAREE,2025-07-30,3,OK,Complete race_info
+predictions/prediction_20250730162231_Race 1 - SAN - 2025-07-24.json,True,True,True,435m,Grade Tier 3 - Maiden,str,str,String format: 435m,,SAN,2025-07-24,20250730162231_1,OK,Complete race_info
+predictions/prediction_test_race_1_comprehensive_20250813_153945.json,True,False,False,,,None,None,,,UNKNOWN,2025-08-13,UNKNOWN,MISSING,Missing both distance and grade
+predictions/prediction_Race_06_UNKNOWN_2025-07-24.json,True,True,True,411m,Grade 4/5,str,str,String format: 411m,,CASINO,2025-07-30,UNKNOWN,OK,Complete race_info
+predictions/prediction_Race 12 - BEN - 2025-07-23.json,True,False,False,,,None,None,,,BEN,2025-07-23,,MISSING,Missing both distance and grade
+predictions/unified_prediction_Race_01_BAL_2025-07-25_20250726_145016.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/comprehensive_prediction_1_TAREE_2025-07-26_20250726_143613.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/cleanup_backup/comprehensive_prediction_1_TAREE_2025-07-26_20250726_142956.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race 1 - TAREE - 2025-07-26_20250726_144809.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race 1 - TAREE - 2025-07-26_20250726_144433.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/cleanup_backup/comprehensive_prediction_1_TAREE_2025-07-26_20250726_131107.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_01_WAR_2025-07-25_20250726_144908.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/prediction_Race 2 - AP_K - 2025-07-25.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP/K,2025-07-26,UNKNOWN,OK,Complete race_info
+predictions/cleanup_backup/unified_prediction_Race_08_WAR_2025-07-25_20250726_144543.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/prediction_Race_03_AP_K_2025-07-25.json,True,True,True,342m,Grade TG1-4W,str,str,String format: 342m,,AP/K,2025-07-26,UNKNOWN,OK,Complete race_info
+predictions/cleanup_backup/unified_prediction_Race_11_SAN_2025-07-24_20250726_144932.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_04_GRDN_2025-07-25_20250726_145119.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/prediction_Race 6 - AP_K - 2025-07-25.json,True,True,True,342m,Grade 5,str,str,String format: 342m,,AP/K,2025-07-26,UNKNOWN,OK,Complete race_info
+predictions/cleanup_backup/unified_prediction_Race 1 - TAREE - 2025-07-26_20250726_145107.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_11_SAN_2025-07-24_20250726_145134.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/prediction_Race_11_SAN_2025-07-24.json,True,True,True,515m,Grade Grade 5,str,str,String format: 515m,,SANDOWN,2025-07-26,UNKNOWN,OK,Complete race_info
+predictions/cleanup_backup/comprehensive_prediction_1_TAREE_2025-07-26_20250726_144122.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_03_AP_K_2025-07-25_20250726_145021.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_04_LADBROKES_2025-07-25_20250726_144958.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/prediction_Race 2 - AP_K - 2025-07-24.json,True,True,True,342m,Grade M,str,str,String format: 342m,,AP/K,2025-07-26,UNKNOWN,OK,Complete race_info
+predictions/cleanup_backup/unified_prediction_Race_07_AP_K_2025-07-25_20250726_144829.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/prediction_Race_03_GRDN_2025-07-25.json,True,True,True,400m,Grade M2/M3,str,str,String format: 400m,,GOSFORD,2025-07-26,UNKNOWN,OK,Complete race_info
+predictions/cleanup_backup/unified_prediction_Race_06_AP_K_2025-07-25_20250726_144832.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_02_AP_K_2025-07-25_20250726_144934.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/prediction_Race_01_BAL_2025-07-25.json,True,True,True,545m,Grade Grade 5,str,str,String format: 545m,,BALLARAT,2025-07-26,UNKNOWN,OK,Complete race_info
+predictions/cleanup_backup/unified_prediction_Race_01_BAL_2025-07-26_20250726_145129.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_08_WAR_2025-07-25_20250726_144827.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_07_LADBROKES_2025-07-25_20250726_144842.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_04_LADBROKES_2025-07-25_20250726_144915.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_03_WAR_2025-07-25_20250726_145126.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/prediction_Race 2 - TAREE - 2025-07-26.json,True,True,True,300m,Grade M,str,str,String format: 300m,,TAREE,2025-07-26,2,OK,Complete race_info
+predictions/cleanup_backup/comprehensive_prediction_1_TAREE_2025-07-26_20250726_143346.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/cleanup_backup/comprehensive_prediction_3_TAREE_2025-07-26_20250726_154010.json,True,False,False,,,None,None,,,TAREE,2025-07-26,3,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_03_WAR_2025-07-25_20250726_144546.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/prediction_weather_enhanced_1_TAREE_2025-07-26.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_07_LADBROKES_2025-07-25_20250726_145022.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_04_LADBROKES_2025-07-25_20250726_144820.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/prediction_Race_07_AP_K_2025-07-25.json,True,True,True,350m,Grade 6,str,str,String format: 350m,,MBS,2025-07-26,UNKNOWN,OK,Complete race_info
+predictions/cleanup_backup/unified_prediction_Race_07_AP_K_2025-07-25_20250726_145008.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_08_WAR_2025-07-25_20250726_145006.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_01_BAL_2025-07-25_20250726_144931.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_03_AP_K_2025-07-25_20250726_144841.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_02_AP_K_2025-07-25_20250726_145135.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/prediction_Race 4 - GRDN - 2025-07-25.json,True,True,True,400m,Grade 5,str,str,String format: 400m,,GOSFORD,2025-07-26,UNKNOWN,OK,Complete race_info
+predictions/cleanup_backup/unified_prediction_Race_03_WAR_2025-07-25_20250726_145009.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_06_AP_K_2025-07-25_20250726_144926.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_04_AP_K_2025-07-25_20250726_144929.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_03_GRDN_2025-07-25_20250726_144914.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_11_SAN_2025-07-24_20250726_144554.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/comprehensive_prediction_1_TAREE_2025-07-26_20250726_143803.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_08_WAR_2025-07-25_20250726_145123.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_11_SAN_2025-07-24_20250726_145017.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_04_GRDN_2025-07-25_20250726_145000.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_04_GRDN_2025-07-25_20250726_144538.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/comprehensive_prediction_1_TAREE_2025-07-26_20250726_143205.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/cleanup_backup/prediction_Race 8 - BAL - 2025-07-26.json,True,True,True,500m,Grade Grade 5 T3,str,str,String format: 500m,,BAL,2025-07-26,8,OK,Complete race_info
+predictions/cleanup_backup/unified_prediction_Race_07_LADBROKES_2025-07-25_20250726_144937.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race 1 - TAREE - 2025-07-26_20250726_144947.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/cleanup_backup/comprehensive_prediction_1_TAREE_2025-07-26_20250726_143248.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_03_GRDN_2025-07-25_20250726_144534.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/prediction_Race 1 - TAREE - 2025-07-26.json,True,True,True,300m,Grade M,str,str,String format: 300m,,TAREE,2025-07-26,1,OK,Complete race_info
+predictions/cleanup_backup/unified_prediction_Race_08_LADBROKES_2025-07-25_20250726_144912.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/comprehensive_prediction_1_TAREE_2025-07-26_20250726_141935.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_01_WAR_2025-07-25_20250726_144812.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/prediction_Race 1 - BAL - 2025-07-26.json,True,True,True,390m,Grade Grade 7,str,str,String format: 390m,,BALLARAT,2025-07-26,UNKNOWN,OK,Complete race_info
+predictions/cleanup_backup/unified_prediction_Race_06_AP_K_2025-07-25_20250726_145011.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_02_AP_K_2025-07-25_20250726_144839.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race 1 - TAREE - 2025-07-26_20250726_145744.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_08_LADBROKES_2025-07-25_20250726_145114.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/comprehensive_prediction_1_TAREE_2025-07-26_20250726_143524.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race 1 - TAREE - 2025-07-26.json,True,True,True,300m,Grade M,str,str,String format: 300m,,TAREE,2025-07-26,1,OK,Complete race_info
+predictions/cleanup_backup/unified_prediction_Race_07_LADBROKES_2025-07-25_20250726_144559.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_01_WAR_2025-07-25_20250726_145110.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race 1 - TAREE - 2025-07-26_20250726_144905.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_03_GRDN_2025-07-25_20250726_144956.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_04_GRDN_2025-07-25_20250726_144917.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/comprehensive_prediction_1_TAREE_2025-07-26_20250726_135402.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_01_BAL_2025-07-26_20250726_145012.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_07_AP_K_2025-07-25_20250726_144545.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/comprehensive_prediction_1_TAREE_2025-07-26_20250726_142102.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_08_LADBROKES_2025-07-25_20250726_144532.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/comprehensive_prediction_1_TAREE_2025-07-26_20250726_143713.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_04_AP_K_2025-07-25_20250726_144551.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_06_AP_K_2025-07-25_20250726_144548.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_01_BAL_2025-07-25_20250726_144553.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_01_BAL_2025-07-26_20250726_144550.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race 1 - TAREE - 2025-07-26_20250726_144524.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_04_LADBROKES_2025-07-25_20250726_145117.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_03_WAR_2025-07-25_20250726_144924.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_01_BAL_2025-07-26_20250726_144927.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_03_AP_K_2025-07-25_20250726_145137.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/prediction_Race_04_AP_K_2025-07-25.json,True,True,True,530m,Grade 6,str,str,String format: 530m,,AP/K,2025-07-26,UNKNOWN,OK,Complete race_info
+predictions/cleanup_backup/unified_prediction_Race_04_AP_K_2025-07-25_20250726_144835.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_08_LADBROKES_2025-07-25_20250726_144817.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_01_BAL_2025-07-25_20250726_144836.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/comprehensive_prediction_3_TAREE_2025-07-26_20250726_154608.json,True,False,False,,,None,None,,,TAREE,2025-07-26,3,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_02_AP_K_2025-07-25_20250726_145019.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_04_AP_K_2025-07-25_20250726_145014.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_03_AP_K_2025-07-25_20250726_144557.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_07_LADBROKES_2025-07-25_20250726_145138.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/prediction_weather_enhanced_6_ROCKHAMPTON_2025-07-27.json,True,False,False,,,None,None,,,ROCKHAMPTON,2025-07-27,6,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_11_SAN_2025-07-24_20250726_144838.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/comprehensive_prediction_1_TAREE_2025-07-26_20250726_131559.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_04_LADBROKES_2025-07-25_20250726_144536.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_08_LADBROKES_2025-07-25_20250726_144955.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_03_AP_K_2025-07-25_20250726_144936.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_02_AP_K_2025-07-25_20250726_144556.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_04_GRDN_2025-07-25_20250726_144822.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_01_BAL_2025-07-26_20250726_144833.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_07_AP_K_2025-07-25_20250726_145125.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_04_AP_K_2025-07-25_20250726_145131.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_01_BAL_2025-07-25_20250726_145132.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_06_AP_K_2025-07-25_20250726_145128.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_07_AP_K_2025-07-25_20250726_144923.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_01_WAR_2025-07-25_20250726_144950.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_03_GRDN_2025-07-25_20250726_144818.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/comprehensive_prediction_1_TAREE_2025-07-26_20250726_143722.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_03_GRDN_2025-07-25_20250726_145116.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_01_WAR_2025-07-25_20250726_144527.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_08_WAR_2025-07-25_20250726_144921.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/comprehensive_prediction_1_TAREE_2025-07-26_20250726_141528.json,True,False,False,,,None,None,,,TAREE,2025-07-26,1,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_03_WAR_2025-07-25_20250726_144830.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade
+predictions/cleanup_backup/unified_prediction_Race_01_BAL_2025-07-25_20250726_145016.json,True,False,False,,,None,None,,,UNKNOWN,2025-07-26,UNKNOWN,MISSING,Missing both distance and grade

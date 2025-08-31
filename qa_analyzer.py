@@ -74,6 +74,42 @@ class QAAnalyzer:
         logger.info(f"🔍 QA Analyzer initialized - confidence_threshold={confidence_threshold}, "
                    f"variance_threshold={variance_threshold}, calibration_window={calibration_window}")
     
+    def _ensure_win_prob(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Ensure a 'win_prob' column exists by mapping from common aliases or normalizing scores.
+        Accepts columns like: normalized_win_probability, win_prob_norm, win_probability,
+        final_score, prediction_score, confidence. If only scores are present, normalize to sum=1.
+        """
+        try:
+            candidates = [
+                c for c in [
+                    'win_prob', 'normalized_win_probability', 'win_prob_norm', 'win_probability',
+                    'final_score', 'prediction_score', 'confidence'
+                ] if c in df.columns
+            ]
+            if 'win_prob' in df.columns:
+                return df
+            if not candidates:
+                return df
+            series = None
+            for c in ['normalized_win_probability', 'win_prob_norm', 'win_probability', 'final_score', 'prediction_score', 'confidence']:
+                if c in df.columns:
+                    series = pd.to_numeric(df[c], errors='coerce').fillna(0.0)
+                    break
+            if series is None:
+                return df
+            total = float(series.sum())
+            if total <= 0:
+                df['win_prob'] = 1.0 / max(1, len(df))
+            else:
+                # If looks like percentages (sum>1.5), scale
+                if total > 1.5:
+                    series = series / 100.0
+                    total = float(series.sum()) or 1.0
+                df['win_prob'] = (series / total).clip(lower=0.0, upper=1.0)
+        except Exception:
+            pass
+        return df
+    
     def _load_stored_outcomes(self) -> pd.DataFrame:
         """Load stored prediction outcomes from database."""
         try:
@@ -132,9 +168,11 @@ class QAAnalyzer:
             # Convert to DataFrame for analysis
             df = pd.DataFrame(pred_data)
             
-            # Check for required columns
+            # Ensure win_prob exists by mapping from known aliases when absent
             if 'win_prob' not in df.columns:
-                return self._create_error_result("No win_prob column found", analysis_start)
+                df = self._ensure_win_prob(df)
+                if 'win_prob' not in df.columns:
+                    return self._create_error_result("No win_prob column found", analysis_start)
             
             # Low confidence detection
             # Prefer 'confidence' if present, else use win_prob as proxy
@@ -225,7 +263,9 @@ class QAAnalyzer:
             df = pd.DataFrame(pred_data)
             
             if 'win_prob' not in df.columns:
-                return self._create_error_result("No win_prob column found", analysis_start)
+                df = self._ensure_win_prob(df)
+                if 'win_prob' not in df.columns:
+                    return self._create_error_result("No win_prob column found", analysis_start)
             
             # Calculate probability distribution entropy
             win_probs = df['win_prob'].values

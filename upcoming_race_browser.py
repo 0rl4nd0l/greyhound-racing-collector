@@ -25,7 +25,8 @@ from bs4 import BeautifulSoup
 class UpcomingRaceBrowser:
     def __init__(self):
         self.base_url = "https://www.thedogs.com.au"
-        self.upcoming_dir = "./upcoming_races"
+        # Honor configured UPCOMING_RACES_DIR if provided; default to ./upcoming_races
+        self.upcoming_dir = os.getenv("UPCOMING_RACES_DIR", "./upcoming_races")
 
         # Create directories
         os.makedirs(self.upcoming_dir, exist_ok=True)
@@ -119,64 +120,36 @@ class UpcomingRaceBrowser:
                     races.extend(cached_races)
                 continue
 
-        # Sort races chronologically by date and time
-        def parse_race_time(race):
-            """Parse race time for sorting"""
-            date_str = race.get(
-                "date", "9999-12-31"
-            )  # Default to far future for missing dates
-            time_str = race.get("race_time", "11:59 PM")  # Default to late time
-            race_num = int(
-                race.get("race_number", 999)
-            )  # Use race number as tiebreaker
-
-            # Convert time to 24-hour format for proper sorting
+        # Sort races chronologically by date and time (robust to AM/PM or 24h times)
+        def _minutes_from_time(time_str: str, race_num: int) -> int:
+            """Return minutes since midnight. If missing/unparseable, estimate from race number."""
             try:
-                # Clean up time string
-                clean_time = time_str.strip().upper()
+                if not time_str:
+                    raise ValueError('no time')
+                t = str(time_str).strip().upper()
+                # 12-hour format with AM/PM
+                if re.match(r"^\d{1,2}:\d{2}\s*[AP]M$", t):
+                    dt = datetime.strptime(t.replace(" ", ""), "%I:%M%p")
+                    return dt.hour * 60 + dt.minute
+                # 24-hour HH:MM
+                if re.match(r"^\d{1,2}:\d{2}$", t):
+                    h, m = t.split(":")
+                    return int(h) * 60 + int(m)
+                # Fallback to estimate
+                raise ValueError('unsupported format')
+            except Exception:
+                base_minutes = 13 * 60  # 1 PM baseline
+                total = base_minutes + max(0, int(race_num) - 1) * 25
+                return total
 
-                if "PM" in clean_time:
-                    time_part = clean_time.replace(" PM", "").replace("PM", "")
-                    hour, minute = time_part.split(":")
-                    hour = int(hour)
-                    minute = int(minute)
-                    # Convert PM to 24-hour format
-                    if hour != 12:
-                        hour += 12
-                elif "AM" in clean_time:
-                    time_part = clean_time.replace(" AM", "").replace("AM", "")
-                    hour, minute = time_part.split(":")
-                    hour = int(hour)
-                    minute = int(minute)
-                    # Convert 12 AM to 0 (midnight)
-                    if hour == 12:
-                        hour = 0
-                else:
-                    # Fallback: estimate based on race number (races typically start at 1 PM, 25 min apart)
-                    base_minutes = 13 * 60  # 1 PM in minutes from midnight
-                    total_minutes_from_midnight = base_minutes + ((race_num - 1) * 25)
-                    hour = total_minutes_from_midnight // 60
-                    minute = total_minutes_from_midnight % 60
+        def _sort_key(race: dict):
+            date_str = race.get("date", "9999-12-31")
+            rn = int(race.get("race_number", 999))
+            mins = _minutes_from_time(race.get("race_time", ""), rn)
+            # Sort by date asc, time (mins) asc, race_number asc
+            return (date_str, mins, rn)
 
-                # Create sortable time string: YYYY-MM-DD HH:MM:RR (RR = race number for tiebreaker)
-                return f"{date_str} {hour:02d}:{minute:02d}:{race_num:03d}"
-            except Exception as e:
-                # Fallback for unparseable times - use race number estimate
-                base_minutes = 13 * 60  # 1 PM in minutes from midnight
-                total_minutes_from_midnight = base_minutes + ((race_num - 1) * 25)
-                hour = total_minutes_from_midnight // 60
-                minute = total_minutes_from_midnight % 60
-                return f"{date_str} {hour:02d}:{minute:02d}:{race_num:03d}"
-
-        # Sort races by date and correctly parsed race time
-        def parse_race_time_full(race):
-            try:
-                race_datetime_str = f"{race.get('date', '9999-12-31')} {race.get('race_time', '23:59')}:00"
-                return datetime.strptime(race_datetime_str, "%Y-%m-%d %H:%M:%S")
-            except:
-                return datetime.max
-
-        races.sort(key=parse_race_time_full)
+        races.sort(key=_sort_key)
 
         # Filter out past races (races that have already started)
         now = datetime.now()
@@ -335,8 +308,24 @@ class UpcomingRaceBrowser:
             if not races:
                 print(f"   ⚪ No races found for {date_str}")
 
-            # Sort by race number within each venue
-            races.sort(key=lambda x: (x.get("venue", ""), int(x.get("race_number", 0))))
+            # Sort by time within the date (earliest first); tie-breaker by race number
+            def _minutes_from_time(time_str: str, race_num: int) -> int:
+                try:
+                    if not time_str:
+                        raise ValueError('no time')
+                    t = str(time_str).strip().upper()
+                    if re.match(r"^\d{1,2}:\d{2}\s*[AP]M$", t):
+                        dt = datetime.strptime(t.replace(" ", ""), "%I:%M%p")
+                        return dt.hour * 60 + dt.minute
+                    if re.match(r"^\d{1,2}:\d{2}$", t):
+                        h, m = t.split(":")
+                        return int(h) * 60 + int(m)
+                    raise ValueError('unsupported format')
+                except Exception:
+                    base_minutes = 13 * 60
+                    return base_minutes + (max(0, race_num - 1) * 25)
+
+            races.sort(key=lambda x: (_minutes_from_time(x.get("race_time", ""), int(x.get("race_number", 999))), int(x.get("race_number", 999))))
 
             return races
 
@@ -675,18 +664,47 @@ class UpcomingRaceBrowser:
             else:
                 combined_text = link_text
 
-            # Extract time (format like "7:45 PM" or "19:45")
+            # Extract time (format like "7:45 PM" or "19:45" or valid 4-digit HHMM)
             time_patterns = [
-                r"(\d{1,2}:\d{2}\s*(?:AM|PM))",
-                r"(\d{1,2}:\d{2})",
-                r"(\d{4})",  # 24-hour format like "1945"
+                r"(\d{1,2}:\d{2}\s*(?:AM|PM))",   # 12-hour with AM/PM
+                r"(\d{1,2}:\d{2})",                # 24-hour with colon
+                r"(\d{4})",                         # 24-hour HHMM (validate)
             ]
 
             for pattern in time_patterns:
                 time_match = re.search(pattern, combined_text, re.I)
-                if time_match:
-                    race_time = time_match.group(1)
-                    break
+                if not time_match:
+                    continue
+                raw_t = time_match.group(1).strip()
+                # Normalize the captured time
+                try:
+                    if re.match(r"^\d{1,2}:\d{2}\s*(?:AM|PM)$", raw_t, re.I):
+                        # Already in 12-hour format
+                        race_time = raw_t.upper().replace(" ", " ")
+                        break
+                    elif re.match(r"^\d{1,2}:\d{2}$", raw_t):
+                        # 24-hour with colon; keep as HH:MM
+                        # Optionally convert to 12-hour for display consistency
+                        h, m = map(int, raw_t.split(":"))
+                        if 0 <= h <= 23 and 0 <= m <= 59:
+                            from datetime import datetime as _dt
+                            race_time = _dt.strptime(f"{h:02d}:{m:02d}", "%H:%M").strftime("%I:%M %p").lstrip("0")
+                            break
+                        else:
+                            continue
+                    elif re.match(r"^\d{4}$", raw_t):
+                        # Raw HHMM digits; validate bounds
+                        h = int(raw_t[:2])
+                        m = int(raw_t[2:])
+                        if 0 <= h <= 23 and 0 <= m <= 59:
+                            from datetime import datetime as _dt
+                            race_time = _dt.strptime(f"{h:02d}:{m:02d}", "%H:%M").strftime("%I:%M %p").lstrip("0")
+                            break
+                        else:
+                            # Ignore invalid 4-digit times like 7215
+                            continue
+                except Exception:
+                    continue
 
             # Extract distance (format like "520m", "715m")
             distance_patterns = [
