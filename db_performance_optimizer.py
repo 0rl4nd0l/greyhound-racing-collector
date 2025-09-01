@@ -17,8 +17,9 @@ import sqlite3
 import threading
 import time
 import contextlib
+import atexit
 from typing import Optional, Dict, Any, List
-from queue import Queue, Empty
+from queue import Queue, Empty, Full
 import logging
 from functools import wraps
 import json
@@ -60,6 +61,9 @@ class SQLiteConnectionPool:
         
         # Initialize pool
         self._initialize_pool()
+        
+        # Register cleanup on exit
+        atexit.register(self.close_all)
         
         logger.info(f"🔗 SQLite Connection Pool initialized:")
         logger.info(f"   📊 Pool size: {pool_size}")
@@ -104,10 +108,11 @@ class SQLiteConnectionPool:
                 # Use DELETE journal to avoid creating -wal/-shm files (prevents disk I/O errors in CI/tmp fs)
                 conn.execute("PRAGMA journal_mode=DELETE")
                 conn.execute("PRAGMA synchronous=OFF")  # maximize speed in tests
+                conn.execute("PRAGMA cache_size=-16384")  # ~16MB in tests (negative = KB)
             else:
                 conn.execute("PRAGMA journal_mode=WAL")  # Write-Ahead Logging
                 conn.execute("PRAGMA synchronous=NORMAL")  # Balanced durability/performance
-                conn.execute("PRAGMA cache_size=10000")  # 10MB cache
+                conn.execute("PRAGMA cache_size=-65536")  # ~64MB production (negative = KB)
                 conn.execute("PRAGMA temp_store=MEMORY")  # Use memory for temp storage
                 # mmap may fail on some platforms/fs; wrap defensively
                 try:
@@ -160,12 +165,14 @@ class SQLiteConnectionPool:
             if conn:
                 try:
                     # Return connection to pool if pool not full
-                    if self._pool.qsize() < self.pool_size:
-                        self._pool.put(conn, block=False)
-                        logger.debug("♻️ Connection returned to pool")
-                    else:
+                    self._pool.put_nowait(conn)
+                    logger.debug("♻️ Connection returned to pool")
+                except Full:
+                    try:
                         conn.close()
                         logger.debug("🗑️ Connection closed (pool full)")
+                    except Exception:
+                        pass
                 except Exception as e:
                     logger.error(f"Error returning connection to pool: {e}")
                     try:
@@ -176,18 +183,17 @@ class SQLiteConnectionPool:
                 self.stats['active_connections'] -= 1
 
     def execute_query(self, query: str, params: tuple = None, fetchall: bool = True):
-        """Execute a query using pooled connection"""
+        """Execute a query using pooled connection with proper cursor cleanup"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            if params:
-                cursor.execute(query, params)
-            else:
-                cursor.execute(query)
-            
-            if fetchall:
-                return cursor.fetchall()
-            else:
-                return cursor.fetchone()
+            try:
+                cursor.execute(query, params or ())
+                return cursor.fetchall() if fetchall else cursor.fetchone()
+            finally:
+                try:
+                    cursor.close()
+                except Exception:
+                    pass
 
     def get_stats(self) -> Dict[str, Any]:
         """Get connection pool statistics"""

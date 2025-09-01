@@ -15,8 +15,12 @@ import logging
 import os
 import sys
 import time
+import atexit
+import psutil
+import threading
 from datetime import datetime
 from typing import Any, Dict, Optional, Tuple
+from contextlib import contextmanager
 
 import pandas as pd
 # Our fallback Selenium scraper (simplified)
@@ -31,6 +35,46 @@ from drivers import get_chrome_driver, setup_selenium_driver_path
 # Professional API scraper
 from event_scraper import EventScraper
 from scraper_exception import ScraperException
+
+# Memory-conscious Selenium concurrency controls
+SELENIUM_MAX_CONCURRENCY = int(os.getenv("SELENIUM_MAX_CONCURRENCY", "1"))
+_SELENIUM_SEM = threading.BoundedSemaphore(SELENIUM_MAX_CONCURRENCY)
+
+
+@contextmanager
+def _selenium_slot():
+    """Context manager to limit concurrent Selenium sessions"""
+    _SELENIUM_SEM.acquire()
+    try:
+        yield
+    finally:
+        _SELENIUM_SEM.release()
+
+
+def kill_orphaned_chromium(grace_seconds=60):
+    """Kill orphaned Chrome/Chromium/ChromeDriver processes"""
+    try:
+        now = time.time()
+        killed = 0
+        for p in psutil.process_iter(["name", "ppid", "create_time", "cmdline"]):
+            name = (p.info.get("name") or "").lower()
+            if any(k in name for k in ("chrome", "chromium", "chromedriver")):
+                # orphan = parent gone OR too old
+                create_time = p.info.get("create_time", now)
+                if p.info.get("ppid", 0) in (0, 1) or (now - create_time) > grace_seconds:
+                    try:
+                        p.kill()
+                        killed += 1
+                    except Exception:
+                        pass
+        if killed > 0:
+            logging.getLogger(__name__).info(f"Killed {killed} orphaned Chrome processes")
+    except Exception:
+        pass
+
+
+# Register cleanup on exit
+atexit.register(kill_orphaned_chromium, grace_seconds=5)
 
 
 class HybridOddsScraper:
@@ -166,33 +210,35 @@ class HybridOddsScraper:
             Tuple of (DataFrame, success_boolean)
         """
         for attempt in range(max_retries):
-            try:
-                # Setup Chrome driver
-                if not self._setup_driver():
-                    return None, False
-                
-                self.logger.info(f"Loading page with Selenium (attempt {attempt + 1})")
-                self.driver.get(url)
-                
-                # Wait for page to load
-                WebDriverWait(self.driver, self.timeout).until(
-                    EC.presence_of_element_located((By.TAG_NAME, "body"))
-                )
-                
-                # Look for runner containers - this is a simplified version
-                odds_data = self._extract_odds_with_selenium()
-                
-                if odds_data and len(odds_data) > 0:
-                    df = pd.DataFrame(odds_data)
-                    self.logger.info(f"Selenium scraper got {len(df)} selections")
-                    return df, True
-                
-            except Exception as e:
-                self.logger.error(f"Selenium scraper exception (attempt {attempt + 1}): {str(e)}")
-                if attempt < max_retries - 1:
-                    time.sleep(2 ** attempt)
-            finally:
-                self._cleanup_driver()
+            with _selenium_slot():
+                try:
+                    # Setup Chrome driver
+                    if not self._setup_driver():
+                        return None, False
+                    
+                    self.logger.info(f"Loading page with Selenium (attempt {attempt + 1})")
+                    self.driver.get(url)
+                    
+                    # Wait for page to load
+                    WebDriverWait(self.driver, self.timeout).until(
+                        EC.presence_of_element_located((By.TAG_NAME, "body"))
+                    )
+                    
+                    # Look for runner containers - this is a simplified version
+                    odds_data = self._extract_odds_with_selenium()
+                    
+                    if odds_data and len(odds_data) > 0:
+                        df = pd.DataFrame(odds_data)
+                        self.logger.info(f"Selenium scraper got {len(df)} selections")
+                        return df, True
+                    
+                except Exception as e:
+                    self.logger.error(f"Selenium scraper exception (attempt {attempt + 1}): {str(e)}")
+                    if attempt < max_retries - 1:
+                        time.sleep(2 ** attempt)
+                finally:
+                    self._cleanup_driver()
+                    kill_orphaned_chromium(grace_seconds=0)  # Immediate cleanup after each attempt
         
         return None, False
     
@@ -211,14 +257,27 @@ class HybridOddsScraper:
             return False
     
     def _cleanup_driver(self):
-        """Clean up WebDriver resources."""
+        """Clean up WebDriver resources with enhanced safety."""
         if self.driver:
             try:
                 self.driver.quit()
-            except:
-                pass
+            except Exception:
+                try:
+                    self.driver.close()
+                except Exception:
+                    pass
             finally:
                 self.driver = None
+                time.sleep(0.1)  # Brief pause to allow cleanup
+    
+    def __enter__(self):
+        """Context manager entry"""
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - ensure cleanup"""
+        self._cleanup_driver()
+        return False  # Don't suppress exceptions
     
     def _extract_odds_with_selenium(self) -> list:
         """Extract odds using Selenium - simplified implementation."""
