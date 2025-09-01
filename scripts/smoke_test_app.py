@@ -20,6 +20,7 @@ os.environ.setdefault("DATABASE_PATH", "greyhound_racing_data.db")
 try:
     sys.path.insert(0, os.getcwd())
     import app as app_module
+
     app = app_module.app
 except Exception as e:
     print(f"[smoke] ERROR: Failed to import app: {e}")
@@ -33,7 +34,7 @@ def check(path: str, expect_json: bool = True, expect_keys: list[str] | None = N
         with app.test_client() as c:
             rv = c.get(path)
             status = rv.status_code
-            ok = (status == 200)
+            ok = status == 200
             payload = None
             if expect_json:
                 try:
@@ -44,7 +45,15 @@ def check(path: str, expect_json: bool = True, expect_keys: list[str] | None = N
             if expect_keys and isinstance(payload, dict):
                 for k in expect_keys:
                     ok = ok and (k in payload)
-            results.append({"path": path, "status": status, "ok": ok, "keys": expect_keys or [], "payload_sample": payload})
+            results.append(
+                {
+                    "path": path,
+                    "status": status,
+                    "ok": ok,
+                    "keys": expect_keys or [],
+                    "payload_sample": payload,
+                }
+            )
             print(f"[smoke] GET {path} -> {status} | ok={ok}")
             return ok
     except Exception as e:
@@ -52,11 +61,12 @@ def check(path: str, expect_json: bool = True, expect_keys: list[str] | None = N
         print(f"[smoke] ERROR: {path}: {e}")
         return False
 
+
 # Core API endpoints to probe
 ok = True
-ok &= check("/api/model_health", expect_json=True, expect_keys=["ready"]) 
-ok &= check("/api/diagnostics/summary", expect_json=True, expect_keys=["success"]) 
-ok &= check("/api/tgr/settings", expect_json=True, expect_keys=["success"]) 
+ok &= check("/api/model_health", expect_json=True, expect_keys=["ready"])
+ok &= check("/api/diagnostics/summary", expect_json=True, expect_keys=["success"])
+ok &= check("/api/tgr/settings", expect_json=True, expect_keys=["success"])
 
 # Exit code reflects overall success
 if not ok:
@@ -65,4 +75,3 @@ if not ok:
 
 print("[smoke] All checks passed")
 sys.exit(0)
-

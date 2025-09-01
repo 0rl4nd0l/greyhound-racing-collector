@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Iterable, Optional, Tuple
 
-from config.paths import UPCOMING_RACES_DIR, ARCHIVE_DIR, DATA_DIR
+from config.paths import ARCHIVE_DIR, DATA_DIR, UPCOMING_RACES_DIR
 
 LOGS_DIR = Path("logs")
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
@@ -29,11 +29,20 @@ logger.propagate = False
 # Attach an error-only file handler for failures
 try:
     from logging.handlers import RotatingFileHandler
-    _err_handler = RotatingFileHandler(str(ERROR_LOG_PATH), maxBytes=2 * 1024 * 1024, backupCount=2)
+
+    _err_handler = RotatingFileHandler(
+        str(ERROR_LOG_PATH), maxBytes=2 * 1024 * 1024, backupCount=2
+    )
     _err_handler.setLevel(logging.ERROR)
-    _err_handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s"))
+    _err_handler.setFormatter(
+        logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
+    )
     # Avoid duplicate handlers if module reloaded
-    if not any(isinstance(h, RotatingFileHandler) and getattr(h, 'baseFilename', '') == str(ERROR_LOG_PATH) for h in logger.handlers):
+    if not any(
+        isinstance(h, RotatingFileHandler)
+        and getattr(h, "baseFilename", "") == str(ERROR_LOG_PATH)
+        for h in logger.handlers
+    ):
         logger.addHandler(_err_handler)
 except Exception:
     # Fallback to simple FileHandler if RotatingFileHandler is unavailable
@@ -45,10 +54,12 @@ except Exception:
 
 # --- Atomic publish helpers ---
 
+
 def wait_for_stable(path: Path, checks: int = 3, interval: float = 0.5) -> bool:
     # Accelerate when running under pytest to reduce test runtimes and flakiness
     try:
         import os as _os
+
         if _os.getenv("PYTEST_CURRENT_TEST"):
             checks = 1
             interval = 0.05
@@ -91,7 +102,7 @@ CANONICAL_DATE_FORMAT = "%Y-%m-%d"
 @dataclass
 class RaceMeta:
     race_date: str  # YYYY-MM-DD
-    track: str      # slug-safe track/venue code
+    track: str  # slug-safe track/venue code
     race_number: str
 
     @property
@@ -122,6 +133,7 @@ def sniff_dialect_and_headers(csv_path: Path) -> Tuple[csv.Dialect, Iterable[str
                 skipinitialspace = False
                 lineterminator = "\n"
                 quoting = csv.QUOTE_MINIMAL
+
             dialect = Default()
     # Re-open to read header with detected dialect
     with csv_path.open("r", encoding="utf-8", errors="replace") as f:
@@ -132,13 +144,26 @@ def sniff_dialect_and_headers(csv_path: Path) -> Tuple[csv.Dialect, Iterable[str
 
 # Column name variants for metadata extraction
 DATE_KEYS = [
-    "race_date", "race date", "meeting_date", "date", "meeting date",
+    "race_date",
+    "race date",
+    "meeting_date",
+    "date",
+    "meeting date",
 ]
 TRACK_KEYS = [
-    "venue", "track", "venue_code", "venue code", "meeting_venue", "meeting venue",
+    "venue",
+    "track",
+    "venue_code",
+    "venue code",
+    "meeting_venue",
+    "meeting venue",
 ]
 RACE_NO_KEYS = [
-    "race_number", "race no", "race", "race_no", "race number",
+    "race_number",
+    "race no",
+    "race",
+    "race_no",
+    "race number",
 ]
 
 # Indicators to help classify CSV type
@@ -164,7 +189,14 @@ def classify_csv(headers: Iterable[str]) -> str:
 def parse_date(value: str) -> Optional[str]:
     value = value.strip()
     # Try common formats
-    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d", "%d %b %Y", "%b %d, %Y"):
+    for fmt in (
+        "%Y-%m-%d",
+        "%d/%m/%Y",
+        "%d-%m-%Y",
+        "%Y/%m/%d",
+        "%d %b %Y",
+        "%b %d, %Y",
+    ):
         try:
             return datetime.strptime(value, fmt).strftime(CANONICAL_DATE_FORMAT)
         except Exception:
@@ -189,9 +221,15 @@ def first_matching_key(row: Dict[str, str], keys: Iterable[str]) -> Optional[str
 
 FILENAME_PATTERNS = [
     # Race 4 - GOSF - 2025-07-28.csv
-    re.compile(r"race\s*(?P<race_number>\d+)\s*-\s*(?P<track>[A-Za-z0-9_\-]+)\s*-\s*(?P<race_date>\d{4}-\d{2}-\d{2})", re.IGNORECASE),
+    re.compile(
+        r"race\s*(?P<race_number>\d+)\s*-\s*(?P<track>[A-Za-z0-9_\-]+)\s*-\s*(?P<race_date>\d{4}-\d{2}-\d{2})",
+        re.IGNORECASE,
+    ),
     # 2025-07-28_GOSF_4.csv or 2025-07-28-gosf-4.csv
-    re.compile(r"(?P<race_date>\d{4}-\d{2}-\d{2})[_-](?P<track>[A-Za-z0-9_\-]+)[_-](?P<race_number>\d+)", re.IGNORECASE),
+    re.compile(
+        r"(?P<race_date>\d{4}-\d{2}-\d{2})[_-](?P<track>[A-Za-z0-9_\-]+)[_-](?P<race_number>\d+)",
+        re.IGNORECASE,
+    ),
 ]
 
 
@@ -247,7 +285,9 @@ def archive_file(p: Path, reason: str) -> Path:
     return dest
 
 
-def dedupe_existing_by_checksum(target_name: str, incoming_path: Path, incoming_checksum: str) -> Tuple[str, Path]:
+def dedupe_existing_by_checksum(
+    target_name: str, incoming_path: Path, incoming_checksum: str
+) -> Tuple[str, Path]:
     """
     Deduplicate using checksum and timestamps.
 
@@ -260,6 +300,7 @@ def dedupe_existing_by_checksum(target_name: str, incoming_path: Path, incoming_
     if existing.exists():
         # Compute checksum of existing
         from utils.checksum import file_sha256
+
         try:
             existing_checksum = file_sha256(existing)
         except Exception:
@@ -301,7 +342,9 @@ def validate_intake_is_form_guide(headers: Iterable[str]) -> None:
             "Use race data ingestion/publisher or convert to form guide format."
         )
     if ctype == "unknown":
-        logger.warning("CSV type could not be confidently classified; proceeding as form guide with caution.")
+        logger.warning(
+            "CSV type could not be confidently classified; proceeding as form guide with caution."
+        )
 
 
 def ingest_form_guide_csv(file_path: str) -> Path:
@@ -341,22 +384,32 @@ def ingest_form_guide_csv(file_path: str) -> Path:
 
         # Compute checksum for dedup and manifest
         from utils.checksum import file_sha256
+
         incoming_checksum = file_sha256(src)
 
         # Deduplicate with archive-first policy (checksum + mtime)
-        action, existing_target = dedupe_existing_by_checksum(canonical_name, src, incoming_checksum)
+        action, existing_target = dedupe_existing_by_checksum(
+            canonical_name, src, incoming_checksum
+        )
         if action == "skipped_identical" or action == "kept_existing":
             # Update manifest to reference the kept file
             kept_path = UPCOMING_RACES_DIR / canonical_name
             try:
                 from utils.manifest import IngestionManifest
+
                 manifest_path = DATA_DIR / "ingestion_manifest.json"
                 man = IngestionManifest.load(manifest_path)
-                man.update_entry(key=canonical_name, file_path=str(kept_path), checksum=incoming_checksum)
+                man.update_entry(
+                    key=canonical_name,
+                    file_path=str(kept_path),
+                    checksum=incoming_checksum,
+                )
                 man.save()
             except Exception as _e:
                 logger.warning(f"Manifest update failed (kept existing): {_e}")
-            logger.info(f"Dedup kept existing file for {canonical_name} (action={action})")
+            logger.info(
+                f"Dedup kept existing file for {canonical_name} (action={action})"
+            )
             return kept_path
 
         # Publish incoming (either new or replacing existing)
@@ -366,9 +419,12 @@ def ingest_form_guide_csv(file_path: str) -> Path:
         # Update manifest after publish
         try:
             from utils.manifest import IngestionManifest
+
             manifest_path = DATA_DIR / "ingestion_manifest.json"
             man = IngestionManifest.load(manifest_path)
-            man.update_entry(key=canonical_name, file_path=str(published), checksum=incoming_checksum)
+            man.update_entry(
+                key=canonical_name, file_path=str(published), checksum=incoming_checksum
+            )
             man.save()
         except Exception as _e:
             logger.warning(f"Manifest update failed: {_e}")
@@ -382,4 +438,3 @@ def ingest_form_guide_csv(file_path: str) -> Path:
 
 
 __all__ = ["ingest_form_guide_csv", "RaceMeta"]
-

@@ -16,20 +16,26 @@ from __future__ import annotations
 import argparse
 import os
 import sqlite3
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, List, Tuple
-from scripts.db_utils import open_sqlite_writable, open_sqlite_readonly
+
+from scripts.db_utils import open_sqlite_readonly, open_sqlite_writable
 
 # -------------------------
 # Helpers
 # -------------------------
 
+
 def resolve_db_path(cli_db: str | None) -> Path:
     if cli_db:
         return Path(cli_db).resolve()
     # Schema patching is a write operation, prefer staging DB
-    env = os.getenv("STAGING_DB_PATH") or os.getenv("GREYHOUND_DB_PATH") or os.getenv("DATABASE_PATH")
+    env = (
+        os.getenv("STAGING_DB_PATH")
+        or os.getenv("GREYHOUND_DB_PATH")
+        or os.getenv("DATABASE_PATH")
+    )
     if env:
         return Path(env).expanduser().resolve()
     return Path("./greyhound_racing_data_stage.db").resolve()
@@ -45,13 +51,17 @@ def backup_db(db_path: Path, out_dir: Path) -> Path:
     # Try sqlite online backup; fallback to cp
     try:
         import subprocess
-        subprocess.run(["sqlite3", str(db_path), ".backup", str(backup_path)], check=False)
+
+        subprocess.run(
+            ["sqlite3", str(db_path), ".backup", str(backup_path)], check=False
+        )
         if backup_path.exists() and backup_path.stat().st_size > 0:
             return backup_path
     except Exception:
         pass
     # Fallback file copy
     import shutil
+
     shutil.copyfile(db_path, backup_path)
     return backup_path
 
@@ -99,7 +109,9 @@ def has_duplicates(conn: sqlite3.Connection, table: str, col: str) -> bool:
         return True
 
 
-def has_composite_duplicates(conn: sqlite3.Connection, table: str, cols: List[str]) -> bool:
+def has_composite_duplicates(
+    conn: sqlite3.Connection, table: str, cols: List[str]
+) -> bool:
     """Return True if duplicates exist for the composite key defined by cols."""
     try:
         col_list = ", ".join(cols)
@@ -347,21 +359,46 @@ EXPECTED: Dict[str, Dict[str, str]] = {
 # Index definitions: (table, index_name, columns, unique?)
 INDEXES: List[Tuple[str, str, List[str], bool]] = [
     ("race_metadata", "idx_race_metadata_venue_date", ["venue", "race_date"], False),
-    ("race_metadata", "idx_race_metadata_race_id", ["race_id"], False),  # upgraded to unique if possible
+    (
+        "race_metadata",
+        "idx_race_metadata_race_id",
+        ["race_id"],
+        False,
+    ),  # upgraded to unique if possible
     ("dog_race_data", "idx_dog_race_data_race_id", ["race_id"], False),
     ("dog_race_data", "idx_dog_race_data_dog_name", ["dog_clean_name"], False),
     ("dog_race_data", "idx_dog_race_data_finish_position", ["finish_position"], False),
     ("dogs", "idx_dogs_clean_name", ["dog_name"], False),
     ("dogs", "idx_dogs_trainer", ["trainer"], False),
     ("prediction_history", "idx_prediction_history_race_id", ["race_id"], False),
-    ("prediction_history", "idx_prediction_history_model", ["model_name", "model_version"], False),
+    (
+        "prediction_history",
+        "idx_prediction_history_model",
+        ["model_name", "model_version"],
+        False,
+    ),
     ("race_analytics", "idx_race_analytics_race_id", ["race_id"], False),
     ("db_meta", "idx_db_meta_key", ["meta_key"], False),
     ("processed_race_files", "idx_processed_files_hash", ["file_hash"], False),
-    ("processed_race_files", "idx_processed_files_race_key", ["race_date", "venue", "race_no"], False),
-    ("processed_race_files", "idx_processed_files_processed_at", ["processed_at"], False),
+    (
+        "processed_race_files",
+        "idx_processed_files_race_key",
+        ["race_date", "venue", "race_no"],
+        False,
+    ),
+    (
+        "processed_race_files",
+        "idx_processed_files_processed_at",
+        ["processed_at"],
+        False,
+    ),
     # Added per schema tests: missing FK indexes
-    ("dog_performance_ft_extra", "idx_dog_performance_ft_extra_performance_id", ["performance_id"], False),
+    (
+        "dog_performance_ft_extra",
+        "idx_dog_performance_ft_extra_performance_id",
+        ["performance_id"],
+        False,
+    ),
     ("dog_race_data_backup", "idx_dog_race_data_backup_race_id", ["race_id"], False),
     ("dogs_ft_extra", "idx_dogs_ft_extra_dog_id", ["dog_id"], False),
     ("expert_form_analysis", "idx_expert_form_analysis_race_id", ["race_id"], False),
@@ -653,10 +690,15 @@ CREATE_TABLE_SQL: Dict[str, str] = {
 # Main logic
 # -------------------------
 
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Verify and patch SQLite schema")
     ap.add_argument("--db", help="Path to SQLite DB", default=None)
-    ap.add_argument("--force", action="store_true", help="Apply changes even if DB appears populated")
+    ap.add_argument(
+        "--force",
+        action="store_true",
+        help="Apply changes even if DB appears populated",
+    )
     args = ap.parse_args()
 
     db_path = resolve_db_path(args.db)
@@ -666,8 +708,14 @@ def main() -> int:
 
     # Lockfile protection: if a .db.lock exists next to the DB, require --force
     lockfile = db_path.with_suffix(db_path.suffix + ".lock")
-    if lockfile.exists() and not args.force and os.getenv("FORCE", "0") not in ("1","true","TRUE"):
-        print(f"[schema] Lockfile present: {lockfile}. Refusing to patch without --force.")
+    if (
+        lockfile.exists()
+        and not args.force
+        and os.getenv("FORCE", "0") not in ("1", "true", "TRUE")
+    ):
+        print(
+            f"[schema] Lockfile present: {lockfile}. Refusing to patch without --force."
+        )
         return 3
 
     ts = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
@@ -697,9 +745,17 @@ def main() -> int:
         dog_rows = int(cur.fetchone()[0] or 0)
     except Exception:
         dog_rows = 0
-    if dog_rows >= 1000 and not args.force and os.getenv("FORCE", "0") not in ("1","true","TRUE"):
-        print(f"[schema] DB has {dog_rows} dog_race_data rows; refusing to patch without --force.")
-        print(f"[schema] Use: python scripts/verify_and_patch_schema.py --db {db_path} --force")
+    if (
+        dog_rows >= 1000
+        and not args.force
+        and os.getenv("FORCE", "0") not in ("1", "true", "TRUE")
+    ):
+        print(
+            f"[schema] DB has {dog_rows} dog_race_data rows; refusing to patch without --force."
+        )
+        print(
+            f"[schema] Use: python scripts/verify_and_patch_schema.py --db {db_path} --force"
+        )
         return 4
 
     # Ensure tables exist
@@ -725,9 +781,13 @@ def main() -> int:
                     report_lines.append(f"[alter] {table} ADD COLUMN {col} {coltype}")
                     # Special-case defaults
                     if table == "dog_race_data" and col == "was_scratched":
-                        conn.execute("UPDATE dog_race_data SET was_scratched=0 WHERE was_scratched IS NULL")
+                        conn.execute(
+                            "UPDATE dog_race_data SET was_scratched=0 WHERE was_scratched IS NULL"
+                        )
                 except Exception as e:
-                    report_lines.append(f"[warn] failed to add column {table}.{col}: {e}")
+                    report_lines.append(
+                        f"[warn] failed to add column {table}.{col}: {e}"
+                    )
 
     # Ensure indexes
     for table, idx_name, cols, unique in INDEXES:
@@ -750,15 +810,21 @@ def main() -> int:
 
     # Staged-ingestion uniqueness: dog_race_data (race_id, dog_clean_name, box_number)
     try:
-        if table_exists(conn, "dog_race_data") and not index_exists(conn, "dog_race_data", "uq_dog_race_data_rdb"):
+        if table_exists(conn, "dog_race_data") and not index_exists(
+            conn, "dog_race_data", "uq_dog_race_data_rdb"
+        ):
             cols = ["race_id", "dog_clean_name", "box_number"]
             if not has_composite_duplicates(conn, "dog_race_data", cols):
                 conn.execute(
                     "CREATE UNIQUE INDEX IF NOT EXISTS uq_dog_race_data_rdb ON dog_race_data (race_id, dog_clean_name, box_number)"
                 )
-                report_lines.append("[index] uq_dog_race_data_rdb on dog_race_data(race_id, dog_clean_name, box_number)")
+                report_lines.append(
+                    "[index] uq_dog_race_data_rdb on dog_race_data(race_id, dog_clean_name, box_number)"
+                )
     except Exception as e:
-        report_lines.append(f"[warn] failed to ensure composite unique index on dog_race_data: {e}")
+        report_lines.append(
+            f"[warn] failed to ensure composite unique index on dog_race_data: {e}"
+        )
 
     conn.commit()
 

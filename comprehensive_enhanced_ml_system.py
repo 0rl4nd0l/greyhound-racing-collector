@@ -42,8 +42,10 @@ warnings.filterwarnings("ignore")
 
 # Import traditional analysis system
 try:
-    from traditional_analysis import (TraditionalRaceAnalyzer,
-                                      get_traditional_ml_features)
+    from traditional_analysis import (
+        TraditionalRaceAnalyzer,
+        get_traditional_ml_features,
+    )
 
     TRADITIONAL_ANALYSIS_AVAILABLE = True
 except ImportError as e:
@@ -62,20 +64,28 @@ except ImportError as e:
 # Enhanced ML Libraries
 try:
     import joblib
-    from sklearn.ensemble import (BaggingClassifier, ExtraTreesClassifier,
-                                  GradientBoostingClassifier,
-                                  RandomForestClassifier, VotingClassifier)
+    from sklearn.ensemble import (
+        BaggingClassifier,
+        ExtraTreesClassifier,
+        GradientBoostingClassifier,
+        RandomForestClassifier,
+        VotingClassifier,
+    )
     from sklearn.feature_selection import RFE, SelectKBest, f_classif
     from sklearn.impute import KNNImputer, SimpleImputer
     from sklearn.linear_model import LogisticRegression
-    from sklearn.metrics import (accuracy_score, classification_report,
-                                 confusion_matrix, f1_score, precision_score,
-                                 recall_score, roc_auc_score)
-    from sklearn.model_selection import (GridSearchCV, TimeSeriesSplit,
-                                         cross_val_score)
+    from sklearn.metrics import (
+        accuracy_score,
+        classification_report,
+        confusion_matrix,
+        f1_score,
+        precision_score,
+        recall_score,
+        roc_auc_score,
+    )
+    from sklearn.model_selection import GridSearchCV, TimeSeriesSplit, cross_val_score
     from sklearn.neural_network import MLPClassifier
-    from sklearn.preprocessing import (LabelEncoder, RobustScaler,
-                                       StandardScaler)
+    from sklearn.preprocessing import LabelEncoder, RobustScaler, StandardScaler
     from sklearn.svm import SVC
 
     SKLEARN_AVAILABLE = True
@@ -181,8 +191,10 @@ class ComprehensiveEnhancedMLSystem:
 
         # Add imbalanced-learn models if available
         try:
-            from imblearn.ensemble import (BalancedBaggingClassifier,
-                                           BalancedRandomForestClassifier)
+            from imblearn.ensemble import (
+                BalancedBaggingClassifier,
+                BalancedRandomForestClassifier,
+            )
 
             self.imbalanced_models = {
                 "balanced_rf_classifier": {
@@ -207,9 +219,25 @@ class ComprehensiveEnhancedMLSystem:
             self.imbalanced_models = {}
 
         # Feature importance insights (from previous analysis)
-        self.high_impact_features = ['market_confidence', 'avg_position', 'recent_form_avg', 'win_rate', 'current_weight', 'place_rate']
+        self.high_impact_features = [
+            "market_confidence",
+            "avg_position",
+            "recent_form_avg",
+            "win_rate",
+            "current_weight",
+            "place_rate",
+        ]
 
-        self.stable_features = ['weight_trend', 'distance_experience', 'box_versatility', 'track_condition_encoded', 'current_box', 'time_consistency', 'races_count', 'recent_races_last_30d']
+        self.stable_features = [
+            "weight_trend",
+            "distance_experience",
+            "box_versatility",
+            "track_condition_encoded",
+            "current_box",
+            "time_consistency",
+            "races_count",
+            "recent_races_last_30d",
+        ]
 
         print("🚀 Comprehensive Enhanced ML Model System Initialized")
 
@@ -221,14 +249,14 @@ class ComprehensiveEnhancedMLSystem:
         """
         try:
             print(f"📊 Loading form guide data using robust CSV ingestion layer...")
-            
+
             # Import the new CSV ingestion system
-            from csv_ingestion import create_ingestor, FormGuideCsvIngestionError
-            
+            from csv_ingestion import FormGuideCsvIngestionError, create_ingestor
+
             # Create ingestor with lenient validation to maximize ingestion success
             ingestion_mode = "lenient"
             ingestor = create_ingestor(ingestion_mode)
-            
+
             form_data = {}  # Dictionary to store all dog form data
             csv_files = []
 
@@ -236,7 +264,9 @@ class ComprehensiveEnhancedMLSystem:
             if self.unprocessed_forms_dir.exists():
                 unprocessed_files = list(self.unprocessed_forms_dir.glob("*.csv"))
                 csv_files.extend(unprocessed_files)
-                print(f"📁 Found {len(unprocessed_files)} files in unprocessed directory")
+                print(
+                    f"📁 Found {len(unprocessed_files)} files in unprocessed directory"
+                )
 
             # Load from downloaded forms directory (additional source)
             if self.downloaded_forms_dir.exists():
@@ -248,33 +278,33 @@ class ComprehensiveEnhancedMLSystem:
 
             # Use batch ingestion for efficiency
             batch_results = ingestor.batch_ingest(csv_files, continue_on_error=True)
-            
+
             print(f"✅ Successfully processed {len(batch_results['successful'])} files")
             print(f"❌ Failed to process {len(batch_results['failed'])} files")
             print(f"📊 Total records extracted: {batch_results['total_records']}")
-            
+
             # Log any errors for investigation
-            if batch_results['failed']:
+            if batch_results["failed"]:
                 print("⚠️ Failed files and errors:")
-                for failed_file in batch_results['failed'][:5]:  # Show first 5 errors
-                    error = batch_results['errors'].get(failed_file, "Unknown error")
+                for failed_file in batch_results["failed"][:5]:  # Show first 5 errors
+                    error = batch_results["errors"].get(failed_file, "Unknown error")
                     print(f"  - {failed_file}: {error[:100]}...")
-                if len(batch_results['failed']) > 5:
+                if len(batch_results["failed"]) > 5:
                     print(f"  ... and {len(batch_results['failed']) - 5} more")
-            
+
             # Process successful files individually to build form_data structure
             processed_count = 0
-            for success_info in batch_results['successful']:
+            for success_info in batch_results["successful"]:
                 try:
-                    file_path = success_info['file']
+                    file_path = success_info["file"]
                     processed_data, validation_result = ingestor.ingest_csv(file_path)
-                    
+
                     # Group by dog name (which is now properly mapped to dog_name)
                     for record in processed_data:
-                        dog_name = record['dog_name']
+                        dog_name = record["dog_name"]
                         if dog_name not in form_data:
                             form_data[dog_name] = []
-                        
+
                         # Check for duplicates before adding
                         race_key = (
                             record.get("date", ""),
@@ -284,7 +314,7 @@ class ComprehensiveEnhancedMLSystem:
                             record.get("weight", ""),
                             record.get("distance", ""),
                         )
-                        
+
                         # Check if this exact race already exists for this dog
                         is_duplicate = False
                         for existing_race in form_data[dog_name]:
@@ -299,16 +329,16 @@ class ComprehensiveEnhancedMLSystem:
                             if race_key == existing_key:
                                 is_duplicate = True
                                 break
-                        
+
                         if not is_duplicate:
                             # Add source file information for traceability
-                            record['source_file'] = file_path
+                            record["source_file"] = file_path
                             form_data[dog_name].append(record)
-                    
+
                     processed_count += 1
                     if processed_count % 100 == 0:
                         print(f"   Processed {processed_count} files...")
-                        
+
                 except FormGuideCsvIngestionError as e:
                     print(f"⚠️ Error processing {file_path}: {e}")
                     continue
@@ -323,10 +353,12 @@ class ComprehensiveEnhancedMLSystem:
             avg_races = total_races / len(form_data) if form_data else 0
             print(f"📈 Total historical races: {total_races}")
             print(f"📊 Average races per dog: {avg_races:.1f}")
-            
+
             # If nothing was ingested, automatically fall back to legacy loader
             if len(form_data) == 0:
-                print("⚠️ No dog profiles loaded from CSV ingestion; falling back to legacy loader...")
+                print(
+                    "⚠️ No dog profiles loaded from CSV ingestion; falling back to legacy loader..."
+                )
                 return self._load_form_guide_data_legacy()
 
             # Apply quality gate; if below threshold, switch to legacy loader once
@@ -361,7 +393,7 @@ class ComprehensiveEnhancedMLSystem:
         except Exception as e:
             print(f"❌ Error loading form guide data: {e}")
             return {}
-            
+
     def _load_form_guide_data_legacy(self):
         """Legacy form guide data loading method (fallback)"""
         try:
@@ -374,7 +406,9 @@ class ComprehensiveEnhancedMLSystem:
             if self.unprocessed_forms_dir.exists():
                 unprocessed_files = list(self.unprocessed_forms_dir.glob("*.csv"))
                 csv_files.extend(unprocessed_files)
-                print(f"📁 Found {len(unprocessed_files)} files in unprocessed directory")
+                print(
+                    f"📁 Found {len(unprocessed_files)} files in unprocessed directory"
+                )
 
             # Load from downloaded forms directory (additional source)
             if self.downloaded_forms_dir.exists():
@@ -519,12 +553,14 @@ class ComprehensiveEnhancedMLSystem:
             avg_races = total_races / len(form_data) if form_data else 0
             print(f"📈 Total historical races: {total_races}")
             print(f"📊 Average races per dog: {avg_races:.1f}")
-            
+
             # Validate that dog_name mapping worked in legacy mode
             sample_records = []
             for dog_name, races in list(form_data.items())[:3]:
                 if races:
-                    sample_records.append(f"{dog_name}: {races[0].get('dog_name', 'MISSING')}")
+                    sample_records.append(
+                        f"{dog_name}: {races[0].get('dog_name', 'MISSING')}"
+                    )
             print(f"📋 Sample dog_name mappings (legacy): {sample_records}")
 
             return form_data
@@ -1737,8 +1773,9 @@ class ComprehensiveEnhancedMLSystem:
             # AUTO-UPDATE: Run automated feature importance updater
             print("\n🔄 Running automated feature importance update...")
             try:
-                from automated_feature_importance_updater import \
-                    AutomatedFeatureImportanceUpdater
+                from automated_feature_importance_updater import (
+                    AutomatedFeatureImportanceUpdater,
+                )
 
                 updater = AutomatedFeatureImportanceUpdater()
                 update_success = updater.run_automated_update()

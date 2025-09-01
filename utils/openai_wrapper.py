@@ -7,14 +7,15 @@ Lightweight OpenAI wrapper to standardize usage across the codebase.
 - Centralizes model/temperature/max_tokens via config.openai_config
 - Includes minimal retry/backoff for transient 429/5xx errors
 """
+
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
-from dataclasses import dataclass
 import json
 import time
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 
-from config.openai_config import get_openai_config, OpenAIConfig
+from config.openai_config import OpenAIConfig, get_openai_config
 
 
 @dataclass
@@ -39,9 +40,11 @@ class OpenAIWrapper:
                 # Inspect for HTTP-like status on error objects
                 status = getattr(e, "status", None) or getattr(e, "status_code", None)
                 msg = str(e).lower()
-                transient = status in (429, 500, 502, 503, 504) or any(s in msg for s in ["rate limit", "timeout", "temporarily"])
+                transient = status in (429, 500, 502, 503, 504) or any(
+                    s in msg for s in ["rate limit", "timeout", "temporarily"]
+                )
                 if attempt < retries and transient:
-                    time.sleep(base_delay * (2 ** attempt))
+                    time.sleep(base_delay * (2**attempt))
                     continue
                 raise
         raise last_err  # safety
@@ -73,10 +76,14 @@ class OpenAIWrapper:
             if responses and hasattr(responses, "create"):
                 kwargs = dict(
                     model=mdl,
-                    input=prompt if not system else [
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": prompt},
-                    ],
+                    input=(
+                        prompt
+                        if not system
+                        else [
+                            {"role": "system", "content": system},
+                            {"role": "user", "content": prompt},
+                        ]
+                    ),
                     max_output_tokens=max_tok,
                 )
                 # For gpt-5, temperature must be default (1). Prefer omitting the parameter entirely.
@@ -156,7 +163,11 @@ class OpenAIWrapper:
         model: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Respond and parse JSON; returns a dict. Raises ValueError on invalid JSON."""
-        sys = (system + "\nReturn valid JSON only.") if system else "Return valid JSON only."
+        sys = (
+            (system + "\nReturn valid JSON only.")
+            if system
+            else "Return valid JSON only."
+        )
         resp = self.respond_text(
             prompt=prompt,
             system=sys,

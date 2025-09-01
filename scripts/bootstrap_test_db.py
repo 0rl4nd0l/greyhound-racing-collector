@@ -29,6 +29,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 # Ensure repo root is importable so `models.py` can be found when running this script directly
 import sys  # noqa: E402
+
 sys.path.insert(0, str(REPO_ROOT))  # noqa: E402
 
 # Import models Base (canonical schema)
@@ -54,13 +55,13 @@ def _db_file_from_url(url: str) -> Path:
 
         # Absolute path (four slashes)
         if url.startswith("sqlite:////"):
-            path_part = url[len("sqlite:////"):]
+            path_part = url[len("sqlite:////") :]
             # Ensure leading slash for absolute path
             return Path(f"/{path_part}")
 
         # Relative path (three slashes)
         if url.startswith("sqlite:///"):
-            path_part = url[len("sqlite:///"):]
+            path_part = url[len("sqlite:///") :]
             return (REPO_ROOT / path_part).resolve()
     except Exception:
         pass
@@ -85,8 +86,8 @@ def create_schema(url: str) -> None:
 
     # Optional: Alembic stamp head for state alignment
     try:
-        from alembic.config import Config
         from alembic import command
+        from alembic.config import Config
 
         cfg = Config(str(REPO_ROOT / "alembic.ini"))
         command.stamp(cfg, "head")
@@ -108,7 +109,9 @@ def _guardrails(db_file: Path) -> None:
     sentinel_dir = db_file.parent / ".db_protected"
     sentinel_file = db_file.with_suffix(db_file.suffix + ".protected")
     if sentinel_dir.exists() or sentinel_file.exists():
-        raise SystemExit(f"Refused: protection sentinel present ({sentinel_dir if sentinel_dir.exists() else sentinel_file})")
+        raise SystemExit(
+            f"Refused: protection sentinel present ({sentinel_dir if sentinel_dir.exists() else sentinel_file})"
+        )
 
     # Human-in-the-loop confirmation when interactive
     try:
@@ -142,4 +145,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

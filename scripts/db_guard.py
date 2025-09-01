@@ -38,7 +38,11 @@ def _now_ts() -> str:
 def _resolve_db_path(db_path: str | None) -> Path:
     if db_path:
         return Path(db_path)
-    env = os.getenv("GREYHOUND_DB_PATH") or os.getenv("DATABASE_PATH") or "greyhound_racing_data.db"
+    env = (
+        os.getenv("GREYHOUND_DB_PATH")
+        or os.getenv("DATABASE_PATH")
+        or "greyhound_racing_data.db"
+    )
     return Path(env)
 
 
@@ -51,13 +55,17 @@ def backup_db(db_path: Path, label: str) -> Path:
     # Use sqlite online backup if available
     try:
         import subprocess
-        subprocess.run(["sqlite3", str(db_path), ".backup", str(backup_file)], check=False)
+
+        subprocess.run(
+            ["sqlite3", str(db_path), ".backup", str(backup_file)], check=False
+        )
     except Exception:
         pass
 
     if not backup_file.exists() or backup_file.stat().st_size == 0:
         # Fallback copy
         import shutil
+
         shutil.copyfile(db_path, backup_file)
 
     return backup_file
@@ -116,10 +124,16 @@ def _maybe_optimize(db_path: Path, mode_env: str | None = None) -> None:
 class GuardState:
     db_path: Path
     label: str
-    tables: list[str] = field(default_factory=lambda: [
-        "race_metadata", "dog_race_data", "dogs",
-        "prediction_history", "live_odds", "value_bets"
-    ])
+    tables: list[str] = field(
+        default_factory=lambda: [
+            "race_metadata",
+            "dog_race_data",
+            "dogs",
+            "prediction_history",
+            "live_odds",
+            "value_bets",
+        ]
+    )
     before_counts: Dict[str, int] = field(default_factory=dict)
     after_counts: Dict[str, int] = field(default_factory=dict)
     min_growth: Dict[str, int] = field(default_factory=dict)
@@ -160,4 +174,3 @@ def db_guard(db_path: str | None = None, label: str = "op"):
 
         # Optional optimization (opt-in via DB_GUARD_OPTIMIZE)
         _maybe_optimize(gs.db_path)
-

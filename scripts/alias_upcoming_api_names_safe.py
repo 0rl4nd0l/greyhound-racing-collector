@@ -4,10 +4,10 @@ Create API-pattern aliases only for files in ./upcoming_races that already conta
 clear venue/date/race in their name. Skip UNKNOWN/ambiguous files.
 Pattern created: "Race {num} - {VENUE} - {YYYY-MM-DD}.csv"
 """
-from pathlib import Path
+import os
 import re
 from datetime import datetime
-import os
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 UPCOMING = ROOT / "upcoming_races"
@@ -15,8 +15,13 @@ UPCOMING = ROOT / "upcoming_races"
 API_NAME = lambda n, v, d: f"Race {n} - {v} - {d}.csv"
 RE_DATE = re.compile(r"(\d{4}-\d{2}-\d{2})")
 RE_NUM = re.compile(r"(?:^|[_\s-])(\d{1,2})(?:[_\s-]|\.)")
-RE_VENUE_UPCOMING = re.compile(r"Upcoming_([A-Z_]{2,5})_(\d{4}-\d{2}-\d{2})_(\d{1,2})", re.IGNORECASE)
-RE_API = re.compile(r"^Race\s+(\d{1,2})\s*[–-]\s*([A-Z_]+)\s*[–-]\s*(\d{4}-\d{2}-\d{2})\.csv$", re.IGNORECASE)
+RE_VENUE_UPCOMING = re.compile(
+    r"Upcoming_([A-Z_]{2,5})_(\d{4}-\d{2}-\d{2})_(\d{1,2})", re.IGNORECASE
+)
+RE_API = re.compile(
+    r"^Race\s+(\d{1,2})\s*[–-]\s*([A-Z_]+)\s*[–-]\s*(\d{4}-\d{2}-\d{2})\.csv$",
+    re.IGNORECASE,
+)
 
 
 def extract_from_name(name: str):
@@ -33,7 +38,7 @@ def extract_from_name(name: str):
         date = mdate.group(1)
         num = int(mnum.group(1))
         # Try to spot a venue token
-        for tok in name.replace('-', ' ').replace('_', ' ').split():
+        for tok in name.replace("-", " ").replace("_", " ").split():
             if tok.isupper() and 2 <= len(tok) <= 5 and tok != "UNKNOWN":
                 return num, tok, date
     return None
@@ -45,7 +50,7 @@ def main():
         print("{}")
         return
     for p in UPCOMING.iterdir():
-        if p.name.startswith('.'):
+        if p.name.startswith("."):
             continue
         if p.is_symlink():
             # don't alias symlinks
@@ -68,6 +73,7 @@ def main():
         dest.symlink_to(rel_src)
         created += 1
     print({"created": created})
+
 
 if __name__ == "__main__":
     main()

@@ -1,11 +1,22 @@
 from tkinter import Button, Entry, Frame, Label, StringVar
 
-from .constants import (FILENAME_INSTRUCTION, INPUT_OUTPUT_TITLE,
-                        RESET_BUTTON_TEXT, SCRAPE_BUTTON_TEXT, URL_INSTRUCTION)
-from .styles import (large_entry_style, large_text_style,
-                     left_aligned_text_style, medium_text_style,
-                     primary_button_style, secondary_button_style,
-                     small_entry_style, small_text_style)
+from .constants import (
+    FILENAME_INSTRUCTION,
+    INPUT_OUTPUT_TITLE,
+    RESET_BUTTON_TEXT,
+    SCRAPE_BUTTON_TEXT,
+    URL_INSTRUCTION,
+)
+from .styles import (
+    large_entry_style,
+    large_text_style,
+    left_aligned_text_style,
+    medium_text_style,
+    primary_button_style,
+    secondary_button_style,
+    small_entry_style,
+    small_text_style,
+)
 
 
 class InputOutputFrame(Frame):

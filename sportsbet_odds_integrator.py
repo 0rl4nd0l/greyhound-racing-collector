@@ -15,14 +15,15 @@ Features:
 """
 
 import json
+import os
 import re
 import sqlite3
 import time
-import os
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
 import requests
+
 from utils.http_client import get_shared_session
 
 # IMPORTANT: Avoid importing Playwright at module import time to satisfy module_guard
@@ -197,10 +198,11 @@ class SportsbetOddsIntegrator:
         Returns (By, WebDriverWait, EC, TimeoutException).
         """
         try:
-            from selenium.webdriver.common.by import By
-            from selenium.webdriver.support.ui import WebDriverWait
-            from selenium.webdriver.support import expected_conditions as EC
             from selenium.common.exceptions import TimeoutException
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support import expected_conditions as EC
+            from selenium.webdriver.support.ui import WebDriverWait
+
             return By, WebDriverWait, EC, TimeoutException
         except Exception as e:
             raise RuntimeError(f"Selenium primitives unavailable: {e}")
@@ -211,6 +213,7 @@ class SportsbetOddsIntegrator:
         """
         try:
             from drivers import get_chrome_driver
+
             self.driver = get_chrome_driver(headless=headless)
             if not getattr(self, "greyhound_url", None):
                 self.greyhound_url = f"{self.base_url}/betting/greyhound-racing"
@@ -225,13 +228,17 @@ class SportsbetOddsIntegrator:
         Lazily imports Playwright to avoid loading it during app startup.
         """
         # Optional: allow disabling any browser automation in prediction-only mode
-        if os.environ.get('PREDICTION_IMPORT_MODE', 'prediction_only') == 'prediction_only':
+        if (
+            os.environ.get("PREDICTION_IMPORT_MODE", "prediction_only")
+            == "prediction_only"
+        ):
             raise RuntimeError("Browser automation disabled in prediction_only mode")
         # Lazy import to avoid module_guard violations at startup
         global sync_playwright
         if sync_playwright is None:
             try:
                 from playwright.sync_api import sync_playwright as _sp
+
                 sync_playwright = _sp
             except Exception as e:
                 raise RuntimeError(f"Playwright not available: {e}")

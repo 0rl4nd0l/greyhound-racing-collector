@@ -6,10 +6,12 @@ Create Date: 2025-08-30 08:50:00.000000
 
 This migration is idempotent: it only adds missing columns if they don't exist.
 """
+
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "9f1a2b3c4d5e"
@@ -38,7 +40,9 @@ def upgrade() -> None:
     # Add sportsbet_url if missing
     if not _has_column("race_metadata", "sportsbet_url"):
         try:
-            op.add_column("race_metadata", sa.Column("sportsbet_url", sa.String(), nullable=True))
+            op.add_column(
+                "race_metadata", sa.Column("sportsbet_url", sa.String(), nullable=True)
+            )
         except Exception:
             pass
 
@@ -55,4 +59,3 @@ def downgrade() -> None:
             op.drop_column("race_metadata", "url")
         except Exception:
             pass
-

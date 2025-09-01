@@ -2,17 +2,27 @@
 # This exposes the archived implementation under the original top-level name
 # so that tests and downstream modules can import `ml_system_v3` as expected.
 
-import os
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
 _use_stub = False
 try:
-    _use_stub = str(os.getenv('USE_ML_V3_STUB', '0')).strip().lower() in ('1', 'true', 'yes', 'on')
+    _use_stub = str(os.getenv("USE_ML_V3_STUB", "0")).strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
     # In CI/testing, prefer a lightweight stub to avoid heavy numeric imports/ops
     if not _use_stub:
-        _use_stub = str(os.getenv('TESTING', '0')).strip().lower() in ('1', 'true', 'yes', 'on')
+        _use_stub = str(os.getenv("TESTING", "0")).strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
 except Exception:
     _use_stub = False
 
@@ -25,12 +35,15 @@ if not _use_stub:
         _use_stub = True
 
 if _use_stub:
+
     class MLSystemV3:  # type: ignore
         def __init__(self, db_path: str = "greyhound_racing_data.db"):
             self.db_path = db_path
             # Indicate stub mode in logs
             try:
-                logger.info("MLSystemV3 running in lightweight stub mode (TESTING/USE_ML_V3_STUB)")
+                logger.info(
+                    "MLSystemV3 running in lightweight stub mode (TESTING/USE_ML_V3_STUB)"
+                )
             except Exception:
                 pass
 
@@ -47,6 +60,9 @@ if _use_stub:
                 "place_calibration_applied": False,
                 "confidence": 0.5,
                 "model_info": "stub-ml-system-v3",
-                "explainability": {"error": "SHAP not available in stub mode", "feature_importance": {}, "available_models": []},
+                "explainability": {
+                    "error": "SHAP not available in stub mode",
+                    "feature_importance": {},
+                    "available_models": [],
+                },
             }
-

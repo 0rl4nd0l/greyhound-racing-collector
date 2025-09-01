@@ -19,9 +19,9 @@ Based on official TGR documentation:
 """
 
 import logging
-from datetime import datetime
-from typing import Dict, List, Any, Optional
 import re
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -29,7 +29,9 @@ logger = logging.getLogger(__name__)
 def create_corrected_tgr_scraper():
     """Create a corrected TGR scraper based on official documentation."""
     
-    from src.collectors.the_greyhound_recorder_scraper import TheGreyhoundRecorderScraper
+    from src.collectors.the_greyhound_recorder_scraper import (
+        TheGreyhoundRecorderScraper,
+    )
     
     class CorrectedTGRScraper(TheGreyhoundRecorderScraper):
         """TGR Scraper with correct column interpretation based on official docs."""

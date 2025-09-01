@@ -14,9 +14,9 @@ import sys
 
 def main() -> int:
     try:
-        import sklearn  # type: ignore
         import numpy as np  # type: ignore
         import pandas as pd  # type: ignore
+        import sklearn  # type: ignore
     except Exception as e:
         print(f"ERROR: Missing core dependency: {e}")
         return 1
@@ -43,4 +43,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

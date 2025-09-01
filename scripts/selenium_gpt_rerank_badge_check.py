@@ -9,8 +9,8 @@ Note: Requires system chromedriver available on PATH.
 """
 import os
 import sys
-import time
 import threading
+import time
 
 # Ensure project root on path
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -25,20 +25,26 @@ except Exception as e:
     sys.exit(2)
 
 import shutil
-CHROMEDRIVER = shutil.which('chromedriver')
+
+CHROMEDRIVER = shutil.which("chromedriver")
 if not CHROMEDRIVER:
-    print("SKIP: system chromedriver not found (install via: brew install chromedriver)")
+    print(
+        "SKIP: system chromedriver not found (install via: brew install chromedriver)"
+    )
     sys.exit(3)
 
-from app import app as flask_app
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+
+from app import app as flask_app
 
 
 def start_server():
-    flask_app.config.update({'TESTING': True, 'DEBUG': False, 'SERVER_NAME': 'localhost:5560'})
-    server = make_server('localhost', 5560, flask_app)
+    flask_app.config.update(
+        {"TESTING": True, "DEBUG": False, "SERVER_NAME": "localhost:5560"}
+    )
+    server = make_server("localhost", 5560, flask_app)
     t = threading.Thread(target=server.serve_forever, daemon=True)
     t.start()
     time.sleep(2)
@@ -47,16 +53,18 @@ def start_server():
 
 def main():
     # Ensure JS is enabled
-    os.environ.pop('DISABLE_JS', None)
+    os.environ.pop("DISABLE_JS", None)
 
     server = start_server()
-    base = 'http://localhost:5560'
+    base = "http://localhost:5560"
     driver = None
     try:
         driver = get_chrome_driver(headless=True)
         driver.set_window_size(1280, 900)
         driver.get(f"{base}/interactive-races")
-        WebDriverWait(driver, 10).until(lambda d: d.execute_script("return document.readyState") == "complete")
+        WebDriverWait(driver, 10).until(
+            lambda d: d.execute_script("return document.readyState") == "complete"
+        )
 
         # Enable test export and render a synthetic result
         driver.execute_script("window.ENABLE_UI_EXPORTS = true;")
@@ -89,15 +97,17 @@ def main():
             """
         )
         if ok is not True:
-            print("FAIL: displayPredictionResults not exported (set window.ENABLE_UI_EXPORTS=true)")
+            print(
+                "FAIL: displayPredictionResults not exported (set window.ENABLE_UI_EXPORTS=true)"
+            )
             return 1
 
         badge = WebDriverWait(driver, 5).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, 'span.badge.bg-info'))
+            EC.presence_of_element_located((By.CSS_SELECTOR, "span.badge.bg-info"))
         )
-        if badge and 'GPT Rerank' in (badge.text or ''):
-            title = badge.get_attribute('title') or ''
-            if 'GPT rerank applied' in title:
+        if badge and "GPT Rerank" in (badge.text or ""):
+            title = badge.get_attribute("title") or ""
+            if "GPT rerank applied" in title:
                 print("PASS: GPT Rerank badge rendered with tooltip")
                 return 0
         print("FAIL: GPT Rerank badge not found")
@@ -117,7 +127,6 @@ def main():
                 pass
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     code = main()
     sys.exit(code)
-

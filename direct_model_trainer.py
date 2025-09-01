@@ -16,10 +16,10 @@ from datetime import datetime
 import joblib
 import numpy as np
 import pandas as pd
-from ml_backtesting_trainer import MLBacktestingTrainer
 from sklearn.metrics import f1_score, precision_score, recall_score
 from sklearn.model_selection import train_test_split
 
+from ml_backtesting_trainer import MLBacktestingTrainer
 from model_registry import get_model_registry
 
 

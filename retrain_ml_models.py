@@ -13,7 +13,6 @@ from datetime import datetime
 import joblib
 import numpy as np
 import pandas as pd
-
 from advanced_ml_system_v2 import AdvancedMLSystemV2
 from enhanced_pipeline_v2 import EnhancedPipelineV2
 
@@ -214,7 +213,7 @@ def retrain_models(X, y, feature_columns):
                 "params", {}
             ),
             notes=f"Retrained model from {len(X_train)} historical samples",
-            is_active=False  # Set active state to False
+            is_active=False,  # Set active state to False
         )
 
         print(f"✅ Model registered in registry: {model_id}")

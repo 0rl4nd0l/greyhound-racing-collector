@@ -24,7 +24,13 @@ from scripts.db_guard import db_guard  # type: ignore
 
 def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description="Run a command under DB guard")
-    ap.add_argument("--db", required=False, default=os.getenv("GREYHOUND_DB_PATH") or os.getenv("DATABASE_PATH") or "greyhound_racing_data.db")
+    ap.add_argument(
+        "--db",
+        required=False,
+        default=os.getenv("GREYHOUND_DB_PATH")
+        or os.getenv("DATABASE_PATH")
+        or "greyhound_racing_data.db",
+    )
     ap.add_argument("--label", required=False, default="guarded")
     ap.add_argument("--", dest="cmdsep", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("cmd", nargs=argparse.REMAINDER, help="Command to run (after --)")
@@ -37,7 +43,9 @@ def main() -> int:
     ns = parse_args()
     cmd = ns.cmd
     if not cmd:
-        print("[guard-run] ERROR: No command provided. Usage: run_with_db_guard.py --db <db> --label <label> -- <cmd>")
+        print(
+            "[guard-run] ERROR: No command provided. Usage: run_with_db_guard.py --db <db> --label <label> -- <cmd>"
+        )
         return 2
 
     # If the first arg is '--', strip it
@@ -60,4 +68,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

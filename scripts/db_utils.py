@@ -36,4 +36,3 @@ def open_sqlite_writable(db_path: str | None = None) -> sqlite3.Connection:
     except Exception:
         pass
     return conn
-

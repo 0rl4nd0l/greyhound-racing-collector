@@ -20,6 +20,7 @@ from pathlib import Path
 
 import requests
 from bs4 import BeautifulSoup
+
 from utils.http_client import get_shared_session
 
 
@@ -126,7 +127,7 @@ class UpcomingRaceBrowser:
             """Return minutes since midnight. If missing/unparseable, estimate from race number."""
             try:
                 if not time_str:
-                    raise ValueError('no time')
+                    raise ValueError("no time")
                 t = str(time_str).strip().upper()
                 # 12-hour format with AM/PM
                 if re.match(r"^\d{1,2}:\d{2}\s*[AP]M$", t):
@@ -137,7 +138,7 @@ class UpcomingRaceBrowser:
                     h, m = t.split(":")
                     return int(h) * 60 + int(m)
                 # Fallback to estimate
-                raise ValueError('unsupported format')
+                raise ValueError("unsupported format")
             except Exception:
                 base_minutes = 13 * 60  # 1 PM baseline
                 total = base_minutes + max(0, int(race_num) - 1) * 25
@@ -313,7 +314,7 @@ class UpcomingRaceBrowser:
             def _minutes_from_time(time_str: str, race_num: int) -> int:
                 try:
                     if not time_str:
-                        raise ValueError('no time')
+                        raise ValueError("no time")
                     t = str(time_str).strip().upper()
                     if re.match(r"^\d{1,2}:\d{2}\s*[AP]M$", t):
                         dt = datetime.strptime(t.replace(" ", ""), "%I:%M%p")
@@ -321,12 +322,19 @@ class UpcomingRaceBrowser:
                     if re.match(r"^\d{1,2}:\d{2}$", t):
                         h, m = t.split(":")
                         return int(h) * 60 + int(m)
-                    raise ValueError('unsupported format')
+                    raise ValueError("unsupported format")
                 except Exception:
                     base_minutes = 13 * 60
                     return base_minutes + (max(0, race_num - 1) * 25)
 
-            races.sort(key=lambda x: (_minutes_from_time(x.get("race_time", ""), int(x.get("race_number", 999))), int(x.get("race_number", 999))))
+            races.sort(
+                key=lambda x: (
+                    _minutes_from_time(
+                        x.get("race_time", ""), int(x.get("race_number", 999))
+                    ),
+                    int(x.get("race_number", 999)),
+                )
+            )
 
             return races
 
@@ -667,9 +675,9 @@ class UpcomingRaceBrowser:
 
             # Extract time (format like "7:45 PM" or "19:45" or valid 4-digit HHMM)
             time_patterns = [
-                r"(\d{1,2}:\d{2}\s*(?:AM|PM))",   # 12-hour with AM/PM
-                r"(\d{1,2}:\d{2})",                # 24-hour with colon
-                r"(\d{4})",                         # 24-hour HHMM (validate)
+                r"(\d{1,2}:\d{2}\s*(?:AM|PM))",  # 12-hour with AM/PM
+                r"(\d{1,2}:\d{2})",  # 24-hour with colon
+                r"(\d{4})",  # 24-hour HHMM (validate)
             ]
 
             for pattern in time_patterns:
@@ -689,7 +697,12 @@ class UpcomingRaceBrowser:
                         h, m = map(int, raw_t.split(":"))
                         if 0 <= h <= 23 and 0 <= m <= 59:
                             from datetime import datetime as _dt
-                            race_time = _dt.strptime(f"{h:02d}:{m:02d}", "%H:%M").strftime("%I:%M %p").lstrip("0")
+
+                            race_time = (
+                                _dt.strptime(f"{h:02d}:{m:02d}", "%H:%M")
+                                .strftime("%I:%M %p")
+                                .lstrip("0")
+                            )
                             break
                         else:
                             continue
@@ -699,7 +712,12 @@ class UpcomingRaceBrowser:
                         m = int(raw_t[2:])
                         if 0 <= h <= 23 and 0 <= m <= 59:
                             from datetime import datetime as _dt
-                            race_time = _dt.strptime(f"{h:02d}:{m:02d}", "%H:%M").strftime("%I:%M %p").lstrip("0")
+
+                            race_time = (
+                                _dt.strptime(f"{h:02d}:{m:02d}", "%H:%M")
+                                .strftime("%I:%M %p")
+                                .lstrip("0")
+                            )
                             break
                         else:
                             # Ignore invalid 4-digit times like 7215
@@ -847,11 +865,14 @@ class UpcomingRaceBrowser:
                         csv_url = csv_info.get("url")
                     else:
                         # csv_info is None or unexpected type
-                        return {"success": False, "error": "Invalid CSV info returned from link finder"}
-                    
+                        return {
+                            "success": False,
+                            "error": "Invalid CSV info returned from link finder",
+                        }
+
                     if not csv_url:
                         return {"success": False, "error": "No valid CSV URL found"}
-                    
+
                     csv_response = self.session.get(csv_url, timeout=30)
 
                 if csv_response.status_code != 200:
@@ -994,7 +1015,9 @@ class UpcomingRaceBrowser:
                 if response.status_code == 200:
                     expert_soup = BeautifulSoup(response.content, "html.parser")
                 else:
-                    print(f"   ❌ Expert-form page not accessible: {response.status_code}")
+                    print(
+                        f"   ❌ Expert-form page not accessible: {response.status_code}"
+                    )
                     expert_soup = None
             finally:
                 if response is not None:
@@ -1205,7 +1228,9 @@ class UpcomingRaceBrowser:
                     try:
                         response = self.session.get(csv_url, timeout=10)
                         if response.status_code == 200:
-                            content_type = response.headers.get("content-type", "").lower()
+                            content_type = response.headers.get(
+                                "content-type", ""
+                            ).lower()
                             if "csv" in content_type or (
                                 "text" in content_type and len(response.content) > 100
                             ):
@@ -1296,7 +1321,9 @@ class UpcomingRaceBrowser:
                                     "form",
                                 ]
                             ) or ("," in content_sample and "\n" in content_sample):
-                                print(f"   ✅ Direct main page CSV URL worked: {csv_url}")
+                                print(
+                                    f"   ✅ Direct main page CSV URL worked: {csv_url}"
+                                )
                                 return csv_url
                 finally:
                     if response is not None:

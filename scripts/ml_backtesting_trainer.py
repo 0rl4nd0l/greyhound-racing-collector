@@ -34,11 +34,12 @@ warnings.filterwarnings("ignore")
 # ML Libraries - Check core sklearn first
 try:
     from sklearn.ensemble import RandomForestClassifier
-    from sklearn.linear_model import LogisticRegression
-    from sklearn.model_selection import train_test_split
-    from sklearn.metrics import accuracy_score
-    from sklearn.preprocessing import StandardScaler, LabelEncoder
     from sklearn.impute import SimpleImputer
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.metrics import accuracy_score
+    from sklearn.model_selection import train_test_split
+    from sklearn.preprocessing import LabelEncoder, StandardScaler
+
     SKLEARN_CORE_AVAILABLE = True
 except ImportError:
     SKLEARN_CORE_AVAILABLE = False
@@ -52,10 +53,16 @@ try:
     from imblearn.over_sampling import SMOTENC
     from sklearn.calibration import CalibratedClassifierCV
     from sklearn.ensemble import GradientBoostingClassifier, VotingClassifier
-    from sklearn.metrics import (classification_report, confusion_matrix, 
-                                 f1_score, log_loss, roc_auc_score)
-    from sklearn.model_selection import (TimeSeriesSplit, cross_val_score, GridSearchCV)
+    from sklearn.metrics import (
+        classification_report,
+        confusion_matrix,
+        f1_score,
+        log_loss,
+        roc_auc_score,
+    )
+    from sklearn.model_selection import GridSearchCV, TimeSeriesSplit, cross_val_score
     from sklearn.svm import SVC
+
     SKLEARN_FULL_AVAILABLE = True
 except ImportError as e:
     print(f"⚠️ Advanced ML libraries not available: {e}")
@@ -171,7 +178,9 @@ class MLBacktestingTrainer:
             grade_actual = pick(["grade", "class"], rm_cols)
             date_actual = pick(["race_date", "date"], rm_cols)
             time_of_day_actual = pick(["race_time", "time"], rm_cols)
-            start_dt_actual = pick(["start_datetime", "start_time", "datetime"], rm_cols)
+            start_dt_actual = pick(
+                ["start_datetime", "start_time", "datetime"], rm_cols
+            )
 
             # Ensure essential columns exist
             essential_missing = []
@@ -191,28 +200,90 @@ class MLBacktestingTrainer:
             sel.append("drd.race_id")
             sel.append(f"drd.{dog_name_actual} AS dog_clean_name")
             sel.append(f"drd.{finish_pos_actual} AS finish_position")
-            sel.append(f"drd.{box_actual} AS box_number" if box_actual else "NULL AS box_number")
-            sel.append(f"drd.{weight_actual} AS weight" if weight_actual else "NULL AS weight")
-            sel.append(f"drd.{sp_actual} AS starting_price" if sp_actual else "NULL AS starting_price")
-            sel.append(f"drd.{perf_actual} AS performance_rating" if perf_actual else "NULL AS performance_rating")
-            sel.append(f"drd.{speed_actual} AS speed_rating" if speed_actual else "NULL AS speed_rating")
-            sel.append(f"drd.{class_actual} AS class_rating" if class_actual else "NULL AS class_rating")
-            sel.append(f"drd.{time_actual} AS individual_time" if time_actual else "NULL AS individual_time")
-            sel.append(f"drd.{margin_actual} AS margin" if margin_actual else "NULL AS margin")
+            sel.append(
+                f"drd.{box_actual} AS box_number"
+                if box_actual
+                else "NULL AS box_number"
+            )
+            sel.append(
+                f"drd.{weight_actual} AS weight" if weight_actual else "NULL AS weight"
+            )
+            sel.append(
+                f"drd.{sp_actual} AS starting_price"
+                if sp_actual
+                else "NULL AS starting_price"
+            )
+            sel.append(
+                f"drd.{perf_actual} AS performance_rating"
+                if perf_actual
+                else "NULL AS performance_rating"
+            )
+            sel.append(
+                f"drd.{speed_actual} AS speed_rating"
+                if speed_actual
+                else "NULL AS speed_rating"
+            )
+            sel.append(
+                f"drd.{class_actual} AS class_rating"
+                if class_actual
+                else "NULL AS class_rating"
+            )
+            sel.append(
+                f"drd.{time_actual} AS individual_time"
+                if time_actual
+                else "NULL AS individual_time"
+            )
+            sel.append(
+                f"drd.{margin_actual} AS margin" if margin_actual else "NULL AS margin"
+            )
 
-            sel.append(f"rm.{field_size_actual} AS field_size" if field_size_actual else "NULL AS field_size")
-            sel.append(f"rm.{distance_actual} AS distance" if distance_actual else "NULL AS distance")
-            sel.append(f"rm.{venue_actual} AS venue" if venue_actual else "NULL AS venue")
-            sel.append(f"rm.{track_cond_actual} AS track_condition" if track_cond_actual else "NULL AS track_condition")
-            sel.append(f"rm.{weather_actual} AS weather" if weather_actual else "NULL AS weather")
-            sel.append(f"rm.{temp_actual} AS temperature" if temp_actual else "NULL AS temperature")
-            sel.append(f"rm.{grade_actual} AS grade" if grade_actual else "NULL AS grade")
+            sel.append(
+                f"rm.{field_size_actual} AS field_size"
+                if field_size_actual
+                else "NULL AS field_size"
+            )
+            sel.append(
+                f"rm.{distance_actual} AS distance"
+                if distance_actual
+                else "NULL AS distance"
+            )
+            sel.append(
+                f"rm.{venue_actual} AS venue" if venue_actual else "NULL AS venue"
+            )
+            sel.append(
+                f"rm.{track_cond_actual} AS track_condition"
+                if track_cond_actual
+                else "NULL AS track_condition"
+            )
+            sel.append(
+                f"rm.{weather_actual} AS weather"
+                if weather_actual
+                else "NULL AS weather"
+            )
+            sel.append(
+                f"rm.{temp_actual} AS temperature"
+                if temp_actual
+                else "NULL AS temperature"
+            )
+            sel.append(
+                f"rm.{grade_actual} AS grade" if grade_actual else "NULL AS grade"
+            )
             sel.append(f"rm.{date_actual} AS race_date")
-            sel.append(f"rm.{time_of_day_actual} AS race_time" if time_of_day_actual else "NULL AS race_time")
-            sel.append(f"rm.{start_dt_actual} AS start_datetime" if start_dt_actual else "NULL AS start_datetime")
+            sel.append(
+                f"rm.{time_of_day_actual} AS race_time"
+                if time_of_day_actual
+                else "NULL AS race_time"
+            )
+            sel.append(
+                f"rm.{start_dt_actual} AS start_datetime"
+                if start_dt_actual
+                else "NULL AS start_datetime"
+            )
 
             # Context subqueries
-            sel.append("(SELECT COUNT(*) FROM dog_race_data WHERE race_id = drd.race_id) AS total_runners")
+            sel.append(
+                "(SELECT COUNT(*) FROM dog_race_data WHERE race_id = drd.race_id) AS total_runners"
+            )
             if time_actual:
                 sel.append(
                     f"(SELECT MIN({time_actual}) FROM dog_race_data WHERE race_id = drd.race_id AND {time_actual} IS NOT NULL) AS winning_time"
@@ -248,7 +319,11 @@ class MLBacktestingTrainer:
             ORDER BY rm.{date_actual} ASC, drd.race_id, drd.{finish_pos_actual}
             """
 
-            params = [start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')] if use_sql_date_filter else []
+            params = (
+                [start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")]
+                if use_sql_date_filter
+                else []
+            )
             df = pd.read_sql_query(query, conn, params=params)
             conn.close()
 
@@ -262,7 +337,9 @@ class MLBacktestingTrainer:
                         conn_fb.execute("PRAGMA foreign_keys=ON")
                     except Exception:
                         pass
-                    fallback_conditions = [c for c in where_conditions if not c.strip().startswith("date(")]
+                    fallback_conditions = [
+                        c for c in where_conditions if not c.strip().startswith("date(")
+                    ]
                     fallback_where = " AND \n            ".join(fallback_conditions)
                     fallback_query = f"""
                     SELECT 
@@ -295,10 +372,12 @@ class MLBacktestingTrainer:
                         return pd.to_datetime(s, dayfirst=True, errors="raise")
                     except Exception:
                         return pd.NaT
+
                 df["race_date"] = df["race_date"].apply(_parse_date_mixed)
 
                 # Fallback: if race_date missing but start_datetime present, use it
                 if "start_datetime" in df.columns:
+
                     def _parse_start_dt(val):
                         if pd.isna(val):
                             return pd.NaT
@@ -307,6 +386,7 @@ class MLBacktestingTrainer:
                             return pd.to_datetime(s, errors="coerce")
                         except Exception:
                             return pd.NaT
+
                     start_dt_parsed = df["start_datetime"].apply(_parse_start_dt)
                     na_mask = df["race_date"].isna() & start_dt_parsed.notna()
                     df.loc[na_mask, "race_date"] = start_dt_parsed[na_mask]
@@ -389,7 +469,10 @@ class MLBacktestingTrainer:
                     "is_winner": 1 if finish_position == 1 else 0,
                     "is_placer": 1 if finish_position <= 3 else 0,
                     "is_top_half": (
-                        1 if finish_position <= max(int(row.get("total_runners", 8)) // 2, 1) else 0
+                        1
+                        if finish_position
+                        <= max(int(row.get("total_runners", 8)) // 2, 1)
+                        else 0
                     ),
                     "race_date": race_date,
                     # Current race context
@@ -686,6 +769,7 @@ class MLBacktestingTrainer:
 
         # Handle distance field robustly (strings like '525m', numbers, or bytes blobs)
         if "distance" in enhanced_df.columns:
+
             def _parse_distance(val):
                 if pd.isna(val):
                     return 500.0
@@ -702,7 +786,9 @@ class MLBacktestingTrainer:
                     for width in (2, 4, 8):
                         if len(b) == width:
                             try:
-                                num = int.from_bytes(b, byteorder="little", signed=False)
+                                num = int.from_bytes(
+                                    b, byteorder="little", signed=False
+                                )
                                 if 100 <= num <= 2000:
                                     return float(num)
                             except Exception:
@@ -713,6 +799,7 @@ class MLBacktestingTrainer:
                     except Exception:
                         s = ""
                     import re as _re
+
                     m = _re.search(r"(\d{2,4})", s)
                     if m:
                         return float(m.group(1))
@@ -721,6 +808,7 @@ class MLBacktestingTrainer:
                 s = str(val)
                 s = s.replace("m", "").strip()
                 import re as _re
+
                 m = _re.search(r"(\d+(?:\.\d+)?)", s)
                 if m:
                     try:
@@ -729,7 +817,9 @@ class MLBacktestingTrainer:
                         return 500.0
                 return 500.0
 
-            enhanced_df["distance_numeric"] = enhanced_df["distance"].apply(_parse_distance)
+            enhanced_df["distance_numeric"] = enhanced_df["distance"].apply(
+                _parse_distance
+            )
             # Replace 'distance' with 'distance_numeric' in feature columns
             if "distance" in feature_columns:
                 feature_columns = [
@@ -746,7 +836,7 @@ class MLBacktestingTrainer:
         # Ensure all feature columns are numeric
         for col in feature_columns:
             if col in complete_df.columns:
-                complete_df[col] = pd.to_numeric(complete_df[col], errors='coerce')
+                complete_df[col] = pd.to_numeric(complete_df[col], errors="coerce")
 
         # Fill missing values with median for numeric columns
         imputer = SimpleImputer(strategy="median")
@@ -921,6 +1011,7 @@ class MLBacktestingTrainer:
 
             # Define optuna objective (use the simplified param grid defined above)
             optuna_param_grid = param_grid
+
             def objective(trial):
                 model_class = config["model"]
                 params = {
@@ -930,7 +1021,10 @@ class MLBacktestingTrainer:
                 # Add class weighting for imbalance where supported
                 params_local = dict(params)
                 try:
-                    if model_class.__name__ in ("RandomForestClassifier", "LogisticRegression"):
+                    if model_class.__name__ in (
+                        "RandomForestClassifier",
+                        "LogisticRegression",
+                    ):
                         params_local["class_weight"] = "balanced"
                 except Exception:
                     pass
@@ -965,7 +1059,10 @@ class MLBacktestingTrainer:
             current_params = study.best_params
             params_local = dict(current_params)
             try:
-                if model_class.__name__ in ("RandomForestClassifier", "LogisticRegression"):
+                if model_class.__name__ in (
+                    "RandomForestClassifier",
+                    "LogisticRegression",
+                ):
                     params_local["class_weight"] = "balanced"
             except Exception:
                 pass
@@ -989,6 +1086,7 @@ class MLBacktestingTrainer:
                         val_proba = base_model.decision_function(X_val_inner)
                         # map to 0-1 via min-max
                         import numpy as _np
+
                         vmin, vmax = _np.min(val_proba), _np.max(val_proba)
                         val_proba = (val_proba - vmin) / (vmax - vmin + 1e-12)
                     # Scan thresholds to maximize accuracy on inner val
@@ -1042,7 +1140,9 @@ class MLBacktestingTrainer:
             else:
                 result_color = "🔴"
 
-            print(f"      {result_color} Test Accuracy: {test_accuracy:.3f} | AUC: {auc:.3f} | thr={best_thr:.2f}")
+            print(
+                f"      {result_color} Test Accuracy: {test_accuracy:.3f} | AUC: {auc:.3f} | thr={best_thr:.2f}"
+            )
             print(f"      🔧 Best params: {params_local}")
 
             if best_model_name is None or test_accuracy >= best_score:
@@ -1052,7 +1152,9 @@ class MLBacktestingTrainer:
                 best_model_name = model_name
 
         print(f"\n🏆 OPTIMIZATION COMPLETE!")
-        name_for_print = (best_model_name.replace('_', ' ').title() if best_model_name else '<none>')
+        name_for_print = (
+            best_model_name.replace("_", " ").title() if best_model_name else "<none>"
+        )
         print(f"   🥇 Best Model: {name_for_print}")
         print(f"   📊 Test Accuracy: {best_score:.3f}")
         print(f"   🎯 Parameters: {best_params_final}")
@@ -1165,7 +1267,9 @@ class MLBacktestingTrainer:
         print("═" * 70)
         print(f"   📅 Analysis Period: {months_back} months")
         print(f"   🧰 Retrain frequency: {retrain_frequency}")
-        print(f"   🔁 Rolling window (days): {rolling_window_days if rolling_window_days else 'ALL'}")
+        print(
+            f"   🔁 Rolling window (days): {rolling_window_days if rolling_window_days else 'ALL'}"
+        )
         print("═" * 70)
 
         overall_start = time.time()
@@ -1192,7 +1296,9 @@ class MLBacktestingTrainer:
         ml_df, feature_columns = self.prepare_ml_dataset(enhanced_df)
 
         # Ensure we have the necessary columns
-        required_cols = set(["race_id", "race_date", "is_winner", "dog_name"]) | set(feature_columns)
+        required_cols = set(["race_id", "race_date", "is_winner", "dog_name"]) | set(
+            feature_columns
+        )
         missing = [c for c in required_cols if c not in ml_df.columns]
         if missing:
             print(f"❌ Missing required columns: {missing}")
@@ -1201,7 +1307,9 @@ class MLBacktestingTrainer:
         # STEP 4: Select a model configuration (time-series CV + optimization)
         print("\nSTEP 4: Model Selection (Time-series CV + Optimization)")
         print("-" * 50)
-        best_model_info = self.optimize_best_model(ml_df, feature_columns, target_column="is_winner")
+        best_model_info = self.optimize_best_model(
+            ml_df, feature_columns, target_column="is_winner"
+        )
         print("   ✅ Model selection complete")
 
         # Walk-forward evaluation
@@ -1223,7 +1331,9 @@ class MLBacktestingTrainer:
             df_sorted["odds_est"] = np.nan
 
         races_by_date = (
-            df_sorted.groupby(["race_date", "race_id"], as_index=False)["race_id"].first().sort_values("race_date")
+            df_sorted.groupby(["race_date", "race_id"], as_index=False)["race_id"]
+            .first()
+            .sort_values("race_date")
         )
 
         # Helper to build training mask given a cutoff date
@@ -1231,7 +1341,7 @@ class MLBacktestingTrainer:
             mask = pd.to_datetime(df["race_date"]) < cutoff_dt
             if rolling_window_days and rolling_window_days > 0:
                 start_dt = cutoff_dt - pd.Timedelta(days=int(rolling_window_days))
-                mask &= (pd.to_datetime(df["race_date"]) >= start_dt)
+                mask &= pd.to_datetime(df["race_date"]) >= start_dt
             return mask
 
         from sklearn.calibration import CalibratedClassifierCV
@@ -1242,7 +1352,7 @@ class MLBacktestingTrainer:
         cached_scaler = None
 
         race_level_rows = []  # For summary metrics
-        all_dog_rows = []     # For prob-based metrics
+        all_dog_rows = []  # For prob-based metrics
 
         with open(preds_file, "w") as f_out:
             for _, grp in races_by_date.iterrows():
@@ -1253,11 +1363,19 @@ class MLBacktestingTrainer:
                 train_mask = train_mask_for_date(df_sorted, race_dt)
                 train_df = df_sorted[train_mask]
                 if train_df.empty or train_df["is_winner"].sum() == 0:
-                    print(f"   ⚠️ Skipping race {race_id}: insufficient history before {str(race_dt.date())}")
+                    print(
+                        f"   ⚠️ Skipping race {race_id}: insufficient history before {str(race_dt.date())}"
+                    )
                     continue
 
                 # Optionally cache model per date to avoid retraining for every race of same date
-                retrain_key = race_dt.normalize() if retrain_frequency == "daily" else (race_id if retrain_frequency == "race" else race_dt.normalize())
+                retrain_key = (
+                    race_dt.normalize()
+                    if retrain_frequency == "daily"
+                    else (
+                        race_id if retrain_frequency == "race" else race_dt.normalize()
+                    )
+                )
                 if (cached_model is None) or (last_retrain_key != retrain_key):
                     # Instantiate a fresh model with best params and (re)fit
                     model_name = best_model_info.get("model_name")
@@ -1269,6 +1387,7 @@ class MLBacktestingTrainer:
                         # Fallback to LogisticRegression if something unexpected
                         try:
                             from sklearn.linear_model import LogisticRegression
+
                             model_class = LogisticRegression
                             params = {"C": 1.0, "max_iter": 1000}
                         except Exception:
@@ -1280,7 +1399,11 @@ class MLBacktestingTrainer:
                     scaler = StandardScaler()
                     X_train_scaled = scaler.fit_transform(X_train)
 
-                    base_model = model_class(**params, random_state=42) if model_class else best_model_info["model"]
+                    base_model = (
+                        model_class(**params, random_state=42)
+                        if model_class
+                        else best_model_info["model"]
+                    )
                     # Guard: calibration can fail if a CV fold contains a single class.
                     # Fallback to no calibration when class counts are too low.
                     y_vals = np.array(y_train)
@@ -1289,7 +1412,9 @@ class MLBacktestingTrainer:
                     use_calibration = min_count >= 2
                     if use_calibration:
                         try:
-                            model = CalibratedClassifierCV(base_model, method="sigmoid", cv=3)
+                            model = CalibratedClassifierCV(
+                                base_model, method="sigmoid", cv=3
+                            )
                             model.fit(X_train_scaled, y_train)
                         except Exception:
                             # Fallback to uncalibrated if calibration fails
@@ -1320,15 +1445,25 @@ class MLBacktestingTrainer:
                 race_df["predicted_rank"] = np.arange(1, len(race_df) + 1)
                 top_row = race_df.iloc[0]
                 actual_winner_row = race_df[race_df["is_winner"] == 1]
-                actual_winner_name = actual_winner_row.iloc[0]["dog_name"] if len(actual_winner_row) else None
-                correct = (top_row["dog_name"] == actual_winner_name) if actual_winner_name is not None else False
+                actual_winner_name = (
+                    actual_winner_row.iloc[0]["dog_name"]
+                    if len(actual_winner_row)
+                    else None
+                )
+                correct = (
+                    (top_row["dog_name"] == actual_winner_name)
+                    if actual_winner_name is not None
+                    else False
+                )
 
                 # EV assuming 1 unit stake on top pick: return = prob*odds - (1 - prob)
                 # Using odds_est if available (decimal odds -> net profit = odds - 1 on win)
                 odds_top = float(top_row.get("odds_est", np.nan))
                 ev = None
                 if not np.isnan(odds_top):
-                    ev = float(top_row["pred_win_prob"]) * odds_top - (1.0 - float(top_row["pred_win_prob"]))
+                    ev = float(top_row["pred_win_prob"]) * odds_top - (
+                        1.0 - float(top_row["pred_win_prob"])
+                    )
 
                 # Save per-race JSONL entry
                 record = {
@@ -1336,40 +1471,75 @@ class MLBacktestingTrainer:
                     "race_date": str(pd.to_datetime(grp["race_date"]).date()),
                     "predicted_top": str(top_row["dog_name"]),
                     "predicted_prob": float(top_row["pred_win_prob"]),
-                    "actual_winner": str(actual_winner_name) if actual_winner_name is not None else None,
+                    "actual_winner": (
+                        str(actual_winner_name)
+                        if actual_winner_name is not None
+                        else None
+                    ),
                     "correct": bool(correct),
-                    "top_k_hit": bool(race_df[race_df["dog_name"] == actual_winner_name]["predicted_rank"].iloc[0] <= top_k) if actual_winner_name is not None else False,
+                    "top_k_hit": (
+                        bool(
+                            race_df[race_df["dog_name"] == actual_winner_name][
+                                "predicted_rank"
+                            ].iloc[0]
+                            <= top_k
+                        )
+                        if actual_winner_name is not None
+                        else False
+                    ),
                     "field_size": int(len(race_df)),
-                    "odds_top": float(odds_top) if odds_top is not None and not np.isnan(odds_top) else None,
+                    "odds_top": (
+                        float(odds_top)
+                        if odds_top is not None and not np.isnan(odds_top)
+                        else None
+                    ),
                     "expected_value_top": ev,
                     "scorable": bool(actual_winner_name is not None),
                 }
                 f_out.write(json.dumps(record) + "\n")
 
                 # Collect for summary metrics
-                race_level_rows.append({
-                    "race_id": record["race_id"],
-                    "correct": record["correct"],
-                    "top_k_hit": record["top_k_hit"],
-                    "field_size": record["field_size"],
-                    "predicted_prob": record["predicted_prob"],
-                })
+                race_level_rows.append(
+                    {
+                        "race_id": record["race_id"],
+                        "correct": record["correct"],
+                        "top_k_hit": record["top_k_hit"],
+                        "field_size": record["field_size"],
+                        "predicted_prob": record["predicted_prob"],
+                    }
+                )
                 # For probability metrics across dogs
-                all_dog_rows.append(race_df[["pred_win_prob", "is_winner"]].rename(columns={"pred_win_prob": "p", "is_winner": "y"}))
+                all_dog_rows.append(
+                    race_df[["pred_win_prob", "is_winner"]].rename(
+                        columns={"pred_win_prob": "p", "is_winner": "y"}
+                    )
+                )
 
         # Aggregate metrics
         print("\nSTEP 6: Aggregating Metrics")
         print("-" * 50)
         race_level_df = pd.DataFrame(race_level_rows)
-        dog_df = pd.concat(all_dog_rows, ignore_index=True) if all_dog_rows else pd.DataFrame(columns=["p", "y"])
+        dog_df = (
+            pd.concat(all_dog_rows, ignore_index=True)
+            if all_dog_rows
+            else pd.DataFrame(columns=["p", "y"])
+        )
 
-        top1_acc = float(race_level_df["correct"].mean()) if not race_level_df.empty else 0.0
-        topk_rate = float(race_level_df["top_k_hit"].mean()) if not race_level_df.empty else 0.0
+        top1_acc = (
+            float(race_level_df["correct"].mean()) if not race_level_df.empty else 0.0
+        )
+        topk_rate = (
+            float(race_level_df["top_k_hit"].mean()) if not race_level_df.empty else 0.0
+        )
         # Scorable-only metrics (exclude races where the actual winner row is missing)
         if not race_level_df.empty and "scorable" in race_level_df.columns:
             sc_df = race_level_df[race_level_df["scorable"] == True]
-            top1_acc_scorable = float(sc_df["correct"].mean()) if not sc_df.empty else None
-            topk_rate_scorable = float(sc_df["top_k_hit"].mean()) if not sc_df.empty else None
+            top1_acc_scorable = (
+                float(sc_df["correct"].mean()) if not sc_df.empty else None
+            )
+            topk_rate_scorable = (
+                float(sc_df["top_k_hit"].mean()) if not sc_df.empty else None
+            )
         else:
             top1_acc_scorable = None
             topk_rate_scorable = None
@@ -1380,7 +1550,9 @@ class MLBacktestingTrainer:
             mrr_vals_local = []
             for _, grp in races_by_date.iterrows():
                 rid = grp["race_id"]
-                r = df_sorted[df_sorted["race_id"] == rid][["dog_name", "is_winner"]].copy()
+                r = df_sorted[df_sorted["race_id"] == rid][
+                    ["dog_name", "is_winner"]
+                ].copy()
                 # ranks were computed earlier but not kept for each race; recompute by pred_win_prob
                 # For MRR we need the rank of y==1; rebuild from predictions file for reliability
                 # Simpler approach: approximate from last computed race_df by reading JSONL not ideal here; skip if unavailable
@@ -1393,6 +1565,7 @@ class MLBacktestingTrainer:
         # Log loss and Brier across dogs
         def safe_clip(p):
             return np.clip(p, 1e-6, 1 - 1e-6)
+
         log_loss_val = None
         brier_val = None
         if not dog_df.empty:
@@ -1408,7 +1581,9 @@ class MLBacktestingTrainer:
         if top1_acc_scorable is not None:
             print(f"   🎯 Top-1 accuracy (scorable only): {top1_acc_scorable:.3f}")
         if topk_rate_scorable is not None:
-            print(f"   🎯 Top-{top_k} hit rate (scorable only): {topk_rate_scorable:.3f}")
+            print(
+                f"   🎯 Top-{top_k} hit rate (scorable only): {topk_rate_scorable:.3f}"
+            )
         if mrr is not None:
             print(f"   📐 MRR: {mrr:.3f}")
         if log_loss_val is not None:
@@ -1530,20 +1705,37 @@ class MLBacktestingTrainer:
         if not SKLEARN_AVAILABLE:
             print("❌ Advanced ML libraries not fully available.")
             if SKLEARN_CORE_AVAILABLE:
-                print("   ℹ️ Basic sklearn available but missing advanced dependencies (mlflow, optuna, etc.)")
+                print(
+                    "   ℹ️ Basic sklearn available but missing advanced dependencies (mlflow, optuna, etc.)"
+                )
             else:
                 print("   Installing basic dependencies...")
                 try:
                     import subprocess
-                    result = subprocess.run([sys.executable, "-m", "pip", "install", "scikit-learn", "pandas", "numpy"], 
-                                          check=True, capture_output=True, text=True)
+
+                    result = subprocess.run(
+                        [
+                            sys.executable,
+                            "-m",
+                            "pip",
+                            "install",
+                            "scikit-learn",
+                            "pandas",
+                            "numpy",
+                        ],
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                    )
                     print("   ✅ Basic ML dependencies installed successfully.")
-                    print("   🔄 Please restart the script to use full ML capabilities.")
+                    print(
+                        "   🔄 Please restart the script to use full ML capabilities."
+                    )
                 except subprocess.CalledProcessError as e:
                     print(f"   ⚠️ Could not install dependencies: {e}")
                 except Exception as e:
                     print(f"   ⚠️ Installation error: {e}")
-            
+
             print("   🔄 Running simplified analysis instead...")
             return self.run_simplified_backtest(months_back)
 
@@ -1670,8 +1862,9 @@ class MLBacktestingTrainer:
         # AUTO-UPDATE: Run automated feature importance updater
         print("   🔄 Running automated feature importance update...")
         try:
-            from automated_feature_importance_updater import \
-                AutomatedFeatureImportanceUpdater
+            from automated_feature_importance_updater import (
+                AutomatedFeatureImportanceUpdater,
+            )
 
             updater = AutomatedFeatureImportanceUpdater()
             update_success = updater.run_automated_update()
@@ -1705,7 +1898,7 @@ class MLBacktestingTrainer:
         print("═" * 70)
 
         overall_start_time = time.time()
-        
+
         # Step 1: Load and analyze basic data
         print("\n📊 STEP 1: Loading Historical Data")
         print("-" * 50)
@@ -1717,11 +1910,11 @@ class MLBacktestingTrainer:
             conn.execute("PRAGMA foreign_keys=ON")
         except Exception:
             pass
-        
+
         # Calculate date range
         end_date = datetime.now()
         start_date = end_date - timedelta(days=months_back * 30)
-        
+
         query = """
         SELECT 
             rm.race_id,
@@ -1743,66 +1936,83 @@ class MLBacktestingTrainer:
         AND rm.race_date <= ?
         ORDER BY rm.race_date DESC
         """
-        
+
         cursor = conn.cursor()
         cursor.execute(query, [start_date.isoformat(), end_date.isoformat()])
         rows = cursor.fetchall()
         conn.close()
-        
+
         print(f"   ✅ Loaded {len(rows)} race records")
-        
+
         # Step 2: Basic analysis
         print("\n🔍 STEP 2: Basic Pattern Analysis")
         print("-" * 50)
-        
+
         # Analyze win patterns by various factors
         analyses = {
-            'venues': {},
-            'distances': {},
-            'box_positions': {},
-            'odds_ranges': {},
-            'field_sizes': {}
+            "venues": {},
+            "distances": {},
+            "box_positions": {},
+            "odds_ranges": {},
+            "field_sizes": {},
         }
-        
+
         total_races = 0
         winners_by_factor = {
-            'venue': {},
-            'distance': {},
-            'box': {},
-            'odds_range': {},
-            'field_size': {}
+            "venue": {},
+            "distance": {},
+            "box": {},
+            "odds_range": {},
+            "field_size": {},
         }
-        
+
         race_ids = set()
-        
+
         for row in rows:
-            race_id, venue, race_date, distance, field_size, dog_name, finish_pos, odds, individual_time, box = row
-            
+            (
+                race_id,
+                venue,
+                race_date,
+                distance,
+                field_size,
+                dog_name,
+                finish_pos,
+                odds,
+                individual_time,
+                box,
+            ) = row
+
             if race_id not in race_ids:
                 race_ids.add(race_id)
                 total_races += 1
-            
+
             # Only analyze winners
             try:
-                pos = int(str(finish_pos).replace('=', ''))
+                pos = int(str(finish_pos).replace("=", ""))
                 if pos == 1:  # Winner
                     # Venue analysis
                     if venue:
-                        winners_by_factor['venue'][venue] = winners_by_factor['venue'].get(venue, 0) + 1
-                    
+                        winners_by_factor["venue"][venue] = (
+                            winners_by_factor["venue"].get(venue, 0) + 1
+                        )
+
                     # Distance analysis
                     if distance:
                         dist_key = str(distance)
-                        winners_by_factor['distance'][dist_key] = winners_by_factor['distance'].get(dist_key, 0) + 1
-                    
+                        winners_by_factor["distance"][dist_key] = (
+                            winners_by_factor["distance"].get(dist_key, 0) + 1
+                        )
+
                     # Box analysis
                     if box:
                         try:
                             box_num = int(box)
-                            winners_by_factor['box'][box_num] = winners_by_factor['box'].get(box_num, 0) + 1
+                            winners_by_factor["box"][box_num] = (
+                                winners_by_factor["box"].get(box_num, 0) + 1
+                            )
                         except ValueError:
                             pass
-                    
+
                     # Odds analysis
                     if odds:
                         try:
@@ -1815,85 +2025,112 @@ class MLBacktestingTrainer:
                                 odds_range = "Medium (5.0-10.0)"
                             else:
                                 odds_range = "Long (>10.0)"
-                            winners_by_factor['odds_range'][odds_range] = winners_by_factor['odds_range'].get(odds_range, 0) + 1
+                            winners_by_factor["odds_range"][odds_range] = (
+                                winners_by_factor["odds_range"].get(odds_range, 0) + 1
+                            )
                         except ValueError:
                             pass
-                    
+
                     # Field size analysis
                     if field_size:
                         try:
                             size = int(field_size)
-                            size_range = f"{size} runners" if size <= 8 else "8+ runners"
-                            winners_by_factor['field_size'][size_range] = winners_by_factor['field_size'].get(size_range, 0) + 1
+                            size_range = (
+                                f"{size} runners" if size <= 8 else "8+ runners"
+                            )
+                            winners_by_factor["field_size"][size_range] = (
+                                winners_by_factor["field_size"].get(size_range, 0) + 1
+                            )
                         except ValueError:
                             pass
             except (ValueError, TypeError):
                 continue
-        
+
         # Step 3: Generate insights
         print("\n📈 STEP 3: Pattern Insights")
         print("-" * 50)
-        
+
         insights = []
-        
+
         # Top winning venues
-        if winners_by_factor['venue']:
-            top_venues = sorted(winners_by_factor['venue'].items(), key=lambda x: x[1], reverse=True)[:5]
+        if winners_by_factor["venue"]:
+            top_venues = sorted(
+                winners_by_factor["venue"].items(), key=lambda x: x[1], reverse=True
+            )[:5]
             print("   🏟️ TOP WINNING VENUES:")
             for venue, wins in top_venues:
                 print(f"      {venue}: {wins} wins")
             insights.append(f"Top venue: {top_venues[0][0]} ({top_venues[0][1]} wins)")
-        
+
         # Box position analysis
-        if winners_by_factor['box']:
-            box_wins = sorted(winners_by_factor['box'].items())
+        if winners_by_factor["box"]:
+            box_wins = sorted(winners_by_factor["box"].items())
             print("   🎯 BOX POSITION WIN RATES:")
             for box_num, wins in box_wins:
                 print(f"      Box {box_num}: {wins} wins")
-            best_box = max(winners_by_factor['box'].items(), key=lambda x: x[1])
-            insights.append(f"Best box position: Box {best_box[0]} ({best_box[1]} wins)")
-        
+            best_box = max(winners_by_factor["box"].items(), key=lambda x: x[1])
+            insights.append(
+                f"Best box position: Box {best_box[0]} ({best_box[1]} wins)"
+            )
+
         # Odds analysis
-        if winners_by_factor['odds_range']:
+        if winners_by_factor["odds_range"]:
             print("   💰 ODDS RANGE ANALYSIS:")
-            for odds_range, wins in sorted(winners_by_factor['odds_range'].items(), key=lambda x: x[1], reverse=True):
+            for odds_range, wins in sorted(
+                winners_by_factor["odds_range"].items(),
+                key=lambda x: x[1],
+                reverse=True,
+            ):
                 print(f"      {odds_range}: {wins} wins")
-            best_odds = max(winners_by_factor['odds_range'].items(), key=lambda x: x[1])
-            insights.append(f"Most successful odds range: {best_odds[0]} ({best_odds[1]} wins)")
-        
+            best_odds = max(winners_by_factor["odds_range"].items(), key=lambda x: x[1])
+            insights.append(
+                f"Most successful odds range: {best_odds[0]} ({best_odds[1]} wins)"
+            )
+
         # Distance analysis
-        if winners_by_factor['distance']:
+        if winners_by_factor["distance"]:
             print("   📏 DISTANCE ANALYSIS:")
-            dist_wins = sorted(winners_by_factor['distance'].items(), key=lambda x: int(x[0].replace('m', '')) if x[0].replace('m', '').isdigit() else 0)
+            dist_wins = sorted(
+                winners_by_factor["distance"].items(),
+                key=lambda x: (
+                    int(x[0].replace("m", "")) if x[0].replace("m", "").isdigit() else 0
+                ),
+            )
             for distance, wins in dist_wins[:5]:
                 print(f"      {distance}: {wins} wins")
-            best_distance = max(winners_by_factor['distance'].items(), key=lambda x: x[1])
-            insights.append(f"Most successful distance: {best_distance[0]} ({best_distance[1]} wins)")
-        
+            best_distance = max(
+                winners_by_factor["distance"].items(), key=lambda x: x[1]
+            )
+            insights.append(
+                f"Most successful distance: {best_distance[0]} ({best_distance[1]} wins)"
+            )
+
         # Step 4: Summary
         total_time = time.time() - overall_start_time
         print(f"\n🎉 SIMPLIFIED BACKTESTING COMPLETE!")
         print("═" * 70)
         print(f"   📊 Total Races Analyzed: {total_races:,}")
-        print(f"   📈 Total Winners Analyzed: {sum(sum(factor.values()) for factor in winners_by_factor.values()):,}")
+        print(
+            f"   📈 Total Winners Analyzed: {sum(sum(factor.values()) for factor in winners_by_factor.values()):,}"
+        )
         print(f"   ⏱️ Total Runtime: {total_time:.1f}s")
         print(f"   🕐 Finished: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print("="* 70)
-        
+        print("=" * 70)
+
         print("\n🔑 KEY INSIGHTS:")
         for i, insight in enumerate(insights[:5], 1):
             print(f"   {i}. {insight}")
-        
+
         print("\n💡 RECOMMENDATION:")
         print("   Install scikit-learn for advanced ML backtesting with:")
         print("   pip install scikit-learn pandas numpy matplotlib seaborn")
-        
+
         return {
             "type": "simplified",
             "total_races": total_races,
             "insights": insights,
             "winners_by_factor": winners_by_factor,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
 
 
@@ -1914,10 +2151,14 @@ def main():
     if mode in ("walk_forward", "walk-forward", "walkforward", "wf"):
         try:
             rolling_window_days = os.getenv("BACKTEST_WALK_ROLLING_DAYS")
-            rolling_window_days = int(rolling_window_days) if rolling_window_days else 180
+            rolling_window_days = (
+                int(rolling_window_days) if rolling_window_days else 180
+            )
         except Exception:
             rolling_window_days = 180
-        retrain_frequency = os.getenv("BACKTEST_WALK_RETRAIN_FREQ", "daily").strip().lower()
+        retrain_frequency = (
+            os.getenv("BACKTEST_WALK_RETRAIN_FREQ", "daily").strip().lower()
+        )
         try:
             top_k = int(os.getenv("BACKTEST_WALK_TOP_K", "3"))
         except Exception:
@@ -1949,9 +2190,11 @@ def main():
 
             if results.get("type") == "simplified":
                 # Handle simplified results
-                print(f"📈 Analyzed {results['total_races']:,} races (simplified analysis)")
+                print(
+                    f"📈 Analyzed {results['total_races']:,} races (simplified analysis)"
+                )
                 print("\n🔑 KEY FINDINGS:")
-                for insight in results.get('insights', []):
+                for insight in results.get("insights", []):
                     print(f"   • {insight}")
                 print(f"\n⏰ Analysis completed in simplified mode")
                 print(f"   For advanced ML predictions, install full dependencies.")

@@ -28,6 +28,7 @@ from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
 import requests
+
 from utils.http_client import get_shared_session
 
 # Configure logging

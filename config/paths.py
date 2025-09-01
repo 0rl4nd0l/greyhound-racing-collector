@@ -1,5 +1,5 @@
-from pathlib import Path
 import os
+from pathlib import Path
 
 
 def get_dir(name: str, default: str) -> Path:
@@ -12,6 +12,7 @@ def get_dir(name: str, default: str) -> Path:
     p = Path(os.getenv(name, default)).expanduser().resolve()
     p.mkdir(parents=True, exist_ok=True)
     return p
+
 
 # Base data directory holding subfolders used by the app and pipelines
 DATA_DIR: Path = get_dir("DATA_DIR", "./data")
@@ -28,6 +29,8 @@ RACE_DATA_DIR: Path = get_dir("RACE_DATA_DIR", str(DATA_DIR / "race_data"))
 ARCHIVE_DIR: Path = get_dir("ARCHIVE_DIR", "./archive")
 
 # Optional OS Downloads watch directory (not created by default; just resolved)
-DOWNLOADS_WATCH_DIR: Path = Path(
-    os.getenv("DOWNLOADS_WATCH_DIR", str(Path.home() / "Downloads"))
-).expanduser().resolve()
+DOWNLOADS_WATCH_DIR: Path = (
+    Path(os.getenv("DOWNLOADS_WATCH_DIR", str(Path.home() / "Downloads")))
+    .expanduser()
+    .resolve()
+)

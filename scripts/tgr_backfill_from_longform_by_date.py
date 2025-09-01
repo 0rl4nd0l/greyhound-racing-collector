@@ -28,15 +28,18 @@ import os
 import re
 import sqlite3
 import sys
-from scripts.db_utils import open_sqlite_writable
 from typing import Any, Dict, List, Optional, Tuple
-import json
+
+from scripts.db_utils import open_sqlite_writable
 
 # Ensure project root on sys.path
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
-from src.collectors.the_greyhound_recorder_scraper import TheGreyhoundRecorderScraper, BASE_URL
+from src.collectors.the_greyhound_recorder_scraper import (
+    BASE_URL,
+    TheGreyhoundRecorderScraper,
+)
 
 
 def get_race_info(db_path: str, race_id: str) -> Tuple[str, List[str]]:
@@ -72,17 +75,17 @@ def get_race_info(db_path: str, race_id: str) -> Tuple[str, List[str]]:
 
 def norm_name(s: str) -> str:
     if s is None:
-        return ''
+        return ""
     # Uppercase, remove quotes/apostrophes/backticks and compress whitespace
     s2 = (
         str(s)
         .upper()
-        .replace('"', '')
-        .replace("'", '')
-        .replace('`', '')
-        .replace('’', '')
-        .replace('“', '')
-        .replace('”', '')
+        .replace('"', "")
+        .replace("'", "")
+        .replace("`", "")
+        .replace("’", "")
+        .replace("“", "")
+        .replace("”", "")
     )
     return re.sub(r"\s+", " ", s2).strip()
 
@@ -142,15 +145,17 @@ def safe_float(v: Any) -> Optional[float]:
     try:
         if v is None:
             return None
-        s = str(v).strip().replace('$', '')
-        if s == '':
+        s = str(v).strip().replace("$", "")
+        if s == "":
             return None
         return float(s)
     except Exception:
         return None
 
 
-def backfill_from_longform_for_date(db_path: str, race_id: str, rate_limit: float, use_cache: bool, scan_days:int=7) -> Dict[str, Any]:
+def backfill_from_longform_for_date(
+    db_path: str, race_id: str, rate_limit: float, use_cache: bool, scan_days: int = 7
+) -> Dict[str, Any]:
     race_date_iso, dogs = get_race_info(db_path, race_id)
     print(f"📅 Race date: {race_date_iso}")
     print(f"🐕 Participants ({len(dogs)}):")
@@ -163,6 +168,7 @@ def backfill_from_longform_for_date(db_path: str, race_id: str, rate_limit: floa
 
     # Build a set of meetings across a window of dates [-scan_days .. 0]
     from datetime import timedelta
+
     base_dt = datetime.strptime(target_date_iso, "%Y-%m-%d")
     all_meetings: List[Dict[str, Any]] = []
     seen_urls = set()
@@ -177,12 +183,15 @@ def backfill_from_longform_for_date(db_path: str, race_id: str, rate_limit: floa
         fg = scraper._parse_form_guides(soup)
         meetings = fg.get("meetings", [])
         for m in meetings:
-            lf = m.get('long_form_url')
+            lf = m.get("long_form_url")
             if lf and lf not in seen_urls:
                 seen_urls.add(lf)
                 all_meetings.append(m)
     if not all_meetings:
-        return {"success": False, "error": f"No meetings found in window for {target_date_iso}"}
+        return {
+            "success": False,
+            "error": f"No meetings found in window for {target_date_iso}",
+        }
 
     print(f"📋 Meetings scanned in window [-{scan_days}..0]: {len(all_meetings)}")
 
@@ -197,10 +206,12 @@ def backfill_from_longform_for_date(db_path: str, race_id: str, rate_limit: floa
     conn = open_sqlite_writable(db_path)
     cur = conn.cursor()
 
-    def insert_entry(dog_name: str, entry: Dict[str, Any], meeting_meta: Dict[str, Any]):
+    def insert_entry(
+        dog_name: str, entry: Dict[str, Any], meeting_meta: Dict[str, Any]
+    ):
         nonlocal inserted
         try:
-            race_date_raw = entry.get('race_date')
+            race_date_raw = entry.get("race_date")
             race_date_iso_entry = parse_any_date_to_iso(race_date_raw)
             if not race_date_iso_entry:
                 return
@@ -208,25 +219,33 @@ def backfill_from_longform_for_date(db_path: str, race_id: str, rate_limit: floa
             if race_date_iso_entry >= target_date_iso:
                 return
 
-            venue = entry.get('track') or meeting_meta.get('venue')
-            grade = entry.get('grade')
-            distance = entry.get('distance')
-            box_number = entry.get('box_number')
-            weight = entry.get('weight')
+            venue = entry.get("track") or meeting_meta.get("venue")
+            grade = entry.get("grade")
+            distance = entry.get("distance")
+            box_number = entry.get("box_number")
+            weight = entry.get("weight")
             comments_parts = []
-            if entry.get('in_run'):
+            if entry.get("in_run"):
                 comments_parts.append(f"In run: {entry.get('in_run')}")
-            if entry.get('winner_second'):
+            if entry.get("winner_second"):
                 comments_parts.append(f"W/S: {entry.get('winner_second')}")
             comments = "; ".join(comments_parts) if comments_parts else None
-            odds = safe_float(entry.get('starting_price'))
-            odds_text = entry.get('starting_price') if isinstance(entry.get('starting_price'), str) else None
-            race_time = entry.get('individual_time')
-            split_times = {"sectional": entry.get('sectional_time')} if entry.get('sectional_time') is not None else {}
-            margin = entry.get('margin')
-            field_size = meeting_meta.get('field_size')
-            race_number = meeting_meta.get('race_number')
-            race_url = meeting_meta.get('url')
+            odds = safe_float(entry.get("starting_price"))
+            odds_text = (
+                entry.get("starting_price")
+                if isinstance(entry.get("starting_price"), str)
+                else None
+            )
+            race_time = entry.get("individual_time")
+            split_times = (
+                {"sectional": entry.get("sectional_time")}
+                if entry.get("sectional_time") is not None
+                else {}
+            )
+            margin = entry.get("margin")
+            field_size = meeting_meta.get("field_size")
+            race_number = meeting_meta.get("race_number")
+            race_url = meeting_meta.get("url")
 
             cur.execute(
                 """
@@ -255,7 +274,7 @@ def backfill_from_longform_for_date(db_path: str, race_id: str, rate_limit: floa
                     field_size,
                     race_number,
                     json.dumps([]),
-                    entry.get('finish_position'),
+                    entry.get("finish_position"),
                     str(race_time) if race_time is not None else None,
                     json.dumps(split_times),
                     str(margin) if margin is not None else None,
@@ -267,29 +286,34 @@ def backfill_from_longform_for_date(db_path: str, race_id: str, rate_limit: floa
 
     # Iterate meetings (long-form pages)
     for m in all_meetings:
-        long_form_url = m.get('long_form_url')
+        long_form_url = m.get("long_form_url")
         if not long_form_url:
             continue
         details = scraper._fetch_race_details(long_form_url)
-        if not details or not details.get('dogs'):
+        if not details or not details.get("dogs"):
             continue
         # Build meeting meta
         meeting_meta = {
-            'venue': details.get('venue'),
-            'date': details.get('date'),
-            'race_number': details.get('race_number'),
-            'field_size': details.get('field_size'),
-            'url': details.get('url') or (BASE_URL + long_form_url if long_form_url.startswith('/') else long_form_url),
+            "venue": details.get("venue"),
+            "date": details.get("date"),
+            "race_number": details.get("race_number"),
+            "field_size": details.get("field_size"),
+            "url": details.get("url")
+            or (
+                BASE_URL + long_form_url
+                if long_form_url.startswith("/")
+                else long_form_url
+            ),
         }
         # For each dog block on this page, see if it matches race participants
-        for dog_block in details.get('dogs', []):
-            dog_name_raw = dog_block.get('dog_name')
+        for dog_block in details.get("dogs", []):
+            dog_name_raw = dog_block.get("dog_name")
             if not dog_name_raw:
                 continue
             if norm_name(dog_name_raw) not in dog_set:
                 continue
             matched_dogs.add(dog_name_raw)
-            history = dog_block.get('racing_history') or []
+            history = dog_block.get("racing_history") or []
             for entry in history:
                 insert_entry(dog_name_raw, entry, meeting_meta)
 
@@ -308,11 +332,25 @@ def backfill_from_longform_for_date(db_path: str, race_id: str, rate_limit: floa
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Backfill TGR enhanced dog histories by date from long-form page(s)")
+    parser = argparse.ArgumentParser(
+        description="Backfill TGR enhanced dog histories by date from long-form page(s)"
+    )
     parser.add_argument("--db", dest="db_path", required=True, help="Path to SQLite DB")
-    parser.add_argument("--race-id", dest="race_id", required=True, help="Race ID to backfill")
-    parser.add_argument("--rate-limit", dest="rate_limit", default="2.0", help="Rate limit seconds between requests")
-    parser.add_argument("--no-cache", dest="no_cache", action="store_true", help="Disable cache for fresh fetch")
+    parser.add_argument(
+        "--race-id", dest="race_id", required=True, help="Race ID to backfill"
+    )
+    parser.add_argument(
+        "--rate-limit",
+        dest="rate_limit",
+        default="2.0",
+        help="Rate limit seconds between requests",
+    )
+    parser.add_argument(
+        "--no-cache",
+        dest="no_cache",
+        action="store_true",
+        help="Disable cache for fresh fetch",
+    )
     args = parser.parse_args()
 
     # Configure scraper env
@@ -334,7 +372,7 @@ def main():
     print("\n📊 Backfill from long-form summary:")
     print(f"  Inserted rows: {result.get('inserted', 0)}")
     print(f"  Matched dogs: {', '.join(result.get('matched_dogs') or [])}")
-    errs = result.get('errors') or []
+    errs = result.get("errors") or []
     if errs:
         print(f"  Errors: {len(errs)} (showing up to 10):")
         for e in errs:
@@ -344,4 +382,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

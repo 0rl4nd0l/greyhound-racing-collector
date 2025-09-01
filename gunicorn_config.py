@@ -10,8 +10,8 @@ Workers: (2 * CPU) + 1 = 17 workers for 8 CPU system
 Worker Class: gevent for async I/O handling
 """
 
-import os
 import multiprocessing
+import os
 
 # Server socket
 bind = f"127.0.0.1:{os.environ.get('DEFAULT_PORT', os.environ.get('PORT', '5002'))}"
@@ -51,31 +51,38 @@ enable_stdio_inheritance = True
 keyfile = None
 certfile = None
 
+
 def when_ready(server):
     """Called just after the server is started."""
     server.log.info("🚀 Gunicorn server is ready - Workers: %d", workers)
+
 
 def worker_int(worker):
     """Called just after a worker has been killed."""
     worker.log.info("⚠️ Worker received INT or QUIT signal")
 
+
 def pre_fork(server, worker):
     """Called just before a worker is forked."""
     server.log.info("🔧 Pre-fork worker setup")
+
 
 def post_fork(server, worker):
     """Called just after a worker has been forked."""
     server.log.info("✅ Worker %s forked (pid: %s)", worker.id, worker.pid)
 
+
 def worker_abort(worker):
     """Called when a worker receives the SIGABRT signal."""
     worker.log.info("❌ Worker %s aborted", worker.id)
+
 
 # Memory optimization
 # Use /tmp on macOS since /dev/shm doesn't exist
 worker_tmp_dir = "/tmp" if not os.path.exists("/dev/shm") else "/dev/shm"
 
-print(f"""
+print(
+    f"""
 🚀 Gunicorn Configuration Loaded
 ================================
 🔧 Workers: {workers}
@@ -86,4 +93,5 @@ print(f"""
 ⏱️ Timeout: {timeout}s
 📁 Logs: {errorlog}, {accesslog}
 💾 Worker Temp Dir: {worker_tmp_dir}
-""")
+"""
+)

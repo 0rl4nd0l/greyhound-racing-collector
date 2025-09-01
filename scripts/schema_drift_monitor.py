@@ -27,8 +27,14 @@ from datetime import datetime
 
 def main():
     parser = argparse.ArgumentParser(description="Schema drift monitor (stub)")
-    parser.add_argument("--prod-db-url", dest="db_url", default=os.getenv("DATABASE_URL", "sqlite:///greyhound_racing_data.db"))
-    parser.add_argument("--create-baseline", dest="create_baseline", action="store_true")
+    parser.add_argument(
+        "--prod-db-url",
+        dest="db_url",
+        default=os.getenv("DATABASE_URL", "sqlite:///greyhound_racing_data.db"),
+    )
+    parser.add_argument(
+        "--create-baseline", dest="create_baseline", action="store_true"
+    )
     parser.add_argument("--compare-snapshots", nargs=2, metavar=("SNAP1", "SNAP2"))
     parser.add_argument("--generate-hash", dest="generate_hash", action="store_true")
     args = parser.parse_args()
@@ -37,7 +43,9 @@ def main():
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         path = f"schema_baseline_{ts}.json"
         with open(path, "w", encoding="utf-8") as f:
-            json.dump({"db_url": args.db_url, "created_at": ts, "schema": "stub"}, f, indent=2)
+            json.dump(
+                {"db_url": args.db_url, "created_at": ts, "schema": "stub"}, f, indent=2
+            )
         print(f"Baseline schema snapshot created at {path}")
         return 0
 
@@ -48,7 +56,9 @@ def main():
         return 0
 
     if args.generate_hash:
-        payload = json.dumps({"db_url": args.db_url, "ts": datetime.now().isoformat()}, sort_keys=True).encode()
+        payload = json.dumps(
+            {"db_url": args.db_url, "ts": datetime.now().isoformat()}, sort_keys=True
+        ).encode()
         h = hashlib.sha256(payload).hexdigest()
         print(h)
         return 0

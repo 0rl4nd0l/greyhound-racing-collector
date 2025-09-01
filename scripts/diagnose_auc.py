@@ -19,30 +19,36 @@ from __future__ import annotations
 
 import os
 import sys
-from pathlib import Path
-from datetime import datetime
 import warnings
+from datetime import datetime
+from pathlib import Path
+
 warnings.filterwarnings("ignore")
+
+import argparse
 
 import numpy as np
 import pandas as pd
-import argparse
-
-from sklearn.metrics import (
-    roc_auc_score, average_precision_score, brier_score_loss, accuracy_score,
-)
+from scipy.stats import randint as sp_randint
+from scipy.stats import uniform as sp_uniform
 from sklearn.calibration import CalibratedClassifierCV, calibration_curve
-from sklearn.ensemble import ExtraTreesClassifier
-from sklearn.preprocessing import OneHotEncoder
-from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
+from sklearn.ensemble import ExtraTreesClassifier
+from sklearn.impute import SimpleImputer
+from sklearn.metrics import (
+    accuracy_score,
+    average_precision_score,
+    brier_score_loss,
+    roc_auc_score,
+)
 from sklearn.model_selection import RandomizedSearchCV
-from scipy.stats import randint as sp_randint, uniform as sp_uniform
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder
 
 # Optional xgboost, guard import
 try:
     from xgboost import XGBClassifier
+
     HAS_XGB = True
 except Exception:
     HAS_XGB = False
@@ -84,6 +90,7 @@ def _find_calibrate_script() -> Path | None:
     except Exception:
         return None
 
+
 OUT_DIR = Path("logs/diagnostics_auc")
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 TS = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -102,20 +109,37 @@ def topk_hit_rate(y_true, proba, groups, k=1):
 
 def build_preprocessor(X: pd.DataFrame, categorical_cols):
     numeric_cols = [c for c in X.columns if c not in categorical_cols]
-    cat_pipe = Pipeline([
-        ("impute", SimpleImputer(strategy="most_frequent")),
-        ("ohe", OneHotEncoder(handle_unknown="ignore")),
-    ])
-    num_pipe = Pipeline([
-        ("impute", SimpleImputer(strategy="median")),
-    ])
-    return ColumnTransformer([
-        ("cat", cat_pipe, categorical_cols),
-        ("num", num_pipe, numeric_cols),
-    ])
+    cat_pipe = Pipeline(
+        [
+            ("impute", SimpleImputer(strategy="most_frequent")),
+            ("ohe", OneHotEncoder(handle_unknown="ignore")),
+        ]
+    )
+    num_pipe = Pipeline(
+        [
+            ("impute", SimpleImputer(strategy="median")),
+        ]
+    )
+    return ColumnTransformer(
+        [
+            ("cat", cat_pipe, categorical_cols),
+            ("num", num_pipe, numeric_cols),
+        ]
+    )
 
 
-def evaluate_variant(name, base_clf, calibrator: str | None, X_train, y_train, X_test, y_test, groups_test, categorical_cols, plots_prefix):
+def evaluate_variant(
+    name,
+    base_clf,
+    calibrator: str | None,
+    X_train,
+    y_train,
+    X_test,
+    y_test,
+    groups_test,
+    categorical_cols,
+    plots_prefix,
+):
     pre = build_preprocessor(X_train, categorical_cols)
     if calibrator is None or calibrator == "raw":
         model = Pipeline([("prep", pre), ("clf", base_clf)])
@@ -123,7 +147,9 @@ def evaluate_variant(name, base_clf, calibrator: str | None, X_train, y_train, X
         prob_test = model.predict_proba(X_test)[:, 1]
     else:
         wrapped = Pipeline([("prep", pre), ("clf", base_clf)])
-        model = CalibratedClassifierCV(wrapped, method=("sigmoid" if calibrator == "sigmoid" else "isotonic"), cv=5)
+        model = CalibratedClassifierCV(
+            wrapped, method=("sigmoid" if calibrator == "sigmoid" else "isotonic"), cv=5
+        )
         model.fit(X_train, y_train)
         prob_test = model.predict_proba(X_test)[:, 1]
 
@@ -142,9 +168,11 @@ def evaluate_variant(name, base_clf, calibrator: str | None, X_train, y_train, X
 
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
-        from sklearn.metrics import RocCurveDisplay, PrecisionRecallDisplay
+        from sklearn.metrics import PrecisionRecallDisplay, RocCurveDisplay
+
         fig, ax = plt.subplots(1, 2, figsize=(10, 4))
         RocCurveDisplay.from_predictions(y_test, prob_test, ax=ax[0])
         ax[0].set_title(f"ROC {name}")
@@ -214,17 +242,22 @@ def _coerce_categoricals(df: pd.DataFrame, categorical_cols: list[str]) -> pd.Da
         df2[cols] = df2[cols].applymap(_decode_to_str).astype(str)
     return df2
 
-def _tune_model_et(X_train, y_train, categorical_cols, random_state=42, n_iter=20, cv=3):
+
+def _tune_model_et(
+    X_train, y_train, categorical_cols, random_state=42, n_iter=20, cv=3
+):
     pre = build_preprocessor(X_train, categorical_cols)
     base = ExtraTreesClassifier(
         n_estimators=400,
         random_state=random_state,
         n_jobs=-1,
     )
-    pipe = Pipeline([
-        ("prep", pre),
-        ("clf", base),
-    ])
+    pipe = Pipeline(
+        [
+            ("prep", pre),
+            ("clf", base),
+        ]
+    )
     param_dist = {
         "clf__n_estimators": sp_randint(200, 800),
         "clf__max_depth": sp_randint(6, 30),
@@ -246,7 +279,9 @@ def _tune_model_et(X_train, y_train, categorical_cols, random_state=42, n_iter=2
     return search.best_estimator_
 
 
-def _tune_model_xgb(X_train, y_train, categorical_cols, random_state=42, n_iter=20, cv=3):
+def _tune_model_xgb(
+    X_train, y_train, categorical_cols, random_state=42, n_iter=20, cv=3
+):
     if not HAS_XGB:
         return None
     pre = build_preprocessor(X_train, categorical_cols)
@@ -262,10 +297,12 @@ def _tune_model_xgb(X_train, y_train, categorical_cols, random_state=42, n_iter=
         random_state=random_state,
         eval_metric="logloss",
     )
-    pipe = Pipeline([
-        ("prep", pre),
-        ("clf", base),
-    ])
+    pipe = Pipeline(
+        [
+            ("prep", pre),
+            ("clf", base),
+        ]
+    )
     param_dist = {
         "clf__n_estimators": sp_randint(200, 800),
         "clf__max_depth": sp_randint(3, 10),
@@ -288,7 +325,9 @@ def _tune_model_xgb(X_train, y_train, categorical_cols, random_state=42, n_iter=
     search.fit(X_train, y_train)
     return search.best_estimator_
 
+
 # ---- CLI helpers and argument parsing with env defaults ----
+
 
 def _env_bool(name: str, default: bool = False) -> bool:
     val = os.environ.get(name)
@@ -311,30 +350,78 @@ def _env_int(name: str, default: int) -> int:
 
 def _parse_args():
     parser = argparse.ArgumentParser(description="AUC Diagnostics for MLSystemV4")
-    parser.add_argument("--models", type=str, default=_env_str("V4_DIAG_MODELS", "et,xgb"), help="Comma-separated: et,xgb")
-    parser.add_argument("--calibrations", type=str, default=_env_str("V4_DIAG_CALS", "raw,sigmoid,isotonic"), help="Comma-separated: raw,sigmoid,isotonic")
-    parser.add_argument("--tune", action="store_true", default=_env_bool("V4_DIAG_TUNE", False), help="Run hyperparameter search to maximize ROC AUC (env V4_DIAG_TUNE)")
-    parser.add_argument("--tune-iter", type=int, default=_env_int("V4_DIAG_TUNE_ITER", 20), help="RandomizedSearch iterations per model (env V4_DIAG_TUNE_ITER)")
-    parser.add_argument("--tune-cv", type=int, default=_env_int("V4_DIAG_TUNE_CV", 3), help="CV folds for tuning (env V4_DIAG_TUNE_CV)")
-    parser.add_argument("--max-races", type=int, default=_env_int("V4_MAX_RACES", 0), help="Cap number of races to evaluate (env V4_MAX_RACES)")
+    parser.add_argument(
+        "--models",
+        type=str,
+        default=_env_str("V4_DIAG_MODELS", "et,xgb"),
+        help="Comma-separated: et,xgb",
+    )
+    parser.add_argument(
+        "--calibrations",
+        type=str,
+        default=_env_str("V4_DIAG_CALS", "raw,sigmoid,isotonic"),
+        help="Comma-separated: raw,sigmoid,isotonic",
+    )
+    parser.add_argument(
+        "--tune",
+        action="store_true",
+        default=_env_bool("V4_DIAG_TUNE", False),
+        help="Run hyperparameter search to maximize ROC AUC (env V4_DIAG_TUNE)",
+    )
+    parser.add_argument(
+        "--tune-iter",
+        type=int,
+        default=_env_int("V4_DIAG_TUNE_ITER", 20),
+        help="RandomizedSearch iterations per model (env V4_DIAG_TUNE_ITER)",
+    )
+    parser.add_argument(
+        "--tune-cv",
+        type=int,
+        default=_env_int("V4_DIAG_TUNE_CV", 3),
+        help="CV folds for tuning (env V4_DIAG_TUNE_CV)",
+    )
+    parser.add_argument(
+        "--max-races",
+        type=int,
+        default=_env_int("V4_MAX_RACES", 0),
+        help="Cap number of races to evaluate (env V4_MAX_RACES)",
+    )
     parser.add_argument("--random-state", type=int, default=42, help="Random seed")
     # Promotion flags
-    default_auto = os.environ.get("V4_DIAG_AUTOPROMOTE", "1").lower() not in ("0", "false")
+    default_auto = os.environ.get("V4_DIAG_AUTOPROMOTE", "1").lower() not in (
+        "0",
+        "false",
+    )
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("--auto-promote", dest="auto_promote", action="store_true", default=default_auto, help="Enable auto-promotion of best model (env V4_DIAG_AUTOPROMOTE)")
-    group.add_argument("--no-promote", dest="auto_promote", action="store_false", help="Disable auto-promotion")
+    group.add_argument(
+        "--auto-promote",
+        dest="auto_promote",
+        action="store_true",
+        default=default_auto,
+        help="Enable auto-promotion of best model (env V4_DIAG_AUTOPROMOTE)",
+    )
+    group.add_argument(
+        "--no-promote",
+        dest="auto_promote",
+        action="store_false",
+        help="Disable auto-promotion",
+    )
     return parser.parse_args()
 
 
 def main():
     args = _parse_args()
     print("🔎 Running AUC diagnostics ...")
-    print(f"[diag] Using models={args.models}, calibrations={args.calibrations}, tune={'on' if args.tune else 'off'}, tune_iter={args.tune_iter}, tune_cv={args.tune_cv}, max_races={args.max_races or 'unlimited'}")
+    print(
+        f"[diag] Using models={args.models}, calibrations={args.calibrations}, tune={'on' if args.tune else 'off'}, tune_iter={args.tune_iter}, tune_cv={args.tune_cv}, max_races={args.max_races or 'unlimited'}"
+    )
 
     sys_v4 = MLSystemV4()
-    if hasattr(sys_v4, 'prepare_time_ordered_data'):
+    if hasattr(sys_v4, "prepare_time_ordered_data"):
         try:
-            raw_train_df, raw_test_df = sys_v4.prepare_time_ordered_data(max_races=args.max_races or None)
+            raw_train_df, raw_test_df = sys_v4.prepare_time_ordered_data(
+                max_races=args.max_races or None
+            )
         except TypeError:
             raw_train_df, raw_test_df = sys_v4.prepare_time_ordered_data()
     else:
@@ -369,8 +456,13 @@ def main():
 
     results = []
 
-    selected_models = [m.strip().lower() for m in (args.models.split(',') if args.models else [])]
-    selected_cals = [c.strip().lower() for c in (args.calibrations.split(',') if args.calibrations else [])]
+    selected_models = [
+        m.strip().lower() for m in (args.models.split(",") if args.models else [])
+    ]
+    selected_cals = [
+        c.strip().lower()
+        for c in (args.calibrations.split(",") if args.calibrations else [])
+    ]
 
     tuned_et = None
     tuned_xgb = None
@@ -378,14 +470,22 @@ def main():
         if "et" in selected_models:
             print("⚙️ Tuning ExtraTrees for ROC AUC ...")
             tuned_et = _tune_model_et(
-                X_train, y_train, categorical_cols,
-                random_state=args.random_state, n_iter=args.tune_iter, cv=args.tune_cv
+                X_train,
+                y_train,
+                categorical_cols,
+                random_state=args.random_state,
+                n_iter=args.tune_iter,
+                cv=args.tune_cv,
             )
         if HAS_XGB and "xgb" in selected_models:
             print("⚙️ Tuning XGBoost for ROC AUC ...")
             tuned_xgb = _tune_model_xgb(
-                X_train, y_train, categorical_cols,
-                random_state=args.random_state, n_iter=args.tune_iter, cv=args.tune_cv
+                X_train,
+                y_train,
+                categorical_cols,
+                random_state=args.random_state,
+                n_iter=args.tune_iter,
+                cv=args.tune_cv,
             )
 
     if "et" in selected_models:
@@ -394,17 +494,62 @@ def main():
                 tuned_clf = tuned_et.named_steps.get("clf")
             except Exception:
                 tuned_clf = None
-            et_base = ExtraTreesClassifier(**{**tuned_clf.get_params()}) if tuned_clf is not None else ExtraTreesClassifier(n_estimators=500, max_depth=15, min_samples_leaf=3, n_jobs=-1, random_state=args.random_state)
+            et_base = (
+                ExtraTreesClassifier(**{**tuned_clf.get_params()})
+                if tuned_clf is not None
+                else ExtraTreesClassifier(
+                    n_estimators=500,
+                    max_depth=15,
+                    min_samples_leaf=3,
+                    n_jobs=-1,
+                    random_state=args.random_state,
+                )
+            )
         else:
-            et_base = ExtraTreesClassifier(n_estimators=500, max_depth=15, min_samples_leaf=3, n_jobs=-1, random_state=args.random_state)
+            et_base = ExtraTreesClassifier(
+                n_estimators=500,
+                max_depth=15,
+                min_samples_leaf=3,
+                n_jobs=-1,
+                random_state=args.random_state,
+            )
         for cal in selected_cals:
             print(f"[diag] Evaluating ET ({cal}) ...")
-            r = evaluate_variant(f"ExtraTrees__{cal}", et_base, (None if cal == "raw" else cal), X_train, y_train, X_test, y_test, groups_test, categorical_cols, plots_prefix="et")
+            r = evaluate_variant(
+                f"ExtraTrees__{cal}",
+                et_base,
+                (None if cal == "raw" else cal),
+                X_train,
+                y_train,
+                X_test,
+                y_test,
+                groups_test,
+                categorical_cols,
+                plots_prefix="et",
+            )
             results.append(r)
-        et_bal = ExtraTreesClassifier(n_estimators=et_base.get_params().get("n_estimators", 500), max_depth=et_base.get_params().get("max_depth", 15), min_samples_leaf=et_base.get_params().get("min_samples_leaf", 3), n_jobs=-1, random_state=args.random_state, class_weight="balanced")
+        et_bal = ExtraTreesClassifier(
+            n_estimators=et_base.get_params().get("n_estimators", 500),
+            max_depth=et_base.get_params().get("max_depth", 15),
+            min_samples_leaf=et_base.get_params().get("min_samples_leaf", 3),
+            n_jobs=-1,
+            random_state=args.random_state,
+            class_weight="balanced",
+        )
         if "sigmoid" in selected_cals:
             print("[diag] Evaluating ET (balanced + sigmoid) ...")
-            r = evaluate_variant("ExtraTrees__balanced_sigmoid", et_bal, "sigmoid", X_train, y_train, X_test, y_test, groups_test, categorical_cols, plots_prefix="et_bal")
+            r = evaluate_variant(
+                "ExtraTrees__balanced_sigmoid",
+                et_bal,
+                "sigmoid",
+                X_train,
+                y_train,
+                X_test,
+                y_test,
+                groups_test,
+                categorical_cols,
+                plots_prefix="et_bal",
+            )
             results.append(r)
 
     if HAS_XGB and "xgb" in selected_models:
@@ -413,17 +558,21 @@ def main():
                 tuned_clf = tuned_xgb.named_steps.get("clf")
             except Exception:
                 tuned_clf = None
-            xgb = XGBClassifier(**{**tuned_clf.get_params()}) if tuned_clf is not None else XGBClassifier(
-                n_estimators=600,
-                max_depth=6,
-                learning_rate=0.05,
-                subsample=0.8,
-                colsample_bytree=0.8,
-                reg_lambda=1.0,
-                n_jobs=-1,
-                tree_method="hist",
-                random_state=args.random_state,
-                eval_metric="logloss",
+            xgb = (
+                XGBClassifier(**{**tuned_clf.get_params()})
+                if tuned_clf is not None
+                else XGBClassifier(
+                    n_estimators=600,
+                    max_depth=6,
+                    learning_rate=0.05,
+                    subsample=0.8,
+                    colsample_bytree=0.8,
+                    reg_lambda=1.0,
+                    n_jobs=-1,
+                    tree_method="hist",
+                    random_state=args.random_state,
+                    eval_metric="logloss",
+                )
             )
         else:
             xgb = XGBClassifier(
@@ -440,7 +589,18 @@ def main():
             )
         for cal in selected_cals:
             print(f"[diag] Evaluating XGB ({cal}) ...")
-            r = evaluate_variant(f"XGBoost__{cal}", xgb, (None if cal == "raw" else cal), X_train, y_train, X_test, y_test, groups_test, categorical_cols, plots_prefix="xgb")
+            r = evaluate_variant(
+                f"XGBoost__{cal}",
+                xgb,
+                (None if cal == "raw" else cal),
+                X_train,
+                y_train,
+                X_test,
+                y_test,
+                groups_test,
+                categorical_cols,
+                plots_prefix="xgb",
+            )
             results.append(r)
 
     res_df = pd.DataFrame(results)
@@ -458,7 +618,10 @@ def main():
             scored["roc_auc_fill"] = scored["roc_auc"].fillna(-1)
             scored["pr_auc_fill"] = scored["pr_auc"].fillna(-1)
             scored["top1_fill"] = scored["top1"].fillna(-1)
-            best_idx = scored.sort_values(["roc_auc_fill", "pr_auc_fill", "top1_fill"], ascending=[False, False, False]).index[0]
+            best_idx = scored.sort_values(
+                ["roc_auc_fill", "pr_auc_fill", "top1_fill"],
+                ascending=[False, False, False],
+            ).index[0]
         except Exception:
             best_idx = res_df.index[0]
 
@@ -496,6 +659,7 @@ def main():
         }
         try:
             import json
+
             with open(RUN_DIR / "best_config.json", "w") as f:
                 json.dump(best_config, f, indent=2)
             print(f"[diag] Best config saved: {best_config['name']}")
@@ -505,21 +669,35 @@ def main():
         # Attempt automatic model update via calibration script
         try:
             if not args.auto_promote:
-                print("[diag] Auto-promotion disabled by flag/env; skipping promotion step")
+                print(
+                    "[diag] Auto-promotion disabled by flag/env; skipping promotion step"
+                )
             else:
                 script_path = _find_calibrate_script()
-                supported = model_key in ("extratrees", "xgboost", "et", "xgb") and calibration
+                supported = (
+                    model_key in ("extratrees", "xgboost", "et", "xgb") and calibration
+                )
                 if script_path and supported:
                     # Normalize model flag values
-                    model_flag = "et" if model_key in ("extratrees", "et") else ("xgb" if model_key in ("xgboost", "xgb") else model_key)
-                    print(f"[diag] ⬆️  Promoting best model via {script_path} (model={model_flag}, cal={calibration})")
-                    import subprocess, json
+                    model_flag = (
+                        "et"
+                        if model_key in ("extratrees", "et")
+                        else ("xgb" if model_key in ("xgboost", "xgb") else model_key)
+                    )
+                    print(
+                        f"[diag] ⬆️  Promoting best model via {script_path} (model={model_flag}, cal={calibration})"
+                    )
+                    import json
+                    import subprocess
+
                     cmd = [
                         sys.executable,
                         str(script_path),
-                        "--model", model_flag,
-                        "--calibration", calibration,
-                        "--promote"
+                        "--model",
+                        model_flag,
+                        "--calibration",
+                        calibration,
+                        "--promote",
                     ]
                     if args.max_races and int(args.max_races) > 0:
                         cmd.extend(["--max-races", str(int(args.max_races))])
@@ -528,7 +706,9 @@ def main():
                     proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
                     model_id = None
                     if proc.returncode == 0:
-                        print("[diag] ✅ Model calibration/promotion completed successfully.")
+                        print(
+                            "[diag] ✅ Model calibration/promotion completed successfully."
+                        )
                         # Try parse JSON from stdout for model metadata
                         try:
                             # Look for the last JSON object in stdout
@@ -541,7 +721,9 @@ def main():
                         except Exception:
                             pass
                     else:
-                        print("[diag] ⚠️ Calibration script returned non-zero exit status.")
+                        print(
+                            "[diag] ⚠️ Calibration script returned non-zero exit status."
+                        )
                         if proc.stderr:
                             print(proc.stderr[-400:])
                     # Write audit entry
@@ -550,7 +732,11 @@ def main():
                             "timestamp": datetime.now().isoformat(),
                             "module": "model_promotion",
                             "severity": "INFO" if proc.returncode == 0 else "ERROR",
-                            "event": "model_promoted" if proc.returncode == 0 else "model_promotion_failed",
+                            "event": (
+                                "model_promoted"
+                                if proc.returncode == 0
+                                else "model_promotion_failed"
+                            ),
                             "message": f"Promoted {model_flag} with {calibration}",
                             "details": {
                                 "model": model_flag,
@@ -558,21 +744,27 @@ def main():
                                 "model_id": model_id,
                                 "roc_auc": best_config["metrics"].get("roc_auc"),
                                 "pr_auc": best_config["metrics"].get("pr_auc"),
-                            }
+                            },
                         }
                         log_path = Path("logs") / "system_log.jsonl"
                         log_path.parent.mkdir(parents=True, exist_ok=True)
                         with open(log_path, "a", encoding="utf-8") as f:
                             f.write(json.dumps(audit) + "\n")
-                        print("[diag] 📗 Promotion audit written to logs/system_log.jsonl")
+                        print(
+                            "[diag] 📗 Promotion audit written to logs/system_log.jsonl"
+                        )
                     except Exception as e:
                         print(f"[diag] Failed to write promotion audit: {e}")
                 else:
                     reason = []
                     if not script_path:
-                        reason.append("calibrate_model.py not found; set CALIBRATE_MODEL_PATH or place it under scripts/ or scripts/ml/")
+                        reason.append(
+                            "calibrate_model.py not found; set CALIBRATE_MODEL_PATH or place it under scripts/ or scripts/ml/"
+                        )
                     if not supported:
-                        reason.append(f"unsupported model/calibration: model={model_key}, cal={calibration}")
+                        reason.append(
+                            f"unsupported model/calibration: model={model_key}, cal={calibration}"
+                        )
                     msg = "; ".join(reason) if reason else "unknown reason"
                     print(f"[diag] Skipping auto-promotion ({msg})")
         except Exception as e:
@@ -584,4 +776,3 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

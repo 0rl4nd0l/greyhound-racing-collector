@@ -10,13 +10,14 @@ Exit codes:
 - 0: All checks passed
 - 1: One or more checks failed
 """
-import sys
 import re
+import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # Helper utilities
+
 
 def read_text(path: Path) -> str:
     try:
@@ -24,15 +25,19 @@ def read_text(path: Path) -> str:
     except Exception:
         return ""
 
+
 def fail(msg: str):
     print(f"[HARDENING-GUARD] FAIL: {msg}")
     sys.exit(1)
 
+
 def warn(msg: str):
     print(f"[HARDENING-GUARD] WARN: {msg}")
 
+
 def ok(msg: str):
     print(f"[HARDENING-GUARD] OK: {msg}")
+
 
 # 1) API must not serve mock predictions
 api_main = REPO_ROOT / "fastapi_app" / "main.py"
@@ -56,8 +61,13 @@ unified_txt = read_text(unified)
 if not unified_txt:
     warn("unified_predictor.py missing or unreadable; skipping unified gating check")
 else:
-    if "def _basic_fallback_prediction" in unified_txt and "UNIFIED_ALLOW_BASIC_FALLBACK" not in unified_txt:
-        fail("UnifiedPredictor basic fallback is not gated by UNIFIED_ALLOW_BASIC_FALLBACK")
+    if (
+        "def _basic_fallback_prediction" in unified_txt
+        and "UNIFIED_ALLOW_BASIC_FALLBACK" not in unified_txt
+    ):
+        fail(
+            "UnifiedPredictor basic fallback is not gated by UNIFIED_ALLOW_BASIC_FALLBACK"
+        )
     ok("UnifiedPredictor gating present for basic fallback")
 
 # 3) ML V4 simulated odds/heuristic must be dev-gated
@@ -76,17 +86,25 @@ else:
 feature_store = REPO_ROOT / "features" / "feature_store.py"
 fs_txt = read_text(feature_store)
 if not fs_txt:
-    warn("features/feature_store.py missing or unreadable; skipping drift check validation")
+    warn(
+        "features/feature_store.py missing or unreadable; skipping drift check validation"
+    )
 else:
     if "DRIFT_DETECTION_DISABLED" not in fs_txt:
-        fail("FeatureStore must log DRIFT_DETECTION_DISABLED when scipy/pandas/numpy are missing")
+        fail(
+            "FeatureStore must log DRIFT_DETECTION_DISABLED when scipy/pandas/numpy are missing"
+        )
     ok("FeatureStore drift detection fallback is safe (disabled, not misleading)")
 
 # 5) FastTrack feature builder placeholders must be disabled in production
-ft_builder = REPO_ROOT / "src" / "predictor" / "feature_builders" / "fasttrack_features.py"
+ft_builder = (
+    REPO_ROOT / "src" / "predictor" / "feature_builders" / "fasttrack_features.py"
+)
 ft_txt = read_text(ft_builder)
 if not ft_txt:
-    warn("fasttrack_features.py missing or unreadable; skipping FastTrack placeholder checks")
+    warn(
+        "fasttrack_features.py missing or unreadable; skipping FastTrack placeholder checks"
+    )
 else:
     required_funcs = [
         "get_last_n_races",
@@ -102,7 +120,9 @@ else:
         if not re.search(pattern, ft_txt):
             missing_raises.append(fn)
     if missing_raises:
-        fail(f"FastTrack builder functions not disabled with RuntimeError: {missing_raises}")
+        fail(
+            f"FastTrack builder functions not disabled with RuntimeError: {missing_raises}"
+        )
     ok("FastTrack placeholder functions are disabled in production")
 
 # 6) Global scan: forbid random.uniform in production paths, with allowlist
@@ -127,4 +147,3 @@ ok("Global random.uniform scan passed for production paths")
 
 print("[HARDENING-GUARD] All checks passed.")
 sys.exit(0)
-

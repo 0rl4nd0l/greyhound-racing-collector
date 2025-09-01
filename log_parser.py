@@ -1,9 +1,10 @@
-import os
 import json
-from datetime import datetime
-from typing import List, Dict, Any
-from pathlib import Path
+import os
 from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List
+
 
 @dataclass
 class PredictionRecord:
@@ -12,6 +13,7 @@ class PredictionRecord:
     extraction_time: datetime
     model_version: str
 
+
 class LogParser:
     def __init__(self, log_directory: str):
         self.log_directory = Path(log_directory)
@@ -19,8 +21,8 @@ class LogParser:
     def parse_logs(self) -> List[PredictionRecord]:
         records = []
 
-        for file_path in self.log_directory.glob('*.jsonl'):
-            with open(file_path, 'r') as file:
+        for file_path in self.log_directory.glob("*.jsonl"):
+            with open(file_path, "r") as file:
                 for line in file:
                     try:
                         entry = json.loads(line)
@@ -35,10 +37,10 @@ class LogParser:
 
     def extract_fields(self, entry: Dict[str, Any]) -> PredictionRecord:
         try:
-            win_prob = entry['details']['win_prob']
-            variance = entry['details'].get('variance', 0.0)
-            extraction_time_str = entry['timestamp']
-            model_version = entry['details']['model_version']
+            win_prob = entry["details"]["win_prob"]
+            variance = entry["details"].get("variance", 0.0)
+            extraction_time_str = entry["timestamp"]
+            model_version = entry["details"]["model_version"]
 
             # Attempt to parse timestamp
             try:
@@ -56,8 +58,9 @@ class LogParser:
 
         return None
 
-if __name__ == '__main__':
-    parser = LogParser(log_directory='logs/prediction')
+
+if __name__ == "__main__":
+    parser = LogParser(log_directory="logs/prediction")
     records = parser.parse_logs()
     for record in records:
         # Here you would typically process or store records

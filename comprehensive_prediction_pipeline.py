@@ -80,14 +80,17 @@ try:
     # DEPRECATED: GPTPredictionEnhancer has been archived. Prefer using
     # utils/openai_wrapper.OpenAIWrapper for any new OpenAI interactions.
     from archive.outdated_openai.gpt_prediction_enhancer import GPTPredictionEnhancer
+
     GPT_ENHANCER_AVAILABLE = True
 except ImportError as e:
     print(f"⚠️ GPT Enhancer not available: {e}")
     GPT_ENHANCER_AVAILABLE = False
 
 # Import filename utilities
-from utils.file_naming import (build_prediction_filename,
-                               extract_race_id_from_csv_filename)
+from utils.file_naming import (
+    build_prediction_filename,
+    extract_race_id_from_csv_filename,
+)
 
 
 class ComprehensivePredictionPipeline:
@@ -213,11 +216,11 @@ class ComprehensivePredictionPipeline:
 
     def validate_race_file(self, race_file_path, min_file_size=100):
         """Validate race file and check data quality
-        
+
         Args:
             race_file_path: Path to the race file to validate
             min_file_size: Minimum file size in bytes (default: 100)
-            
+
         Returns:
             Tuple of (is_valid: bool, message: str)
         """
@@ -229,29 +232,38 @@ class ComprehensivePredictionPipeline:
             file_size = os.path.getsize(race_file_path)
             if file_size < min_file_size:
                 filename = os.path.basename(race_file_path)
-                print(f"⚠️  Skipping file '{filename}': Too small ({file_size} bytes < {min_file_size} bytes minimum)")
-                return False, f"File too small: {file_size} bytes (minimum: {min_file_size} bytes)"
+                print(
+                    f"⚠️  Skipping file '{filename}': Too small ({file_size} bytes < {min_file_size} bytes minimum)"
+                )
+                return (
+                    False,
+                    f"File too small: {file_size} bytes (minimum: {min_file_size} bytes)",
+                )
 
             # Check if file is actually HTML (common issue with failed downloads)
             with open(race_file_path, "r", encoding="utf-8") as f:
-                content_sample = f.read(1024)  # Read first 1KB to check for HTML patterns
-                
+                content_sample = f.read(
+                    1024
+                )  # Read first 1KB to check for HTML patterns
+
                 # Check for various HTML indicators
                 html_indicators = [
                     "<!DOCTYPE",
-                    "<html", 
+                    "<html",
                     "<HTML",
                     "<head>",
                     "<HEAD>",
                     "<body>",
                     "<BODY>",
                     "<title>",
-                    "<TITLE>"
+                    "<TITLE>",
                 ]
-                
+
                 if any(indicator in content_sample for indicator in html_indicators):
                     filename = os.path.basename(race_file_path)
-                    print(f"⚠️  Skipping file '{filename}': Contains HTML content, not CSV data")
+                    print(
+                        f"⚠️  Skipping file '{filename}': Contains HTML content, not CSV data"
+                    )
                     return (
                         False,
                         "File appears to be HTML, not CSV. Possibly a failed download.",
@@ -261,14 +273,16 @@ class ComprehensivePredictionPipeline:
             try:
                 detected_sep = None
                 try:
-                    with open(race_file_path, 'r', encoding='utf-8', errors='ignore') as _f:
+                    with open(
+                        race_file_path, "r", encoding="utf-8", errors="ignore"
+                    ) as _f:
                         header_line = _f.readline()
-                        if '|' in header_line:
-                            detected_sep = '|'
+                        if "|" in header_line:
+                            detected_sep = "|"
                 except Exception:
                     detected_sep = None
                 if detected_sep:
-                    df = pd.read_csv(race_file_path, sep=detected_sep, engine='python')
+                    df = pd.read_csv(race_file_path, sep=detected_sep, engine="python")
                 else:
                     df = pd.read_csv(race_file_path)
             except pd.errors.ParserError as e:
@@ -284,11 +298,11 @@ class ComprehensivePredictionPipeline:
 
             # Normalize columns to improve compatibility with form guides
             def _norm(name: str) -> str:
-                name = str(name or '').strip()
+                name = str(name or "").strip()
                 name = re.sub(r"[\(\)\[\]\-]+", " ", name)
-                name = name.replace('#', '').replace('|', ' ')
+                name = name.replace("#", "").replace("|", " ")
                 name = re.sub(r"\s+", " ", name).strip()
-                snake = re.sub(r"[^0-9a-zA-Z]+", "_", name).strip('_').lower()
+                snake = re.sub(r"[^0-9a-zA-Z]+", "_", name).strip("_").lower()
                 if snake in ("dog", "dogname", "name", "dog_name"):
                     return "dog_name"
                 if snake in ("box", "box_no", "box_number"):
@@ -296,6 +310,7 @@ class ComprehensivePredictionPipeline:
                 if snake in ("wgt", "weight"):
                     return "weight"
                 return snake
+
             try:
                 df.columns = [_norm(c) for c in df.columns]
             except Exception:
@@ -651,7 +666,9 @@ class ComprehensivePredictionPipeline:
                         "time": _val(row, "time"),
                         "win_time": _val(row, "win", "win_time"),
                         "bonus": _val(row, "bon", "bonus"),
-                        "first_sectional": _val(row, "1_sec", "sec_1", "first_sectional"),
+                        "first_sectional": _val(
+                            row, "1_sec", "sec_1", "first_sectional"
+                        ),
                         "margin": _val(row, "mgn", "margin"),
                         "runner_up": _val(row, "w_2g", "runner_up"),
                         "pir": _val(row, "pir"),
@@ -833,25 +850,25 @@ class ComprehensivePredictionPipeline:
             # Detect delimiter: prefer '|' if present in file header
             detected_sep = None
             try:
-                with open(race_file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                with open(race_file_path, "r", encoding="utf-8", errors="ignore") as f:
                     header_sample = f.readline()
-                    if '|' in header_sample:
-                        detected_sep = '|'
+                    if "|" in header_sample:
+                        detected_sep = "|"
             except Exception:
                 detected_sep = None
 
             if detected_sep:
-                race_df = pd.read_csv(race_file_path, sep=detected_sep, engine='python')
+                race_df = pd.read_csv(race_file_path, sep=detected_sep, engine="python")
             else:
                 race_df = pd.read_csv(race_file_path)
 
             # Normalize column names -> snake_case and map known aliases
             def _normalize_col(name: str) -> str:
-                name = str(name or '').strip()
+                name = str(name or "").strip()
                 name = re.sub(r"[\(\)\[\]\-]+", " ", name)
-                name = name.replace('#', '').replace('|', ' ')
+                name = name.replace("#", "").replace("|", " ")
                 name = re.sub(r"\s+", " ", name).strip()
-                snake = re.sub(r"[^0-9a-zA-Z]+", "_", name).strip('_').lower()
+                snake = re.sub(r"[^0-9a-zA-Z]+", "_", name).strip("_").lower()
                 # Map aliases
                 if snake in ("dog", "dogname", "name", "dog_name"):
                     return "dog_name"
@@ -879,6 +896,7 @@ class ComprehensivePredictionPipeline:
             if "dog_name" in race_df.columns:
                 if "box" not in race_df.columns:
                     race_df["box"] = None
+
                 def _extract_box_and_name(val):
                     try:
                         s = str(val).strip()
@@ -888,6 +906,7 @@ class ComprehensivePredictionPipeline:
                         return None, s
                     except Exception:
                         return None, val
+
                 boxes = []
                 cleaned_names = []
                 for v in race_df["dog_name"].tolist():
@@ -1326,10 +1345,10 @@ class ComprehensivePredictionPipeline:
 
         # Weights based on method reliability and data quality
         weights = {
-            'ml_system': 0.3 * data_quality,
-            'weather_enhanced': 0.2 * data_quality,
-            'enhanced_data': 0.15 * data_quality,
-            'traditional': 0.35  # Always available baseline
+            "ml_system": 0.3 * data_quality,
+            "weather_enhanced": 0.2 * data_quality,
+            "enhanced_data": 0.15 * data_quality,
+            "traditional": 0.35,  # Always available baseline
         }
 
         weighted_sum = 0.0
@@ -1999,10 +2018,13 @@ class ComprehensivePredictionPipeline:
             # Persist per-race predictions to predictions/ for API consumption
             try:
                 from utils.file_naming import build_prediction_filename
+
                 # Build a standardized per-race filename
                 current_timestamp = datetime.now()
-                race_id = os.path.basename(race_file_path).replace('.csv', '')
-                filename = build_prediction_filename(race_id, current_timestamp, "comprehensive")
+                race_id = os.path.basename(race_file_path).replace(".csv", "")
+                filename = build_prediction_filename(
+                    race_id, current_timestamp, "comprehensive"
+                )
                 filepath = self.predictions_dir / filename
                 with open(filepath, "w") as f:
                     json.dump(results, f, indent=2, default=self._json_safe_serializer)

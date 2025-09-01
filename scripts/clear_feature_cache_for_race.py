@@ -21,13 +21,22 @@ from pathlib import Path
 
 
 def sanitize_race_id(race_id: str) -> str:
-    return ''.join(ch if ch.isalnum() or ch in ('-', '_') else '_' for ch in str(race_id))[:80]
+    return "".join(
+        ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in str(race_id)
+    )[:80]
 
 
 def main():
     parser = argparse.ArgumentParser(description="Clear ML V4 feature cache for a race")
-    parser.add_argument("--race-id", dest="race_id", required=True, help="Race ID to clear cache for")
-    parser.add_argument("--cache-dir", dest="cache_dir", default=".cache/features_v4", help="Features cache directory")
+    parser.add_argument(
+        "--race-id", dest="race_id", required=True, help="Race ID to clear cache for"
+    )
+    parser.add_argument(
+        "--cache-dir",
+        dest="cache_dir",
+        default=".cache/features_v4",
+        help="Features cache directory",
+    )
     args = parser.parse_args()
 
     safe_race = sanitize_race_id(args.race_id)
@@ -51,4 +60,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

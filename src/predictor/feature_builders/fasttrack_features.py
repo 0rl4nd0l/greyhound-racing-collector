@@ -5,8 +5,9 @@ This module contains disabled placeholders for FastTrack feature engineering.
 All functions raise RuntimeError in production to avoid fabricated features.
 """
 
-from sqlalchemy.orm import Session
 import logging
+
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -30,17 +31,13 @@ def get_last_n_races(session: Session, dog_id: int, n: int = 10):
 
 def calculate_sectional_features(performances: list) -> dict:
     """Disabled placeholder to avoid fabricated features."""
-    logger.error(
-        "calculate_sectional_features is not available (placeholder removed)"
-    )
+    logger.error("calculate_sectional_features is not available (placeholder removed)")
     raise RuntimeError("FastTrack features are not available in production")
 
 
 def calculate_performance_metrics(performances: list) -> dict:
     """Disabled placeholder to avoid fabricated features."""
-    logger.error(
-        "calculate_performance_metrics is not available (placeholder removed)"
-    )
+    logger.error("calculate_performance_metrics is not available (placeholder removed)")
     raise RuntimeError("FastTrack features are not available in production")
 
 
@@ -54,7 +51,5 @@ def calculate_normalized_time_features(session: Session, performances: list) -> 
 
 def build_fasttrack_features(session: Session, dog_id: int) -> dict:
     """Disabled placeholder to avoid fabricated features."""
-    logger.error(
-        "build_fasttrack_features is not available (placeholder removed)"
-    )
+    logger.error("build_fasttrack_features is not available (placeholder removed)")
     raise RuntimeError("FastTrack features are not available in production")

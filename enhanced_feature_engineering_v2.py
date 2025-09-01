@@ -34,10 +34,15 @@ import pandas as pd
 
 warnings.filterwarnings("ignore")
 
-from features import (V3BoxPositionFeatures, V3CompetitionFeatures,
-                      V3DistanceStatsFeatures, V3RecentFormFeatures,
-                      V3TrainerFeatures, V3VenueAnalysisFeatures,
-                      V3WeatherTrackFeatures)
+from features import (
+    V3BoxPositionFeatures,
+    V3CompetitionFeatures,
+    V3DistanceStatsFeatures,
+    V3RecentFormFeatures,
+    V3TrainerFeatures,
+    V3VenueAnalysisFeatures,
+    V3WeatherTrackFeatures,
+)
 
 
 class EnhancedFeatureEngineer:
@@ -85,17 +90,19 @@ class EnhancedFeatureEngineer:
         if recent_form:
             # Weighted recent performance (more recent races weighted higher)
             weights = np.exp(-0.1 * np.arange(len(recent_form)))  # Exponential decay
-            
+
             # Ensure recent_form is a 1D array and weights match in length
             recent_form = np.asarray(recent_form).flatten()
             if len(weights) != len(recent_form):
-                weights = weights[:len(recent_form)]  # Truncate weights if needed
-            
+                weights = weights[: len(recent_form)]  # Truncate weights if needed
+
             try:
                 weighted_avg_position = np.average(recent_form, weights=weights, axis=0)
             except (ValueError, ZeroDivisionError):
                 # Fallback to simple average if weighted average fails
-                weighted_avg_position = np.mean(recent_form) if len(recent_form) > 0 else 4.0
+                weighted_avg_position = (
+                    np.mean(recent_form) if len(recent_form) > 0 else 4.0
+                )
             features["weighted_recent_position"] = weighted_avg_position
 
             # Performance trend (linear regression on recent form)

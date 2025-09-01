@@ -34,11 +34,11 @@ import os
 import re
 import sqlite3
 from dataclasses import dataclass
-from scripts.db_utils import open_sqlite_writable
 from datetime import datetime
 from typing import Dict, List, Optional
 
 from scripts.db_guard import db_guard
+from scripts.db_utils import open_sqlite_writable
 
 # Local import for venue normalization
 try:
@@ -108,7 +108,7 @@ def _parse_date(val: str) -> Optional[str]:
 
 
 def _clean_participant_name(raw: str) -> str:
-    s = (raw or "").strip().replace('"', '')
+    s = (raw or "").strip().replace('"', "")
     # Remove leading numeric index like "1. Name"
     if "." in s and s.split(".")[0].strip().isdigit():
         s = s.split(".", 1)[1].strip()
@@ -131,7 +131,7 @@ def parse_embedded_history(csv_path: str) -> List[HistoryRow]:
         # Expect columns: Dog Name, PLC, BOX, WGT, DIST, DATE, TRACK, G, TIME, 1 SEC, MGN, SP, etc.
         for raw in reader:
             dog_name = (raw.get("Dog Name") or raw.get("dog_name") or "").strip()
-            if dog_name and not dog_name == "\"\"":
+            if dog_name and not dog_name == '""':
                 # Participant row
                 cleaned = _clean_participant_name(dog_name)
                 if cleaned:
@@ -145,15 +145,26 @@ def parse_embedded_history(csv_path: str) -> List[HistoryRow]:
                 continue
 
             date = _parse_date(raw.get("DATE"))
-            track = normalize_venue(raw.get("TRACK") or raw.get("Venue") or raw.get("venue") or "")
+            track = normalize_venue(
+                raw.get("TRACK") or raw.get("Venue") or raw.get("venue") or ""
+            )
             dist = _to_int(raw.get("DIST"))
             grade = (raw.get("G") or raw.get("Grade") or "").strip().upper() or None
             plc = _to_int(raw.get("PLC") or raw.get("Plc"))
             t = _to_float(raw.get("TIME"))
             wgt = _to_float(raw.get("WGT") or raw.get("Weight"))
-            sec1 = _to_float(raw.get("1 SEC") or raw.get("First Sectional") or raw.get("sectional_1st"))
+            sec1 = _to_float(
+                raw.get("1 SEC")
+                or raw.get("First Sectional")
+                or raw.get("sectional_1st")
+            )
             mgn = _to_float(raw.get("MGN") or raw.get("Margin"))
-            sp = _to_float(raw.get("SP") or raw.get("Starting Price") or raw.get("Odds Decimal") or raw.get("odds_decimal"))
+            sp = _to_float(
+                raw.get("SP")
+                or raw.get("Starting Price")
+                or raw.get("Odds Decimal")
+                or raw.get("odds_decimal")
+            )
 
             if not date or not track:
                 # Need at least venue/date to build a synthetic race_id; skip otherwise
@@ -275,18 +286,35 @@ def upsert_embedded_history(db_path: str, csv_path: str) -> Dict[str, int]:
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Ingest embedded historical rows into dog_race_data")
-    ap.add_argument("--csv", required=True, help="Path to race CSV file (with embedded historical rows)")
-    ap.add_argument("--db", required=False, help="SQLite DB path (defaults to $GREYHOUND_DB_PATH or greyhound_racing_data.db)")
+    ap = argparse.ArgumentParser(
+        description="Ingest embedded historical rows into dog_race_data"
+    )
+    ap.add_argument(
+        "--csv",
+        required=True,
+        help="Path to race CSV file (with embedded historical rows)",
+    )
+    ap.add_argument(
+        "--db",
+        required=False,
+        help="SQLite DB path (defaults to $GREYHOUND_DB_PATH or greyhound_racing_data.db)",
+    )
     args = ap.parse_args()
 
     # Prefer staging DB for writers
-    db_path = args.db or os.getenv("STAGING_DB_PATH") or os.getenv("GREYHOUND_DB_PATH") or "greyhound_racing_data_stage.db"
+    db_path = (
+        args.db
+        or os.getenv("STAGING_DB_PATH")
+        or os.getenv("GREYHOUND_DB_PATH")
+        or "greyhound_racing_data_stage.db"
+    )
     # Guarded write (pre-backup, post-validate)
     with db_guard(db_path=db_path, label="ingest_embedded_form_history") as guard:
         guard.expect_table_growth("dog_race_data", min_delta=0)
         stats = upsert_embedded_history(db_path, args.csv)
-        print(f"✅ Ingested embedded history from {args.csv} -> DB={db_path} | inserted={stats['inserted']} skipped={stats['skipped']}")
+        print(
+            f"✅ Ingested embedded history from {args.csv} -> DB={db_path} | inserted={stats['inserted']} skipped={stats['skipped']}"
+        )
 
 
 if __name__ == "__main__":

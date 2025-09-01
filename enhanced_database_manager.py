@@ -101,11 +101,21 @@ class EnhancedDatabaseManager:
             # Disable WAL and heavy PRAGMAs when running tests or when explicitly requested
             disable_wal = False
             try:
-                if os.environ.get("SQLITE_DISABLE_WAL", "0").lower() in ("1", "true", "yes"):
+                if os.environ.get("SQLITE_DISABLE_WAL", "0").lower() in (
+                    "1",
+                    "true",
+                    "yes",
+                ):
                     disable_wal = True
                 if os.environ.get("PYTEST_CURRENT_TEST"):
                     disable_wal = True
-                if os.environ.get("FLASK_ENV", "").lower() == "testing" or os.environ.get("TESTING", "0").lower() in ("1", "true", "yes"):
+                if os.environ.get(
+                    "FLASK_ENV", ""
+                ).lower() == "testing" or os.environ.get("TESTING", "0").lower() in (
+                    "1",
+                    "true",
+                    "yes",
+                ):
                     disable_wal = True
             except Exception:
                 disable_wal = False
@@ -213,7 +223,7 @@ class EnhancedDatabaseManager:
             elif isinstance(value, bytes):
                 # Convert bytes to string for JSON serialization
                 try:
-                    race_dict[key] = value.decode('utf-8')
+                    race_dict[key] = value.decode("utf-8")
                 except UnicodeDecodeError:
                     race_dict[key] = str(value)
 
@@ -232,7 +242,7 @@ class EnhancedDatabaseManager:
             elif isinstance(value, bytes):
                 # Convert bytes to string for JSON serialization
                 try:
-                    dog_dict[key] = value.decode('utf-8')
+                    dog_dict[key] = value.decode("utf-8")
                 except UnicodeDecodeError:
                     dog_dict[key] = str(value)
 

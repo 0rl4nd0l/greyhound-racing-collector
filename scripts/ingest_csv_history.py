@@ -25,12 +25,11 @@ import argparse
 import json
 import os
 import sqlite3
-from typing import List, Dict, Optional
-from scripts.db_utils import open_sqlite_writable
+from typing import Dict, List, Optional
 
-from ingestion.staging_writer import parse_race_csv_for_staging, RaceMeta
+from ingestion.staging_writer import RaceMeta, parse_race_csv_for_staging
 from scripts.db_guard import db_guard
-
+from scripts.db_utils import open_sqlite_writable
 
 CREATE_STAGING_SQL = {
     "csv_race_metadata_staging": """
@@ -80,7 +79,9 @@ def ensure_staging_tables(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def upsert_race_metadata(conn: sqlite3.Connection, meta: RaceMeta, field_size: int) -> None:
+def upsert_race_metadata(
+    conn: sqlite3.Connection, meta: RaceMeta, field_size: int
+) -> None:
     cur = conn.cursor()
     # Insert staging
     cur.execute(
@@ -222,9 +223,19 @@ def pick_db_path(cli_db: Optional[str]) -> str:
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Stage CSV dog histories and upsert into database")
-    ap.add_argument("--csv", required=True, help="Path to race CSV (e.g., 'Race 7 - MURR - 2025-08-24.csv')")
-    ap.add_argument("--db", required=False, help="Path to SQLite DB (defaults to $GREYHOUND_DB_PATH or greyhound_racing_data.db)")
+    ap = argparse.ArgumentParser(
+        description="Stage CSV dog histories and upsert into database"
+    )
+    ap.add_argument(
+        "--csv",
+        required=True,
+        help="Path to race CSV (e.g., 'Race 7 - MURR - 2025-08-24.csv')",
+    )
+    ap.add_argument(
+        "--db",
+        required=False,
+        help="Path to SQLite DB (defaults to $GREYHOUND_DB_PATH or greyhound_racing_data.db)",
+    )
     args = ap.parse_args()
 
     db_path = pick_db_path(args.db)
@@ -242,11 +253,12 @@ def main():
             ensure_staging_tables(conn)
             upsert_race_metadata(conn, meta, field_size=len(dogs))
             upsert_dogs(conn, dogs)
-            print(f"✅ Ingested {args.csv}: race_id={meta.race_id}, dogs={len(dogs)} -> DB={db_path}")
+            print(
+                f"✅ Ingested {args.csv}: race_id={meta.race_id}, dogs={len(dogs)} -> DB={db_path}"
+            )
         finally:
             conn.close()
 
 
 if __name__ == "__main__":
     main()
-

@@ -4,11 +4,12 @@ import glob
 import json
 import os
 import sqlite3
-from collections import defaultdict, Counter
+from collections import Counter, defaultdict
 from datetime import datetime
-from typing import Optional, Dict
+from typing import Dict, Optional
 
 # Utility: open SQLite in read-only/query-only
+
 
 def open_sqlite_readonly(path: str) -> Optional[sqlite3.Connection]:
     try:
@@ -25,7 +26,13 @@ def open_sqlite_readonly(path: str) -> Optional[sqlite3.Connection]:
 
 
 def find_latest_predictions_file(root: str) -> Optional[str]:
-    pattern = os.path.join(root, "predictions", "backtests", "walk_forward", "walk_forward_predictions_*.jsonl")
+    pattern = os.path.join(
+        root,
+        "predictions",
+        "backtests",
+        "walk_forward",
+        "walk_forward_predictions_*.jsonl",
+    )
     files = glob.glob(pattern)
     if not files:
         return None
@@ -43,10 +50,21 @@ def load_race_metadata_map(db_path: str) -> Dict[str, Dict[str, str]]:
         # Try common column names
         cursor = conn.cursor()
         # Introspect columns
-        cols = {row[1] for row in cursor.execute("PRAGMA table_info(race_metadata)").fetchall()}
+        cols = {
+            row[1]
+            for row in cursor.execute("PRAGMA table_info(race_metadata)").fetchall()
+        }
         race_id_col = "race_id" if "race_id" in cols else None
-        venue_col = "venue" if "venue" in cols else ("track" if "track" in cols else ("course" if "course" in cols else None))
-        date_col = "race_date" if "race_date" in cols else ("date" if "date" in cols else None)
+        venue_col = (
+            "venue"
+            if "venue" in cols
+            else (
+                "track" if "track" in cols else ("course" if "course" in cols else None)
+            )
+        )
+        date_col = (
+            "race_date" if "race_date" in cols else ("date" if "date" in cols else None)
+        )
         if race_id_col is None:
             return result
         sel = [race_id_col]
@@ -57,8 +75,16 @@ def load_race_metadata_map(db_path: str) -> Dict[str, Dict[str, str]]:
         query = f"SELECT {', '.join(sel)} FROM race_metadata"
         for row in cursor.execute(query):
             rid = str(row[0])
-            venue = str(row[1]) if venue_col and len(row) > 1 and row[1] is not None else None
-            date_val = str(row[2]) if date_col and len(row) > 2 and row[2] is not None else None
+            venue = (
+                str(row[1])
+                if venue_col and len(row) > 1 and row[1] is not None
+                else None
+            )
+            date_val = (
+                str(row[2])
+                if date_col and len(row) > 2 and row[2] is not None
+                else None
+            )
             result[rid] = {"venue": venue, "race_date": date_val}
     except Exception:
         pass
@@ -82,10 +108,28 @@ def month_bucket(date_str: str) -> str:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Analyze walk-forward JSONL predictions")
-    parser.add_argument("--file", dest="file", default=None, help="Path to predictions JSONL. If omitted, the latest is used.")
-    parser.add_argument("--threshold", dest="threshold", type=float, default=0.6, help="High-confidence threshold for misses")
-    parser.add_argument("--db", dest="db", default=None, help="SQLite DB path for venue enrichment (defaults to $ANALYTICS_DB_PATH or greyhound_racing_data.db)")
+    parser = argparse.ArgumentParser(
+        description="Analyze walk-forward JSONL predictions"
+    )
+    parser.add_argument(
+        "--file",
+        dest="file",
+        default=None,
+        help="Path to predictions JSONL. If omitted, the latest is used.",
+    )
+    parser.add_argument(
+        "--threshold",
+        dest="threshold",
+        type=float,
+        default=0.6,
+        help="High-confidence threshold for misses",
+    )
+    parser.add_argument(
+        "--db",
+        dest="db",
+        default=None,
+        help="SQLite DB path for venue enrichment (defaults to $ANALYTICS_DB_PATH or greyhound_racing_data.db)",
+    )
     args = parser.parse_args()
 
     root = os.getcwd()
@@ -95,7 +139,12 @@ def main():
         return 1
 
     # Resolve DB path: prefer env ANALYTICS_DB_PATH, then GREYHOUND_DB_PATH, then default
-    db_path = args.db or os.getenv("ANALYTICS_DB_PATH") or os.getenv("GREYHOUND_DB_PATH") or "greyhound_racing_data.db"
+    db_path = (
+        args.db
+        or os.getenv("ANALYTICS_DB_PATH")
+        or os.getenv("GREYHOUND_DB_PATH")
+        or "greyhound_racing_data.db"
+    )
 
     # Enrich race_id -> venue map
     race_meta_map = load_race_metadata_map(db_path)
@@ -143,7 +192,9 @@ def main():
             actual_winner = rec.get("actual_winner")
             is_scorable = rec.get("scorable")
             if is_scorable is None:
-                is_scorable = actual_winner is not None and str(actual_winner).strip() not in ("", "N/A")
+                is_scorable = actual_winner is not None and str(
+                    actual_winner
+                ).strip() not in ("", "N/A")
 
             if p is None:
                 continue
@@ -174,17 +225,19 @@ def main():
                 if venue:
                     hcm_by_venue[venue] += 1
                 # retain top examples
-                hcm_examples.append({
-                    "race_id": rec.get("race_id"),
-                    "race_date": rec.get("race_date"),
-                    "predicted_top": rec.get("predicted_top"),
-                    "predicted_prob": float(p),
-                    "actual_winner": actual_winner,
-                    "field_size": rec.get("field_size"),
-                    "venue": venue,
-                    "odds_top": rec.get("odds_top"),
-                    "expected_value_top": rec.get("expected_value_top"),
-                })
+                hcm_examples.append(
+                    {
+                        "race_id": rec.get("race_id"),
+                        "race_date": rec.get("race_date"),
+                        "predicted_top": rec.get("predicted_top"),
+                        "predicted_prob": float(p),
+                        "actual_winner": actual_winner,
+                        "field_size": rec.get("field_size"),
+                        "venue": venue,
+                        "odds_top": rec.get("odds_top"),
+                        "expected_value_top": rec.get("expected_value_top"),
+                    }
+                )
 
     # Sort examples by predicted_prob desc and keep top N
     hcm_examples.sort(key=lambda x: x["predicted_prob"], reverse=True)
@@ -192,7 +245,9 @@ def main():
 
     print("\n=== Predictions Analysis ===")
     print(f"File: {file_path}")
-    print(f"DB (for venue enrichment): {args.db} {'(found)' if race_meta_map else '(not used/found)'}")
+    print(
+        f"DB (for venue enrichment): {args.db} {'(found)' if race_meta_map else '(not used/found)'}"
+    )
     print(f"Total predictions: {total}")
     print(f"Scorable predictions: {scorable}")
     if scorable > 0:
@@ -210,7 +265,9 @@ def main():
             avg_p = bins_sum_p[i] / n
             obs = bins_correct[i] / n
         diff = obs - avg_p
-        print(f"{i/10:.1f}-{(i+1)/10:.1f}  {n:6d}  {avg_p:7.3f}    {obs:10.3f}   {diff:6.3f}")
+        print(
+            f"{i/10:.1f}-{(i+1)/10:.1f}  {n:6d}  {avg_p:7.3f}    {obs:10.3f}   {diff:6.3f}"
+        )
 
     # High-confidence misses summary
     print(f"\n-- High-Confidence Misses (p >= {args.threshold}) --")
@@ -250,4 +307,3 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

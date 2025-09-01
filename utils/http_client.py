@@ -31,4 +31,3 @@ def get_shared_session() -> requests.Session:
         s.mount("https://", adapter)
         _shared_session = s
         return _shared_session
-

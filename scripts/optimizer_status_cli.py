@@ -31,7 +31,7 @@ def fetch_status(url: str, timeout: float = 5.0):
     try:
         with urllib.request.urlopen(url, timeout=timeout) as resp:
             body = resp.read()
-            return json.loads(body.decode('utf-8', errors='ignore'))
+            return json.loads(body.decode("utf-8", errors="ignore"))
     except Exception as e:
         print(f"Error: failed to fetch {url}: {e}", file=sys.stderr)
         sys.exit(2)
@@ -41,19 +41,36 @@ def main():
     parser = argparse.ArgumentParser(
         description="Query the optimizer status endpoint and print JSON or a summary.",
     )
-    parser.add_argument('--host', default='localhost', help='API host (default: localhost)')
-    parser.add_argument('--port', type=int, default=int(os.environ.get('PORT', os.environ.get('DEFAULT_PORT', '5002'))), help='API port (default: env PORT/DEFAULT_PORT or 5002)')
-    parser.add_argument('--path', default='/api/optimizer/status', help='API path (default: /api/optimizer/status)')
-    parser.add_argument('--url', help='Override full URL (takes precedence over host/port/path)')
-    parser.add_argument('--summary', action='store_true', help='Print a concise summary instead of full JSON')
+    parser.add_argument(
+        "--host", default="localhost", help="API host (default: localhost)"
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("PORT", os.environ.get("DEFAULT_PORT", "5002"))),
+        help="API port (default: env PORT/DEFAULT_PORT or 5002)",
+    )
+    parser.add_argument(
+        "--path",
+        default="/api/optimizer/status",
+        help="API path (default: /api/optimizer/status)",
+    )
+    parser.add_argument(
+        "--url", help="Override full URL (takes precedence over host/port/path)"
+    )
+    parser.add_argument(
+        "--summary",
+        action="store_true",
+        help="Print a concise summary instead of full JSON",
+    )
     args = parser.parse_args()
 
     url = args.url or f"http://{args.host}:{args.port}{args.path}"
     data = fetch_status(url)
 
     if args.summary:
-        last = (data or {}).get('last_prediction') or {}
-        mids = last.get('model_ids_used') or []
+        last = (data or {}).get("last_prediction") or {}
+        mids = last.get("model_ids_used") or []
         print(f"service_available: {data.get('service_available')}")
         print(f"ensemble_mode: {data.get('ensemble_mode')}")
         print(f"registry_best_id: {data.get('registry_best_id')}")
@@ -67,6 +84,5 @@ def main():
     print(json.dumps(data, indent=2, sort_keys=False))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
-

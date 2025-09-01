@@ -8,13 +8,13 @@ from tgr_service_scheduler import SchedulerConfig
 
 # Production-optimized configuration
 PRODUCTION_CONFIG = SchedulerConfig(
-    monitoring_interval=60,           # 1-minute health checks
-    enrichment_batch_size=25,         # Larger batch processing
-    max_concurrent_jobs=3,            # Moderate concurrency
-    performance_threshold=0.85,       # High performance standards
-    data_freshness_hours=12,          # Twice-daily data refresh
-    auto_retry_failed_jobs=True,      # Enable intelligent retries
-    enable_predictive_scheduling=True # Smart workload management
+    monitoring_interval=60,  # 1-minute health checks
+    enrichment_batch_size=25,  # Larger batch processing
+    max_concurrent_jobs=3,  # Moderate concurrency
+    performance_threshold=0.85,  # High performance standards
+    data_freshness_hours=12,  # Twice-daily data refresh
+    auto_retry_failed_jobs=True,  # Enable intelligent retries
+    enable_predictive_scheduling=True,  # Smart workload management
 )
 
 # Logging configuration

@@ -8,39 +8,43 @@ while preserving existing data.
 """
 
 import argparse
-import sqlite3
-import logging
 import json
+import logging
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 def migrate_tgr_enhancement(db_path: str = "greyhound_racing_data.db"):
     """Migrate database to support enhanced TGR functionality."""
-    
+
     logger.info("🚀 Starting TGR enhancement migration...")
     logger.info(f"   Target DB: {db_path}")
-    
+
     conn = None
     try:
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        
+
         # Check if migration is needed
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='tgr_dog_performance_summary'")
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='tgr_dog_performance_summary'"
+        )
         if cursor.fetchone():
             logger.info("✅ TGR enhancement tables already exist")
             conn.close()
             return
-        
+
         logger.info("📦 Creating enhanced TGR tables...")
-        
+
         # Create enhanced TGR tables (avoiding conflicts with existing ones)
-        
+
         # 1. TGR performance summary for quick lookups
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS tgr_dog_performance_summary (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 dog_name TEXT NOT NULL UNIQUE,
@@ -60,10 +64,12 @@ def migrate_tgr_enhancement(db_path: str = "greyhound_racing_data.db"):
                 distance_versatility INTEGER DEFAULT 0,
                 venues_raced INTEGER DEFAULT 0
             )
-        """)
-        
+        """
+        )
+
         # 2. Expert insights and comments from TGR
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS tgr_expert_insights (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 dog_name TEXT NOT NULL,
@@ -77,10 +83,12 @@ def migrate_tgr_enhancement(db_path: str = "greyhound_racing_data.db"):
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(dog_name, comment_text, race_date)
             )
-        """)
-        
+        """
+        )
+
         # 3. Venue-specific performance analysis
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS tgr_venue_performance (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 dog_name TEXT NOT NULL,
@@ -96,10 +104,12 @@ def migrate_tgr_enhancement(db_path: str = "greyhound_racing_data.db"):
                 last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(dog_name, venue)
             )
-        """)
-        
+        """
+        )
+
         # 4. Distance-specific performance analysis
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS tgr_distance_performance (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 dog_name TEXT NOT NULL,
@@ -115,10 +125,12 @@ def migrate_tgr_enhancement(db_path: str = "greyhound_racing_data.db"):
                 last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(dog_name, distance)
             )
-        """)
-        
+        """
+        )
+
         # 5. TGR scraping log and status
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS tgr_scraping_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 dog_name TEXT,
@@ -130,10 +142,12 @@ def migrate_tgr_enhancement(db_path: str = "greyhound_racing_data.db"):
                 scrape_duration REAL, -- seconds
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """)
-        
+        """
+        )
+
         # 6. Enhanced feature cache with metadata
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS tgr_enhanced_feature_cache (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 dog_name TEXT NOT NULL,
@@ -149,10 +163,12 @@ def migrate_tgr_enhancement(db_path: str = "greyhound_racing_data.db"):
                 expires_at TIMESTAMP,
                 UNIQUE(dog_name, race_timestamp)
             )
-        """)
-        
+        """
+        )
+
         # 7. Enhanced dog form table (supplement to existing gr_dog_form)
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS tgr_enhanced_dog_form (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 dog_name TEXT NOT NULL,
@@ -179,37 +195,34 @@ def migrate_tgr_enhancement(db_path: str = "greyhound_racing_data.db"):
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(dog_name, race_date, venue, race_number)
             )
-        """)
-        
+        """
+        )
+
         # Create performance indices
         indices = [
             "CREATE INDEX IF NOT EXISTS idx_tgr_performance_dog_name ON tgr_dog_performance_summary(dog_name)",
             "CREATE INDEX IF NOT EXISTS idx_tgr_performance_updated ON tgr_dog_performance_summary(last_updated)",
-            
             "CREATE INDEX IF NOT EXISTS idx_tgr_insights_dog_name ON tgr_expert_insights(dog_name)",
             "CREATE INDEX IF NOT EXISTS idx_tgr_insights_date ON tgr_expert_insights(race_date)",
             "CREATE INDEX IF NOT EXISTS idx_tgr_insights_type ON tgr_expert_insights(comment_type)",
-            
             "CREATE INDEX IF NOT EXISTS idx_tgr_venue_dog_name ON tgr_venue_performance(dog_name)",
             "CREATE INDEX IF NOT EXISTS idx_tgr_venue_venue ON tgr_venue_performance(venue)",
-            
             "CREATE INDEX IF NOT EXISTS idx_tgr_distance_dog_name ON tgr_distance_performance(dog_name)",
             "CREATE INDEX IF NOT EXISTS idx_tgr_distance_distance ON tgr_distance_performance(distance)",
-            
             "CREATE INDEX IF NOT EXISTS idx_tgr_enhanced_cache_dog_name ON tgr_enhanced_feature_cache(dog_name)",
             "CREATE INDEX IF NOT EXISTS idx_tgr_enhanced_cache_timestamp ON tgr_enhanced_feature_cache(race_timestamp)",
             "CREATE INDEX IF NOT EXISTS idx_tgr_enhanced_cache_expires ON tgr_enhanced_feature_cache(expires_at)",
-            
             "CREATE INDEX IF NOT EXISTS idx_tgr_enhanced_form_dog_name ON tgr_enhanced_dog_form(dog_name)",
             "CREATE INDEX IF NOT EXISTS idx_tgr_enhanced_form_date ON tgr_enhanced_dog_form(race_date)",
-            "CREATE INDEX IF NOT EXISTS idx_tgr_enhanced_form_venue ON tgr_enhanced_dog_form(venue)"
+            "CREATE INDEX IF NOT EXISTS idx_tgr_enhanced_form_venue ON tgr_enhanced_dog_form(venue)",
         ]
-        
+
         for index in indices:
             cursor.execute(index)
-        
+
         # Create enhanced views
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE VIEW IF NOT EXISTS vw_tgr_dog_summary AS
             SELECT 
                 ps.dog_name,
@@ -230,9 +243,11 @@ def migrate_tgr_enhancement(db_path: str = "greyhound_racing_data.db"):
             LEFT JOIN tgr_enhanced_dog_form df ON ps.dog_name = df.dog_name
             LEFT JOIN tgr_expert_insights ei ON ps.dog_name = ei.dog_name
             GROUP BY ps.dog_name
-        """)
-        
-        cursor.execute("""
+        """
+        )
+
+        cursor.execute(
+            """
             CREATE VIEW IF NOT EXISTS vw_tgr_recent_activity AS
             SELECT 
                 'enhanced_form' as activity_type,
@@ -265,21 +280,25 @@ def migrate_tgr_enhancement(db_path: str = "greyhound_racing_data.db"):
             WHERE last_updated >= datetime('now', '-30 days')
             ORDER BY created_at DESC
             LIMIT 100
-        """)
-        
+        """
+        )
+
         # Migrate existing TGR cache data to enhanced format
         logger.info("🔄 Migrating existing TGR cache data...")
-        
+
         try:
             cursor.execute("SELECT COUNT(*) FROM tgr_feature_cache")
             existing_cache_count = cursor.fetchone()[0]
         except Exception:
             existing_cache_count = 0
-        
+
         if existing_cache_count > 0:
-            logger.info(f"Found {existing_cache_count} existing cache entries to migrate")
-            
-            cursor.execute("""
+            logger.info(
+                f"Found {existing_cache_count} existing cache entries to migrate"
+            )
+
+            cursor.execute(
+                """
                 INSERT OR IGNORE INTO tgr_enhanced_feature_cache 
                 (dog_name, race_timestamp, tgr_features, cached_at, expires_at)
                 SELECT 
@@ -290,13 +309,17 @@ def migrate_tgr_enhancement(db_path: str = "greyhound_racing_data.db"):
                     datetime(cached_at, '+24 hours') as expires_at
                 FROM tgr_feature_cache
                 WHERE tgr_features IS NOT NULL
-            """)
-            
+            """
+            )
+
             migrated_count = cursor.rowcount
-            logger.info(f"✅ Migrated {migrated_count} cache entries to enhanced format")
-        
+            logger.info(
+                f"✅ Migrated {migrated_count} cache entries to enhanced format"
+            )
+
         # Create migration record
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS migration_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 migration_name TEXT NOT NULL,
@@ -304,25 +327,29 @@ def migrate_tgr_enhancement(db_path: str = "greyhound_racing_data.db"):
                 applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 notes TEXT
             )
-        """)
-        
-        cursor.execute("""
+        """
+        )
+
+        cursor.execute(
+            """
             INSERT INTO migration_log (migration_name, status, notes)
             VALUES (?, ?, ?)
-        """, [
-            'tgr_enhancement_v1',
-            'success', 
-            f'Enhanced TGR tables created with {existing_cache_count} cache entries migrated'
-        ])
-        
+        """,
+            [
+                "tgr_enhancement_v1",
+                "success",
+                f"Enhanced TGR tables created with {existing_cache_count} cache entries migrated",
+            ],
+        )
+
         conn.commit()
         conn.close()
-        
+
         logger.info("✅ TGR enhancement migration completed successfully!")
-        
+
         # Verify the migration
         verify_migration(db_path)
-        
+
     except Exception as e:
         logger.error(f"❌ Migration failed: {e}")
         if conn:
@@ -333,28 +360,31 @@ def migrate_tgr_enhancement(db_path: str = "greyhound_racing_data.db"):
                 pass
         raise
 
+
 def verify_migration(db_path: str = "greyhound_racing_data.db"):
     """Verify the migration was successful."""
-    
+
     logger.info("🔍 Verifying TGR enhancement migration...")
     logger.info(f"   Target DB: {db_path}")
-    
+
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    
+
     # Check tables
     expected_tables = [
-        'tgr_dog_performance_summary',
-        'tgr_expert_insights', 
-        'tgr_venue_performance',
-        'tgr_distance_performance',
-        'tgr_scraping_log',
-        'tgr_enhanced_feature_cache',
-        'tgr_enhanced_dog_form'
+        "tgr_dog_performance_summary",
+        "tgr_expert_insights",
+        "tgr_venue_performance",
+        "tgr_distance_performance",
+        "tgr_scraping_log",
+        "tgr_enhanced_feature_cache",
+        "tgr_enhanced_dog_form",
     ]
-    
+
     for table in expected_tables:
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", [table])
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?", [table]
+        )
         if cursor.fetchone():
             try:
                 cursor.execute(f"SELECT COUNT(*) FROM {table}")
@@ -364,54 +394,71 @@ def verify_migration(db_path: str = "greyhound_racing_data.db"):
             logger.info(f"✅ {table}: {count} records")
         else:
             logger.error(f"❌ Missing table: {table}")
-    
+
     # Check views
-    expected_views = ['vw_tgr_dog_summary', 'vw_tgr_recent_activity']
+    expected_views = ["vw_tgr_dog_summary", "vw_tgr_recent_activity"]
     for view in expected_views:
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='view' AND name=?", [view])
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='view' AND name=?", [view]
+        )
         if cursor.fetchone():
             logger.info(f"✅ View created: {view}")
         else:
             logger.error(f"❌ Missing view: {view}")
-    
+
     # Check enhanced cache migration
     try:
         cursor.execute("SELECT COUNT(*) FROM tgr_enhanced_feature_cache")
         enhanced_cache_count = cursor.fetchone()[0]
     except Exception:
         enhanced_cache_count = 0
-    
+
     try:
         cursor.execute("SELECT COUNT(*) FROM tgr_feature_cache")
         original_cache_count = cursor.fetchone()[0]
     except Exception:
         original_cache_count = 0
-    
-    logger.info(f"📊 Cache migration: {original_cache_count} original → {enhanced_cache_count} enhanced")
-    
+
+    logger.info(
+        f"📊 Cache migration: {original_cache_count} original → {enhanced_cache_count} enhanced"
+    )
+
     conn.close()
     logger.info("✅ Migration verification completed")
 
+
 def populate_sample_enhanced_data(db_path: str = "greyhound_racing_data.db"):
     """Populate some sample enhanced TGR data for testing."""
-    
+
     logger.info("🧪 Populating sample enhanced TGR data...")
     logger.info(f"   Target DB: {db_path}")
-    
+
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    
+
     # Sample performance summaries
     sample_dogs = [
         ("BALLARAT STAR", 15, 3, 8, 20.0, 53.3, 3.2, 1, 85.5, "improving", 3, 5),
         ("SWIFT THUNDER", 22, 5, 12, 22.7, 54.5, 2.8, 1, 78.2, "stable", 2, 4),
-        ("RACING LEGEND", 18, 2, 6, 11.1, 33.3, 4.1, 2, 92.1, "declining", 4, 6)
+        ("RACING LEGEND", 18, 2, 6, 11.1, 33.3, 4.1, 2, 92.1, "declining", 4, 6),
     ]
-    
+
     for dog_data in sample_dogs:
-        (dog_name, total_entries, wins, places, win_pct, place_pct, avg_pos, 
-         best_pos, consistency, trend, dist_variety, venues) = dog_data
-        
+        (
+            dog_name,
+            total_entries,
+            wins,
+            places,
+            win_pct,
+            place_pct,
+            avg_pos,
+            best_pos,
+            consistency,
+            trend,
+            dist_variety,
+            venues,
+        ) = dog_data
+
         performance_data = {
             "total_starts": total_entries,
             "wins": wins,
@@ -422,77 +469,170 @@ def populate_sample_enhanced_data(db_path: str = "greyhound_racing_data.db"):
             "best_position": best_pos,
             "consistency_score": consistency,
             "recent_form_trend": trend,
-            "distance_versatility": dist_variety
+            "distance_versatility": dist_variety,
         }
-        
+
         venue_analysis = {
             "BALLARAT": {"starts": 8, "wins": 2, "win_rate": 25.0},
-            "GEELONG": {"starts": 7, "wins": 1, "win_rate": 14.3}
+            "GEELONG": {"starts": 7, "wins": 1, "win_rate": 14.3},
         }
-        
+
         distance_analysis = {
             "400m": {"starts": 12, "wins": 2, "win_rate": 16.7},
-            "500m": {"starts": 6, "wins": 1, "win_rate": 16.7}
+            "500m": {"starts": 6, "wins": 1, "win_rate": 16.7},
         }
-        
-        cursor.execute("""
+
+        cursor.execute(
+            """
             INSERT OR REPLACE INTO tgr_dog_performance_summary
             (dog_name, performance_data, venue_analysis, distance_analysis,
              total_entries, wins, places, win_percentage, place_percentage,
              average_position, best_position, consistency_score, form_trend,
              distance_versatility, venues_raced)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, [
-            dog_name, json.dumps(performance_data), json.dumps(venue_analysis), 
-            json.dumps(distance_analysis), total_entries, wins, places, win_pct,
-            place_pct, avg_pos, best_pos, consistency, trend, dist_variety, venues
-        ])
-    
+        """,
+            [
+                dog_name,
+                json.dumps(performance_data),
+                json.dumps(venue_analysis),
+                json.dumps(distance_analysis),
+                total_entries,
+                wins,
+                places,
+                win_pct,
+                place_pct,
+                avg_pos,
+                best_pos,
+                consistency,
+                trend,
+                dist_variety,
+                venues,
+            ],
+        )
+
     # Sample expert insights
     sample_insights = [
-        ("BALLARAT STAR", "expert_insight", "2025-08-20", "BALLARAT", 
-         "Strong recent form with improved box speed. Watch for early pace.", "expert_analysis", 0.7),
-        ("SWIFT THUNDER", "dog_comment", "2025-08-22", "GEELONG",
-         "Struggled with the slow early pace but finished well. Better suited to faster tracks.", "form_guide", 0.2),
-        ("RACING LEGEND", "race_preview", "2025-08-23", "SANDOWN",
-         "Veteran performer showing signs of decline but still competitive in lower grades.", "expert_analysis", -0.1)
+        (
+            "BALLARAT STAR",
+            "expert_insight",
+            "2025-08-20",
+            "BALLARAT",
+            "Strong recent form with improved box speed. Watch for early pace.",
+            "expert_analysis",
+            0.7,
+        ),
+        (
+            "SWIFT THUNDER",
+            "dog_comment",
+            "2025-08-22",
+            "GEELONG",
+            "Struggled with the slow early pace but finished well. Better suited to faster tracks.",
+            "form_guide",
+            0.2,
+        ),
+        (
+            "RACING LEGEND",
+            "race_preview",
+            "2025-08-23",
+            "SANDOWN",
+            "Veteran performer showing signs of decline but still competitive in lower grades.",
+            "expert_analysis",
+            -0.1,
+        ),
     ]
-    
+
     for insight in sample_insights:
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT OR IGNORE INTO tgr_expert_insights
             (dog_name, comment_type, race_date, venue, comment_text, source, sentiment_score)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, insight)
-    
+        """,
+            insight,
+        )
+
     # Sample enhanced form entries
     sample_form_entries = [
-        ("BALLARAT STAR", "2025-08-20", "BALLARAT", "Grade 5", "400m", 3, 
-         '["2", "1", "3", "4", "2"]', 30.5, "Strong early, held on well", 4.20, "T. Johnson"),
-        ("SWIFT THUNDER", "2025-08-22", "GEELONG", "Maiden", "500m", 1,
-         '["1", "3", "2", "5", "1"]', 32.1, "Impressive debut win", 8.50, "M. Smith"),
-        ("RACING LEGEND", "2025-08-23", "SANDOWN", "Grade 6", "450m", 5,
-         '["4", "5", "3", "6", "4"]', 29.8, "Battled but outclassed", 12.00, "R. Brown")
+        (
+            "BALLARAT STAR",
+            "2025-08-20",
+            "BALLARAT",
+            "Grade 5",
+            "400m",
+            3,
+            '["2", "1", "3", "4", "2"]',
+            30.5,
+            "Strong early, held on well",
+            4.20,
+            "T. Johnson",
+        ),
+        (
+            "SWIFT THUNDER",
+            "2025-08-22",
+            "GEELONG",
+            "Maiden",
+            "500m",
+            1,
+            '["1", "3", "2", "5", "1"]',
+            32.1,
+            "Impressive debut win",
+            8.50,
+            "M. Smith",
+        ),
+        (
+            "RACING LEGEND",
+            "2025-08-23",
+            "SANDOWN",
+            "Grade 6",
+            "450m",
+            5,
+            '["4", "5", "3", "6", "4"]',
+            29.8,
+            "Battled but outclassed",
+            12.00,
+            "R. Brown",
+        ),
     ]
-    
+
     for form_entry in sample_form_entries:
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT OR IGNORE INTO tgr_enhanced_dog_form
             (dog_name, race_date, venue, grade, distance, box_number, recent_form,
              weight, comments, odds, trainer)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, form_entry)
-    
+        """,
+            form_entry,
+        )
+
     conn.commit()
     conn.close()
-    
+
     logger.info("✅ Sample enhanced TGR data populated")
 
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Migrate database for enhanced TGR support")
-    parser.add_argument("--db", dest="db_path", default="greyhound_racing_data.db", help="Path to SQLite DB to migrate")
-    parser.add_argument("--no-sample", dest="no_sample", action="store_true", help="Do not populate sample data")
-    parser.add_argument("--verify-only", dest="verify_only", action="store_true", help="Only verify migration state and exit")
+    parser = argparse.ArgumentParser(
+        description="Migrate database for enhanced TGR support"
+    )
+    parser.add_argument(
+        "--db",
+        dest="db_path",
+        default="greyhound_racing_data.db",
+        help="Path to SQLite DB to migrate",
+    )
+    parser.add_argument(
+        "--no-sample",
+        dest="no_sample",
+        action="store_true",
+        help="Do not populate sample data",
+    )
+    parser.add_argument(
+        "--verify-only",
+        dest="verify_only",
+        action="store_true",
+        help="Only verify migration state and exit",
+    )
     args = parser.parse_args()
 
     if args.verify_only:

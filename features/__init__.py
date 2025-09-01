@@ -60,15 +60,19 @@ except Exception:
     V3WeatherTrackFeatures = None
 
 # Build __all__ with available symbols only
-__all__ = [name for name, val in [
-    ("V3DistanceStatsFeatures", V3DistanceStatsFeatures),
-    ("V3RecentFormFeatures", V3RecentFormFeatures),
-    ("V3VenueAnalysisFeatures", V3VenueAnalysisFeatures),
-    ("V3BoxPositionFeatures", V3BoxPositionFeatures),
-    ("V3CompetitionFeatures", V3CompetitionFeatures),
-    ("V3WeatherTrackFeatures", V3WeatherTrackFeatures),
-    ("V3TrainerFeatures", V3TrainerFeatures),
-    ("FeatureStore", FeatureStore),
-] if val is not None]
+__all__ = [
+    name
+    for name, val in [
+        ("V3DistanceStatsFeatures", V3DistanceStatsFeatures),
+        ("V3RecentFormFeatures", V3RecentFormFeatures),
+        ("V3VenueAnalysisFeatures", V3VenueAnalysisFeatures),
+        ("V3BoxPositionFeatures", V3BoxPositionFeatures),
+        ("V3CompetitionFeatures", V3CompetitionFeatures),
+        ("V3WeatherTrackFeatures", V3WeatherTrackFeatures),
+        ("V3TrainerFeatures", V3TrainerFeatures),
+        ("FeatureStore", FeatureStore),
+    ]
+    if val is not None
+]
 
 __version__ = "3.0.0"

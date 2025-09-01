@@ -1,11 +1,12 @@
-import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import GradientBoostingClassifier
-from sklearn.metrics import accuracy_score, log_loss, roc_auc_score, brier_score_loss
 import sqlite3
+
 import numpy as np
+import pandas as pd
 from sklearn.calibration import calibration_curve
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, brier_score_loss, log_loss, roc_auc_score
+from sklearn.model_selection import train_test_split
 
 # Database connection
 DATABASE_PATH = "greyhound_racing_data.db"
@@ -22,17 +23,14 @@ WHERE rm.race_date IS NOT NULL
 data = pd.read_sql(query, conn)
 conn.close()
 
-data['race_date'] = pd.to_datetime(data['race_date'], format='%d %B %Y', errors='coerce')
-data.sort_values('race_date', inplace=True)
+data["race_date"] = pd.to_datetime(
+    data["race_date"], format="%d %B %Y", errors="coerce"
+)
+data.sort_values("race_date", inplace=True)
 
-data['target'] = (data['finish_position'] == 1).astype(int)
+data["target"] = (data["finish_position"] == 1).astype(int)
 
-features = [
-    "box_number",
-    "weight",
-    "win_probability",
-    "place_probability"
-]
+features = ["box_number", "weight", "win_probability", "place_probability"]
 
 # Rolling-window split
 train_size = int(len(data) * 0.6)
@@ -46,9 +44,9 @@ val_data = val_data.dropna(subset=features)
 test_data = test_data.dropna(subset=features)
 
 # Prepare data
-X_train, y_train = train_data[features], train_data['target']
-X_val, y_val = val_data[features], val_data['target']
-X_test, y_test = test_data[features], test_data['target']
+X_train, y_train = train_data[features], train_data["target"]
+X_val, y_val = val_data[features], val_data["target"]
+X_test, y_test = test_data[features], test_data["target"]
 
 # Train Logistic Regression
 logistic_model = LogisticRegression(max_iter=1000)
@@ -58,18 +56,21 @@ logistic_model.fit(X_train, y_train)
 gb_model = GradientBoostingClassifier(n_estimators=100)
 gb_model.fit(X_train, y_train)
 
+
 # Evaluate models
 def evaluate_model(model, X, y_true):
     y_pred = model.predict(X)
-    y_prob = model.predict_proba(X)[:,1]
+    y_prob = model.predict_proba(X)[:, 1]
     accuracy = accuracy_score(y_true, y_pred)
     logloss = log_loss(y_true, y_prob)
     auc = roc_auc_score(y_true, y_prob)
     brier = brier_score_loss(y_true, y_prob)
     return accuracy, logloss, auc, brier
 
+
 logistic_scores = evaluate_model(logistic_model, X_test, y_test)
 gb_scores = evaluate_model(gb_model, X_test, y_test)
+
 
 # Print results
 def print_scores(name, scores):
@@ -79,9 +80,18 @@ def print_scores(name, scores):
     print(f"AUC: {scores[2]:.4f}")
     print(f"Brier Score: {scores[3]:.4f}")
 
+
 print_scores("Logistic Regression", logistic_scores)
 print_scores("Gradient Boosting", gb_scores)
 
 # Calibration curve
-prob_true, prob_pred = calibration_curve(y_test, gb_model.predict_proba(X_test)[:, 1], n_bins=10)
-np.savetxt("calibration_plan.csv", np.column_stack((prob_true, prob_pred)), delimiter=",", header="True,Predicted", comments="")
+prob_true, prob_pred = calibration_curve(
+    y_test, gb_model.predict_proba(X_test)[:, 1], n_bins=10
+)
+np.savetxt(
+    "calibration_plan.csv",
+    np.column_stack((prob_true, prob_pred)),
+    delimiter=",",
+    header="True,Predicted",
+    comments="",
+)

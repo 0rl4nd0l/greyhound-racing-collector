@@ -21,14 +21,14 @@ import os
 import sqlite3
 from pathlib import Path
 from typing import List
-from scripts.db_utils import open_sqlite_writable
 
 from ingestion.staging_writer import parse_race_csv_for_staging
+from scripts.db_utils import open_sqlite_writable
 from scripts.ingest_csv_history import (
     ensure_staging_tables,
-    upsert_race_metadata,
-    upsert_dogs,
     pick_db_path,
+    upsert_dogs,
+    upsert_race_metadata,
 )
 
 
@@ -42,9 +42,22 @@ def iter_csvs(root: Path) -> List[Path]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Batch staged ingestion from directory")
-    ap.add_argument("--root", default="processed", help="Root directory containing CSVs (default: processed)")
-    ap.add_argument("--db", default=None, help="Path to SQLite DB (defaults to env or greyhound_racing_data.db)")
-    ap.add_argument("--limit", type=int, default=0, help="Limit number of files to process (0 = no limit)")
+    ap.add_argument(
+        "--root",
+        default="processed",
+        help="Root directory containing CSVs (default: processed)",
+    )
+    ap.add_argument(
+        "--db",
+        default=None,
+        help="Path to SQLite DB (defaults to env or greyhound_racing_data.db)",
+    )
+    ap.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        help="Limit number of files to process (0 = no limit)",
+    )
     args = ap.parse_args()
 
     root = Path(args.root).expanduser().resolve()
@@ -88,12 +101,15 @@ def main() -> int:
             fail += 1
 
         if i % 200 == 0:
-            print(f"Progress: {i}/{len(files)} processed (ok={ok}, fail={fail}, dogs={total_dogs})")
+            print(
+                f"Progress: {i}/{len(files)} processed (ok={ok}, fail={fail}, dogs={total_dogs})"
+            )
 
-    print(f"✅ DONE: files_ok={ok}, files_failed={fail}, dogs={total_dogs}, root={root}, db={db_path}")
+    print(
+        f"✅ DONE: files_ok={ok}, files_failed={fail}, dogs={total_dogs}, root={root}, db={db_path}"
+    )
     return 0 if fail == 0 else 1
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

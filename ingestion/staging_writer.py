@@ -34,7 +34,7 @@ CANONICAL_DATE_FORMAT = "%Y-%m-%d"
 @dataclass
 class RaceMeta:
     race_date: str  # YYYY-MM-DD
-    venue: str      # venue code (normalized)
+    venue: str  # venue code (normalized)
     race_number: int
     race_name: Optional[str] = None
     grade: Optional[str] = None
@@ -76,16 +76,16 @@ def parse_date(value: str) -> Optional[str]:
     norm = value.replace("_", " ")
     # Try a variety of common formats, including full month names (e.g., "03 July 2025")
     for fmt in (
-        "%Y-%m-%d",   # ISO
+        "%Y-%m-%d",  # ISO
         "%d/%m/%Y",
         "%d-%m-%Y",
         "%Y/%m/%d",
-        "%d %b %Y",   # 03 Jul 2025
-        "%d %B %Y",   # 03 July 2025
+        "%d %b %Y",  # 03 Jul 2025
+        "%d %B %Y",  # 03 July 2025
         "%b %d, %Y",  # Jul 03, 2025
         "%B %d, %Y",  # July 03, 2025
-        "%d_%b_%Y",   # 03_Jul_2025 (fallback for odd filenames)
-        "%d_%B_%Y",   # 03_July_2025
+        "%d_%b_%Y",  # 03_Jul_2025 (fallback for odd filenames)
+        "%d_%B_%Y",  # 03_July_2025
     ):
         try:
             return datetime.strptime(norm, fmt).strftime(CANONICAL_DATE_FORMAT)
@@ -108,11 +108,20 @@ def normalize_venue(value: str) -> str:
 # Fallback filename patterns
 FILENAME_PATTERNS = [
     # Race 7 - MURR - 2025-08-24.csv (ISO date)
-re.compile(r"race[\s_]*(?P<race_number>\d+)[\s_]*[-_][\s_]*(?P<venue>[A-Za-z0-9_\-/]+)[\s_]*[-_][\s_]*(?P<race_date>\d{4}-\d{2}-\d{2})", re.IGNORECASE),
+    re.compile(
+        r"race[\s_]*(?P<race_number>\d+)[\s_]*[-_][\s_]*(?P<venue>[A-Za-z0-9_\-/]+)[\s_]*[-_][\s_]*(?P<race_date>\d{4}-\d{2}-\d{2})",
+        re.IGNORECASE,
+    ),
     # Race 7 - MURR - 03 July 2025.csv (human date with full month name)
-re.compile(r"race[\s_]*(?P<race_number>\d+)[\s_]*[-_][\s_]*(?P<venue>[A-Za-z0-9_\-/]+)[\s_]*[-_][\s_]*(?P<race_date>\d{1,2}[\s_]+[A-Za-z]{3,9}[\s_]+\d{4})", re.IGNORECASE),
+    re.compile(
+        r"race[\s_]*(?P<race_number>\d+)[\s_]*[-_][\s_]*(?P<venue>[A-Za-z0-9_\-/]+)[\s_]*[-_][\s_]*(?P<race_date>\d{1,2}[\s_]+[A-Za-z]{3,9}[\s_]+\d{4})",
+        re.IGNORECASE,
+    ),
     # 2025-08-24_MURR_R7.csv or 2025-08-24-murr-7.csv
-    re.compile(r"(?P<race_date>\d{4}-\d{2}-\d{2})[_-](?P<venue>[A-Za-z0-9_\-/]+)[_-]R?(?P<race_number>\d+)", re.IGNORECASE),
+    re.compile(
+        r"(?P<race_date>\d{4}-\d{2}-\d{2})[_-](?P<venue>[A-Za-z0-9_\-/]+)[_-]R?(?P<race_number>\d+)",
+        re.IGNORECASE,
+    ),
 ]
 
 
@@ -129,7 +138,14 @@ def _first(row: Dict[str, str], keys: Iterable[str]) -> Optional[str]:
 
 def extract_meta_from_csv(csv_path: Path, dialect: csv.Dialect) -> Optional[RaceMeta]:
     DATE_KEYS = ["race_date", "race date", "meeting_date", "date", "meeting date"]
-    VENUE_KEYS = ["venue", "track", "venue_code", "venue code", "meeting_venue", "meeting venue"]
+    VENUE_KEYS = [
+        "venue",
+        "track",
+        "venue_code",
+        "venue code",
+        "meeting_venue",
+        "meeting venue",
+    ]
     RACE_NO_KEYS = ["race_number", "race no", "race", "race_no", "race number"]
     GRADE_KEYS = ["grade"]
     DIST_KEYS = ["distance", "dist"]
@@ -187,13 +203,28 @@ BOX_KEYS = ["Box Number", "Box", "BOX", "box", "trap", "Trap"]
 PLC_KEYS = ["PLC", "Position", "Finish", "finish_position", "placing"]
 WGT_KEYS = ["Weight", "WGT", "weight"]
 TIME_KEYS = ["Time", "Race Time", "RaceTime", "time", "individual_time"]
-SEC1_KEYS = ["First Sectional", "1st Sectional", "first_sectional", "sectional_1st", "first split"]
+SEC1_KEYS = [
+    "First Sectional",
+    "1st Sectional",
+    "first_sectional",
+    "sectional_1st",
+    "first split",
+]
 MARGIN_KEYS = ["Margin", "margin", "Beaten Margin", "beaten_margin"]
 TRAINER_KEYS = ["Trainer", "trainer", "Trainer Name"]
-SP_KEYS = ["Starting Price", "SP", "Odds", "Odds Decimal", "odds_decimal", "starting_price"]
+SP_KEYS = [
+    "Starting Price",
+    "SP",
+    "Odds",
+    "Odds Decimal",
+    "odds_decimal",
+    "starting_price",
+]
 
 
-def parse_race_csv_for_staging(csv_path: str) -> Tuple[RaceMeta, List[Dict[str, object]]]:
+def parse_race_csv_for_staging(
+    csv_path: str,
+) -> Tuple[RaceMeta, List[Dict[str, object]]]:
     p = Path(csv_path).expanduser().resolve()
     dialect, headers = sniff_dialect_and_headers(p)
 
@@ -201,7 +232,9 @@ def parse_race_csv_for_staging(csv_path: str) -> Tuple[RaceMeta, List[Dict[str, 
     if not meta:
         meta = extract_meta_from_filename(p)
     if not meta:
-        raise ValueError("Unable to extract race metadata (race_date, venue, race_number) from CSV or filename.")
+        raise ValueError(
+            "Unable to extract race metadata (race_date, venue, race_number) from CSV or filename."
+        )
 
     dogs: List[Dict[str, object]] = []
     with p.open("r", encoding="utf-8", errors="replace") as f:
@@ -292,7 +325,9 @@ def parse_race_csv_for_staging(csv_path: str) -> Tuple[RaceMeta, List[Dict[str, 
                     "margin": margin,
                     "trainer_name": trainer,
                     "data_source": "csv_stage",
-                    "extraction_timestamp": datetime.now().isoformat(timespec="seconds"),
+                    "extraction_timestamp": datetime.now().isoformat(
+                        timespec="seconds"
+                    ),
                     "raw_row_json": raw_row_json,
                 }
             )
@@ -304,4 +339,3 @@ __all__ = [
     "RaceMeta",
     "parse_race_csv_for_staging",
 ]
-

@@ -19,10 +19,11 @@ import argparse
 import os
 import sqlite3
 import sys
-from typing import Dict, Any, List
-from scripts.db_utils import open_sqlite_readonly
+from typing import Any, Dict, List
 
 import pandas as pd
+
+from scripts.db_utils import open_sqlite_readonly
 
 # Ensure project root on sys.path
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -62,7 +63,14 @@ def fetch_race_df(db_path: str, race_id: str) -> pd.DataFrame:
         meta = cur.fetchone()
 
         if not meta:
-            venue, grade, distance, race_date, race_time, field_size = (None, None, None, None, None, None)
+            venue, grade, distance, race_date, race_time, field_size = (
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
         else:
             venue, grade, distance, race_date, race_time, field_size = meta
 
@@ -91,7 +99,11 @@ def fetch_race_df(db_path: str, race_id: str) -> pd.DataFrame:
                     "weight": _to_float(wgt, 30.0),
                     "starting_price": _to_float(sp, 3.0),
                     "trainer_name": None,
-                    "venue": (str(venue).upper().replace(" ", "_").replace("/", "_") if venue else None),
+                    "venue": (
+                        str(venue).upper().replace(" ", "_").replace("/", "_")
+                        if venue
+                        else None
+                    ),
                     "grade": (str(grade).upper() if grade else None),
                     "track_condition": "Good",
                     "weather": "Fine",
@@ -118,10 +130,20 @@ def fetch_race_df(db_path: str, race_id: str) -> pd.DataFrame:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Predict a historical race using ML System V4")
+    parser = argparse.ArgumentParser(
+        description="Predict a historical race using ML System V4"
+    )
     parser.add_argument("--db", dest="db_path", required=True, help="Path to SQLite DB")
-    parser.add_argument("--race-id", dest="race_id", required=True, help="Race ID to predict")
-    parser.add_argument("--tgr", dest="tgr", choices=["0", "1"], default=None, help="Enable (1) or disable (0) TGR at runtime")
+    parser.add_argument(
+        "--race-id", dest="race_id", required=True, help="Race ID to predict"
+    )
+    parser.add_argument(
+        "--tgr",
+        dest="tgr",
+        choices=["0", "1"],
+        default=None,
+        help="Enable (1) or disable (0) TGR at runtime",
+    )
     args = parser.parse_args()
 
     # Ensure environment for DB detection
@@ -137,7 +159,7 @@ def main():
     tgr_env = os.getenv("TGR_ENABLED")
     tgr_enabled = None
     if args.tgr is not None:
-        tgr_enabled = (args.tgr == "1")
+        tgr_enabled = args.tgr == "1"
     elif tgr_env is not None:
         tgr_enabled = tgr_env.strip() in ("1", "true", "yes", "True", "TRUE")
 
@@ -151,11 +173,15 @@ def main():
         print(f"❌ Prediction failed: {result.get('error', 'Unknown error')}")
         sys.exit(1)
 
-    preds = result.get("predictions", []) or result.get("enhanced_predictions", []) or []
+    preds = (
+        result.get("predictions", []) or result.get("enhanced_predictions", []) or []
+    )
 
     # Display
     print(f"\n✅ Prediction successful for {args.race_id}")
-    print("Rank | Box | Dog Name                    | Win Prob | Confidence | TGR races | TGR win% | TGR avg pos")
+    print(
+        "Rank | Box | Dog Name                    | Win Prob | Confidence | TGR races | TGR win% | TGR avg pos"
+    )
     print("-" * 106)
 
     # Sort by normalized prob if available
@@ -174,7 +200,7 @@ def main():
             return str(v)
 
     for i, p in enumerate(preds_sorted, 1):
-        name = (p.get("dog_clean_name") or p.get("dog_name") or "Unknown")
+        name = p.get("dog_clean_name") or p.get("dog_name") or "Unknown"
         box = p.get("box_number") or "?"
         prob = p.get("win_prob_norm") or p.get("win_probability") or 0.0
         conf = p.get("confidence") or p.get("confidence_level") or 0.0
@@ -195,4 +221,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -2,10 +2,10 @@ from datetime import datetime
 from urllib.parse import urlparse
 
 import requests
-from utils.http_client import get_shared_session
 
 from scraper_exception import ScraperException
 from sportsbook_factory import SportsbookFactory
+from utils.http_client import get_shared_session
 
 
 class EventScraper:

@@ -3,15 +3,29 @@ SQLAlchemy models for the greyhound racing database.
 This file defines the database schema for Alembic migrations and consistency tests.
 """
 
-from sqlalchemy import (Column, Integer, String, Float, Date, Text, Boolean, 
-                       DateTime, ForeignKey, Index, UniqueConstraint, Numeric, Enum)
+import json
+from dataclasses import dataclass
+from datetime import datetime
+from enum import Enum as PyEnum
+from typing import Any, Dict, List, Optional
+
+from sqlalchemy import (
+    Boolean,
+    Column,
+    Date,
+    DateTime,
+    Enum,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.sql import func
-from datetime import datetime
-from typing import List, Optional, Dict, Any
-from dataclasses import dataclass
-from enum import Enum as PyEnum
-import json
 
 Base = declarative_base()
 
@@ -20,8 +34,10 @@ Base = declarative_base()
 # GPTAssistant Data Models and Enums
 # =============================================================================
 
+
 class Severity(PyEnum):
     """Issue severity levels for GPTAssistant system."""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -30,6 +46,7 @@ class Severity(PyEnum):
 
 class IssueType(PyEnum):
     """Types of issues that can be detected."""
+
     DATA_COMPLETENESS = "data_completeness"
     DATA_CONSISTENCY = "data_consistency"
     PREDICTION_ACCURACY = "prediction_accuracy"
@@ -42,6 +59,7 @@ class IssueType(PyEnum):
 @dataclass
 class PredictionRecord:
     """Data model for prediction records parsed from logs."""
+
     race_id: str
     dog_name: str
     prediction_value: float
@@ -50,7 +68,7 @@ class PredictionRecord:
     model_version: str
     form_data: Dict[str, Any]
     validation_errors: List[str]
-    
+
     def __post_init__(self):
         """Validate the prediction record after initialization."""
         if not self.race_id:
@@ -61,38 +79,39 @@ class PredictionRecord:
             raise ValueError("prediction_value must be between 0 and 1")
         if not 0 <= self.confidence <= 1:
             raise ValueError("confidence must be between 0 and 1")
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
-            'race_id': self.race_id,
-            'dog_name': self.dog_name,
-            'prediction_value': self.prediction_value,
-            'confidence': self.confidence,
-            'timestamp': self.timestamp.isoformat(),
-            'model_version': self.model_version,
-            'form_data': self.form_data,
-            'validation_errors': self.validation_errors
+            "race_id": self.race_id,
+            "dog_name": self.dog_name,
+            "prediction_value": self.prediction_value,
+            "confidence": self.confidence,
+            "timestamp": self.timestamp.isoformat(),
+            "model_version": self.model_version,
+            "form_data": self.form_data,
+            "validation_errors": self.validation_errors,
         }
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'PredictionRecord':
+    def from_dict(cls, data: Dict[str, Any]) -> "PredictionRecord":
         """Create from dictionary."""
         return cls(
-            race_id=data['race_id'],
-            dog_name=data['dog_name'],
-            prediction_value=data['prediction_value'],
-            confidence=data['confidence'],
-            timestamp=datetime.fromisoformat(data['timestamp']),
-            model_version=data['model_version'],
-            form_data=data['form_data'],
-            validation_errors=data['validation_errors']
+            race_id=data["race_id"],
+            dog_name=data["dog_name"],
+            prediction_value=data["prediction_value"],
+            confidence=data["confidence"],
+            timestamp=datetime.fromisoformat(data["timestamp"]),
+            model_version=data["model_version"],
+            form_data=data["form_data"],
+            validation_errors=data["validation_errors"],
         )
 
 
 @dataclass
 class GuideIssue:
     """Data model for issues identified during analysis."""
+
     issue_id: str
     issue_type: IssueType
     severity: Severity
@@ -100,7 +119,7 @@ class GuideIssue:
     affected_records: List[str]
     recommendation: str
     metadata: Dict[str, Any]
-    
+
     def __post_init__(self):
         """Validate the guide issue after initialization."""
         if not self.issue_id:
@@ -109,36 +128,37 @@ class GuideIssue:
             raise ValueError("description cannot be empty")
         if not self.recommendation:
             raise ValueError("recommendation cannot be empty")
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
-            'issue_id': self.issue_id,
-            'issue_type': self.issue_type.value,
-            'severity': self.severity.value,
-            'description': self.description,
-            'affected_records': self.affected_records,
-            'recommendation': self.recommendation,
-            'metadata': self.metadata
+            "issue_id": self.issue_id,
+            "issue_type": self.issue_type.value,
+            "severity": self.severity.value,
+            "description": self.description,
+            "affected_records": self.affected_records,
+            "recommendation": self.recommendation,
+            "metadata": self.metadata,
         }
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'GuideIssue':
+    def from_dict(cls, data: Dict[str, Any]) -> "GuideIssue":
         """Create from dictionary."""
         return cls(
-            issue_id=data['issue_id'],
-            issue_type=IssueType(data['issue_type']),
-            severity=Severity(data['severity']),
-            description=data['description'],
-            affected_records=data['affected_records'],
-            recommendation=data['recommendation'],
-            metadata=data['metadata']
+            issue_id=data["issue_id"],
+            issue_type=IssueType(data["issue_type"]),
+            severity=Severity(data["severity"]),
+            description=data["description"],
+            affected_records=data["affected_records"],
+            recommendation=data["recommendation"],
+            metadata=data["metadata"],
         )
 
 
 @dataclass
 class AdvisoryMessage:
     """Data model for advisory messages generated by the system."""
+
     advisory_id: str
     title: str
     summary: str
@@ -147,7 +167,7 @@ class AdvisoryMessage:
     action_items: List[str]
     created_at: datetime
     expires_at: Optional[datetime] = None
-    
+
     def __post_init__(self):
         """Validate the advisory message after initialization."""
         if not self.advisory_id:
@@ -158,38 +178,42 @@ class AdvisoryMessage:
             raise ValueError("summary cannot be empty")
         if not self.action_items:
             raise ValueError("action_items cannot be empty")
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
-            'advisory_id': self.advisory_id,
-            'title': self.title,
-            'summary': self.summary,
-            'details': self.details,
-            'severity': self.severity.value,
-            'action_items': self.action_items,
-            'created_at': self.created_at.isoformat(),
-            'expires_at': self.expires_at.isoformat() if self.expires_at else None
+            "advisory_id": self.advisory_id,
+            "title": self.title,
+            "summary": self.summary,
+            "details": self.details,
+            "severity": self.severity.value,
+            "action_items": self.action_items,
+            "created_at": self.created_at.isoformat(),
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
         }
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'AdvisoryMessage':
+    def from_dict(cls, data: Dict[str, Any]) -> "AdvisoryMessage":
         """Create from dictionary."""
         return cls(
-            advisory_id=data['advisory_id'],
-            title=data['title'],
-            summary=data['summary'],
-            details=data['details'],
-            severity=Severity(data['severity']),
-            action_items=data['action_items'],
-            created_at=datetime.fromisoformat(data['created_at']),
-            expires_at=datetime.fromisoformat(data['expires_at']) if data['expires_at'] else None
+            advisory_id=data["advisory_id"],
+            title=data["title"],
+            summary=data["summary"],
+            details=data["details"],
+            severity=Severity(data["severity"]),
+            action_items=data["action_items"],
+            created_at=datetime.fromisoformat(data["created_at"]),
+            expires_at=(
+                datetime.fromisoformat(data["expires_at"])
+                if data["expires_at"]
+                else None
+            ),
         )
 
 
 class RaceMetadata(Base):
-    __tablename__ = 'race_metadata'
-    
+    __tablename__ = "race_metadata"
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     race_id = Column(String, unique=True)
     venue = Column(String)
@@ -234,17 +258,17 @@ class RaceMetadata(Base):
 
     # Indexes for performance
     __table_args__ = (
-        Index('idx_race_metadata_venue_date', 'venue', 'race_date'),
-        Index('idx_race_metadata_race_id', 'race_id'),
-        UniqueConstraint('race_id', name='uq_race_metadata_race_id'),
+        Index("idx_race_metadata_venue_date", "venue", "race_date"),
+        Index("idx_race_metadata_race_id", "race_id"),
+        UniqueConstraint("race_id", name="uq_race_metadata_race_id"),
     )
 
 
 class DogRaceData(Base):
-    __tablename__ = 'dog_race_data'
-    
+    __tablename__ = "dog_race_data"
+
     id = Column(Integer, primary_key=True, autoincrement=True)
-    race_id = Column(String, ForeignKey('race_metadata.race_id', ondelete='CASCADE'))
+    race_id = Column(String, ForeignKey("race_metadata.race_id", ondelete="CASCADE"))
     dog_name = Column(String)
     dog_clean_name = Column(String)
     dog_id = Column(Integer)
@@ -291,18 +315,19 @@ class DogRaceData(Base):
 
     # Indexes for performance and foreign key relationships
     __table_args__ = (
-        Index('idx_dog_race_data_race_id', 'race_id'),
-        Index('idx_dog_race_data_dog_name', 'dog_clean_name'),
-        Index('idx_dog_race_data_finish_position', 'finish_position'),
-        Index('idx_dog_name', 'dog_clean_name'),
-        UniqueConstraint('race_id', 'dog_clean_name', 'box_number', 
-                        name='idx_dog_race_unique'),
+        Index("idx_dog_race_data_race_id", "race_id"),
+        Index("idx_dog_race_data_dog_name", "dog_clean_name"),
+        Index("idx_dog_race_data_finish_position", "finish_position"),
+        Index("idx_dog_name", "dog_clean_name"),
+        UniqueConstraint(
+            "race_id", "dog_clean_name", "box_number", name="idx_dog_race_unique"
+        ),
     )
 
 
 class Dogs(Base):
-    __tablename__ = 'dogs'
-    
+    __tablename__ = "dogs"
+
     dog_id = Column(Integer, primary_key=True, autoincrement=True)
     dog_name = Column(String, unique=True, nullable=False)
     total_races = Column(Integer, default=0)
@@ -322,15 +347,15 @@ class Dogs(Base):
 
     # Indexes for performance
     __table_args__ = (
-        Index('idx_dogs_clean_name', 'dog_name'),
-        Index('idx_dogs_trainer', 'trainer'),
+        Index("idx_dogs_clean_name", "dog_name"),
+        Index("idx_dogs_trainer", "trainer"),
     )
 
 
 # Additional tables for completeness (if they exist in your database)
 class MLModelRegistry(Base):
-    __tablename__ = 'ml_model_registry'
-    
+    __tablename__ = "ml_model_registry"
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     model_name = Column(String, nullable=False)
     model_version = Column(String, nullable=False)
@@ -341,18 +366,22 @@ class MLModelRegistry(Base):
     training_data_hash = Column(String)
     is_active = Column(Boolean, default=False)
     created_at = Column(DateTime, default=func.current_timestamp())
-    updated_at = Column(DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp())
+    updated_at = Column(
+        DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp()
+    )
 
     __table_args__ = (
-        UniqueConstraint('model_name', 'model_version', name='uq_model_registry_name_version'),
+        UniqueConstraint(
+            "model_name", "model_version", name="uq_model_registry_name_version"
+        ),
     )
 
 
 class PredictionHistory(Base):
-    __tablename__ = 'prediction_history'
-    
+    __tablename__ = "prediction_history"
+
     id = Column(Integer, primary_key=True, autoincrement=True)
-    race_id = Column(String, ForeignKey('race_metadata.race_id'))
+    race_id = Column(String, ForeignKey("race_metadata.race_id"))
     model_name = Column(String)
     model_version = Column(String)
     prediction_data = Column(Text)
@@ -360,17 +389,19 @@ class PredictionHistory(Base):
     actual_results = Column(Text)
     accuracy_score = Column(Float)
     created_at = Column(DateTime, default=func.current_timestamp())
-    updated_at = Column(DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp())
+    updated_at = Column(
+        DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp()
+    )
 
     __table_args__ = (
-        Index('idx_prediction_history_race_id', 'race_id'),
-        Index('idx_prediction_history_model', 'model_name', 'model_version'),
+        Index("idx_prediction_history_race_id", "race_id"),
+        Index("idx_prediction_history_model", "model_name", "model_version"),
     )
 
 
 class ProcessedRaceFiles(Base):
-    __tablename__ = 'processed_race_files'
-    
+    __tablename__ = "processed_race_files"
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     file_hash = Column(String(64), unique=True, nullable=False)  # SHA-256 hash
     race_date = Column(Date, nullable=False)
@@ -379,28 +410,30 @@ class ProcessedRaceFiles(Base):
     file_path = Column(String, nullable=False)
     file_size = Column(Integer)
     processed_at = Column(DateTime, default=func.current_timestamp())
-    status = Column(String, default='processed')  # processed, failed, skipped
+    status = Column(String, default="processed")  # processed, failed, skipped
     error_message = Column(Text)
-    
+
     # Indexes for performance
     __table_args__ = (
-        Index('idx_processed_files_hash', 'file_hash'),
-        Index('idx_processed_files_race_key', 'race_date', 'venue', 'race_no'),
-        Index('idx_processed_files_processed_at', 'processed_at'),
-        UniqueConstraint('file_hash', name='uq_processed_files_hash'),
+        Index("idx_processed_files_hash", "file_hash"),
+        Index("idx_processed_files_race_key", "race_date", "venue", "race_no"),
+        Index("idx_processed_files_processed_at", "processed_at"),
+        UniqueConstraint("file_hash", name="uq_processed_files_hash"),
     )
 
 
 class DatabaseMeta(Base):
-    __tablename__ = 'db_meta'
-    
+    __tablename__ = "db_meta"
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     meta_key = Column(String(255), unique=True, nullable=False)
     meta_value = Column(String(500))
-    last_updated = Column(DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp())
-    
+    last_updated = Column(
+        DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp()
+    )
+
     # Indexes for performance
     __table_args__ = (
-        Index('idx_db_meta_key', 'meta_key'),
-        UniqueConstraint('meta_key', name='uq_db_meta_key'),
+        Index("idx_db_meta_key", "meta_key"),
+        UniqueConstraint("meta_key", name="uq_db_meta_key"),
     )

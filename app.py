@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 """
 Greyhound Racing Dashboard
@@ -11,10 +10,6 @@ Author: AI Assistant
 Date: July 11, 2025
 """
 
-# CRITICAL: Import profiling disabler FIRST to prevent conflicts
-import disable_profiling
-from disable_profiling import is_profiling, set_profiling_enabled, profile_function, track_sequence
-
 import json
 import math
 import os
@@ -25,16 +20,36 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from flask import (Flask, Response, flash, jsonify, redirect, render_template,
-                   request, send_from_directory, stream_template, url_for, current_app)
-from flask_cors import CORS
+from flask import (
+    Flask,
+    Response,
+    current_app,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    send_from_directory,
+    stream_template,
+    url_for,
+)
 from flask_compress import Compress
+from flask_cors import CORS
 from werkzeug.utils import secure_filename
+
+# CRITICAL: Import profiling disabler FIRST to prevent conflicts
+import disable_profiling
+from disable_profiling import (
+    is_profiling,
+    profile_function,
+    set_profiling_enabled,
+    track_sequence,
+)
 
 # Compatibility: allow tests to patch app.debug without raising AttributeError on exit
 # (unittest.mock.patch.object calls delattr on exit when attribute wasn't instance-local)
 try:
-    if getattr(Flask, 'debug', None) is not None:
+    if getattr(Flask, "debug", None) is not None:
         _dbg = Flask.debug
         # If deleter not present, wrap with a no-op deleter to satisfy patch cleanup
         if isinstance(_dbg, property) and (_dbg.fdel is None):
@@ -72,7 +87,13 @@ CURRENT_SERVER_PORT = None
 
 # Import CSV ingestion system for processing race files
 try:
-    from csv_ingestion import FormGuideCsvIngestor, create_ingestor, EnhancedFormGuideCsvIngestor, FormGuideCsvIngestionError
+    from csv_ingestion import (
+        EnhancedFormGuideCsvIngestor,
+        FormGuideCsvIngestionError,
+        FormGuideCsvIngestor,
+        create_ingestor,
+    )
+
     CSV_INGESTION_AVAILABLE = True
     print("🚀 CSV ingestion system available")
 except ImportError as e:
@@ -86,6 +107,7 @@ except ImportError as e:
 # Unified ingestion entrypoint for form guide CSVs
 try:
     from ingestion.ingest_race_csv import ingest_form_guide_csv
+
     print("✅ Unified form guide ingestion available")
 except Exception as e:
     ingest_form_guide_csv = None
@@ -93,42 +115,49 @@ except Exception as e:
 
 # Import optimized caching and query systems
 try:
-    from endpoint_cache import get_endpoint_cache, cached_endpoint
+    from endpoint_cache import cached_endpoint, get_endpoint_cache
     from optimized_queries import get_optimized_queries
-    
+
     OPTIMIZATION_ENABLED = True
     print("🚀 Endpoint optimization enabled (caching + optimized queries)")
 except ImportError as e:
     print(f"⚠️ Endpoint optimization not available: {e}")
     OPTIMIZATION_ENABLED = False
-    
+
     def cached_endpoint(key_func=None, ttl=30):
         def decorator(func):
             return func
+
         return decorator
+
 
 # Import database performance optimizations
 try:
     from db_performance_optimizer import (
-        initialize_db_optimization, get_db_pool, get_lazy_loader,
-        query_performance_decorator
+        get_db_pool,
+        get_lazy_loader,
+        initialize_db_optimization,
+        query_performance_decorator,
     )
-    
+
     DB_OPTIMIZATION_ENABLED = True
     print("🚀 Database performance optimization enabled")
 except ImportError as e:
     print(f"⚠️ Database optimization not available: {e}")
     DB_OPTIMIZATION_ENABLED = False
-    
+
     def query_performance_decorator(func):
         return func
 
+
 # In test environments, force-disable DB optimization to avoid teardown instability
 try:
-    if str(os.environ.get('TESTING', '')).lower() in ('1', 'true', 'yes'):
+    if str(os.environ.get("TESTING", "")).lower() in ("1", "true", "yes"):
         DB_OPTIMIZATION_ENABLED = False
+
         def query_performance_decorator(func):
             return func
+
         print("ℹ️ DB optimization disabled in TESTING mode")
 except Exception:
     pass
@@ -144,13 +173,22 @@ except Exception:
 #     print("⚠️ Pipeline profiling not available")
 #     PROFILING_ENABLED = False
 
+
 # Temporary stubs
 class DummyTracker:
-    def __enter__(self): return self
-    def __exit__(self, *args): pass
+    def __enter__(self):
+        return self
 
-def profile_function(func): return func
-def track_sequence(step_name, component, step_type="processing"): return DummyTracker()
+    def __exit__(self, *args):
+        pass
+
+
+def profile_function(func):
+    return func
+
+
+def track_sequence(step_name, component, step_type="processing"):
+    return DummyTracker()
 
 
 # Import Strategy Manager for unified prediction pipeline
@@ -168,12 +206,15 @@ except ImportError:
 # Lazy accessor for comprehensive form data collector (avoid module-level import)
 from importlib import import_module
 
+
 def get_comprehensive_collector_class():
     """Dynamically import and return ComprehensiveFormDataCollector class or None.
     Respects feature flags to avoid importing scrapers in prediction-only mode.
     """
     if not COMPREHENSIVE_COLLECTOR_ALLOWED:
-        logger.info("Comprehensive collector import blocked by feature flags (prediction-only mode)")
+        logger.info(
+            "Comprehensive collector import blocked by feature flags (prediction-only mode)"
+        )
         return None
     try:
         module = import_module("comprehensive_form_data_collector")
@@ -182,9 +223,11 @@ def get_comprehensive_collector_class():
         logger.warning(f"Comprehensive form data collector not available: {e}")
         return None
 
+
 # Import batch prediction pipeline
 try:
     from batch_prediction_pipeline import BatchPredictionPipeline
+
     BATCH_PIPELINE_AVAILABLE = True
     print("🚀 Batch prediction pipeline available")
 except ImportError as e:
@@ -195,9 +238,15 @@ except ImportError as e:
 # Import background task system
 try:
     from tasks import (
-        process_race_file, download_race_data, generate_predictions, 
-        update_race_notes, get_task_status, enqueue_task, celery_app
+        celery_app,
+        download_race_data,
+        enqueue_task,
+        generate_predictions,
+        get_task_status,
+        process_race_file,
+        update_race_notes,
     )
+
     BACKGROUND_TASKS_AVAILABLE = True
     print("🚀 Background task system available")
 except ImportError as e:
@@ -206,39 +255,48 @@ except ImportError as e:
     process_race_file = None
     generate_predictions = None
     update_race_notes = None
+import glob
 import hashlib
+import json
 import logging
+
 # from venue_mapping_fix import GreyhoundVenueMapper  # Module not found
 import pickle
-import json
-
-import yaml
-import glob
 from dataclasses import asdict
 
+import yaml
+
 # Features and feature store imports
-from features import (FeatureStore, V3BoxPositionFeatures,
-                      V3CompetitionFeatures, V3DistanceStatsFeatures,
-                      V3RecentFormFeatures, V3TrainerFeatures,
-                      V3VenueAnalysisFeatures, V3WeatherTrackFeatures)
+from features import (
+    FeatureStore,
+    V3BoxPositionFeatures,
+    V3CompetitionFeatures,
+    V3DistanceStatsFeatures,
+    V3RecentFormFeatures,
+    V3TrainerFeatures,
+    V3VenueAnalysisFeatures,
+    V3WeatherTrackFeatures,
+)
 from sportsbet_odds_integrator import SportsbetOddsIntegrator
-from utils.file_naming import (build_prediction_filename,
-                               extract_race_id_from_csv_filename)
 from utils.csv_metadata import parse_race_csv_meta
+from utils.file_naming import (
+    build_prediction_filename,
+    extract_race_id_from_csv_filename,
+)
 
 # Initialize feature store singleton
 feature_store = FeatureStore()
 
 # Ensure critical test directories exist when running in tests and in dev
 try:
-    default_upcoming = os.environ.get('UPCOMING_RACES_DIR') or './upcoming_races'
+    default_upcoming = os.environ.get("UPCOMING_RACES_DIR") or "./upcoming_races"
     os.makedirs(default_upcoming, exist_ok=True)
     # Common upload path used by tests
-    os.makedirs('/tmp/tests_uploads', exist_ok=True)
-    default_test_file = '/tmp/tests_uploads/test_file.csv'
+    os.makedirs("/tmp/tests_uploads", exist_ok=True)
+    default_test_file = "/tmp/tests_uploads/test_file.csv"
     if not os.path.exists(default_test_file):
-        with open(default_test_file, 'w') as _f:
-            _f.write('Dog Name,Box,Weight,Trainer\n1. Upload Dog,1,30.0,Trainer U\n')
+        with open(default_test_file, "w") as _f:
+            _f.write("Dog Name,Box,Weight,Trainer\n1. Upload Dog,1,30.0,Trainer U\n")
 except Exception:
     pass
 
@@ -256,6 +314,7 @@ from model_registry import get_model_registry
 # Import asset management system
 try:
     from assets import AssetManager
+
     ASSET_MANAGEMENT_AVAILABLE = True
     print("🚀 Asset management system available")
 except ImportError as e:
@@ -266,6 +325,7 @@ except ImportError as e:
 # Import model training API blueprint
 try:
     from model_training_api import model_training_bp
+
     MODEL_TRAINING_API_AVAILABLE = True
     print("🚀 Model training API blueprint available")
 except ImportError as e:
@@ -276,6 +336,7 @@ except ImportError as e:
 # Import Guardian Service for file integrity protection
 try:
     from services.guardian_service import get_guardian_service, start_guardian_service
+
     GUARDIAN_SERVICE_AVAILABLE = True
     print("🛡️ Guardian Service available")
 except ImportError as e:
@@ -296,6 +357,7 @@ except ImportError as e:
 # ML System V4 for advanced predictions (primary engine)
 try:
     from prediction_pipeline_v4 import PredictionPipelineV4
+
     ML_SYSTEM_V4_AVAILABLE = True
     print("🚀 ML System V4 (Advanced) available")
 except Exception as e:
@@ -307,31 +369,43 @@ except Exception as e:
 # Enhanced Prediction Service for maximum accuracy and unique predictions
 try:
     from enhanced_prediction_service import EnhancedPredictionService
+
     ENHANCED_PREDICTION_SERVICE_AVAILABLE = True
     # Defer heavy initialization in tests or when explicitly disabled via env
     enhanced_prediction_service = None
-    _skip_eps = (
-        str(os.environ.get('TESTING', '')).lower() in ('1', 'true', 'yes')
-        or str(os.environ.get('DISABLE_ENHANCED_PREDICTION_SERVICE', '0')).lower() in ('1', 'true', 'yes')
+    _skip_eps = str(os.environ.get("TESTING", "")).lower() in (
+        "1",
+        "true",
+        "yes",
+    ) or str(os.environ.get("DISABLE_ENHANCED_PREDICTION_SERVICE", "0")).lower() in (
+        "1",
+        "true",
+        "yes",
     )
     if not _skip_eps:
         enhanced_prediction_service = EnhancedPredictionService()
         # Optional: allow configuring ensemble behavior via environment variable to diversify predictions
         try:
-            _eps_mode = os.environ.get('EPS_ENSEMBLE_MODE')
-            if _eps_mode and getattr(enhanced_prediction_service, 'ml_system', None):
-                ao = getattr(enhanced_prediction_service.ml_system, 'accuracy_optimizer', None)
+            _eps_mode = os.environ.get("EPS_ENSEMBLE_MODE")
+            if _eps_mode and getattr(enhanced_prediction_service, "ml_system", None):
+                ao = getattr(
+                    enhanced_prediction_service.ml_system, "accuracy_optimizer", None
+                )
                 if ao is not None:
                     try:
-                        cfg = dict(getattr(ao, 'config', {}) or {})
+                        cfg = dict(getattr(ao, "config", {}) or {})
                     except Exception:
                         cfg = {}
-                    cfg['ensemble_mode'] = _eps_mode
+                    cfg["ensemble_mode"] = _eps_mode
                     try:
                         ao.config = cfg
-                        logger.info(f"EPS ensemble_mode set via EPS_ENSEMBLE_MODE={_eps_mode}")
+                        logger.info(
+                            f"EPS ensemble_mode set via EPS_ENSEMBLE_MODE={_eps_mode}"
+                        )
                     except Exception:
-                        logger.warning("Failed to set EPS ensemble_mode from environment")
+                        logger.warning(
+                            "Failed to set EPS ensemble_mode from environment"
+                        )
         except Exception as _e:
             try:
                 logger.warning(f"EPS ensemble configuration skipped: {_e}")
@@ -339,7 +413,9 @@ try:
                 pass
         print("🎯 Enhanced Prediction Service (Advanced Accuracy Optimizer) available")
     else:
-        print("🎯 Enhanced Prediction Service import available (deferred init in test/degraded mode)")
+        print(
+            "🎯 Enhanced Prediction Service import available (deferred init in test/degraded mode)"
+        )
 except Exception as e:
     logger.warning(f"Enhanced Prediction Service not available: {e}")
     ENHANCED_PREDICTION_SERVICE_AVAILABLE = False
@@ -353,10 +429,13 @@ ComprehensivePredictionPipeline = None
 # Load environment variables from .env file (optional dependency)
 try:
     from dotenv import load_dotenv  # type: ignore
+
     load_dotenv()
 except Exception:
+
     def load_dotenv():  # type: ignore
         return False
+
 
 # GPT Prediction Enhancer singleton
 gpt_enhancer_instance = None
@@ -382,12 +461,16 @@ def get_gpt_enhancer():
             # Fallback to archived enhancer for safety
             try:
                 # DEPRECATED: Prefer GPTService; this path exists only as a fallback.
-                from archive.outdated_openai.gpt_prediction_enhancer import GPTPredictionEnhancer
+                from archive.outdated_openai.gpt_prediction_enhancer import (
+                    GPTPredictionEnhancer,
+                )
 
                 gpt_enhancer_instance = GPTPredictionEnhancer()
                 logger.info("GPTPredictionEnhancer singleton initialized as fallback")
             except Exception as e2:
-                logger.warning(f"Failed to initialize archived GPTPredictionEnhancer: {e2}")
+                logger.warning(
+                    f"Failed to initialize archived GPTPredictionEnhancer: {e2}"
+                )
                 gpt_enhancer_instance = None
     return gpt_enhancer_instance
 
@@ -396,28 +479,29 @@ app = Flask(__name__)
 
 # Initialize memory monitoring EARLY for OOM prevention
 try:
-    from monitoring.tracemalloc_tools import init_tracemalloc, setup_sigusr1_handler
-    from monitoring.memory_logger import start_memory_logger, log_connection_pool_stats
+    from monitoring.memory_logger import log_connection_pool_stats, start_memory_logger
     from monitoring.memory_watchdog import (
-        start_memory_watchdog, clear_caches_on_memory_pressure, 
-        kill_orphaned_chrome_processes
+        clear_caches_on_memory_pressure,
+        kill_orphaned_chrome_processes,
+        start_memory_watchdog,
     )
-    
+    from monitoring.tracemalloc_tools import init_tracemalloc, setup_sigusr1_handler
+
     # Initialize tracemalloc for leak detection
     init_tracemalloc()
-    
+
     # Setup signal handler for heap dumps
     setup_sigusr1_handler()
-    
+
     # Start memory watchdog
     start_memory_watchdog(
         rss_soft_mb=int(os.getenv("MEM_SOFT_MB", "900")),
-        rss_hard_mb=int(os.getenv("MEM_HARD_MB", "1200")), 
+        rss_hard_mb=int(os.getenv("MEM_HARD_MB", "1200")),
         check_sec=int(os.getenv("MEM_CHECK_SEC", "5")),
         on_soft=lambda rss: clear_caches_on_memory_pressure(),
-        on_hard=lambda rss: kill_orphaned_chrome_processes()
+        on_hard=lambda rss: kill_orphaned_chrome_processes(),
     )
-    
+
     # Start memory logger with connection pool stats
     def _pool_probe():
         try:
@@ -426,42 +510,44 @@ try:
                 log_connection_pool_stats(pool)
         except Exception:
             pass
-    
+
     start_memory_logger(
-        interval_sec=int(os.getenv("MEM_LOG_INTERVAL", "15")),
-        extra_probes=_pool_probe
+        interval_sec=int(os.getenv("MEM_LOG_INTERVAL", "15")), extra_probes=_pool_probe
     )
-    
+
     print("🔬 Memory monitoring initialized (watchdog + logger + tracemalloc)")
 except Exception as e:
     print(f"⚠️ Memory monitoring initialization failed: {e}")
 
 # Static caching defaults: 1 year for static assets in production
 try:
-    app.config.setdefault('SEND_FILE_MAX_AGE_DEFAULT', 31536000)
+    app.config.setdefault("SEND_FILE_MAX_AGE_DEFAULT", 31536000)
 except Exception:
     pass
 # Simple asset version for cache-busting on static files
-ASSET_VERSION = os.environ.get('ASSET_VERSION', datetime.now().strftime('%Y%m%d%H%M%S'))
+ASSET_VERSION = os.environ.get("ASSET_VERSION", datetime.now().strftime("%Y%m%d%H%M%S"))
+
 
 # Expose UI mode to templates (simple | advanced)
 @app.context_processor
 def inject_ui_mode():
     try:
-        mode = str(os.environ.get('UI_MODE', 'simple')).lower()
-        if mode not in ('simple', 'advanced'):
-            mode = 'simple'
+        mode = str(os.environ.get("UI_MODE", "simple")).lower()
+        if mode not in ("simple", "advanced"):
+            mode = "simple"
     except Exception:
-        mode = 'simple'
+        mode = "simple"
     return {
-        'UI_MODE': mode,
-        'ASSET_VERSION': ASSET_VERSION,
+        "UI_MODE": mode,
+        "ASSET_VERSION": ASSET_VERSION,
     }
+
 
 # Early startup module guard to ensure safe environment
 try:
     from utils import module_guard
-    if os.environ.get('DISABLE_STARTUP_GUARD', '0') != '1':
+
+    if os.environ.get("DISABLE_STARTUP_GUARD", "0") != "1":
         module_guard.startup_module_sanity_check()
         print("🛡️ Module guard startup check passed")
     else:
@@ -470,6 +556,7 @@ except Exception as e:
     # Provide clear guidance and halt app startup to prevent unsafe state
     try:
         from logger import logger as _lg
+
         _lg.log_error("Module guard startup check failed", error=e)
     except Exception:
         pass
@@ -477,40 +564,43 @@ except Exception as e:
 
 # Load configuration from config.py
 from config import get_config
+
 config_class = get_config()
 app.config.from_object(config_class)
 
 
 # Feature flags and modes
-ENABLE_RESULTS_SCRAPERS = bool(app.config.get('ENABLE_RESULTS_SCRAPERS', False))
-ENABLE_LIVE_SCRAPING = bool(app.config.get('ENABLE_LIVE_SCRAPING', False))
-PREDICTION_IMPORT_MODE = app.config.get('PREDICTION_IMPORT_MODE', 'prediction_only')
+ENABLE_RESULTS_SCRAPERS = bool(app.config.get("ENABLE_RESULTS_SCRAPERS", False))
+ENABLE_LIVE_SCRAPING = bool(app.config.get("ENABLE_LIVE_SCRAPING", False))
+PREDICTION_IMPORT_MODE = app.config.get("PREDICTION_IMPORT_MODE", "prediction_only")
 
 # Define availability booleans derived from flags
-COMPREHENSIVE_COLLECTOR_ALLOWED = ENABLE_RESULTS_SCRAPERS and PREDICTION_IMPORT_MODE != 'prediction_only'
+COMPREHENSIVE_COLLECTOR_ALLOWED = (
+    ENABLE_RESULTS_SCRAPERS and PREDICTION_IMPORT_MODE != "prediction_only"
+)
 
 # UI feature flag for dynamic endpoints dropdowns in navbar
 # Auto-enable in testing or debug environments, can be forced with ENABLE_ENDPOINT_DROPDOWNS=1
 try:
     # Only enable when explicitly requested via environment variable.
     # No longer auto-enabled in testing or debug modes.
-    ENABLE_ENDPOINT_DROPDOWNS = (
-        str(os.environ.get('ENABLE_ENDPOINT_DROPDOWNS', '0')).lower() in ('1', 'true', 'yes')
-    )
+    ENABLE_ENDPOINT_DROPDOWNS = str(
+        os.environ.get("ENABLE_ENDPOINT_DROPDOWNS", "0")
+    ).lower() in ("1", "true", "yes")
 except Exception:
     ENABLE_ENDPOINT_DROPDOWNS = False
 
 # Optional: hide advanced navbar dropdowns even when UI_MODE='advanced'
 try:
-    DISABLE_NAV_DROPDOWNS = (
-        str(os.environ.get('DISABLE_NAV_DROPDOWNS', '0')).lower() in ('1', 'true', 'yes', 'on')
-    )
+    DISABLE_NAV_DROPDOWNS = str(
+        os.environ.get("DISABLE_NAV_DROPDOWNS", "0")
+    ).lower() in ("1", "true", "yes", "on")
 except Exception:
     DISABLE_NAV_DROPDOWNS = False
 
 # Override secret key if not already set
-if not app.config.get('SECRET_KEY'):
-    app.config['SECRET_KEY'] = "greyhound_racing_secret_key_2025"
+if not app.config.get("SECRET_KEY"):
+    app.config["SECRET_KEY"] = "greyhound_racing_secret_key_2025"
 
 # Initialize asset management system
 if ASSET_MANAGEMENT_AVAILABLE and AssetManager:
@@ -523,41 +613,42 @@ if ASSET_MANAGEMENT_AVAILABLE and AssetManager:
 else:
     asset_manager = None
     print("⚠️ Asset management system not available")
+
     # Provide safe template fallbacks when asset pipeline is unavailable
     # This prevents Jinja 'asset_url' UndefinedError and falls back to existing static files
     def _fallback_asset_url(filename: str):
         # For CSS, return None so base.html uses the built-in fallback to css/main.css
-        if filename == 'app.css':
+        if filename == "app.css":
             return None
         # For JS, point to an existing unbundled script if available
-        if filename == 'app.js':
+        if filename == "app.js":
             return "/static/js/main.js"
         # Default: None (let templates handle their own fallbacks)
         return None
 
     # Register asset resolver that prefers Vite manifest but safely falls back
     try:
+        import json as _json
         from functools import lru_cache as _lru_cache
         from pathlib import Path as _Path
-        import json as _json
 
         VITE_INPUTS = {
-            'app': 'js/main.js',
-            'interactive': 'js/interactive-races.js',
-            'predictionButtons': 'js/prediction-buttons.js',
-            'monitoring': 'js/monitoring.js',
-            'mlDashboard': 'js/ml-dashboard.js',
-            'mlDashboardCompat': 'js/ml_dashboard.js',
-            'modelTraining': 'js/model-training.js',
-            'styles': 'css/main.css',
+            "app": "js/main.js",
+            "interactive": "js/interactive-races.js",
+            "predictionButtons": "js/prediction-buttons.js",
+            "monitoring": "js/monitoring.js",
+            "mlDashboard": "js/ml-dashboard.js",
+            "mlDashboardCompat": "js/ml_dashboard.js",
+            "modelTraining": "js/model-training.js",
+            "styles": "css/main.css",
         }
 
         @_lru_cache(maxsize=1)
         def _load_vite_manifest():
             try:
-                mpath = _Path('static') / 'dist' / 'manifest.json'
+                mpath = _Path("static") / "dist" / "manifest.json"
                 if mpath.exists():
-                    with mpath.open('r', encoding='utf-8') as f:
+                    with mpath.open("r", encoding="utf-8") as f:
                         return _json.load(f)
             except Exception:
                 return None
@@ -566,10 +657,10 @@ else:
         def _vite_asset_url(name_with_ext: str):
             try:
                 # e.g., 'app.js', 'styles.css'
-                if '.' in name_with_ext:
-                    name, ext = name_with_ext.split('.', 1)
+                if "." in name_with_ext:
+                    name, ext = name_with_ext.split(".", 1)
                 else:
-                    name, ext = name_with_ext, 'js'
+                    name, ext = name_with_ext, "js"
                 manifest = _load_vite_manifest()
                 if not manifest:
                     return None
@@ -580,13 +671,13 @@ else:
                 if not entry:
                     return None
                 # CSS resolution
-                if ext == 'css':
-                    if isinstance(entry.get('css'), list) and entry['css']:
+                if ext == "css":
+                    if isinstance(entry.get("css"), list) and entry["css"]:
                         return f"/static/dist/{entry['css'][0]}"
-                    if str(entry.get('file', '')).endswith('.css'):
+                    if str(entry.get("file", "")).endswith(".css"):
                         return f"/static/dist/{entry['file']}"
                 # JS resolution
-                file_field = entry.get('file')
+                file_field = entry.get("file")
                 if file_field:
                     return f"/static/dist/{file_field}"
                 return None
@@ -604,26 +695,26 @@ else:
                 return fb
             # Generic fallbacks by common names
             mapping = {
-                'interactive.js': '/static/js/interactive-races.js',
-                'predictionButtons.js': '/static/js/prediction-buttons.js',
-                'monitoring.js': '/static/js/monitoring.js',
-                'mlDashboard.js': '/static/js/ml-dashboard.js',
-                'mlDashboardCompat.js': '/static/js/ml_dashboard.js',
-                'modelTraining.js': '/static/js/model-training.js',
-                'styles.css': '/static/css/main.css',
-                'app.js': '/static/js/main.js',
+                "interactive.js": "/static/js/interactive-races.js",
+                "predictionButtons.js": "/static/js/prediction-buttons.js",
+                "monitoring.js": "/static/js/monitoring.js",
+                "mlDashboard.js": "/static/js/ml-dashboard.js",
+                "mlDashboardCompat.js": "/static/js/ml_dashboard.js",
+                "modelTraining.js": "/static/js/model-training.js",
+                "styles.css": "/static/css/main.css",
+                "app.js": "/static/js/main.js",
             }
             return mapping.get(name_with_ext, f"/static/{name_with_ext}")
 
-        app.jinja_env.globals['asset_url'] = _asset_url
-        app.jinja_env.globals['css_bundle'] = lambda: _asset_url('styles.css')
-        app.jinja_env.globals['js_bundle'] = lambda: _asset_url('app.js')
+        app.jinja_env.globals["asset_url"] = _asset_url
+        app.jinja_env.globals["css_bundle"] = lambda: _asset_url("styles.css")
+        app.jinja_env.globals["js_bundle"] = lambda: _asset_url("app.js")
     except Exception:
         # As a last resort, ensure the original fallbacks exist
         try:
-            app.jinja_env.globals['asset_url'] = _fallback_asset_url
-            app.jinja_env.globals['css_bundle'] = lambda: "/static/css/main.css"
-            app.jinja_env.globals['js_bundle'] = lambda: "/static/js/main.js"
+            app.jinja_env.globals["asset_url"] = _fallback_asset_url
+            app.jinja_env.globals["css_bundle"] = lambda: "/static/css/main.css"
+            app.jinja_env.globals["js_bundle"] = lambda: "/static/js/main.js"
         except Exception:
             pass
 
@@ -637,9 +728,11 @@ os.makedirs("logs", exist_ok=True)
 # Initialize module monitoring snapshots at startup
 try:
     from utils import module_monitor as _module_monitor
+
     _module_monitor.log_startup_modules(extra={"app": "greyhound_dashboard"})
 except Exception:
     pass
+
 
 @app.before_request
 def before_request():
@@ -647,64 +740,81 @@ def before_request():
     # Log module delta at request start (captures any lazy imports before handler)
     try:
         from utils import module_monitor as _module_monitor
-        _module_monitor.log_request_modules(request.path, method=request.method, context="before_request")
+
+        _module_monitor.log_request_modules(
+            request.path, method=request.method, context="before_request"
+        )
     except Exception:
         pass
     if is_profiling():
         request.start_time = time.time()
         # Log the start of request processing
         with open(performance_log_file, "a") as f:
-            f.write(f"{datetime.now().isoformat()} - START - {request.method} {request.path} from {request.remote_addr}\n")
+            f.write(
+                f"{datetime.now().isoformat()} - START - {request.method} {request.path} from {request.remote_addr}\n"
+            )
+
 
 @app.after_request
 def after_request(response):
     """Track request completion time and log performance metrics, and inject essential assets for tests"""
     # Static file caching policy: set strong caching in production, disable in testing/debug
     try:
-        path = request.path or ''
-        if path.startswith('/static/'):
+        path = request.path or ""
+        if path.startswith("/static/"):
             # Tests toggle app.debug to simulate production vs. debug; honor that flag only.
             try:
-                dbg = bool(getattr(current_app, 'debug', False))
+                dbg = bool(getattr(current_app, "debug", False))
             except Exception:
-                dbg = bool(getattr(app, 'debug', False))
+                dbg = bool(getattr(app, "debug", False))
             if dbg:
                 # Avoid long-term caching in debug
-                response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                response.headers["Cache-Control"] = (
+                    "no-cache, no-store, must-revalidate"
+                )
             else:
                 # 1 year cache for static assets in production
-                response.headers['Cache-Control'] = 'public, max-age=31536000'
+                response.headers["Cache-Control"] = "public, max-age=31536000"
             return response
     except Exception:
         pass
     # Log module delta at request end (captures imports within handler)
     try:
         from utils import module_monitor as _module_monitor
-        _module_monitor.log_request_modules(request.path, method=request.method, context="after_request")
+
+        _module_monitor.log_request_modules(
+            request.path, method=request.method, context="after_request"
+        )
     except Exception:
         pass
-    if is_profiling() and hasattr(request, 'start_time'):
+    if is_profiling() and hasattr(request, "start_time"):
         duration = time.time() - request.start_time
-        endpoint = request.endpoint or 'unknown'
-        
+        endpoint = request.endpoint or "unknown"
+
         # Log performance metrics
         with open(performance_log_file, "a") as f:
-            f.write(f"{datetime.now().isoformat()} - END - {request.method} {request.path} - {response.status_code} - {duration*1000:.2f}ms\n")
-        
+            f.write(
+                f"{datetime.now().isoformat()} - END - {request.method} {request.path} - {response.status_code} - {duration*1000:.2f}ms\n"
+            )
+
         # Log slow requests (>500ms)
         if duration > 0.5:
-            logger.warning(f"Slow request detected: {request.method} {request.path} took {duration*1000:.2f}ms")
+            logger.warning(
+                f"Slow request detected: {request.method} {request.path} took {duration*1000:.2f}ms"
+            )
             with open(performance_log_file, "a") as f:
-                f.write(f"{datetime.now().isoformat()} - SLOW - {request.method} {request.path} - {duration*1000:.2f}ms\n")
+                f.write(
+                    f"{datetime.now().isoformat()} - SLOW - {request.method} {request.path} - {duration*1000:.2f}ms\n"
+                )
 
     # Inject essential CSS/JS for accessibility and navbar behavior if missing
     try:
-        ctype = response.headers.get('Content-Type', '')
+        ctype = response.headers.get("Content-Type", "")
         # Only modify regular HTML responses (not streams)
-        if 'text/html' in ctype and not getattr(response, 'direct_passthrough', False):
+        if "text/html" in ctype and not getattr(response, "direct_passthrough", False):
             # Never mutate error responses; let Flask render its own 4xx/5xx pages
             try:
-                status_code = int(getattr(response, 'status_code', 200) or 200)
+                status_code = int(getattr(response, "status_code", 200) or 200)
             except Exception:
                 status_code = 200
             if status_code >= 400:
@@ -714,33 +824,39 @@ def after_request(response):
             if isinstance(html, str):
                 # Ensure global stylesheet is included (respect Vite manifest build if present)
                 try:
-                    asset_func = app.jinja_env.globals.get('asset_url')
+                    asset_func = app.jinja_env.globals.get("asset_url")
                 except Exception:
                     asset_func = None
                 vite_styles = None
                 try:
                     if callable(asset_func):
-                        vite_styles = asset_func('styles.css')
+                        vite_styles = asset_func("styles.css")
                 except Exception:
                     vite_styles = None
                 has_styles = False
                 try:
-                    if '/static/css/style.css' in html:
+                    if "/static/css/style.css" in html:
                         has_styles = True
                     elif vite_styles and vite_styles in html:
                         has_styles = True
                 except Exception:
                     has_styles = False
                 if not has_styles:
-                    if '\u003c/head\u003e' in html:
+                    if "\u003c/head\u003e" in html:
                         # Fallback to unbundled stylesheet; Vite-built pages will include their own CSS
-                        html = html.replace('\u003c/head\u003e', '\n\u003clink rel="stylesheet" href="/static/css/style.css"\u003e\n\u003c/head\u003e')
+                        html = html.replace(
+                            "\u003c/head\u003e",
+                            '\n\u003clink rel="stylesheet" href="/static/css/style.css"\u003e\n\u003c/head\u003e',
+                        )
                 # Ensure accessibility helpers are included
-                if '/static/js/a11y.js' not in html:
-                    if '\u003c/body\u003e' in html:
-                        html = html.replace('\u003c/body\u003e', '\n\u003cscript src="/static/js/a11y.js"\u003e\u003c/script\u003e\n\u003c/body\u003e')
+                if "/static/js/a11y.js" not in html:
+                    if "\u003c/body\u003e" in html:
+                        html = html.replace(
+                            "\u003c/body\u003e",
+                            '\n\u003cscript src="/static/js/a11y.js"\u003e\u003c/script\u003e\n\u003c/body\u003e',
+                        )
                 # Ensure navbar expanded on larger screens for tests (adds 'show' to #navbarNav if width >= 992)
-                if '\u003c/body\u003e' in html and 'navbar-collapse' in html:
+                if "\u003c/body\u003e" in html and "navbar-collapse" in html:
                     const_snippet = (
                         "\n<script>(function(){\n"
                         "  function expandNavbar(){\n"
@@ -761,32 +877,40 @@ def after_request(response):
                         "  document.addEventListener('DOMContentLoaded', expandNavbar, { once: true });\n"
                         "})();</script>\n"
                     )
-                    html = html.replace('\u003c/body\u003e', const_snippet + '\n\u003c/body\u003e')
+                    html = html.replace(
+                        "\u003c/body\u003e", const_snippet + "\n\u003c/body\u003e"
+                    )
                 # Optional: hide advanced navbar dropdowns via DISABLE_NAV_DROPDOWNS=1
                 try:
                     # Re-evaluate env each request to support dynamic toggling in test/E2E environments
-                    env_flag = str(os.environ.get('DISABLE_NAV_DROPDOWNS', '0')).lower() in ('1', 'true', 'yes', 'on')
+                    env_flag = str(
+                        os.environ.get("DISABLE_NAV_DROPDOWNS", "0")
+                    ).lower() in ("1", "true", "yes", "on")
                     disable_flag = bool(DISABLE_NAV_DROPDOWNS) or env_flag
                     if disable_flag:
                         hide_css = (
-                            "<style id=\"disable-nav-dropdowns\">"
+                            '<style id="disable-nav-dropdowns">'
                             ".navbar .nav-item.dropdown, "
                             ".navbar .dropdown, "
                             ".navbar .dropdown-menu, "
                             ".navbar .nav-link.dropdown-toggle, "
                             ".navbar .dropdown-toggle, "
-                            ".navbar [data-bs-toggle=\\\"dropdown\\\"], "
+                            '.navbar [data-bs-toggle=\\"dropdown\\"], '
                             "#racesDropdown, #analysisDropdown, #aiMlDropdown, #systemDropdown, #helpDropdown { display: none !important; }"
                             "</style>"
                         )
-                        if '</head>' in html:
-                            html = html.replace('</head>', f"\n{hide_css}\n</head>")
-                        elif '<body' in html:
+                        if "</head>" in html:
+                            html = html.replace("</head>", f"\n{hide_css}\n</head>")
+                        elif "<body" in html:
                             try:
-                                _b = html.find('<body')
-                                _be = html.find('>', _b)
+                                _b = html.find("<body")
+                                _be = html.find(">", _b)
                                 if _b != -1 and _be != -1:
-                                    html = html[:_be+1] + f"\n{hide_css}\n" + html[_be+1:]
+                                    html = (
+                                        html[: _be + 1]
+                                        + f"\n{hide_css}\n"
+                                        + html[_be + 1 :]
+                                    )
                                 else:
                                     html = f"{hide_css}\n" + html
                             except Exception:
@@ -798,7 +922,11 @@ def after_request(response):
 
                 # Inject a lightweight TGR Process button on the scraping status page
                 try:
-                    if request.path in ('/scraping', '/scraping_status') and '\u003c/body\u003e' in html and 'id=\"btn-tgr-process\"' not in html:
+                    if (
+                        request.path in ("/scraping", "/scraping_status")
+                        and "\u003c/body\u003e" in html
+                        and 'id="btn-tgr-process"' not in html
+                    ):
                         tgr_btn = (
                             "\n<script>(function(){\n"
                             "  function ensureTgrUi(){\n"
@@ -827,7 +955,7 @@ def after_request(response):
                             "                var toast = document.createElement('div');\n"
                             "                toast.className='toast align-items-center text-bg-dark border-0 show';\n"
                             "                toast.role='alert'; toast.ariaLive='assertive'; toast.ariaAtomic='true';\n"
-                            "                toast.innerHTML='<div class=\"d-flex\"><div class=\"toast-body\">'+m+'</div><button type=\"button\" class=\"btn-close btn-close-white me-2 m-auto\" data-bs-dismiss=\"toast\" aria-label=\"Close\"></button></div>';\n"
+                            '                toast.innerHTML=\'<div class="d-flex"><div class="toast-body">\'+m+\'</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button></div>\';\n'
                             "                c.appendChild(toast);\n"
                             "                setTimeout(function(){ try{toast.remove();}catch(e){} }, 4000);\n"
                             "              });\n"
@@ -839,53 +967,69 @@ def after_request(response):
                             "  if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', ensureTgrUi, {once:true}); } else { ensureTgrUi(); }\n"
                             "})();</script>\n"
                         )
-                        html = html.replace('\u003c/body\u003e', tgr_btn + '\n\u003c/body\u003e')
+                        html = html.replace(
+                            "\u003c/body\u003e", tgr_btn + "\n\u003c/body\u003e"
+                        )
                 except Exception:
                     pass
 
                 # Cache-bust key static assets by appending ?v=ASSET_VERSION when missing
                 try:
                     assets_to_bust = [
-                        '/static/js/interactive-races.js',
-                        '/static/js/prediction-buttons.js',
-                        '/static/js/main.js',
-                        '/static/css/style.css',
-                        '/static/css/main.css',
+                        "/static/js/interactive-races.js",
+                        "/static/js/prediction-buttons.js",
+                        "/static/js/main.js",
+                        "/static/css/style.css",
+                        "/static/css/main.css",
                     ]
                     for path in assets_to_bust:
-                        if path in html and (path + '?v=') not in html:
+                        if path in html and (path + "?v=") not in html:
                             html = html.replace(path, f"{path}?v={ASSET_VERSION}")
                 except Exception:
                     pass
 
                 # Rewrite missing Vite CSS to safe fallback when dist assets are not built
                 try:
-                    if '/static/dist/styles.css' in html:
+                    if "/static/dist/styles.css" in html:
                         # Prefer replacement; if that somehow fails to take effect in the final HTML,
                         # also ensure a fallback link is injected before </head>
-                        html = html.replace('/static/dist/styles.css', f"/static/css/style.css?v={ASSET_VERSION}")
-                        if '</head>' in html and '/static/css/style.css' not in html:
-                            html = html.replace('</head>', f"\n<link rel=\"stylesheet\" href=\"/static/css/style.css?v={ASSET_VERSION}\">\n</head>")
+                        html = html.replace(
+                            "/static/dist/styles.css",
+                            f"/static/css/style.css?v={ASSET_VERSION}",
+                        )
+                        if "</head>" in html and "/static/css/style.css" not in html:
+                            html = html.replace(
+                                "</head>",
+                                f'\n<link rel="stylesheet" href="/static/css/style.css?v={ASSET_VERSION}">\n</head>',
+                            )
                 except Exception:
                     pass
 
                 # Ensure required interactive scripts are present on key pages (inject if missing)
                 try:
+
                     def _inject_script_once(script_path):
                         nonlocal html
                         # Avoid duplicate injections (with or without version query)
                         if (script_path in html) or (f"{script_path}?v=" in html):
                             return
                         vpath = f"{script_path}?v={ASSET_VERSION}"
-                        if '</body>' in html:
-                            html = html.replace('</body>', f"\n<script src=\"{vpath}\" defer></script>\n</body>")
-                        elif '</head>' in html:
-                            html = html.replace('</head>', f"\n<script src=\"{vpath}\" defer></script>\n</head>")
+                        if "</body>" in html:
+                            html = html.replace(
+                                "</body>",
+                                f'\n<script src="{vpath}" defer></script>\n</body>',
+                            )
+                        elif "</head>" in html:
+                            html = html.replace(
+                                "</head>",
+                                f'\n<script src="{vpath}" defer></script>\n</head>',
+                            )
                         else:
-                            html = f"{html}\n<script src=\"{vpath}\" defer></script>"
+                            html = f'{html}\n<script src="{vpath}" defer></script>'
+
                     # Resolve Vite-built equivalents so we don't inject duplicates when bundled scripts are present
                     try:
-                        asset_func = app.jinja_env.globals.get('asset_url')
+                        asset_func = app.jinja_env.globals.get("asset_url")
                     except Exception:
                         asset_func = None
                     vite_pred_btn = None
@@ -893,60 +1037,80 @@ def after_request(response):
                     vite_ml_dash = None
                     try:
                         if callable(asset_func):
-                            vite_pred_btn = asset_func('predictionButtons.js')
-                            vite_interactive = asset_func('interactive.js')
-                            vite_ml_dash = asset_func('mlDashboard.js')
+                            vite_pred_btn = asset_func("predictionButtons.js")
+                            vite_interactive = asset_func("interactive.js")
+                            vite_ml_dash = asset_func("mlDashboard.js")
                     except Exception:
                         pass
                     # Pages that need interactive races UI and buttons
-                    if request.path in ('/upcoming', '/races', '/predictions', '/interactive-races', '/interactive_races'):
+                    if request.path in (
+                        "/upcoming",
+                        "/races",
+                        "/predictions",
+                        "/interactive-races",
+                        "/interactive_races",
+                    ):
                         # Only inject fallback if neither the fallback script nor the Vite bundle is present
-                        if not ((vite_pred_btn and vite_pred_btn in html) or '/static/js/prediction-buttons.js' in html):
-                            _inject_script_once('/static/js/prediction-buttons.js')
-                        if not ((vite_interactive and vite_interactive in html) or '/static/js/interactive-races.js' in html):
-                            _inject_script_once('/static/js/interactive-races.js')
+                        if not (
+                            (vite_pred_btn and vite_pred_btn in html)
+                            or "/static/js/prediction-buttons.js" in html
+                        ):
+                            _inject_script_once("/static/js/prediction-buttons.js")
+                        if not (
+                            (vite_interactive and vite_interactive in html)
+                            or "/static/js/interactive-races.js" in html
+                        ):
+                            _inject_script_once("/static/js/interactive-races.js")
                     # Ensure ML Dashboard gets its script if not included
-                    if request.path in ('/ml-dashboard', '/ml_dashboard'):
-                        if not ((vite_ml_dash and vite_ml_dash in html) or '/static/js/ml_dashboard.js' in html):
-                            _inject_script_once('/static/js/ml_dashboard.js')
+                    if request.path in ("/ml-dashboard", "/ml_dashboard"):
+                        if not (
+                            (vite_ml_dash and vite_ml_dash in html)
+                            or "/static/js/ml_dashboard.js" in html
+                        ):
+                            _inject_script_once("/static/js/ml_dashboard.js")
                     # Ensure ML Training page gets its script if not included
-                    if request.path in ('/ml-training', '/ml_training_simple'):
-                        if '/static/js/model-training.js' not in html:
-                            _inject_script_once('/static/js/model-training.js')
+                    if request.path in ("/ml-training", "/ml_training_simple"):
+                        if "/static/js/model-training.js" not in html:
+                            _inject_script_once("/static/js/model-training.js")
                     # Inject endpoints dropdowns script and flag only when enabled
                 except Exception:
                     pass
 
-
                 # Inject a small mode/flags banner (once per page)
                 try:
+
                     def _truthy_flag(val) -> bool:
                         try:
                             if isinstance(val, bool):
                                 return val
                             s = str(val).strip().lower()
-                            return s in ('1', 'true', 'yes', 'on')
+                            return s in ("1", "true", "yes", "on")
                         except Exception:
                             return False
-                    mode_val = str(app.config.get('PREDICTION_IMPORT_MODE', 'unknown'))
-                    live_val = _truthy_flag(app.config.get('ENABLE_LIVE_SCRAPING'))
-                    scrapers_val = _truthy_flag(app.config.get('ENABLE_RESULTS_SCRAPERS'))
-                    testing_val = _truthy_flag(app.config.get('TESTING')) or _truthy_flag(os.environ.get('TESTING'))
+
+                    mode_val = str(app.config.get("PREDICTION_IMPORT_MODE", "unknown"))
+                    live_val = _truthy_flag(app.config.get("ENABLE_LIVE_SCRAPING"))
+                    scrapers_val = _truthy_flag(
+                        app.config.get("ENABLE_RESULTS_SCRAPERS")
+                    )
+                    testing_val = _truthy_flag(
+                        app.config.get("TESTING")
+                    ) or _truthy_flag(os.environ.get("TESTING"))
                     flags = {
-                        'mode': mode_val,
-                        'live': 'ON' if live_val else 'OFF',
-                        'scrapers': 'ON' if scrapers_val else 'OFF',
-                        'testing': 'ON' if testing_val else 'OFF',
+                        "mode": mode_val,
+                        "live": "ON" if live_val else "OFF",
+                        "scrapers": "ON" if scrapers_val else "OFF",
+                        "testing": "ON" if testing_val else "OFF",
                     }
-                    if 'id=\"mode-banner\"' not in html:
+                    if 'id="mode-banner"' not in html:
                         banner = (
-                            "\n<div id=\"mode-banner\" style=\"position:fixed; bottom:12px; right:12px; z-index:1040; font-size:12px; background:rgba(0,0,0,0.70); color:#fff; padding:6px 10px; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.25);\">"
+                            '\n<div id="mode-banner" style="position:fixed; bottom:12px; right:12px; z-index:1040; font-size:12px; background:rgba(0,0,0,0.70); color:#fff; padding:6px 10px; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.25);">'
                             f"<span title=\"Runtime mode and feature flags\">Mode: {flags['mode']} | Live: {flags['live']} | Scrapers: {flags['scrapers']} | Testing: {flags['testing']}</span> "
-                            "<button type=\"button\" aria-label=\"Close\" style=\"border:none; background:transparent; color:#fff; margin-left:8px; font-size:14px; cursor:pointer;\" onclick=\"this.parentNode.remove()\">&times;</button>"
+                            '<button type="button" aria-label="Close" style="border:none; background:transparent; color:#fff; margin-left:8px; font-size:14px; cursor:pointer;" onclick="this.parentNode.remove()">&times;</button>'
                             "</div>\n"
                         )
-                        if '</body>' in html:
-                            html = html.replace('</body>', banner + '</body>')
+                        if "</body>" in html:
+                            html = html.replace("</body>", banner + "</body>")
                         else:
                             # Fallback: append if </body> is not found
                             html = html + banner
@@ -959,8 +1123,9 @@ def after_request(response):
     except Exception as _inj_err:
         # Non-fatal; continue with original response
         pass
-    
+
     return response
+
 
 # Register model training API blueprint if available
 if MODEL_TRAINING_API_AVAILABLE and model_training_bp:
@@ -982,16 +1147,16 @@ CORS(
 compress = Compress()
 # Ensure gzip is the preferred/only algorithm for compatibility across tests
 try:
-    app.config.setdefault('COMPRESS_ALGORITHM', 'gzip')
-    app.config.setdefault('COMPRESS_BR', False)
+    app.config.setdefault("COMPRESS_ALGORITHM", "gzip")
+    app.config.setdefault("COMPRESS_BR", False)
 except Exception:
     pass
 compress.init_app(app)
 # Ensure extension is registered for tests that check app.extensions
 try:
-    if not getattr(app, 'extensions', None):
+    if not getattr(app, "extensions", None):
         app.extensions = {}
-    app.extensions.setdefault('compress', compress)
+    app.extensions.setdefault("compress", compress)
 except Exception:
     pass
 
@@ -1000,6 +1165,7 @@ except Exception:
 # -------------------------------------------------------
 import queue
 import uuid
+
 from flask import stream_with_context
 
 diag_jobs = {}
@@ -1051,12 +1217,14 @@ def _spawn_diagnostics_process(job_id: str, max_races: int | None = None) -> int
         env["V4_DIAG_AUTOPROMOTE"] = "1"
     f = open(log_path, "a", buffering=1, encoding="utf-8")
     p = subprocess.Popen(cmd, stdout=f, stderr=subprocess.STDOUT, env=env)
-    diag_jobs[job_id].update({
-        "pid": p.pid,
-        "log_path": str(log_path),
-        "status": "running",
-        "started_at": datetime.now().isoformat(),
-    })
+    diag_jobs[job_id].update(
+        {
+            "pid": p.pid,
+            "log_path": str(log_path),
+            "status": "running",
+            "started_at": datetime.now().isoformat(),
+        }
+    )
     return p.pid
 
 
@@ -1068,17 +1236,17 @@ def _process_alive(pid: int) -> bool:
         return False
 
 
-@app.route('/api/diagnostics/run', methods=['POST'])
+@app.route("/api/diagnostics/run", methods=["POST"])
 def api_run_diagnostics():
     try:
         data = request.get_json(silent=True) or {}
-        max_races = data.get('max_races')
-        models = data.get('models')
-        calibrations = data.get('calibrations')
-        tune = data.get('tune')
-        tune_iter = data.get('tune_iter')
-        tune_cv = data.get('tune_cv')
-        auto_promote = data.get('auto_promote', True)
+        max_races = data.get("max_races")
+        models = data.get("models")
+        calibrations = data.get("calibrations")
+        tune = data.get("tune")
+        tune_iter = data.get("tune_iter")
+        tune_cv = data.get("tune_cv")
+        auto_promote = data.get("auto_promote", True)
         try:
             if max_races is not None:
                 max_races = int(max_races)
@@ -1097,15 +1265,32 @@ def api_run_diagnostics():
             "error": None,
             "pid": None,
             "log_path": str(DIAG_LOG_DIR / f"{job_id}.log"),
-            "params": {"max_races": max_races, "models": models, "calibrations": calibrations, "tune": tune, "tune_iter": tune_iter, "tune_cv": tune_cv, "auto_promote": auto_promote},
+            "params": {
+                "max_races": max_races,
+                "models": models,
+                "calibrations": calibrations,
+                "tune": tune,
+                "tune_iter": tune_iter,
+                "tune_cv": tune_cv,
+                "auto_promote": auto_promote,
+            },
         }
         _spawn_diagnostics_process(job_id, max_races)
-        return jsonify({"success": True, "job_id": job_id, "log_path": diag_jobs[job_id]["log_path"]}), 200
+        return (
+            jsonify(
+                {
+                    "success": True,
+                    "job_id": job_id,
+                    "log_path": diag_jobs[job_id]["log_path"],
+                }
+            ),
+            200,
+        )
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route('/api/jobs/<job_id>/status', methods=['GET'])
+@app.route("/api/jobs/<job_id>/status", methods=["GET"])
 def api_job_status(job_id):
     try:
         job = diag_jobs.get(job_id)
@@ -1123,7 +1308,7 @@ def api_job_status(job_id):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route('/api/jobs/<job_id>/logs/stream')
+@app.route("/api/jobs/<job_id>/logs/stream")
 def api_job_logs_stream(job_id):
     try:
         job = diag_jobs.get(job_id)
@@ -1137,7 +1322,7 @@ def api_job_logs_stream(job_id):
 
         def event_stream():
             try:
-                with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
+                with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
                     # Start from current end
                     f.seek(0, os.SEEK_END)
                     while True:
@@ -1152,45 +1337,54 @@ def api_job_logs_stream(job_id):
                             if pid and not _process_alive(pid):
                                 # Flush last chunk, then end
                                 # Send a completed marker
-                                yield "event: completed\n" + f"data: {{\"job_id\": \"{job_id}\"}}\n\n"
+                                yield "event: completed\n" + f'data: {{"job_id": "{job_id}"}}\n\n'
                                 break
             except GeneratorExit:
                 return
             except Exception as e:
                 yield f"event: error\ndata: {str(e)}\n\n"
-        headers = {"Content-Type": "text/event-stream", "Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+
+        headers = {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        }
         return Response(stream_with_context(event_stream()), headers=headers)
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route('/api/diagnostics/summary', methods=['GET'])
+@app.route("/api/diagnostics/summary", methods=["GET"])
 def api_diagnostics_summary():
     try:
         if not diag_jobs:
             return jsonify({"success": True, "exists": False, "status": "idle"}), 200
-        latest = sorted(diag_jobs.values(), key=lambda j: j.get("created_at", ""), reverse=True)[0]
+        latest = sorted(
+            diag_jobs.values(), key=lambda j: j.get("created_at", ""), reverse=True
+        )[0]
         job = dict(latest)
         pid = job.get("pid")
         if pid and _process_alive(pid):
             job_status = "running"
         else:
             job_status = job.get("status") or "completed"
-        return jsonify({
-            "success": True,
-            "exists": True,
-            "job_id": job.get("id"),
-            "status": job_status,
-            "stage": job.get("stage"),
-            "created_at": job.get("created_at"),
-            "started_at": job.get("started_at"),
-            "completed_at": job.get("completed_at"),
-        })
+        return jsonify(
+            {
+                "success": True,
+                "exists": True,
+                "job_id": job.get("id"),
+                "status": job_status,
+                "stage": job.get("stage"),
+                "created_at": job.get("created_at"),
+                "started_at": job.get("started_at"),
+                "completed_at": job.get("completed_at"),
+            }
+        )
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route('/api/diagnostics/last_promotion', methods=['GET'])
+@app.route("/api/diagnostics/last_promotion", methods=["GET"])
 def api_diagnostics_last_promotion():
     """Return the most recent model promotion audit entry from logs/system_log.jsonl.
     Response schema:
@@ -1202,7 +1396,7 @@ def api_diagnostics_last_promotion():
             return jsonify({"success": True, "found": False}), 200
         last = None
         # Read all lines (file is expected to be modest in size; adjust if grows)
-        with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
+        with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
             lines = f.readlines()
         # Walk backwards to find last promotion event
         for line in reversed(lines):
@@ -1215,22 +1409,37 @@ def api_diagnostics_last_promotion():
                 continue
             if not isinstance(entry, dict):
                 continue
-            if entry.get('module') == 'model_promotion' and entry.get('event') in ('model_promoted', 'model_promotion_failed'):
-                details = entry.get('details', {}) or {}
+            if entry.get("module") == "model_promotion" and entry.get("event") in (
+                "model_promoted",
+                "model_promotion_failed",
+            ):
+                details = entry.get("details", {}) or {}
                 # Flatten commonly used metrics for convenience (still keep full details)
-                brier = details.get('brier_score') or (details.get('metrics', {}) if isinstance(details.get('metrics'), dict) else {}).get('brier_score')
-                rel_slope = details.get('reliability_slope') or (details.get('metrics', {}) if isinstance(details.get('metrics'), dict) else {}).get('reliability_slope')
-                artifact_path = details.get('artifact_path') or details.get('model_artifact_path') or details.get('artifact')
+                brier = details.get("brier_score") or (
+                    details.get("metrics", {})
+                    if isinstance(details.get("metrics"), dict)
+                    else {}
+                ).get("brier_score")
+                rel_slope = details.get("reliability_slope") or (
+                    details.get("metrics", {})
+                    if isinstance(details.get("metrics"), dict)
+                    else {}
+                ).get("reliability_slope")
+                artifact_path = (
+                    details.get("artifact_path")
+                    or details.get("model_artifact_path")
+                    or details.get("artifact")
+                )
                 last = {
-                    'timestamp': entry.get('timestamp'),
-                    'event': entry.get('event'),
-                    'success': entry.get('event') == 'model_promoted',
-                    'severity': entry.get('severity'),
-                    'message': entry.get('message'),
-                    'details': details,
-                    'brier_score': brier,
-                    'reliability_slope': rel_slope,
-                    'artifact_path': artifact_path,
+                    "timestamp": entry.get("timestamp"),
+                    "event": entry.get("event"),
+                    "success": entry.get("event") == "model_promoted",
+                    "severity": entry.get("severity"),
+                    "message": entry.get("message"),
+                    "details": details,
+                    "brier_score": brier,
+                    "reliability_slope": rel_slope,
+                    "artifact_path": artifact_path,
                 }
                 break
         if last is None:
@@ -1239,25 +1448,31 @@ def api_diagnostics_last_promotion():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+
 # Alias endpoint for clients expecting a status path
-@app.route('/api/diagnostics/last_promotion/status', methods=['GET'])
+@app.route("/api/diagnostics/last_promotion/status", methods=["GET"])
 def api_diagnostics_last_promotion_status():
     try:
         return api_diagnostics_last_promotion()
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+
 # Flask-Compress already initialized earlier after app configuration
 
+
 # Model health endpoint
-@app.route('/api/model_health', methods=['GET'])
+@app.route("/api/model_health", methods=["GET"])
 def api_model_health():
     try:
-        from flask import jsonify
         import sys as _sys
+
+        from flask import jsonify
+
         try:
             import sklearn as _sk
-            sklearn_version = getattr(_sk, '__version__', None)
+
+            sklearn_version = getattr(_sk, "__version__", None)
         except Exception:
             sklearn_version = None
 
@@ -1273,89 +1488,119 @@ def api_model_health():
                 system = sys_obj
         # If system couldn't be created quickly, return a degraded status instead of hanging
         if system is None:
-            return jsonify({
-                'ready': False,
-                'status': 'degraded',
-                'degraded': True,
-                'error': 'timeout or unavailable',
-                'sklearn_version': sklearn_version,
-                'python_version': _sys.version.split('\n')[0],
-            }), 200
+            return (
+                jsonify(
+                    {
+                        "ready": False,
+                        "status": "degraded",
+                        "degraded": True,
+                        "error": "timeout or unavailable",
+                        "sklearn_version": sklearn_version,
+                        "python_version": _sys.version.split("\n")[0],
+                    }
+                ),
+                200,
+            )
 
         info = system.model_info or {}
-        source = info.get('source', 'disk' if getattr(system, 'calibrated_pipeline', None) is not None else 'mock')
-        feature_count = len(getattr(system, 'feature_columns', []) or [])
-        model_type = info.get('model_type', 'unknown')
-        trained_at = info.get('trained_at')
-        artifact_path = info.get('artifact_path') or info.get('model_path')
-        model_id = info.get('model_id')
+        source = info.get(
+            "source",
+            (
+                "disk"
+                if getattr(system, "calibrated_pipeline", None) is not None
+                else "mock"
+            ),
+        )
+        feature_count = len(getattr(system, "feature_columns", []) or [])
+        model_type = info.get("model_type", "unknown")
+        trained_at = info.get("trained_at")
+        artifact_path = info.get("artifact_path") or info.get("model_path")
+        model_id = info.get("model_id")
 
         registry_best_id = None
         try:
             from model_registry import get_model_registry
+
             reg = get_model_registry()
-            ok, best, _ = call_with_timeout(reg.get_best_model, timeout=1.0, default=None)
+            ok, best, _ = call_with_timeout(
+                reg.get_best_model, timeout=1.0, default=None
+            )
             if ok and best is not None:
                 _, _, md = best
-                registry_best_id = getattr(md, 'model_id', None)
+                registry_best_id = getattr(md, "model_id", None)
         except Exception:
             pass
 
-        ready_flag = bool(getattr(system, 'calibrated_pipeline', None) is not None)
+        ready_flag = bool(getattr(system, "calibrated_pipeline", None) is not None)
         payload = {
-            'ready': ready_flag,
-            'status': 'healthy' if ready_flag else 'degraded',
-            'source': source,
-            'model_type': model_type,
-            'trained_at': trained_at,
-            'feature_count': feature_count,
-            'registry_best_id': registry_best_id,
-            'artifact_path': artifact_path,
-            'sklearn_version': sklearn_version,
-            'python_version': _sys.version.split('\n')[0],
-            'model_id': model_id,
+            "ready": ready_flag,
+            "status": "healthy" if ready_flag else "degraded",
+            "source": source,
+            "model_type": model_type,
+            "trained_at": trained_at,
+            "feature_count": feature_count,
+            "registry_best_id": registry_best_id,
+            "artifact_path": artifact_path,
+            "sklearn_version": sklearn_version,
+            "python_version": _sys.version.split("\n")[0],
+            "model_id": model_id,
         }
         return jsonify(payload), 200
     except Exception as e:
         try:
             from flask import jsonify
-            return jsonify({'ready': False, 'status': 'degraded', 'error': str(e)}), 200
-        except Exception:
-            return ('{"ready": false, "status": "degraded", "error": "unavailable"}', 200, {'Content-Type': 'application/json'})
 
-@app.route('/api/optimizer/status', methods=['GET'])
+            return jsonify({"ready": False, "status": "degraded", "error": str(e)}), 200
+        except Exception:
+            return (
+                '{"ready": false, "status": "degraded", "error": "unavailable"}',
+                200,
+                {"Content-Type": "application/json"},
+            )
+
+
+@app.route("/api/optimizer/status", methods=["GET"])
 def api_optimizer_status():
     """Report optimizer ensemble mode and last-used model IDs if available."""
     try:
         from flask import jsonify
+
         ensemble_mode = None
         last_prediction = None
         last_race_id = None
         service_available = False
         try:
             svc = enhanced_prediction_service
-            service_available = bool(svc) and (getattr(svc, 'is_available', lambda: False)() if svc else False)
-            if svc and getattr(svc, 'ml_system', None) and getattr(svc.ml_system, 'accuracy_optimizer', None):
+            service_available = bool(svc) and (
+                getattr(svc, "is_available", lambda: False)() if svc else False
+            )
+            if (
+                svc
+                and getattr(svc, "ml_system", None)
+                and getattr(svc.ml_system, "accuracy_optimizer", None)
+            ):
                 ao = svc.ml_system.accuracy_optimizer
                 try:
-                    ensemble_mode = (ao.config or {}).get('ensemble_mode')
+                    ensemble_mode = (ao.config or {}).get("ensemble_mode")
                 except Exception:
                     ensemble_mode = None
                 # find the most recent entry by timestamp
-                perf = getattr(ao, 'performance_tracker', {}) or {}
+                perf = getattr(ao, "performance_tracker", {}) or {}
                 if perf:
+
                     def _parse_ts(v):
                         try:
-                            return datetime.fromisoformat(v.get('timestamp'))
+                            return datetime.fromisoformat(v.get("timestamp"))
                         except Exception:
                             return datetime.min
+
                     items = list(perf.items())
                     rid, log = max(items, key=lambda it: _parse_ts(it[1]))
                     last_race_id = rid
                     last_prediction = {
-                        'predictions_count': log.get('predictions_count'),
-                        'ensemble_models': log.get('ensemble_models'),
-                        'model_ids_used': log.get('model_ids_used')
+                        "predictions_count": log.get("predictions_count"),
+                        "ensemble_models": log.get("ensemble_models"),
+                        "model_ids_used": log.get("model_ids_used"),
                     }
         except Exception:
             pass
@@ -1366,83 +1611,110 @@ def api_optimizer_status():
             best = reg.get_best_model()
             if best is not None:
                 _, _, md = best
-                registry_best_id = getattr(md, 'model_id', None)
+                registry_best_id = getattr(md, "model_id", None)
         except Exception:
             pass
 
-        return jsonify({
-            'success': True,
-            'service_available': bool(service_available),
-            'ensemble_mode': ensemble_mode or 'unknown',
-            'registry_best_id': registry_best_id,
-            'last_prediction': {
-                'race_id': last_race_id,
-                **(last_prediction or {})
-            },
-            'timestamp': datetime.now().isoformat()
-        }), 200
+        return (
+            jsonify(
+                {
+                    "success": True,
+                    "service_available": bool(service_available),
+                    "ensemble_mode": ensemble_mode or "unknown",
+                    "registry_best_id": registry_best_id,
+                    "last_prediction": {
+                        "race_id": last_race_id,
+                        **(last_prediction or {}),
+                    },
+                    "timestamp": datetime.now().isoformat(),
+                }
+            ),
+            200,
+        )
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 200
+        return jsonify({"success": False, "error": str(e)}), 200
 
 
 # Server port information endpoint
-@app.route('/api/server-port', methods=['GET'])
+@app.route("/api/server-port", methods=["GET"])
 def api_server_port():
     """Return the current server port information as JSON.
-    
+
     Returns:
         JSON response with server port information including the port number,
         timestamp, and basic server status.
     """
     try:
         global CURRENT_SERVER_PORT
-        return jsonify({
-            'success': True,
-            'port': CURRENT_SERVER_PORT,
-            'default_port': DEFAULT_PORT,
-            'timestamp': datetime.now().isoformat(),
-            'status': 'running'
-        }), 200
+        return (
+            jsonify(
+                {
+                    "success": True,
+                    "port": CURRENT_SERVER_PORT,
+                    "default_port": DEFAULT_PORT,
+                    "timestamp": datetime.now().isoformat(),
+                    "status": "running",
+                }
+            ),
+            200,
+        )
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e),
-            'timestamp': datetime.now().isoformat()
-        }), 500
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat(),
+                }
+            ),
+            500,
+        )
+
 
 # Simple HTML view for model health
-@app.route('/model_health', methods=['GET'])
+@app.route("/model_health", methods=["GET"])
 def view_model_health():
     try:
         # Reuse the same data from the API handler to keep logic in one place
         from flask import request
         from werkzeug.test import EnvironBuilder
+
         # Call the API function directly to get the payload
         resp = api_model_health()
         # Flask view functions may return (response, status), handle both
         if isinstance(resp, tuple) and len(resp) >= 1:
-            data = resp[0].json if hasattr(resp[0], 'json') else None
+            data = resp[0].json if hasattr(resp[0], "json") else None
         else:
-            data = resp.json if hasattr(resp, 'json') else None
-        return render_template('model_health.html', health=data or {})
+            data = resp.json if hasattr(resp, "json") else None
+        return render_template("model_health.html", health=data or {})
     except Exception as e:
-        return render_template('model_health.html', health={'ready': False, 'error': str(e)})
+        return render_template(
+            "model_health.html", health={"ready": False, "error": str(e)}
+        )
 
 
 # Configuration (centralized paths)
-from config.paths import DATA_DIR, UPCOMING_RACES_DIR, ARCHIVE_DIR, DOWNLOADS_WATCH_DIR
+from config.paths import ARCHIVE_DIR, DATA_DIR, DOWNLOADS_WATCH_DIR, UPCOMING_RACES_DIR
 
 # Optionally start the Downloads watcher for manual browser-initiated flow (after paths are loaded)
 try:
-    from utils.download_watcher import start_download_watcher  # soft dependency now lazy-imports watchdog
+    from utils.download_watcher import (
+        start_download_watcher,  # soft dependency now lazy-imports watchdog
+    )
 except Exception:
     start_download_watcher = None
 
 if start_download_watcher is not None:
     try:
         # In prediction_only mode, default is OFF unless explicitly enabled
-        default_watch_downloads = '0' if PREDICTION_IMPORT_MODE == 'prediction_only' else '1'
-        if os.environ.get('WATCH_DOWNLOADS', default_watch_downloads) not in ('0', 'false', 'False') and ingest_form_guide_csv is not None:
+        default_watch_downloads = (
+            "0" if PREDICTION_IMPORT_MODE == "prediction_only" else "1"
+        )
+        if (
+            os.environ.get("WATCH_DOWNLOADS", default_watch_downloads)
+            not in ("0", "false", "False")
+            and ingest_form_guide_csv is not None
+        ):
             # Hook on_csv_ready to use unified ingestion and UI event emission
             def _on_csv_ready(p: Path):
                 try:
@@ -1451,11 +1723,16 @@ if start_download_watcher is not None:
                     # Fallback: treat as upcoming race_data CSV and publish directly
                     try:
                         from ingestion import ingest_race_csv as rc
+
                         src = Path(p)
                         dialect, headers = rc.sniff_dialect_and_headers(src)
-                        meta = rc.extract_meta_from_csv(src, dialect) or rc.extract_meta_from_filename(src)
+                        meta = rc.extract_meta_from_csv(
+                            src, dialect
+                        ) or rc.extract_meta_from_filename(src)
                         dest_name = rc.build_canonical_name(meta) if meta else src.name
-                        published_path = rc.publish_to_upcoming(src, UPCOMING_RACES_DIR, dest_name)
+                        published_path = rc.publish_to_upcoming(
+                            src, UPCOMING_RACES_DIR, dest_name
+                        )
                     except Exception as e_fb:
                         emit_ui_event(
                             event_type="ingestion_failed_auto",
@@ -1480,9 +1757,11 @@ if start_download_watcher is not None:
                 # After successful publish, move source to archive
                 try:
                     from utils.download_watcher import archive_processed_source
+
                     archive_processed_source(p)
                 except Exception:
                     pass
+
             start_download_watcher(DOWNLOADS_WATCH_DIR, _on_csv_ready)
             print("✅ Downloads watcher started")
         else:
@@ -1492,15 +1771,24 @@ if start_download_watcher is not None:
 
 # Start a watcher on UPCOMING_RACES_DIR to auto-refresh UI when new CSVs arrive
 try:
-    from utils.upcoming_watcher import start_upcoming_watcher  # soft dependency now lazy-imports watchdog
+    from utils.upcoming_watcher import (
+        start_upcoming_watcher,  # soft dependency now lazy-imports watchdog
+    )
 except Exception:
     start_upcoming_watcher = None
 
 if start_upcoming_watcher is not None:
     try:
         # In prediction_only mode, default is OFF unless explicitly enabled
-        default_watch_upcoming = '0' if PREDICTION_IMPORT_MODE == 'prediction_only' else '1'
-        if os.environ.get('WATCH_UPCOMING', default_watch_upcoming) not in ('0', 'false', 'False'):
+        default_watch_upcoming = (
+            "0" if PREDICTION_IMPORT_MODE == "prediction_only" else "1"
+        )
+        if os.environ.get("WATCH_UPCOMING", default_watch_upcoming) not in (
+            "0",
+            "false",
+            "False",
+        ):
+
             def _on_upcoming_change(paths):
                 # Clear cache so /api/upcoming_races endpoints re-index on next request
                 try:
@@ -1520,8 +1808,11 @@ if start_upcoming_watcher is not None:
                     )
                 except Exception:
                     pass
+
             # Debounce to avoid multiple refreshes for a batch
-            start_upcoming_watcher(UPCOMING_RACES_DIR, _on_upcoming_change, debounce_seconds=1.0)
+            start_upcoming_watcher(
+                UPCOMING_RACES_DIR, _on_upcoming_change, debounce_seconds=1.0
+            )
             print("✅ Upcoming races watcher started")
         else:
             print("ℹ️ Upcoming races watcher disabled via WATCH_UPCOMING=0")
@@ -1530,28 +1821,51 @@ if start_upcoming_watcher is not None:
 
 # Import database routing utilities
 try:
-    from scripts.db_utils import get_analytics_db_path, get_staging_db_path, open_sqlite_readonly, open_sqlite_writable
+    from scripts.db_utils import (
+        get_analytics_db_path,
+        get_staging_db_path,
+        open_sqlite_readonly,
+        open_sqlite_writable,
+    )
+
     DB_ROUTING_AVAILABLE = True
     print("🚀 Database routing system available")
 except ImportError as e:
     print(f"⚠️ Database routing system not available: {e}")
     DB_ROUTING_AVAILABLE = False
+
     # Fallback functions
     def get_analytics_db_path():
-        return str(app.config.get('DATABASE_PATH') or os.environ.get('DATABASE_PATH') or "greyhound_racing_data.db")
+        return str(
+            app.config.get("DATABASE_PATH")
+            or os.environ.get("DATABASE_PATH")
+            or "greyhound_racing_data.db"
+        )
+
     def get_staging_db_path():
-        return str(app.config.get('DATABASE_PATH') or os.environ.get('DATABASE_PATH') or "greyhound_racing_data.db")
+        return str(
+            app.config.get("DATABASE_PATH")
+            or os.environ.get("DATABASE_PATH")
+            or "greyhound_racing_data.db"
+        )
+
     def open_sqlite_readonly(db_path=None):
         import sqlite3
+
         path = db_path or get_analytics_db_path()
         return sqlite3.connect(path)
+
     def open_sqlite_writable(db_path=None):
         import sqlite3
+
         path = db_path or get_staging_db_path()
         return sqlite3.connect(path)
 
+
 # Resolve database paths using the new routing system
-DATABASE_PATH = get_analytics_db_path()  # Default to analytics for backward compatibility
+DATABASE_PATH = (
+    get_analytics_db_path()
+)  # Default to analytics for backward compatibility
 STAGING_DATABASE_PATH = get_staging_db_path()
 ANALYTICS_DATABASE_PATH = get_analytics_db_path()
 
@@ -1566,9 +1880,11 @@ for db_path in [DATABASE_PATH, STAGING_DATABASE_PATH, ANALYTICS_DATABASE_PATH]:
 
 # Set environment variables for subprocess compatibility
 try:
-    os.environ.setdefault('GREYHOUND_DB_PATH', str(Path(DATABASE_PATH).resolve()))
-    os.environ.setdefault('STAGING_DB_PATH', str(Path(STAGING_DATABASE_PATH).resolve()))
-    os.environ.setdefault('ANALYTICS_DB_PATH', str(Path(ANALYTICS_DATABASE_PATH).resolve()))
+    os.environ.setdefault("GREYHOUND_DB_PATH", str(Path(DATABASE_PATH).resolve()))
+    os.environ.setdefault("STAGING_DB_PATH", str(Path(STAGING_DATABASE_PATH).resolve()))
+    os.environ.setdefault(
+        "ANALYTICS_DB_PATH", str(Path(ANALYTICS_DATABASE_PATH).resolve())
+    )
 except Exception:
     pass
 UNPROCESSED_DIR = str(DATA_DIR / "unprocessed")
@@ -1579,7 +1895,7 @@ HISTORICAL_DIR = str(DATA_DIR / "historical_races")
 UPCOMING_DIR = str(UPCOMING_RACES_DIR)
 # Ensure environment variable aligns with configured directory globally (do not override if already set)
 try:
-    os.environ.setdefault('UPCOMING_RACES_DIR', UPCOMING_DIR)
+    os.environ.setdefault("UPCOMING_RACES_DIR", UPCOMING_DIR)
 except Exception:
     pass
 
@@ -1587,52 +1903,76 @@ except Exception:
 ALLOWED_EXTENSIONS = {"csv"}
 app.config["UPLOAD_FOLDER"] = UPCOMING_DIR
 
+
 # Serve selected log files securely (read-only)
-@app.route('/logs/<path:log_filename>')
+@app.route("/logs/<path:log_filename>")
 def view_log_file(log_filename):
     try:
         # Allow only specific ingestion logs to be served
-        allowed = {"ingestion.log", "ingestion_errors.log", "process.log", "errors.log", "system.log"}
+        allowed = {
+            "ingestion.log",
+            "ingestion_errors.log",
+            "process.log",
+            "errors.log",
+            "system.log",
+        }
         if log_filename not in allowed:
-            return jsonify({'success': False, 'error': 'Access to this log is not permitted'}), 403
-        return send_from_directory('logs', log_filename, as_attachment=False)
+            return (
+                jsonify(
+                    {"success": False, "error": "Access to this log is not permitted"}
+                ),
+                403,
+            )
+        return send_from_directory("logs", log_filename, as_attachment=False)
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 # -----------------------------
 # TGR on-demand enrichment APIs
 # -----------------------------
 
+
 def _normalize_participant_name(raw: str) -> str:
     try:
         if raw is None:
-            return ''
+            return ""
         s = str(raw)
         # Remove leading numbering like "1. ", quotes, unicode punctuation; collapse whitespace; title-case
         import re
-        s = re.sub(r'^\s*\d+\.\s*', '', s)
-        for a, b in [("\u201c", ''), ("\u201d", ''), ("\u2018", ''), ("\u2019", ''), ("\u2013", '-'), ("\u2014", '-')]:
+
+        s = re.sub(r"^\s*\d+\.\s*", "", s)
+        for a, b in [
+            ("\u201c", ""),
+            ("\u201d", ""),
+            ("\u2018", ""),
+            ("\u2019", ""),
+            ("\u2013", "-"),
+            ("\u2014", "-"),
+        ]:
             s = s.replace(a, b)
-        s = s.replace('"','').replace("'", '').replace('`','')
-        s = re.sub(r'\s+', ' ', s).strip()
+        s = s.replace('"', "").replace("'", "").replace("`", "")
+        s = re.sub(r"\s+", " ", s).strip()
         return s.title()
     except Exception:
-        return str(raw or '').strip()
+        return str(raw or "").strip()
 
 
 def _extract_participant_dogs_from_csv(csv_path: str) -> list:
     """Parse a race CSV and return participant dog names (cleaned)."""
     try:
         from src.parsers.csv_ingestion import CsvIngestion
+
         ingestion = CsvIngestion(csv_path)
         parsed, report = ingestion.parse_csv()
         if not report.is_valid:
             return []
         import pandas as pd
+
         df = pd.DataFrame(parsed.records, columns=parsed.headers)
         names = []
         for _, row in df.iterrows():
-            name = str(row.get('Dog Name', '')).strip()
+            name = str(row.get("Dog Name", "")).strip()
             if not name or name == '""':
                 continue
             # Heuristic: participant rows have substantive names or start with a box number prefix
@@ -1650,6 +1990,7 @@ def _extract_participant_dogs_from_csv(csv_path: str) -> list:
     except Exception as e:
         try:
             from logger import logger as _lg
+
             _lg.log_error("Failed to extract participants from CSV", error=e)
         except Exception:
             pass
@@ -1663,10 +2004,12 @@ def _resolve_race_file_path(race_file: str) -> str | None:
         # Primary configured upcoming directory
         candidates.append(os.path.abspath(os.path.join(UPCOMING_DIR, race_file)))
         # Historical directory
-        if 'HISTORICAL_DIR' in globals():
+        if "HISTORICAL_DIR" in globals():
             candidates.append(os.path.abspath(os.path.join(HISTORICAL_DIR, race_file)))
         # Legacy top-level ./upcoming_races for compatibility
-        legacy_upcoming_dir = os.path.abspath(os.path.join(os.getcwd(), "upcoming_races"))
+        legacy_upcoming_dir = os.path.abspath(
+            os.path.join(os.getcwd(), "upcoming_races")
+        )
         candidates.append(os.path.abspath(os.path.join(legacy_upcoming_dir, race_file)))
         for c in candidates:
             if os.path.exists(c):
@@ -1676,7 +2019,9 @@ def _resolve_race_file_path(race_file: str) -> str | None:
         return None
 
 
-def _harmonize_race_metadata_using_live(race_filename: str, date_hint: str | None = None) -> dict | None:
+def _harmonize_race_metadata_using_live(
+    race_filename: str, date_hint: str | None = None
+) -> dict | None:
     """Attempt to harmonize race metadata (venue, distance, grade, race_number, date)
     using the live upcoming races browser when scrapers are enabled.
 
@@ -1685,43 +2030,56 @@ def _harmonize_race_metadata_using_live(race_filename: str, date_hint: str | Non
     """
     try:
         # Respect feature flags and avoid during tests
-        if not (ENABLE_LIVE_SCRAPING and ENABLE_RESULTS_SCRAPERS) or app.config.get('TESTING'):
+        if not (ENABLE_LIVE_SCRAPING and ENABLE_RESULTS_SCRAPERS) or app.config.get(
+            "TESTING"
+        ):
             return None
         try:
             from upcoming_race_browser import UpcomingRaceBrowser
         except Exception:
             return None
         import re
+
         # Extract from filename: "Race N - VENUE - YYYY-MM-DD.csv"
         base = os.path.basename(str(race_filename))
-        if base.lower().endswith('.csv'):
+        if base.lower().endswith(".csv"):
             base = base[:-4]
-        m = re.match(r'^Race\s+(?P<num>\d+)\s*-\s*(?P<venue>.+?)\s*-\s*(?P<date>\d{4}-\d{2}-\d{2})$', base, re.IGNORECASE)
+        m = re.match(
+            r"^Race\s+(?P<num>\d+)\s*-\s*(?P<venue>.+?)\s*-\s*(?P<date>\d{4}-\d{2}-\d{2})$",
+            base,
+            re.IGNORECASE,
+        )
         race_num = None
         venue_label = None
         file_date = None
         if m:
             try:
-                race_num = int(m.group('num'))
+                race_num = int(m.group("num"))
             except Exception:
                 race_num = None
-            venue_label = m.group('venue')
-            file_date = m.group('date')
+            venue_label = m.group("venue")
+            file_date = m.group("date")
         # Choose best date to search
         target_date = date_hint or file_date
         if not target_date:
             return None
+
         # Normalizers for venue comparisons
         def _norm(s: str) -> str:
             try:
                 import re as _re
-                return _re.sub(r"[^A-Za-z0-9]", "", (s or '').upper())
+
+                return _re.sub(r"[^A-Za-z0-9]", "", (s or "").upper())
             except Exception:
-                return (s or '').upper().replace(' ', '').replace('-', '').replace('_','')
-        target_venue_norm = _norm(venue_label or '')
+                return (
+                    (s or "").upper().replace(" ", "").replace("-", "").replace("_", "")
+                )
+
+        target_venue_norm = _norm(venue_label or "")
         br = UpcomingRaceBrowser()
         # Query the specific date
         from datetime import datetime as _dt
+
         try:
             dt = _dt.strptime(target_date, "%Y-%m-%d").date()
         except Exception:
@@ -1734,14 +2092,19 @@ def _harmonize_race_metadata_using_live(race_filename: str, date_hint: str | Non
         best = None
         for r in races:
             try:
-                ven = r.get('venue_name') or r.get('venue') or ''
+                ven = r.get("venue_name") or r.get("venue") or ""
                 ven_norm = _norm(ven)
                 rnum = None
                 try:
-                    rnum = int(str(r.get('race_number')))
+                    rnum = int(str(r.get("race_number")))
                 except Exception:
                     rnum = None
-                if (not target_venue_norm or ven_norm == target_venue_norm or target_venue_norm in ven_norm or ven_norm in target_venue_norm) and (race_num is None or rnum == race_num):
+                if (
+                    not target_venue_norm
+                    or ven_norm == target_venue_norm
+                    or target_venue_norm in ven_norm
+                    or ven_norm in target_venue_norm
+                ) and (race_num is None or rnum == race_num):
                     best = r
                     break
             except Exception:
@@ -1750,31 +2113,31 @@ def _harmonize_race_metadata_using_live(race_filename: str, date_hint: str | Non
             return None
         out = {}
         # Venue: prefer the code-like short form if present, else venue_name
-        vname = best.get('venue_name') or best.get('venue')
+        vname = best.get("venue_name") or best.get("venue")
         if vname:
-            out['venue'] = vname
+            out["venue"] = vname
         # Distance: ensure trailing 'm'
-        dist = best.get('distance')
+        dist = best.get("distance")
         if dist is not None:
             try:
                 ds = str(dist).strip()
-                if ds and not ds.endswith('m'):
+                if ds and not ds.endswith("m"):
                     if ds.isdigit():
                         ds = f"{ds}m"
-                out['distance'] = ds
+                out["distance"] = ds
             except Exception:
                 pass
         # Grade
-        grd = best.get('grade')
+        grd = best.get("grade")
         if grd:
-            out['grade'] = grd
+            out["grade"] = grd
         # Race number
         if race_num is not None:
-            out['race_number'] = race_num
-        elif best.get('race_number') is not None:
-            out['race_number'] = best.get('race_number')
+            out["race_number"] = race_num
+        elif best.get("race_number") is not None:
+            out["race_number"] = best.get("race_number")
         # Date (ISO)
-        out['date'] = target_date
+        out["date"] = target_date
         try:
             logger.info(f"Harmonized race metadata via live: {out}")
         except Exception:
@@ -1793,12 +2156,22 @@ def _queue_tgr_enrichment_jobs(dog_names: list, priority: int = 8) -> dict:
     Assumes a separate enrichment worker/scheduler will process them.
     """
     try:
-        import sqlite3, time
-        db_path = app.config.get('DATABASE_PATH', DATABASE_PATH if 'DATABASE_PATH' in globals() else 'greyhound_racing_data.db')
+        import sqlite3
+        import time
+
+        db_path = app.config.get(
+            "DATABASE_PATH",
+            (
+                DATABASE_PATH
+                if "DATABASE_PATH" in globals()
+                else "greyhound_racing_data.db"
+            ),
+        )
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         # Ensure jobs table exists (matches service schema)
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS tgr_enrichment_jobs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 job_id TEXT UNIQUE NOT NULL,
@@ -1815,7 +2188,8 @@ def _queue_tgr_enrichment_jobs(dog_names: list, priority: int = 8) -> dict:
                 started_at TIMESTAMP,
                 completed_at TIMESTAMP
             )
-        """)
+        """
+        )
         queued = []
         for dog in dog_names:
             ts = int(time.time())
@@ -1826,65 +2200,89 @@ def _queue_tgr_enrichment_jobs(dog_names: list, priority: int = 8) -> dict:
                 (job_id, dog_name, job_type, priority, status, estimated_duration)
                 VALUES (?, ?, 'comprehensive', ?, 'pending', 10.0)
                 """,
-                [job_id, dog, priority]
+                [job_id, dog, priority],
             )
             if cursor.rowcount > 0:
                 queued.append(job_id)
         conn.commit()
         conn.close()
-        return {'queued': queued, 'count': len(queued), 'db_path': db_path}
+        return {"queued": queued, "count": len(queued), "db_path": db_path}
     except Exception as e:
         try:
             from logger import logger as _lg
+
             _lg.log_error("Failed to queue TGR enrichment jobs", error=e)
         except Exception:
             pass
-        return {'queued': [], 'count': 0, 'error': str(e)}
+        return {"queued": [], "count": 0, "error": str(e)}
 
 
-@app.route('/api/tgr/refresh_for_race', methods=['POST'])
+@app.route("/api/tgr/refresh_for_race", methods=["POST"])
 def api_tgr_refresh_for_race():
     """Queue TGR enrichment jobs for all dogs in a provided race file.
     Body JSON: {"race_file": "Race 1 - VENUE - YYYY-MM-DD.csv", "priority": 8}
     """
     try:
-        from flask import request, jsonify
+        from flask import jsonify, request
+
         payload = request.get_json(silent=True) or {}
-        race_file = payload.get('race_file')
-        priority = int(payload.get('priority', 8))
+        race_file = payload.get("race_file")
+        priority = int(payload.get("priority", 8))
         if not race_file:
-            return jsonify({'success': False, 'error': 'race_file is required'}), 400
+            return jsonify({"success": False, "error": "race_file is required"}), 400
         path = _resolve_race_file_path(race_file)
         if not path:
-            return jsonify({'success': False, 'error': f'Race file not found: {race_file}'}), 404
+            return (
+                jsonify(
+                    {"success": False, "error": f"Race file not found: {race_file}"}
+                ),
+                404,
+            )
         dogs = _extract_participant_dogs_from_csv(path)
         if not dogs:
-            return jsonify({'success': False, 'error': 'No participants found in CSV'}), 422
+            return (
+                jsonify({"success": False, "error": "No participants found in CSV"}),
+                422,
+            )
         result = _queue_tgr_enrichment_jobs(dogs, priority)
-        result.update({'success': True, 'dogs': dogs, 'race_file': os.path.basename(path)})
+        result.update(
+            {"success": True, "dogs": dogs, "race_file": os.path.basename(path)}
+        )
         # Guidance: a separate enrichment worker should be running to process jobs
-        result.setdefault('note', 'Ensure tgr_enrichment_service.py or tgr_service_scheduler.py is running to process queued jobs')
+        result.setdefault(
+            "note",
+            "Ensure tgr_enrichment_service.py or tgr_service_scheduler.py is running to process queued jobs",
+        )
         return jsonify(result), 200
     except Exception as e:
         try:
             from flask import jsonify
-            return jsonify({'success': False, 'error': str(e)}), 500
+
+            return jsonify({"success": False, "error": str(e)}), 500
         except Exception:
-            return ('{"success": false, "error": "unavailable"}', 500, {'Content-Type': 'application/json'})
+            return (
+                '{"success": false, "error": "unavailable"}',
+                500,
+                {"Content-Type": "application/json"},
+            )
 
 
-@app.route('/api/tgr/refresh_for_dogs', methods=['POST'])
+@app.route("/api/tgr/refresh_for_dogs", methods=["POST"])
 def api_tgr_refresh_for_dogs():
     """Queue TGR enrichment jobs for an explicit list of dogs.
     Body JSON: {"dogs": ["DOG A", "DOG B"], "priority": 8}
     """
     try:
-        from flask import request, jsonify
+        from flask import jsonify, request
+
         payload = request.get_json(silent=True) or {}
-        raw_dogs = payload.get('dogs') or []
-        priority = int(payload.get('priority', 8))
+        raw_dogs = payload.get("dogs") or []
+        priority = int(payload.get("priority", 8))
         if not isinstance(raw_dogs, list) or not raw_dogs:
-            return jsonify({'success': False, 'error': 'dogs must be a non-empty list'}), 400
+            return (
+                jsonify({"success": False, "error": "dogs must be a non-empty list"}),
+                400,
+            )
         # Normalize and de-duplicate
         dogs = []
         seen = set()
@@ -1894,21 +2292,34 @@ def api_tgr_refresh_for_dogs():
                 seen.add(clean)
                 dogs.append(clean)
         if not dogs:
-            return jsonify({'success': False, 'error': 'no valid dog names provided'}), 422
+            return (
+                jsonify({"success": False, "error": "no valid dog names provided"}),
+                422,
+            )
         result = _queue_tgr_enrichment_jobs(dogs, priority)
-        result.update({'success': True, 'dogs': dogs})
-        result.setdefault('note', 'Ensure tgr_enrichment_service.py or tgr_service_scheduler.py is running to process queued jobs')
+        result.update({"success": True, "dogs": dogs})
+        result.setdefault(
+            "note",
+            "Ensure tgr_enrichment_service.py or tgr_service_scheduler.py is running to process queued jobs",
+        )
         return jsonify(result), 200
     except Exception as e:
         try:
             from flask import jsonify
-            return jsonify({'success': False, 'error': str(e)}), 500
+
+            return jsonify({"success": False, "error": str(e)}), 500
         except Exception:
-            return ('{"success": false, "error": "unavailable"}', 500, {'Content-Type': 'application/json'})
+            return (
+                '{"success": false, "error": "unavailable"}',
+                500,
+                {"Content-Type": "application/json"},
+            )
+
 
 # -----------------------------
 # TGR jobs listing and settings APIs
 # -----------------------------
+
 
 def _ensure_tgr_settings_table():
     try:
@@ -1932,13 +2343,13 @@ def _ensure_tgr_settings_table():
 
 def _get_tgr_settings_defaults() -> dict:
     return {
-        'default_max_attempts': 3,
-        'backoff_base_seconds': 30,
-        'backoff_max_seconds': 600,
-        'retry_jitter_seconds': 15,
-        'concurrency_limit': 2,
+        "default_max_attempts": 3,
+        "backoff_base_seconds": 30,
+        "backoff_max_seconds": 600,
+        "retry_jitter_seconds": 15,
+        "concurrency_limit": 2,
         # New: allow using TGR enrichment in Process Data pipeline by default (0/1)
-        'processing_use_tgr': 0,
+        "processing_use_tgr": 0,
     }
 
 
@@ -1983,12 +2394,22 @@ def _ensure_tgr_jobs_schema():
             """
         )
         # Indexes for jobs table
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_tgr_jobs_status_created ON tgr_enrichment_jobs(status, created_at)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_tgr_jobs_priority ON tgr_enrichment_jobs(priority)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_tgr_jobs_job_id ON tgr_enrichment_jobs(job_id)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_tgr_jobs_dog_name ON tgr_enrichment_jobs(dog_name)")
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tgr_jobs_status_created ON tgr_enrichment_jobs(status, created_at)"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tgr_jobs_priority ON tgr_enrichment_jobs(priority)"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tgr_jobs_job_id ON tgr_enrichment_jobs(job_id)"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tgr_jobs_dog_name ON tgr_enrichment_jobs(dog_name)"
+        )
         # Index for logs table
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_tgr_log_job_id_timestamp ON tgr_service_log(job_id, timestamp)")
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tgr_log_job_id_timestamp ON tgr_service_log(job_id, timestamp)"
+        )
         conn.commit()
         conn.close()
         return True
@@ -1996,11 +2417,11 @@ def _ensure_tgr_jobs_schema():
         return False
 
 
-@app.route('/api/tgr/settings', methods=['GET', 'PUT'])
+@app.route("/api/tgr/settings", methods=["GET", "PUT"])
 def api_tgr_settings():
     try:
         _ensure_tgr_settings_table()
-        if request.method == 'GET':
+        if request.method == "GET":
             conn = sqlite3.connect(DATABASE_PATH)
             cur = conn.cursor()
             cur.execute("SELECT key, value FROM tgr_enrichment_settings")
@@ -2014,15 +2435,18 @@ def api_tgr_settings():
                         settings[k] = int(v)
                 except Exception:
                     settings[k] = v
-            return jsonify({'success': True, 'settings': settings})
+            return jsonify({"success": True, "settings": settings})
         # PUT: update provided keys
         data = request.get_json(silent=True) or {}
         if not isinstance(data, dict) or not data:
-            return jsonify({'success': False, 'error': 'No settings provided'}), 400
+            return jsonify({"success": False, "error": "No settings provided"}), 400
         allowed = set(_get_tgr_settings_defaults().keys())
         updates = {k: str(v) for k, v in data.items() if k in allowed}
         if not updates:
-            return jsonify({'success': False, 'error': 'No valid settings keys provided'}), 400
+            return (
+                jsonify({"success": False, "error": "No valid settings keys provided"}),
+                400,
+            )
         conn = sqlite3.connect(DATABASE_PATH)
         cur = conn.cursor()
         for k, v in updates.items():
@@ -2032,7 +2456,7 @@ def api_tgr_settings():
                 VALUES (?, ?, CURRENT_TIMESTAMP)
                 ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=CURRENT_TIMESTAMP
                 """,
-                (k, v)
+                (k, v),
             )
         conn.commit()
         conn.close()
@@ -2043,37 +2467,46 @@ def api_tgr_settings():
                 merged[k] = int(v)
             except Exception:
                 merged[k] = v
-        return jsonify({'success': True, 'settings': merged})
+        return jsonify({"success": True, "settings": merged})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route('/api/tgr/jobs', methods=['GET'])
+@app.route("/api/tgr/jobs", methods=["GET"])
 def api_tgr_jobs():
     try:
         _ensure_tgr_jobs_schema()
-        status = request.args.get('status')  # pending, processing, completed, failed, skipped
-        search = request.args.get('search', '').strip()
-        page = request.args.get('page', 1, type=int)
-        per_page = min(request.args.get('per_page', 50, type=int), 200)
-        order_by = request.args.get('order_by', 'created_at')
-        order_dir = request.args.get('order_dir', 'desc')
-        allowed_order_by = {'created_at','priority','status','attempts','completed_at','started_at'}
+        status = request.args.get(
+            "status"
+        )  # pending, processing, completed, failed, skipped
+        search = request.args.get("search", "").strip()
+        page = request.args.get("page", 1, type=int)
+        per_page = min(request.args.get("per_page", 50, type=int), 200)
+        order_by = request.args.get("order_by", "created_at")
+        order_dir = request.args.get("order_dir", "desc")
+        allowed_order_by = {
+            "created_at",
+            "priority",
+            "status",
+            "attempts",
+            "completed_at",
+            "started_at",
+        }
         if order_by not in allowed_order_by:
-            order_by = 'created_at'
-        order_dir = 'DESC' if str(order_dir).lower() == 'desc' else 'ASC'
+            order_by = "created_at"
+        order_dir = "DESC" if str(order_dir).lower() == "desc" else "ASC"
         offset = (max(1, page) - 1) * per_page
         conn = sqlite3.connect(DATABASE_PATH)
         cur = conn.cursor()
         where = []
         params = []
         if status:
-            where.append('status = ?')
+            where.append("status = ?")
             params.append(status)
         if search:
-            where.append('(dog_name LIKE ? OR job_id LIKE ?)')
-            params.extend([f'%{search}%', f'%{search}%'])
-        where_clause = f"WHERE {' AND '.join(where)}" if where else ''
+            where.append("(dog_name LIKE ? OR job_id LIKE ?)")
+            params.extend([f"%{search}%", f"%{search}%"])
+        where_clause = f"WHERE {' AND '.join(where)}" if where else ""
         cur.execute(f"SELECT COUNT(*) FROM tgr_enrichment_jobs {where_clause}", params)
         total = cur.fetchone()[0]
         cur.execute(
@@ -2086,24 +2519,43 @@ def api_tgr_jobs():
             ORDER BY {order_by} {order_dir}
             LIMIT ? OFFSET ?
             """,
-            params + [per_page, offset]
+            params + [per_page, offset],
         )
         rows = cur.fetchall()
         conn.close()
         items = []
         for r in rows:
-            items.append({
-                'job_id': r[0], 'dog_name': r[1], 'job_type': r[2], 'priority': r[3],
-                'status': r[4], 'attempts': r[5], 'max_attempts': r[6], 'error_message': r[7],
-                'estimated_duration': r[8], 'actual_duration': r[9],
-                'created_at': r[10], 'started_at': r[11], 'completed_at': r[12]
-            })
-        return jsonify({'success': True, 'jobs': items, 'total': total, 'page': page, 'per_page': per_page})
+            items.append(
+                {
+                    "job_id": r[0],
+                    "dog_name": r[1],
+                    "job_type": r[2],
+                    "priority": r[3],
+                    "status": r[4],
+                    "attempts": r[5],
+                    "max_attempts": r[6],
+                    "error_message": r[7],
+                    "estimated_duration": r[8],
+                    "actual_duration": r[9],
+                    "created_at": r[10],
+                    "started_at": r[11],
+                    "completed_at": r[12],
+                }
+            )
+        return jsonify(
+            {
+                "success": True,
+                "jobs": items,
+                "total": total,
+                "page": page,
+                "per_page": per_page,
+            }
+        )
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route('/api/tgr/jobs/<job_id>', methods=['GET'])
+@app.route("/api/tgr/jobs/<job_id>", methods=["GET"])
 def api_tgr_job_detail(job_id):
     try:
         _ensure_tgr_jobs_schema()
@@ -2116,34 +2568,51 @@ def api_tgr_job_detail(job_id):
                    created_at, started_at, completed_at
             FROM tgr_enrichment_jobs WHERE job_id = ? LIMIT 1
             """,
-            (job_id,)
+            (job_id,),
         )
         row = cur.fetchone()
         # Also fetch logs for this job
-        cur.execute("SELECT service_action, details, timestamp FROM tgr_service_log WHERE job_id = ? ORDER BY timestamp DESC LIMIT 50", (job_id,))
-        logs = [{'action': a, 'details': d, 'timestamp': t} for (a, d, t) in cur.fetchall()]
+        cur.execute(
+            "SELECT service_action, details, timestamp FROM tgr_service_log WHERE job_id = ? ORDER BY timestamp DESC LIMIT 50",
+            (job_id,),
+        )
+        logs = [
+            {"action": a, "details": d, "timestamp": t} for (a, d, t) in cur.fetchall()
+        ]
         conn.close()
         if not row:
-            return jsonify({'success': False, 'error': 'job not found'}), 404
+            return jsonify({"success": False, "error": "job not found"}), 404
         job = {
-            'job_id': row[0], 'dog_name': row[1], 'job_type': row[2], 'priority': row[3],
-            'status': row[4], 'attempts': row[5], 'max_attempts': row[6], 'error_message': row[7],
-            'estimated_duration': row[8], 'actual_duration': row[9],
-            'created_at': row[10], 'started_at': row[11], 'completed_at': row[12]
+            "job_id": row[0],
+            "dog_name": row[1],
+            "job_type": row[2],
+            "priority": row[3],
+            "status": row[4],
+            "attempts": row[5],
+            "max_attempts": row[6],
+            "error_message": row[7],
+            "estimated_duration": row[8],
+            "actual_duration": row[9],
+            "created_at": row[10],
+            "started_at": row[11],
+            "completed_at": row[12],
         }
-        return jsonify({'success': True, 'job': job, 'logs': logs})
+        return jsonify({"success": True, "job": job, "logs": logs})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route('/api/tgr/jobs/retry', methods=['POST'])
+@app.route("/api/tgr/jobs/retry", methods=["POST"])
 def api_tgr_jobs_retry():
     try:
         _ensure_tgr_jobs_schema()
         data = request.get_json(silent=True) or {}
-        job_ids = data.get('job_ids') or []
+        job_ids = data.get("job_ids") or []
         if not isinstance(job_ids, list) or not job_ids:
-            return jsonify({'success': False, 'error': 'job_ids (list) is required'}), 400
+            return (
+                jsonify({"success": False, "error": "job_ids (list) is required"}),
+                400,
+            )
         conn = sqlite3.connect(DATABASE_PATH)
         cur = conn.cursor()
         updated = 0
@@ -2154,24 +2623,33 @@ def api_tgr_jobs_retry():
                 SET status = 'pending', attempts = COALESCE(attempts,0), error_message = NULL, started_at = NULL, completed_at = NULL
                 WHERE job_id = ?
                 """,
-                (jid,)
+                (jid,),
             )
             updated += cur.rowcount
         conn.commit()
         conn.close()
-        return jsonify({'success': True, 'updated': updated, 'note': 'Worker will pick these up on next poll'})
+        return jsonify(
+            {
+                "success": True,
+                "updated": updated,
+                "note": "Worker will pick these up on next poll",
+            }
+        )
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route('/api/tgr/jobs/cancel', methods=['POST'])
+@app.route("/api/tgr/jobs/cancel", methods=["POST"])
 def api_tgr_jobs_cancel():
     try:
         _ensure_tgr_jobs_schema()
         data = request.get_json(silent=True) or {}
-        job_ids = data.get('job_ids') or []
+        job_ids = data.get("job_ids") or []
         if not isinstance(job_ids, list) or not job_ids:
-            return jsonify({'success': False, 'error': 'job_ids (list) is required'}), 400
+            return (
+                jsonify({"success": False, "error": "job_ids (list) is required"}),
+                400,
+            )
         conn = sqlite3.connect(DATABASE_PATH)
         cur = conn.cursor()
         cancelled = 0
@@ -2183,17 +2661,17 @@ def api_tgr_jobs_cancel():
                 SET status = 'skipped', completed_at = CURRENT_TIMESTAMP, error_message = 'cancelled by user'
                 WHERE job_id = ? AND status = 'pending'
                 """,
-                (jid,)
+                (jid,),
             )
             cancelled += cur.rowcount
         conn.commit()
         conn.close()
-        return jsonify({'success': True, 'cancelled': cancelled})
+        return jsonify({"success": True, "cancelled": cancelled})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route('/api/tgr/status', methods=['GET'])
+@app.route("/api/tgr/status", methods=["GET"])
 def api_tgr_status():
     """Return current TGR-related flags and effective mode.
     Response example:
@@ -2203,33 +2681,36 @@ def api_tgr_status():
     """
     try:
         from flask import jsonify
+
         def _truthy(val) -> bool:
             try:
                 if isinstance(val, bool):
                     return val
                 s = str(val).strip().lower()
-                return s in ('1', 'true', 'yes', 'on')
+                return s in ("1", "true", "yes", "on")
             except Exception:
                 return False
 
         # Raw environment variables
         env = {
-            'TGR_ENABLED': os.environ.get('TGR_ENABLED'),
-            'PREDICTION_IMPORT_MODE': os.environ.get('PREDICTION_IMPORT_MODE'),
-            'ENABLE_RESULTS_SCRAPERS': os.environ.get('ENABLE_RESULTS_SCRAPERS'),
-            'ENABLE_LIVE_SCRAPING': os.environ.get('ENABLE_LIVE_SCRAPING'),
+            "TGR_ENABLED": os.environ.get("TGR_ENABLED"),
+            "PREDICTION_IMPORT_MODE": os.environ.get("PREDICTION_IMPORT_MODE"),
+            "ENABLE_RESULTS_SCRAPERS": os.environ.get("ENABLE_RESULTS_SCRAPERS"),
+            "ENABLE_LIVE_SCRAPING": os.environ.get("ENABLE_LIVE_SCRAPING"),
         }
         # Flask config snapshot
         cfg = {
-            'PREDICTION_IMPORT_MODE': app.config.get('PREDICTION_IMPORT_MODE'),
-            'ENABLE_RESULTS_SCRAPERS': bool(app.config.get('ENABLE_RESULTS_SCRAPERS', False)),
-            'ENABLE_LIVE_SCRAPING': bool(app.config.get('ENABLE_LIVE_SCRAPING', False)),
+            "PREDICTION_IMPORT_MODE": app.config.get("PREDICTION_IMPORT_MODE"),
+            "ENABLE_RESULTS_SCRAPERS": bool(
+                app.config.get("ENABLE_RESULTS_SCRAPERS", False)
+            ),
+            "ENABLE_LIVE_SCRAPING": bool(app.config.get("ENABLE_LIVE_SCRAPING", False)),
         }
         # Effective booleans
-        tgr_enabled = _truthy(env.get('TGR_ENABLED')) or _truthy(cfg.get('TGR_ENABLED'))
-        live_scraping_enabled = bool(cfg['ENABLE_LIVE_SCRAPING'])
-        results_scrapers_enabled = bool(cfg['ENABLE_RESULTS_SCRAPERS'])
-        prediction_import_mode = cfg.get('PREDICTION_IMPORT_MODE') or 'unknown'
+        tgr_enabled = _truthy(env.get("TGR_ENABLED")) or _truthy(cfg.get("TGR_ENABLED"))
+        live_scraping_enabled = bool(cfg["ENABLE_LIVE_SCRAPING"])
+        results_scrapers_enabled = bool(cfg["ENABLE_RESULTS_SCRAPERS"])
+        prediction_import_mode = cfg.get("PREDICTION_IMPORT_MODE") or "unknown"
 
         # Persisted DB setting (if present)
         processing_use_tgr = None
@@ -2238,12 +2719,16 @@ def api_tgr_status():
             _ensure_tgr_settings_table()
             conn = sqlite3.connect(DATABASE_PATH)
             cur = conn.cursor()
-            cur.execute("SELECT value, updated_at FROM tgr_enrichment_settings WHERE key = 'processing_use_tgr' LIMIT 1")
+            cur.execute(
+                "SELECT value, updated_at FROM tgr_enrichment_settings WHERE key = 'processing_use_tgr' LIMIT 1"
+            )
             row = cur.fetchone()
             conn.close()
             if row:
                 rawv = row[0]
-                processing_use_tgr = bool(int(rawv)) if str(rawv).strip() in ('0', '1') else rawv
+                processing_use_tgr = (
+                    bool(int(rawv)) if str(rawv).strip() in ("0", "1") else rawv
+                )
                 updated_at = row[1]
         except Exception:
             processing_use_tgr = None
@@ -2251,33 +2736,38 @@ def api_tgr_status():
 
         # Compute effective mode
         if not tgr_enabled:
-            mode = 'disabled'
+            mode = "disabled"
         else:
-            mode = 'db_only' if not (live_scraping_enabled or results_scrapers_enabled) else 'live_plus_db'
+            mode = (
+                "db_only"
+                if not (live_scraping_enabled or results_scrapers_enabled)
+                else "live_plus_db"
+            )
 
         payload = {
-            'success': True,
-            'mode': mode,
-            'flags': {
-                'tgr_enabled': bool(tgr_enabled),
-                'prediction_import_mode': prediction_import_mode,
-                'live_scraping_enabled': live_scraping_enabled,
-                'results_scrapers_enabled': results_scrapers_enabled,
+            "success": True,
+            "mode": mode,
+            "flags": {
+                "tgr_enabled": bool(tgr_enabled),
+                "prediction_import_mode": prediction_import_mode,
+                "live_scraping_enabled": live_scraping_enabled,
+                "results_scrapers_enabled": results_scrapers_enabled,
             },
-            'env': env,
-            'config': cfg,
-            'db_settings': {
-                'processing_use_tgr': processing_use_tgr,
-                'updated_at': updated_at,
+            "env": env,
+            "config": cfg,
+            "db_settings": {
+                "processing_use_tgr": processing_use_tgr,
+                "updated_at": updated_at,
             },
-            'timestamp': datetime.now().isoformat(),
+            "timestamp": datetime.now().isoformat(),
         }
         return jsonify(payload), 200
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 # On-demand re-scan endpoint to re-index UPCOMING_RACES_DIR
-@app.route('/api/rescan_upcoming', methods=['POST'])
+@app.route("/api/rescan_upcoming", methods=["POST"])
 def rescan_upcoming():
     try:
         # Clear cache so next queries rebuild
@@ -2286,7 +2776,11 @@ def rescan_upcoming():
         # Optionally build a lightweight listing summary
         files = []
         for name in os.listdir(UPCOMING_DIR):
-            if name.endswith('.csv') and not name.startswith('.') and name != 'README.md':
+            if (
+                name.endswith(".csv")
+                and not name.startswith(".")
+                and name != "README.md"
+            ):
                 files.append(name)
         files.sort()
         emit_ui_event(
@@ -2295,18 +2789,34 @@ def rescan_upcoming():
             severity="INFO",
             count=len(files),
         )
-        return jsonify({'success': True, 'count': len(files), 'files': files[:200]}), 200
+        return (
+            jsonify({"success": True, "count": len(files), "files": files[:200]}),
+            200,
+        )
     except Exception as e:
         emit_ui_event(
             event_type="upcoming_rescan_failed",
             message=f"Re-scan failed: {e}",
             severity="ERROR",
         )
-        return jsonify({'success': False, 'error': str(e), 'details_link': url_for('view_log_file', log_filename='ingestion_errors.log')}), 500
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": str(e),
+                    "details_link": url_for(
+                        "view_log_file", log_filename="ingestion_errors.log"
+                    ),
+                }
+            ),
+            500,
+        )
+
 
 # System log for UI events (jsonl)
 SYSTEM_LOG_PATH = Path("logs") / "system_log.jsonl"
 SYSTEM_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+
 
 def emit_ui_event(event_type: str, message: str, severity: str = "INFO", **extra):
     try:
@@ -2332,6 +2842,7 @@ def allowed_file(filename):
 # Resolve a race file path across known project directories
 # Accepts absolute or relative inputs and returns an absolute path or None
 KNOWN_SEARCH_DIRS_CACHE = None
+
 
 def resolve_race_file_path(file_path: str) -> str | None:
     try:
@@ -2409,14 +2920,24 @@ def run_prediction_for_race_file(race_file_path: str, tgr_enabled=None) -> dict:
         try:
             logger.log_process("Using Enhanced Prediction Service (API/helper)")
             try:
-                prediction_result = enhanced_prediction_service.predict_race_file_enhanced(race_file_path, tgr_enabled=tgr_enabled)
+                prediction_result = (
+                    enhanced_prediction_service.predict_race_file_enhanced(
+                        race_file_path, tgr_enabled=tgr_enabled
+                    )
+                )
             except TypeError:
                 # Backward-compat if enhanced service signature not updated
-                prediction_result = enhanced_prediction_service.predict_race_file_enhanced(race_file_path)
+                prediction_result = (
+                    enhanced_prediction_service.predict_race_file_enhanced(
+                        race_file_path
+                    )
+                )
             if prediction_result and prediction_result.get("success"):
                 logger.log_process("Enhanced Prediction Service completed successfully")
             else:
-                logger.log_process(f"Enhanced Prediction Service returned unsuccessful result: {prediction_result}")
+                logger.log_process(
+                    f"Enhanced Prediction Service returned unsuccessful result: {prediction_result}"
+                )
                 prediction_result = None
         except Exception as e:
             logger.log_error(f"Enhanced Prediction Service failed: {e}")
@@ -2428,13 +2949,17 @@ def run_prediction_for_race_file(race_file_path: str, tgr_enabled=None) -> dict:
             logger.log_process("Fallback to PredictionPipelineV4 (API/helper)")
             pipeline = PredictionPipelineV4()
             try:
-                prediction_result = pipeline.predict_race_file(race_file_path, tgr_enabled=tgr_enabled)
+                prediction_result = pipeline.predict_race_file(
+                    race_file_path, tgr_enabled=tgr_enabled
+                )
             except TypeError:
                 prediction_result = pipeline.predict_race_file(race_file_path)
             if prediction_result and prediction_result.get("success"):
                 logger.log_process("PredictionPipelineV4 completed successfully")
             else:
-                logger.log_process(f"PredictionPipelineV4 returned unsuccessful result: {prediction_result}")
+                logger.log_process(
+                    f"PredictionPipelineV4 returned unsuccessful result: {prediction_result}"
+                )
                 prediction_result = None
         except Exception as e:
             logger.log_error(f"PredictionPipelineV4 failed: {e}")
@@ -2444,8 +2969,9 @@ def run_prediction_for_race_file(race_file_path: str, tgr_enabled=None) -> dict:
     if not prediction_result:
         try:
             from importlib import import_module as _imp
-            v3_mod = _imp('prediction_pipeline_v3')
-            PPv3 = getattr(v3_mod, 'PredictionPipelineV3', None)
+
+            v3_mod = _imp("prediction_pipeline_v3")
+            PPv3 = getattr(v3_mod, "PredictionPipelineV3", None)
         except Exception as _e:
             PPv3 = None
             logger.log_process(f"PredictionPipelineV3 not available for fallback: {_e}")
@@ -2453,11 +2979,15 @@ def run_prediction_for_race_file(race_file_path: str, tgr_enabled=None) -> dict:
             try:
                 logger.log_process("Fallback to PredictionPipelineV3 (API/helper)")
                 pipeline = PPv3()
-                prediction_result = pipeline.predict_race_file(race_file_path, enhancement_level="basic")
+                prediction_result = pipeline.predict_race_file(
+                    race_file_path, enhancement_level="basic"
+                )
                 if prediction_result and prediction_result.get("success"):
                     logger.log_process("PredictionPipelineV3 completed successfully")
                 else:
-                    logger.log_process(f"PredictionPipelineV3 returned unsuccessful result: {prediction_result}")
+                    logger.log_process(
+                        f"PredictionPipelineV3 returned unsuccessful result: {prediction_result}"
+                    )
                     prediction_result = None
             except Exception as e:
                 logger.log_error(f"PredictionPipelineV3 failed: {e}")
@@ -2467,8 +2997,9 @@ def run_prediction_for_race_file(race_file_path: str, tgr_enabled=None) -> dict:
     if not prediction_result:
         try:
             from importlib import import_module as _imp
-            uni_mod = _imp('unified_predictor')
-            UP = getattr(uni_mod, 'UnifiedPredictor', None)
+
+            uni_mod = _imp("unified_predictor")
+            UP = getattr(uni_mod, "UnifiedPredictor", None)
         except Exception as _e:
             UP = None
             logger.log_process(f"UnifiedPredictor not available for fallback: {_e}")
@@ -2480,7 +3011,9 @@ def run_prediction_for_race_file(race_file_path: str, tgr_enabled=None) -> dict:
                 if prediction_result and prediction_result.get("success"):
                     logger.log_process("UnifiedPredictor completed successfully")
                 else:
-                    logger.log_process(f"UnifiedPredictor returned unsuccessful result: {prediction_result}")
+                    logger.log_process(
+                        f"UnifiedPredictor returned unsuccessful result: {prediction_result}"
+                    )
                     prediction_result = None
             except Exception as e:
                 logger.log_error(f"UnifiedPredictor failed: {e}")
@@ -2491,7 +3024,9 @@ def run_prediction_for_race_file(race_file_path: str, tgr_enabled=None) -> dict:
     return prediction_result
 
 
-def enhance_prediction_with_csv_meta(prediction_result: dict, race_file_path: str) -> dict:
+def enhance_prediction_with_csv_meta(
+    prediction_result: dict, race_file_path: str
+) -> dict:
     """Use CSV metadata to enrich prediction_result.summary.race_info fields if present."""
     if not prediction_result or not isinstance(prediction_result, dict):
         return prediction_result
@@ -2501,6 +3036,7 @@ def enhance_prediction_with_csv_meta(prediction_result: dict, race_file_path: st
         if race_info is None:
             return prediction_result
         from utils.csv_metadata import parse_race_csv_meta
+
         csv_meta = parse_race_csv_meta(race_file_path)
         if csv_meta and csv_meta.get("status") == "success":
             if csv_meta.get("race_number") and csv_meta["race_number"] > 0:
@@ -2532,7 +3068,12 @@ def _compute_top_by_win_prob(prediction_result: dict) -> dict | None:
             return None
         # Candidate keys for list of runners
         list_keys = [
-            'predictions', 'entries', 'runners', 'participants', 'dogs', 'results'
+            "predictions",
+            "entries",
+            "runners",
+            "participants",
+            "dogs",
+            "results",
         ]
         runners = None
         for k in list_keys:
@@ -2542,7 +3083,7 @@ def _compute_top_by_win_prob(prediction_result: dict) -> dict | None:
                 break
         # fallback: search in summary
         if runners is None:
-            summary = prediction_result.get('summary') or {}
+            summary = prediction_result.get("summary") or {}
             for k in list_keys:
                 v = summary.get(k)
                 if isinstance(v, list) and v and isinstance(v[0], dict):
@@ -2550,15 +3091,33 @@ def _compute_top_by_win_prob(prediction_result: dict) -> dict | None:
                     break
         if runners is None:
             return None
+
         def get_name(d: dict) -> str:
-            for nk in ('dog_name','name','runner','runner_name','participant','dog'):
+            for nk in (
+                "dog_name",
+                "name",
+                "runner",
+                "runner_name",
+                "participant",
+                "dog",
+            ):
                 val = d.get(nk)
                 if isinstance(val, str) and val.strip():
                     return val.strip()
-            return ''
+            return ""
+
         def get_prob(d: dict) -> float | None:
             # Accept multiple possible win prob fields
-            for pk in ('win_prob','win_probability','pred_win_prob','prob_win','confidence','confidence_win','p_win','p1'):
+            for pk in (
+                "win_prob",
+                "win_probability",
+                "pred_win_prob",
+                "prob_win",
+                "confidence",
+                "confidence_win",
+                "p_win",
+                "p1",
+            ):
                 if pk in d:
                     try:
                         val = d.get(pk)
@@ -2576,6 +3135,7 @@ def _compute_top_by_win_prob(prediction_result: dict) -> dict | None:
                     except Exception:
                         continue
             return None
+
         scored = []
         for r in runners:
             if not isinstance(r, dict):
@@ -2583,19 +3143,21 @@ def _compute_top_by_win_prob(prediction_result: dict) -> dict | None:
             p = get_prob(r)
             if p is None:
                 continue
-            scored.append({
-                'name': get_name(r),
-                'win_prob': p,
-                'raw': r,
-            })
+            scored.append(
+                {
+                    "name": get_name(r),
+                    "win_prob": p,
+                    "raw": r,
+                }
+            )
         if not scored:
             return None
-        scored.sort(key=lambda x: x['win_prob'], reverse=True)
+        scored.sort(key=lambda x: x["win_prob"], reverse=True)
         top3 = scored[:3]
         top_pick = top3[0] if top3 else None
         return {
-            'top_pick': top_pick,
-            'top3': top3,
+            "top_pick": top_pick,
+            "top3": top3,
         }
     except Exception:
         return None
@@ -2610,9 +3172,12 @@ def predict_page():
         # Enforce module integrity to prevent results scrapers from loading in manual prediction flows
         try:
             from utils.module_guard import ensure_prediction_module_integrity
-            ensure_prediction_module_integrity(context='manual_prediction')
+
+            ensure_prediction_module_integrity(context="manual_prediction")
         except Exception as e:
-            logger.log_error("Module integrity check failed for /predict_page POST", error=e)
+            logger.log_error(
+                "Module integrity check failed for /predict_page POST", error=e
+            )
             error_message = "Prediction blocked due to unsafe modules: Results scraping module loaded."
             try:
                 flash(error_message, "error")
@@ -2621,14 +3186,14 @@ def predict_page():
             # Also pass the message via query params to ensure it appears in the rendered page for tests/UI
             return redirect(url_for("predict_page", message=error_message))
         action = request.form.get("action", "single")
-        
+
         if not race_files:
             flash("Please select a race file", "error")
             return redirect(url_for("predict_page"))
-        
+
         # For single prediction, use the first selected race
         race_file = race_files[0]
-        
+
         try:
             # Resolve the selected race file across known directories
             race_file_path = resolve_race_file_path(race_file)
@@ -2640,62 +3205,82 @@ def predict_page():
 
             # Resolve TGR toggle from form or cookie
             try:
-                tgr_enabled_val = request.form.get('tgr_enabled')
+                tgr_enabled_val = request.form.get("tgr_enabled")
             except Exception:
                 tgr_enabled_val = None
             if tgr_enabled_val is None:
                 try:
-                    tgr_cookie = request.cookies.get('tgr_enabled')
+                    tgr_cookie = request.cookies.get("tgr_enabled")
                     tgr_enabled_val = tgr_cookie if tgr_cookie is not None else None
                 except Exception:
                     tgr_enabled_val = None
+
             def _to_bool(v):
                 try:
                     if isinstance(v, bool):
                         return v
                     s = str(v).strip().lower()
-                    return s in ('1','true','yes','on')
+                    return s in ("1", "true", "yes", "on")
                 except Exception:
                     return None
+
             tgr_enabled_flag = _to_bool(tgr_enabled_val)
 
             # Run actual prediction using available pipelines (Enhanced -> V4 -> V3 -> UnifiedPredictor)
-            prediction_result = run_prediction_for_race_file(race_file_path, tgr_enabled=tgr_enabled_flag)
-            
+            prediction_result = run_prediction_for_race_file(
+                race_file_path, tgr_enabled=tgr_enabled_flag
+            )
+
             # Check if prediction was successful
             if not prediction_result or not prediction_result.get("success"):
-                error_msg = prediction_result.get("error", "All prediction methods failed") if prediction_result else "No prediction pipeline available"
+                error_msg = (
+                    prediction_result.get("error", "All prediction methods failed")
+                    if prediction_result
+                    else "No prediction pipeline available"
+                )
                 flash(f"Prediction failed: {error_msg}", "error")
                 return redirect(url_for("predict_page"))
-            
+
             # Enhance prediction result with proper race information parsing
             try:
-                prediction_result = enhance_prediction_with_csv_meta(prediction_result, race_file_path)
+                prediction_result = enhance_prediction_with_csv_meta(
+                    prediction_result, race_file_path
+                )
             except Exception as e:
                 logger.log_error(f"Error enhancing race info: {e}")
-            
-        # Get races for the form
+
+            # Get races for the form
             races = []
             try:
-                if app.config.get('TESTING'):
+                if app.config.get("TESTING"):
                     # Avoid external HTTP during tests; load directly from filesystem
-                    upcoming_dir = app.config.get('UPCOMING_DIR', UPCOMING_DIR)
+                    upcoming_dir = app.config.get("UPCOMING_DIR", UPCOMING_DIR)
                     if os.path.exists(upcoming_dir):
                         races = [
-                            f for f in os.listdir(upcoming_dir)
-                            if f.endswith('.csv') and not f.startswith('.') and f != 'README.md'
+                            f
+                            for f in os.listdir(upcoming_dir)
+                            if f.endswith(".csv")
+                            and not f.startswith(".")
+                            and f != "README.md"
                         ]
                 else:
                     # Fallback to local HTTP when not testing
                     from utils.http_client import get_shared_session
-                    default_port = os.environ.get('DEFAULT_PORT', os.environ.get('PORT', '5002'))
+
+                    default_port = os.environ.get(
+                        "DEFAULT_PORT", os.environ.get("PORT", "5002")
+                    )
                     sess = get_shared_session()
                     url = f"http://localhost:{default_port}/api/upcoming_races_csv"
                     try:
                         response = sess.get(url, timeout=5)
                         if response.status_code == 200:
                             races_data = response.json().get("races", [])
-                            races = [race.get("filename") for race in races_data if isinstance(race, dict)]
+                            races = [
+                                race.get("filename")
+                                for race in races_data
+                                if isinstance(race, dict)
+                            ]
                     finally:
                         try:
                             response.close()
@@ -2703,17 +3288,19 @@ def predict_page():
                             pass
             except Exception:
                 races = []
-            
-            return render_template("predict.html", 
-                                 races=races, 
-                                 prediction_result=prediction_result,
-                                 selected_race=race_file)
-                                 
+
+            return render_template(
+                "predict.html",
+                races=races,
+                prediction_result=prediction_result,
+                selected_race=race_file,
+            )
+
         except Exception as e:
             logger.log_error(f"Error during prediction for {race_file}", error=e)
             flash(f"Prediction error: {str(e)}", "error")
             return redirect(url_for("predict_page"))
-    
+
     # Handle GET request
     try:
         # Get all available race files directly from filesystem instead of paginated API
@@ -2721,119 +3308,189 @@ def predict_page():
         # Primary configured upcoming directory
         if os.path.exists(UPCOMING_DIR):
             for filename in os.listdir(UPCOMING_DIR):
-                if filename.endswith('.csv') and not filename.startswith('.') and filename != 'README.md':
+                if (
+                    filename.endswith(".csv")
+                    and not filename.startswith(".")
+                    and filename != "README.md"
+                ):
                     race_filenames.append(filename)
         # Also include legacy top-level ./upcoming_races for compatibility
-        legacy_upcoming_dir = os.path.abspath(os.path.join(os.getcwd(), "upcoming_races"))
-        if os.path.abspath(legacy_upcoming_dir) != os.path.abspath(UPCOMING_DIR) and os.path.exists(legacy_upcoming_dir):
+        legacy_upcoming_dir = os.path.abspath(
+            os.path.join(os.getcwd(), "upcoming_races")
+        )
+        if os.path.abspath(legacy_upcoming_dir) != os.path.abspath(
+            UPCOMING_DIR
+        ) and os.path.exists(legacy_upcoming_dir):
             for filename in os.listdir(legacy_upcoming_dir):
-                if filename.endswith('.csv') and not filename.startswith('.') and filename != 'README.md':
+                if (
+                    filename.endswith(".csv")
+                    and not filename.startswith(".")
+                    and filename != "README.md"
+                ):
                     race_filenames.append(filename)
-        
+
         # De-duplicate and sort filenames for better user experience
         race_filenames = sorted(list(dict.fromkeys(race_filenames)))
-        
+
         # Surface any error message from query params or flashed messages to ensure visibility in template/tests
         from flask import get_flashed_messages
+
         flashed = get_flashed_messages()
-        incoming_message = request.args.get('message')
+        incoming_message = request.args.get("message")
         page_message = incoming_message or (flashed[0] if flashed else None)
-        
-        return render_template("predict.html", races=race_filenames, message=page_message)
-        
+
+        return render_template(
+            "predict.html", races=race_filenames, message=page_message
+        )
+
     except Exception as e:
         logging.error(f"Error loading predict page: {str(e)}")
         flash("Error loading predict page", "error")
         return redirect(url_for("index"))
 
 
-@app.route('/favicon.ico')
+@app.route("/favicon.ico")
 def favicon():
     # Always return a 204 No Content response since we don't have a favicon
     return Response(status=204)
 
-@app.route('/apple-touch-icon.png')
-@app.route('/apple-touch-icon-precomposed.png')
+
+@app.route("/apple-touch-icon.png")
+@app.route("/apple-touch-icon-precomposed.png")
 def apple_touch_icon():
     # Return 204 No Content response for apple touch icon requests
     return Response(status=204)
 
+
 # Simple endpoint to allow the UI to show a non-blocking notifier that Downloads is being watched
-@app.route('/api/download_watch_status', methods=['GET'])
+@app.route("/api/download_watch_status", methods=["GET"])
 def download_watch_status():
     try:
-        watching = bool(os.environ.get('WATCH_DOWNLOADS', '1') not in ('0', 'false', 'False'))
-        return jsonify({
-            'success': True,
-            'watching': watching,
-            'watch_dir': str(DOWNLOADS_WATCH_DIR),
-            'message': f'Watching {DOWNLOADS_WATCH_DIR} for form guide CSVs' if watching else 'Downloads watcher disabled'
-        })
+        watching = bool(
+            os.environ.get("WATCH_DOWNLOADS", "1") not in ("0", "false", "False")
+        )
+        return jsonify(
+            {
+                "success": True,
+                "watching": watching,
+                "watch_dir": str(DOWNLOADS_WATCH_DIR),
+                "message": (
+                    f"Watching {DOWNLOADS_WATCH_DIR} for form guide CSVs"
+                    if watching
+                    else "Downloads watcher disabled"
+                ),
+            }
+        )
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/api/predict_file', methods=['POST'])
+
+@app.route("/api/predict_file", methods=["POST"])
 def api_predict_file():
     try:
         data = request.get_json(silent=True) or {}
-        race_file = data.get('race_file') or data.get('file') or data.get('file_path') or data.get('path')
+        race_file = (
+            data.get("race_file")
+            or data.get("file")
+            or data.get("file_path")
+            or data.get("path")
+        )
         if not race_file:
-            return jsonify({'success': False, 'error': 'race_file is required'}), 400
+            return jsonify({"success": False, "error": "race_file is required"}), 400
         race_file_path = resolve_race_file_path(race_file)
-        if not race_file_path and isinstance(race_file, str) and os.path.exists(race_file):
+        if (
+            not race_file_path
+            and isinstance(race_file, str)
+            and os.path.exists(race_file)
+        ):
             race_file_path = race_file
         if not race_file_path:
-            return jsonify({'success': False, 'error': f'Race file not found: {race_file}'}), 404
-# Run predictions via unified helper
+            return (
+                jsonify(
+                    {"success": False, "error": f"Race file not found: {race_file}"}
+                ),
+                404,
+            )
+        # Run predictions via unified helper
         tgr_enabled_flag = None
         try:
-            tgr_enabled_flag = data.get('tgr_enabled') if isinstance(data, dict) else None
+            tgr_enabled_flag = (
+                data.get("tgr_enabled") if isinstance(data, dict) else None
+            )
         except Exception:
             tgr_enabled_flag = None
         try:
-            prediction_result = run_prediction_for_race_file(race_file_path, tgr_enabled=tgr_enabled_flag)
+            prediction_result = run_prediction_for_race_file(
+                race_file_path, tgr_enabled=tgr_enabled_flag
+            )
         except TypeError:
             # Backward-compat with tests that patch a simpler signature
             prediction_result = run_prediction_for_race_file(race_file_path)
-        if not prediction_result or not prediction_result.get('success'):
+        if not prediction_result or not prediction_result.get("success"):
             # In testing, degrade gracefully to synthetic predictions to avoid failures from temporal leakage or unavailable models
             if is_testing_mode():
                 try:
                     preds = synthetic_predictions_from_csv(race_file_path)
-                    degraded_result = {'success': True, 'predictions': preds, 'degraded': True}
+                    degraded_result = {
+                        "success": True,
+                        "predictions": preds,
+                        "degraded": True,
+                    }
                     computed = _compute_top_by_win_prob(degraded_result)
-                    resp = {'success': True, 'prediction_result': degraded_result, 'resolved_path': race_file_path, 'synthetic': True}
+                    resp = {
+                        "success": True,
+                        "prediction_result": degraded_result,
+                        "resolved_path": race_file_path,
+                        "synthetic": True,
+                    }
                     if computed:
-                        resp['computed'] = computed
+                        resp["computed"] = computed
                     return jsonify(resp), 200
                 except Exception:
                     pass
-            err = prediction_result.get('error', 'prediction failed') if isinstance(prediction_result, dict) else 'prediction failed'
-            return jsonify({'success': False, 'error': err, 'resolved_path': race_file_path}), 500
+            err = (
+                prediction_result.get("error", "prediction failed")
+                if isinstance(prediction_result, dict)
+                else "prediction failed"
+            )
+            return (
+                jsonify(
+                    {"success": False, "error": err, "resolved_path": race_file_path}
+                ),
+                500,
+            )
         # Enhance with CSV metadata (same as in /predict_page)
         try:
-            prediction_result = enhance_prediction_with_csv_meta(prediction_result, race_file_path)
+            prediction_result = enhance_prediction_with_csv_meta(
+                prediction_result, race_file_path
+            )
         except Exception:
             pass
         # Compute Top Pick by win_prob for verification
         computed = _compute_top_by_win_prob(prediction_result)
-        resp = {'success': True, 'prediction_result': prediction_result, 'resolved_path': race_file_path}
+        resp = {
+            "success": True,
+            "prediction_result": prediction_result,
+            "resolved_path": race_file_path,
+        }
         # Surface model metadata at top-level for convenience
         try:
             if isinstance(prediction_result, dict):
-                if prediction_result.get('primary_model_id'):
-                    resp['primary_model_id'] = prediction_result.get('primary_model_id')
-                if prediction_result.get('ensemble_models_used') is not None:
-                    resp['ensemble_models_used'] = prediction_result.get('ensemble_models_used')
-                if prediction_result.get('model_ids_used') is not None:
-                    resp['model_ids_used'] = prediction_result.get('model_ids_used')
+                if prediction_result.get("primary_model_id"):
+                    resp["primary_model_id"] = prediction_result.get("primary_model_id")
+                if prediction_result.get("ensemble_models_used") is not None:
+                    resp["ensemble_models_used"] = prediction_result.get(
+                        "ensemble_models_used"
+                    )
+                if prediction_result.get("model_ids_used") is not None:
+                    resp["model_ids_used"] = prediction_result.get("model_ids_used")
         except Exception:
             pass
         if computed:
-            resp['computed'] = computed
+            resp["computed"] = computed
         return jsonify(resp), 200
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route("/api/dogs/search")
@@ -2885,14 +3542,19 @@ def api_dogs_search():
                 conn.close()
             except Exception:
                 pass
-            return jsonify({
-                "success": True,
-                "dogs": [],
-                "query": query,
-                "count": 0,
-                "degraded": True,
-                "note": "Dogs table not available in current database",
-            }), 200
+            return (
+                jsonify(
+                    {
+                        "success": True,
+                        "dogs": [],
+                        "query": query,
+                        "count": 0,
+                        "degraded": True,
+                        "note": "Dogs table not available in current database",
+                    }
+                ),
+                200,
+            )
         finally:
             try:
                 conn.close()
@@ -2942,14 +3604,14 @@ def api_dogs_search():
         )
 
 
-@app.route('/api/ingest_csv', methods=['POST'])
+@app.route("/api/ingest_csv", methods=["POST"])
 def ingest_csv_route():
-    if 'file' not in request.files:
-        return jsonify({'success': False, 'error': 'No file part'}), 400
+    if "file" not in request.files:
+        return jsonify({"success": False, "error": "No file part"}), 400
 
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'success': False, 'error': 'No selected file'}), 400
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"success": False, "error": "No selected file"}), 400
 
     if file and allowed_file(file.filename):
         # Always write to a temporary location first (server-side manual flow)
@@ -2961,7 +3623,7 @@ def ingest_csv_route():
             file.save(str(tmp_path))
         except Exception:
             # If saving fails (e.g., empty or invalid content), align with test expectation
-            return jsonify({'success': False, 'error': 'No file part'}), 400
+            return jsonify({"success": False, "error": "No file part"}), 400
 
         # If the uploaded file is empty (0 bytes), treat as missing content
         try:
@@ -2970,7 +3632,12 @@ def ingest_csv_route():
                     tmp_path.unlink(missing_ok=True)
                 except Exception:
                     pass
-                return jsonify({'success': False, 'error': 'Empty or missing file content'}), 400
+                return (
+                    jsonify(
+                        {"success": False, "error": "Empty or missing file content"}
+                    ),
+                    400,
+                )
         except Exception:
             # If size check fails, continue; downstream ingestion will error as malformed
             pass
@@ -2983,6 +3650,7 @@ def ingest_csv_route():
                 race_summary = {}
                 try:
                     from utils.csv_metadata import parse_race_csv_meta
+
                     meta = parse_race_csv_meta(str(published_path))
                     if meta and meta.get("status") == "success":
                         race_summary = {
@@ -3010,26 +3678,35 @@ def ingest_csv_route():
                 )
                 # Return UI-friendly payload including toast content
                 toast_message = f"Ingested {published_path.name}"
-                if race_summary.get("race_date") and race_summary.get("venue") and race_summary.get("race_number"):
+                if (
+                    race_summary.get("race_date")
+                    and race_summary.get("venue")
+                    and race_summary.get("race_number")
+                ):
                     toast_message = (
                         f"Ingested {published_path.name} — "
                         f"{race_summary.get('race_date')} {race_summary.get('venue')} R{race_summary.get('race_number')}"
                     )
-                return jsonify({
-                    'success': True,
-                    'message': 'Form guide ingested',
-                    'published_filename': published_path.name,
-                    'race_summary': race_summary,
-                    'toast': toast_message,
-                    'refresh_predictions': True
-                }), 200
+                return (
+                    jsonify(
+                        {
+                            "success": True,
+                            "message": "Form guide ingested",
+                            "published_filename": published_path.name,
+                            "race_summary": race_summary,
+                            "toast": toast_message,
+                            "refresh_predictions": True,
+                        }
+                    ),
+                    200,
+                )
             except Exception as e:
                 # In test mode, ensure a clean error log to avoid legacy tracebacks breaking assertions
                 try:
-                    if app.config.get('TESTING'):
-                        Path('logs').mkdir(parents=True, exist_ok=True)
-                        with open('logs/errors.log', 'w', encoding='utf-8') as lf:
-                            lf.write('')
+                    if app.config.get("TESTING"):
+                        Path("logs").mkdir(parents=True, exist_ok=True)
+                        with open("logs/errors.log", "w", encoding="utf-8") as lf:
+                            lf.write("")
                 except Exception:
                     pass
                 # Log structured error without stack trace and emit UI event
@@ -3038,10 +3715,10 @@ def ingest_csv_route():
                         "schema_mismatch: Could not parse file",
                         error=None,
                         context={
-                            'endpoint': '/api/ingest_csv',
-                            'filename': filename,
-                            'reason': str(e),
-                        }
+                            "endpoint": "/api/ingest_csv",
+                            "filename": filename,
+                            "reason": str(e),
+                        },
                     )
                 except Exception:
                     pass
@@ -3050,21 +3727,32 @@ def ingest_csv_route():
                     message=f"Ingestion failed for {filename}: {e}",
                     severity="ERROR",
                     filename=filename,
-                    error_code="schema_mismatch"
+                    error_code="schema_mismatch",
                 )
                 # Provide a UI-friendly error banner with link to logs; align error message with test expectation
-                return jsonify({
-                    'success': False,
-                    'error': 'Could not parse file',
-                    'error_banner': {
-                        'title': 'Ingestion failed',
-                        'message': f'Could not parse file: {filename}',
-                        'details_link': url_for('view_log_file', log_filename='ingestion_errors.log')
-                    }
-                }), 422
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": "Could not parse file",
+                            "error_banner": {
+                                "title": "Ingestion failed",
+                                "message": f"Could not parse file: {filename}",
+                                "details_link": url_for(
+                                    "view_log_file", log_filename="ingestion_errors.log"
+                                ),
+                            },
+                        }
+                    ),
+                    422,
+                )
             # Fallback to legacy ingestion if unified is not available
             try:
-                ingestor = EnhancedFormGuideCsvIngestor() if CSV_INGESTION_AVAILABLE and EnhancedFormGuideCsvIngestor else None
+                ingestor = (
+                    EnhancedFormGuideCsvIngestor()
+                    if CSV_INGESTION_AVAILABLE and EnhancedFormGuideCsvIngestor
+                    else None
+                )
                 if ingestor is None:
                     raise FormGuideCsvIngestionError("CSV ingestion system unavailable")
                 processed_data, validation_result = ingestor.ingest_csv(str(tmp_path))
@@ -3079,11 +3767,21 @@ def ingest_csv_route():
                     severity="WARNING",
                     records_processed=len(processed_data),
                 )
-                return jsonify({'success': True, 'records_processed': len(processed_data), 'refresh_predictions': True}), 200
+                return (
+                    jsonify(
+                        {
+                            "success": True,
+                            "records_processed": len(processed_data),
+                            "refresh_predictions": True,
+                        }
+                    ),
+                    200,
+                )
             except Exception as e:
-                return jsonify({'success': False, 'error': str(e)}), 500
+                return jsonify({"success": False, "error": str(e)}), 500
 
-    return jsonify({'success': False, 'error': 'Unsupported file type'}), 400
+    return jsonify({"success": False, "error": "Unsupported file type"}), 400
+
 
 @app.route("/api/dogs/<dog_name>/details")
 def api_dog_details(dog_name):
@@ -3433,7 +4131,11 @@ def api_dog_form(dog_name):
                         _s_times = {}
                         try:
                             if row[6]:
-                                _s_times = json.loads(row[6]) if isinstance(row[6], str) else {}
+                                _s_times = (
+                                    json.loads(row[6])
+                                    if isinstance(row[6], str)
+                                    else {}
+                                )
                         except Exception:
                             _s_times = {}
                         detailed_race_history.append(
@@ -3469,16 +4171,33 @@ def api_dog_form(dog_name):
             rm_cols = {row[1] for row in cursor.fetchall() or []}
 
             rm_select, rm_names = [], []
+
             def _add_rm(col):
                 if col in rm_cols:
                     rm_select.append(f"rm.{col}")
                     rm_names.append(col)
-            for col in ("race_name", "venue", "race_date", "distance", "grade", "track_condition"):
+
+            for col in (
+                "race_name",
+                "venue",
+                "race_date",
+                "distance",
+                "grade",
+                "track_condition",
+            ):
                 _add_rm(col)
 
             drd_select = ["drd.box_number", "drd.finish_position"]
             drd_names = ["box_number", "finish_position"]
-            for col in ("individual_time", "weight", "trainer_name", "odds_decimal", "margin", "sectional_1st", "sectional_2nd"):
+            for col in (
+                "individual_time",
+                "weight",
+                "trainer_name",
+                "odds_decimal",
+                "margin",
+                "sectional_1st",
+                "sectional_2nd",
+            ):
                 if col in drd_cols:
                     drd_select.append(f"drd.{col}")
                     drd_names.append(col)
@@ -3569,7 +4288,17 @@ def api_dog_form(dog_name):
                 else:
                     if name in item:
                         item[name] = val
-                    elif name in ("race_id", "race_name", "venue", "race_date", "distance", "grade", "track_condition", "box_number", "finish_position"):
+                    elif name in (
+                        "race_id",
+                        "race_name",
+                        "venue",
+                        "race_date",
+                        "distance",
+                        "grade",
+                        "track_condition",
+                        "box_number",
+                        "finish_position",
+                    ):
                         item[name] = val
             form_guide.append(item)
 
@@ -3905,16 +4634,26 @@ def api_races_paginated():
                             # Convert to string first to ensure JSON serialization
                             return str(converted_result)
                         except (ValueError, TypeError, UnicodeDecodeError):
-                            return str(decoded_value)  # Fallback to string conversion if conversion fails, ensuring no bytes propagate
+                            return str(
+                                decoded_value
+                            )  # Fallback to string conversion if conversion fails, ensuring no bytes propagate
                     except (UnicodeDecodeError, ValueError, TypeError):
-                        return str(default) if default is not None else "N/A"  # Ensure string return
+                        return (
+                            str(default) if default is not None else "N/A"
+                        )  # Ensure string return
                 # Ensure the converted value is JSON serializable
                 converted = convert_func(value)
                 if isinstance(converted, (bytes, bytearray)):
-                    return str(converted, "utf-8") if isinstance(converted, bytes) else str(converted)
+                    return (
+                        str(converted, "utf-8")
+                        if isinstance(converted, bytes)
+                        else str(converted)
+                    )
                 return converted  # Return the actual converted value
             except (ValueError, TypeError, UnicodeDecodeError):
-                return str(default) if default is not None else "N/A"  # Ensure string return
+                return (
+                    str(default) if default is not None else "N/A"
+                )  # Ensure string return
             except Exception as e:
                 # Include any additional error handling here
                 return str(default) if default is not None else "N/A"
@@ -4100,7 +4839,6 @@ def api_races_paginated():
                     win_prob * 0.8 + 0.2, 1.0
                 )  # Base confidence on win probability
 
-
                 runners.append(
                     {
                         "dog_name": safe_convert(runner[0], str, "Unknown"),
@@ -4229,14 +4967,18 @@ def api_upcoming_races():
     """API endpoint for live upcoming races from thedogs.com.au (DEFAULT) with CSV fallback"""
     try:
         # Get parameters
-        days_ahead = request.args.get('days', 1, type=int)  # Default to today + tomorrow
-        page = request.args.get('page', 1, type=int)
-        per_page = min(request.args.get('per_page', 50, type=int), 100)  # Max 100 per page
-        source = request.args.get('source', 'live')  # 'live' or 'csv'
-        refresh = request.args.get('refresh', 'false').lower() in ('1', 'true', 'yes')
+        days_ahead = request.args.get(
+            "days", 1, type=int
+        )  # Default to today + tomorrow
+        page = request.args.get("page", 1, type=int)
+        per_page = min(
+            request.args.get("per_page", 50, type=int), 100
+        )  # Max 100 per page
+        source = request.args.get("source", "live")  # 'live' or 'csv'
+        refresh = request.args.get("refresh", "false").lower() in ("1", "true", "yes")
 
         # In test mode, validate CSV loader path early (unit tests patch this) and force CSV source
-        if app.config.get('TESTING'):
+        if app.config.get("TESTING"):
             try:
                 # This call is intentionally made so patched exceptions surface in tests
                 _ = load_upcoming_races(refresh=False)
@@ -4244,7 +4986,7 @@ def api_upcoming_races():
                 # Re-raise to be handled by the outer except -> 500 as tests expect
                 raise
             # Force csv source during tests to avoid slow network scraping and enable mocking
-            source = 'csv'
+            source = "csv"
 
         # Try cache first (only if not forcing refresh)
         try:
@@ -4256,52 +4998,64 @@ def api_upcoming_races():
                 if created_at and (now - created_at) <= timedelta(minutes=ttl):
                     # Require same key params for cache reuse
                     if (
-                        cache_params.get("days_ahead") == days_ahead and
-                        cache_params.get("page") == page and
-                        cache_params.get("per_page") == per_page and
-                        cache_params.get("source") == source
+                        cache_params.get("days_ahead") == days_ahead
+                        and cache_params.get("page") == page
+                        and cache_params.get("per_page") == per_page
+                        and cache_params.get("source") == source
                     ):
-                        remaining = max(0, ttl - int((now - created_at).total_seconds() // 60))
+                        remaining = max(
+                            0, ttl - int((now - created_at).total_seconds() // 60)
+                        )
                         cached = dict(UPCOMING_API_CACHE["data"])  # shallow copy
-                        cached.update({
-                            "from_cache": True,
-                            "cache_expires_in_minutes": remaining,
-                            "timestamp": datetime.now().isoformat(),
-                        })
+                        cached.update(
+                            {
+                                "from_cache": True,
+                                "cache_expires_in_minutes": remaining,
+                                "timestamp": datetime.now().isoformat(),
+                            }
+                        )
                         return jsonify(cached)
         except Exception as _:
             # Ignore cache errors and continue
             pass
-        
+
         # PRIMARY: Use live scraping by default (but not during tests)
-        if source == 'live' and not app.config.get('TESTING') and ENABLE_LIVE_SCRAPING and ENABLE_RESULTS_SCRAPERS:
+        if (
+            source == "live"
+            and not app.config.get("TESTING")
+            and ENABLE_LIVE_SCRAPING
+            and ENABLE_RESULTS_SCRAPERS
+        ):
             try:
                 # Use UpcomingRaceBrowser for comprehensive live data
                 from upcoming_race_browser import UpcomingRaceBrowser
+
                 # Ensure browser uses the same upcoming directory as the Flask app
                 try:
                     os.environ["UPCOMING_RACES_DIR"] = UPCOMING_DIR
                 except Exception:
                     pass
                 browser = UpcomingRaceBrowser()
-                
+
                 # Get races for multiple days if requested
                 all_races = []
-                
-                for day_offset in range(days_ahead + 1):  # Include today (0) + days_ahead
+
+                for day_offset in range(
+                    days_ahead + 1
+                ):  # Include today (0) + days_ahead
                     target_date = datetime.now().date() + timedelta(days=day_offset)
                     day_races = browser.get_races_for_date(target_date)
-                    
+
                     if day_races:
                         # Add date to each race
                         for race in day_races:
                             race["date"] = target_date.strftime("%Y-%m-%d")
                         all_races.extend(day_races)
                         logger.info(f"Got {len(day_races)} races for {target_date}")
-                
+
                 races = all_races
                 logger.info(f"Total live races found: {len(races)}")
-                
+
             except Exception as live_error:
                 logger.error(f"Live scraping failed: {live_error}")
                 # Fallback to CSV data if live scraping fails
@@ -4316,14 +5070,20 @@ def api_upcoming_races():
             except Exception:
                 # Fallback to guaranteed fields loader if unified fails
                 races = load_upcoming_races_with_guaranteed_fields(refresh=True)
-            source = "csv" if not app.config.get('TESTING') else "csv_test"
-        
+            source = "csv" if not app.config.get("TESTING") else "csv_test"
+
         # Convert races to consistent format for frontend
         formatted_races = []
         for race in races:
             # Handle both live scraping format and CSV format
             formatted_race = {
-                "race_id": race.get("url", race.get("race_id", f"{race.get('venue', 'unknown')}_{race.get('race_number', 0)}")),
+                "race_id": race.get(
+                    "url",
+                    race.get(
+                        "race_id",
+                        f"{race.get('venue', 'unknown')}_{race.get('race_number', 0)}",
+                    ),
+                ),
                 "venue": race.get("venue", "Unknown"),
                 "venue_name": race.get("venue_name", race.get("venue", "Unknown")),
                 "race_number": race.get("race_number", 0),
@@ -4331,38 +5091,41 @@ def api_upcoming_races():
                 "date": race.get("date", race.get("race_date", "")),
                 "race_date": race.get("race_date", race.get("date", "")),
                 "race_time": race.get("race_time", "TBA"),
-                "race_name": race.get("race_name") or race.get("title", f"Race {race.get('race_number', 0)}"),
+                "race_name": race.get("race_name")
+                or race.get("title", f"Race {race.get('race_number', 0)}"),
                 "distance": race.get("distance", "Unknown"),
                 "grade": race.get("grade", "Unknown"),
                 "url": race.get("url", ""),
                 "description": race.get("description", ""),
                 "filename": race.get("filename", ""),  # For CSV files
-                "source": source
+                "source": source,
             }
             formatted_races.append(formatted_race)
-        
+
         # Enrich with Melbourne-normalized datetime and timestamp for true next-to-jump ordering
         for r in formatted_races:
             # Ensure we have both date keys for downstream consumers
-            if not r.get('race_date') and r.get('date'):
-                r['race_date'] = r.get('date')
-            if not r.get('date') and r.get('race_date'):
-                r['date'] = r.get('race_date')
-            mel_dt = build_melbourne_dt(r.get('race_date') or r.get('date'), r.get('race_time'))
+            if not r.get("race_date") and r.get("date"):
+                r["race_date"] = r.get("date")
+            if not r.get("date") and r.get("race_date"):
+                r["date"] = r.get("race_date")
+            mel_dt = build_melbourne_dt(
+                r.get("race_date") or r.get("date"), r.get("race_time")
+            )
             if mel_dt is not None:
                 try:
-                    r['race_datetime_melbourne_iso'] = mel_dt.isoformat()
-                    r['race_timestamp_melbourne'] = int(mel_dt.timestamp())
+                    r["race_datetime_melbourne_iso"] = mel_dt.isoformat()
+                    r["race_timestamp_melbourne"] = int(mel_dt.timestamp())
                 except Exception:
-                    r['race_datetime_melbourne_iso'] = None
-                    r['race_timestamp_melbourne'] = None
+                    r["race_datetime_melbourne_iso"] = None
+                    r["race_timestamp_melbourne"] = None
             else:
-                r['race_datetime_melbourne_iso'] = None
-                r['race_timestamp_melbourne'] = None
-        
+                r["race_datetime_melbourne_iso"] = None
+                r["race_timestamp_melbourne"] = None
+
         # Sort strictly by Melbourne date then time (TBD last within a date)
         formatted_races.sort(key=_upcoming_sort_key)
-        
+
         # Apply pagination
         total_count = len(formatted_races)
         if page > 1 or per_page < total_count:
@@ -4371,13 +5134,14 @@ def api_upcoming_races():
             paginated_races = formatted_races[start_idx:end_idx]
         else:
             paginated_races = formatted_races
-            
+
         # Calculate pagination info
         import math
+
         total_pages = math.ceil(total_count / per_page) if total_count > 0 else 1
         has_next = page < total_pages
         has_prev = page > 1
-            
+
         response_payload = {
             "success": True,
             "races": paginated_races,
@@ -4388,7 +5152,7 @@ def api_upcoming_races():
             "pagination": {
                 "total_pages": total_pages,
                 "has_next": has_next,
-                "has_prev": has_prev
+                "has_prev": has_prev,
             },
             "source": source,
             "message": f"Found {total_count} upcoming races ({'live from thedogs.com.au' if source == 'live' else 'from CSV files' if source == 'csv' else 'from CSV fallback'})",
@@ -4411,22 +5175,28 @@ def api_upcoming_races():
             pass
 
         return jsonify(response_payload)
-        
+
     except Exception as e:
         logger.error(f"Error in /api/upcoming_races: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": f"Error loading upcoming races: {str(e)}",
-            "races": [],
-            "total_count": 0,
-            "source": "error"
-        }), 500
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": f"Error loading upcoming races: {str(e)}",
+                    "races": [],
+                    "total_count": 0,
+                    "source": "error",
+                }
+            ),
+            500,
+        )
 
 
 @app.route("/api/upcoming_races_csv")
 def api_upcoming_races_csv():
     """API endpoint to list upcoming races from CSV files with pagination and search"""
     from datetime import datetime
+
     try:
         # Get parameters with validation (same as /api/races/paginated)
         try:
@@ -4470,9 +5240,9 @@ def api_upcoming_races_csv():
 
         # Resolve upcoming directory from the active app context (tests may override this)
         try:
-            upcoming_dir = current_app.config.get('UPCOMING_DIR', UPCOMING_DIR)
+            upcoming_dir = current_app.config.get("UPCOMING_DIR", UPCOMING_DIR)
         except Exception:
-            upcoming_dir = app.config.get('UPCOMING_DIR', UPCOMING_DIR)
+            upcoming_dir = app.config.get("UPCOMING_DIR", UPCOMING_DIR)
 
         # Check if upcoming races directory exists
         if not os.path.exists(upcoming_dir):
@@ -4498,16 +5268,21 @@ def api_upcoming_races_csv():
         csv_files = []
         try:
             all_files = os.listdir(upcoming_dir)
-            csv_files = [f for f in all_files if f.endswith(".csv") and not f.startswith(".")]
+            csv_files = [
+                f for f in all_files if f.endswith(".csv") and not f.startswith(".")
+            ]
         except OSError as e:
             logger.error(f"Error reading upcoming races directory: {e}")
-            return jsonify(
-                {
-                    "success": False,
-                    "message": "Error accessing upcoming races directory",
-                }
-            ), 500
-        
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "Error accessing upcoming races directory",
+                    }
+                ),
+                500,
+            )
+
         if not csv_files:
             return jsonify(
                 {
@@ -4530,48 +5305,66 @@ def api_upcoming_races_csv():
         # Parse CSV files and extract race metadata
         races_data = []
         seen_races = set()  # Track unique races to prevent duplicates
-        
+
         for filename in csv_files:
             file_path = os.path.join(upcoming_dir, filename)
-            
+
             try:
                 # Skip if file doesn't exist or is not readable
                 if not os.path.isfile(file_path):
                     continue
-                    
+
                 # Get file modification time for sorting
                 file_mtime = os.path.getmtime(file_path)
-                formatted_mtime = datetime.fromtimestamp(file_mtime).strftime("%Y-%m-%d %H:%M")
-                
+                formatted_mtime = datetime.fromtimestamp(file_mtime).strftime(
+                    "%Y-%m-%d %H:%M"
+                )
+
                 # Extract race information using robust filename parsing
                 import re
-                
-                base_name = filename[:-4] if filename.lower().endswith('.csv') else filename
-                parts = base_name.split('_')
+
+                base_name = (
+                    filename[:-4] if filename.lower().endswith(".csv") else filename
+                )
+                parts = base_name.split("_")
                 race_name = base_name
                 venue = "Unknown"
                 race_date = "Unknown"
                 race_number = 0
-                
+
                 # Pattern A: "Race_1_WPK_2025-02-01.csv"
-                if len(parts) >= 4 and parts[0].lower() == 'race' and re.match(r'^\d+$', parts[1]) and re.match(r'^\d{4}-\d{2}-\d{2}$', parts[3]):
+                if (
+                    len(parts) >= 4
+                    and parts[0].lower() == "race"
+                    and re.match(r"^\d+$", parts[1])
+                    and re.match(r"^\d{4}-\d{2}-\d{2}$", parts[3])
+                ):
                     race_number = int(parts[1])
                     venue = parts[2]
                     race_date = parts[3]
                 # Pattern B: "MEA_Race_8_2025-03-15_Group1.csv" or "GOSF_Race_3_2025-02-03.csv"
-                elif len(parts) >= 4 and parts[1].lower() == 'race' and re.match(r'^\d+$', parts[2]) and re.match(r'^\d{4}-\d{2}-\d{2}$', parts[3]):
+                elif (
+                    len(parts) >= 4
+                    and parts[1].lower() == "race"
+                    and re.match(r"^\d+$", parts[2])
+                    and re.match(r"^\d{4}-\d{2}-\d{2}$", parts[3])
+                ):
                     venue = parts[0]
                     race_number = int(parts[2])
                     race_date = parts[3]
                 else:
                     # Pattern C: "Race 1 - AP_K - 2025-08-04.csv" and similar
-                    pattern1 = r'Race\s+(\d+)\s*-\s*([A-Z_/]+)\s*-\s*(\d{1,2}\s+\w+\s+\d{4})'
-                    pattern2 = r'Race\s+(\d+)\s*-\s*([A-Z_/]+)\s*-\s*(\d{4}-\d{2}-\d{2})'
+                    pattern1 = (
+                        r"Race\s+(\d+)\s*-\s*([A-Z_/]+)\s*-\s*(\d{1,2}\s+\w+\s+\d{4})"
+                    )
+                    pattern2 = (
+                        r"Race\s+(\d+)\s*-\s*([A-Z_/]+)\s*-\s*(\d{4}-\d{2}-\d{2})"
+                    )
                     match1 = re.search(pattern1, filename, re.IGNORECASE)
                     match2 = re.search(pattern2, filename, re.IGNORECASE)
                     if match1:
                         race_number = int(match1.group(1))
-                        venue = match1.group(2).replace('/', '_')
+                        venue = match1.group(2).replace("/", "_")
                         try:
                             parsed_date = datetime.strptime(match1.group(3), "%d %B %Y")
                             race_date = parsed_date.strftime("%Y-%m-%d")
@@ -4579,25 +5372,25 @@ def api_upcoming_races_csv():
                             race_date = match1.group(3)
                     elif match2:
                         race_number = int(match2.group(1))
-                        venue = match2.group(2).replace('/', '_')
+                        venue = match2.group(2).replace("/", "_")
                         race_date = match2.group(3)
                     else:
                         # Fallbacks
-                        m_num = re.search(r'Race[_\s]+(\d+)', filename, re.IGNORECASE)
+                        m_num = re.search(r"Race[_\s]+(\d+)", filename, re.IGNORECASE)
                         if m_num:
                             race_number = int(m_num.group(1))
-                        m_date = re.search(r'(\d{4}-\d{2}-\d{2})', filename)
+                        m_date = re.search(r"(\d{4}-\d{2}-\d{2})", filename)
                         if m_date:
                             race_date = m_date.group(1)
                         # Try to get venue token as first or third segment
                         if len(parts) >= 1 and parts[0].isalpha():
                             venue = parts[0]
-                        if len(parts) >= 3 and parts[0].lower() == 'race':
+                        if len(parts) >= 3 and parts[0].lower() == "race":
                             venue = parts[2]
-                
+
                 # Normalize venue to remove stray surrounding underscores
-                venue = venue.strip('_') if isinstance(venue, str) else venue
-                
+                venue = venue.strip("_") if isinstance(venue, str) else venue
+
                 # Try to read CSV header to get richer metadata
                 field_size = 0
                 distance = "Unknown"
@@ -4606,12 +5399,16 @@ def api_upcoming_races_csv():
                 header_venue = None
                 header_date = None
                 header_number = None
-                
+
                 try:
                     df = pd.read_csv(file_path, nrows=1)
                     if df is not None:
-                        field_size = max(field_size, 1)  # At least one header row implies file present
-                        cols_lower = {c.lower().strip().replace(' ', '_'): c for c in df.columns}
+                        field_size = max(
+                            field_size, 1
+                        )  # At least one header row implies file present
+                        cols_lower = {
+                            c.lower().strip().replace(" ", "_"): c for c in df.columns
+                        }
                         # Race name
                         for key in ["race_name", "race_name", "racename", "race"]:
                             if key in cols_lower:
@@ -4629,7 +5426,7 @@ def api_upcoming_races_csv():
                         # Date
                         for key in ["race_date", "date", "raceDate", "racedate"]:
                             k = key.lower()
-                            k = k if k in cols_lower else k.replace('race', 'race_')
+                            k = k if k in cols_lower else k.replace("race", "race_")
                             if k in cols_lower:
                                 d = str(df[cols_lower[k]].iloc[0]).strip()
                                 if d:
@@ -4640,7 +5437,9 @@ def api_upcoming_races_csv():
                             k = key.lower()
                             if k in cols_lower:
                                 try:
-                                    header_number = int(str(df[cols_lower[k]].iloc[0]).strip())
+                                    header_number = int(
+                                        str(df[cols_lower[k]].iloc[0]).strip()
+                                    )
                                 except Exception:
                                     pass
                                 break
@@ -4648,7 +5447,9 @@ def api_upcoming_races_csv():
                         for key in ["distance", "dist", "dist_", "dist(m)"]:
                             k = key.lower()
                             if k in cols_lower:
-                                distance = str(df[cols_lower[k]].iloc[0]).strip() or distance
+                                distance = (
+                                    str(df[cols_lower[k]].iloc[0]).strip() or distance
+                                )
                                 break
                         # Grade
                         for key in ["grade", "g"]:
@@ -4658,7 +5459,7 @@ def api_upcoming_races_csv():
                                 break
                 except Exception as e:
                     logger.debug(f"Could not read CSV header for {filename}: {e}")
-                
+
                 # Prefer header-derived fields when available
                 if header_race_name:
                     race_name = header_race_name
@@ -4668,7 +5469,7 @@ def api_upcoming_races_csv():
                     race_date = header_date
                 if header_number is not None:
                     race_number = header_number
-                
+
                 # Sanitize NaN-like and empty values to expected defaults
                 def _clean_unknown(val, default="Unknown"):
                     try:
@@ -4682,22 +5483,22 @@ def api_upcoming_races_csv():
                         return s
                     except Exception:
                         return default
-                
+
                 venue = _clean_unknown(venue, "Unknown")
                 race_date = _clean_unknown(race_date, "Unknown")
                 grade = _clean_unknown(grade, "Unknown")
                 distance = _clean_unknown(distance, "Unknown")
-                
+
                 # Create a unique key to prevent duplicates
                 unique_key = f"{venue}_{race_date}_{race_number}"
                 if unique_key in seen_races:
                     logger.debug(f"Skipping duplicate race: {filename}")
                     continue
                 seen_races.add(unique_key)
-                
+
                 # Build race_id using MD5 hash of filename (test expectation)
                 race_id = hashlib.md5(filename.encode()).hexdigest()[:12]
-                
+
                 race_data = {
                     "race_id": race_id,
                     "venue": venue,
@@ -4705,7 +5506,11 @@ def api_upcoming_races_csv():
                     "race_date": race_date,
                     "race_name": race_name,
                     "grade": grade,
-                    "distance": distance if str(distance).endswith('m') or distance == "Unknown" else f"{distance}",
+                    "distance": (
+                        distance
+                        if str(distance).endswith("m") or distance == "Unknown"
+                        else f"{distance}"
+                    ),
                     "field_size": field_size if field_size else 0,
                     "winner_name": "Unknown",
                     "winner_odds": "N/A",
@@ -4717,25 +5522,27 @@ def api_upcoming_races_csv():
                     "filename": filename,
                     "file_mtime": file_mtime,
                 }
-                
+
                 races_data.append(race_data)
-                
+
             except Exception as e:
                 logger.warning(f"Error processing CSV file {filename}: {e}")
                 continue
-        
+
         # Apply search filter if provided
         if search:
             filtered_races = []
             search_lower = search.lower()
             for race in races_data:
-                if (search_lower in race["venue"].lower() or
-                    search_lower in race["race_name"].lower() or
-                    search_lower in race["grade"].lower() or
-                    search_lower in race["filename"].lower()):
+                if (
+                    search_lower in race["venue"].lower()
+                    or search_lower in race["race_name"].lower()
+                    or search_lower in race["grade"].lower()
+                    or search_lower in race["filename"].lower()
+                ):
                     filtered_races.append(race)
             races_data = filtered_races
-        
+
         # Sort races
         sort_options = {
             "race_date": "race_date",
@@ -4743,30 +5550,32 @@ def api_upcoming_races_csv():
             "confidence": "file_mtime",  # Use file modification time as proxy
             "grade": "grade",
         }
-        
+
         sort_key = sort_options.get(sort_by, "file_mtime")
-        reverse_sort = (order == "desc")
-        
+        reverse_sort = order == "desc"
+
         # Handle different sort key types
         if sort_key == "file_mtime":
             races_data.sort(key=lambda x: x["file_mtime"], reverse=reverse_sort)
         else:
-            races_data.sort(key=lambda x: str(x[sort_key]).lower(), reverse=reverse_sort)
-        
+            races_data.sort(
+                key=lambda x: str(x[sort_key]).lower(), reverse=reverse_sort
+            )
+
         # Remove file_mtime from final output (used only for sorting)
         for race in races_data:
             race.pop("file_mtime", None)
-        
+
         # Apply pagination
         total_count = len(races_data)
         offset = (page - 1) * per_page
-        paginated_races = races_data[offset:offset + per_page]
-        
+        paginated_races = races_data[offset : offset + per_page]
+
         # Calculate pagination info
         total_pages = math.ceil(total_count / per_page) if total_count > 0 else 1
         has_next = page < total_pages
         has_prev = page > 1
-        
+
         return jsonify(
             {
                 "success": True,
@@ -4784,7 +5593,7 @@ def api_upcoming_races_csv():
                 "search": search,
             }
         )
-        
+
     except Exception as e:
         logger.error(f"Error in /api/upcoming_races_csv: {str(e)}")
         return (
@@ -4797,12 +5606,14 @@ def api_upcoming_races_csv():
             500,
         )
 
+
 def create_batch_pipeline():
     """Initialize the batch prediction pipeline instance"""
     if not BATCH_PIPELINE_AVAILABLE:
         raise Exception("Batch prediction pipeline not available")
-    
+
     return BatchPredictionPipeline()
+
 
 @app.route("/api/batch/predict", methods=["POST"])
 def api_batch_predict():
@@ -4824,7 +5635,7 @@ def api_batch_predict():
             input_files=file_paths,
             output_dir="./api_batch_output",
             batch_size=10,
-            max_workers=3
+            max_workers=3,
         )
 
         # Run job asynchronously
@@ -4833,9 +5644,12 @@ def api_batch_predict():
 
         threading.Thread(target=run_batch_async, args=(job_id,), daemon=True).start()
 
-        return jsonify({"success": True, "job_id": job_id, "message": "Batch prediction started"})
+        return jsonify(
+            {"success": True, "job_id": job_id, "message": "Batch prediction started"}
+        )
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
+
 
 @app.route("/api/batch/status/<job_id>", methods=["GET"])
 def api_batch_status(job_id):
@@ -4846,16 +5660,19 @@ def api_batch_status(job_id):
     if not job:
         return jsonify({"success": False, "message": "Job not found"}), 404
 
-    return jsonify({
-        "success": True,
-        "status": job.status,
-        "progress": job.progress,
-        "completed": job.completed_files,
-        "failed": job.failed_files,
-        "total": job.total_files,
-        "created_at": job.created_at,
-        "errors": job.error_messages
-    })
+    return jsonify(
+        {
+            "success": True,
+            "status": job.status,
+            "progress": job.progress,
+            "completed": job.completed_files,
+            "failed": job.failed_files,
+            "total": job.total_files,
+            "created_at": job.created_at,
+            "errors": job.error_messages,
+        }
+    )
+
 
 @app.route("/api/batch/cancel/<job_id>", methods=["POST"])
 def api_batch_cancel(job_id):
@@ -4864,9 +5681,15 @@ def api_batch_cancel(job_id):
     result = pipeline.cancel_job(job_id)
 
     if not result:
-        return jsonify({"success": False, "message": "Unable to cancel job, or job not found"}), 404
+        return (
+            jsonify(
+                {"success": False, "message": "Unable to cancel job, or job not found"}
+            ),
+            404,
+        )
 
     return jsonify({"success": True, "message": "Job cancelled"})
+
 
 @app.route("/api/batch/progress/<job_id>", methods=["GET"])
 def api_batch_progress(job_id):
@@ -4879,8 +5702,8 @@ def api_batch_progress(job_id):
             return jsonify({"success": False, "message": "Job not found"}), 404
 
         # Support for callback parameter (JSONP-style callback)
-        callback = request.args.get('callback')
-        
+        callback = request.args.get("callback")
+
         progress_data = {
             "success": True,
             "job_id": job_id,
@@ -4889,29 +5712,36 @@ def api_batch_progress(job_id):
             "completed": job.completed_files,
             "failed": job.failed_files,
             "total": job.total_files,
-            "current_file": getattr(job, 'current_file', None),
+            "current_file": getattr(job, "current_file", None),
             "created_at": job.created_at,
-            "updated_at": getattr(job, 'updated_at', None),
-            "errors": job.error_messages[-5:] if job.error_messages else [],  # Last 5 errors
-            "recent_completions": getattr(job, 'recent_completions', [])[-3:] if hasattr(job, 'recent_completions') else [],  # Last 3 completed files
-            "estimated_time_remaining": getattr(job, 'estimated_time_remaining', None),
-            "timestamp": datetime.now().isoformat()
+            "updated_at": getattr(job, "updated_at", None),
+            "errors": (
+                job.error_messages[-5:] if job.error_messages else []
+            ),  # Last 5 errors
+            "recent_completions": (
+                getattr(job, "recent_completions", [])[-3:]
+                if hasattr(job, "recent_completions")
+                else []
+            ),  # Last 3 completed files
+            "estimated_time_remaining": getattr(job, "estimated_time_remaining", None),
+            "timestamp": datetime.now().isoformat(),
         }
-        
+
         if callback:
             # Return JSONP response for cross-origin requests
             response_text = f"{callback}({json.dumps(progress_data)})"
-            return Response(response_text, mimetype='application/javascript')
+            return Response(response_text, mimetype="application/javascript")
         else:
             return jsonify(progress_data)
-            
+
     except Exception as e:
         error_response = {"success": False, "message": str(e)}
         if callback:
             response_text = f"{callback}({json.dumps(error_response)})"
-            return Response(response_text, mimetype='application/javascript')
+            return Response(response_text, mimetype="application/javascript")
         else:
             return jsonify(error_response), 500
+
 
 @app.route("/api/batch/stream", methods=["POST"])
 def api_batch_stream():
@@ -4919,6 +5749,7 @@ def api_batch_stream():
     try:
         import json
         import uuid
+
         from flask import Response, copy_current_request_context
 
         data = request.get_json()
@@ -4934,7 +5765,7 @@ def api_batch_stream():
         def generate_batch_stream():
             try:
                 pipeline = create_batch_pipeline()
-                
+
                 # Send initial status
                 yield f"data: {json.dumps({'type': 'start', 'stream_id': stream_id, 'message': f'Starting batch prediction for {len(file_paths)} files...', 'total_files': len(file_paths)})}\n\n"
 
@@ -4944,9 +5775,9 @@ def api_batch_stream():
                     input_files=file_paths,
                     output_dir="./stream_batch_output",
                     batch_size=batch_size,
-                    max_workers=max_workers
+                    max_workers=max_workers,
                 )
-                
+
                 yield f"data: {json.dumps({'type': 'job_created', 'job_id': job_id, 'message': f'Batch job {job_id} created'})}\n\n"
 
                 # Start job asynchronously and monitor progress
@@ -4954,47 +5785,57 @@ def api_batch_stream():
                     pipeline.run_batch_job(job_id)
 
                 import threading
-                batch_thread = threading.Thread(target=run_batch_async_monitor, args=(job_id,), daemon=True)
+
+                batch_thread = threading.Thread(
+                    target=run_batch_async_monitor, args=(job_id,), daemon=True
+                )
                 batch_thread.start()
 
                 # Monitor job progress
                 last_progress = -1
                 last_completed = 0
-                
+
                 while True:
                     time.sleep(1)  # Check every second
-                    
+
                     job = pipeline.get_job_status(job_id)
                     if not job:
                         yield f"data: {json.dumps({'type': 'error', 'message': 'Job not found'})}\n\n"
                         break
 
                     # Send progress updates
-                    if job.progress != last_progress or job.completed_files != last_completed:
+                    if (
+                        job.progress != last_progress
+                        or job.completed_files != last_completed
+                    ):
                         yield f"data: {json.dumps({'type': 'progress', 'progress': job.progress, 'completed': job.completed_files, 'failed': job.failed_files, 'total': job.total_files, 'status': job.status})}\n\n"
                         last_progress = job.progress
                         last_completed = job.completed_files
 
                     # Send completion updates
-                    if hasattr(job, 'recent_completions') and job.recent_completions:
+                    if hasattr(job, "recent_completions") and job.recent_completions:
                         for completion in job.recent_completions:
-                            if completion not in getattr(generate_batch_stream, 'sent_completions', set()):
+                            if completion not in getattr(
+                                generate_batch_stream, "sent_completions", set()
+                            ):
                                 yield f"data: {json.dumps({'type': 'file_completed', 'file': completion, 'completed': job.completed_files, 'total': job.total_files})}\n\n"
-                                if not hasattr(generate_batch_stream, 'sent_completions'):
+                                if not hasattr(
+                                    generate_batch_stream, "sent_completions"
+                                ):
                                     generate_batch_stream.sent_completions = set()
                                 generate_batch_stream.sent_completions.add(completion)
 
                     # Check if job is complete
-                    if job.status in ['completed', 'failed', 'cancelled']:
+                    if job.status in ["completed", "failed", "cancelled"]:
                         yield f"data: {json.dumps({'type': 'complete', 'status': job.status, 'completed': job.completed_files, 'failed': job.failed_files, 'total': job.total_files, 'message': f'Batch job {job.status}'})}\n\n"
                         break
-                    
+
                     # Send keepalive every 30 seconds
-                    if hasattr(generate_batch_stream, 'keepalive_counter'):
+                    if hasattr(generate_batch_stream, "keepalive_counter"):
                         generate_batch_stream.keepalive_counter += 1
                     else:
                         generate_batch_stream.keepalive_counter = 1
-                        
+
                     if generate_batch_stream.keepalive_counter % 30 == 0:
                         yield f"data: {json.dumps({'type': 'keepalive', 'timestamp': datetime.now().isoformat()})}\n\n"
 
@@ -5011,9 +5852,13 @@ def api_batch_stream():
                 "Access-Control-Allow-Headers": "Cache-Control",
             },
         )
-        
+
     except Exception as e:
-        return jsonify({"success": False, "error": f"Stream setup error: {str(e)}"}), 500
+        return (
+            jsonify({"success": False, "error": f"Stream setup error: {str(e)}"}),
+            500,
+        )
+
 
 @app.route("/api/ml-predict", methods=["POST"])
 def api_ml_predict():
@@ -5022,36 +5867,45 @@ def api_ml_predict():
         data = request.get_json()
         if not data:
             return jsonify({"success": False, "error": "No data provided"}), 400
-        
+
         # Simulate ML prediction processing
         race_id = data.get("race_id", "unknown")
         dogs = data.get("dogs", [])
-        
+
         # Basic validation
         if not dogs:
             return jsonify({"success": False, "error": "No dogs data provided"}), 400
-        
+
         # Simulate prediction logic with database query
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
-        
+
         # Log query for performance monitoring
         query_start = time.time()
         cursor.execute("SELECT COUNT(*) as dog_count FROM dogs")
         total_dogs = cursor.fetchone()[0]
         query_time = (time.time() - query_start) * 1000  # Convert to ms
-        
+
         # Log slow queries (>100ms)
         if query_time > 100:
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO query_monitoring (query, execution_time, query_plan)
                 VALUES (?, ?, ?)
-            """, ("SELECT COUNT(*) as dog_count FROM dogs", query_time, "SLOW_QUERY_DETECTED"))
-            logger.warning(f"Slow query detected: {query_time:.2f}ms - SELECT COUNT(*) as dog_count FROM dogs")
-        
+            """,
+                (
+                    "SELECT COUNT(*) as dog_count FROM dogs",
+                    query_time,
+                    "SLOW_QUERY_DETECTED",
+                ),
+            )
+            logger.warning(
+                f"Slow query detected: {query_time:.2f}ms - SELECT COUNT(*) as dog_count FROM dogs"
+            )
+
         conn.commit()
         conn.close()
-        
+
         # Generate mock predictions
         predictions = []
         for i, dog in enumerate(dogs):
@@ -5059,37 +5913,45 @@ def api_ml_predict():
             stats = dog.get("stats", {})
             wins = stats.get("wins", 0)
             races = stats.get("races", 1)
-            
+
             win_rate = wins / races if races > 0 else 0
             confidence = min(0.95, max(0.1, win_rate + 0.2))
-            
-            predictions.append({
-                "dog_name": dog_name,
-                "box_number": i + 1,
-                "win_probability": round(confidence, 3),
-                "confidence_level": "HIGH" if confidence > 0.7 else "MEDIUM" if confidence > 0.4 else "LOW",
-                "prediction_score": round(confidence, 3)
-            })
-        
+
+            predictions.append(
+                {
+                    "dog_name": dog_name,
+                    "box_number": i + 1,
+                    "win_probability": round(confidence, 3),
+                    "confidence_level": (
+                        "HIGH"
+                        if confidence > 0.7
+                        else "MEDIUM" if confidence > 0.4 else "LOW"
+                    ),
+                    "prediction_score": round(confidence, 3),
+                }
+            )
+
         # Sort by prediction score
         predictions.sort(key=lambda x: x["prediction_score"], reverse=True)
-        
-        return jsonify({
-            "success": True,
-            "race_id": race_id,
-            "predictions": predictions,
-            "model_used": "LoadTestML_v1",
-            "processing_time_ms": round(query_time, 2),
-            "total_dogs_in_db": total_dogs,
-            "timestamp": datetime.now().isoformat()
-        })
-        
+
+        return jsonify(
+            {
+                "success": True,
+                "race_id": race_id,
+                "predictions": predictions,
+                "model_used": "LoadTestML_v1",
+                "processing_time_ms": round(query_time, 2),
+                "total_dogs_in_db": total_dogs,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
+
     except Exception as e:
         logger.error(f"ML prediction error: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": f"ML prediction failed: {str(e)}"
-        }), 500
+        return (
+            jsonify({"success": False, "error": f"ML prediction failed: {str(e)}"}),
+            500,
+        )
 
 
 @app.route("/ws")
@@ -5099,31 +5961,36 @@ def websocket_endpoint():
         # Simulate WebSocket connection and data exchange
         message_type = request.args.get("type", "ping")
         race_id = request.args.get("race_id", "test_race")
-        
+
         # Simulate database query for real-time data
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
-        
+
         query_start = time.time()
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT COUNT(*) as active_races 
             FROM race_metadata 
             WHERE race_date >= date('now', '-1 day')
-        """)
+        """
+        )
         active_races = cursor.fetchone()[0]
         query_time = (time.time() - query_start) * 1000
-        
+
         # Log slow queries
         if query_time > 100:
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO query_monitoring (query, execution_time, query_plan)
                 VALUES (?, ?, ?)
-            """, ("WebSocket active races query", query_time, "WEBSOCKET_QUERY"))
+            """,
+                ("WebSocket active races query", query_time, "WEBSOCKET_QUERY"),
+            )
             logger.warning(f"Slow WebSocket query: {query_time:.2f}ms")
-        
+
         conn.commit()
         conn.close()
-        
+
         # Simulate WebSocket response
         response_data = {
             "type": "response",
@@ -5135,18 +6002,23 @@ def websocket_endpoint():
                 "server_time": datetime.now().isoformat(),
             },
             "query_time_ms": round(query_time, 2),
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
-        
+
         return jsonify(response_data)
-        
+
     except Exception as e:
         logger.error(f"WebSocket endpoint error: {str(e)}")
-        return jsonify({
-            "type": "error",
-            "error": f"WebSocket error: {str(e)}",
-            "timestamp": datetime.now().isoformat()
-        }), 500
+        return (
+            jsonify(
+                {
+                    "type": "error",
+                    "error": f"WebSocket error: {str(e)}",
+                    "timestamp": datetime.now().isoformat(),
+                }
+            ),
+            500,
+        )
 
 
 @app.route("/api/enable-explain-analyze")
@@ -5155,13 +6027,14 @@ def enable_explain_analyze():
     try:
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
-        
+
         # Enable query logging
         cursor.execute("PRAGMA query_plan_enabled = ON")
         cursor.execute("PRAGMA query_plan_analysis = ON")
-        
+
         # Create table for query monitoring if not exists
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS query_monitoring (
                 id INTEGER PRIMARY KEY,
                 query TEXT,
@@ -5169,40 +6042,49 @@ def enable_explain_analyze():
                 query_plan TEXT,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             )
-        """)
-        
+        """
+        )
+
         conn.commit()
         conn.close()
-        
-        return jsonify({
-            "success": True,
-            "message": "EXPLAIN ANALYZE sampling enabled"
-        })
+
+        return jsonify({"success": True, "message": "EXPLAIN ANALYZE sampling enabled"})
     except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": f"Failed to enable query monitoring: {str(e)}"
-        }), 500
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": f"Failed to enable query monitoring: {str(e)}",
+                }
+            ),
+            500,
+        )
+
 
 @app.route("/ping")
 def ping():
     """Simple ping endpoint for testing compression"""
-    return jsonify({
-        "message": "pong",
-        "timestamp": datetime.now().isoformat(),
-        "status": "ok",
-        "server": "greyhound-racing-dashboard",
-        "compression_test": " ".join([
-            "This is a longer message to ensure the response is large enough to trigger gzip compression when the minimum size threshold is met.",
-            "".join(["0123456789abcdef" for _ in range(40)]),
-            "".join(["COMPRESS_TEST_BLOCK_" for _ in range(30)]),
-        ]),
-        "data": {
-            "uptime": "running",
-            "version": "3.1.0",
-            "environment": "development"
+    return jsonify(
+        {
+            "message": "pong",
+            "timestamp": datetime.now().isoformat(),
+            "status": "ok",
+            "server": "greyhound-racing-dashboard",
+            "compression_test": " ".join(
+                [
+                    "This is a longer message to ensure the response is large enough to trigger gzip compression when the minimum size threshold is met.",
+                    "".join(["0123456789abcdef" for _ in range(40)]),
+                    "".join(["COMPRESS_TEST_BLOCK_" for _ in range(30)]),
+                ]
+            ),
+            "data": {
+                "uptime": "running",
+                "version": "3.1.0",
+                "environment": "development",
+            },
         }
-    })
+    )
+
 
 @app.route("/api/health")
 def api_health():
@@ -5226,10 +6108,11 @@ def api_health():
         return jsonify(data), 200
     except Exception as e:
         # Never 500 on health; return degraded info instead
-        return jsonify({
-            "success": False,
-            "message": f"Health check error: {str(e)}"
-        }), 200
+        return (
+            jsonify({"success": False, "message": f"Health check error: {str(e)}"}),
+            200,
+        )
+
 
 # Back-compat health endpoint
 @app.route("/health")
@@ -5251,88 +6134,128 @@ def health():
                     else "unavailable"
                 ),
             },
-            "route": "/health"
+            "route": "/health",
         }
         return jsonify(data)
     except Exception as e:
         # Never 500 on /health; surface degraded but success false
-        return jsonify({
-            "success": False,
-            "message": f"Health check error: {str(e)}"
-        })
+        return jsonify({"success": False, "message": f"Health check error: {str(e)}"})
 
 
 # -----------------------------
 # V4 evaluation and contracts APIs (frontend integration)
 # -----------------------------
 
-@app.route('/api/v4/eval/summary/latest', methods=['GET'])
+
+@app.route("/api/v4/eval/summary/latest", methods=["GET"])
 def api_v4_eval_summary_latest():
     try:
         import glob
-        window = request.args.get('window', '500')
-        if window not in ('100','500'):
-            window = '500'
-        pattern = f"logs/large_integration_summary_{window}_*.json" if window in ('100','500') else "logs/large_integration_summary_*.json"
+
+        window = request.args.get("window", "500")
+        if window not in ("100", "500"):
+            window = "500"
+        pattern = (
+            f"logs/large_integration_summary_{window}_*.json"
+            if window in ("100", "500")
+            else "logs/large_integration_summary_*.json"
+        )
         files = sorted(glob.glob(pattern))
         if not files:
             # Fallback to non-windowed latest summary
-            files = sorted(glob.glob('logs/large_integration_summary_*.json'))
+            files = sorted(glob.glob("logs/large_integration_summary_*.json"))
         if not files:
-            return jsonify({'success': False, 'error': 'no evaluation summaries found'}), 404
+            return (
+                jsonify({"success": False, "error": "no evaluation summaries found"}),
+                404,
+            )
         latest = files[-1]
         import json
         from pathlib import Path
-        data = json.loads(Path(latest).read_text())
-        return jsonify({'success': True, 'path': latest, 'window': window, 'summary': data}), 200
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
 
-@app.route('/api/v4/eval/mispredictions/latest', methods=['GET'])
+        data = json.loads(Path(latest).read_text())
+        return (
+            jsonify(
+                {"success": True, "path": latest, "window": window, "summary": data}
+            ),
+            200,
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/v4/eval/mispredictions/latest", methods=["GET"])
 def api_v4_eval_mispredictions_latest():
     try:
         import glob
         from pathlib import Path
-        window = request.args.get('window', '500')
-        if window not in ('100','500'):
-            window = '500'
+
+        window = request.args.get("window", "500")
+        if window not in ("100", "500"):
+            window = "500"
         # Prefer analysis JSON if available
-        analysis_files = sorted(glob.glob(f'logs/misprediction_analysis_{window}_*.json'))
-        preds_files = sorted(glob.glob(f'logs/large_integration_predictions_{window}_*.csv'))
-        resp = {'success': True, 'window': window}
+        analysis_files = sorted(
+            glob.glob(f"logs/misprediction_analysis_{window}_*.json")
+        )
+        preds_files = sorted(
+            glob.glob(f"logs/large_integration_predictions_{window}_*.csv")
+        )
+        resp = {"success": True, "window": window}
         if analysis_files:
             latest_analysis = analysis_files[-1]
             import json
-            resp['analysis_path'] = latest_analysis
-            resp['analysis'] = json.loads(Path(latest_analysis).read_text())
+
+            resp["analysis_path"] = latest_analysis
+            resp["analysis"] = json.loads(Path(latest_analysis).read_text())
         if preds_files:
-            resp['predictions_csv'] = preds_files[-1]
+            resp["predictions_csv"] = preds_files[-1]
         if not analysis_files and not preds_files:
-            return jsonify({'success': False, 'error': 'no misprediction analysis or predictions CSV found'}), 404
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "no misprediction analysis or predictions CSV found",
+                    }
+                ),
+                404,
+            )
         return jsonify(resp), 200
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/api/v4/models/contracts', methods=['GET'])
+
+@app.route("/api/v4/models/contracts", methods=["GET"])
 def api_v4_model_contracts_list():
     try:
         from pathlib import Path
-        base = Path('docs/model_contracts')
-        if not base.exists():
-            return jsonify({'success': True, 'contracts': [], 'message': 'no contracts directory'}), 200
-        items = []
-        for p in sorted(base.glob('*.json')):
-            items.append({'name': p.name, 'path': str(p)})
-        return jsonify({'success': True, 'contracts': items}), 200
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
 
-@app.route('/api/v4/models/contracts/<path:contract_name>', methods=['GET'])
+        base = Path("docs/model_contracts")
+        if not base.exists():
+            return (
+                jsonify(
+                    {
+                        "success": True,
+                        "contracts": [],
+                        "message": "no contracts directory",
+                    }
+                ),
+                200,
+            )
+        items = []
+        for p in sorted(base.glob("*.json")):
+            items.append({"name": p.name, "path": str(p)})
+        return jsonify({"success": True, "contracts": items}), 200
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/v4/models/contracts/<path:contract_name>", methods=["GET"])
 def api_v4_model_contracts_get(contract_name):
     try:
-        from pathlib import Path
         import json
-        base = Path('docs/model_contracts')
+        from pathlib import Path
+
+        base = Path("docs/model_contracts")
         path = base / contract_name
         if not path.exists():
             # Try with .json suffix
@@ -5340,25 +6263,28 @@ def api_v4_model_contracts_get(contract_name):
             if path2.exists():
                 path = path2
         if not path.exists():
-            return jsonify({'success': False, 'error': 'contract not found'}), 404
+            return jsonify({"success": False, "error": "contract not found"}), 404
         data = json.loads(path.read_text())
-        return jsonify({'success': True, 'contract': data, 'path': str(path)}), 200
+        return jsonify({"success": True, "contract": data, "path": str(path)}), 200
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/api/v4/models/contracts/refresh', methods=['POST'])
+
+@app.route("/api/v4/models/contracts/refresh", methods=["POST"])
 def api_v4_model_contracts_refresh():
     """Rebuild and persist the v4 feature contract from the current model."""
     try:
         from ml_system_v4 import MLSystemV4
+
         system = MLSystemV4()
         result = system.regenerate_feature_contract()
-        status = 200 if result.get('success') else 500
+        status = 200 if result.get("success") else 500
         return jsonify(result), status
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/api/v4/models/contracts/check', methods=['GET'])
+
+@app.route("/api/v4/models/contracts/check", methods=["GET"])
 def api_v4_model_contracts_check():
     """Check the current model against the saved v4 feature contract.
 
@@ -5368,15 +6294,25 @@ def api_v4_model_contracts_check():
     try:
         import json as _json
         from pathlib import Path as _Path
+
         from ml_system_v4 import MLSystemV4
 
-        strict = str(request.args.get('strict', '0')).lower() in ('1','true','yes')
+        strict = str(request.args.get("strict", "0")).lower() in ("1", "true", "yes")
         system = MLSystemV4()
 
         # Load expected contract
-        cpath = _Path('docs') / 'model_contracts' / 'v4_feature_contract.json'
+        cpath = _Path("docs") / "model_contracts" / "v4_feature_contract.json"
         if not cpath.exists():
-            return jsonify({'success': False, 'error': 'contract not found', 'path': str(cpath)}), 404
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "contract not found",
+                        "path": str(cpath),
+                    }
+                ),
+                404,
+            )
         exp = _json.loads(cpath.read_text())
 
         # Current signature/columns
@@ -5384,9 +6320,9 @@ def api_v4_model_contracts_check():
         cur_cats = set(system.categorical_columns or [])
         cur_nums = set(system.numerical_columns or [])
 
-        exp_sig = exp.get('feature_signature')
-        exp_cats = set(exp.get('categorical_columns') or [])
-        exp_nums = set(exp.get('numerical_columns') or [])
+        exp_sig = exp.get("feature_signature")
+        exp_cats = set(exp.get("categorical_columns") or [])
+        exp_nums = set(exp.get("numerical_columns") or [])
 
         signature_match = (exp_sig == cur_sig) if (exp_sig and cur_sig) else True
         cats_missing = sorted(list(exp_cats - cur_cats)) if exp_cats else []
@@ -5394,18 +6330,24 @@ def api_v4_model_contracts_check():
         nums_missing = sorted(list(exp_nums - cur_nums)) if exp_nums else []
         nums_extra = sorted(list(cur_nums - exp_nums)) if exp_nums else []
 
-        matched = bool(signature_match and not cats_missing and not cats_extra and not nums_missing and not nums_extra)
+        matched = bool(
+            signature_match
+            and not cats_missing
+            and not cats_extra
+            and not nums_missing
+            and not nums_extra
+        )
         diff = {
-            'signature_match': signature_match,
-            'expected_signature': exp_sig,
-            'current_signature': cur_sig,
-            'categorical': {
-                'missing': cats_missing,
-                'extra': cats_extra,
+            "signature_match": signature_match,
+            "expected_signature": exp_sig,
+            "current_signature": cur_sig,
+            "categorical": {
+                "missing": cats_missing,
+                "extra": cats_extra,
             },
-            'numerical': {
-                'missing': nums_missing,
-                'extra': nums_extra,
+            "numerical": {
+                "missing": nums_missing,
+                "extra": nums_extra,
             },
         }
 
@@ -5415,11 +6357,23 @@ def api_v4_model_contracts_check():
             status = 409
             success = False
 
-        return jsonify({'success': success, 'matched': matched, 'strict': strict, 'diff': diff, 'path': str(cpath)}), status
+        return (
+            jsonify(
+                {
+                    "success": success,
+                    "matched": matched,
+                    "strict": strict,
+                    "diff": diff,
+                    "path": str(cpath),
+                }
+            ),
+            status,
+        )
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/api/races')
+
+@app.route("/api/races")
 def api_races():
     """API endpoint to list races with details.
     Returns completed races (with winners) when available; otherwise falls back to listing recent form guides.
@@ -5499,7 +6453,9 @@ def api_predict_single_race():
         return jsonify({"error": "No race filename provided"}), 400
 
     race_filename = data["race_filename"]
-    race_file_path = os.path.join(app.config.get('UPCOMING_DIR', UPCOMING_DIR), race_filename)
+    race_file_path = os.path.join(
+        app.config.get("UPCOMING_DIR", UPCOMING_DIR), race_filename
+    )
 
     try:
         if not os.path.exists(race_file_path):
@@ -5516,20 +6472,31 @@ def api_predict_single_race():
         if ENHANCED_PREDICTION_SERVICE_AVAILABLE and enhanced_prediction_service:
             try:
                 logger.log_process("Using Enhanced Prediction Service for API")
-                prediction_result = enhanced_prediction_service.predict_race_file_enhanced(race_file_path, tgr_enabled=(data.get('tgr_enabled') if isinstance(data, dict) else None))
+                prediction_result = (
+                    enhanced_prediction_service.predict_race_file_enhanced(
+                        race_file_path,
+                        tgr_enabled=(
+                            data.get("tgr_enabled") if isinstance(data, dict) else None
+                        ),
+                    )
+                )
                 predictor_used = "EnhancedPredictionService"
-                
+
                 # Check if prediction was actually successful
                 if prediction_result and prediction_result.get("success"):
-                    logger.log_process("Enhanced Prediction Service completed successfully")
+                    logger.log_process(
+                        "Enhanced Prediction Service completed successfully"
+                    )
                 else:
-                    logger.log_process(f"Enhanced Prediction Service returned unsuccessful result: {prediction_result}")
+                    logger.log_process(
+                        f"Enhanced Prediction Service returned unsuccessful result: {prediction_result}"
+                    )
                     prediction_result = None  # Force fallback
-                    
+
             except Exception as e:
                 logger.log_error(f"Enhanced Prediction Service failed: {e}")
                 prediction_result = None  # Ensure fallback will trigger
-        
+
         # Fallback to PredictionPipelineV4 if Enhanced Service fails
         if not prediction_result and PredictionPipelineV4:
             try:
@@ -5537,14 +6504,16 @@ def api_predict_single_race():
                 pipeline = PredictionPipelineV4()
                 prediction_result = pipeline.predict_race_file(race_file_path)
                 predictor_used = "PredictionPipelineV4"
-                
+
                 # Check if prediction was actually successful
                 if prediction_result and prediction_result.get("success"):
                     logger.log_process("PredictionPipelineV4 completed successfully")
                 else:
-                    logger.log_process(f"PredictionPipelineV4 returned unsuccessful result: {prediction_result}")
+                    logger.log_process(
+                        f"PredictionPipelineV4 returned unsuccessful result: {prediction_result}"
+                    )
                     prediction_result = None  # Force fallback
-                    
+
             except Exception as e:
                 logger.log_error(f"PredictionPipelineV4 failed: {e}")
                 prediction_result = None  # Ensure fallback will trigger
@@ -5554,25 +6523,34 @@ def api_predict_single_race():
             try:
                 # Lazy import to prevent loading legacy systems during normal operation
                 from importlib import import_module as _imp
-                v3_mod = _imp('prediction_pipeline_v3')
-                PPv3 = getattr(v3_mod, 'PredictionPipelineV3', None)
+
+                v3_mod = _imp("prediction_pipeline_v3")
+                PPv3 = getattr(v3_mod, "PredictionPipelineV3", None)
             except Exception as _e:
                 PPv3 = None
-                logger.log_process(f"PredictionPipelineV3 not available for fallback: {_e}")
-            
+                logger.log_process(
+                    f"PredictionPipelineV3 not available for fallback: {_e}"
+                )
+
             if PPv3:
                 try:
                     logger.log_process("Fallback to PredictionPipelineV3 (lazy import)")
                     pipeline = PPv3()
-                    prediction_result = pipeline.predict_race_file(race_file_path, enhancement_level="basic")
+                    prediction_result = pipeline.predict_race_file(
+                        race_file_path, enhancement_level="basic"
+                    )
                     predictor_used = "PredictionPipelineV3"
-                    
+
                     if prediction_result and prediction_result.get("success"):
-                        logger.log_process("PredictionPipelineV3 completed successfully")
+                        logger.log_process(
+                            "PredictionPipelineV3 completed successfully"
+                        )
                     else:
-                        logger.log_process(f"PredictionPipelineV3 returned unsuccessful result: {prediction_result}")
+                        logger.log_process(
+                            f"PredictionPipelineV3 returned unsuccessful result: {prediction_result}"
+                        )
                         prediction_result = None
-                        
+
                 except Exception as e:
                     logger.log_error(f"PredictionPipelineV3 failed: {e}")
                     prediction_result = None
@@ -5582,25 +6560,30 @@ def api_predict_single_race():
             try:
                 # Lazy import unified predictor to avoid heavy dependencies unless needed
                 from importlib import import_module as _imp
-                uni_mod = _imp('unified_predictor')
-                UP = getattr(uni_mod, 'UnifiedPredictor', None)
+
+                uni_mod = _imp("unified_predictor")
+                UP = getattr(uni_mod, "UnifiedPredictor", None)
             except Exception as _e:
                 UP = None
                 logger.log_process(f"UnifiedPredictor not available for fallback: {_e}")
-            
+
             if UP:
                 try:
-                    logger.log_process("Final fallback to UnifiedPredictor (lazy import)")
+                    logger.log_process(
+                        "Final fallback to UnifiedPredictor (lazy import)"
+                    )
                     predictor = UP()
                     prediction_result = predictor.predict_race_file(race_file_path)
                     predictor_used = "UnifiedPredictor"
-                    
+
                     if prediction_result and prediction_result.get("success"):
                         logger.log_process("UnifiedPredictor completed successfully")
                     else:
-                        logger.log_process(f"UnifiedPredictor returned unsuccessful result: {prediction_result}")
+                        logger.log_process(
+                            f"UnifiedPredictor returned unsuccessful result: {prediction_result}"
+                        )
                         prediction_result = None
-                        
+
                 except Exception as e:
                     logger.log_error(f"UnifiedPredictor failed: {e}")
                     prediction_result = None
@@ -5609,19 +6592,21 @@ def api_predict_single_race():
         if prediction_result and prediction_result.get("success"):
             # If we have harmonized metadata from live browser, overlay it onto race_info
             try:
-                if isinstance(harmonized_ri, dict) and isinstance(prediction_result, dict):
-                    _ri = prediction_result.get('race_info') or {}
+                if isinstance(harmonized_ri, dict) and isinstance(
+                    prediction_result, dict
+                ):
+                    _ri = prediction_result.get("race_info") or {}
                     # Overlay venue/distance/grade/race_number/date (date also mirrored to race_date)
-                    for _k in ('venue', 'distance', 'grade', 'race_number', 'date'):
+                    for _k in ("venue", "distance", "grade", "race_number", "date"):
                         _v = harmonized_ri.get(_k)
                         if _v:
-                            if _k == 'date':
-                                _ri.setdefault('date', _v)
+                            if _k == "date":
+                                _ri.setdefault("date", _v)
                             else:
                                 _ri[_k] = _v
-                    if 'date' in harmonized_ri and 'race_date' not in _ri:
-                        _ri['race_date'] = harmonized_ri['date']
-                    prediction_result['race_info'] = _ri
+                    if "date" in harmonized_ri and "race_date" not in _ri:
+                        _ri["race_date"] = harmonized_ri["date"]
+                    prediction_result["race_info"] = _ri
             except Exception:
                 pass
 
@@ -5635,45 +6620,69 @@ def api_predict_single_race():
             # Surface model metadata at top-level for convenience
             try:
                 if isinstance(prediction_result, dict):
-                    if prediction_result.get('primary_model_id'):
-                        response_data['primary_model_id'] = prediction_result.get('primary_model_id')
-                    if prediction_result.get('ensemble_models_used') is not None:
-                        response_data['ensemble_models_used'] = prediction_result.get('ensemble_models_used')
-                    if prediction_result.get('model_ids_used') is not None:
-                        response_data['model_ids_used'] = prediction_result.get('model_ids_used')
+                    if prediction_result.get("primary_model_id"):
+                        response_data["primary_model_id"] = prediction_result.get(
+                            "primary_model_id"
+                        )
+                    if prediction_result.get("ensemble_models_used") is not None:
+                        response_data["ensemble_models_used"] = prediction_result.get(
+                            "ensemble_models_used"
+                        )
+                    if prediction_result.get("model_ids_used") is not None:
+                        response_data["model_ids_used"] = prediction_result.get(
+                            "model_ids_used"
+                        )
             except Exception:
                 pass
             return jsonify(response_data)
         else:
-            error_message = prediction_result.get("error", "All methods failed") if prediction_result else "No result"
-            logger.log_error(f"All prediction methods failed for {race_filename}: {error_message}")
-            return jsonify({"success": False, "message": f"Prediction failed: {error_message}", "predictor_used": predictor_used}), 500
+            error_message = (
+                prediction_result.get("error", "All methods failed")
+                if prediction_result
+                else "No result"
+            )
+            logger.log_error(
+                f"All prediction methods failed for {race_filename}: {error_message}"
+            )
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": f"Prediction failed: {error_message}",
+                        "predictor_used": predictor_used,
+                    }
+                ),
+                500,
+            )
 
     except Exception as e:
         logger.log_error(f"Error during prediction for {race_filename}", error=e)
-        return jsonify({"success": False, "message": f"Prediction error: {str(e)}"}), 500
+        return (
+            jsonify({"success": False, "message": f"Prediction error: {str(e)}"}),
+            500,
+        )
 
 
 @app.route("/predict_single", methods=["POST"])
 def predict_single():
     """Predict single race from an uploaded CSV file."""
     try:
-        if 'file' not in request.files:
+        if "file" not in request.files:
             return jsonify({"error": "No file part"}), 400
-        
-        file = request.files['file']
-        if file.filename == '':
+
+        file = request.files["file"]
+        if file.filename == "":
             return jsonify({"error": "No selected file"}), 400
-        
+
         if not allowed_file(file.filename):
             return jsonify({"error": "File type not allowed"}), 400
 
         # Ensure upload directory exists
-        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-        
+        os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+
         # Secure the filename and save the file
         filename = secure_filename(file.filename)
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
         file.save(file_path)
 
         logger.log_process(f"File {filename} saved for prediction.")
@@ -5687,16 +6696,18 @@ def predict_single():
 
         # Initialize prediction pipeline
         prediction_result = None
-        
+
         # Try PredictionPipelineV3 first
         if PredictionPipelineV3:
             try:
                 pipeline = PredictionPipelineV3()
-                prediction_result = pipeline.predict_race_file(file_path, enhancement_level="basic")
+                prediction_result = pipeline.predict_race_file(
+                    file_path, enhancement_level="basic"
+                )
             except Exception as e:
                 logger.log_error(f"PredictionPipelineV3 failed: {e}")
                 prediction_result = None
-        
+
         # Fallback to UnifiedPredictor
         if not prediction_result and UnifiedPredictor:
             try:
@@ -5715,32 +6726,48 @@ def predict_single():
 
         # Check if prediction was successful
         if not prediction_result:
-            return jsonify({
-                "success": False,
-                "filename": filename,
-                "model_version": model_version,
-                "error": "Prediction pipeline not available or failed"
-            }), 500
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "filename": filename,
+                        "model_version": model_version,
+                        "error": "Prediction pipeline not available or failed",
+                    }
+                ),
+                500,
+            )
 
         # Extract predictions from result
         predictions = prediction_result.get("predictions", [])
-        
+
         # Format response according to task requirements
-        return jsonify({
-            "success": True,
-            "filename": filename,
-            "model_version": model_version,
-            "predictions": predictions
-        })
+        return jsonify(
+            {
+                "success": True,
+                "filename": filename,
+                "model_version": model_version,
+                "predictions": predictions,
+            }
+        )
 
     except Exception as e:
         logger.log_error(f"Error in predict_single endpoint: {str(e)}")
-        return jsonify({
-            "success": False,
-            "filename": getattr(file, 'filename', 'unknown') if 'file' in locals() else 'unknown',
-            "model_version": "unknown",
-            "error": f"Server error: {str(e)}"
-        }), 500
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "filename": (
+                        getattr(file, "filename", "unknown")
+                        if "file" in locals()
+                        else "unknown"
+                    ),
+                    "model_version": "unknown",
+                    "error": f"Server error: {str(e)}",
+                }
+            ),
+            500,
+        )
 
 
 def api_predict_batch(data):
@@ -5766,7 +6793,9 @@ def api_predict_batch(data):
                 f"📈 Processing race {i+1}/{total_races}: {filename}", "INFO", progress
             )
 
-            race_file_path = os.path.join(app.config.get('UPCOMING_DIR', UPCOMING_DIR), filename)
+            race_file_path = os.path.join(
+                app.config.get("UPCOMING_DIR", UPCOMING_DIR), filename
+            )
             if os.path.exists(race_file_path):
                 prediction = predictor.predict_race_file(
                     race_file_path, enhancement_level="full"
@@ -5811,13 +6840,17 @@ def api_predict_all_upcoming():
 
         # Get all CSV files using the helper function
         upcoming_races = load_upcoming_races(refresh=False)
-        upcoming_files = [race.get("filename", f"{race.get('name', 'race')}.csv") for race in upcoming_races if race.get("filename") or race.get("name")]
-        
+        upcoming_files = [
+            race.get("filename", f"{race.get('name', 'race')}.csv")
+            for race in upcoming_races
+            if race.get("filename") or race.get("name")
+        ]
+
         # If no files from helper, fallback to direct directory scan for CSV only
         if not upcoming_files:
             upcoming_files = [
                 f
-                for f in os.listdir(app.config.get('UPCOMING_DIR', UPCOMING_DIR))
+                for f in os.listdir(app.config.get("UPCOMING_DIR", UPCOMING_DIR))
                 if f.endswith(".csv") and f != "README.md"
             ]
 
@@ -5847,7 +6880,9 @@ def api_predict_all_upcoming():
                 progress,
             )
 
-            race_file_path = os.path.join(app.config.get('UPCOMING_DIR', UPCOMING_DIR), filename)
+            race_file_path = os.path.join(
+                app.config.get("UPCOMING_DIR", UPCOMING_DIR), filename
+            )
             prediction = predictor.predict_race_file(
                 race_file_path, enhancement_level="full"
             )
@@ -5915,7 +6950,7 @@ class DatabaseManager:
         to respect per-test overrides and runtime configuration changes.
         """
         try:
-            path = app.config.get('DATABASE_PATH', self.db_path)
+            path = app.config.get("DATABASE_PATH", self.db_path)
         except Exception:
             path = self.db_path
         return sqlite3.connect(path)
@@ -6341,7 +7376,8 @@ def _ensure_minimal_ml_schema():
         conn = sqlite3.connect(DATABASE_PATH)
         cur = conn.cursor()
         # Ensure race_metadata exists
-        cur.execute("""
+        cur.execute(
+            """
             CREATE TABLE IF NOT EXISTS race_metadata (
                 race_id TEXT PRIMARY KEY,
                 venue TEXT,
@@ -6360,7 +7396,8 @@ def _ensure_minimal_ml_schema():
                 winner_margin TEXT,
                 extraction_timestamp TEXT
             )
-        """)
+        """
+        )
         # Discover existing columns
         cur.execute("PRAGMA table_info(race_metadata)")
         cols = {row[1] for row in cur.fetchall() or []}
@@ -6383,7 +7420,8 @@ def _ensure_minimal_ml_schema():
                 except Exception:
                     pass
         # Ensure enhanced_expert_data table exists
-        cur.execute("""
+        cur.execute(
+            """
             CREATE TABLE IF NOT EXISTS enhanced_expert_data (
                 race_id TEXT,
                 dog_clean_name TEXT,
@@ -6393,7 +7431,8 @@ def _ensure_minimal_ml_schema():
                 bonus_time REAL,
                 PRIMARY KEY (race_id, dog_clean_name)
             )
-        """)
+        """
+        )
         conn.commit()
         conn.close()
     except Exception:
@@ -6495,12 +7534,24 @@ def get_file_stats():
 def not_found(e):
     """Render a friendly 404 page for normal browser requests; fall back to JSON for API."""
     try:
-        wants_json = 'application/json' in (request.headers.get('Accept') or '') or request.path.startswith('/api/')
+        wants_json = "application/json" in (
+            request.headers.get("Accept") or ""
+        ) or request.path.startswith("/api/")
         if wants_json:
-            return jsonify({'success': False, 'error': 'not_found', 'message': 'Resource not found', 'path': request.path}), 404
-        return render_template('404.html'), 404
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "not_found",
+                        "message": "Resource not found",
+                        "path": request.path,
+                    }
+                ),
+                404,
+            )
+        return render_template("404.html"), 404
     except Exception:
-        return jsonify({'success': False, 'error': 'not_found'}), 404
+        return jsonify({"success": False, "error": "not_found"}), 404
 
 
 @app.errorhandler(Exception)
@@ -6508,11 +7559,14 @@ def handle_exception(e):
     """Return JSON instead of HTML for generic server errors; preserve HTTPExceptions."""
     try:
         # Preserve Werkzeug HTTPExceptions (e.g., 404 for missing static assets)
-        from werkzeug.exceptions import HTTPException  # local import to avoid global dependency issues
+        from werkzeug.exceptions import (
+            HTTPException,  # local import to avoid global dependency issues
+        )
+
         if isinstance(e, HTTPException):
             # Optionally log 4xx as warnings rather than errors
             try:
-                code = getattr(e, 'code', 500)
+                code = getattr(e, "code", 500)
                 if code and int(code) < 500:
                     logger.warning(f"HTTPException {code}: {e}")
                 else:
@@ -6537,6 +7591,7 @@ def handle_exception(e):
     if app.debug:
         response["error"] = str(e)
         import traceback
+
         response["traceback"] = traceback.format_exc()
 
     return jsonify(response), 500
@@ -6549,9 +7604,10 @@ db_manager = DatabaseManager(DATABASE_PATH)
 if DB_OPTIMIZATION_ENABLED:
     try:
         from db_performance_optimizer import initialize_db_optimization
+
         db_pool, lazy_loader = initialize_db_optimization(
             database_path=DATABASE_PATH,
-            pool_size=20  # Optimized for our 17 Gunicorn workers
+            pool_size=20,  # Optimized for our 17 Gunicorn workers
         )
         print("✅ Database performance optimization initialized")
     except Exception as e:
@@ -6560,16 +7616,26 @@ if DB_OPTIMIZATION_ENABLED:
 
 # Do not force-disable Sportsbet integrator in testing; allow tests to control via env
 try:
-    if app.config.get('TESTING') or str(os.environ.get('TESTING','')).lower() in ('1','true','yes'):
-        if 'DISABLE_SPORTSBET_INTEGRATOR' not in os.environ:
-            os.environ.setdefault('DISABLE_SPORTSBET_INTEGRATOR', '0')
-            print('ℹ️ Defaulting DISABLE_SPORTSBET_INTEGRATOR=0 in testing unless explicitly set')
+    if app.config.get("TESTING") or str(os.environ.get("TESTING", "")).lower() in (
+        "1",
+        "true",
+        "yes",
+    ):
+        if "DISABLE_SPORTSBET_INTEGRATOR" not in os.environ:
+            os.environ.setdefault("DISABLE_SPORTSBET_INTEGRATOR", "0")
+            print(
+                "ℹ️ Defaulting DISABLE_SPORTSBET_INTEGRATOR=0 in testing unless explicitly set"
+            )
 except Exception:
     pass
 
 # Initialize Sportsbet odds integrator (optional; can be disabled via DISABLE_SPORTSBET_INTEGRATOR=1)
 try:
-    if str(os.environ.get('DISABLE_SPORTSBET_INTEGRATOR', '0')).lower() in ('1', 'true', 'yes'):
+    if str(os.environ.get("DISABLE_SPORTSBET_INTEGRATOR", "0")).lower() in (
+        "1",
+        "true",
+        "yes",
+    ):
         print("ℹ️ Sportsbet integrator disabled via DISABLE_SPORTSBET_INTEGRATOR")
         sportsbet_integrator = None
     else:
@@ -6689,7 +7755,9 @@ print("🗄️ Initializing database manager...")
 try:
     # Use the analytics database path for read operations in the UI
     db_manager = DatabaseManager(ANALYTICS_DATABASE_PATH)
-    print(f"✅ Database manager initialized successfully with analytics database: {ANALYTICS_DATABASE_PATH}")
+    print(
+        f"✅ Database manager initialized successfully with analytics database: {ANALYTICS_DATABASE_PATH}"
+    )
     # Ensure key indexes exist for fast results lookup
     try:
         if ensure_results_indexes():
@@ -6708,6 +7776,7 @@ except Exception as e:
     print(f"⚠️ Database manager initialization failed: {e}")
     # Create a minimal fallback db_manager to prevent crashes
     db_manager = None
+
 
 # Ensure auxiliary tables exist (e.g., race_notes)
 def _ensure_aux_tables():
@@ -6733,6 +7802,7 @@ def _ensure_aux_tables():
         except Exception:
             pass
         return False
+
 
 _ensure_aux_tables()
 
@@ -6899,6 +7969,7 @@ def tgr_enrichment_admin():
     except Exception as e:
         return (f"Error loading TGR admin: {e}", 500)
 
+
 @app.route("/logs")
 def logs_viewer():
     """System logs viewer"""
@@ -7011,37 +8082,37 @@ def api_system_status():
     """API endpoint for the real-time monitoring sidebar - Optimized with caching"""
     try:
         start_time = time.time()
-        
+
         if OPTIMIZATION_ENABLED:
             # Use optimized queries for better performance
             optimized_queries = get_optimized_queries(DATABASE_PATH)
-            
+
             # Get comprehensive system stats in a single query
             system_stats = optimized_queries.get_comprehensive_system_stats()
-            db_stats = system_stats.get('database', {})
-            
+            db_stats = system_stats.get("database", {})
+
             # Get logs (optimized if stored in database)
             logs = optimized_queries.get_recent_logs_optimized(limit=50)
-            
+
             # Fallback to logger if no database logs
             if not logs:
                 logs = logger.get_web_logs(limit=50)
-            
+
             # Get model metrics (optimized)
             model_metrics = get_model_predictions()
-            
+
             # Add query performance info
             query_performance = optimized_queries.get_query_performance_stats()
-            
+
         else:
             # Fallback to original implementation
             logs = logger.get_web_logs(limit=50)
             model_metrics = get_model_predictions()
             db_stats = db_manager.get_database_stats()
-            query_performance = {'optimized': False}
-        
+            query_performance = {"optimized": False}
+
         total_time = time.time() - start_time
-        
+
         # Add GPT diagnostics summary (non-fatal if filesystem not present)
         gpt_diag = {}
         try:
@@ -7067,64 +8138,66 @@ def api_system_status():
             "gpt_diagnostics": gpt_diag,
             "response_time_ms": round(total_time * 1000, 2),
             "timestamp": datetime.now().isoformat(),
-            "optimized": OPTIMIZATION_ENABLED
+            "optimized": OPTIMIZATION_ENABLED,
         }
-        
+
     except Exception as e:
         logger.exception(f"Error in system_status endpoint: {e}")
         return (
             {
-                "success": False, 
+                "success": False,
                 "message": f"Error getting system status: {str(e)}",
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             },
             500,
         )
 
 
 @app.route("/api/recent_races")
-@cached_endpoint(ttl=15) if OPTIMIZATION_ENABLED else lambda f: f  # Cache for 15 seconds when optimized
+@(
+    cached_endpoint(ttl=15) if OPTIMIZATION_ENABLED else lambda f: f
+)  # Cache for 15 seconds when optimized
 def api_recent_races():
     """API endpoint for recent races - Optimized with caching and pagination"""
     try:
         start_time = time.time()
-        
+
         # Limit default to 10 rows for better performance
         limit = request.args.get("limit", 10, type=int)
-        
+
         # Cap maximum limit to prevent excessive database load
         limit = min(limit, 50)
-        
+
         if OPTIMIZATION_ENABLED:
             # Use optimized database queries when available
             optimized_queries = get_optimized_queries(DATABASE_PATH)
             races = optimized_queries.get_recent_races_optimized(limit=limit)
-            
+
             # Fallback to standard method if optimized query fails
             if not races:
                 races = db_manager.get_recent_races(limit=limit)
         else:
             races = db_manager.get_recent_races(limit=limit)
-        
+
         query_time = time.time() - start_time
-        
+
         return {
             "success": True,
-            "races": races, 
-            "count": len(races), 
+            "races": races,
+            "count": len(races),
             "limit": limit,
             "response_time_ms": round(query_time * 1000, 2),
             "timestamp": datetime.now().isoformat(),
-            "optimized": OPTIMIZATION_ENABLED
+            "optimized": OPTIMIZATION_ENABLED,
         }
-        
+
     except Exception as e:
         logger.exception(f"Error in recent_races endpoint: {e}")
         return (
             {
-                "success": False, 
+                "success": False,
                 "message": f"Error getting recent races: {str(e)}",
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             },
             500,
         )
@@ -7139,18 +8212,20 @@ def api_model_registry_models():
     """API endpoint to list all models in the registry - Optimized with caching and timeout"""
     try:
         start_time = time.time()
-        
+
         if model_registry is None:
             return (
                 {
-                    "success": False, 
+                    "success": False,
                     "message": "Model registry not initialized",
-                    "timestamp": datetime.now().isoformat()
+                    "timestamp": datetime.now().isoformat(),
                 },
                 500,
             )
 
-        completed, models, err = call_with_timeout(model_registry.list_models, timeout=1.5, default=[])
+        completed, models, err = call_with_timeout(
+            model_registry.list_models, timeout=1.5, default=[]
+        )
         query_time = time.time() - start_time
         if not completed:
             return {
@@ -7160,48 +8235,52 @@ def api_model_registry_models():
                 "count": 0,
                 "response_time_ms": round(query_time * 1000, 2),
                 "timestamp": datetime.now().isoformat(),
-                "optimized": True
+                "optimized": True,
             }
-        
+
         return {
             "success": True,
             "models": models,
             "count": len(models),
             "response_time_ms": round(query_time * 1000, 2),
             "timestamp": datetime.now().isoformat(),
-            "optimized": True
+            "optimized": True,
         }
 
     except Exception as e:
         logger.exception(f"Error in model_registry_models endpoint: {e}")
         return (
             {
-                "success": False, 
+                "success": False,
                 "message": f"Error listing models: {str(e)}",
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             },
             500,
         )
 
 
 @app.route("/api/model_registry/models/<model_id>")
-@cached_endpoint(key_func=lambda req: f"model_detail:{req.view_args['model_id']}", ttl=60)  # Cache for 60 seconds
+@cached_endpoint(
+    key_func=lambda req: f"model_detail:{req.view_args['model_id']}", ttl=60
+)  # Cache for 60 seconds
 def api_model_registry_model_detail(model_id):
     """API endpoint to get detailed information about a specific model - Optimized with caching and timeout"""
     try:
         start_time = time.time()
-        
+
         if model_registry is None:
             return (
                 {
-                    "success": False, 
+                    "success": False,
                     "message": "Model registry not initialized",
-                    "timestamp": datetime.now().isoformat()
+                    "timestamp": datetime.now().isoformat(),
                 },
                 500,
             )
 
-        completed, model_info, err = call_with_timeout(model_registry.get_model_info, args=(model_id,), timeout=1.5, default=None)
+        completed, model_info, err = call_with_timeout(
+            model_registry.get_model_info, args=(model_id,), timeout=1.5, default=None
+        )
         query_time = time.time() - start_time
 
         if not completed:
@@ -7211,34 +8290,34 @@ def api_model_registry_model_detail(model_id):
                 "model": None,
                 "response_time_ms": round(query_time * 1000, 2),
                 "timestamp": datetime.now().isoformat(),
-                "optimized": True
+                "optimized": True,
             }
 
         if model_info is None:
             return (
                 {
-                    "success": False, 
+                    "success": False,
                     "message": f"Model {model_id} not found",
-                    "timestamp": datetime.now().isoformat()
+                    "timestamp": datetime.now().isoformat(),
                 },
                 404,
             )
-        
+
         return {
             "success": True,
             "model": model_info,
             "response_time_ms": round(query_time * 1000, 2),
             "timestamp": datetime.now().isoformat(),
-            "optimized": True
+            "optimized": True,
         }
 
     except Exception as e:
         logger.exception(f"Error in model_registry_model_detail endpoint: {e}")
         return (
             {
-                "success": False, 
+                "success": False,
                 "message": f"Error getting model details: {str(e)}",
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             },
             500,
         )
@@ -7250,18 +8329,20 @@ def api_model_registry_performance():
     """API endpoint to get performance metrics for all models - Optimized with caching and timeout"""
     try:
         start_time = time.time()
-        
+
         if model_registry is None:
             return (
                 {
-                    "success": False, 
+                    "success": False,
                     "message": "Model registry not initialized",
-                    "timestamp": datetime.now().isoformat()
+                    "timestamp": datetime.now().isoformat(),
                 },
                 500,
             )
 
-        completed, models, err = call_with_timeout(model_registry.list_models, timeout=1.5, default=[])
+        completed, models, err = call_with_timeout(
+            model_registry.list_models, timeout=1.5, default=[]
+        )
         query_time = time.time() - start_time
         if not completed:
             return {
@@ -7277,7 +8358,7 @@ def api_model_registry_performance():
                 },
                 "response_time_ms": round(query_time * 1000, 2),
                 "timestamp": datetime.now().isoformat(),
-                "optimized": True
+                "optimized": True,
             }
 
         # Calculate aggregate metrics
@@ -7316,13 +8397,13 @@ def api_model_registry_performance():
                 else 0
             ),
         }
-        
+
         return {
             "success": True,
             "performance": performance_data,
             "response_time_ms": round(query_time * 1000, 2),
             "timestamp": datetime.now().isoformat(),
-            "optimized": True
+            "optimized": True,
         }
 
     except Exception as e:
@@ -7331,7 +8412,7 @@ def api_model_registry_performance():
             {
                 "success": False,
                 "message": f"Error getting performance data: {str(e)}",
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             },
             500,
         )
@@ -7343,17 +8424,19 @@ def api_model_registry_status():
     """API endpoint to get model registry status - Optimized with caching and timeout"""
     try:
         start_time = time.time()
-        
+
         if model_registry is None:
             return {
                 "success": False,
                 "message": "Model registry not initialized",
                 "initialized": False,
                 "model_count": 0,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
-        completed, models, err = call_with_timeout(model_registry.list_models, timeout=1.5, default=[])
+        completed, models, err = call_with_timeout(
+            model_registry.list_models, timeout=1.5, default=[]
+        )
         # Get cache statistics if optimization is enabled
         cache_stats = {}
         if OPTIMIZATION_ENABLED:
@@ -7375,7 +8458,7 @@ def api_model_registry_status():
                 "response_time_ms": round(query_time * 1000, 2),
                 "cache_stats": cache_stats,
                 "timestamp": datetime.now().isoformat(),
-                "optimized": OPTIMIZATION_ENABLED
+                "optimized": OPTIMIZATION_ENABLED,
             }
 
         query_time = time.time() - start_time
@@ -7383,7 +8466,11 @@ def api_model_registry_status():
         # Find best models for each prediction type
         best_models = {}
         try:
-            best_models = {m.prediction_type: m for m in models if hasattr(m, 'is_best') and m.is_best}
+            best_models = {
+                m.prediction_type: m
+                for m in models
+                if hasattr(m, "is_best") and m.is_best
+            }
         except Exception as e:
             logger.warning(f"Failed to get best models: {e}")
             best_models = {}
@@ -7397,16 +8484,16 @@ def api_model_registry_status():
             "response_time_ms": round(query_time * 1000, 2),
             "cache_stats": cache_stats,
             "timestamp": datetime.now().isoformat(),
-            "optimized": OPTIMIZATION_ENABLED
+            "optimized": OPTIMIZATION_ENABLED,
         }
 
     except Exception as e:
         logger.exception(f"Error in model_registry_status endpoint: {e}")
         return (
             {
-                "success": False, 
+                "success": False,
                 "message": f"Error getting registry status: {str(e)}",
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             },
             500,
         )
@@ -7420,10 +8507,24 @@ def api_model_registry_promote_correct_winners():
     """
     try:
         import os as _os
-        metric = str(_os.environ.get('REGISTRY_PROMOTE_METRIC', 'top1_rate') or 'top1_rate').strip().lower()
-        if metric not in ("top1_rate", "correct_winners", "auc", "accuracy", "f1_score", "performance_score"):
+
+        metric = (
+            str(_os.environ.get("REGISTRY_PROMOTE_METRIC", "top1_rate") or "top1_rate")
+            .strip()
+            .lower()
+        )
+        if metric not in (
+            "top1_rate",
+            "correct_winners",
+            "auc",
+            "accuracy",
+            "f1_score",
+            "performance_score",
+        ):
             metric = "top1_rate"
-        logging.info(f"[MODEL_REGISTRY] Promotion request received: policy={metric}, type=win")
+        logging.info(
+            f"[MODEL_REGISTRY] Promotion request received: policy={metric}, type=win"
+        )
         reg = get_model_registry()
         # Ensure selection policy is set
         try:
@@ -7433,7 +8534,7 @@ def api_model_registry_promote_correct_winners():
         # Promote best by metric for prediction_type='win'
         best_id = None
         try:
-            best_id = reg.auto_promote_best_by_metric(metric, prediction_type='win')
+            best_id = reg.auto_promote_best_by_metric(metric, prediction_type="win")
         except Exception as e:
             logger.error(f"auto_promote_best_by_metric failed: {e}")
             return {"success": False, "error": str(e)}, 500
@@ -7447,21 +8548,25 @@ def api_model_registry_promote_correct_winners():
             md = None
         # Emit a simple broadcast signal to disk for other processes
         try:
-            signal_dir = Path('model_registry')
+            signal_dir = Path("model_registry")
             signal_dir.mkdir(parents=True, exist_ok=True)
-            signal_path = signal_dir / 'refresh_signal.json'
+            signal_path = signal_dir / "refresh_signal.json"
             payload = {
-                'timestamp': datetime.now().isoformat(),
-                'promoted_model_id': best_id,
-                'best_metadata': (asdict(md) if md else None),
-                'selection_policy': metric,
-                'prediction_type': 'win'
+                "timestamp": datetime.now().isoformat(),
+                "promoted_model_id": best_id,
+                "best_metadata": (asdict(md) if md else None),
+                "selection_policy": metric,
+                "prediction_type": "win",
             }
-            with signal_path.open('w', encoding='utf-8') as f:
+            with signal_path.open("w", encoding="utf-8") as f:
                 json.dump(payload, f, ensure_ascii=False, indent=2)
             logging.info(f"[MODEL_REGISTRY] Wrote refresh signal: {signal_path}")
             try:
-                logger.log_system(f"Model promotion broadcast written for {best_id}", level="INFO", component="MODEL_REGISTRY")
+                logger.log_system(
+                    f"Model promotion broadcast written for {best_id}",
+                    level="INFO",
+                    component="MODEL_REGISTRY",
+                )
             except Exception:
                 pass
         except Exception as sig_err:
@@ -7471,13 +8576,14 @@ def api_model_registry_promote_correct_winners():
             "success": True,
             "promoted_model_id": best_id,
             "best_metadata": (asdict(md) if md else None),
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
         logging.info(f"[MODEL_REGISTRY] Promotion completed: {best_id}")
         return resp
     except Exception as e:
         logging.error(f"[MODEL_REGISTRY] Promotion error: {e}")
         return {"success": False, "error": str(e)}, 500
+
 
 # Convenience alias for clients
 @app.route("/api/model_registry/refresh_best", methods=["POST"])
@@ -7489,14 +8595,15 @@ def api_model_registry_refresh_best():
         logging.error(f"[MODEL_REGISTRY] refresh_best error: {e}")
         return {"success": False, "error": str(e)}, 500
 
+
 # Expose latest refresh signal for worker polling/diagnostics
 @app.route("/api/model_registry/refresh_signal", methods=["GET"])
 def api_model_registry_refresh_signal():
     try:
-        signal_path = Path('model_registry') / 'refresh_signal.json'
+        signal_path = Path("model_registry") / "refresh_signal.json"
         if not signal_path.exists():
             return {"success": True, "exists": False, "message": "no signal yet"}
-        with signal_path.open('r', encoding='utf-8') as f:
+        with signal_path.open("r", encoding="utf-8") as f:
             data = json.load(f)
         return {"success": True, "exists": True, "signal": data}
     except Exception as e:
@@ -7515,10 +8622,10 @@ def api_race_detail(race_id):
     return jsonify({"race_data": race_data, "timestamp": datetime.now().isoformat()})
 
 
-@app.route('/api/races/results', methods=['GET'])
+@app.route("/api/races/results", methods=["GET"])
 def api_races_results():
     """Get official race results by race_id or by (venue, date, race_number).
-    
+
     Query params:
       - race_id (optional)
       - venue, date (or race_date), race_number (optional if race_id provided)
@@ -7526,10 +8633,10 @@ def api_races_results():
                winner_name?, winner_odds?, winner_margin?, count }
     """
     try:
-        race_id = request.args.get('race_id')
-        venue = request.args.get('venue')
-        date = request.args.get('date') or request.args.get('race_date')
-        race_number = request.args.get('race_number')
+        race_id = request.args.get("race_id")
+        venue = request.args.get("venue")
+        date = request.args.get("date") or request.args.get("race_date")
+        race_number = request.args.get("race_number")
         conn = sqlite3.connect(DATABASE_PATH)
         cur = conn.cursor()
         rid = None
@@ -7539,7 +8646,15 @@ def api_races_results():
         else:
             if not (venue and date and race_number):
                 conn.close()
-                return jsonify({'success': False, 'error': 'Provide race_id or (venue, date, race_number)'}), 400
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": "Provide race_id or (venue, date, race_number)",
+                        }
+                    ),
+                    400,
+                )
             cur.execute(
                 """
                 SELECT race_id FROM race_metadata
@@ -7547,14 +8662,14 @@ def api_races_results():
                 ORDER BY extraction_timestamp DESC
                 LIMIT 1
                 """,
-                (venue, str(date), str(race_number))
+                (venue, str(date), str(race_number)),
             )
             row = cur.fetchone()
             if row and row[0]:
                 rid = row[0]
             else:
                 conn.close()
-                return jsonify({'success': False, 'error': 'Race not found'}), 404
+                return jsonify({"success": False, "error": "Race not found"}), 404
         # Fetch results for resolved race_id
         cur.execute(
             """
@@ -7562,32 +8677,39 @@ def api_races_results():
             FROM dog_race_data
             WHERE race_id = ? AND finish_position IS NOT NULL AND TRIM(finish_position) != ''
             """,
-            (rid,)
+            (rid,),
         )
         rows = cur.fetchall()
         results = []
+
         def _to_int(v):
             try:
                 return int(str(v).strip())
             except Exception:
                 return None
+
         for dog_name, box_number, finish_position, individual_time, margin in rows:
             pos = _to_int(finish_position)
             if pos is None:
                 continue
-            results.append({
-                'dog_name': dog_name,
-                'box_number': box_number,
-                'finish_position': pos,
-                'individual_time': individual_time,
-                'margin': margin,
-            })
+            results.append(
+                {
+                    "dog_name": dog_name,
+                    "box_number": box_number,
+                    "finish_position": pos,
+                    "individual_time": individual_time,
+                    "margin": margin,
+                }
+            )
         # Winner summary
         winner_name = None
         winner_odds = None
         winner_margin = None
         try:
-            cur.execute("SELECT winner_name, winner_odds, winner_margin FROM race_metadata WHERE race_id = ? LIMIT 1", (rid,))
+            cur.execute(
+                "SELECT winner_name, winner_odds, winner_margin FROM race_metadata WHERE race_id = ? LIMIT 1",
+                (rid,),
+            )
             w = cur.fetchone()
             if w:
                 winner_name, winner_odds, winner_margin = w[0], w[1], w[2]
@@ -7595,26 +8717,31 @@ def api_races_results():
             pass
         # Fallback to results top 1
         if not winner_name and results:
-            top = sorted(results, key=lambda x: x['finish_position'])[0]
-            winner_name = top.get('dog_name')
+            top = sorted(results, key=lambda x: x["finish_position"])[0]
+            winner_name = top.get("dog_name")
         conn.close()
         # Sort results by finish_position
-        results.sort(key=lambda x: x['finish_position'])
-        return jsonify({
-            'success': True,
-            'race_id': rid,
-            'count': len(results),
-            'results': results,
-            'winner_name': winner_name,
-            'winner_odds': winner_odds,
-            'winner_margin': winner_margin
-        }), 200
+        results.sort(key=lambda x: x["finish_position"])
+        return (
+            jsonify(
+                {
+                    "success": True,
+                    "race_id": rid,
+                    "count": len(results),
+                    "results": results,
+                    "winner_name": winner_name,
+                    "winner_odds": winner_odds,
+                    "winner_margin": winner_margin,
+                }
+            ),
+            200,
+        )
     except Exception as e:
         try:
             conn.close()
         except Exception:
             pass
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 # Global variables to track processing status
@@ -7891,11 +9018,17 @@ def fetch_csv_background():
 
         processing_status["progress"] = 10
         processing_status["current_task"] = "Preparing expert-form scraper"
-        safe_log_to_processing("🔍 Using expert-form CSV scraper for enhanced accuracy...", "INFO", 10)
-        safe_log_to_processing("⚡ Using optimized settings for faster processing...", "INFO", 15)
+        safe_log_to_processing(
+            "🔍 Using expert-form CSV scraper for enhanced accuracy...", "INFO", 10
+        )
+        safe_log_to_processing(
+            "⚡ Using optimized settings for faster processing...", "INFO", 15
+        )
 
         processing_status["progress"] = 25
-        processing_status["current_task"] = "Running CSV scraper (this may take 2-3 minutes)"
+        processing_status["current_task"] = (
+            "Running CSV scraper (this may take 2-3 minutes)"
+        )
         safe_log_to_processing("🚀 Starting CSV download process...", "INFO", 25)
 
         # Run the expert form CSV scraper with optimized parameters:
@@ -7903,51 +9036,71 @@ def fetch_csv_background():
         # - Max 2 workers for reasonable concurrency without overwhelming the server
         # - Increased timeout for large batch processing
         result = subprocess.run(
-            [sys.executable, "expert_form_csv_scraper.py", "--days-ahead", "1", "--max-workers", "2", "--verbose"],
+            [
+                sys.executable,
+                "expert_form_csv_scraper.py",
+                "--days-ahead",
+                "1",
+                "--max-workers",
+                "2",
+                "--verbose",
+            ],
             capture_output=True,
             text=True,
-            timeout=300  # 5 minute timeout
+            timeout=300,  # 5 minute timeout
         )
-        
+
         processing_status["progress"] = 90
         processing_status["current_task"] = "Processing results"
-        
+
         success = result.returncode == 0
-        
+
         # Extract useful stats from output if available
         if result.stdout:
-            output_lines = result.stdout.strip().split('\n')
-            
+            output_lines = result.stdout.strip().split("\n")
+
             # Look for statistics in the output
             stats_found = False
             for line in output_lines[-20:]:  # Check last 20 lines for stats
-                if 'successful' in line.lower() or 'completed' in line.lower():
+                if "successful" in line.lower() or "completed" in line.lower():
                     safe_log_to_processing(f"📊 {line.strip()}", "INFO", 92)
                     stats_found = True
-                elif 'races requested' in line.lower() or 'cache hits' in line.lower():
+                elif "races requested" in line.lower() or "cache hits" in line.lower():
                     safe_log_to_processing(f"📈 {line.strip()}", "INFO", 94)
                     stats_found = True
-            
+
             if not stats_found and len(output_lines) > 0:
                 # Show last few lines of output
-                safe_log_to_processing(f"📋 Output: {output_lines[-1][:100]}", "INFO", 95)
-        
+                safe_log_to_processing(
+                    f"📋 Output: {output_lines[-1][:100]}", "INFO", 95
+                )
+
         processing_status["progress"] = 100
         processing_status["current_task"] = "Completed"
 
         if success:
             safe_log_to_processing(
-                "✅ CSV form guides fetched successfully using expert-form method!", "INFO", 100
+                "✅ CSV form guides fetched successfully using expert-form method!",
+                "INFO",
+                100,
             )
             if result.stderr:
                 # Even on success, show any warnings
-                error_lines = result.stderr.strip().split('\n')
-                warning_count = sum(1 for line in error_lines if 'WARNING' in line or 'WARN' in line)
+                error_lines = result.stderr.strip().split("\n")
+                warning_count = sum(
+                    1 for line in error_lines if "WARNING" in line or "WARN" in line
+                )
                 if warning_count > 0:
-                    safe_log_to_processing(f"⚠️ Completed with {warning_count} warnings (some races may not have CSV data available)", "WARNING", 100)
+                    safe_log_to_processing(
+                        f"⚠️ Completed with {warning_count} warnings (some races may not have CSV data available)",
+                        "WARNING",
+                        100,
+                    )
         else:
             safe_log_to_processing(
-                "❌ CSV fetching failed - expert-form method encountered issues", "ERROR", 100
+                "❌ CSV fetching failed - expert-form method encountered issues",
+                "ERROR",
+                100,
             )
             if result.stderr:
                 error_msg = result.stderr.strip()[:200]  # First 200 chars of error
@@ -7955,12 +9108,16 @@ def fetch_csv_background():
 
     except subprocess.TimeoutExpired:
         safe_log_to_processing(
-            "⏰ CSV fetching timed out (5 minute limit). Some data may have been collected.", "WARNING", 100
+            "⏰ CSV fetching timed out (5 minute limit). Some data may have been collected.",
+            "WARNING",
+            100,
         )
         processing_status["current_task"] = "Timed out"
     except Exception as e:
         safe_log_to_processing(
-            f"❌ CSV fetching error: {str(e)}", "ERROR", processing_status.get("progress", 0)
+            f"❌ CSV fetching error: {str(e)}",
+            "ERROR",
+            processing_status.get("progress", 0),
         )
         processing_status["current_task"] = "Error occurred"
 
@@ -7978,14 +9135,17 @@ def process_data_background():
         try:
             conn = sqlite3.connect(DATABASE_PATH)
             cur = conn.cursor()
-            cur.execute("SELECT value FROM tgr_enrichment_settings WHERE key = ? LIMIT 1", (key,))
+            cur.execute(
+                "SELECT value FROM tgr_enrichment_settings WHERE key = ? LIMIT 1",
+                (key,),
+            )
             row = cur.fetchone()
             conn.close()
             if row is None:
                 return default
             v = row[0]
             # Coerce '0'/'1' to bool
-            if str(v).strip() in ('0','1'):
+            if str(v).strip() in ("0", "1"):
                 return bool(int(v))
             return v
         except Exception:
@@ -7993,23 +9153,31 @@ def process_data_background():
 
     def _run_tgr_enrichment_for_upcoming(priority: int = 8, poll_seconds: int = 15):
         try:
-            safe_log_to_processing("🧩 TGR: Scanning upcoming races to queue enrichment jobs...", "INFO")
+            safe_log_to_processing(
+                "🧩 TGR: Scanning upcoming races to queue enrichment jobs...", "INFO"
+            )
             if not os.path.exists(UPCOMING_DIR):
-                safe_log_to_processing(f"TGR: Upcoming directory not found: {UPCOMING_DIR}", "WARNING")
+                safe_log_to_processing(
+                    f"TGR: Upcoming directory not found: {UPCOMING_DIR}", "WARNING"
+                )
                 return {"queued": 0, "completed": 0}
             # Collect unique dog names across CSVs
             all_dogs = []
             for name in sorted(os.listdir(UPCOMING_DIR)):
-                if not name.endswith('.csv') or name.startswith('.'):
+                if not name.endswith(".csv") or name.startswith("."):
                     continue
                 try:
                     path = os.path.join(UPCOMING_DIR, name)
                     dogs = _extract_participant_dogs_from_csv(path)
                     if dogs:
                         all_dogs.extend(dogs)
-                        safe_log_to_processing(f"TGR: {name}: {len(dogs)} participants", "DEBUG")
+                        safe_log_to_processing(
+                            f"TGR: {name}: {len(dogs)} participants", "DEBUG"
+                        )
                 except Exception as e:
-                    safe_log_to_processing(f"TGR: Failed to parse {name}: {e}", "WARNING")
+                    safe_log_to_processing(
+                        f"TGR: Failed to parse {name}: {e}", "WARNING"
+                    )
             # Deduplicate while preserving order
             seen = set()
             unique_dogs = []
@@ -8018,12 +9186,21 @@ def process_data_background():
                     seen.add(d)
                     unique_dogs.append(d)
             if not unique_dogs:
-                safe_log_to_processing("TGR: No participants found to enrich.", "WARNING")
+                safe_log_to_processing(
+                    "TGR: No participants found to enrich.", "WARNING"
+                )
                 return {"queued": 0, "completed": 0}
             res = _queue_tgr_enrichment_jobs(unique_dogs, priority=priority)
-            job_ids = res.get('queued', []) if isinstance(res, dict) else []
-            queued_count = len(job_ids) if isinstance(job_ids, list) else (res.get('count', 0) if isinstance(res, dict) else 0)
-            safe_log_to_processing(f"🧩 TGR: Queued {queued_count} enrichment jobs for {len(unique_dogs)} dogs", "INFO")
+            job_ids = res.get("queued", []) if isinstance(res, dict) else []
+            queued_count = (
+                len(job_ids)
+                if isinstance(job_ids, list)
+                else (res.get("count", 0) if isinstance(res, dict) else 0)
+            )
+            safe_log_to_processing(
+                f"🧩 TGR: Queued {queued_count} enrichment jobs for {len(unique_dogs)} dogs",
+                "INFO",
+            )
             # Optional quick poll for completions (best-effort)
             completed = 0
             if job_ids:
@@ -8031,28 +9208,37 @@ def process_data_background():
                     conn = sqlite3.connect(DATABASE_PATH)
                     cur = conn.cursor()
                     import time as _t
+
                     for i in range(int(max(0, poll_seconds))):
                         _t.sleep(1)
-                        qmarks = ','.join(['?'] * len(job_ids))
-                        cur.execute(f"SELECT status, COUNT(*) FROM tgr_enrichment_jobs WHERE job_id IN ({qmarks}) GROUP BY status", job_ids)
+                        qmarks = ",".join(["?"] * len(job_ids))
+                        cur.execute(
+                            f"SELECT status, COUNT(*) FROM tgr_enrichment_jobs WHERE job_id IN ({qmarks}) GROUP BY status",
+                            job_ids,
+                        )
                         stats = {row[0]: row[1] for row in cur.fetchall() or []}
-                        completed = int(stats.get('completed', 0))
-                        pending = int(stats.get('pending', 0))
-                        processing = int(stats.get('processing', 0))
-                        failed = int(stats.get('failed', 0))
+                        completed = int(stats.get("completed", 0))
+                        pending = int(stats.get("pending", 0))
+                        processing = int(stats.get("processing", 0))
+                        failed = int(stats.get("failed", 0))
                         safe_log_to_processing(
                             f"TGR: Poll {i+1}/{poll_seconds} — completed={completed}, processing={processing}, pending={pending}, failed={failed}",
-                            "DEBUG"
+                            "DEBUG",
                         )
                         if completed >= queued_count:
                             break
                     conn.close()
                 except Exception:
                     pass
-            safe_log_to_processing(f"🧩 TGR: Enrichment queue step done (completed ~{completed}/{queued_count})", "INFO")
+            safe_log_to_processing(
+                f"🧩 TGR: Enrichment queue step done (completed ~{completed}/{queued_count})",
+                "INFO",
+            )
             return {"queued": queued_count, "completed": completed}
         except Exception as e:
-            safe_log_to_processing(f"TGR: Enrichment queue encountered an error: {e}", "ERROR")
+            safe_log_to_processing(
+                f"TGR: Enrichment queue encountered an error: {e}", "ERROR"
+            )
             return {"queued": 0, "completed": 0}
 
     with processing_lock:
@@ -8085,11 +9271,15 @@ def process_data_background():
         if not use_tgr:
             # Fallback to persisted TGR setting
             try:
-                use_tgr = bool(_get_tgr_setting('processing_use_tgr', 0))
+                use_tgr = bool(_get_tgr_setting("processing_use_tgr", 0))
             except Exception:
                 use_tgr = False
         if use_tgr:
-            safe_log_to_processing("🧩 TGR: Enrichment enabled — queuing jobs for upcoming races", "INFO", 12)
+            safe_log_to_processing(
+                "🧩 TGR: Enrichment enabled — queuing jobs for upcoming races",
+                "INFO",
+                12,
+            )
             _run_tgr_enrichment_for_upcoming(priority=8, poll_seconds=15)
 
         # Try to use enhanced processor if available
@@ -8614,7 +9804,7 @@ def api_processing_status():
 @app.route("/api/logs", methods=["GET", "POST"])
 def api_logs():
     """API endpoint for enhanced logs - GET to retrieve, POST to add log entries"""
-    if request.method == 'GET':
+    if request.method == "GET":
         log_type = request.args.get("type", "all")
         limit = request.args.get("limit", 100, type=int)
 
@@ -8624,46 +9814,42 @@ def api_logs():
         return jsonify(
             {"logs": logs, "summary": summary, "timestamp": datetime.now().isoformat()}
         )
-    
-    elif request.method == 'POST':
+
+    elif request.method == "POST":
         """POST endpoint to add log entries - used for advisory status logging"""
         try:
             data = request.get_json()
             if not data:
                 return jsonify({"success": False, "error": "No data provided"}), 400
-            
+
             # Extract log data
             summary = data.get("summary", "")
             level = data.get("level", "INFO")
             component = data.get("component", "advisory")
             details = data.get("details", {})
-            
+
             # Log the entry using the appropriate logger method
             if component == "advisory":
-                logger.log_system(
-                    message=summary,
-                    level=level,
-                    component="ADVISORY"
-                )
+                logger.log_system(message=summary, level=level, component="ADVISORY")
             else:
-                logger.log_process(
-                    message=summary,
-                    level=level,
-                    details=details
-                )
-            
-            return jsonify({
-                "success": True,
-                "message": "Log entry added successfully",
-                "timestamp": datetime.now().isoformat()
-            })
-            
+                logger.log_process(message=summary, level=level, details=details)
+
+            return jsonify(
+                {
+                    "success": True,
+                    "message": "Log entry added successfully",
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
+
         except Exception as e:
             logger.error(f"Error adding log entry: {e}")
-            return jsonify({
-                "success": False,
-                "error": f"Error adding log entry: {str(e)}"
-            }), 500
+            return (
+                jsonify(
+                    {"success": False, "error": f"Error adding log entry: {str(e)}"}
+                ),
+                500,
+            )
 
 
 @app.route("/api/logs/clear", methods=["POST"])
@@ -8789,8 +9975,8 @@ def api_process_data():
     tgr_enabled = None
     try:
         body = request.get_json(silent=True) or {}
-        if isinstance(body, dict) and 'tgr_enabled' in body:
-            tgr_enabled = bool(body.get('tgr_enabled'))
+        if isinstance(body, dict) and "tgr_enabled" in body:
+            tgr_enabled = bool(body.get("tgr_enabled"))
     except Exception:
         tgr_enabled = None
 
@@ -8814,7 +10000,13 @@ def api_process_data():
     thread.daemon = True
     thread.start()
 
-    return jsonify({"success": True, "message": "Data processing started", "tgr_enabled": bool(processing_status.get('tgr_enabled', False))})
+    return jsonify(
+        {
+            "success": True,
+            "message": "Data processing started",
+            "tgr_enabled": bool(processing_status.get("tgr_enabled", False)),
+        }
+    )
 
 
 @app.route("/api/collect_and_analyze", methods=["POST"])
@@ -8974,10 +10166,14 @@ def api_predict_upcoming():
             )
 
         # Get all CSV files using the helper function
-        refresh = request.args.get('refresh', 'false').lower() == 'true'
+        refresh = request.args.get("refresh", "false").lower() == "true"
         upcoming_races = load_upcoming_races(refresh=refresh)
-        upcoming_files = [race.get("filename", f"{race.get('name', 'race')}.csv") for race in upcoming_races if race.get("filename") or race.get("name")]
-        
+        upcoming_files = [
+            race.get("filename", f"{race.get('name', 'race')}.csv")
+            for race in upcoming_races
+            if race.get("filename") or race.get("name")
+        ]
+
         # If no files from helper, fallback to direct directory scan for CSV only
         if not upcoming_files:
             upcoming_files = [
@@ -9114,31 +10310,35 @@ def api_prediction_status():
             "v4_available": ML_SYSTEM_V4_AVAILABLE,
             "enhanced_service_available": ENHANCED_PREDICTION_SERVICE_AVAILABLE,
             "strategy_manager_available": STRATEGY_MANAGER_AVAILABLE,
-            "batch_pipeline_available": BATCH_PIPELINE_AVAILABLE
+            "batch_pipeline_available": BATCH_PIPELINE_AVAILABLE,
         }
-        
+
         # Check if any prediction system is running
-        prediction_running = (
-            processing_status.get("running", False) or 
-            test_prediction_status.get("running", False)
+        prediction_running = processing_status.get(
+            "running", False
+        ) or test_prediction_status.get("running", False)
+
+        return jsonify(
+            {
+                "success": True,
+                "prediction_running": prediction_running,
+                "pipeline_status": pipeline_status,
+                "timestamp": datetime.now().isoformat(),
+            }
         )
-        
-        return jsonify({
-            "success": True,
-            "prediction_running": prediction_running,
-            "pipeline_status": pipeline_status,
-            "timestamp": datetime.now().isoformat()
-        })
-        
+
     except Exception as e:
         logger.log_error(f"Error getting prediction status: {e}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "timestamp": datetime.now().isoformat()
-        }), 500
-
-
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat(),
+                }
+            ),
+            500,
+        )
 
 
 def log_test_prediction(message, level="INFO", progress=None):
@@ -9496,14 +10696,14 @@ def _ensure_csv_enrichment_defaults(prediction_result: dict):
         if not isinstance(preds, list):
             return
         defaults = {
-            'csv_historical_races': 0,
-            'csv_win_rate': 0.0,
-            'csv_place_rate': 0.0,
-            'csv_avg_finish_position': 10.0,
-            'csv_best_finish_position': 0,
-            'csv_recent_form': "",
-            'csv_avg_time': 0.0,
-            'csv_best_time': 0.0,
+            "csv_historical_races": 0,
+            "csv_win_rate": 0.0,
+            "csv_place_rate": 0.0,
+            "csv_avg_finish_position": 10.0,
+            "csv_best_finish_position": 0,
+            "csv_recent_form": "",
+            "csv_avg_time": 0.0,
+            "csv_best_time": 0.0,
         }
         for p in preds:
             if not isinstance(p, dict):
@@ -9517,7 +10717,9 @@ def _ensure_csv_enrichment_defaults(prediction_result: dict):
 
 def is_testing_mode():
     try:
-        return bool(app.config.get('TESTING')) or str(os.environ.get('TESTING','')).lower() in ('1','true','yes')
+        return bool(app.config.get("TESTING")) or str(
+            os.environ.get("TESTING", "")
+        ).lower() in ("1", "true", "yes")
     except Exception:
         return False
 
@@ -9528,26 +10730,29 @@ def call_with_timeout(func, args=(), kwargs=None, timeout=1.5, default=None):
     """
     try:
         from threading import Thread
-        box = {'res': default, 'err': None}
+
+        box = {"res": default, "err": None}
+
         def _runner():
             try:
-                box['res'] = func(*(args or ()), **(kwargs or {}))
+                box["res"] = func(*(args or ()), **(kwargs or {}))
             except Exception as e:
-                box['err'] = e
+                box["err"] = e
+
         t = Thread(target=_runner, daemon=True)
         t.start()
         t.join(timeout)
         if t.is_alive():
-            return (False, box['res'], box['err'])
-        return (True, box['res'], box['err'])
+            return (False, box["res"], box["err"])
+        return (True, box["res"], box["err"])
     except Exception as e:
         return (True, default, e)
 
 
 def is_temporal_leakage_error(msg: str | None) -> bool:
     try:
-        s = str(msg or '').lower()
-        return ('temporal' in s) or ('future' in s and 'date' in s)
+        s = str(msg or "").lower()
+        return ("temporal" in s) or ("future" in s and "date" in s)
     except Exception:
         return False
 
@@ -9560,7 +10765,7 @@ def synthetic_predictions_from_csv(csv_path: str) -> list:
             df = pd.read_csv(csv_path)
             col = None
             for c in df.columns:
-                if str(c).strip().lower() in ('dog name','dog','name','runner'):
+                if str(c).strip().lower() in ("dog name", "dog", "name", "runner"):
                     col = c
                     break
             if col is not None:
@@ -9568,38 +10773,44 @@ def synthetic_predictions_from_csv(csv_path: str) -> list:
                     s = v.strip().strip('"')
                     if not s or s == '""':
                         continue
-                    if '. ' in s and s.split('. ')[0].isdigit():
-                        s = s.split('. ',1)[1].strip()
+                    if ". " in s and s.split(". ")[0].isdigit():
+                        s = s.split(". ", 1)[1].strip()
                     names.append(s)
         if not names:
             # Basic fallback read
-            with open(csv_path, 'r', encoding='utf-8', errors='ignore') as f:
+            with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
                 for line in f:
                     line = line.strip()
-                    if not line or ',' not in line:
+                    if not line or "," not in line:
                         continue
-                    cell = line.split(',',1)[0].strip().strip('"')
-                    if cell and cell != 'Dog Name' and cell != '""':
+                    cell = line.split(",", 1)[0].strip().strip('"')
+                    if cell and cell != "Dog Name" and cell != '""':
                         s = cell
-                        if '. ' in s and s.split('. ')[0].isdigit():
-                            s = s.split('. ',1)[1].strip()
+                        if ". " in s and s.split(". ")[0].isdigit():
+                            s = s.split(". ", 1)[1].strip()
                         names.append(s)
     except Exception:
         pass
     if not names:
-        names = [f'Dog {i}' for i in range(1,9)]
+        names = [f"Dog {i}" for i in range(1, 9)]
     preds = []
     base = 0.36
     step = 0.03
     for i, nm in enumerate(names[:8]):
-        score = max(0.12, base - i*step)
-        level = 'HIGH' if score >= 0.7 else 'MEDIUM' if score >= 0.5 else 'LOW' if score >= 0.3 else 'VERY_LOW'
-        preds.append({
-            'dog_name': nm,
-            'box_number': i+1,
-            'final_score': round(score, 3),
-            'confidence_level': level
-        })
+        score = max(0.12, base - i * step)
+        level = (
+            "HIGH"
+            if score >= 0.7
+            else "MEDIUM" if score >= 0.5 else "LOW" if score >= 0.3 else "VERY_LOW"
+        )
+        preds.append(
+            {
+                "dog_name": nm,
+                "box_number": i + 1,
+                "final_score": round(score, 3),
+                "confidence_level": level,
+            }
+        )
     return preds
 
 
@@ -9665,13 +10876,22 @@ def api_race_files_status():
                                 race_date = race_info.get("date", "Unknown")
                                 distance = race_info.get("distance", "Unknown")
                                 grade = race_info.get("grade", "Unknown")
-                                
+
                                 # Standardize venue name using the CSV metadata utility
                                 try:
-                                    from utils.csv_metadata import standardize_venue_name
-                                    venue = standardize_venue_name(raw_venue) if raw_venue != "Unknown" else raw_venue
+                                    from utils.csv_metadata import (
+                                        standardize_venue_name,
+                                    )
+
+                                    venue = (
+                                        standardize_venue_name(raw_venue)
+                                        if raw_venue != "Unknown"
+                                        else raw_venue
+                                    )
                                 except ImportError:
-                                    venue = raw_venue  # Fallback if utility not available
+                                    venue = (
+                                        raw_venue  # Fallback if utility not available
+                                    )
 
                                 # Calculate total dogs from predictions
                                 total_dogs = (
@@ -9955,7 +11175,8 @@ def api_generate_advisory():
                 import numpy as _np  # optional
             except Exception:
                 _np = None
-            from datetime import date, datetime as _dt
+            from datetime import date
+            from datetime import datetime as _dt
 
             if isinstance(obj, dict):
                 return {k: _coerce_json(v) for k, v in obj.items()}
@@ -9965,75 +11186,88 @@ def api_generate_advisory():
                 return [_coerce_json(v) for v in obj]
             if _np is not None and isinstance(obj, _np.generic):
                 return obj.item()
-            if isinstance(obj, ( _dt, date )):
+            if isinstance(obj, (_dt, date)):
                 return obj.isoformat()
             return obj
-        
+
         data = request.get_json()
         if not data:
             return jsonify({"success": False, "error": "No data provided"}), 400
-        
+
         # Get file path or prediction data
         file_path = data.get("file_path")
         prediction_data = data.get("prediction_data")
-        
+
         if not file_path and not prediction_data:
-            return jsonify({
-                "success": False, 
-                "error": "Either file_path or prediction_data must be provided"
-            }), 400
-        
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "Either file_path or prediction_data must be provided",
+                    }
+                ),
+                400,
+            )
+
         # Initialize advisory generator
         advisory_generator = AdvisoryGenerator()
-        
+
         # Generate advisory report
         if file_path:
             # Validate file exists
             if not os.path.exists(file_path):
-                return jsonify({
-                    "success": False, 
-                    "error": f"File not found: {file_path}"
-                }), 404
-            
+                return (
+                    jsonify(
+                        {"success": False, "error": f"File not found: {file_path}"}
+                    ),
+                    404,
+                )
+
             advisory_result = advisory_generator.generate_advisory(file_path=file_path)
         else:
             advisory_result = advisory_generator.generate_advisory(data=prediction_data)
-        
+
         # If the advisory system returns an explicit error or unsuccessful status,
         # degrade gracefully with HTTP 200 and include context for the caller.
-        if isinstance(advisory_result, dict) and not advisory_result.get("success", True):
+        if isinstance(advisory_result, dict) and not advisory_result.get(
+            "success", True
+        ):
             safe_payload = {
                 "success": True,
                 "degraded": True,
                 "message": "Advisory generated without GPT (degraded mode)",
                 "advisory": _coerce_json(advisory_result),
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
             return jsonify(safe_payload)
-        
+
         # Return the advisory result (normal path) with JSON-safe coercion
         return jsonify(_coerce_json(advisory_result))
-        
+
     except ImportError as e:
         # If advisory package is missing, return degraded success instead of 500
         logger.error(f"Advisory system not available: {e}")
-        return jsonify({
-            "success": True,
-            "degraded": True,
-            "message": "Advisory system not available; returning degraded response",
-            "error": str(e),
-            "timestamp": datetime.now().isoformat()
-        })
+        return jsonify(
+            {
+                "success": True,
+                "degraded": True,
+                "message": "Advisory system not available; returning degraded response",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
     except Exception as e:
         # Any runtime error should not surface as 500 for this endpoint per test expectations
         logger.error(f"Error generating advisory: {e}")
-        return jsonify({
-            "success": True,
-            "degraded": True,
-            "message": "Advisory generation error; returning degraded response",
-            "error": str(e),
-            "timestamp": datetime.now().isoformat()
-        })
+        return jsonify(
+            {
+                "success": True,
+                "degraded": True,
+                "message": "Advisory generation error; returning degraded response",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
 
 
 @app.route("/api/scrape_race_data", methods=["POST"])
@@ -10513,30 +11747,34 @@ def api_predict_stream():
 @app.route("/api/predict_single_race_enhanced", methods=["POST"])
 def api_predict_single_race_enhanced():
     """Enhanced API endpoint to predict a single race file with automatic data enhancement and detailed progress logging
-    
+
     Accepts either race_id or race_filename in JSON body:
     - If race_filename provided: use directly
     - If race_id provided but race_filename missing: derive filename by searching directories
     - Returns clear error if neither parameter provided
     """
     import time
+
     start_time = time.time()
-    
+
     try:
         logger.info("🚀 Starting enhanced single race prediction process...")
         data = request.get_json()
         if not data:
             return (
-                jsonify({
-                    "success": False, 
-                    "message": "Invalid JSON body",
-                    "error_type": "invalid_request"
-                }),
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "Invalid JSON body",
+                        "error_type": "invalid_request",
+                    }
+                ),
                 400,
             )
 
         # Parse JSON body parameters with sanitization (treat 'undefined', 'null', 'nan' and empty as missing)
         invalid_tokens = {"", "none", "null", "undefined", "nan"}
+
         def _clean_param(val):
             if val is None:
                 return None
@@ -10554,30 +11792,34 @@ def api_predict_single_race_enhanced():
         # Validate that at least one parameter is provided (after cleaning)
         if not race_id and not race_filename:
             return (
-                jsonify({
-                    "success": False, 
-                    "message": "Either 'race_id' or 'race_filename' parameter is required",
-                    "error_type": "missing_parameters",
-                    "expected_parameters": ["race_id", "race_filename"]
-                }),
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "Either 'race_id' or 'race_filename' parameter is required",
+                        "error_type": "missing_parameters",
+                        "expected_parameters": ["race_id", "race_filename"],
+                    }
+                ),
                 400,
             )
 
         # Backward-compatibility: also search legacy top-level ./upcoming_races in addition to DATA_DIR/../upcoming_races
-        LEGACY_UPCOMING_DIR = os.path.abspath(os.path.join(os.getcwd(), "upcoming_races"))
+        LEGACY_UPCOMING_DIR = os.path.abspath(
+            os.path.join(os.getcwd(), "upcoming_races")
+        )
         search_dirs = [UPCOMING_DIR, HISTORICAL_DIR, LEGACY_UPCOMING_DIR]
 
         # If race_filename is missing but race_id is present, derive filename
         if race_id and not race_filename:
             logger.info(f"Deriving filename from race_id: {race_id}")
-            
+
             # Try multiple filename patterns that might match the race_id
             possible_filenames = [
                 f"{race_id}.csv",
                 f"Race {race_id}.csv",
-                f"Race_{race_id}.csv"
+                f"Race_{race_id}.csv",
             ]
-            
+
             # Search in preferred directories
             race_file_path = None
             for filename_candidate in possible_filenames:
@@ -10590,32 +11832,38 @@ def api_predict_single_race_enhanced():
                         break
                 if race_file_path:
                     break
-            
+
             # If still not found, search for partial matches in all directories
             if not race_file_path:
-                logger.info(f"Searching for partial filename matches for race_id: {race_id}")
+                logger.info(
+                    f"Searching for partial filename matches for race_id: {race_id}"
+                )
                 for base_dir in search_dirs:
                     if os.path.exists(base_dir):
                         for file in os.listdir(base_dir):
                             if file.endswith(".csv") and race_id in file:
                                 race_filename = file
                                 race_file_path = os.path.join(base_dir, file)
-                                logger.info(f"Found partial match in {base_dir}: {race_filename}")
+                                logger.info(
+                                    f"Found partial match in {base_dir}: {race_filename}"
+                                )
                                 break
                         if race_file_path:
                             break
-            
+
             # If no file found, return error
             if not race_file_path:
                 return (
-                    jsonify({
-                        "success": False,
-                        "message": f"No race file found for race_id '{race_id}'.",
-                        "error_type": "file_not_found",
-                        "race_id": race_id,
-                        "searched_directories": search_dirs,
-                        "attempted_filenames": possible_filenames
-                    }),
+                    jsonify(
+                        {
+                            "success": False,
+                            "message": f"No race file found for race_id '{race_id}'.",
+                            "error_type": "file_not_found",
+                            "race_id": race_id,
+                            "searched_directories": search_dirs,
+                            "attempted_filenames": possible_filenames,
+                        }
+                    ),
                     404,
                 )
         else:
@@ -10626,6 +11874,7 @@ def api_predict_single_race_enhanced():
             def _normalize_name(s: str) -> str:
                 try:
                     import re
+
                     # Convert to upper, replace unicode dashes with '-', collapse whitespace, drop extension
                     base = os.path.basename(str(s or ""))
                     base = base.replace("\u2013", "-").replace("\u2014", "-")
@@ -10655,7 +11904,9 @@ def api_predict_single_race_enhanced():
                         for fname in os.listdir(base_dir):
                             if fname.lower() == target_basename.lower():
                                 race_file_path = os.path.join(base_dir, fname)
-                                logger.info(f"Case-insensitive match for '{target_basename}' in {base_dir} -> {fname}")
+                                logger.info(
+                                    f"Case-insensitive match for '{target_basename}' in {base_dir} -> {fname}"
+                                )
                                 break
                         if race_file_path:
                             break
@@ -10670,18 +11921,22 @@ def api_predict_single_race_enhanced():
                         if not os.path.exists(base_dir):
                             continue
                         for fname in os.listdir(base_dir):
-                            if not fname.endswith('.csv'):
+                            if not fname.endswith(".csv"):
                                 continue
                             norm_fname = _normalize_name(fname)
                             # exact normalized equality
                             if norm_fname == norm_target:
                                 race_file_path = os.path.join(base_dir, fname)
-                                logger.info(f"Normalized match for '{target_basename}' in {base_dir} -> {fname}")
+                                logger.info(
+                                    f"Normalized match for '{target_basename}' in {base_dir} -> {fname}"
+                                )
                                 break
                             # containment to handle minor variations
                             if norm_target in norm_fname or norm_fname in norm_target:
                                 race_file_path = os.path.join(base_dir, fname)
-                                logger.info(f"Normalized containment match for '{target_basename}' in {base_dir} -> {fname}")
+                                logger.info(
+                                    f"Normalized containment match for '{target_basename}' in {base_dir} -> {fname}"
+                                )
                                 break
                         if race_file_path:
                             break
@@ -10690,55 +11945,66 @@ def api_predict_single_race_enhanced():
 
             if not race_file_path:
                 return (
-                    jsonify({
-                        "success": False,
-                        "message": f"Race file '{race_filename}' not found in any known directories",
-                        "error_type": "file_not_found",
-                        "race_filename": race_filename,
-                        "searched_directories": search_dirs
-                    }),
+                    jsonify(
+                        {
+                            "success": False,
+                            "message": f"Race file '{race_filename}' not found in any known directories",
+                            "error_type": "file_not_found",
+                            "race_filename": race_filename,
+                            "searched_directories": search_dirs,
+                        }
+                    ),
                     404,
                 )
 
         # STEP 1: Automatically enhance data before prediction
-        logger.info(f"🔍 Step 1: Enhancing data for {race_filename} before prediction...")
+        logger.info(
+            f"🔍 Step 1: Enhancing data for {race_filename} before prediction..."
+        )
         start_step_time = time.time()
-        
+
         # Enhancement logic - basic file validation and preprocessing
         try:
             if not os.path.exists(race_file_path):
                 raise FileNotFoundError(f"Race file not found: {race_file_path}")
-            
+
             # Check file size
             file_size = os.path.getsize(race_file_path)
             logger.info(f"📊 File size: {file_size} bytes")
-            
+
             if file_size == 0:
                 raise ValueError("Race file is empty")
             elif file_size < 100:
-                logger.warning(f"⚠️ Race file is very small ({file_size} bytes) - may be incomplete")
-            
+                logger.warning(
+                    f"⚠️ Race file is very small ({file_size} bytes) - may be incomplete"
+                )
+
             # Quick CSV validation
             try:
                 import pandas as pd
+
                 df_check = pd.read_csv(race_file_path, nrows=1)
-                logger.info(f"✅ CSV validation passed - {len(df_check.columns)} columns detected")
+                logger.info(
+                    f"✅ CSV validation passed - {len(df_check.columns)} columns detected"
+                )
             except Exception as csv_error:
                 logger.warning(f"⚠️ CSV validation warning: {str(csv_error)}")
-            
+
             step_time = time.time() - start_step_time
             logger.info(f"✅ Step 1 completed in {step_time:.2f} seconds")
-            
+
         except Exception as enhance_error:
             logger.error(f"❌ Step 1 failed: {str(enhance_error)}")
             return (
-                jsonify({
-                    "success": False,
-                    "message": f"Data enhancement failed: {str(enhance_error)}",
-                    "error_type": "data_enhancement_error",
-                    "race_filename": race_filename,
-                    "processing_time_seconds": time.time() - start_time
-                }),
+                jsonify(
+                    {
+                        "success": False,
+                        "message": f"Data enhancement failed: {str(enhance_error)}",
+                        "error_type": "data_enhancement_error",
+                        "race_filename": race_filename,
+                        "processing_time_seconds": time.time() - start_time,
+                    }
+                ),
                 400,
             )
 
@@ -10746,69 +12012,93 @@ def api_predict_single_race_enhanced():
         harmonized_ri = None
         try:
             import re as _re
-            _m = _re.match(r'^Race\s+(\d+)\s*-\s*(.+?)\s*-\s*(\d{4}-\d{2}-\d{2})\.csv$', os.path.basename(race_filename), _re.IGNORECASE)
+
+            _m = _re.match(
+                r"^Race\s+(\d+)\s*-\s*(.+?)\s*-\s*(\d{4}-\d{2}-\d{2})\.csv$",
+                os.path.basename(race_filename),
+                _re.IGNORECASE,
+            )
             _date_hint = _m.group(3) if _m else None
-            harmonized_ri = _harmonize_race_metadata_using_live(race_filename, date_hint=_date_hint)
+            harmonized_ri = _harmonize_race_metadata_using_live(
+                race_filename, date_hint=_date_hint
+            )
         except Exception:
             harmonized_ri = None
 
         # STEP 2: Run prediction pipeline using the most appropriate predictor
-        logger.info(f"🔍 Step 2: Running prediction pipeline for race {race_filename}...")
+        logger.info(
+            f"🔍 Step 2: Running prediction pipeline for race {race_filename}..."
+        )
         prediction_start_time = time.time()
-        
+
         prediction_result = None
         predictor_used = None
         attempts = []
-        
+
         # Try Enhanced Prediction Service first (most advanced)
         if ENHANCED_PREDICTION_SERVICE_AVAILABLE and enhanced_prediction_service:
             try:
                 logger.info(f"Using Enhanced Prediction Service for {race_filename}")
-                prediction_result = enhanced_prediction_service.predict_race_file_enhanced(race_file_path, tgr_enabled=tgr_enabled)
+                prediction_result = (
+                    enhanced_prediction_service.predict_race_file_enhanced(
+                        race_file_path, tgr_enabled=tgr_enabled
+                    )
+                )
                 predictor_used = "PredictionPipelineV4"
-                
+
                 # Check if prediction was actually successful
                 if prediction_result and prediction_result.get("success"):
-                    logger.info(f"Enhanced Prediction Service completed successfully for {race_filename}")
+                    logger.info(
+                        f"Enhanced Prediction Service completed successfully for {race_filename}"
+                    )
                 else:
-                    logger.warning(f"Enhanced Prediction Service returned unsuccessful result: {prediction_result}")
+                    logger.warning(
+                        f"Enhanced Prediction Service returned unsuccessful result: {prediction_result}"
+                    )
                     prediction_result = None  # Force fallback
             except Exception as e:
                 logger.warning(f"Enhanced Prediction Service failed: {str(e)}")
                 prediction_result = None  # Ensure fallback will trigger
-        
+
         # Fallback to PredictionPipelineV4 if Enhanced Service failed
         if PredictionPipelineV4 and not prediction_result:
             try:
                 logger.info(f"Fallback to PredictionPipelineV4 for {race_filename}")
                 predictor = PredictionPipelineV4()
                 try:
-                    prediction_result = predictor.predict_race_file(race_file_path, tgr_enabled=tgr_enabled)
+                    prediction_result = predictor.predict_race_file(
+                        race_file_path, tgr_enabled=tgr_enabled
+                    )
                 except TypeError:
                     # Backward compatibility if signature not updated
                     prediction_result = predictor.predict_race_file(race_file_path)
                 predictor_used = "PredictionPipelineV4"
                 if prediction_result and prediction_result.get("success"):
-                    logger.info(f"Successfully used PredictionPipelineV4 for {race_filename}")
+                    logger.info(
+                        f"Successfully used PredictionPipelineV4 for {race_filename}"
+                    )
                 else:
-                    logger.warning(f"PredictionPipelineV4 returned unsuccessful result for {race_filename}")
+                    logger.warning(
+                        f"PredictionPipelineV4 returned unsuccessful result for {race_filename}"
+                    )
             except Exception as e:
                 logger.warning(f"PredictionPipelineV4 failed: {str(e)}")
-        
+
         # Fallback to PredictionPipelineV3 if V4 failed
         if PredictionPipelineV3 and not prediction_result:
             try:
                 logger.info(f"Fallback to PredictionPipelineV3 for {race_filename}")
                 predictor = PredictionPipelineV3()
                 prediction_result = predictor.predict_race_file(
-                    race_file_path, 
-                    enhancement_level="full"
+                    race_file_path, enhancement_level="full"
                 )
                 predictor_used = "PredictionPipelineV3"
-                logger.info(f"Successfully used PredictionPipelineV3 for {race_filename}")
+                logger.info(
+                    f"Successfully used PredictionPipelineV3 for {race_filename}"
+                )
             except Exception as e:
                 logger.warning(f"PredictionPipelineV3 failed: {str(e)}")
-        
+
         # Fallback to UnifiedPredictor if both V4 and V3 failed
         if UnifiedPredictor and not prediction_result:
             try:
@@ -10819,18 +12109,22 @@ def api_predict_single_race_enhanced():
                 logger.info(f"Successfully used UnifiedPredictor for {race_filename}")
             except Exception as e:
                 logger.warning(f"UnifiedPredictor failed: {str(e)}")
-        
+
         # Final fallback to ComprehensivePredictionPipeline
         if ComprehensivePredictionPipeline and not prediction_result:
             try:
-                logger.info(f"Last resort fallback to ComprehensivePredictionPipeline for {race_filename}")
+                logger.info(
+                    f"Last resort fallback to ComprehensivePredictionPipeline for {race_filename}"
+                )
                 predictor = ComprehensivePredictionPipeline()
                 prediction_result = predictor.predict_race_file(race_file_path)
                 predictor_used = "ComprehensivePredictionPipeline"
-                logger.info(f"Successfully used ComprehensivePredictionPipeline for {race_filename}")
+                logger.info(
+                    f"Successfully used ComprehensivePredictionPipeline for {race_filename}"
+                )
             except Exception as e:
                 logger.warning(f"ComprehensivePredictionPipeline failed: {str(e)}")
-        
+
         # Check if any predictor succeeded
         if not prediction_result:
             # Degrade gracefully: synthesize a minimal predictions payload from the CSV so tests receive usable data
@@ -10841,14 +12135,14 @@ def api_predict_single_race_enhanced():
             # Ensure csv_* enrichment defaults exist on degraded predictions
             try:
                 defaults = {
-                    'csv_historical_races': 0,
-                    'csv_win_rate': 0.0,
-                    'csv_place_rate': 0.0,
-                    'csv_avg_finish_position': 10.0,
-                    'csv_best_finish_position': 0,
-                    'csv_recent_form': "",
-                    'csv_avg_time': 0.0,
-                    'csv_best_time': 0.0,
+                    "csv_historical_races": 0,
+                    "csv_win_rate": 0.0,
+                    "csv_place_rate": 0.0,
+                    "csv_avg_finish_position": 10.0,
+                    "csv_best_finish_position": 0,
+                    "csv_recent_form": "",
+                    "csv_avg_time": 0.0,
+                    "csv_best_time": 0.0,
                 }
                 for p in preds:
                     if isinstance(p, dict):
@@ -10856,32 +12150,40 @@ def api_predict_single_race_enhanced():
                             p.setdefault(k, v)
             except Exception:
                 pass
-            return jsonify({
-                "success": True,
-                "degraded": True,
-                "message": "All prediction pipelines failed; returning degraded response",
-                "error_type": "prediction_pipeline_failure",
-                "race_id": race_id,
-                "race_filename": race_filename,
-                "attempted_predictors": [
-                    "EnhancedPredictionService",
-                    "PredictionPipelineV4",
-                    "PredictionPipelineV3",
-                    "UnifiedPredictor",
-                    "ComprehensivePredictionPipeline"
-                ],
-                "prediction": {"success": True, "predictions": preds, "degraded": True},
-                "predictions": preds,
-                "predictor_used": "synthetic_fallback",
-                "timestamp": datetime.now().isoformat()
-            })
+            return jsonify(
+                {
+                    "success": True,
+                    "degraded": True,
+                    "message": "All prediction pipelines failed; returning degraded response",
+                    "error_type": "prediction_pipeline_failure",
+                    "race_id": race_id,
+                    "race_filename": race_filename,
+                    "attempted_predictors": [
+                        "EnhancedPredictionService",
+                        "PredictionPipelineV4",
+                        "PredictionPipelineV3",
+                        "UnifiedPredictor",
+                        "ComprehensivePredictionPipeline",
+                    ],
+                    "prediction": {
+                        "success": True,
+                        "predictions": preds,
+                        "degraded": True,
+                    },
+                    "predictions": preds,
+                    "predictor_used": "synthetic_fallback",
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
 
         # STEP 2.5: Enrich predictions with normalized win_prob/place_prob if missing
         try:
             preds = []
             # Find list of runner dicts regardless of key name
             for key in ("predictions", "enhanced_predictions"):
-                if isinstance(prediction_result, dict) and isinstance(prediction_result.get(key), list):
+                if isinstance(prediction_result, dict) and isinstance(
+                    prediction_result.get(key), list
+                ):
                     preds = prediction_result.get(key) or []
                     break
             if preds:
@@ -10905,13 +12207,13 @@ def api_predict_single_race_enhanced():
                 total = sum(x for x in base_scores if x is not None)
                 # If scores look like percentages, scale down
                 if total > 1.5:  # crude heuristic
-                    base_scores = [x/100.0 for x in base_scores]
+                    base_scores = [x / 100.0 for x in base_scores]
                     total = sum(base_scores)
                 # If total is zero, assign equal probabilities
                 if total <= 0:
-                    norm = [1.0/len(base_scores)] * len(base_scores)
+                    norm = [1.0 / len(base_scores)] * len(base_scores)
                 else:
-                    norm = [x/total for x in base_scores]
+                    norm = [x / total for x in base_scores]
                 # Write back win_prob; add place_prob fallback if missing
                 for i, p in enumerate(preds):
                     try:
@@ -10931,17 +12233,21 @@ def api_predict_single_race_enhanced():
         # STEP 2.6: Inject CSV-derived historical stats so UI fallback always has data (regardless of predictor)
         try:
             import re
+
             import pandas as _pd
+
             def _norm_key(s: str) -> str:
                 try:
                     return re.sub(r"[^A-Za-z0-9]", "", (s or "").upper())
                 except Exception:
                     return (s or "").upper().replace(" ", "")
+
             # Build stats from CSV
             csv_stats = {}
             try:
                 df_csv = _pd.read_csv(race_file_path)
                 current = None
+
                 def _is_participant(name: str) -> bool:
                     if not name:
                         return False
@@ -10950,55 +12256,65 @@ def api_predict_single_race_enhanced():
                         return False
                     if "." in sn and sn.split(".")[0].strip().isdigit():
                         return True
-                    return len(sn.replace('"','')) > 2 and not sn.strip().isdigit()
+                    return len(sn.replace('"', "")) > 2 and not sn.strip().isdigit()
+
                 for _, row in df_csv.iterrows():
-                    dn = str(row.get('Dog Name', '')).replace('"','').strip()
+                    dn = str(row.get("Dog Name", "")).replace('"', "").strip()
                     if _is_participant(dn):
-                        clean = dn.split('.', 1)[1].strip().title() if ('.' in dn and dn.split('.')[0].strip().isdigit()) else dn.title()
+                        clean = (
+                            dn.split(".", 1)[1].strip().title()
+                            if ("." in dn and dn.split(".")[0].strip().isdigit())
+                            else dn.title()
+                        )
                         current = clean
                         if current not in csv_stats:
-                            csv_stats[current] = {'_positions': [], '_times': []}
-                    elif current and (dn == '' or dn == '""'):
+                            csv_stats[current] = {"_positions": [], "_times": []}
+                    elif current and (dn == "" or dn == '""'):
                         # history row
-                        plc = row.get('PLC')
+                        plc = row.get("PLC")
                         if str(plc).isdigit():
-                            csv_stats[current]['_positions'].append(int(plc))
-                        t = row.get('TIME')
+                            csv_stats[current]["_positions"].append(int(plc))
+                        t = row.get("TIME")
                         try:
-                            if t is not None and str(t).replace('.', '', 1).isdigit():
-                                csv_stats[current]['_times'].append(float(t))
+                            if t is not None and str(t).replace(".", "", 1).isdigit():
+                                csv_stats[current]["_times"].append(float(t))
                         except Exception:
                             pass
                 # finalize stats
                 finalized = {}
                 for name, data in csv_stats.items():
-                    pos = data.get('_positions', [])
-                    times = data.get('_times', [])
+                    pos = data.get("_positions", [])
+                    times = data.get("_times", [])
                     if pos:
                         out = {
-                            'csv_historical_races': len(pos),
-                            'csv_avg_finish_position': sum(pos)/len(pos),
-                            'csv_best_finish_position': min(pos),
-                            'csv_recent_form': pos[0],
-                            'csv_win_rate': len([p for p in pos if p == 1]) / len(pos),
-                            'csv_place_rate': len([p for p in pos if p <= 3]) / len(pos),
+                            "csv_historical_races": len(pos),
+                            "csv_avg_finish_position": sum(pos) / len(pos),
+                            "csv_best_finish_position": min(pos),
+                            "csv_recent_form": pos[0],
+                            "csv_win_rate": len([p for p in pos if p == 1]) / len(pos),
+                            "csv_place_rate": len([p for p in pos if p <= 3])
+                            / len(pos),
                         }
                         if times:
-                            out['csv_avg_time'] = sum(times)/len(times)
-                            out['csv_best_time'] = min(times)
+                            out["csv_avg_time"] = sum(times) / len(times)
+                            out["csv_best_time"] = min(times)
                         finalized[_norm_key(name)] = out
                 # merge into predictions lists
-                for list_key in ('predictions','enhanced_predictions'):
+                for list_key in ("predictions", "enhanced_predictions"):
                     lst = prediction_result.get(list_key)
                     if isinstance(lst, list):
                         for p in lst:
                             if not isinstance(p, dict):
                                 continue
-                            dn = p.get('dog_clean_name') or p.get('dog_name') or p.get('name')
+                            dn = (
+                                p.get("dog_clean_name")
+                                or p.get("dog_name")
+                                or p.get("name")
+                            )
                             k = _norm_key(str(dn))
                             # default presence for gating in UI
-                            if 'csv_historical_races' not in p:
-                                p['csv_historical_races'] = 0
+                            if "csv_historical_races" not in p:
+                                p["csv_historical_races"] = 0
                             if k in finalized:
                                 for kk, vv in finalized[k].items():
                                     if p.get(kk) is None:
@@ -11006,14 +12322,14 @@ def api_predict_single_race_enhanced():
                             # Ensure all CSV enrichment keys exist with safe defaults (non-None)
                             try:
                                 defaults = {
-                                    'csv_historical_races': 0,
-                                    'csv_win_rate': 0.0,
-                                    'csv_place_rate': 0.0,
-                                    'csv_avg_finish_position': 10.0,
-                                    'csv_best_finish_position': 0,
-                                    'csv_recent_form': "",
-                                    'csv_avg_time': 0.0,
-                                    'csv_best_time': 0.0,
+                                    "csv_historical_races": 0,
+                                    "csv_win_rate": 0.0,
+                                    "csv_place_rate": 0.0,
+                                    "csv_avg_finish_position": 10.0,
+                                    "csv_best_finish_position": 0,
+                                    "csv_recent_form": "",
+                                    "csv_avg_time": 0.0,
+                                    "csv_best_time": 0.0,
                                 }
                                 for _ck, _cv in defaults.items():
                                     if p.get(_ck) is None:
@@ -11034,11 +12350,14 @@ def api_predict_single_race_enhanced():
             # Extract race_id from filename if not provided
             if not race_id and race_filename:
                 race_id = extract_race_id_from_csv_filename(race_filename)
-            
+
             # Attach current best model info from registry for traceability
             model_registry_best = None
             try:
-                from model_registry import get_model_registry  # local import to avoid circulars in tests
+                from model_registry import (
+                    get_model_registry,  # local import to avoid circulars in tests
+                )
+
                 _reg = get_model_registry()
                 _best = _reg.get_best_model()
                 if _best:
@@ -11063,20 +12382,33 @@ def api_predict_single_race_enhanced():
                     try:
                         _race_id = extract_race_id_from_csv_filename(race_filename)
                     except Exception:
-                        _race_id = (race_filename or os.path.basename(race_file_path)).replace('.csv', '')
+                        _race_id = (
+                            race_filename or os.path.basename(race_file_path)
+                        ).replace(".csv", "")
 
                 # Build a consistent filename (reuse helper if available)
                 try:
-                    prediction_filename = build_prediction_filename(_race_id, method="enhanced")
+                    prediction_filename = build_prediction_filename(
+                        _race_id, method="enhanced"
+                    )
                 except Exception:
                     # Fallback filename
-                    safe_id = (_race_id or os.path.splitext(os.path.basename(race_file_path))[0])
+                    safe_id = (
+                        _race_id
+                        or os.path.splitext(os.path.basename(race_file_path))[0]
+                    )
                     prediction_filename = f"prediction_{safe_id}.json"
 
-                prediction_file_path = os.path.join(predictions_dir, prediction_filename)
+                prediction_file_path = os.path.join(
+                    predictions_dir, prediction_filename
+                )
 
                 # Compose payload to save, ensuring race_info.filename is present for lookup
-                payload_to_save = prediction_result if isinstance(prediction_result, dict) else {"predictions": []}
+                payload_to_save = (
+                    prediction_result
+                    if isinstance(prediction_result, dict)
+                    else {"predictions": []}
+                )
                 try:
                     # Ensure saved payload also contains normalized win_prob/place_prob
                     try:
@@ -11099,29 +12431,37 @@ def api_predict_single_race_enhanced():
                                         or 0.0
                                     )
                                 try:
-                                    base_scores.append(float(s) if s is not None else 0.0)
+                                    base_scores.append(
+                                        float(s) if s is not None else 0.0
+                                    )
                                 except Exception:
                                     base_scores.append(0.0)
                             total = sum(x for x in base_scores if x is not None)
                             if total > 1.5:
-                                base_scores = [x/100.0 for x in base_scores]
+                                base_scores = [x / 100.0 for x in base_scores]
                                 total = sum(base_scores)
                             if total <= 0:
-                                norm = [1.0/len(base_scores)] * len(base_scores)
+                                norm = [1.0 / len(base_scores)] * len(base_scores)
                             else:
-                                norm = [x/total for x in base_scores]
+                                norm = [x / total for x in base_scores]
                             for i, p in enumerate(preds_save):
                                 if p.get("win_prob") is None:
                                     p["win_prob"] = float(max(0.0, min(1.0, norm[i])))
                                 if p.get("place_prob") is None:
-                                    p["place_prob"] = float(max(0.0, min(1.0, norm[i] * 1.6)))
+                                    p["place_prob"] = float(
+                                        max(0.0, min(1.0, norm[i] * 1.6))
+                                    )
                     except Exception:
                         pass
                 except Exception:
                     pass
 
                 # Ensure a race_info block exists with filename for downstream matching
-                ri = payload_to_save.get("race_info", {}) if isinstance(payload_to_save, dict) else {}
+                ri = (
+                    payload_to_save.get("race_info", {})
+                    if isinstance(payload_to_save, dict)
+                    else {}
+                )
                 if not isinstance(ri, dict):
                     ri = {}
                 # Attach file-based context if not present
@@ -11129,9 +12469,20 @@ def api_predict_single_race_enhanced():
                     ri.setdefault("filename", race_filename)
                 # Try to enrich with context if present in result
                 if isinstance(prediction_result, dict):
-                    meta = prediction_result.get("race_info") or prediction_result.get("race_context") or {}
+                    meta = (
+                        prediction_result.get("race_info")
+                        or prediction_result.get("race_context")
+                        or {}
+                    )
                     if isinstance(meta, dict):
-                        for k in ("date", "race_date", "venue", "race_number", "distance", "grade"):
+                        for k in (
+                            "date",
+                            "race_date",
+                            "venue",
+                            "race_number",
+                            "distance",
+                            "grade",
+                        ):
                             v = meta.get(k)
                             if v:
                                 # Normalize keys into race_info schema
@@ -11143,8 +12494,12 @@ def api_predict_single_race_enhanced():
                 csv_meta = None
                 try:
                     from utils.csv_metadata import parse_race_csv_meta
+
                     csv_meta = parse_race_csv_meta(race_file_path)
-                    if isinstance(csv_meta, dict) and csv_meta.get("status") == "success":
+                    if (
+                        isinstance(csv_meta, dict)
+                        and csv_meta.get("status") == "success"
+                    ):
                         if csv_meta.get("race_date") and not ri.get("date"):
                             ri["date"] = csv_meta.get("race_date")
                         if csv_meta.get("venue") and not ri.get("venue"):
@@ -11154,7 +12509,11 @@ def api_predict_single_race_enhanced():
                         if csv_meta.get("distance") is not None:
                             dist_val = str(csv_meta.get("distance")).strip()
                             # Normalize distance to include trailing 'm' if it's numeric and lacks unit
-                            if dist_val and dist_val.isdigit() and not dist_val.endswith("m"):
+                            if (
+                                dist_val
+                                and dist_val.isdigit()
+                                and not dist_val.endswith("m")
+                            ):
                                 dist_val = f"{dist_val}m"
                             ri["distance"] = dist_val or ri.get("distance") or "Unknown"
                         if csv_meta.get("grade") is not None:
@@ -11184,9 +12543,21 @@ def api_predict_single_race_enhanced():
                 # Final normalization: if filename/CSV metadata conflicts with existing fields, prefer filename/CSV
                 try:
                     # Prefer CSV if available, otherwise filename-derived
-                    pref_date = (csv_meta or {}).get("race_date") if isinstance(csv_meta, dict) else None
-                    pref_venue = (csv_meta or {}).get("venue") if isinstance(csv_meta, dict) else None
-                    pref_number = (csv_meta or {}).get("race_number") if isinstance(csv_meta, dict) else None
+                    pref_date = (
+                        (csv_meta or {}).get("race_date")
+                        if isinstance(csv_meta, dict)
+                        else None
+                    )
+                    pref_venue = (
+                        (csv_meta or {}).get("venue")
+                        if isinstance(csv_meta, dict)
+                        else None
+                    )
+                    pref_number = (
+                        (csv_meta or {}).get("race_number")
+                        if isinstance(csv_meta, dict)
+                        else None
+                    )
                     if not pref_date and isinstance(_meta, dict):
                         pref_date = _meta.get("race_date")
                     if not pref_venue and isinstance(_meta, dict):
@@ -11194,11 +12565,23 @@ def api_predict_single_race_enhanced():
                     if pref_number is None and isinstance(_meta, dict):
                         pref_number = _meta.get("race_number")
 
-                    if pref_date and ri.get("date") and str(pref_date) != str(ri.get("date")):
+                    if (
+                        pref_date
+                        and ri.get("date")
+                        and str(pref_date) != str(ri.get("date"))
+                    ):
                         ri["date"] = pref_date
-                    if pref_venue and ri.get("venue") and str(pref_venue) != str(ri.get("venue")):
+                    if (
+                        pref_venue
+                        and ri.get("venue")
+                        and str(pref_venue) != str(ri.get("venue"))
+                    ):
                         ri["venue"] = pref_venue
-                    if pref_number is not None and ri.get("race_number") is not None and str(pref_number) != str(ri.get("race_number")):
+                    if (
+                        pref_number is not None
+                        and ri.get("race_number") is not None
+                        and str(pref_number) != str(ri.get("race_number"))
+                    ):
                         ri["race_number"] = pref_number
                 except Exception:
                     pass
@@ -11213,39 +12596,70 @@ def api_predict_single_race_enhanced():
                 # Normalize top_pick to ensure a numeric score exists
                 try:
                     if isinstance(payload_to_save, dict):
-                        preds = payload_to_save.get("enhanced_predictions") or payload_to_save.get("predictions") or []
+                        preds = (
+                            payload_to_save.get("enhanced_predictions")
+                            or payload_to_save.get("predictions")
+                            or []
+                        )
                         tp = payload_to_save.get("top_pick")
                         # Build or patch top_pick from first prediction
                         if (not isinstance(tp, dict)) and preds:
-                            first = preds[0] if isinstance(preds, list) and preds else None
+                            first = (
+                                preds[0] if isinstance(preds, list) and preds else None
+                            )
                             if first and isinstance(first, dict):
                                 payload_to_save["top_pick"] = {
-                                    "dog_name": first.get("dog_name") or first.get("clean_name") or "Unknown",
-                                    "box_number": first.get("box_number") or first.get("box") or "N/A",
-                                    "final_score": first.get("final_score") or first.get("prediction_score") or first.get("confidence") or 0,
-                                    "key_factors": first.get("key_factors") or []
+                                    "dog_name": first.get("dog_name")
+                                    or first.get("clean_name")
+                                    or "Unknown",
+                                    "box_number": first.get("box_number")
+                                    or first.get("box")
+                                    or "N/A",
+                                    "final_score": first.get("final_score")
+                                    or first.get("prediction_score")
+                                    or first.get("confidence")
+                                    or 0,
+                                    "key_factors": first.get("key_factors") or [],
                                 }
                                 tp = payload_to_save["top_pick"]
                         if isinstance(tp, dict):
                             # Ensure numeric score field present
-                            score = tp.get("final_score") or tp.get("prediction_score") or tp.get("confidence")
-                            if score is None and preds and isinstance(preds, list) and preds:
+                            score = (
+                                tp.get("final_score")
+                                or tp.get("prediction_score")
+                                or tp.get("confidence")
+                            )
+                            if (
+                                score is None
+                                and preds
+                                and isinstance(preds, list)
+                                and preds
+                            ):
                                 first = preds[0]
                                 if isinstance(first, dict):
-                                    tp["final_score"] = first.get("final_score") or first.get("prediction_score") or first.get("confidence") or 0
+                                    tp["final_score"] = (
+                                        first.get("final_score")
+                                        or first.get("prediction_score")
+                                        or first.get("confidence")
+                                        or 0
+                                    )
                 except Exception:
                     pass
 
                 # Attach predictor used and timestamp for traceability
                 payload_to_save.setdefault("predictor_used", predictor_used)
-                payload_to_save.setdefault("prediction_timestamp", datetime.now().isoformat())
+                payload_to_save.setdefault(
+                    "prediction_timestamp", datetime.now().isoformat()
+                )
 
                 with open(prediction_file_path, "w") as f:
                     json.dump(payload_to_save, f, indent=2, default=str)
             except Exception as persist_error:
                 # Do not fail the request if persisting the prediction fails
                 try:
-                    logger.warning(f"Failed to persist prediction payload: {persist_error}")
+                    logger.warning(
+                        f"Failed to persist prediction payload: {persist_error}"
+                    )
                 except Exception:
                     pass
 
@@ -11254,73 +12668,96 @@ def api_predict_single_race_enhanced():
                 "success": True,
                 "message": f"Prediction completed for {race_filename}",
                 "prediction": prediction_result,
-                "predictions": (prediction_result.get("predictions") or prediction_result.get("enhanced_predictions") or []),
+                "predictions": (
+                    prediction_result.get("predictions")
+                    or prediction_result.get("enhanced_predictions")
+                    or []
+                ),
                 "gpt_rerank": prediction_result.get("gpt_rerank"),
                 "predictor_used": predictor_used,
                 "race_id": race_id,
                 "race_filename": race_filename,
                 "model_registry_best": model_registry_best,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
             # Surface model metadata at top-level
             try:
                 if isinstance(prediction_result, dict):
-                    if prediction_result.get('primary_model_id'):
-                        resp['primary_model_id'] = prediction_result.get('primary_model_id')
-                    if prediction_result.get('ensemble_models_used') is not None:
-                        resp['ensemble_models_used'] = prediction_result.get('ensemble_models_used')
-                    if prediction_result.get('model_ids_used') is not None:
-                        resp['model_ids_used'] = prediction_result.get('model_ids_used')
+                    if prediction_result.get("primary_model_id"):
+                        resp["primary_model_id"] = prediction_result.get(
+                            "primary_model_id"
+                        )
+                    if prediction_result.get("ensemble_models_used") is not None:
+                        resp["ensemble_models_used"] = prediction_result.get(
+                            "ensemble_models_used"
+                        )
+                    if prediction_result.get("model_ids_used") is not None:
+                        resp["model_ids_used"] = prediction_result.get("model_ids_used")
             except Exception:
                 pass
             return jsonify(resp)
         else:
             # Degrade gracefully on unsuccessful prediction; in tests or temporal leakage, include a synthetic prediction
             try:
-                include_synthetic = is_testing_mode() or is_temporal_leakage_error(prediction_result.get("error"))
+                include_synthetic = is_testing_mode() or is_temporal_leakage_error(
+                    prediction_result.get("error")
+                )
             except Exception:
                 include_synthetic = is_testing_mode()
             synthetic_payload = None
             if include_synthetic:
                 try:
                     preds = synthetic_predictions_from_csv(race_file_path)
-                    synthetic_payload = {"success": True, "predictions": preds, "degraded": True}
+                    synthetic_payload = {
+                        "success": True,
+                        "predictions": preds,
+                        "degraded": True,
+                    }
                 except Exception:
                     synthetic_payload = None
-            return jsonify({
-                "success": True,
-                "degraded": True,
-                "message": prediction_result.get("error", "Unknown prediction error"),
-                "error_type": "prediction_error",
-                "race_id": race_id,
-                "race_filename": race_filename,
-                "predictor_used": predictor_used,
-                "file_path": race_file_path,
-                "prediction_details": prediction_result,
-                **({"prediction": synthetic_payload} if synthetic_payload else {}),
-                "timestamp": datetime.now().isoformat()
-            })
-            
+            return jsonify(
+                {
+                    "success": True,
+                    "degraded": True,
+                    "message": prediction_result.get(
+                        "error", "Unknown prediction error"
+                    ),
+                    "error_type": "prediction_error",
+                    "race_id": race_id,
+                    "race_filename": race_filename,
+                    "predictor_used": predictor_used,
+                    "file_path": race_file_path,
+                    "prediction_details": prediction_result,
+                    **({"prediction": synthetic_payload} if synthetic_payload else {}),
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
+
     except Exception as e:
         # Any runtime error should degrade gracefully to avoid failing API tests with 500s
-        logger.error(f"Unexpected error in predict_single_race_enhanced: {str(e)}", exc_info=True)
-        return jsonify({
-            "success": True,
-            "degraded": True,
-            "message": f"Prediction error; returning degraded response: {str(e)}",
-            "error_type": "server_error",
-            "race_id": data.get("race_id") if data else None,
-            "race_filename": data.get("race_filename") if data else None,
-            "timestamp": datetime.now().isoformat()
-        })
+        logger.error(
+            f"Unexpected error in predict_single_race_enhanced: {str(e)}", exc_info=True
+        )
+        return jsonify(
+            {
+                "success": True,
+                "degraded": True,
+                "message": f"Prediction error; returning degraded response: {str(e)}",
+                "error_type": "server_error",
+                "race_id": data.get("race_id") if data else None,
+                "race_filename": data.get("race_filename") if data else None,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
 
 
 @app.route("/api/predict_all_upcoming_races_enhanced", methods=["POST"])
 def api_predict_all_upcoming_races_enhanced():
     """Enhanced API endpoint to predict all upcoming races using V4 only with graceful degradation per file."""
     import time
+
     start_time = time.time()
-    
+
     try:
         # Initialize counters
         total_races = 0
@@ -11328,64 +12765,78 @@ def api_predict_all_upcoming_races_enhanced():
         errors = []
         results = []
         processed_files = []
-        
+
         # Step 1: Enumerate CSV files in UPCOMING_DIR
         logger.info(f"🔍 Step 1: Scanning upcoming races directory: {UPCOMING_DIR}")
         if not os.path.exists(UPCOMING_DIR):
             logger.error(f"❌ Upcoming races directory not found: {UPCOMING_DIR}")
-            return jsonify({
-                "success": True,
-                "message": "No upcoming races directory found",
-                "total_races": 0,
-                "successful_predictions": 0,
-                "failed_predictions": 0,
-                "predictions": [],
-                "errors": ["Upcoming races directory does not exist"],
-                "total_processing_time_seconds": time.time() - start_time
-            })
-        
+            return jsonify(
+                {
+                    "success": True,
+                    "message": "No upcoming races directory found",
+                    "total_races": 0,
+                    "successful_predictions": 0,
+                    "failed_predictions": 0,
+                    "predictions": [],
+                    "errors": ["Upcoming races directory does not exist"],
+                    "total_processing_time_seconds": time.time() - start_time,
+                }
+            )
+
         # Get all CSV and JSON files using the helper function
         upcoming_races = load_upcoming_races(refresh=False)
-        upcoming_files = [race.get("filename", f"{race.get('name', 'race')}.csv") for race in upcoming_races if race.get("filename") or race.get("name")]
-        
+        upcoming_files = [
+            race.get("filename", f"{race.get('name', 'race')}.csv")
+            for race in upcoming_races
+            if race.get("filename") or race.get("name")
+        ]
+
         # If no files from helper, fallback to direct directory scan for CSV only
         if not upcoming_files:
             upcoming_files = [f for f in os.listdir(UPCOMING_DIR) if f.endswith(".csv")]
-        
+
         total_races = len(upcoming_files)
         logger.info(f"📊 Found {total_races} CSV files to process")
-        
+
         if total_races == 0:
             logger.info("ℹ️ No upcoming races found")
-            return jsonify({
-                "success": True,
-                "message": "No upcoming races found",
-                "total_races": 0,
-                "successful_predictions": 0,
-                "failed_predictions": 0,
-                "predictions": [],
-                "errors": [],
-                "pipeline_used": "PredictionPipelineV4",
-                "total_processing_time_seconds": time.time() - start_time
-            })
-        
-        logger.info(f"🚀 Starting enhanced batch prediction for {total_races} upcoming races (V4 only)")
-        logger.info(f"📂 Processing files: {', '.join(upcoming_files[:5])}{'...' if len(upcoming_files) > 5 else ''}")
-        
+            return jsonify(
+                {
+                    "success": True,
+                    "message": "No upcoming races found",
+                    "total_races": 0,
+                    "successful_predictions": 0,
+                    "failed_predictions": 0,
+                    "predictions": [],
+                    "errors": [],
+                    "pipeline_used": "PredictionPipelineV4",
+                    "total_processing_time_seconds": time.time() - start_time,
+                }
+            )
+
+        logger.info(
+            f"🚀 Starting enhanced batch prediction for {total_races} upcoming races (V4 only)"
+        )
+        logger.info(
+            f"📂 Processing files: {', '.join(upcoming_files[:5])}{'...' if len(upcoming_files) > 5 else ''}"
+        )
+
         # Step 2: V4-only per-file prediction with graceful degradation
         if not PredictionPipelineV4:
-            return jsonify({
-                "success": True,
-                "message": "PredictionPipelineV4 not available",
-                "total_races": total_races,
-                "successful_predictions": 0,
-                "failed_predictions": total_races,
-                "predictions": [],
-                "errors": ["V4 pipeline not available"],
-                "pipeline_used": "PredictionPipelineV4",
-                "total_processing_time_seconds": time.time() - start_time
-            })
-        
+            return jsonify(
+                {
+                    "success": True,
+                    "message": "PredictionPipelineV4 not available",
+                    "total_races": total_races,
+                    "successful_predictions": 0,
+                    "failed_predictions": total_races,
+                    "predictions": [],
+                    "errors": ["V4 pipeline not available"],
+                    "pipeline_used": "PredictionPipelineV4",
+                    "total_processing_time_seconds": time.time() - start_time,
+                }
+            )
+
         predictor = PredictionPipelineV4()
         # Optional runtime TGR toggle from UI (JSON body)
         try:
@@ -11394,7 +12845,7 @@ def api_predict_all_upcoming_races_enhanced():
             body = {}
         tgr_enabled = None
         try:
-            tgr_enabled = body.get('tgr_enabled') if isinstance(body, dict) else None
+            tgr_enabled = body.get("tgr_enabled") if isinstance(body, dict) else None
         except Exception:
             tgr_enabled = None
         for filename in upcoming_files:
@@ -11402,54 +12853,65 @@ def api_predict_all_upcoming_races_enhanced():
                 race_file_path = os.path.join(UPCOMING_DIR, filename)
                 logger.info(f"Predicting race (V4): {filename}")
                 try:
-                    prediction_result = predictor.predict_race_file(race_file_path, tgr_enabled=tgr_enabled)
+                    prediction_result = predictor.predict_race_file(
+                        race_file_path, tgr_enabled=tgr_enabled
+                    )
                 except TypeError:
                     prediction_result = predictor.predict_race_file(race_file_path)
                 if prediction_result and prediction_result.get("success"):
-                    results.append({
-                        **prediction_result,
-                        "predictor_used": "PredictionPipelineV4",
-                        "file_path": race_file_path,
-                        "race_filename": filename
-                    })
+                    results.append(
+                        {
+                            **prediction_result,
+                            "predictor_used": "PredictionPipelineV4",
+                            "file_path": race_file_path,
+                            "race_filename": filename,
+                        }
+                    )
                     success_count += 1
                     logger.info(f"Successfully predicted race: {filename}")
                 else:
-                    error_msg = prediction_result.get("error", "Unknown prediction error") if prediction_result else "No result returned"
+                    error_msg = (
+                        prediction_result.get("error", "Unknown prediction error")
+                        if prediction_result
+                        else "No result returned"
+                    )
                     errors.append(error_msg)
                     logger.error(f"Prediction failed for {filename}: {error_msg}")
             except Exception as race_error:
                 error_msg = f"Error predicting {filename}: {str(race_error)}"
                 errors.append(error_msg)
                 logger.error(error_msg)
-        
-        return jsonify({
-            "success": True,
-            "message": f"Batch prediction completed: {success_count}/{total_races} races predicted successfully",
-            "total_races": total_races,
-            "successful_predictions": success_count,
-            "failed_predictions": total_races - success_count,
-            "predictions": results,
-            "errors": errors,
-            "pipeline_used": "PredictionPipelineV4",
-            "timestamp": datetime.now().isoformat(),
-            "total_processing_time_seconds": time.time() - start_time
-        })
-    
+
+        return jsonify(
+            {
+                "success": True,
+                "message": f"Batch prediction completed: {success_count}/{total_races} races predicted successfully",
+                "total_races": total_races,
+                "successful_predictions": success_count,
+                "failed_predictions": total_races - success_count,
+                "predictions": results,
+                "errors": errors,
+                "pipeline_used": "PredictionPipelineV4",
+                "timestamp": datetime.now().isoformat(),
+                "total_processing_time_seconds": time.time() - start_time,
+            }
+        )
+
     except Exception as e:
         logger.error(f"Batch enhanced prediction error: {str(e)}", exc_info=True)
-        return jsonify({
-            "success": True,
-            "message": f"Batch prediction failed with error: {str(e)}",
-            "total_races": 0,
-            "successful_predictions": 0,
-            "failed_predictions": 0,
-            "predictions": [],
-            "errors": [str(e)],
-            "pipeline_used": "PredictionPipelineV4",
-            "total_processing_time_seconds": time.time() - start_time
-        })
-
+        return jsonify(
+            {
+                "success": True,
+                "message": f"Batch prediction failed with error: {str(e)}",
+                "total_races": 0,
+                "successful_predictions": 0,
+                "failed_predictions": 0,
+                "predictions": [],
+                "errors": [str(e)],
+                "pipeline_used": "PredictionPipelineV4",
+                "total_processing_time_seconds": time.time() - start_time,
+            }
+        )
 
 
 @app.route("/api/predictions/recent")
@@ -11460,176 +12922,260 @@ def api_predictions_recent():
         resp = api_prediction_results()
         # api_prediction_results returns a Flask response; adapt
         if isinstance(resp, tuple):
-            data = resp[0].json if hasattr(resp[0], 'json') else resp[0]
+            data = resp[0].json if hasattr(resp[0], "json") else resp[0]
         else:
-            data = resp.json if hasattr(resp, 'json') else resp
-        predictions = (data or {}).get('predictions', []) if isinstance(data, dict) else []
-        return jsonify({'success': True, 'predictions': predictions[:5], 'count': len(predictions)}), 200
+            data = resp.json if hasattr(resp, "json") else resp
+        predictions = (
+            (data or {}).get("predictions", []) if isinstance(data, dict) else []
+        )
+        return (
+            jsonify(
+                {
+                    "success": True,
+                    "predictions": predictions[:5],
+                    "count": len(predictions),
+                }
+            ),
+            200,
+        )
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e), 'predictions': []}), 500
+        return jsonify({"success": False, "error": str(e), "predictions": []}), 500
+
 
 @app.route("/api/ml_predictions")
 def api_ml_predictions_stub():
     """Simple stub returning counts of available prediction files for tests"""
     try:
-        pred_dir = Path('./predictions')
-        count = len([p for p in pred_dir.glob('*.json')]) if pred_dir.exists() else 0
-        return jsonify({'success': True, 'count': count, 'timestamp': datetime.now().isoformat()}), 200
+        pred_dir = Path("./predictions")
+        count = len([p for p in pred_dir.glob("*.json")]) if pred_dir.exists() else 0
+        return (
+            jsonify(
+                {
+                    "success": True,
+                    "count": count,
+                    "timestamp": datetime.now().isoformat(),
+                }
+            ),
+            200,
+        )
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route("/api/predictions/generate", methods=["POST"]) 
+
+@app.route("/api/predictions/generate", methods=["POST"])
 def api_background_generate_predictions():
     """Trigger background prediction generation (compat for tests)"""
     try:
         # Use the internal background task launcher
         data = request.get_json() or {}
         job_id = f"bg_{uuid4().hex[:8]}_{int(time.time())}"
-        background_tasks[job_id] = {'status': 'running', 'progress': 0, 'timestamp': datetime.now().isoformat()}
+        background_tasks[job_id] = {
+            "status": "running",
+            "progress": 0,
+            "timestamp": datetime.now().isoformat(),
+        }
 
         def _runner():
             try:
                 # Simulate quick completion for tests
                 time.sleep(0.5)
                 background_tasks[job_id] = {
-                    'status': 'completed',
-                    'progress': 100,
-                    'result': {'message': 'predictions completed (simulated)'},
-                    'timestamp': datetime.now().isoformat()
+                    "status": "completed",
+                    "progress": 100,
+                    "result": {"message": "predictions completed (simulated)"},
+                    "timestamp": datetime.now().isoformat(),
                 }
             except Exception as e:
-                background_tasks[job_id] = {'status': 'failed', 'progress': 0, 'error': str(e), 'timestamp': datetime.now().isoformat()}
+                background_tasks[job_id] = {
+                    "status": "failed",
+                    "progress": 0,
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat(),
+                }
+
         threading.Thread(target=_runner, daemon=True).start()
-        return jsonify({'success': True, 'task_id': job_id}), 200
+        return jsonify({"success": True, "task_id": job_id}), 200
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 # ------------------------------------------------------------
 # Race Notes Minimal API (for Playwright compatibility)
 # Endpoints: create/update/fetch notes for a race
 # ------------------------------------------------------------
 
+
 def _sanitize_notes(text: str) -> str:
     try:
         import re
+
         if text is None:
-            return ''
+            return ""
         s = str(text)
         # Remove script tags and their content
-        s = re.sub(r'<\s*script[^>]*>.*?<\s*/\s*script\s*>', '', s, flags=re.IGNORECASE | re.DOTALL)
+        s = re.sub(
+            r"<\s*script[^>]*>.*?<\s*/\s*script\s*>",
+            "",
+            s,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
         # Strip on-event handlers and javascript: urls
-        s = re.sub(r'on[a-zA-Z]+\s*=\s*"[^"]*"', '', s)
-        s = re.sub(r'on[a-zA-Z]+\s*=\s*\'[^\']*\'', '', s)
-        s = re.sub(r'javascript:\s*', '', s, flags=re.IGNORECASE)
+        s = re.sub(r'on[a-zA-Z]+\s*=\s*"[^"]*"', "", s)
+        s = re.sub(r"on[a-zA-Z]+\s*=\s*\'[^\']*\'", "", s)
+        s = re.sub(r"javascript:\s*", "", s, flags=re.IGNORECASE)
         # Trim overly long payloads
         if len(s) > 4000:
             s = s[:4000]
         return s
     except Exception:
-        return text if isinstance(text, str) else ''
+        return text if isinstance(text, str) else ""
 
-@app.route('/api/race_notes', methods=['GET', 'POST'])
+
+@app.route("/api/race_notes", methods=["GET", "POST"])
 def api_race_notes_root():
     try:
         conn = sqlite3.connect(DATABASE_PATH)
         cur = conn.cursor()
-        if request.method == 'GET':
-            race_id = request.args.get('race_id')
+        if request.method == "GET":
+            race_id = request.args.get("race_id")
             if race_id:
-                cur.execute("SELECT race_id, notes, updated_at FROM race_notes WHERE race_id = ?", (race_id,))
+                cur.execute(
+                    "SELECT race_id, notes, updated_at FROM race_notes WHERE race_id = ?",
+                    (race_id,),
+                )
                 row = cur.fetchone()
                 conn.close()
                 if not row:
-                    return jsonify({'success': False, 'error': 'Not found'}), 404
-                return jsonify({'success': True, 'race_id': row[0], 'notes': row[1] or '', 'updated_at': row[2]})
+                    return jsonify({"success": False, "error": "Not found"}), 404
+                return jsonify(
+                    {
+                        "success": True,
+                        "race_id": row[0],
+                        "notes": row[1] or "",
+                        "updated_at": row[2],
+                    }
+                )
             # List up to 50 recent
-            cur.execute("SELECT race_id, notes, updated_at FROM race_notes ORDER BY updated_at DESC LIMIT 50")
+            cur.execute(
+                "SELECT race_id, notes, updated_at FROM race_notes ORDER BY updated_at DESC LIMIT 50"
+            )
             rows = cur.fetchall()
             conn.close()
-            return jsonify({'success': True, 'items': [
-                {'race_id': r[0], 'notes': r[1] or '', 'updated_at': r[2]} for r in rows
-            ]})
+            return jsonify(
+                {
+                    "success": True,
+                    "items": [
+                        {"race_id": r[0], "notes": r[1] or "", "updated_at": r[2]}
+                        for r in rows
+                    ],
+                }
+            )
         else:
             data = request.get_json() or {}
-            race_id = data.get('race_id')
-            notes = _sanitize_notes(data.get('notes', ''))
+            race_id = data.get("race_id")
+            notes = _sanitize_notes(data.get("notes", ""))
             if not race_id:
                 conn.close()
-                return jsonify({'success': False, 'error': 'race_id is required'}), 400
+                return jsonify({"success": False, "error": "race_id is required"}), 400
             cur.execute(
                 "INSERT INTO race_notes (race_id, notes, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)\n                 ON CONFLICT(race_id) DO UPDATE SET notes=excluded.notes, updated_at=CURRENT_TIMESTAMP",
-                (race_id, notes)
+                (race_id, notes),
             )
             conn.commit()
             conn.close()
-            return jsonify({'success': True, 'race_id': race_id, 'notes': notes})
+            return jsonify({"success": True, "race_id": race_id, "notes": notes})
     except Exception as e:
         try:
             logger.log_error(f"Race notes root error: {e}")
         except Exception:
             pass
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/api/race_notes/update', methods=['POST'])
+
+@app.route("/api/race_notes/update", methods=["POST"])
 def api_race_notes_update():
     try:
         data = request.get_json() or {}
-        race_id = data.get('race_id')
-        notes = _sanitize_notes(data.get('notes', ''))
+        race_id = data.get("race_id")
+        notes = _sanitize_notes(data.get("notes", ""))
         if not race_id:
-            return jsonify({'success': False, 'error': 'race_id is required'}), 400
+            return jsonify({"success": False, "error": "race_id is required"}), 400
         conn = sqlite3.connect(DATABASE_PATH)
         cur = conn.cursor()
         cur.execute(
             "INSERT INTO race_notes (race_id, notes, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)\n             ON CONFLICT(race_id) DO UPDATE SET notes=excluded.notes, updated_at=CURRENT_TIMESTAMP",
-            (race_id, notes)
+            (race_id, notes),
         )
         conn.commit()
         conn.close()
-        return jsonify({'success': True, 'race_id': race_id, 'notes': notes})
+        return jsonify({"success": True, "race_id": race_id, "notes": notes})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/api/race_notes/<race_id>', methods=['GET', 'PUT'])
+
+@app.route("/api/race_notes/<race_id>", methods=["GET", "PUT"])
 def api_race_notes_item(race_id):
     try:
         conn = sqlite3.connect(DATABASE_PATH)
         cur = conn.cursor()
-        if request.method == 'GET':
-            cur.execute("SELECT race_id, notes, updated_at FROM race_notes WHERE race_id = ?", (race_id,))
+        if request.method == "GET":
+            cur.execute(
+                "SELECT race_id, notes, updated_at FROM race_notes WHERE race_id = ?",
+                (race_id,),
+            )
             row = cur.fetchone()
             conn.close()
             if not row:
-                return jsonify({'success': False, 'error': 'Not found'}), 404
-            return jsonify({'success': True, 'race_id': row[0], 'notes': row[1] or '', 'updated_at': row[2]})
+                return jsonify({"success": False, "error": "Not found"}), 404
+            return jsonify(
+                {
+                    "success": True,
+                    "race_id": row[0],
+                    "notes": row[1] or "",
+                    "updated_at": row[2],
+                }
+            )
         else:
             data = request.get_json() or {}
-            notes = _sanitize_notes(data.get('notes', ''))
+            notes = _sanitize_notes(data.get("notes", ""))
             cur.execute(
                 "INSERT INTO race_notes (race_id, notes, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)\n                 ON CONFLICT(race_id) DO UPDATE SET notes=excluded.notes, updated_at=CURRENT_TIMESTAMP",
-                (race_id, notes)
+                (race_id, notes),
             )
             conn.commit()
             conn.close()
-            return jsonify({'success': True, 'race_id': race_id, 'notes': notes})
+            return jsonify({"success": True, "race_id": race_id, "notes": notes})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 # Back-compat route some tests may hit
-@app.route('/api/races/<race_id>/notes', methods=['GET'])
+@app.route("/api/races/<race_id>/notes", methods=["GET"])
 def api_race_notes_backcompat(race_id):
     try:
         conn = sqlite3.connect(DATABASE_PATH)
         cur = conn.cursor()
-        cur.execute("SELECT race_id, notes, updated_at FROM race_notes WHERE race_id = ?", (race_id,))
+        cur.execute(
+            "SELECT race_id, notes, updated_at FROM race_notes WHERE race_id = ?",
+            (race_id,),
+        )
         row = cur.fetchone()
         conn.close()
         if not row:
-            return jsonify({'success': False, 'error': 'Not found'}), 404
-        return jsonify({'success': True, 'race_id': row[0], 'notes': row[1] or '', 'updated_at': row[2]})
+            return jsonify({"success": False, "error": "Not found"}), 404
+        return jsonify(
+            {
+                "success": True,
+                "race_id": row[0],
+                "notes": row[1] or "",
+                "updated_at": row[2],
+            }
+        )
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-@app.route("/api/prediction_results", methods=["GET"]) 
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/prediction_results", methods=["GET"])
 def api_prediction_results():
     """API endpoint to get prediction results from JSON files, with metadata enrichment and normalized scoring"""
     try:
@@ -11682,7 +13228,9 @@ def api_prediction_results():
             return v
 
         predictions = []
-        for file_path, mtime, _priority in prediction_files[:10]:  # Get latest 10 predictions
+        for file_path, mtime, _priority in prediction_files[
+            :10
+        ]:  # Get latest 10 predictions
             try:
                 with open(file_path, "r") as f:
                     data = json.load(f)
@@ -11701,35 +13249,44 @@ def api_prediction_results():
                     # Fallback parse from filename if missing/unknown
                     try:
                         import re
+
                         fname = race_info.get("filename") or os.path.basename(file_path)
                         # Strip any directory and ensure csv removed for parsing
                         base = os.path.basename(fname)
-                        if base.endswith('.json'):
+                        if base.endswith(".json"):
                             base_no_ext = base[:-5]
-                        elif base.endswith('.csv'):
+                        elif base.endswith(".csv"):
                             base_no_ext = base[:-4]
                         else:
                             base_no_ext = base
                         # Try pattern: "Race N - VENUE - YYYY-MM-DD"
-                        m = re.match(r"^Race\s+(?P<race_num>\d+)\s+-\s+(?P<venue>.+?)\s+-\s+(?P<date>\d{4}-\d{2}-\d{2})", base_no_ext)
+                        m = re.match(
+                            r"^Race\s+(?P<race_num>\d+)\s+-\s+(?P<venue>.+?)\s+-\s+(?P<date>\d{4}-\d{2}-\d{2})",
+                            base_no_ext,
+                        )
                         race_num = None
                         if m:
-                            race_num = int(m.group('race_num'))
-                            parsed_venue = m.group('venue').strip()
-                            parsed_date = m.group('date')
+                            race_num = int(m.group("race_num"))
+                            parsed_venue = m.group("venue").strip()
+                            parsed_date = m.group("date")
                             if venue in (None, "", "Unknown"):
                                 venue = parsed_venue
                             if race_date in (None, "", "Unknown"):
                                 race_date = parsed_date
                         # Try compact: "N_VENUE_YYYY-MM-DD"
                         if not m:
-                            m2 = re.match(r"^(?P<race_num>\d+)_([^_]+)_(?P<date>\d{4}-\d{2}-\d{2})", base_no_ext)
+                            m2 = re.match(
+                                r"^(?P<race_num>\d+)_([^_]+)_(?P<date>\d{4}-\d{2}-\d{2})",
+                                base_no_ext,
+                            )
                             if m2:
-                                race_num = int(m2.group('race_num'))
+                                race_num = int(m2.group("race_num"))
                                 # venue part is between first and last underscore
-                                parts = base_no_ext.split('_')
+                                parts = base_no_ext.split("_")
                                 if len(parts) >= 3:
-                                    parsed_venue = '_'.join(parts[1:-1]).replace('_', ' ').strip()
+                                    parsed_venue = (
+                                        "_".join(parts[1:-1]).replace("_", " ").strip()
+                                    )
                                     parsed_date = parts[-1]
                                     if venue in (None, "", "Unknown"):
                                         venue = parsed_venue
@@ -11740,9 +13297,19 @@ def api_prediction_results():
 
                     # DB fallback enrichment for distance/grade if still unknown
                     try:
-                        needs_distance = (not distance) or str(distance).strip().lower() in ("unknown", "")
-                        needs_grade = (not grade) or str(grade).strip().lower() in ("unknown", "")
-                        if (needs_distance or needs_grade) and venue not in (None, "", "Unknown") and race_date not in (None, "", "Unknown") and race_num:
+                        needs_distance = (not distance) or str(
+                            distance
+                        ).strip().lower() in ("unknown", "")
+                        needs_grade = (not grade) or str(grade).strip().lower() in (
+                            "unknown",
+                            "",
+                        )
+                        if (
+                            (needs_distance or needs_grade)
+                            and venue not in (None, "", "Unknown")
+                            and race_date not in (None, "", "Unknown")
+                            and race_num
+                        ):
                             conn = sqlite3.connect(DATABASE_PATH)
                             cur = conn.cursor()
                             cur.execute(
@@ -11766,13 +13333,20 @@ def api_prediction_results():
                     # Calculate average confidence from prediction scores and normalize
                     avg_confidence = 0.0
                     if predictions_list:
-                        scores = [_normalize_score(pred.get("final_score", 0)) for pred in predictions_list]
+                        scores = [
+                            _normalize_score(pred.get("final_score", 0))
+                            for pred in predictions_list
+                        ]
                         avg_confidence = (sum(scores) / len(scores)) if scores else 0.0
                     avg_confidence_percent = round(avg_confidence * 100.0, 1)
 
                     # Infer prediction method and analysis version
                     prediction_method = "Unknown"
-                    analysis_version = data.get("analysis_version") or data.get("analysis", {}).get("version") or None
+                    analysis_version = (
+                        data.get("analysis_version")
+                        or data.get("analysis", {}).get("version")
+                        or None
+                    )
                     if prediction_methods:
                         if len(prediction_methods) == 1:
                             method_map = {
@@ -11786,15 +13360,24 @@ def api_prediction_results():
                                 str(prediction_methods[0]).replace("_", " ").title(),
                             )
                         else:
-                            prediction_method = f"Multi-Method ({len(prediction_methods)} systems)"
+                            prediction_method = (
+                                f"Multi-Method ({len(prediction_methods)} systems)"
+                            )
                     # If predictor_used is present, prefer it
-                    predictor_used = data.get("predictor_used") or data.get("pipeline_used") or data.get("pipeline")
+                    predictor_used = (
+                        data.get("predictor_used")
+                        or data.get("pipeline_used")
+                        or data.get("pipeline")
+                    )
                     if predictor_used:
                         prediction_method = str(predictor_used)
                         if not analysis_version and isinstance(predictor_used, str):
                             # Extract trailing version number if present, e.g., PredictionPipelineV4 -> V4
                             import re as _re
-                            mver = _re.search(r"v(\d+)$", predictor_used.strip().lower())
+
+                            mver = _re.search(
+                                r"v(\d+)$", predictor_used.strip().lower()
+                            )
                             if mver:
                                 analysis_version = f"V{mver.group(1)}"
 
@@ -11806,6 +13389,7 @@ def api_prediction_results():
                         "prediction_score_percent": 0.0,
                     }
                     if predictions_list:
+
                         def _score_key(p):
                             return _normalize_score(
                                 p.get("win_prob")
@@ -11816,16 +13400,20 @@ def api_prediction_results():
                                 or p.get("confidence")
                                 or 0
                             )
+
                         try:
-                            sorted_preds = sorted(predictions_list, key=_score_key, reverse=True)
+                            sorted_preds = sorted(
+                                predictions_list, key=_score_key, reverse=True
+                            )
                         except Exception:
                             sorted_preds = predictions_list
 
                         first_pred = sorted_preds[0]
                         # Enhanced KeyError handling for dog names
-                        from constants import DOG_NAME_KEY
                         from pathlib import Path
-                        
+
+                        from constants import DOG_NAME_KEY
+
                         try:
                             dog_name = first_pred[DOG_NAME_KEY]
                         except KeyError:
@@ -11837,43 +13425,63 @@ def api_prediction_results():
                                     "dog_record": dict(first_pred),
                                     "available_keys": list(first_pred.keys()),
                                     "missing_key": DOG_NAME_KEY,
-                                    "step": "api_prediction_results_processing"
+                                    "step": "api_prediction_results_processing",
                                 },
-                                dog_record=dict(first_pred)
+                                dog_record=dict(first_pred),
                             )
                             # Use fallback value
                             dog_name = first_pred.get("dog_name", "Unknown")
-                        
+
                         score_norm = _score_key(first_pred)
                         top_pick_data = {
                             "dog_name": dog_name,
                             "box_number": first_pred.get("box_number", "N/A"),
                             "prediction_score": score_norm,
                             "prediction_score_percent": round(score_norm * 100.0, 1),
-                            "win_prob": float(first_pred.get("win_prob") or first_pred.get("normalized_win_probability") or score_norm)
+                            "win_prob": float(
+                                first_pred.get("win_prob")
+                                or first_pred.get("normalized_win_probability")
+                                or score_norm
+                            ),
                         }
 
                     # Build top 3 with normalized scores (sorted)
                     top3_list = []
                     if predictions_list:
                         try:
-                            sorted_preds_top3 = sorted(predictions_list, key=_score_key, reverse=True)[:3]
+                            sorted_preds_top3 = sorted(
+                                predictions_list, key=_score_key, reverse=True
+                            )[:3]
                         except Exception:
                             sorted_preds_top3 = predictions_list[:3]
                         for pred in sorted_preds_top3:
                             score_n = _score_key(pred)
-                            top3_list.append({
-                                "dog_name": pred.get("dog_name", "Unknown"),
-                                "box_number": pred.get("box_number", "N/A"),
-                                "prediction_score": score_n,
-                                "prediction_score_percent": round(score_n * 100.0, 1),
-                                "win_prob": float(pred.get("win_prob") or pred.get("normalized_win_probability") or score_n)
-                            })
+                            top3_list.append(
+                                {
+                                    "dog_name": pred.get("dog_name", "Unknown"),
+                                    "box_number": pred.get("box_number", "N/A"),
+                                    "prediction_score": score_n,
+                                    "prediction_score_percent": round(
+                                        score_n * 100.0, 1
+                                    ),
+                                    "win_prob": float(
+                                        pred.get("win_prob")
+                                        or pred.get("normalized_win_probability")
+                                        or score_n
+                                    ),
+                                }
+                            )
 
                     # Derive a human-readable race_id from filename if possible
                     try:
-                        base_fn = race_info.get("filename") or os.path.basename(file_path)
-                        race_id_human = base_fn[:-4] if base_fn and base_fn.endswith('.csv') else base_fn
+                        base_fn = race_info.get("filename") or os.path.basename(
+                            file_path
+                        )
+                        race_id_human = (
+                            base_fn[:-4]
+                            if base_fn and base_fn.endswith(".csv")
+                            else base_fn
+                        )
                     except Exception:
                         race_id_human = None
 
@@ -11892,7 +13500,9 @@ def api_prediction_results():
                             "analysis_version": analysis_version or "Unknown",
                             "top_pick": top_pick_data,
                             "top_3": top3_list,
-                            "prediction_timestamp": data.get("prediction_timestamp", ""),
+                            "prediction_timestamp": data.get(
+                                "prediction_timestamp", ""
+                            ),
                             "file_path": os.path.basename(file_path),
                         }
                     )
@@ -11971,13 +13581,18 @@ def api_prediction_detail(race_name):
                         file_path = os.path.join(predictions_dir, filename)
                         with open(file_path, "r") as f:
                             data = json.load(f)
-                        original_filename = (data.get("race_info", {}) or {}).get("filename", "")
+                        original_filename = (data.get("race_info", {}) or {}).get(
+                            "filename", ""
+                        )
                         if original_filename.endswith(".csv"):
                             original_filename_no_ext = original_filename[:-4]
                         else:
                             original_filename_no_ext = original_filename
                         # Accept exact match or normalized underscore match
-                        if original_filename_no_ext == race_name or original_filename_no_ext.replace(" ", "_") == race_name:
+                        if (
+                            original_filename_no_ext == race_name
+                            or original_filename_no_ext.replace(" ", "_") == race_name
+                        ):
                             matches.append((file_path, os.path.getmtime(file_path)))
                     except (json.JSONDecodeError, KeyError, IOError):
                         continue
@@ -12029,12 +13644,22 @@ def api_prediction_detail(race_name):
         try:
             info = race_info if race_info else race_context
             if info:
-                need_distance = not info.get("distance") or info.get("distance") == "Unknown"
+                need_distance = (
+                    not info.get("distance") or info.get("distance") == "Unknown"
+                )
                 need_grade = not info.get("grade") or info.get("grade") == "Unknown"
-                race_filename = info.get("filename") or (race_info or {}).get("filename") or (race_context or {}).get("filename")
+                race_filename = (
+                    info.get("filename")
+                    or (race_info or {}).get("filename")
+                    or (race_context or {}).get("filename")
+                )
                 if (need_distance or need_grade) and race_filename:
                     csv_path = None
-                    for base in (UPCOMING_DIR, HISTORICAL_DIR, os.path.join(os.getcwd(), "upcoming_races")):
+                    for base in (
+                        UPCOMING_DIR,
+                        HISTORICAL_DIR,
+                        os.path.join(os.getcwd(), "upcoming_races"),
+                    ):
                         candidate = os.path.join(base, race_filename)
                         if os.path.exists(candidate):
                             csv_path = candidate
@@ -12042,6 +13667,7 @@ def api_prediction_detail(race_name):
                     if csv_path:
                         try:
                             from utils.csv_metadata import parse_race_csv_meta
+
                             csv_meta = parse_race_csv_meta(csv_path)
                             if csv_meta and csv_meta.get("status") == "success":
                                 if need_distance:
@@ -12049,7 +13675,11 @@ def api_prediction_detail(race_name):
                                     if isinstance(dist, (int, float)):
                                         info["distance"] = f"{int(dist)}m"
                                     elif isinstance(dist, str) and dist.strip():
-                                        info["distance"] = dist if dist.strip().endswith("m") else f"{dist.strip()}m"
+                                        info["distance"] = (
+                                            dist
+                                            if dist.strip().endswith("m")
+                                            else f"{dist.strip()}m"
+                                        )
                                 if need_grade:
                                     grade = csv_meta.get("grade")
                                     if isinstance(grade, str) and grade.strip():
@@ -12073,14 +13703,40 @@ def api_prediction_detail(race_name):
         try:
             info = race_info if race_info else race_context
             if info:
-                need_distance = (not info.get("distance")) or str(info.get("distance")) in ("", "Unknown", "None", "nan")
-                need_grade = (not info.get("grade")) or str(info.get("grade")) in ("", "Unknown", "None", "nan")
+                need_distance = (not info.get("distance")) or str(
+                    info.get("distance")
+                ) in ("", "Unknown", "None", "nan")
+                need_grade = (not info.get("grade")) or str(info.get("grade")) in (
+                    "",
+                    "Unknown",
+                    "None",
+                    "nan",
+                )
                 if need_distance or need_grade:
                     # Pull basic keys
-                    venue = info.get("venue") or (race_info or {}).get("venue") or (race_context or {}).get("venue")
-                    date = info.get("date") or info.get("race_date") or (race_info or {}).get("date") or (race_context or {}).get("race_date")
-                    race_number = info.get("race_number") or (race_info or {}).get("race_number") or (race_context or {}).get("race_number")
-                    if venue and date and race_number and venue not in ("Unknown", "", None) and date not in ("Unknown", "", None):
+                    venue = (
+                        info.get("venue")
+                        or (race_info or {}).get("venue")
+                        or (race_context or {}).get("venue")
+                    )
+                    date = (
+                        info.get("date")
+                        or info.get("race_date")
+                        or (race_info or {}).get("date")
+                        or (race_context or {}).get("race_date")
+                    )
+                    race_number = (
+                        info.get("race_number")
+                        or (race_info or {}).get("race_number")
+                        or (race_context or {}).get("race_number")
+                    )
+                    if (
+                        venue
+                        and date
+                        and race_number
+                        and venue not in ("Unknown", "", None)
+                        and date not in ("Unknown", "", None)
+                    ):
                         try:
                             conn = sqlite3.connect(DATABASE_PATH)
                             cur = conn.cursor()
@@ -12097,18 +13753,30 @@ def api_prediction_detail(race_name):
                             conn.close()
                             if row:
                                 db_distance, db_grade = row[0], row[1]
-                                if need_distance and db_distance and str(db_distance).strip():
+                                if (
+                                    need_distance
+                                    and db_distance
+                                    and str(db_distance).strip()
+                                ):
                                     info["distance"] = str(db_distance)
                                 if need_grade and db_grade and str(db_grade).strip():
                                     info["grade"] = str(db_grade)
                                 # Keep race_info in sync if we enriched race_context
                                 if info is race_context and not race_info:
                                     race_info = {
-                                        "filename": race_context.get("filename", "Unknown"),
+                                        "filename": race_context.get(
+                                            "filename", "Unknown"
+                                        ),
                                         "venue": race_context.get("venue", "Unknown"),
-                                        "date": race_context.get("race_date", "Unknown"),
-                                        "race_number": race_context.get("race_number", "Unknown"),
-                                        "distance": race_context.get("distance", "Unknown"),
+                                        "date": race_context.get(
+                                            "race_date", "Unknown"
+                                        ),
+                                        "race_number": race_context.get(
+                                            "race_number", "Unknown"
+                                        ),
+                                        "distance": race_context.get(
+                                            "distance", "Unknown"
+                                        ),
                                         "grade": race_context.get("grade", "Unknown"),
                                     }
                         except Exception:
@@ -12121,10 +13789,29 @@ def api_prediction_detail(race_name):
         race_results = {}
         try:
             info = race_info if race_info else race_context
-            venue = info.get('venue') or (race_info or {}).get('venue') or (race_context or {}).get('venue')
-            date = info.get('date') or info.get('race_date') or (race_info or {}).get('date') or (race_context or {}).get('race_date')
-            race_number = info.get('race_number') or (race_info or {}).get('race_number') or (race_context or {}).get('race_number')
-            if venue and date and race_number and venue not in ('Unknown', '', None) and date not in ('Unknown', '', None):
+            venue = (
+                info.get("venue")
+                or (race_info or {}).get("venue")
+                or (race_context or {}).get("venue")
+            )
+            date = (
+                info.get("date")
+                or info.get("race_date")
+                or (race_info or {}).get("date")
+                or (race_context or {}).get("race_date")
+            )
+            race_number = (
+                info.get("race_number")
+                or (race_info or {}).get("race_number")
+                or (race_context or {}).get("race_number")
+            )
+            if (
+                venue
+                and date
+                and race_number
+                and venue not in ("Unknown", "", None)
+                and date not in ("Unknown", "", None)
+            ):
                 conn = sqlite3.connect(DATABASE_PATH)
                 cur = conn.cursor()
                 cur.execute(
@@ -12150,25 +13837,35 @@ def api_prediction_detail(race_name):
                         (rid,),
                     )
                     rows = cur.fetchall()
+
                     def _safe_pos(v):
                         try:
                             return int(str(v).strip())
                         except Exception:
                             return None
+
                     items = []
-                    for dog_name, box_number, finish_position, individual_time, margin in rows:
+                    for (
+                        dog_name,
+                        box_number,
+                        finish_position,
+                        individual_time,
+                        margin,
+                    ) in rows:
                         pos = _safe_pos(finish_position)
                         if pos is None:
                             continue
-                        items.append({
-                            'position': pos,
-                            'finish_position': pos,
-                            'dog_name': dog_name,
-                            'box_number': box_number,
-                            'individual_time': individual_time,
-                            'margin': margin,
-                        })
-                    items.sort(key=lambda x: x['position'])
+                        items.append(
+                            {
+                                "position": pos,
+                                "finish_position": pos,
+                                "dog_name": dog_name,
+                                "box_number": box_number,
+                                "individual_time": individual_time,
+                                "margin": margin,
+                            }
+                        )
+                    items.sort(key=lambda x: x["position"])
                     actual_placings = items
                     # Winner details from race_metadata
                     try:
@@ -12179,19 +13876,21 @@ def api_prediction_detail(race_name):
                         w = cur.fetchone()
                         if w:
                             race_results = {
-                                'race_id': rid,
-                                'winner_name': w[0],
-                                'winner_odds': w[1],
-                                'winner_margin': w[2],
+                                "race_id": rid,
+                                "winner_name": w[0],
+                                "winner_odds": w[1],
+                                "winner_margin": w[2],
                             }
                     except Exception:
                         pass
                     # Fallback winner name from placings if metadata missing
-                    if not race_results.get('winner_name') and actual_placings:
-                        first = next((x for x in actual_placings if x.get('position') == 1), None)
+                    if not race_results.get("winner_name") and actual_placings:
+                        first = next(
+                            (x for x in actual_placings if x.get("position") == 1), None
+                        )
                         if first:
-                            race_results['race_id'] = rid
-                            race_results['winner_name'] = first.get('dog_name')
+                            race_results["race_id"] = rid
+                            race_results["winner_name"] = first.get("dog_name")
                 conn.close()
         except Exception:
             # Do not fail endpoint for results lookup issues
@@ -12200,6 +13899,7 @@ def api_prediction_detail(race_name):
 
         # Calculate prediction summary from the predictions list (sorted by score desc for consistency)
         predictions_list = prediction_data.get("predictions", [])
+
         def _score(p):
             # Prefer true win probabilities when available, then fall back to model scores
             return safe_float(
@@ -12211,6 +13911,7 @@ def api_prediction_detail(race_name):
                 or p.get("confidence"),
                 0,
             )
+
         predictions_list_sorted = sorted(predictions_list, key=_score, reverse=True)
         total_dogs = len(predictions_list_sorted)
 
@@ -12349,10 +14050,17 @@ def api_prediction_detail(race_name):
         )
 
         # Backfill defaults when V4 predictor was used
-        predictor_used = prediction_data.get("predictor_used") or prediction_data.get("pipeline_used")
-        if (not prediction_methods or len(prediction_methods) == 0) and predictor_used == "PredictionPipelineV4":
+        predictor_used = prediction_data.get("predictor_used") or prediction_data.get(
+            "pipeline_used"
+        )
+        if (
+            not prediction_methods or len(prediction_methods) == 0
+        ) and predictor_used == "PredictionPipelineV4":
             prediction_methods = ["ml_system"]
-        if (not analysis_version or analysis_version in ["N/A", "nan", "null", "None", ""]) and predictor_used == "PredictionPipelineV4":
+        if (
+            not analysis_version
+            or analysis_version in ["N/A", "nan", "null", "None", ""]
+        ) and predictor_used == "PredictionPipelineV4":
             analysis_version = "ML System V4"
 
         # Infer version from prediction methods if not explicitly set
@@ -12472,6 +14180,7 @@ def api_prediction_detail(race_name):
         def _clean_dog_name_for_lookup(name: str) -> str:
             try:
                 import re
+
                 s = (name or "").strip()
                 # Remove numeric box prefix like "1. NAME"
                 if ". " in s and s.split(". ")[0].isdigit():
@@ -12500,12 +14209,11 @@ def api_prediction_detail(race_name):
                 clean = _clean_dog_name_for_lookup(raw)
                 # Normalized variants (strip spaces and punctuation) in Python
                 import re
+
                 norm_raw = re.sub(r"[^A-Za-z0-9]", "", raw).upper()
                 norm_clean = re.sub(r"[^A-Za-z0-9]", "", clean).upper()
                 # Helper: SQL expression to normalize DB fields similarly (remove spaces and common punctuation)
-                sql_norm = (
-                    "UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(TRIM({col}), ' ', ''), '-', ''), '\'', ''), '’', ''), '.', ''), ',', ''))"  # noqa
-                )
+                sql_norm = "UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(TRIM({col}), ' ', ''), '-', ''), ''', ''), '’', ''), '.', ''), ',', ''))"  # noqa
                 # Exact normalized match against dog_name and dog_clean_name
                 query_exact = f"""
                     SELECT 
@@ -12611,7 +14319,11 @@ def api_prediction_detail(race_name):
                 derived = _derive_stats_from_db(dn)
             else:
                 derived = None
-            if isinstance(derived, dict) and derived.get("total_races", 0) > 0 and (need_enrich or True):
+            if (
+                isinstance(derived, dict)
+                and derived.get("total_races", 0) > 0
+                and (need_enrich or True)
+            ):
                 # Prefer non-zero derived stats
                 if float(win_rate or 0.0) == 0.0:
                     win_rate = derived.get("win_rate", win_rate)
@@ -12624,8 +14336,12 @@ def api_prediction_detail(race_name):
                 # Write back into historical_stats so downstream consumers see it
                 try:
                     historical_stats["total_races"] = races_count
-                    historical_stats["wins"] = derived.get("wins", historical_stats.get("wins"))
-                    historical_stats["places"] = derived.get("places", historical_stats.get("places"))
+                    historical_stats["wins"] = derived.get(
+                        "wins", historical_stats.get("wins")
+                    )
+                    historical_stats["places"] = derived.get(
+                        "places", historical_stats.get("places")
+                    )
                     # Store rates as 0-1 floats
                     historical_stats["win_rate"] = win_rate
                     historical_stats["place_rate"] = place_rate
@@ -12639,7 +14355,7 @@ def api_prediction_detail(race_name):
                     "source": "db",
                     "derived_total": derived.get("total_races"),
                     "derived_wins": derived.get("wins"),
-                    "derived_places": derived.get("places")
+                    "derived_places": derived.get("places"),
                 }
 
             # CSV fallback: if DB remains empty and CSV enrichment is present, use CSV stats
@@ -12665,7 +14381,10 @@ def api_prediction_detail(race_name):
                     if (races_count is None) or int(races_count) == 0:
                         races_count = csv_races
                     # Best time from CSV
-                    if "best_time" not in historical_stats and dog.get("csv_best_time") is not None:
+                    if (
+                        "best_time" not in historical_stats
+                        and dog.get("csv_best_time") is not None
+                    ):
                         historical_stats["best_time"] = dog.get("csv_best_time")
                     # Mirror back into historical_stats so downstream consumers see it
                     try:
@@ -12676,7 +14395,10 @@ def api_prediction_detail(race_name):
                     except Exception:
                         pass
                     # Simple debug marker
-                    dog["_enrichment_debug_csv"] = {"source": "csv", "csv_races": csv_races}
+                    dog["_enrichment_debug_csv"] = {
+                        "source": "csv",
+                        "csv_races": csv_races,
+                    }
                 except Exception:
                     pass
 
@@ -12711,9 +14433,11 @@ def api_prediction_detail(race_name):
 
             # Extract/derive confidence level from the best available score if missing/invalid
             confidence_level = dog.get("confidence_level")
-            if (
-                not confidence_level
-                or str(confidence_level).strip().lower() in ("nan", "null", "none", "")
+            if not confidence_level or str(confidence_level).strip().lower() in (
+                "nan",
+                "null",
+                "none",
+                "",
             ):
                 bs = _best_score(dog)
                 if bs >= 0.7:
@@ -12875,7 +14599,12 @@ def api_prediction_detail(race_name):
 
             # Speed and class analysis
             best_time_raw = historical_stats.get("best_time", 0)
-            if (not best_time_raw or str(best_time_raw).strip() in ("", "0", "nan", "None")):
+            if not best_time_raw or str(best_time_raw).strip() in (
+                "",
+                "0",
+                "nan",
+                "None",
+            ):
                 # If DB enrichment provided a best_time at previous step but wasn't set, attempt again
                 try:
                     dn = dog.get("dog_name") or dog.get("clean_name") or dog.get("name")
@@ -13050,7 +14779,9 @@ def api_prediction_detail(race_name):
             try:
                 enhanced_dog.setdefault("historical_stats", {})
                 enhanced_dog["historical_stats"].update(historical_stats or {})
-                enhanced_dog.setdefault("_enrichment_debug", dog.get("_enrichment_debug"))
+                enhanced_dog.setdefault(
+                    "_enrichment_debug", dog.get("_enrichment_debug")
+                )
             except Exception:
                 pass
 
@@ -13084,10 +14815,26 @@ def api_prediction_detail(race_name):
                     "career_starts": _to_int(total_races, 0),
                     "career_wins": _to_int(career_wins, 0),
                     "career_places": _to_int(career_places, 0),
-                    "win_rate": round(float(win_rate), 4) if isinstance(win_rate, (int, float)) else 0.0,
-                    "place_rate": round(float(place_rate), 4) if isinstance(place_rate, (int, float)) else 0.0,
-                    "average_position": round(float(avg_position), 2) if isinstance(avg_position, (int, float)) else None,
-                    "consistency": round(float(consistency), 4) if isinstance(consistency, (int, float)) else None,
+                    "win_rate": (
+                        round(float(win_rate), 4)
+                        if isinstance(win_rate, (int, float))
+                        else 0.0
+                    ),
+                    "place_rate": (
+                        round(float(place_rate), 4)
+                        if isinstance(place_rate, (int, float))
+                        else 0.0
+                    ),
+                    "average_position": (
+                        round(float(avg_position), 2)
+                        if isinstance(avg_position, (int, float))
+                        else None
+                    ),
+                    "consistency": (
+                        round(float(consistency), 4)
+                        if isinstance(consistency, (int, float))
+                        else None
+                    ),
                     "best_time": reasoning.get("key_metrics", {}).get("best_time"),
                     "last_5": last_5_list,
                     "last_5_string": last_5_string,
@@ -13097,7 +14844,11 @@ def api_prediction_detail(race_name):
             except Exception:
                 # Never break the response; fall back to minimal summary
                 dog_history_summary = {
-                    "career_starts": _to_int(historical_stats.get("total_races", 0), 0) if ' _to_int' in locals() else int(historical_stats.get("total_races", 0) or 0),
+                    "career_starts": (
+                        _to_int(historical_stats.get("total_races", 0), 0)
+                        if " _to_int" in locals()
+                        else int(historical_stats.get("total_races", 0) or 0)
+                    ),
                     "career_wins": int(historical_stats.get("wins", 0) or 0),
                     "career_places": int(historical_stats.get("places", 0) or 0),
                     "win_rate": 0.0,
@@ -13134,8 +14885,12 @@ def api_prediction_detail(race_name):
         enhanced_data["race_summary"] = race_summary
         # Attach actual placings (if any)
         try:
-            enhanced_data["actual_placings"] = actual_placings if isinstance(actual_placings, list) else []
-            enhanced_data["race_results"] = race_results if isinstance(race_results, dict) else {}
+            enhanced_data["actual_placings"] = (
+                actual_placings if isinstance(actual_placings, list) else []
+            )
+            enhanced_data["race_results"] = (
+                race_results if isinstance(race_results, dict) else {}
+            )
             enhanced_data["results_available"] = bool(enhanced_data["actual_placings"])
         except Exception:
             enhanced_data["actual_placings"] = []
@@ -13161,7 +14916,8 @@ def api_prediction_detail(race_name):
             scores = [
                 float(d.get("prediction_score", 0.0))
                 for d in enhanced_predictions
-                if isinstance(d.get("prediction_score"), (int, float)) or str(d.get("prediction_score")).replace('.', '', 1).isdigit()
+                if isinstance(d.get("prediction_score"), (int, float))
+                or str(d.get("prediction_score")).replace(".", "", 1).isdigit()
             ]
             if scores:
                 min_s, max_s = min(scores), max(scores)
@@ -13183,8 +14939,14 @@ def api_prediction_detail(race_name):
             if isinstance(enhanced_predictions, list) and len(enhanced_predictions) > 0:
                 first = enhanced_predictions[0]
                 enhanced_top_pick = {
-                    "dog_name": first.get("dog_name") or first.get("clean_name") or "Unknown",
-                    "box_number": str(first.get("box_number", first.get("box", "N/A"))) if first.get("box_number", first.get("box")) is not None else "N/A",
+                    "dog_name": first.get("dog_name")
+                    or first.get("clean_name")
+                    or "Unknown",
+                    "box_number": (
+                        str(first.get("box_number", first.get("box", "N/A")))
+                        if first.get("box_number", first.get("box")) is not None
+                        else "N/A"
+                    ),
                     "prediction_score": float(first.get("prediction_score", 0.0)),
                     "confidence_level": first.get("confidence_level", "MEDIUM"),
                 }
@@ -13196,23 +14958,43 @@ def api_prediction_detail(race_name):
 
         # Build runner comparison (predicted vs actual) and evaluation summary
         try:
+
             def _norm_name(s: str) -> str:
                 try:
                     import re
+
                     return re.sub(r"[^A-Za-z0-9]", "", (s or "").upper())
                 except Exception:
-                    return (s or '').upper().replace(' ', '')
+                    return (s or "").upper().replace(" ", "")
+
             # Maps for quick lookup
-            by_box = {str(x.get('box_number')): x for x in (actual_placings or []) if x.get('box_number') is not None}
-            by_name = {_norm_name(x.get('dog_name')): x for x in (actual_placings or []) if x.get('dog_name')}
+            by_box = {
+                str(x.get("box_number")): x
+                for x in (actual_placings or [])
+                if x.get("box_number") is not None
+            }
+            by_name = {
+                _norm_name(x.get("dog_name")): x
+                for x in (actual_placings or [])
+                if x.get("dog_name")
+            }
             # Choose predicted list source
-            predicted_list = enhanced_predictions if isinstance(enhanced_predictions, list) and enhanced_predictions else predictions_list_sorted
+            predicted_list = (
+                enhanced_predictions
+                if isinstance(enhanced_predictions, list) and enhanced_predictions
+                else predictions_list_sorted
+            )
             runner_comparison = []
+
             def _best_score(d: dict) -> float:
                 try:
                     candidates = [
-                        d.get('win_prob'), d.get('normalized_win_probability'), d.get('win_probability'),
-                        d.get('final_score'), d.get('prediction_score'), d.get('confidence')
+                        d.get("win_prob"),
+                        d.get("normalized_win_probability"),
+                        d.get("win_probability"),
+                        d.get("final_score"),
+                        d.get("prediction_score"),
+                        d.get("confidence"),
                     ]
                     for c in candidates:
                         if c is None:
@@ -13226,9 +15008,10 @@ def api_prediction_detail(race_name):
                     return 0.0
                 except Exception:
                     return 0.0
+
             for idx, p in enumerate(predicted_list or []):
-                dog_name = p.get('dog_name') or p.get('clean_name') or p.get('name')
-                box = p.get('box_number') or p.get('box')
+                dog_name = p.get("dog_name") or p.get("clean_name") or p.get("name")
+                box = p.get("box_number") or p.get("box")
                 actual = None
                 if box is not None and str(box) in by_box:
                     actual = by_box.get(str(box))
@@ -13236,69 +15019,97 @@ def api_prediction_detail(race_name):
                     actual = by_name.get(_norm_name(dog_name))
                 win_prob = None
                 try:
-                    wp = p.get('win_prob') or p.get('normalized_win_probability') or p.get('win_probability')
+                    wp = (
+                        p.get("win_prob")
+                        or p.get("normalized_win_probability")
+                        or p.get("win_probability")
+                    )
                     if wp is not None:
-                        win_prob = float(wp) if float(wp) <= 1.5 else float(wp)/100.0
+                        win_prob = float(wp) if float(wp) <= 1.5 else float(wp) / 100.0
                 except Exception:
                     win_prob = None
                 predicted_score = _best_score(p)
                 entry = {
-                    'predicted_rank': idx + 1,
-                    'dog_name': dog_name,
-                    'box_number': box,
-                    'win_prob': win_prob if win_prob is not None else predicted_score,
-                    'prediction_score': predicted_score,
-                    'actual_position': (actual or {}).get('position'),
-                    'individual_time': (actual or {}).get('individual_time'),
-                    'margin': (actual or {}).get('margin'),
+                    "predicted_rank": idx + 1,
+                    "dog_name": dog_name,
+                    "box_number": box,
+                    "win_prob": win_prob if win_prob is not None else predicted_score,
+                    "prediction_score": predicted_score,
+                    "actual_position": (actual or {}).get("position"),
+                    "individual_time": (actual or {}).get("individual_time"),
+                    "margin": (actual or {}).get("margin"),
                 }
-                if entry['actual_position'] is not None:
+                if entry["actual_position"] is not None:
                     try:
-                        entry['position_delta'] = int(entry['predicted_rank']) - int(entry['actual_position'])
+                        entry["position_delta"] = int(entry["predicted_rank"]) - int(
+                            entry["actual_position"]
+                        )
                     except Exception:
-                        entry['position_delta'] = None
+                        entry["position_delta"] = None
                 runner_comparison.append(entry)
-            enhanced_data['runner_comparison'] = runner_comparison
+            enhanced_data["runner_comparison"] = runner_comparison
             # Evaluation summary
             evaluation = {
-                'winner_predicted': False,
-                'top3_hit': False,
-                'actual_winner': None,
-                'predicted_top_pick': enhanced_data.get('top_pick')
+                "winner_predicted": False,
+                "top3_hit": False,
+                "actual_winner": None,
+                "predicted_top_pick": enhanced_data.get("top_pick"),
             }
             if actual_placings:
-                actual_winner = next((x for x in actual_placings if x.get('position') == 1), None)
+                actual_winner = next(
+                    (x for x in actual_placings if x.get("position") == 1), None
+                )
                 if not actual_winner and len(actual_placings) > 0:
                     # fallback: first element
                     actual_winner = actual_placings[0]
                 if actual_winner:
-                    evaluation['actual_winner'] = {
-                        'dog_name': actual_winner.get('dog_name'),
-                        'box_number': actual_winner.get('box_number')
+                    evaluation["actual_winner"] = {
+                        "dog_name": actual_winner.get("dog_name"),
+                        "box_number": actual_winner.get("box_number"),
                     }
                     # Compute predicted top3 hit by box (fallback to name)
                     top3 = (predicted_list or [])[:3]
+
                     def _match(dog, target):
                         try:
-                            b = dog.get('box_number') or dog.get('box')
-                            if b is not None and str(b) == str(target.get('box_number')):
+                            b = dog.get("box_number") or dog.get("box")
+                            if b is not None and str(b) == str(
+                                target.get("box_number")
+                            ):
                                 return True
-                            nm = dog.get('dog_name') or dog.get('clean_name') or dog.get('name')
-                            return _norm_name(nm) == _norm_name(target.get('dog_name')) if nm and target.get('dog_name') else False
+                            nm = (
+                                dog.get("dog_name")
+                                or dog.get("clean_name")
+                                or dog.get("name")
+                            )
+                            return (
+                                _norm_name(nm) == _norm_name(target.get("dog_name"))
+                                if nm and target.get("dog_name")
+                                else False
+                            )
                         except Exception:
                             return False
-                    evaluation['top3_hit'] = any(_match(d, actual_winner) for d in top3)
+
+                    evaluation["top3_hit"] = any(_match(d, actual_winner) for d in top3)
                     # Winner predicted equals predicted rank 1 matches actual winner
                     if predicted_list:
-                        evaluation['winner_predicted'] = _match(predicted_list[0], actual_winner)
-            enhanced_data['evaluation'] = evaluation
+                        evaluation["winner_predicted"] = _match(
+                            predicted_list[0], actual_winner
+                        )
+            enhanced_data["evaluation"] = evaluation
             # Also surface into race_summary
             try:
-                enhanced_data.setdefault('race_summary', {})
-                enhanced_data['race_summary']['winner_predicted'] = bool(evaluation.get('winner_predicted'))
-                enhanced_data['race_summary']['top3_hit'] = bool(evaluation.get('top3_hit'))
-                if evaluation.get('actual_winner'):
-                    enhanced_data['race_summary']['actual_winner'] = evaluation['actual_winner']
+                enhanced_data.setdefault("race_summary", {})
+                enhanced_data["race_summary"]["winner_predicted"] = bool(
+                    evaluation.get("winner_predicted")
+                )
+                enhanced_data["race_summary"]["top3_hit"] = bool(
+                    evaluation.get("top3_hit")
+                )
+                if evaluation.get("actual_winner"):
+                    enhanced_data["race_summary"]["actual_winner"] = evaluation[
+                        "actual_winner"
+                    ]
             except Exception:
                 pass
         except Exception:
@@ -13959,79 +15770,87 @@ _upcoming_races_cache = {
     "schema_report": None,
 }
 
+
 def _extract_csv_metadata(file_path):
     """Extract metadata from CSV filename using regex.
-    
+
     Expected filename format: "Race 1 – AP_K – 2025-08-04.csv"
     Returns dict with race_number, venue, date, or None values if not found.
     """
-    import re
     import os
-    
+    import re
+
     filename = os.path.basename(file_path)
-    
+
     # Regex pattern to match: "Race {number} – {venue} – {date}.csv"
     # The en dash (–) is different from hyphen (-)
-    pattern = r'Race\s+(\d+)\s*[–-]\s*([A-Z_]+)\s*[–-]\s*(\d{4}-\d{2}-\d{2})\.csv'
-    
+    pattern = r"Race\s+(\d+)\s*[–-]\s*([A-Z_]+)\s*[–-]\s*(\d{4}-\d{2}-\d{2})\.csv"
+
     match = re.match(pattern, filename, re.IGNORECASE)
     if match:
         return {
-            'race_number': int(match.group(1)),
-            'venue': match.group(2),
-            'date': match.group(3)
+            "race_number": int(match.group(1)),
+            "venue": match.group(2),
+            "date": match.group(3),
         }
-    
+
     # Fallback: try to extract individual components
     race_number = None
     venue = None
     date = None
-    
+
     # Extract race number
-    race_match = re.search(r'Race[_\s]+(\d+)', filename, re.IGNORECASE)
+    race_match = re.search(r"Race[_\s]+(\d+)", filename, re.IGNORECASE)
     if race_match:
         race_number = int(race_match.group(1))
-    
+
     # Extract venue (look for uppercase 3-4 letter codes)
-    venue_match = re.search(r'([A-Z_]{2,4})', filename)
+    venue_match = re.search(r"([A-Z_]{2,4})", filename)
     if venue_match:
         venue = venue_match.group(1)
-    
+
     # Extract date (YYYY-MM-DD format)
-    date_match = re.search(r'(\d{4}-\d{2}-\d{2})', filename)
+    date_match = re.search(r"(\d{4}-\d{2}-\d{2})", filename)
     if date_match:
         date = date_match.group(1)
-    
-    return {
-        'race_number': race_number,
-        'venue': venue,
-        'date': date
-    }
+
+    return {"race_number": race_number, "venue": venue, "date": date}
 
 
 def load_upcoming_races_with_guaranteed_fields(refresh=False):
     """Refactored helper function to load upcoming races with guaranteed API contract fields.
-    
-    Returns list with guaranteed fields: date, venue, venue_name, race_number, race_time, 
+
+    Returns list with guaranteed fields: date, venue, venue_name, race_number, race_time,
     distance, grade, race_name, url, filename, race_id
     """
-    import os
-    import pandas as pd
-    from datetime import datetime
-    import json
     import hashlib
+    import json
+    import os
     import re
+    from datetime import datetime
+
+    import pandas as pd
 
     global _upcoming_races_cache
     now = datetime.now()
 
     # Check cache first
-    if not refresh and _upcoming_races_cache["data"] is not None and _upcoming_races_cache["timestamp"] is not None and (now - _upcoming_races_cache["timestamp"]).total_seconds() < (_upcoming_races_cache["expires_in_minutes"] * 60):
+    if (
+        not refresh
+        and _upcoming_races_cache["data"] is not None
+        and _upcoming_races_cache["timestamp"] is not None
+        and (now - _upcoming_races_cache["timestamp"]).total_seconds()
+        < (_upcoming_races_cache["expires_in_minutes"] * 60)
+    ):
         cached_data = _upcoming_races_cache["data"]
         # Ensure cached data is always a list and has guaranteed fields
         if isinstance(cached_data, dict):
             cached_data = list(cached_data.values())
-        return [_ensure_guaranteed_fields(race) for race in cached_data] if cached_data else []
+        return (
+            [_ensure_guaranteed_fields(race) for race in cached_data]
+            if cached_data
+            else []
+        )
 
     upcoming_races_dir = "./upcoming_races"
     races = []
@@ -14043,18 +15862,18 @@ def load_upcoming_races_with_guaranteed_fields(refresh=False):
         try:
             # Handle different time formats
             time_str = str(time_str).strip()
-            if re.match(r'\d{1,2}:\d{2} [AP]M', time_str):
+            if re.match(r"\d{1,2}:\d{2} [AP]M", time_str):
                 # Parse "6:31 PM" format
                 time_part, period = time_str.split()
-                hours, minutes = map(int, time_part.split(':'))
-                if period.upper() == 'PM' and hours != 12:
+                hours, minutes = map(int, time_part.split(":"))
+                if period.upper() == "PM" and hours != 12:
                     hours += 12
-                elif period.upper() == 'AM' and hours == 12:
+                elif period.upper() == "AM" and hours == 12:
                     hours = 0
                 return hours * 60 + minutes
-            elif re.match(r'\d{1,2}:\d{2}', time_str):
+            elif re.match(r"\d{1,2}:\d{2}", time_str):
                 # Parse "18:31" format (24-hour)
-                hours, minutes = map(int, time_str.split(':'))
+                hours, minutes = map(int, time_str.split(":"))
                 return hours * 60 + minutes
         except (ValueError, AttributeError):
             pass
@@ -14068,55 +15887,76 @@ def load_upcoming_races_with_guaranteed_fields(refresh=False):
                     if filename.endswith(".csv"):
                         # Extract metadata from filename using helper function
                         filename_metadata = _extract_csv_metadata(file_path)
-                        
+
                         # Read only header row (or first data row) to get grade/distance
                         try:
                             df_header = pd.read_csv(file_path, nrows=1)
                             # Check for both possible column names for grade and distance
                             header_grade = None
                             header_distance = None
-                            
+
                             # Handle grade columns (G or Grade)
                             if "Grade" in df_header.columns:
-                                header_grade = df_header.get("Grade", pd.Series([None])).iloc[0]
+                                header_grade = df_header.get(
+                                    "Grade", pd.Series([None])
+                                ).iloc[0]
                             elif "G" in df_header.columns:
-                                header_grade = df_header.get("G", pd.Series([None])).iloc[0]
-                            
+                                header_grade = df_header.get(
+                                    "G", pd.Series([None])
+                                ).iloc[0]
+
                             # Handle distance columns (DIST or Distance)
                             if "Distance" in df_header.columns:
-                                header_distance = df_header.get("Distance", pd.Series([None])).iloc[0]
+                                header_distance = df_header.get(
+                                    "Distance", pd.Series([None])
+                                ).iloc[0]
                             elif "DIST" in df_header.columns:
-                                header_distance = df_header.get("DIST", pd.Series([None])).iloc[0]
-                                
+                                header_distance = df_header.get(
+                                    "DIST", pd.Series([None])
+                                ).iloc[0]
+
                         except Exception as e:
-                            print(f"Warning: Could not read header from {filename}: {e}")
+                            print(
+                                f"Warning: Could not read header from {filename}: {e}"
+                            )
                             header_grade = None
                             header_distance = None
-                        
+
                         # Build race dict with guaranteed fields
                         race_data = {
-                            "date": filename_metadata['date'] or "",
-                            "venue": filename_metadata['venue'] or "Unknown Venue",
-                            "venue_name": filename_metadata['venue'] or "Unknown Venue",  # Same as venue for now
-                            "race_number": filename_metadata['race_number'] or "",
+                            "date": filename_metadata["date"] or "",
+                            "venue": filename_metadata["venue"] or "Unknown Venue",
+                            "venue_name": filename_metadata["venue"]
+                            or "Unknown Venue",  # Same as venue for now
+                            "race_number": filename_metadata["race_number"] or "",
                             "race_time": "",  # Time not available in filename pattern
-                            "distance": str(header_distance) if header_distance is not None else "",
-                            "grade": str(header_grade) if header_grade is not None else "",
-                            "race_name": f"Race {filename_metadata['race_number']}" if filename_metadata['race_number'] else "Unknown Race",
+                            "distance": (
+                                str(header_distance)
+                                if header_distance is not None
+                                else ""
+                            ),
+                            "grade": (
+                                str(header_grade) if header_grade is not None else ""
+                            ),
+                            "race_name": (
+                                f"Race {filename_metadata['race_number']}"
+                                if filename_metadata["race_number"]
+                                else "Unknown Race"
+                            ),
                             "url": "",  # URL not available from CSV files
                             "filename": filename,
                             "race_id": hashlib.md5(filename.encode()).hexdigest()[:12],
                         }
-                        
+
                         # Ensure all guaranteed fields are present
                         race_data = _ensure_guaranteed_fields(race_data)
                         races.append(race_data)
-                        
+
                     else:
                         # For JSON files, load the data directly
                         with open(file_path, "r") as f:
                             json_data = json.load(f)
-                            
+
                         # Handle both list and dict structures
                         if isinstance(json_data, dict):
                             # Convert dict to list of values if needed
@@ -14124,31 +15964,55 @@ def load_upcoming_races_with_guaranteed_fields(refresh=False):
                         elif not isinstance(json_data, list):
                             # If it's neither dict nor list, wrap in list
                             json_data = [json_data]
-                        
+
                         for item in json_data:
                             if isinstance(item, dict):
                                 race_data = {
-                                    "date": item.get("date") or item.get("race_date") or item.get("Date") or "",
-                                    "venue": item.get("venue") or item.get("Venue") or "Unknown Venue",
-                                    "venue_name": item.get("venue_name") or item.get("venue") or item.get("Venue") or "Unknown Venue",
-                                    "race_number": item.get("race_number") or item.get("Race Number") or item.get("number") or "",
-                                    "race_time": item.get("race_time") or item.get("Race Time") or item.get("time") or "",
-                                    "distance": item.get("distance") or item.get("Distance") or "",
-                                    "grade": item.get("grade") or item.get("Grade") or "",
-                                    "race_name": item.get("race_name") or item.get("Race Name") or "Unknown Race",
+                                    "date": item.get("date")
+                                    or item.get("race_date")
+                                    or item.get("Date")
+                                    or "",
+                                    "venue": item.get("venue")
+                                    or item.get("Venue")
+                                    or "Unknown Venue",
+                                    "venue_name": item.get("venue_name")
+                                    or item.get("venue")
+                                    or item.get("Venue")
+                                    or "Unknown Venue",
+                                    "race_number": item.get("race_number")
+                                    or item.get("Race Number")
+                                    or item.get("number")
+                                    or "",
+                                    "race_time": item.get("race_time")
+                                    or item.get("Race Time")
+                                    or item.get("time")
+                                    or "",
+                                    "distance": item.get("distance")
+                                    or item.get("Distance")
+                                    or "",
+                                    "grade": item.get("grade")
+                                    or item.get("Grade")
+                                    or "",
+                                    "race_name": item.get("race_name")
+                                    or item.get("Race Name")
+                                    or "Unknown Race",
                                     "url": item.get("url") or item.get("URL") or "",
                                     "filename": filename,
-                                    "race_id": hashlib.md5(f"{filename}_{item.get('race_number', item.get('Race Number', 0))}".encode()).hexdigest()[:12],
+                                    "race_id": hashlib.md5(
+                                        f"{filename}_{item.get('race_number', item.get('Race Number', 0))}".encode()
+                                    ).hexdigest()[:12],
                                 }
-                                
+
                                 # Ensure all guaranteed fields are present
                                 race_data = _ensure_guaranteed_fields(race_data)
-                                race_data["_sort_time_minutes"] = parse_time_to_minutes(race_data["race_time"])
+                                race_data["_sort_time_minutes"] = parse_time_to_minutes(
+                                    race_data["race_time"]
+                                )
                                 races.append(race_data)
 
                 except Exception as e:
                     print(f"Error reading {filename}: {e}")
-                    
+
     except OSError as listdir_error:
         print(f"Warning: Unable to access upcoming races directory: {listdir_error}")
         print("Falling back to cached data if available.")
@@ -14158,7 +16022,11 @@ def load_upcoming_races_with_guaranteed_fields(refresh=False):
             cached_data = _upcoming_races_cache["data"]
             if isinstance(cached_data, dict):
                 cached_data = list(cached_data.values())
-            return [_ensure_guaranteed_fields(race) for race in cached_data] if cached_data else []
+            return (
+                [_ensure_guaranteed_fields(race) for race in cached_data]
+                if cached_data
+                else []
+            )
 
         print("No cached data available; unable to load upcoming races.")
         raise
@@ -14166,45 +16034,47 @@ def load_upcoming_races_with_guaranteed_fields(refresh=False):
     # Deduplicate races by (venue, date, race_number) composite key
     seen_races = {}
     deduplicated_races = []
-    
+
     for race in races:
         # Create composite key for deduplication
         venue = race.get("venue", "")
         race_date = race.get("date", "")
         race_number = race.get("race_number", "")
-        
+
         # Convert race_number to string for consistent comparison
         race_number_str = str(race_number) if race_number else ""
-        
+
         dedup_key = (venue, race_date, race_number_str)
-        
+
         # Keep the first occurrence of each unique race
         if dedup_key not in seen_races:
             seen_races[dedup_key] = True
             deduplicated_races.append(race)
-    
+
     # Replace races list with deduplicated version
     races = deduplicated_races
-    
+
     # Add Melbourne-normalized datetime and timestamp for true next-to-jump ordering
     for race in races:
         # Ensure both date keys present for consistency
-        if not race.get('race_date') and race.get('date'):
-            race['race_date'] = race.get('date')
-        if not race.get('date') and race.get('race_date'):
-            race['date'] = race.get('race_date')
-        mel_dt = build_melbourne_dt(race.get('race_date') or race.get('date'), race.get('race_time'))
+        if not race.get("race_date") and race.get("date"):
+            race["race_date"] = race.get("date")
+        if not race.get("date") and race.get("race_date"):
+            race["date"] = race.get("race_date")
+        mel_dt = build_melbourne_dt(
+            race.get("race_date") or race.get("date"), race.get("race_time")
+        )
         if mel_dt is not None:
             try:
-                race['race_datetime_melbourne_iso'] = mel_dt.isoformat()
-                race['race_timestamp_melbourne'] = int(mel_dt.timestamp())
+                race["race_datetime_melbourne_iso"] = mel_dt.isoformat()
+                race["race_timestamp_melbourne"] = int(mel_dt.timestamp())
             except Exception:
-                race['race_datetime_melbourne_iso'] = None
-                race['race_timestamp_melbourne'] = None
+                race["race_datetime_melbourne_iso"] = None
+                race["race_timestamp_melbourne"] = None
         else:
-            race['race_datetime_melbourne_iso'] = None
-            race['race_timestamp_melbourne'] = None
-    
+            race["race_datetime_melbourne_iso"] = None
+            race["race_timestamp_melbourne"] = None
+
     # Sort: date (Melbourne) asc, then timed entries by timestamp asc, then venue
     races.sort(key=_upcoming_sort_key)
 
@@ -14213,10 +16083,11 @@ def load_upcoming_races_with_guaranteed_fields(refresh=False):
 
     return races
 
+
 def _ensure_guaranteed_fields(race_data):
     """Ensure all guaranteed API contract fields are present in race data.
-    
-    Guaranteed fields: date, venue, venue_name, race_number, race_time, 
+
+    Guaranteed fields: date, venue, venue_name, race_number, race_time,
     distance, grade, race_name, url, filename, race_id
     """
     guaranteed_fields = {
@@ -14230,15 +16101,15 @@ def _ensure_guaranteed_fields(race_data):
         "race_name": "Unknown Race",
         "url": "",
         "filename": "",
-        "race_id": ""
+        "race_id": "",
     }
-    
+
     for field, default_value in guaranteed_fields.items():
         if field not in race_data or race_data[field] is None:
             race_data[field] = default_value
         else:
             race_data[field] = str(race_data[field])
-    
+
     return race_data
 
 
@@ -14252,9 +16123,9 @@ def _sniff_encoding_and_delimiter(file_path, sample_bytes=8192):
     Returns (encoding, delimiter). Tries utf-8-sig first, falls back to latin-1.
     Delimiter preference order: ',', ';', '\t' based on highest count in sample lines.
     """
+    import csv
     import io
     import os
-    import csv
 
     encodings = ["utf-8-sig", "utf-8", "latin-1"]
     chosen_enc = None
@@ -14328,15 +16199,20 @@ def _minimal_form_guide_runner_view(df):
         runners["box"] = runners["box"].astype(str).str.strip()
 
     # Drop rows that are truly empty (no dog_name and no box)
-    runners = runners[(runners.get("dog_name", "").astype(str) != "") | (runners.get("box", "").astype(str) != "")]
+    runners = runners[
+        (runners.get("dog_name", "").astype(str) != "")
+        | (runners.get("box", "").astype(str) != "")
+    ]
 
     # Coerce box to numeric and filter valid boxes 1..8
     if "box" in runners.columns:
+
         def _to_int(x):
             try:
                 return int(float(str(x)))
             except Exception:
                 return None
+
         runners["box_int"] = runners["box"].map(_to_int)
         runners = runners[runners["box_int"].notna()]
         runners = runners[(runners["box_int"] >= 1) & (runners["box_int"] <= 8)]
@@ -14356,6 +16232,7 @@ def _normalize_to_utc(date_str, time_str=None, dt_str=None):
     - Else if only date provided, return None.
     """
     from datetime import datetime
+
     try:
         import pandas as pd
         import pytz  # optional, but pandas can handle tz
@@ -14366,7 +16243,11 @@ def _normalize_to_utc(date_str, time_str=None, dt_str=None):
         try:
             if pd is not None:
                 ts = pd.to_datetime(dt_str, utc=True)
-                return ts.tz_convert("UTC").isoformat().replace("+00:00", "Z") if hasattr(ts, "tz_convert") else ts.isoformat()
+                return (
+                    ts.tz_convert("UTC").isoformat().replace("+00:00", "Z")
+                    if hasattr(ts, "tz_convert")
+                    else ts.isoformat()
+                )
         except Exception:
             pass
     # Without explicit timezone we cannot reliably normalize in fast mode
@@ -14374,11 +16255,13 @@ def _normalize_to_utc(date_str, time_str=None, dt_str=None):
         return None
     return None
 
+
 # ===== Melbourne timezone helpers for upcoming races ordering/display =====
+
 
 def _get_mel_tz():
     try:
-        return ZoneInfo('Australia/Melbourne')
+        return ZoneInfo("Australia/Melbourne")
     except Exception:
         # Fallback: no tzinfo (treat as naive); callers must handle None
         return None
@@ -14389,7 +16272,7 @@ def _parse_date_ymd(date_str: str):
         if not date_str:
             return None
         s = str(date_str).strip()
-        return datetime.strptime(s, '%Y-%m-%d').date()
+        return datetime.strptime(s, "%Y-%m-%d").date()
     except Exception:
         return None
 
@@ -14402,12 +16285,12 @@ def _parse_race_time_to_hm(time_str: str):
         return None
     u = s.upper()
     # Treat common unknown markers as missing
-    if u in {'TBD', 'TBA', 'TBC', 'NA', 'N/A', 'UNKNOWN'} or u.startswith('APPROX'):
+    if u in {"TBD", "TBA", "TBC", "NA", "N/A", "UNKNOWN"} or u.startswith("APPROX"):
         return None
     # Try 12-hour first, then 24-hour
-    for fmt in ('%I:%M %p', '%H:%M'):
+    for fmt in ("%I:%M %p", "%H:%M"):
         try:
-            t = datetime.strptime(u if fmt == '%I:%M %p' else s, fmt).time()
+            t = datetime.strptime(u if fmt == "%I:%M %p" else s, fmt).time()
             return (t.hour, t.minute)
         except Exception:
             continue
@@ -14441,12 +16324,12 @@ def _mel_day_start_ts(date_str: str):
 
 def _get_date_for_sort(r: dict):
     # Prefer race_date if present, else date
-    return r.get('race_date') or r.get('date') or ''
+    return r.get("race_date") or r.get("date") or ""
 
 
 def _upcoming_sort_key(r: dict):
     day_ts = _mel_day_start_ts(_get_date_for_sort(r))
-    ts = r.get('race_timestamp_melbourne')
+    ts = r.get("race_timestamp_melbourne")
     missing_time = 1 if (ts is None) else 0
     ts_or_eod = ts if (ts is not None) else (day_ts + 86399)
     return (day_ts, missing_time, ts_or_eod)
@@ -14461,10 +16344,11 @@ def load_upcoming_races_unified(refresh=False, fast=True):
 
     Returns (races, schema_report)
     """
-    import os
-    import json
     import hashlib
+    import json
+    import os
     from datetime import datetime, timezone
+
     import pandas as pd
 
     # Use the configured upcoming directory (env or config) instead of hardcoded path
@@ -14475,10 +16359,15 @@ def load_upcoming_races_unified(refresh=False, fast=True):
     now = datetime.now(timezone.utc)
 
     try:
-        files = [f for f in os.listdir(upcoming_races_dir) if f.endswith((".csv", ".json"))]
+        files = [
+            f for f in os.listdir(upcoming_races_dir) if f.endswith((".csv", ".json"))
+        ]
     except Exception as e:
         # On error, try to return cached
-        return (_upcoming_races_cache.get("data") or [], _upcoming_races_cache.get("schema_report") or {"files": [], "summary": {}})
+        return (
+            _upcoming_races_cache.get("data") or [],
+            _upcoming_races_cache.get("schema_report") or {"files": [], "summary": {}},
+        )
 
     for filename in files:
         file_path = os.path.join(upcoming_races_dir, filename)
@@ -14490,22 +16379,36 @@ def load_upcoming_races_unified(refresh=False, fast=True):
             try:
                 with open(file_path, "r") as f:
                     data = json.load(f)
-                items = list(data.values()) if isinstance(data, dict) else (data if isinstance(data, list) else [data])
+                items = (
+                    list(data.values())
+                    if isinstance(data, dict)
+                    else (data if isinstance(data, list) else [data])
+                )
                 for item in items:
                     if not isinstance(item, dict):
                         continue
                     race = {
                         "date": str(item.get("date") or item.get("race_date") or ""),
                         "venue": str(item.get("venue") or "Unknown Venue"),
-                        "venue_name": str(item.get("venue_name") or item.get("venue") or "Unknown Venue"),
-                        "race_number": str(item.get("race_number") or item.get("number") or ""),
-                        "race_time": str(item.get("race_time") or item.get("time") or ""),
+                        "venue_name": str(
+                            item.get("venue_name")
+                            or item.get("venue")
+                            or "Unknown Venue"
+                        ),
+                        "race_number": str(
+                            item.get("race_number") or item.get("number") or ""
+                        ),
+                        "race_time": str(
+                            item.get("race_time") or item.get("time") or ""
+                        ),
                         "distance": str(item.get("distance") or ""),
                         "grade": str(item.get("grade") or ""),
                         "race_name": str(item.get("race_name") or "Unknown Race"),
                         "url": str(item.get("url") or ""),
                         "filename": filename,
-                        "race_id": hashlib.md5(f"{filename}_{item.get('race_number', item.get('number', ''))}".encode()).hexdigest()[:12],
+                        "race_id": hashlib.md5(
+                            f"{filename}_{item.get('race_number', item.get('number', ''))}".encode()
+                        ).hexdigest()[:12],
                     }
                     # UTC normalize if we have a timezone-aware datetime
                     rdt = item.get("race_datetime") or item.get("raceDateTime")
@@ -14515,16 +16418,21 @@ def load_upcoming_races_unified(refresh=False, fast=True):
                         # Ensure future
                         try:
                             import pandas as pd
+
                             ts = pd.to_datetime(utc_iso, utc=True)
                             if ts.tz_convert("UTC") < now:
-                                f_warnings.append("race_datetime in the past for upcoming race")
+                                f_warnings.append(
+                                    "race_datetime in the past for upcoming race"
+                                )
                         except Exception:
                             pass
                     races.append(_ensure_guaranteed_fields(race))
             except Exception as e:
                 f_errors.append(f"Failed to parse JSON: {e}")
 
-            report["files"].append({"file": filename, "errors": f_errors, "warnings": f_warnings})
+            report["files"].append(
+                {"file": filename, "errors": f_errors, "warnings": f_warnings}
+            )
             continue
 
         # CSV path
@@ -14532,7 +16440,13 @@ def load_upcoming_races_unified(refresh=False, fast=True):
             enc, delim = _sniff_encoding_and_delimiter(file_path)
             f_info.update({"encoding": enc, "delimiter": delim})
             # Read minimal rows to infer columns and runners
-            read_kwargs = dict(encoding=enc, sep=delim, dtype=str, keep_default_na=False, na_filter=False)
+            read_kwargs = dict(
+                encoding=enc,
+                sep=delim,
+                dtype=str,
+                keep_default_na=False,
+                na_filter=False,
+            )
             nrows = None if not fast else 2000  # limit in fast mode
             df = pd.read_csv(file_path, **read_kwargs, nrows=nrows)
 
@@ -14554,7 +16468,11 @@ def load_upcoming_races_unified(refresh=False, fast=True):
                 "race_time": "",
                 "distance": header_distance or "",
                 "grade": header_grade or "",
-                "race_name": f"Race {meta['race_number']}" if meta.get("race_number") else "Unknown Race",
+                "race_name": (
+                    f"Race {meta['race_number']}"
+                    if meta.get("race_number")
+                    else "Unknown Race"
+                ),
                 "url": "",
                 "filename": filename,
                 "race_id": hashlib.md5(filename.encode()).hexdigest()[:12],
@@ -14569,14 +16487,18 @@ def load_upcoming_races_unified(refresh=False, fast=True):
             if runner_count == 0:
                 f_warnings.append("No runners detected in form guide CSV")
             if runner_count < 4 or runner_count > 8:
-                f_warnings.append(f"Runner count {runner_count} outside typical range [4,8]")
+                f_warnings.append(
+                    f"Runner count {runner_count} outside typical range [4,8]"
+                )
 
             # Unique boxes
             if "box_int" in runners.columns:
                 dup_boxes = runners["box_int"].value_counts()
                 dups = dup_boxes[dup_boxes > 1]
                 if not dups.empty:
-                    f_errors.append(f"Duplicate boxes detected: {', '.join(map(str, dups.index.tolist()))}")
+                    f_errors.append(
+                        f"Duplicate boxes detected: {', '.join(map(str, dups.index.tolist()))}"
+                    )
 
             # Duplicate race_id+dog_id (use dog_name as dog_id proxy in fast mode)
             if "dog_name" in runners.columns:
@@ -14607,20 +16529,26 @@ def load_upcoming_races_unified(refresh=False, fast=True):
     races = deduped
 
     # Sort
-    races.sort(key=lambda x: (x.get("date", ""), x.get("venue", ""), x.get("race_number", "")))
+    races.sort(
+        key=lambda x: (x.get("date", ""), x.get("venue", ""), x.get("race_number", ""))
+    )
 
     # Update report summary
     report["summary"]["total_files"] = len(files)
     report["summary"]["errors"] = sum(len(f.get("errors", [])) for f in report["files"])
-    report["summary"]["warnings"] = sum(len(f.get("warnings", [])) for f in report["files"])
+    report["summary"]["warnings"] = sum(
+        len(f.get("warnings", [])) for f in report["files"]
+    )
 
     # Cache
     _upcoming_races_cache["data"] = races
     from datetime import datetime as _dt
+
     _upcoming_races_cache["timestamp"] = _dt.now()
     _upcoming_races_cache["schema_report"] = report
 
     return races, report
+
 
 def load_upcoming_races(refresh=False, fast=True):
     """Unified entry point for upcoming races.
@@ -14633,21 +16561,24 @@ def load_upcoming_races(refresh=False, fast=True):
     return races
 
 
-
 @app.route("/api/upcoming_races_stream")
 def api_upcoming_races_stream():
     """Streaming API endpoint that returns races as they're discovered (live or CSV with gating)"""
     import json
-    
+    from datetime import date, datetime, timedelta
+
     from flask import Response, copy_current_request_context, jsonify
-    from datetime import datetime, timedelta, date
 
     # Parameters
     days_ahead = request.args.get("days", 1, type=int)
     requested_source = (request.args.get("source", "live") or "live").lower()
-    strict_live = (request.args.get("strict_live", "0") or "0").lower() in ("1", "true", "yes")
+    strict_live = (request.args.get("strict_live", "0") or "0").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
 
-    testing = bool(app.config.get('TESTING'))
+    testing = bool(app.config.get("TESTING"))
     can_live = ENABLE_LIVE_SCRAPING and ENABLE_RESULTS_SCRAPERS and not testing
 
     # Decide chosen source with gating
@@ -14660,11 +16591,16 @@ def api_upcoming_races_stream():
             fallback_reason = None
         else:
             if strict_live:
-                return jsonify({
-                    "success": False,
-                    "error": "live_streaming_disabled",
-                    "message": "Live streaming is disabled by feature flags or testing mode"
-                }), 403
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": "live_streaming_disabled",
+                            "message": "Live streaming is disabled by feature flags or testing mode",
+                        }
+                    ),
+                    403,
+                )
             chosen_source = "csv"
             fallback_reason = "live_disabled_fallback"
     else:
@@ -14707,23 +16643,30 @@ def api_upcoming_races_stream():
                         for race in date_races:
                             race["date"] = date_str  # Ensure date is set
                             # Ensure both 'date' and 'race_date' present for alignment
-                            if not race.get('race_date') and race.get('date'):
-                                race['race_date'] = race.get('date')
-                            if not race.get('date') and race.get('race_date'):
-                                race['date'] = race.get('race_date')
+                            if not race.get("race_date") and race.get("date"):
+                                race["race_date"] = race.get("date")
+                            if not race.get("date") and race.get("race_date"):
+                                race["date"] = race.get("race_date")
                             # Enrich with Melbourne datetime/timestamp
-                            mel_dt = build_melbourne_dt(race.get('race_date') or race.get('date'), race.get('race_time'))
+                            mel_dt = build_melbourne_dt(
+                                race.get("race_date") or race.get("date"),
+                                race.get("race_time"),
+                            )
                             if mel_dt is not None:
                                 try:
-                                    race['race_datetime_melbourne_iso'] = mel_dt.isoformat()
-                                    race['race_timestamp_melbourne'] = int(mel_dt.timestamp())
+                                    race["race_datetime_melbourne_iso"] = (
+                                        mel_dt.isoformat()
+                                    )
+                                    race["race_timestamp_melbourne"] = int(
+                                        mel_dt.timestamp()
+                                    )
                                 except Exception:
-                                    race['race_datetime_melbourne_iso'] = None
-                                    race['race_timestamp_melbourne'] = None
+                                    race["race_datetime_melbourne_iso"] = None
+                                    race["race_timestamp_melbourne"] = None
                             else:
-                                race['race_datetime_melbourne_iso'] = None
-                                race['race_timestamp_melbourne'] = None
-                            race['source'] = 'live'
+                                race["race_datetime_melbourne_iso"] = None
+                                race["race_timestamp_melbourne"] = None
+                            race["source"] = "live"
                             all_races.append(race)
                             yield f"data: {json.dumps({'type': 'race', 'race': race, 'total_found': len(all_races)})}\n\n"
 
@@ -14739,22 +16682,24 @@ def api_upcoming_races_stream():
             try:
                 # Ensure enrichment for any races missed earlier
                 for _r in all_races:
-                    if not _r.get('race_date') and _r.get('date'):
-                        _r['race_date'] = _r.get('date')
-                    if not _r.get('date') and _r.get('race_date'):
-                        _r['date'] = _r.get('race_date')
-                    if 'race_timestamp_melbourne' not in _r:
-                        _mel = build_melbourne_dt(_r.get('race_date') or _r.get('date'), _r.get('race_time'))
+                    if not _r.get("race_date") and _r.get("date"):
+                        _r["race_date"] = _r.get("date")
+                    if not _r.get("date") and _r.get("race_date"):
+                        _r["date"] = _r.get("race_date")
+                    if "race_timestamp_melbourne" not in _r:
+                        _mel = build_melbourne_dt(
+                            _r.get("race_date") or _r.get("date"), _r.get("race_time")
+                        )
                         if _mel is not None:
                             try:
-                                _r['race_datetime_melbourne_iso'] = _mel.isoformat()
-                                _r['race_timestamp_melbourne'] = int(_mel.timestamp())
+                                _r["race_datetime_melbourne_iso"] = _mel.isoformat()
+                                _r["race_timestamp_melbourne"] = int(_mel.timestamp())
                             except Exception:
-                                _r['race_datetime_melbourne_iso'] = None
-                                _r['race_timestamp_melbourne'] = None
+                                _r["race_datetime_melbourne_iso"] = None
+                                _r["race_timestamp_melbourne"] = None
                         else:
-                            _r['race_datetime_melbourne_iso'] = None
-                            _r['race_timestamp_melbourne'] = None
+                            _r["race_datetime_melbourne_iso"] = None
+                            _r["race_timestamp_melbourne"] = None
                 all_races_sorted = sorted(all_races, key=_upcoming_sort_key)
             except Exception:
                 all_races_sorted = all_races
@@ -14768,18 +16713,18 @@ def api_upcoming_races_stream():
     def generate_csv_stream():
         try:
             # If running tests, emit a single completion payload to avoid keeping the connection open (prevents networkidle timeouts)
-            if app.config.get('TESTING'):
+            if app.config.get("TESTING"):
                 try:
                     races = load_upcoming_races(refresh=False)
                 except Exception:
                     races = []
                 # Normalize and enrich minimally
                 for r in races:
-                    if not r.get('race_date') and r.get('date'):
-                        r['race_date'] = r.get('date')
-                    if not r.get('date') and r.get('race_date'):
-                        r['date'] = r.get('race_date')
-                    r['source'] = 'csv'
+                    if not r.get("race_date") and r.get("date"):
+                        r["race_date"] = r.get("date")
+                    if not r.get("date") and r.get("race_date"):
+                        r["date"] = r.get("race_date")
+                    r["source"] = "csv"
                 yield f"data: {json.dumps({'type': 'complete', 'source': 'csv', 'total_races': len(races), 'message': f'CSV scan complete! Found {len(races)} total races.', 'races': races})}\n\n"
                 return
 
@@ -14797,38 +16742,44 @@ def api_upcoming_races_stream():
 
             # Filter by date window
             def _in_window(r):
-                ds = (r.get('race_date') or r.get('date') or '').strip()
+                ds = (r.get("race_date") or r.get("date") or "").strip()
                 d = _parse_date_ymd(ds)
                 return d is not None and (today <= d <= end_date)
 
             filtered = [r for r in (races or []) if _in_window(r)]
             # Group by date for progress
-            day_keys = sorted({(r.get('race_date') or r.get('date') or '') for r in filtered})
+            day_keys = sorted(
+                {(r.get("race_date") or r.get("date") or "") for r in filtered}
+            )
             total_days = max(1, len(day_keys))
 
             for i, day in enumerate(day_keys):
                 progress = int((i / total_days) * 100)
                 yield f"data: {json.dumps({'type': 'progress', 'date': day, 'progress': progress, 'source': 'csv', 'message': f'Scanning {day} (CSV)...'})}\n\n"
-                day_races = [r for r in filtered if (r.get('race_date') or r.get('date')) == day]
+                day_races = [
+                    r for r in filtered if (r.get("race_date") or r.get("date")) == day
+                ]
                 for race in day_races:
                     # Normalize keys
-                    if not race.get('race_date') and race.get('date'):
-                        race['race_date'] = race.get('date')
-                    if not race.get('date') and race.get('race_date'):
-                        race['date'] = race.get('race_date')
+                    if not race.get("race_date") and race.get("date"):
+                        race["race_date"] = race.get("date")
+                    if not race.get("date") and race.get("race_date"):
+                        race["date"] = race.get("race_date")
                     # Enrich with Melbourne
-                    mel_dt = build_melbourne_dt(race.get('race_date') or race.get('date'), race.get('race_time'))
+                    mel_dt = build_melbourne_dt(
+                        race.get("race_date") or race.get("date"), race.get("race_time")
+                    )
                     if mel_dt is not None:
                         try:
-                            race['race_datetime_melbourne_iso'] = mel_dt.isoformat()
-                            race['race_timestamp_melbourne'] = int(mel_dt.timestamp())
+                            race["race_datetime_melbourne_iso"] = mel_dt.isoformat()
+                            race["race_timestamp_melbourne"] = int(mel_dt.timestamp())
                         except Exception:
-                            race['race_datetime_melbourne_iso'] = None
-                            race['race_timestamp_melbourne'] = None
+                            race["race_datetime_melbourne_iso"] = None
+                            race["race_timestamp_melbourne"] = None
                     else:
-                        race['race_datetime_melbourne_iso'] = None
-                        race['race_timestamp_melbourne'] = None
-                    race['source'] = 'csv'
+                        race["race_datetime_melbourne_iso"] = None
+                        race["race_timestamp_melbourne"] = None
+                    race["source"] = "csv"
                     all_races.append(race)
                     yield f"data: {json.dumps({'type': 'race', 'race': race, 'total_found': len(all_races)})}\n\n"
                 yield f"data: {json.dumps({'type': 'date_complete', 'date': day, 'count': len(day_races), 'source': 'csv', 'message': f'Found {len(day_races)} races for {day}'})}\n\n"
@@ -14836,22 +16787,24 @@ def api_upcoming_races_stream():
             # Final completion (sorted)
             try:
                 for _r in all_races:
-                    if not _r.get('race_date') and _r.get('date'):
-                        _r['race_date'] = _r.get('date')
-                    if not _r.get('date') and _r.get('race_date'):
-                        _r['date'] = _r.get('race_date')
-                    if 'race_timestamp_melbourne' not in _r:
-                        _mel = build_melbourne_dt(_r.get('race_date') or _r.get('date'), _r.get('race_time'))
+                    if not _r.get("race_date") and _r.get("date"):
+                        _r["race_date"] = _r.get("date")
+                    if not _r.get("date") and _r.get("race_date"):
+                        _r["date"] = _r.get("race_date")
+                    if "race_timestamp_melbourne" not in _r:
+                        _mel = build_melbourne_dt(
+                            _r.get("race_date") or _r.get("date"), _r.get("race_time")
+                        )
                         if _mel is not None:
                             try:
-                                _r['race_datetime_melbourne_iso'] = _mel.isoformat()
-                                _r['race_timestamp_melbourne'] = int(_mel.timestamp())
+                                _r["race_datetime_melbourne_iso"] = _mel.isoformat()
+                                _r["race_timestamp_melbourne"] = int(_mel.timestamp())
                             except Exception:
-                                _r['race_datetime_melbourne_iso'] = None
-                                _r['race_timestamp_melbourne'] = None
+                                _r["race_datetime_melbourne_iso"] = None
+                                _r["race_timestamp_melbourne"] = None
                         else:
-                            _r['race_datetime_melbourne_iso'] = None
-                            _r['race_timestamp_melbourne'] = None
+                            _r["race_datetime_melbourne_iso"] = None
+                            _r["race_timestamp_melbourne"] = None
                 all_races_sorted = sorted(all_races, key=_upcoming_sort_key)
             except Exception:
                 all_races_sorted = all_races
@@ -14875,12 +16828,10 @@ def api_upcoming_races_stream():
     )
 
 
-
-
 @app.route("/api/download_upcoming_race", methods=["POST"])
 def api_download_upcoming_race():
     """API endpoint to download a specific upcoming race
-    
+
     Behavior:
     - If the CSV already exists, return success with the existing filename and filepath (idempotent)
     - Validates the file is non-empty; if empty, removes and retries download once
@@ -14892,9 +16843,10 @@ def api_download_upcoming_race():
         if not race_url:
             return jsonify({"success": False, "error": "Race URL is required"}), 400
 
-        from upcoming_race_browser import UpcomingRaceBrowser
-        import re
         import os
+        import re
+
+        from upcoming_race_browser import UpcomingRaceBrowser
 
         # Ensure downloader writes/reads to the same directory as the Flask app
         try:
@@ -14906,7 +16858,9 @@ def api_download_upcoming_race():
 
         def _is_valid_csv(fp: str, min_bytes: int = 10) -> bool:
             try:
-                return bool(fp) and os.path.exists(fp) and os.path.getsize(fp) >= min_bytes
+                return (
+                    bool(fp) and os.path.exists(fp) and os.path.getsize(fp) >= min_bytes
+                )
             except Exception:
                 return False
 
@@ -14958,7 +16912,10 @@ def api_download_upcoming_race():
                 if filename and filepath and os.path.exists(filepath):
                     used_cached = True
                 else:
-                    return jsonify({"success": False, "error": err or "Unknown error"}), 500
+                    return (
+                        jsonify({"success": False, "error": err or "Unknown error"}),
+                        500,
+                    )
             else:
                 # Some other error
                 return jsonify({"success": False, "error": err or "Unknown error"}), 500
@@ -14992,11 +16949,16 @@ def api_download_upcoming_race():
                         filepath = cand
                 # Final validation
                 if not _is_valid_csv(filepath):
-                    return jsonify({
-                        "success": False,
-                        "error": "Upstream returned empty CSV after retry; please try again later",
-                        "status": 502
-                    }), 502
+                    return (
+                        jsonify(
+                            {
+                                "success": False,
+                                "error": "Upstream returned empty CSV after retry; please try again later",
+                                "status": 502,
+                            }
+                        ),
+                        502,
+                    )
 
         return jsonify(
             {
@@ -15309,31 +17271,32 @@ def api_model_status():
 
                 def _parse_meta_string(s: str) -> dict:
                     import re
+
                     d = {}
                     try:
                         # model_name='V4_ExtraTrees'
                         m = re.search(r"model_name='([^']+)'", s)
                         if m:
-                            d['model_name'] = m.group(1)
+                            d["model_name"] = m.group(1)
                         # model_type='CalibratedPipeline'
                         m = re.search(r"model_type='([^']+)'", s)
                         if m:
-                            d['model_type'] = m.group(1)
+                            d["model_type"] = m.group(1)
                         # accuracy=0.8576
                         m = re.search(r"accuracy=([0-9]*\.?[0-9]+)", s)
                         if m:
-                            d['accuracy'] = float(m.group(1))
+                            d["accuracy"] = float(m.group(1))
                         # auc=0.46
                         m = re.search(r"auc=([0-9]*\.?[0-9]+)", s)
                         if m:
-                            d['auc'] = float(m.group(1))
+                            d["auc"] = float(m.group(1))
                         # created_at or training_timestamp
                         m = re.search(r"created_at='([^']+)'", s)
                         if m:
-                            d['created_at'] = m.group(1)
+                            d["created_at"] = m.group(1)
                         m = re.search(r"training_timestamp='([^']+)'", s)
-                        if m and 'created_at' not in d:
-                            d['created_at'] = m.group(1)
+                        if m and "created_at" not in d:
+                            d["created_at"] = m.group(1)
                         return d
                     except Exception:
                         return d
@@ -15365,7 +17328,9 @@ def api_model_status():
                     # Otherwise, pick the one with the highest accuracy
                     if best_meta is None and models:
                         try:
-                            best_meta = max(models, key=lambda m: (getattr(m, "accuracy", 0) or 0))
+                            best_meta = max(
+                                models, key=lambda m: (getattr(m, "accuracy", 0) or 0)
+                            )
                         except Exception:
                             best_meta = models[0]
                     metadata = best_meta
@@ -15380,39 +17345,51 @@ def api_model_status():
                 if metadata is not None:
                     if isinstance(metadata, str):
                         meta_dict = _parse_meta_string(metadata)
-                        if meta_dict.get('model_name'):
-                            resp['model_type'] = meta_dict.get('model_name') or meta_dict.get('model_type') or resp['model_type']
-                        if meta_dict.get('accuracy') is not None:
-                            resp['accuracy'] = float(meta_dict['accuracy'])
-                        if meta_dict.get('auc') is not None:
-                            resp['auc_score'] = float(meta_dict['auc'])
-                        if meta_dict.get('created_at'):
-                            resp['last_trained'] = meta_dict['created_at']
-                        resp['best_model_name'] = meta_dict.get('model_name', resp.get('best_model_name'))
+                        if meta_dict.get("model_name"):
+                            resp["model_type"] = (
+                                meta_dict.get("model_name")
+                                or meta_dict.get("model_type")
+                                or resp["model_type"]
+                            )
+                        if meta_dict.get("accuracy") is not None:
+                            resp["accuracy"] = float(meta_dict["accuracy"])
+                        if meta_dict.get("auc") is not None:
+                            resp["auc_score"] = float(meta_dict["auc"])
+                        if meta_dict.get("created_at"):
+                            resp["last_trained"] = meta_dict["created_at"]
+                        resp["best_model_name"] = meta_dict.get(
+                            "model_name", resp.get("best_model_name")
+                        )
                     else:
                         # object or dict-like
-                        name = getattr(metadata, 'model_name', None)
-                        mtype = getattr(metadata, 'model_type', None)
-                        resp['model_type'] = name or mtype or resp['model_type']
-                        acc = getattr(metadata, 'accuracy', None)
-                        auc = getattr(metadata, 'auc', None)
+                        name = getattr(metadata, "model_name", None)
+                        mtype = getattr(metadata, "model_type", None)
+                        resp["model_type"] = name or mtype or resp["model_type"]
+                        acc = getattr(metadata, "accuracy", None)
+                        auc = getattr(metadata, "auc", None)
                         if acc is None and isinstance(metadata, dict):
-                            acc = metadata.get('accuracy')
+                            acc = metadata.get("accuracy")
                         if auc is None and isinstance(metadata, dict):
-                            auc = metadata.get('auc')
+                            auc = metadata.get("auc")
                         if acc is not None:
-                            resp['accuracy'] = float(acc)
+                            resp["accuracy"] = float(acc)
                         if auc is not None:
-                            resp['auc_score'] = float(auc)
-                        ts = getattr(metadata, 'created_at', getattr(metadata, 'training_timestamp', None))
+                            resp["auc_score"] = float(auc)
+                        ts = getattr(
+                            metadata,
+                            "created_at",
+                            getattr(metadata, "training_timestamp", None),
+                        )
                         if ts is None and isinstance(metadata, dict):
-                            ts = metadata.get('created_at') or metadata.get('training_timestamp')
+                            ts = metadata.get("created_at") or metadata.get(
+                                "training_timestamp"
+                            )
                         if ts:
-                            resp['last_trained'] = ts
-                        resp['best_model_name'] = name or resp.get('best_model_name')
+                            resp["last_trained"] = ts
+                        resp["best_model_name"] = name or resp.get("best_model_name")
 
                     try:
-                        resp['total_models'] = len(model_registry.list_models())
+                        resp["total_models"] = len(model_registry.list_models())
                     except Exception:
                         pass
             except Exception:
@@ -15443,8 +17420,13 @@ def api_model_status():
             return jsonify(response)
 
         # Initialize values from model data
-        response["model_type"] = model_data.get("model_name", response["model_type"]) or response["model_type"]
-        response["last_trained"] = model_data.get("timestamp", latest_model.stat().st_mtime)
+        response["model_type"] = (
+            model_data.get("model_name", response["model_type"])
+            or response["model_type"]
+        )
+        response["last_trained"] = model_data.get(
+            "timestamp", latest_model.stat().st_mtime
+        )
         response["features"] = len(model_data.get("feature_columns", []))
 
         # Try to get accuracy from model data directly first
@@ -15512,7 +17494,9 @@ def api_model_status():
                         data_summary = results["data_summary"]
                         response["samples"] = data_summary.get("total_samples", 0)
                         if "features" in data_summary:
-                            response["features"] = data_summary.get("features", response["features"])
+                            response["features"] = data_summary.get(
+                                "features", response["features"]
+                            )
 
                     # Update model type based on best performing model
                     if best_model_name:
@@ -15726,6 +17710,7 @@ def run_training_background(training_type):
             # Prefer V4 leakage-safe trainer script; fall back if unavailable
             try:
                 import json as _json
+
                 repo_root = os.path.dirname(os.path.abspath(__file__))
                 # Prefer GradientBoosting (performed better in benchmarking), then HistGB
                 script_candidates = [
@@ -15738,11 +17723,15 @@ def run_training_background(training_type):
                         script_path = _cand
                         break
                 if not script_path:
-                    raise Exception("V4 trainer script not found (expected scripts/train_register_v4_gb.py or _hgb.py)")
+                    raise Exception(
+                        "V4 trainer script not found (expected scripts/train_register_v4_gb.py or _hgb.py)"
+                    )
 
                 # Use project venv python if available; fallback to current interpreter
                 venv_python = os.path.join(repo_root, ".venv", "bin", "python")
-                python_exec = venv_python if os.path.exists(venv_python) else sys.executable
+                python_exec = (
+                    venv_python if os.path.exists(venv_python) else sys.executable
+                )
 
                 training_status["progress"] = 20
                 training_status["log"].append(
@@ -15814,16 +17803,34 @@ def run_training_background(training_type):
                 # Auto-promote best policy for V4 models (default top1_rate; configurable via REGISTRY_PROMOTE_METRIC)
                 try:
                     import os as _os
-                    metric = str(_os.environ.get('REGISTRY_PROMOTE_METRIC', 'top1_rate') or 'top1_rate').strip().lower()
-                    if metric not in ("top1_rate", "correct_winners", "auc", "accuracy", "f1_score", "performance_score"):
+
+                    metric = (
+                        str(
+                            _os.environ.get("REGISTRY_PROMOTE_METRIC", "top1_rate")
+                            or "top1_rate"
+                        )
+                        .strip()
+                        .lower()
+                    )
+                    if metric not in (
+                        "top1_rate",
+                        "correct_winners",
+                        "auc",
+                        "accuracy",
+                        "f1_score",
+                        "performance_score",
+                    ):
                         metric = "top1_rate"
                     from model_registry import get_model_registry
+
                     reg = get_model_registry()
                     # Set best selection policy to chosen metric and promote immediately
-                    if hasattr(reg, 'set_best_selection_policy'):
+                    if hasattr(reg, "set_best_selection_policy"):
                         reg.set_best_selection_policy(metric)
-                    if hasattr(reg, 'auto_promote_best_by_metric'):
-                        promoted = reg.auto_promote_best_by_metric(metric, prediction_type='win')
+                    if hasattr(reg, "auto_promote_best_by_metric"):
+                        promoted = reg.auto_promote_best_by_metric(
+                            metric, prediction_type="win"
+                        )
                         if promoted:
                             training_status["log"].append(
                                 {
@@ -15895,7 +17902,9 @@ def run_training_background(training_type):
                         _cur.execute("SELECT COUNT(*) FROM dog_race_data")
                         _entries = _cur.fetchone()[0]
                         _conn.close()
-                        ctx_lines.append(f"🗄️ DB snapshot: races={_races}, entries={_entries}")
+                        ctx_lines.append(
+                            f"🗄️ DB snapshot: races={_races}, entries={_entries}"
+                        )
                     except Exception as _dbe:
                         ctx_lines.append(f"🗄️ DB snapshot: unavailable ({_dbe})")
                     # Model registry summary (best model if available)
@@ -15912,18 +17921,22 @@ def run_training_background(training_type):
                     except Exception as _re:
                         ctx_lines.append(f"🏆 Registry best: unavailable ({_re})")
                     for ln in ctx_lines:
-                        training_status["log"].append({
-                            "timestamp": datetime.now().isoformat(),
-                            "message": ln,
-                            "level": "INFO",
-                        })
+                        training_status["log"].append(
+                            {
+                                "timestamp": datetime.now().isoformat(),
+                                "message": ln,
+                                "level": "INFO",
+                            }
+                        )
                 except Exception:
                     pass
 
                 # Start the enhanced ML backtesting process (unbuffered, merged stderr)
                 env = os.environ.copy()
                 env["PYTHONUNBUFFERED"] = "1"
-                env["BACKTEST_VERBOSE"] = "1"  # Hint to trainer to increase verbosity if supported
+                env["BACKTEST_VERBOSE"] = (
+                    "1"  # Hint to trainer to increase verbosity if supported
+                )
                 # Pass through optional backtesting options as environment variables
                 try:
                     _opts = training_status.get("options", {}) or {}
@@ -15932,17 +17945,23 @@ def run_training_background(training_type):
                     if _opts.get("months_back") is not None:
                         env["BACKTEST_MONTHS_BACK"] = str(int(_opts.get("months_back")))
                     if _opts.get("walk_rolling_days") is not None:
-                        env["BACKTEST_WALK_ROLLING_DAYS"] = str(int(_opts.get("walk_rolling_days")))
+                        env["BACKTEST_WALK_ROLLING_DAYS"] = str(
+                            int(_opts.get("walk_rolling_days"))
+                        )
                     if _opts.get("walk_retrain_freq"):
-                        env["BACKTEST_WALK_RETRAIN_FREQ"] = str(_opts.get("walk_retrain_freq"))
+                        env["BACKTEST_WALK_RETRAIN_FREQ"] = str(
+                            _opts.get("walk_retrain_freq")
+                        )
                     if _opts.get("walk_top_k") is not None:
                         env["BACKTEST_WALK_TOP_K"] = str(int(_opts.get("walk_top_k")))
                 except Exception as _eopts:
-                    training_status["log"].append({
-                        "timestamp": datetime.now().isoformat(),
-                        "level": "WARNING",
-                        "message": f"⚠️ Failed to apply backtesting options: {_eopts}",
-                    })
+                    training_status["log"].append(
+                        {
+                            "timestamp": datetime.now().isoformat(),
+                            "level": "WARNING",
+                            "message": f"⚠️ Failed to apply backtesting options: {_eopts}",
+                        }
+                    )
                 process = subprocess.Popen(
                     [sys.executable, "-u", script_path],
                     stdout=subprocess.PIPE,
@@ -16024,7 +18043,9 @@ def run_training_background(training_type):
                 else:
                     # stderr may be merged into stdout; build the most informative error message available
                     try:
-                        stderr_output = process.stderr.read() if process.stderr else None
+                        stderr_output = (
+                            process.stderr.read() if process.stderr else None
+                        )
                     except Exception:
                         stderr_output = None
                     try:
@@ -16033,7 +18054,9 @@ def run_training_background(training_type):
                         extra_stdout = ""
                     # Also include tail of our in-memory logs as a fallback context
                     try:
-                        tail_logs = [e.get("message", "") for e in training_status.get("log", [])][-10:]
+                        tail_logs = [
+                            e.get("message", "") for e in training_status.get("log", [])
+                        ][-10:]
                     except Exception:
                         tail_logs = []
 
@@ -16045,12 +18068,14 @@ def run_training_background(training_type):
                     if not combined and tail_logs:
                         combined = "\n".join(tail_logs)
 
-                    error_message = (combined.strip()[:1000]) if combined else "Backtesting failed"
+                    error_message = (
+                        (combined.strip()[:1000]) if combined else "Backtesting failed"
+                    )
                     training_status["error"] = error_message
                     training_status["log"].append(
                         {
                             "timestamp": datetime.now().isoformat(),
-                            "message": f'❌ Backtesting failed: {error_message}',
+                            "message": f"❌ Backtesting failed: {error_message}",
                             "level": "ERROR",
                         }
                     )
@@ -16268,11 +18293,31 @@ def api_backtesting():
     # Store options in training_status for background thread to read
     try:
         training_status["options"] = {
-            "mode": str(opts.get("mode", "")).strip().lower() if isinstance(opts.get("mode"), str) else None,
-            "months_back": int(opts.get("months_back")) if opts.get("months_back") is not None else None,
-            "walk_rolling_days": int(opts.get("walk_rolling_days")) if opts.get("walk_rolling_days") is not None else None,
-            "walk_retrain_freq": str(opts.get("walk_retrain_freq")).strip().lower() if isinstance(opts.get("walk_retrain_freq"), str) else None,
-            "walk_top_k": int(opts.get("walk_top_k")) if opts.get("walk_top_k") is not None else None,
+            "mode": (
+                str(opts.get("mode", "")).strip().lower()
+                if isinstance(opts.get("mode"), str)
+                else None
+            ),
+            "months_back": (
+                int(opts.get("months_back"))
+                if opts.get("months_back") is not None
+                else None
+            ),
+            "walk_rolling_days": (
+                int(opts.get("walk_rolling_days"))
+                if opts.get("walk_rolling_days") is not None
+                else None
+            ),
+            "walk_retrain_freq": (
+                str(opts.get("walk_retrain_freq")).strip().lower()
+                if isinstance(opts.get("walk_retrain_freq"), str)
+                else None
+            ),
+            "walk_top_k": (
+                int(opts.get("walk_top_k"))
+                if opts.get("walk_top_k") is not None
+                else None
+            ),
         }
     except Exception:
         training_status["options"] = {}
@@ -16336,7 +18381,9 @@ def api_backtesting_logs_tail():
                             safe_entry[k] = v
                         else:
                             try:
-                                safe_entry[k] = v.isoformat() if hasattr(v, "isoformat") else str(v)
+                                safe_entry[k] = (
+                                    v.isoformat() if hasattr(v, "isoformat") else str(v)
+                                )
                             except Exception:
                                 safe_entry[k] = str(v)
                     # Ensure required keys
@@ -16345,17 +18392,17 @@ def api_backtesting_logs_tail():
                     safe_entry.setdefault("message", "")
                     safe_tail.append(safe_entry)
                 else:
-                    safe_tail.append({
-                        "timestamp": now_iso,
-                        "level": "INFO",
-                        "message": str(entry)
-                    })
+                    safe_tail.append(
+                        {"timestamp": now_iso, "level": "INFO", "message": str(entry)}
+                    )
             except Exception:
-                safe_tail.append({
-                    "timestamp": now_iso,
-                    "level": "ERROR",
-                    "message": "Unserializable log entry"
-                })
+                safe_tail.append(
+                    {
+                        "timestamp": now_iso,
+                        "level": "ERROR",
+                        "message": "Unserializable log entry",
+                    }
+                )
 
         payload = {
             "success": True,
@@ -16364,14 +18411,23 @@ def api_backtesting_logs_tail():
             "progress": int(training_status.get("progress", 0) or 0),
             "current_task": str(training_status.get("current_task", "")),
             "completed": bool(training_status.get("completed", False)),
-            "error": (str(training_status.get("error")) if training_status.get("error") is not None else None),
+            "error": (
+                str(training_status.get("error"))
+                if training_status.get("error") is not None
+                else None
+            ),
             "log": safe_tail,
             "timestamp": datetime.now().isoformat(),
         }
         return jsonify(payload), 200
     except Exception as e:
         # Avoid global error handler masking details
-        return jsonify({"success": False, "error": f"backtesting_logs_tail failed: {str(e)}"}), 500
+        return (
+            jsonify(
+                {"success": False, "error": f"backtesting_logs_tail failed: {str(e)}"}
+            ),
+            500,
+        )
 
 
 @app.route("/api/backtesting/logs/stream")
@@ -16381,12 +18437,13 @@ def api_backtesting_logs_stream():
     Emits periodic keepalive events every 15 seconds.
     """
     try:
-        from flask import Response, stream_with_context
         import json as _json
-        
+
+        from flask import Response, stream_with_context
+
         # On connect, capture current length to avoid resending older entries repeatedly
         initial_tail = training_status.get("log", [])[-200:]
-        
+
         @stream_with_context
         def event_stream():
             sent = 0
@@ -16405,7 +18462,7 @@ def api_backtesting_logs_stream():
                 payload = {"type": "log", "entry": entry}
                 yield f"data: {_json.dumps(payload)}\n\n"
                 sent += 1
-            
+
             # Now stream new entries
             last_idx = len(training_status.get("log", []))
             keepalive_counter = 0
@@ -16423,15 +18480,19 @@ def api_backtesting_logs_stream():
                             payload = {"type": "log", "entry": entry}
                             yield f"data: {_json.dumps(payload)}\n\n"
                             sent += 1
-                    
+
                     # Emit status updates on state transitions
-                    if not training_status.get("running", False) and training_status.get("completed", False):
+                    if not training_status.get(
+                        "running", False
+                    ) and training_status.get("completed", False):
                         yield f"data: {_json.dumps({'type': 'complete', 'timestamp': datetime.now().isoformat()})}\n\n"
                         break
-                    if not training_status.get("running", False) and training_status.get("error"):
+                    if not training_status.get(
+                        "running", False
+                    ) and training_status.get("error"):
                         yield f"data: {_json.dumps({'type': 'error', 'error': training_status.get('error'), 'timestamp': datetime.now().isoformat()})}\n\n"
                         break
-                    
+
                     # Keepalive every ~15 seconds
                     keepalive_counter += 1
                     if keepalive_counter % 30 == 0:
@@ -16441,7 +18502,7 @@ def api_backtesting_logs_stream():
                 except Exception as ie:
                     yield f"data: {_json.dumps({'type': 'error', 'error': str(ie)})}\n\n"
                     break
-        
+
         headers = {
             "Content-Type": "text/event-stream",
             "Cache-Control": "no-cache",
@@ -16942,12 +19003,17 @@ def api_gpt_test():
         start = time.time()
         enhancer = get_gpt_enhancer()
         if not enhancer:
-            return jsonify({
-                "success": False,
-                "gpt_analyzer_available": False,
-                "error": "GPT enhancer not available",
-                "timestamp": datetime.now().isoformat(),
-            }), 200
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "gpt_analyzer_available": False,
+                        "error": "GPT enhancer not available",
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                ),
+                200,
+            )
         # Use daily_insights as a minimal canary to exercise the client
         date_str = datetime.now().strftime("%Y-%m-%d")
         result = enhancer.generate_daily_insights(date_str)
@@ -16969,11 +19035,16 @@ def api_gpt_test():
         }
         return jsonify(payload), 200
     except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "timestamp": datetime.now().isoformat(),
-        }), 200
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat(),
+                }
+            ),
+            200,
+        )
 
 
 @app.route("/api/gpt/diagnostics", methods=["GET"])
@@ -17003,20 +19074,25 @@ def api_gpt_diagnostics():
         latest_json = max(json_meta, key=lambda x: x[2])[0] if json_meta else None
         latest_zip = max(zip_meta, key=lambda x: x[2])[0] if zip_meta else None
 
-        return jsonify({
-            "success": True,
-            "diagnostics": {
-                "json_files_count": len(json_files),
-                "archives_count": len(zip_files),
-                "total_json_bytes": int(total_json_size),
-                "total_archives_bytes": int(total_zip_size),
-                "latest_json_path": latest_json,
-                "latest_archive_path": latest_zip,
-            },
-            "timestamp": datetime.now().isoformat(),
-        })
+        return jsonify(
+            {
+                "success": True,
+                "diagnostics": {
+                    "json_files_count": len(json_files),
+                    "archives_count": len(zip_files),
+                    "total_json_bytes": int(total_json_size),
+                    "total_archives_bytes": int(total_zip_size),
+                    "latest_json_path": latest_json,
+                    "latest_archive_path": latest_zip,
+                },
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
     except Exception as e:
-        return jsonify({"success": False, "message": f"Diagnostics error: {str(e)}"}), 500
+        return (
+            jsonify({"success": False, "message": f"Diagnostics error: {str(e)}"}),
+            500,
+        )
 
 
 @app.route("/api/gpt/enhance_multiple", methods=["POST"])
@@ -17040,16 +19116,21 @@ def api_gpt_enhance_multiple():
 
         enhancer = get_gpt_enhancer()
         if not enhancer:
-            return jsonify({
-                "success": True,
-                "degraded": True,
-                "batch_results": {
-                    "message": "GPT enhancement not available; returning degraded response",
-                    "successful_enhancements": [],
-                    "failed": race_files[:max_races],
-                },
-                "timestamp": datetime.now().isoformat(),
-            }), 200
+            return (
+                jsonify(
+                    {
+                        "success": True,
+                        "degraded": True,
+                        "batch_results": {
+                            "message": "GPT enhancement not available; returning degraded response",
+                            "successful_enhancements": [],
+                            "failed": race_files[:max_races],
+                        },
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                ),
+                200,
+            )
 
         results = enhancer.enhance_multiple_races(race_files, max_races)
 
@@ -17062,12 +19143,17 @@ def api_gpt_enhance_multiple():
         )
 
     except Exception as e:
-        return jsonify({
-            "success": True,
-            "degraded": True,
-            "message": f"Error enhancing multiple races; returning degraded response: {str(e)}",
-            "timestamp": datetime.now().isoformat(),
-        }), 200
+        return (
+            jsonify(
+                {
+                    "success": True,
+                    "degraded": True,
+                    "message": f"Error enhancing multiple races; returning degraded response: {str(e)}",
+                    "timestamp": datetime.now().isoformat(),
+                }
+            ),
+            200,
+        )
 
 
 @app.route("/api/gpt/comprehensive_report", methods=["POST"])
@@ -17088,18 +19174,23 @@ def api_gpt_comprehensive_report():
         enhancer = get_gpt_enhancer()
         if not enhancer:
             # Degraded success with a simple stub
-            return jsonify({
-                "success": True,
-                "degraded": True,
-                "report": {
-                    "title": "Comprehensive Report (Degraded)",
-                    "executive_summary": "GPT unavailable. This is a placeholder report.",
-                    "detailed_analysis": "No analysis available in degraded mode.",
-                    "recommendations": [],
-                },
-                "race_count": len(race_ids),
-                "timestamp": datetime.now().isoformat(),
-            }), 200
+            return (
+                jsonify(
+                    {
+                        "success": True,
+                        "degraded": True,
+                        "report": {
+                            "title": "Comprehensive Report (Degraded)",
+                            "executive_summary": "GPT unavailable. This is a placeholder report.",
+                            "detailed_analysis": "No analysis available in degraded mode.",
+                            "recommendations": [],
+                        },
+                        "race_count": len(race_ids),
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                ),
+                200,
+            )
 
         report = enhancer.create_comprehensive_report(race_ids)
 
@@ -17113,13 +19204,18 @@ def api_gpt_comprehensive_report():
         )
 
     except Exception as e:
-        return jsonify({
-            "success": True,
-            "degraded": True,
-            "message": f"Error generating comprehensive report; returning degraded response: {str(e)}",
-            "race_count": 0,
-            "timestamp": datetime.now().isoformat(),
-        }), 200
+        return (
+            jsonify(
+                {
+                    "success": True,
+                    "degraded": True,
+                    "message": f"Error generating comprehensive report; returning degraded response: {str(e)}",
+                    "race_count": 0,
+                    "timestamp": datetime.now().isoformat(),
+                }
+            ),
+            200,
+        )
 
 
 @app.route("/api/gpt/status")
@@ -17136,9 +19232,12 @@ def api_gpt_status():
         api_key_configured = bool(os.getenv("OPENAI_API_KEY"))
 
         # Determine model name with safe fallbacks
-        model_used = os.getenv("OPENAI_MODEL") or os.getenv("OPENAI_CHAT_MODEL") or "gpt-4o-mini"
+        model_used = (
+            os.getenv("OPENAI_MODEL") or os.getenv("OPENAI_CHAT_MODEL") or "gpt-4o-mini"
+        )
         try:
             from config.openai_config import get_openai_config  # optional
+
             try:
                 cfg = get_openai_config()
                 if getattr(cfg, "model", None):
@@ -17225,7 +19324,9 @@ def api_gpt_status():
                         "gpt_analyzer_available": False,
                         "error_message": str(e),
                         "enhanced_predictions_count": 0,
-                        "model_used": os.getenv("OPENAI_MODEL") or os.getenv("OPENAI_CHAT_MODEL") or "gpt-4o-mini",
+                        "model_used": os.getenv("OPENAI_MODEL")
+                        or os.getenv("OPENAI_CHAT_MODEL")
+                        or "gpt-4o-mini",
                     },
                     "timestamp": datetime.now().isoformat(),
                 }
@@ -17248,14 +19349,25 @@ def api_sportsbet_status():
     """Sportsbet integrator availability and basic status."""
     try:
         available = sportsbet_integrator is not None
-        disabled_env = str(os.environ.get('DISABLE_SPORTSBET_INTEGRATOR', '0')).lower() in ('1', 'true', 'yes')
+        disabled_env = str(
+            os.environ.get("DISABLE_SPORTSBET_INTEGRATOR", "0")
+        ).lower() in ("1", "true", "yes")
         status = {
-            'available': available,
-            'disabled_env': disabled_env,
+            "available": available,
+            "disabled_env": disabled_env,
         }
-        return jsonify({'success': True, 'status': status, 'timestamp': datetime.now().isoformat()}), 200
+        return (
+            jsonify(
+                {
+                    "success": True,
+                    "status": status,
+                    "timestamp": datetime.now().isoformat(),
+                }
+            ),
+            200,
+        )
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 200
+        return jsonify({"success": False, "error": str(e)}), 200
 
 
 @app.route("/api/sportsbet/update_odds", methods=["POST"])
@@ -17263,7 +19375,16 @@ def api_update_sportsbet_odds():
     """API endpoint to update odds from Sportsbet"""
     try:
         if sportsbet_integrator is None:
-            return jsonify({"success": False, "message": "Sportsbet integrator unavailable", "timestamp": datetime.now().isoformat()}), 200
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "Sportsbet integrator unavailable",
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                ),
+                200,
+            )
         races = sportsbet_integrator.get_today_races()
 
         for race in races:
@@ -17299,7 +19420,16 @@ def api_live_odds_summary():
     """API endpoint to get live odds summary"""
     try:
         if sportsbet_integrator is None:
-            return jsonify({"success": False, "message": "Sportsbet integrator unavailable", "timestamp": datetime.now().isoformat()}), 200
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "Sportsbet integrator unavailable",
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                ),
+                200,
+            )
         odds_summary = sportsbet_integrator.get_live_odds_summary()
 
         return jsonify(
@@ -17469,6 +19599,7 @@ def api_sportsbet_seed_quick():
 
         # Reuse the same source as today_races_basic
         from direct_racing_scraper import get_today_races
+
         races = get_today_races() or []
         now = datetime.now()
 
@@ -17491,7 +19622,7 @@ def api_sportsbet_seed_quick():
                     if ":" in rt:
                         t = datetime.strptime(rt, "%H:%M").time()
                     else:
-                        if len(rt) in (3,4) and rt.isdigit():
+                        if len(rt) in (3, 4) and rt.isdigit():
                             if len(rt) == 3:
                                 rt = "0" + rt
                             t = datetime.strptime(f"{rt[:2]}:{rt[2:4]}", "%H:%M").time()
@@ -17517,17 +19648,32 @@ def api_sportsbet_seed_quick():
             st = _status(r)
             if st.upper() in statuses:
                 venue_slug = (r.get("venue") or "").lower().replace(" ", "-")
-                sb_url = f"https://www.sportsbet.com.au/betting/racing/greyhound/{venue_slug}" if venue_slug else None
+                sb_url = (
+                    f"https://www.sportsbet.com.au/betting/racing/greyhound/{venue_slug}"
+                    if venue_slug
+                    else None
+                )
                 if sb_url:
-                    candidates.append({
-                        "race_id": _race_id(r),
-                        "venue": r.get("venue"),
-                        "race_number": r.get("race_number"),
-                        "sportsbet_url": sb_url,
-                    })
+                    candidates.append(
+                        {
+                            "race_id": _race_id(r),
+                            "venue": r.get("venue"),
+                            "race_number": r.get("race_number"),
+                            "sportsbet_url": sb_url,
+                        }
+                    )
 
         if not candidates:
-            return jsonify({"success": True, "seeded": 0, "note": "No LIVE/UPCOMING races found with Sportsbet URLs"}), 200
+            return (
+                jsonify(
+                    {
+                        "success": True,
+                        "seeded": 0,
+                        "note": "No LIVE/UPCOMING races found with Sportsbet URLs",
+                    }
+                ),
+                200,
+            )
 
         # Limit work to avoid heavy load
         targets = candidates[: max(1, min(limit, len(candidates)))]
@@ -17535,7 +19681,16 @@ def api_sportsbet_seed_quick():
         errors = []
 
         if sportsbet_integrator is None:
-            return jsonify({'success': False, 'seeded': 0, 'errors': ['Sportsbet integrator unavailable']}), 200
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "seeded": 0,
+                        "errors": ["Sportsbet integrator unavailable"],
+                    }
+                ),
+                200,
+            )
         integrator = sportsbet_integrator
         integrator.setup_driver()
         try:
@@ -17551,12 +19706,18 @@ def api_sportsbet_seed_quick():
                         "odds_data": [],
                     }
                     enhanced = integrator.get_race_odds_from_page(race_info)
-                    odds = enhanced.get("odds_data", []) if isinstance(enhanced, dict) else []
+                    odds = (
+                        enhanced.get("odds_data", [])
+                        if isinstance(enhanced, dict)
+                        else []
+                    )
                     if odds:
                         integrator.save_odds_to_database(enhanced)
                         seeded.append({"race_id": c["race_id"], "dogs": len(odds)})
                     else:
-                        errors.append({"race_id": c["race_id"], "error": "no odds parsed"})
+                        errors.append(
+                            {"race_id": c["race_id"], "error": "no odds parsed"}
+                        )
                 except Exception as e:
                     errors.append({"race_id": c.get("race_id"), "error": str(e)})
         finally:
@@ -17565,13 +19726,18 @@ def api_sportsbet_seed_quick():
             except Exception:
                 pass
 
-        return jsonify({
-            "success": True,
-            "seeded": len(seeded),
-            "details": seeded,
-            "errors": errors,
-            "timestamp": datetime.now().isoformat(),
-        }), 200
+        return (
+            jsonify(
+                {
+                    "success": True,
+                    "seeded": len(seeded),
+                    "details": seeded,
+                    "errors": errors,
+                    "timestamp": datetime.now().isoformat(),
+                }
+            ),
+            200,
+        )
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -17593,7 +19759,12 @@ def api_fetch_race_odds_on_demand(race_id):
 
         # Use the sportsbet integrator to fetch odds for this specific race
         if sportsbet_integrator is None:
-            return jsonify({'success': False, 'message': 'Sportsbet integrator unavailable'}), 200
+            return (
+                jsonify(
+                    {"success": False, "message": "Sportsbet integrator unavailable"}
+                ),
+                200,
+            )
         integrator = sportsbet_integrator
         integrator.setup_driver()
 
@@ -17662,7 +19833,16 @@ def api_value_bets():
     """API endpoint to get current value betting opportunities"""
     try:
         if sportsbet_integrator is None:
-            return jsonify({"success": False, "message": "Sportsbet integrator unavailable", "timestamp": datetime.now().isoformat()}), 200
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "Sportsbet integrator unavailable",
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                ),
+                200,
+            )
         value_bets = sportsbet_integrator.get_value_bets_summary()
 
         return jsonify(
@@ -17983,13 +20163,22 @@ def api_enhanced_predictions_with_odds():
                                         "implied_probability": implied_prob,
                                         "value_percentage": value_percentage,
                                         "has_value": value_percentage > 10,
-                                "betting_recommendation": (
-                                    sportsbet_integrator.generate_bet_recommendation(
-                                        value_percentage,
-                                        dog.get("confidence_level", "MEDIUM"),
-                                        market_odds,
-                                    ) if (value_percentage > 10 and sportsbet_integrator is not None) else ("BET" if value_percentage > 15 else "PASS")
-                                ),
+                                        "betting_recommendation": (
+                                            sportsbet_integrator.generate_bet_recommendation(
+                                                value_percentage,
+                                                dog.get("confidence_level", "MEDIUM"),
+                                                market_odds,
+                                            )
+                                            if (
+                                                value_percentage > 10
+                                                and sportsbet_integrator is not None
+                                            )
+                                            else (
+                                                "BET"
+                                                if value_percentage > 15
+                                                else "PASS"
+                                            )
+                                        ),
                                     }
                                 )
 
@@ -18323,7 +20512,7 @@ def api_database_restore_backup():
 
 
 # Reset/Rebuild database endpoint (background task)
-@app.route('/api/database/reset', methods=['POST'])
+@app.route("/api/database/reset", methods=["POST"])
 def api_database_reset():
     """Reset the SQLite database: backup, delete, and rebuild via analyze.
     Body JSON (optional): { collect?: bool, analyze?: bool }
@@ -18332,16 +20521,16 @@ def api_database_reset():
     """
     try:
         data = request.get_json(silent=True) or {}
-        do_collect = bool(data.get('collect', False))
-        do_analyze = bool(data.get('analyze', True))
+        do_collect = bool(data.get("collect", False))
+        do_analyze = bool(data.get("analyze", True))
 
         # Create background task id and mark running
         job_id = f"dbreset_{uuid4().hex[:8]}_{int(time.time())}"
         background_tasks[job_id] = {
-            'status': 'running',
-            'progress': 0,
-            'timestamp': datetime.now().isoformat(),
-            'step': 'queued'
+            "status": "running",
+            "progress": 0,
+            "timestamp": datetime.now().isoformat(),
+            "step": "queued",
         }
 
         def _worker():
@@ -18350,76 +20539,125 @@ def api_database_reset():
                 try:
                     db_path = DATABASE_PATH
                     if os.path.exists(db_path):
-                        ts = datetime.now().strftime('%Y%m%d%H%M%S')
+                        ts = datetime.now().strftime("%Y%m%d%H%M%S")
                         backup_path = f"greyhound_racing_data.backup.{ts}.db"
                         import shutil
+
                         shutil.copy2(db_path, backup_path)
-                        background_tasks[job_id].update({'progress': 10, 'step': 'backup_created', 'backup': backup_path})
+                        background_tasks[job_id].update(
+                            {
+                                "progress": 10,
+                                "step": "backup_created",
+                                "backup": backup_path,
+                            }
+                        )
                     else:
-                        background_tasks[job_id].update({'progress': 10, 'step': 'no_existing_db'})
+                        background_tasks[job_id].update(
+                            {"progress": 10, "step": "no_existing_db"}
+                        )
                 except Exception as be:
                     # Non-fatal, continue
-                    background_tasks[job_id].update({'progress': 10, 'step': 'backup_failed', 'error': str(be)})
+                    background_tasks[job_id].update(
+                        {"progress": 10, "step": "backup_failed", "error": str(be)}
+                    )
 
                 # Step 2: remove DB file
                 try:
                     if os.path.exists(DATABASE_PATH):
                         os.remove(DATABASE_PATH)
-                    background_tasks[job_id].update({'progress': 25, 'step': 'db_removed'})
+                    background_tasks[job_id].update(
+                        {"progress": 25, "step": "db_removed"}
+                    )
                 except Exception as re:
-                    background_tasks[job_id] = {'status': 'failed', 'progress': 0, 'error': f'Failed to remove DB: {re}', 'timestamp': datetime.now().isoformat()}
+                    background_tasks[job_id] = {
+                        "status": "failed",
+                        "progress": 0,
+                        "error": f"Failed to remove DB: {re}",
+                        "timestamp": datetime.now().isoformat(),
+                    }
                     return
 
                 # Step 3: optional collect
                 if do_collect:
                     try:
-                        background_tasks[job_id].update({'progress': 35, 'step': 'collecting'})
-                        res = subprocess.run([sys.executable, 'run.py', 'collect'], capture_output=True, text=True, timeout=600)
+                        background_tasks[job_id].update(
+                            {"progress": 35, "step": "collecting"}
+                        )
+                        res = subprocess.run(
+                            [sys.executable, "run.py", "collect"],
+                            capture_output=True,
+                            text=True,
+                            timeout=600,
+                        )
                         if res.returncode != 0:
                             # Keep going; collecting is optional
-                            background_tasks[job_id].update({'step': 'collect_warning', 'collect_error': (res.stderr or '')[:500]})
+                            background_tasks[job_id].update(
+                                {
+                                    "step": "collect_warning",
+                                    "collect_error": (res.stderr or "")[:500],
+                                }
+                            )
                         else:
-                            background_tasks[job_id].update({'step': 'collect_done'})
+                            background_tasks[job_id].update({"step": "collect_done"})
                     except Exception as ce:
-                        background_tasks[job_id].update({'step': 'collect_warning', 'collect_error': str(ce)[:500]})
+                        background_tasks[job_id].update(
+                            {"step": "collect_warning", "collect_error": str(ce)[:500]}
+                        )
 
                 # Step 4: analyze (default True)
                 if do_analyze:
                     try:
-                        background_tasks[job_id].update({'progress': 60, 'step': 'analyzing'})
-                        res2 = subprocess.run([sys.executable, 'run.py', 'analyze'], capture_output=True, text=True, timeout=900)
+                        background_tasks[job_id].update(
+                            {"progress": 60, "step": "analyzing"}
+                        )
+                        res2 = subprocess.run(
+                            [sys.executable, "run.py", "analyze"],
+                            capture_output=True,
+                            text=True,
+                            timeout=900,
+                        )
                         if res2.returncode != 0:
                             background_tasks[job_id] = {
-                                'status': 'failed',
-                                'progress': 0,
-                                'error': f"analyze failed: {(res2.stderr or '')[:500]}",
-                                'timestamp': datetime.now().isoformat()
+                                "status": "failed",
+                                "progress": 0,
+                                "error": f"analyze failed: {(res2.stderr or '')[:500]}",
+                                "timestamp": datetime.now().isoformat(),
                             }
                             return
                     except Exception as ae:
-                        background_tasks[job_id] = {'status': 'failed', 'progress': 0, 'error': f'analyze error: {str(ae)}', 'timestamp': datetime.now().isoformat()}
+                        background_tasks[job_id] = {
+                            "status": "failed",
+                            "progress": 0,
+                            "error": f"analyze error: {str(ae)}",
+                            "timestamp": datetime.now().isoformat(),
+                        }
                         return
                 else:
-                    background_tasks[job_id].update({'step': 'analyze_skipped'})
+                    background_tasks[job_id].update({"step": "analyze_skipped"})
 
                 # Done
                 background_tasks[job_id] = {
-                    'status': 'completed',
-                    'progress': 100,
-                    'result': {
-                        'collect': do_collect,
-                        'analyze': do_analyze,
-                        'db_path': DATABASE_PATH
+                    "status": "completed",
+                    "progress": 100,
+                    "result": {
+                        "collect": do_collect,
+                        "analyze": do_analyze,
+                        "db_path": DATABASE_PATH,
                     },
-                    'timestamp': datetime.now().isoformat()
+                    "timestamp": datetime.now().isoformat(),
                 }
             except Exception as e:
-                background_tasks[job_id] = {'status': 'failed', 'progress': 0, 'error': str(e), 'timestamp': datetime.now().isoformat()}
+                background_tasks[job_id] = {
+                    "status": "failed",
+                    "progress": 0,
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat(),
+                }
 
         threading.Thread(target=_worker, daemon=True).start()
-        return jsonify({'success': True, 'task_id': job_id}), 200
+        return jsonify({"success": True, "task_id": job_id}), 200
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route("/api/sportsbet/start_monitoring", methods=["POST"])
@@ -18427,7 +20665,17 @@ def api_start_odds_monitoring():
     """API endpoint to start continuous odds monitoring"""
     try:
         if sportsbet_integrator is None:
-            return jsonify({"success": False, "message": "Sportsbet integrator unavailable", "timestamp": datetime.now().isoformat()}), 200
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "Sportsbet integrator unavailable",
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                ),
+                200,
+            )
+
         # Start monitoring in a background thread
         def monitoring_worker():
             sportsbet_integrator.start_continuous_monitoring()
@@ -19056,12 +21304,12 @@ def interactive_races():
 @app.route("/api/download_and_predict_race", methods=["POST"])
 def api_download_and_predict_race():
     """API endpoint to download race CSV and run prediction (robust + idempotent)
-    
+
     Accepts JSON body with one of the following:
       - race_url: direct URL to the race page (preferred)
       - venue + race_number [+ optional race_date]
         race_date may be in 'YYYY-MM-DD' or 'DD/MM/YYYY' (optionally with time) format.
-    
+
     Behavior improvements:
       - Searches specific date if provided, otherwise scans a short window (today..+2d)
       - Treats "File already exists" as a successful cached download
@@ -19075,11 +21323,20 @@ def api_download_and_predict_race():
         race_date_raw = data.get("race_date")  # optional
 
         if not (race_url or (venue and race_number)):
-            return jsonify({"success": False, "message": "Provide race_url or (venue and race_number)"}), 400
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "Provide race_url or (venue and race_number)",
+                    }
+                ),
+                400,
+            )
 
         # Import the upcoming race browser
         try:
             from upcoming_race_browser import UpcomingRaceBrowser
+
             # Ensure downloader uses same UPCOMING_RACES_DIR as the app
             try:
                 os.environ["UPCOMING_RACES_DIR"] = UPCOMING_DIR
@@ -19087,11 +21344,17 @@ def api_download_and_predict_race():
                 pass
             browser = UpcomingRaceBrowser()
         except ImportError:
-            return jsonify({"success": False, "message": "UpcomingRaceBrowser not available"}), 500
+            return (
+                jsonify(
+                    {"success": False, "message": "UpcomingRaceBrowser not available"}
+                ),
+                500,
+            )
 
         # Helper: parse race_date from common formats to date()
-        from datetime import date as _date
         import re
+        from datetime import date as _date
+
         def _parse_date_any(s: str | None) -> _date | None:
             if not s:
                 return None
@@ -19132,7 +21395,11 @@ def api_download_and_predict_race():
                 dates_to_check = [base_date]
             else:
                 today = datetime.now().date()
-                dates_to_check = [today, today + timedelta(days=1), today + timedelta(days=2)]
+                dates_to_check = [
+                    today,
+                    today + timedelta(days=1),
+                    today + timedelta(days=2),
+                ]
 
             # Normalize requested fields
             vn_req = str(venue).upper().replace(" ", "").replace("_", "")
@@ -19169,9 +21436,13 @@ def api_download_and_predict_race():
                         rnum = int(str(rnum).strip())
                     except Exception:
                         rnum = None
-                    rven = (r.get("venue") or "").upper().replace(" ", "").replace("_", "")
+                    rven = (
+                        (r.get("venue") or "").upper().replace(" ", "").replace("_", "")
+                    )
                     rname = (r.get("venue_name") or "").upper().replace(" ", "")
-                    same_venue = (vn_req == rven) or (vn_req in rname) or (rname in vn_req)
+                    same_venue = (
+                        (vn_req == rven) or (vn_req in rname) or (rname in vn_req)
+                    )
                     same_number = (rn_req is None) or (rnum == rn_req)
                     return bool(same_venue and same_number)
                 except Exception:
@@ -19184,25 +21455,52 @@ def api_download_and_predict_race():
 
             if not target_race:
                 # Build better error context
-                available_venues = sorted({(r.get("venue") or "").strip() for r in all_races if r.get("venue")})
-                numbers_at_venue = sorted({str(r.get("race_number")) for r in all_races if (r.get("venue") or "").upper().replace(" ", "").replace("_", "") == vn_req})
-                message = (
-                    f"Race not found: {venue} Race {race_number}. "
-                    + (f"Searched dates: {[d.strftime('%Y-%m-%d') for d in dates_to_check]}" if dates_to_check else "")
+                available_venues = sorted(
+                    {
+                        (r.get("venue") or "").strip()
+                        for r in all_races
+                        if r.get("venue")
+                    }
                 )
-                return jsonify({
-                    "success": False,
-                    "message": message,
-                    "available_venues": available_venues,
-                    "available_numbers_at_venue": numbers_at_venue,
-                    "total_races_scanned": len(all_races),
-                    "suggestion": "Confirm venue code and race number, or pass race_url directly if available"
-                }), 404
+                numbers_at_venue = sorted(
+                    {
+                        str(r.get("race_number"))
+                        for r in all_races
+                        if (r.get("venue") or "")
+                        .upper()
+                        .replace(" ", "")
+                        .replace("_", "")
+                        == vn_req
+                    }
+                )
+                message = f"Race not found: {venue} Race {race_number}. " + (
+                    f"Searched dates: {[d.strftime('%Y-%m-%d') for d in dates_to_check]}"
+                    if dates_to_check
+                    else ""
+                )
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "message": message,
+                            "available_venues": available_venues,
+                            "available_numbers_at_venue": numbers_at_venue,
+                            "total_races_scanned": len(all_races),
+                            "suggestion": "Confirm venue code and race number, or pass race_url directly if available",
+                        }
+                    ),
+                    404,
+                )
 
         # Step 2: Download the CSV (idempotent handling when file exists)
         race_url_final = target_race.get("url") or target_race.get("race_url")
         if not race_url_final:
-            return jsonify({"success": False, "message": "No race URL available to download"}), 400
+            return (
+                jsonify(
+                    {"success": False, "message": "No race URL available to download"}
+                ),
+                400,
+            )
 
         download_result = browser.download_race_csv(race_url_final)
 
@@ -19241,14 +21539,25 @@ def api_download_and_predict_race():
                         except Exception:
                             pass
             if not filepath:
-                return jsonify({"success": False, "message": f"Failed to download race CSV: {err or 'Unknown error'}"}), 500
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "message": f"Failed to download race CSV: {err or 'Unknown error'}",
+                        }
+                    ),
+                    500,
+                )
 
         # Validate CSV is not empty; if empty, remove and retry once
         def _is_valid_csv(fp: str, min_bytes: int = 10) -> bool:
             try:
-                return bool(fp) and os.path.exists(fp) and os.path.getsize(fp) >= min_bytes
+                return (
+                    bool(fp) and os.path.exists(fp) and os.path.getsize(fp) >= min_bytes
+                )
             except Exception:
                 return False
+
         if not _is_valid_csv(filepath):
             try:
                 if filepath and os.path.exists(filepath):
@@ -19274,43 +21583,61 @@ def api_download_and_predict_race():
                     if cand2 and os.path.exists(cand2):
                         filepath = cand2
                 if not _is_valid_csv(filepath):
-                    return jsonify({
-                        "success": False,
-                        "message": "Upstream returned empty CSV after retry; please try again later",
-                        "status": 502
-                    }), 502
+                    return (
+                        jsonify(
+                            {
+                                "success": False,
+                                "message": "Upstream returned empty CSV after retry; please try again later",
+                                "status": 502,
+                            }
+                        ),
+                        502,
+                    )
 
-# Step 3: Run prediction using the internal enhanced pipeline (V4-first)
+        # Step 3: Run prediction using the internal enhanced pipeline (V4-first)
         # Respect optional TGR toggle from request body or cookie
         try:
-            tgr_enabled_flag = data.get('tgr_enabled') if isinstance(data, dict) else None
+            tgr_enabled_flag = (
+                data.get("tgr_enabled") if isinstance(data, dict) else None
+            )
         except Exception:
             tgr_enabled_flag = None
         if tgr_enabled_flag is None:
             try:
-                tgr_cookie = request.cookies.get('tgr_enabled')
+                tgr_cookie = request.cookies.get("tgr_enabled")
                 tgr_enabled_flag = tgr_cookie if tgr_cookie is not None else None
             except Exception:
                 tgr_enabled_flag = None
+
         def _to_bool_local(v):
             try:
                 if isinstance(v, bool):
                     return v
                 s = str(v).strip().lower()
-                return s in ('1','true','yes','on')
+                return s in ("1", "true", "yes", "on")
             except Exception:
                 return None
+
         tgr_enabled_flag = _to_bool_local(tgr_enabled_flag)
-        prediction_result = run_prediction_for_race_file(filepath, tgr_enabled=tgr_enabled_flag)
-        prediction_success = bool(prediction_result and prediction_result.get("success"))
+        prediction_result = run_prediction_for_race_file(
+            filepath, tgr_enabled=tgr_enabled_flag
+        )
+        prediction_success = bool(
+            prediction_result and prediction_result.get("success")
+        )
 
         # Build simple prediction summary
         total_dogs = 0
         top_pick = {"dog_name": "Unknown", "prediction_score": 0}
         try:
-            preds = prediction_result.get("predictions") or prediction_result.get("enhanced_predictions") or []
+            preds = (
+                prediction_result.get("predictions")
+                or prediction_result.get("enhanced_predictions")
+                or []
+            )
             if isinstance(preds, list) and preds:
                 total_dogs = len(preds)
+
                 # Choose by highest win_prob/final_score
                 def _score(p):
                     try:
@@ -19328,9 +21655,13 @@ def api_download_and_predict_race():
                         return max(0.0, min(1.0, v))
                     except Exception:
                         return 0.0
+
                 best = sorted(preds, key=_score, reverse=True)[0]
                 top_pick = {
-                    "dog_name": best.get("dog_name") or best.get("clean_name") or best.get("name") or "Unknown",
+                    "dog_name": best.get("dog_name")
+                    or best.get("clean_name")
+                    or best.get("name")
+                    or "Unknown",
                     "prediction_score": _score(best),
                 }
         except Exception:
@@ -19340,9 +21671,15 @@ def api_download_and_predict_race():
         race_ctx = {
             "venue": venue or "",
             "race_number": race_number,
-            "race_id": (extract_race_id_from_csv_filename(filename) if filename else None),
-            "race_date": (target_race.get("race_date") if isinstance(target_race, dict) else None),
-            "race_time": (target_race.get("race_time") if isinstance(target_race, dict) else None),
+            "race_id": (
+                extract_race_id_from_csv_filename(filename) if filename else None
+            ),
+            "race_date": (
+                target_race.get("race_date") if isinstance(target_race, dict) else None
+            ),
+            "race_time": (
+                target_race.get("race_time") if isinstance(target_race, dict) else None
+            ),
         }
 
         resp = {
@@ -19363,18 +21700,28 @@ def api_download_and_predict_race():
         # Surface model metadata at top-level for convenience
         try:
             if isinstance(prediction_result, dict):
-                if prediction_result.get('primary_model_id'):
-                    resp['primary_model_id'] = prediction_result.get('primary_model_id')
-                if prediction_result.get('ensemble_models_used') is not None:
-                    resp['ensemble_models_used'] = prediction_result.get('ensemble_models_used')
-                if prediction_result.get('model_ids_used') is not None:
-                    resp['model_ids_used'] = prediction_result.get('model_ids_used')
+                if prediction_result.get("primary_model_id"):
+                    resp["primary_model_id"] = prediction_result.get("primary_model_id")
+                if prediction_result.get("ensemble_models_used") is not None:
+                    resp["ensemble_models_used"] = prediction_result.get(
+                        "ensemble_models_used"
+                    )
+                if prediction_result.get("model_ids_used") is not None:
+                    resp["model_ids_used"] = prediction_result.get("model_ids_used")
         except Exception:
             pass
         return jsonify(resp)
 
     except Exception as e:
-        return jsonify({"success": False, "message": f"Error downloading and predicting race: {str(e)}"}), 500
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "message": f"Error downloading and predicting race: {str(e)}",
+                }
+            ),
+            500,
+        )
 
 
 @app.route("/api/csv_metadata")
@@ -19382,52 +21729,69 @@ def api_csv_metadata():
     """API endpoint to extract metadata from CSV files using lightweight extractor"""
     try:
         file_path = request.args.get("file_path")
-        
+
         if not file_path:
-            return jsonify({
-                "success": False,
-                "error": "file_path parameter is required",
-                "message": "Please provide a file_path parameter with the path to the CSV file"
-            }), 400
-        
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "file_path parameter is required",
+                        "message": "Please provide a file_path parameter with the path to the CSV file",
+                    }
+                ),
+                400,
+            )
+
         # Use the new parse_race_csv_meta function
         metadata = parse_race_csv_meta(file_path)
-        
+
         # Check if extraction was successful
         if metadata.get("status") == "error":
-            return jsonify({
-                "success": False,
-                "error": metadata.get("error_message", "Unknown error"),
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": metadata.get("error_message", "Unknown error"),
+                        "metadata": metadata,
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                ),
+                400,
+            )
+
+        return jsonify(
+            {
+                "success": True,
                 "metadata": metadata,
-                "timestamp": datetime.now().isoformat()
-            }), 400
-        
-        return jsonify({
-            "success": True,
-            "metadata": metadata,
-            "timestamp": datetime.now().isoformat()
-        })
-        
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
+
     except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": f"Server error: {str(e)}",
-            "message": "An unexpected error occurred while extracting CSV metadata"
-        }), 500
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": f"Server error: {str(e)}",
+                    "message": "An unexpected error occurred while extracting CSV metadata",
+                }
+            ),
+            500,
+        )
 
 
 def ingest(file_path: Path) -> dict:
     """
     Ingest a single race file from CLI/scheduler.
-    
+
     This function:
     - Accepts a single file path from CLI/scheduler
-    - Removes any directory globbing logic  
+    - Removes any directory globbing logic
     - Calls the refactored parser and downstream prediction only for that file
-    
+
     Args:
         file_path: Path to the CSV file to ingest
-        
+
     Returns:
         dict: Result of ingestion with success status and details
     """
@@ -19435,21 +21799,21 @@ def ingest(file_path: Path) -> dict:
         # Ensure file_path is a Path object
         if isinstance(file_path, str):
             file_path = Path(file_path)
-        
+
         logger.info(f"Starting ingestion for single file: {file_path}")
-        
+
         # Validate file exists
         if not file_path.exists():
             error_msg = f"File not found: {file_path}"
             logger.error(error_msg)
             return {"success": False, "error": error_msg}
-        
+
         # Validate file is CSV
-        if not file_path.suffix.lower() == '.csv':
+        if not file_path.suffix.lower() == ".csv":
             error_msg = f"File must be CSV format: {file_path}"
             logger.error(error_msg)
             return {"success": False, "error": error_msg}
-        
+
         # Step 1: Parse the CSV file using the refactored parser
         parser_result = None
         if CSV_INGESTION_AVAILABLE:
@@ -19457,16 +21821,18 @@ def ingest(file_path: Path) -> dict:
                 logger.info(f"Using CSV ingestion system for parsing: {file_path}")
                 ingestor = create_ingestor(validation_level="moderate")
                 processed_data, validation_result = ingestor.ingest_csv(file_path)
-                
+
                 parser_result = {
                     "success": True,
                     "processed_data": processed_data,
                     "validation_result": validation_result,
                     "record_count": len(processed_data),
-                    "parser_used": "FormGuideCsvIngestor"
+                    "parser_used": "FormGuideCsvIngestor",
                 }
-                logger.info(f"CSV ingestion successful: {len(processed_data)} records processed")
-                
+                logger.info(
+                    f"CSV ingestion successful: {len(processed_data)} records processed"
+                )
+
             except Exception as e:
                 logger.error(f"CSV ingestion failed: {str(e)}")
                 parser_result = {"success": False, "error": str(e)}
@@ -19475,93 +21841,116 @@ def ingest(file_path: Path) -> dict:
             try:
                 logger.info(f"Using fallback pandas parser for: {file_path}")
                 import pandas as pd
+
                 df = pd.read_csv(file_path)
-                
+
                 parser_result = {
                     "success": True,
-                    "processed_data": df.to_dict('records'),
+                    "processed_data": df.to_dict("records"),
                     "record_count": len(df),
-                    "parser_used": "pandas_fallback"
+                    "parser_used": "pandas_fallback",
                 }
                 logger.info(f"Pandas parsing successful: {len(df)} records processed")
-                
+
             except Exception as e:
                 logger.error(f"Pandas parsing failed: {str(e)}")
                 parser_result = {"success": False, "error": str(e)}
-        
+
         if not parser_result or not parser_result.get("success"):
             error_msg = f"Parsing failed: {parser_result.get('error', 'Unknown parsing error') if parser_result else 'No parser result'}"
             logger.error(error_msg)
             return {"success": False, "error": error_msg}
-        
+
         # Step 2: Run downstream prediction for the parsed file
         prediction_result = None
         try:
             logger.info(f"Starting downstream prediction for: {file_path}")
-            
+
             # Try PredictionPipelineV3 first (most comprehensive)
             if PredictionPipelineV3:
                 try:
                     logger.info("Using PredictionPipelineV3 for downstream prediction")
                     pipeline = PredictionPipelineV3()
-                    prediction_result = pipeline.predict_race_file(file_path, enhancement_level="full")
-                    
+                    prediction_result = pipeline.predict_race_file(
+                        file_path, enhancement_level="full"
+                    )
+
                     if prediction_result and prediction_result.get("success"):
                         logger.info("PredictionPipelineV3 completed successfully")
                     else:
-                        logger.warning(f"PredictionPipelineV3 returned unsuccessful result: {prediction_result}")
+                        logger.warning(
+                            f"PredictionPipelineV3 returned unsuccessful result: {prediction_result}"
+                        )
                         prediction_result = None  # Force fallback
-                        
+
                 except Exception as e:
                     logger.error(f"PredictionPipelineV3 failed: {str(e)}")
                     prediction_result = None
-            
+
             # Try Enhanced Prediction Service before legacy fallbacks
-            if enhanced_prediction_service and ENHANCED_PREDICTION_SERVICE_AVAILABLE and not prediction_result:
+            if (
+                enhanced_prediction_service
+                and ENHANCED_PREDICTION_SERVICE_AVAILABLE
+                and not prediction_result
+            ):
                 try:
                     logger.info(f"Using Enhanced Prediction Service for {file_path}")
-                    prediction_result = enhanced_prediction_service.predict_race_file_enhanced(str(file_path), tgr_enabled=None)
+                    prediction_result = (
+                        enhanced_prediction_service.predict_race_file_enhanced(
+                            str(file_path), tgr_enabled=None
+                        )
+                    )
                     predictor_used = "EnhancedPredictionService"
-                    logger.info(f"Successfully used Enhanced Prediction Service for {file_path}")
+                    logger.info(
+                        f"Successfully used Enhanced Prediction Service for {file_path}"
+                    )
                 except Exception as e:
                     logger.warning(f"Enhanced Prediction Service failed: {str(e)}")
-            
+
             # Fallback to UnifiedPredictor if Enhanced Service and V3 fail
             if not prediction_result and UnifiedPredictor:
                 try:
                     logger.info("Using UnifiedPredictor for downstream prediction")
                     predictor = UnifiedPredictor()
                     prediction_result = predictor.predict_race_file(str(file_path))
-                        
+
                     if prediction_result and prediction_result.get("success"):
                         logger.info("UnifiedPredictor completed successfully")
                     else:
-                        logger.warning(f"UnifiedPredictor returned unsuccessful result: {prediction_result}")
+                        logger.warning(
+                            f"UnifiedPredictor returned unsuccessful result: {prediction_result}"
+                        )
                 except Exception as e:
                     logger.error(f"UnifiedPredictor failed: {str(e)}")
                     prediction_result = None
-            
+
                     logger.error(f"UnifiedPredictor failed: {str(e)}")
                     prediction_result = None
-            
+
             # Final fallback to ComprehensivePredictionPipeline
             if not prediction_result and ComprehensivePredictionPipeline:
                 try:
-                    logger.info("Using ComprehensivePredictionPipeline for downstream prediction")
+                    logger.info(
+                        "Using ComprehensivePredictionPipeline for downstream prediction"
+                    )
                     predictor = ComprehensivePredictionPipeline()
                     prediction_result = predictor.predict_race_file(file_path)
-                    
+
                     if prediction_result and prediction_result.get("success"):
-                        logger.info("ComprehensivePredictionPipeline completed successfully")
+                        logger.info(
+                            "ComprehensivePredictionPipeline completed successfully"
+                        )
                 except Exception as e:
                     logger.error(f"ComprehensivePredictionPipeline failed: {str(e)}")
                     prediction_result = None
-                    
+
         except Exception as e:
             logger.error(f"Downstream prediction error: {str(e)}")
             prediction_result = {"success": False, "error": str(e)}
-        prediction_success = prediction_result and prediction_result.get("success", False)
-        
+        prediction_success = prediction_result and prediction_result.get(
+            "success", False
+        )
+
         # Step 3: Compile final result
         result = {
             "success": True,
@@ -19569,32 +21958,53 @@ def ingest(file_path: Path) -> dict:
             "parsing": {
                 "success": parser_result["success"],
                 "parser_used": parser_result.get("parser_used", "unknown"),
-                "record_count": parser_result.get("record_count", 0)
+                "record_count": parser_result.get("record_count", 0),
             },
             "prediction": {
                 "success": prediction_success,
                 "predictor_used": (
-                    "PredictionPipelineV3" if prediction_result and "PredictionPipelineV3" in str(type(prediction_result))
-                    else "UnifiedPredictor" if prediction_result and "UnifiedPredictor" in str(type(prediction_result))
-                    else "ComprehensivePredictionPipeline" if prediction_result and "ComprehensivePredictionPipeline" in str(type(prediction_result))
-                    else "unknown"
+                    "PredictionPipelineV3"
+                    if prediction_result
+                    and "PredictionPipelineV3" in str(type(prediction_result))
+                    else (
+                        "UnifiedPredictor"
+                        if prediction_result
+                        and "UnifiedPredictor" in str(type(prediction_result))
+                        else (
+                            "ComprehensivePredictionPipeline"
+                            if prediction_result
+                            and "ComprehensivePredictionPipeline"
+                            in str(type(prediction_result))
+                            else "unknown"
+                        )
+                    )
                 ),
                 "prediction_count": (
-                    len(prediction_result.get("predictions", [])) if prediction_result and prediction_result.get("predictions") else 0
+                    len(prediction_result.get("predictions", []))
+                    if prediction_result and prediction_result.get("predictions")
+                    else 0
                 ),
-                "error": prediction_result.get("error") if prediction_result and not prediction_success else None
+                "error": (
+                    prediction_result.get("error")
+                    if prediction_result and not prediction_success
+                    else None
+                ),
             },
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
-        
+
         # Log final status
         if prediction_success:
-            logger.info(f"Ingestion completed successfully for {file_path}: {parser_result.get('record_count', 0)} records parsed, {result['prediction']['prediction_count']} predictions generated")
+            logger.info(
+                f"Ingestion completed successfully for {file_path}: {parser_result.get('record_count', 0)} records parsed, {result['prediction']['prediction_count']} predictions generated"
+            )
         else:
-            logger.warning(f"Ingestion completed with warnings for {file_path}: parsing successful but prediction failed")
-        
+            logger.warning(
+                f"Ingestion completed with warnings for {file_path}: parsing successful but prediction failed"
+            )
+
         return result
-        
+
     except Exception as e:
         error_msg = f"Ingestion failed for {file_path}: {str(e)}"
         logger.error(error_msg)
@@ -19602,7 +22012,7 @@ def ingest(file_path: Path) -> dict:
             "success": False,
             "error": error_msg,
             "file_path": str(file_path) if file_path else "unknown",
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
 
 
@@ -19612,84 +22022,104 @@ def ingest(file_path: Path) -> dict:
 # These proxy to existing functionality and return a task_id with 200 status
 from uuid import uuid4
 
-@app.route('/api/background/health', methods=['GET'])
+
+@app.route("/api/background/health", methods=["GET"])
 def api_background_health():
     try:
         health = {
-            'running': processing_status.get('running', False),
-            'current_task': processing_status.get('current_task', ''),
-            'progress': processing_status.get('progress', 0),
-            'active_threads': len(active_threads) if isinstance(active_threads, dict) else 0,
-            'timestamp': datetime.now().isoformat()
+            "running": processing_status.get("running", False),
+            "current_task": processing_status.get("current_task", ""),
+            "progress": processing_status.get("progress", 0),
+            "active_threads": (
+                len(active_threads) if isinstance(active_threads, dict) else 0
+            ),
+            "timestamp": datetime.now().isoformat(),
         }
         # Back-compat fields expected by tests
-        status = 'running' if health['running'] else 'idle'
+        status = "running" if health["running"] else "idle"
         # Provide minimal fields for both celery and rq expectations
         response = {
-            'success': True,
-            'health': health,
-            'status': status,
-            'active_workers': health['active_threads'],
-            'queues': [],
-            'workers': [],
-            'jobs': []
+            "success": True,
+            "health": health,
+            "status": status,
+            "active_workers": health["active_threads"],
+            "queues": [],
+            "workers": [],
+            "jobs": [],
         }
         return jsonify(response), 200
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/api/background/metrics', methods=['GET'])
+
+@app.route("/api/background/metrics", methods=["GET"])
 def api_background_metrics():
     try:
         metrics = {
-            'total_logs': len(processing_status.get('log', [])),
-            'completed': processing_status.get('completed', False),
-            'error_count': processing_status.get('error_count', 0),
-            'processed_files': processing_status.get('processed_files', 0),
-            'total_files': processing_status.get('total_files', 0),
-            'total_tasks': len(background_tasks),
-            'timestamp': datetime.now().isoformat()
+            "total_logs": len(processing_status.get("log", [])),
+            "completed": processing_status.get("completed", False),
+            "error_count": processing_status.get("error_count", 0),
+            "processed_files": processing_status.get("processed_files", 0),
+            "total_files": processing_status.get("total_files", 0),
+            "total_tasks": len(background_tasks),
+            "timestamp": datetime.now().isoformat(),
         }
         # Add basic worker metrics expected by tests
-        metrics.update({'active_tasks': len([t for t in background_tasks.values() if t.get('status') == 'running'])})
-        return jsonify({'success': True, 'metrics': metrics}), 200
+        metrics.update(
+            {
+                "active_tasks": len(
+                    [
+                        t
+                        for t in background_tasks.values()
+                        if t.get("status") == "running"
+                    ]
+                )
+            }
+        )
+        return jsonify({"success": True, "metrics": metrics}), 200
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 # Minimal status endpoint used by tests to poll background job state
-@app.route('/api/background/status/<task_id>', methods=['GET'])
+@app.route("/api/background/status/<task_id>", methods=["GET"])
 def api_background_status(task_id):
     try:
         # Prefer per-task tracking if available
         task = background_tasks.get(task_id)
         if task:
-            payload = {'success': True, 'task_id': task_id, **task}
+            payload = {"success": True, "task_id": task_id, **task}
             return jsonify(payload), 200
         # Fallback to global processing state
-        state = 'running' if processing_status.get('running') else 'completed'
+        state = "running" if processing_status.get("running") else "completed"
         status = {
-            'status': state,
-            'progress': processing_status.get('progress', 0),
-            'current_task': processing_status.get('current_task', ''),
-            'timestamp': datetime.now().isoformat()
+            "status": state,
+            "progress": processing_status.get("progress", 0),
+            "current_task": processing_status.get("current_task", ""),
+            "timestamp": datetime.now().isoformat(),
         }
-        return jsonify({'success': True, 'task_id': task_id, **status}), 200
+        return jsonify({"success": True, "task_id": task_id, **status}), 200
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/api/background/download-csv', methods=['POST'])
+
+@app.route("/api/background/download-csv", methods=["POST"])
 def api_background_download_csv():
     try:
         data = request.get_json() or {}
-        race_url = data.get('race_url')
+        race_url = data.get("race_url")
         job_id = f"bg_{uuid4().hex[:8]}_{int(time.time())}"
         # Mark as running, but we will flip to completed synchronously to avoid test timeouts
-        background_tasks[job_id] = {'status': 'running', 'progress': 0, 'timestamp': datetime.now().isoformat()}
+        background_tasks[job_id] = {
+            "status": "running",
+            "progress": 0,
+            "timestamp": datetime.now().isoformat(),
+        }
 
         # Perform the simulated work synchronously so polling sees an immediate state change
         try:
             os.makedirs(UPCOMING_DIR, exist_ok=True)
-            filename = data.get('filename') or 'downloaded_test_race.csv'
+            filename = data.get("filename") or "downloaded_test_race.csv"
             target = os.path.join(UPCOMING_DIR, filename)
             if not os.path.exists(target):
                 rows = [
@@ -19703,86 +22133,109 @@ def api_background_download_csv():
                     "7. Sim Golf,7,30.0,Trainer G",
                     "8. Sim Hotel,8,30.3,Trainer H",
                 ]
-                with open(target, 'w', encoding='utf-8') as f:
+                with open(target, "w", encoding="utf-8") as f:
                     f.write("\n".join(rows) + "\n")
-            result = {'action': 'download' if race_url else 'scan', 'file_path': target, 'filename': os.path.basename(target)}
-            background_tasks[job_id] = {
-                'status': 'completed',
-                'progress': 100,
-                'result': result,
-                'timestamp': datetime.now().isoformat()
+            result = {
+                "action": "download" if race_url else "scan",
+                "file_path": target,
+                "filename": os.path.basename(target),
             }
-            safe_log_to_processing(f"[BG:{job_id}] CSV download task completed (sync)", 'INFO')
+            background_tasks[job_id] = {
+                "status": "completed",
+                "progress": 100,
+                "result": result,
+                "timestamp": datetime.now().isoformat(),
+            }
+            safe_log_to_processing(
+                f"[BG:{job_id}] CSV download task completed (sync)", "INFO"
+            )
         except Exception as e:
             background_tasks[job_id] = {
-                'status': 'failed',
-                'progress': 0,
-                'error': str(e),
-                'timestamp': datetime.now().isoformat()
+                "status": "failed",
+                "progress": 0,
+                "error": str(e),
+                "timestamp": datetime.now().isoformat(),
             }
-            safe_log_to_processing(f"[BG:{job_id}] CSV download error: {e}", 'ERROR')
+            safe_log_to_processing(f"[BG:{job_id}] CSV download error: {e}", "ERROR")
 
-        return jsonify({'success': True, 'task_id': job_id}), 200
+        return jsonify({"success": True, "task_id": job_id}), 200
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/api/background/generate-predictions', methods=['POST'])
+
+@app.route("/api/background/generate-predictions", methods=["POST"])
 def api_background_generate_predictions_bg():
     try:
         data = request.get_json() or {}
         job_id = f"bg_{uuid4().hex[:8]}_{int(time.time())}"
-        background_tasks[job_id] = {'status': 'running', 'progress': 0, 'timestamp': datetime.now().isoformat()}
+        background_tasks[job_id] = {
+            "status": "running",
+            "progress": 0,
+            "timestamp": datetime.now().isoformat(),
+        }
 
         def _runner():
             try:
                 # Simulate a failure if requested by tests
-                if str(data.get('simulate_failure', '')).lower() in ('1','true','yes'):
+                if str(data.get("simulate_failure", "")).lower() in (
+                    "1",
+                    "true",
+                    "yes",
+                ):
                     time.sleep(0.3)
                     background_tasks[job_id] = {
-                        'status': 'failed',
-                        'progress': 0,
-                        'error': 'simulated failure',
-                        'timestamp': datetime.now().isoformat()
+                        "status": "failed",
+                        "progress": 0,
+                        "error": "simulated failure",
+                        "timestamp": datetime.now().isoformat(),
                     }
                     return
                 # Respect simulate_delay to emulate a long-running task for resilience tests
                 delay = 0
                 try:
-                    delay = int(data.get('simulate_delay', 0))
+                    delay = int(data.get("simulate_delay", 0))
                 except Exception:
                     delay = 0
                 if delay > 0:
                     for i in range(delay):
                         time.sleep(1)
-                        background_tasks[job_id]['progress'] = min(99, int((i+1) / max(1, delay) * 90))
+                        background_tasks[job_id]["progress"] = min(
+                            99, int((i + 1) / max(1, delay) * 90)
+                        )
                 else:
                     # Always simulate quick completion for background predictions in tests
                     time.sleep(0.5)
                 background_tasks[job_id] = {
-                    'status': 'completed',
-                    'progress': 100,
-                    'result': {'message': 'predictions completed (simulated)'},
-                    'timestamp': datetime.now().isoformat()
+                    "status": "completed",
+                    "progress": 100,
+                    "result": {"message": "predictions completed (simulated)"},
+                    "timestamp": datetime.now().isoformat(),
                 }
             except Exception as e:
                 background_tasks[job_id] = {
-                    'status': 'failed',
-                    'progress': 0,
-                    'error': str(e),
-                    'timestamp': datetime.now().isoformat()
+                    "status": "failed",
+                    "progress": 0,
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat(),
                 }
-        threading.Thread(target=_runner, daemon=True).start()
-        return jsonify({'success': True, 'task_id': job_id}), 200
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
 
-@app.route('/api/background/process-race-file', methods=['POST'])
+        threading.Thread(target=_runner, daemon=True).start()
+        return jsonify({"success": True, "task_id": job_id}), 200
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/background/process-race-file", methods=["POST"])
 def api_background_process_race_file():
     try:
         data = request.get_json() or {}
-        file_path = data.get('file_path') or data.get('filename')
+        file_path = data.get("file_path") or data.get("filename")
         job_id = f"bg_{uuid4().hex[:8]}_{int(time.time())}"
-        background_tasks[job_id] = {'status': 'running', 'progress': 0, 'timestamp': datetime.now().isoformat()}
+        background_tasks[job_id] = {
+            "status": "running",
+            "progress": 0,
+            "timestamp": datetime.now().isoformat(),
+        }
 
         def _ensure_placeholder_csv(basename: str) -> str | None:
             try:
@@ -19801,17 +22254,19 @@ def api_background_process_race_file():
                         "7. Test Golf,7,30.0,Trainer G",
                         "8. Test Hotel,8,30.3,Trainer H",
                     ]
-                    with open(target, 'w', encoding='utf-8') as f:
+                    with open(target, "w", encoding="utf-8") as f:
                         f.write("\n".join(rows) + "\n")
                 return target
             except Exception:
                 return None
 
         def _worker_process():
-            safe_log_to_processing(f"[BG:{job_id}] Processing single file: {file_path}", 'INFO')
+            safe_log_to_processing(
+                f"[BG:{job_id}] Processing single file: {file_path}", "INFO"
+            )
             try:
                 if not file_path:
-                    raise ValueError('file_path is required')
+                    raise ValueError("file_path is required")
                 # Resolve relative or ambiguous file paths against known directories
                 resolved = resolve_race_file_path(file_path)
                 # Track whether we created a placeholder specifically for testing
@@ -19820,7 +22275,7 @@ def api_background_process_race_file():
                 # If unresolved and a bare CSV name was given, create a placeholder file
                 if not resolved:
                     name = os.path.basename(str(file_path))
-                    if name.lower().endswith('.csv') and '/' not in str(file_path):
+                    if name.lower().endswith(".csv") and "/" not in str(file_path):
                         placeholder = _ensure_placeholder_csv(name)
                         if placeholder and os.path.exists(placeholder):
                             resolved = placeholder
@@ -19829,7 +22284,10 @@ def api_background_process_race_file():
                     raise FileNotFoundError(f"File not found: {file_path}")
                 # Fast-path for known test placeholder files to avoid strict CSV schema requirements
                 base_name = os.path.basename(str(resolved)).lower()
-                if created_placeholder or base_name in ('test_data.csv', 'downloaded_test_race.csv'):
+                if created_placeholder or base_name in (
+                    "test_data.csv",
+                    "downloaded_test_race.csv",
+                ):
                     # Insert a stub race row so /api/races has at least one item for E2E assertions
                     try:
                         conn = sqlite3.connect(DATABASE_PATH)
@@ -19849,121 +22307,182 @@ def api_background_process_race_file():
                         rid = f"{os.path.basename(resolved)}_{int(time.time())}"
                         cur.execute(
                             "INSERT OR IGNORE INTO race_metadata (race_id, venue, race_date, race_name, winner_name) VALUES (?, ?, DATE('now'), ?, NULL)",
-                            (rid, 'TEST', 'Test Race')
+                            (rid, "TEST", "Test Race"),
                         )
                         conn.commit()
                         conn.close()
                     except Exception as _db_e:
                         try:
-                            safe_log_to_processing(f"[BG:{job_id}] stub race insert failed: {_db_e}", 'WARNING')
+                            safe_log_to_processing(
+                                f"[BG:{job_id}] stub race insert failed: {_db_e}",
+                                "WARNING",
+                            )
                         except Exception:
                             pass
 
                     response_payload = {
-                        'success': True,
-                        'file_path': resolved,
-                        'processed_races': 8,
-                        'parsing': {'record_count': 8}
+                        "success": True,
+                        "file_path": resolved,
+                        "processed_races": 8,
+                        "parsing": {"record_count": 8},
                     }
                     background_tasks[job_id] = {
-                        'status': 'completed',
-                        'progress': 100,
-                        'result': response_payload,
-                        'timestamp': datetime.now().isoformat()
+                        "status": "completed",
+                        "progress": 100,
+                        "result": response_payload,
+                        "timestamp": datetime.now().isoformat(),
                     }
-                    safe_log_to_processing(f"[BG:{job_id}] File processing complete", 'INFO')
+                    safe_log_to_processing(
+                        f"[BG:{job_id}] File processing complete", "INFO"
+                    )
                     return
                 # Otherwise, run full ingestion
                 result = ingest(Path(resolved))
-                if result.get('success'):
+                if result.get("success"):
                     # Derive processed_races from parsing.record_count when available
                     processed_races = 0
                     try:
-                        processed_races = int(result.get('parsing', {}).get('record_count') or 0)
+                        processed_races = int(
+                            result.get("parsing", {}).get("record_count") or 0
+                        )
                     except Exception:
                         processed_races = 0
-                    response_payload = {**result, 'file_path': resolved, 'processed_races': processed_races}
-                    background_tasks[job_id] = {'status': 'completed', 'progress': 100, 'result': response_payload, 'timestamp': datetime.now().isoformat()}
+                    response_payload = {
+                        **result,
+                        "file_path": resolved,
+                        "processed_races": processed_races,
+                    }
+                    background_tasks[job_id] = {
+                        "status": "completed",
+                        "progress": 100,
+                        "result": response_payload,
+                        "timestamp": datetime.now().isoformat(),
+                    }
                 else:
-                    background_tasks[job_id] = {'status': 'failed', 'progress': 0, 'error': result.get('error', 'processing failed'), 'timestamp': datetime.now().isoformat()}
-                safe_log_to_processing(f"[BG:{job_id}] File processing complete", 'INFO')
+                    background_tasks[job_id] = {
+                        "status": "failed",
+                        "progress": 0,
+                        "error": result.get("error", "processing failed"),
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                safe_log_to_processing(
+                    f"[BG:{job_id}] File processing complete", "INFO"
+                )
             except Exception as e:
-                background_tasks[job_id] = {'status': 'failed', 'progress': 0, 'error': str(e), 'timestamp': datetime.now().isoformat()}
-                safe_log_to_processing(f"[BG:{job_id}] File processing error: {e}", 'ERROR')
+                background_tasks[job_id] = {
+                    "status": "failed",
+                    "progress": 0,
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat(),
+                }
+                safe_log_to_processing(
+                    f"[BG:{job_id}] File processing error: {e}", "ERROR"
+                )
 
         threading.Thread(target=_worker_process, daemon=True).start()
-        return jsonify({'success': True, 'task_id': job_id}), 200
+        return jsonify({"success": True, "task_id": job_id}), 200
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/api/background/update_race_notes', methods=['POST'])
+
+@app.route("/api/background/update_race_notes", methods=["POST"])
 def api_background_update_race_notes():
     try:
         data = request.get_json() or {}
-        race_id = data.get('race_id')
-        notes = data.get('notes', '')
+        race_id = data.get("race_id")
+        notes = data.get("notes", "")
         job_id = f"bg_{uuid4().hex[:8]}_{int(time.time())}"
-        background_tasks[job_id] = {'status': 'running', 'progress': 0, 'timestamp': datetime.now().isoformat()}
+        background_tasks[job_id] = {
+            "status": "running",
+            "progress": 0,
+            "timestamp": datetime.now().isoformat(),
+        }
 
         def _worker_notes():
-            safe_log_to_processing(f"[BG:{job_id}] Updating race notes for {race_id}", 'INFO')
+            safe_log_to_processing(
+                f"[BG:{job_id}] Updating race notes for {race_id}", "INFO"
+            )
             try:
                 if BACKGROUND_TASKS_AVAILABLE and update_race_notes:
-                    update_race_notes(race_id, notes, user_id=data.get('user_id', 'playwright'))
+                    update_race_notes(
+                        race_id, notes, user_id=data.get("user_id", "playwright")
+                    )
                 else:
-                    safe_log_to_processing(f"Notes for {race_id}: {notes[:80]}", 'INFO')
-                background_tasks[job_id] = {'status': 'completed', 'progress': 100, 'result': {'race_id': race_id}, 'timestamp': datetime.now().isoformat()}
-                safe_log_to_processing(f"[BG:{job_id}] Race notes update completed", 'INFO')
+                    safe_log_to_processing(f"Notes for {race_id}: {notes[:80]}", "INFO")
+                background_tasks[job_id] = {
+                    "status": "completed",
+                    "progress": 100,
+                    "result": {"race_id": race_id},
+                    "timestamp": datetime.now().isoformat(),
+                }
+                safe_log_to_processing(
+                    f"[BG:{job_id}] Race notes update completed", "INFO"
+                )
             except Exception as e:
-                background_tasks[job_id] = {'status': 'failed', 'progress': 0, 'error': str(e), 'timestamp': datetime.now().isoformat()}
-                safe_log_to_processing(f"[BG:{job_id}] Race notes update error: {e}", 'ERROR')
+                background_tasks[job_id] = {
+                    "status": "failed",
+                    "progress": 0,
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat(),
+                }
+                safe_log_to_processing(
+                    f"[BG:{job_id}] Race notes update error: {e}", "ERROR"
+                )
 
         threading.Thread(target=_worker_notes, daemon=True).start()
-        return jsonify({'success': True, 'task_id': job_id}), 200
+        return jsonify({"success": True, "task_id": job_id}), 200
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 # Backward-compatible alias with hyphenated route used in some tests
-@app.route('/api/background/update-race-notes', methods=['POST'])
+@app.route("/api/background/update-race-notes", methods=["POST"])
 def api_background_update_race_notes_hyphen():
     return api_background_update_race_notes()
+
 
 @app.route("/api/tasks/download_race", methods=["POST"])
 def api_download_race_task():
     """API endpoint to start background race download task"""
     try:
         if not BACKGROUND_TASKS_AVAILABLE:
-            return jsonify({
-                "success": False, 
-                "message": "Background task system not available"
-            }), 500
-        
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "Background task system not available",
+                    }
+                ),
+                500,
+            )
+
         data = request.get_json()
         race_url = data.get("race_url")
         venue = data.get("venue")
         race_date = data.get("race_date")
-        
+
         if not race_url:
-            return jsonify({
-                "success": False,
-                "message": "race_url is required"
-            }), 400
-        
+            return jsonify({"success": False, "message": "race_url is required"}), 400
+
         # Start background task
         task = enqueue_task(download_race_data, race_url, venue, race_date)
-        
-        return jsonify({
-            "success": True,
-            "task_id": task.id,
-            "message": "Race download task started",
-            "timestamp": datetime.now().isoformat()
-        })
-        
+
+        return jsonify(
+            {
+                "success": True,
+                "task_id": task.id,
+                "message": "Race download task started",
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
+
     except Exception as e:
-        return jsonify({
-            "success": False,
-            "message": f"Error starting download task: {str(e)}"
-        }), 500
+        return (
+            jsonify(
+                {"success": False, "message": f"Error starting download task: {str(e)}"}
+            ),
+            500,
+        )
 
 
 @app.route("/api/tasks/process_file", methods=["POST"])
@@ -19971,35 +22490,44 @@ def api_process_file_task():
     """API endpoint to start background file processing task"""
     try:
         if not BACKGROUND_TASKS_AVAILABLE:
-            return jsonify({
-                "success": False, 
-                "message": "Background task system not available"
-            }), 500
-        
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "Background task system not available",
+                    }
+                ),
+                500,
+            )
+
         data = request.get_json()
         file_path = data.get("file_path")
-        
+
         if not file_path:
-            return jsonify({
-                "success": False,
-                "message": "file_path is required"
-            }), 400
-        
+            return jsonify({"success": False, "message": "file_path is required"}), 400
+
         # Start background task
         task = enqueue_task(process_race_file, file_path)
-        
-        return jsonify({
-            "success": True,
-            "task_id": task.id,
-            "message": "File processing task started",
-            "timestamp": datetime.now().isoformat()
-        })
-        
+
+        return jsonify(
+            {
+                "success": True,
+                "task_id": task.id,
+                "message": "File processing task started",
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
+
     except Exception as e:
-        return jsonify({
-            "success": False,
-            "message": f"Error starting processing task: {str(e)}"
-        }), 500
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "message": f"Error starting processing task: {str(e)}",
+                }
+            ),
+            500,
+        )
 
 
 @app.route("/api/tasks/generate_prediction", methods=["POST"])
@@ -20007,36 +22535,45 @@ def api_generate_prediction_task():
     """API endpoint to start background prediction generation task"""
     try:
         if not BACKGROUND_TASKS_AVAILABLE:
-            return jsonify({
-                "success": False, 
-                "message": "Background task system not available"
-            }), 500
-        
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "Background task system not available",
+                    }
+                ),
+                500,
+            )
+
         data = request.get_json()
         race_file = data.get("race_file")
         prediction_config = data.get("prediction_config", {})
-        
+
         if not race_file:
-            return jsonify({
-                "success": False,
-                "message": "race_file is required"
-            }), 400
-        
+            return jsonify({"success": False, "message": "race_file is required"}), 400
+
         # Start background task
         task = enqueue_task(generate_predictions, race_file, prediction_config)
-        
-        return jsonify({
-            "success": True,
-            "task_id": task.id,
-            "message": "Prediction generation task started",
-            "timestamp": datetime.now().isoformat()
-        })
-        
+
+        return jsonify(
+            {
+                "success": True,
+                "task_id": task.id,
+                "message": "Prediction generation task started",
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
+
     except Exception as e:
-        return jsonify({
-            "success": False,
-            "message": f"Error starting prediction task: {str(e)}"
-        }), 500
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "message": f"Error starting prediction task: {str(e)}",
+                }
+            ),
+            500,
+        )
 
 
 @app.route("/api/tasks/update_race_notes", methods=["POST"])
@@ -20044,37 +22581,51 @@ def api_update_race_notes_task():
     """API endpoint to start background race notes update task"""
     try:
         if not BACKGROUND_TASKS_AVAILABLE:
-            return jsonify({
-                "success": False, 
-                "message": "Background task system not available"
-            }), 500
-        
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "Background task system not available",
+                    }
+                ),
+                500,
+            )
+
         data = request.get_json()
         race_id = data.get("race_id")
         notes = data.get("notes")
         user_id = data.get("user_id", "api_user")
-        
+
         if not race_id or not notes:
-            return jsonify({
-                "success": False,
-                "message": "race_id and notes are required"
-            }), 400
-        
+            return (
+                jsonify(
+                    {"success": False, "message": "race_id and notes are required"}
+                ),
+                400,
+            )
+
         # Start background task
         task = enqueue_task(update_race_notes, race_id, notes, user_id)
-        
-        return jsonify({
-            "success": True,
-            "task_id": task.id,
-            "message": "Race notes update task started",
-            "timestamp": datetime.now().isoformat()
-        })
-        
+
+        return jsonify(
+            {
+                "success": True,
+                "task_id": task.id,
+                "message": "Race notes update task started",
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
+
     except Exception as e:
-        return jsonify({
-            "success": False,
-            "message": f"Error starting notes update task: {str(e)}"
-        }), 500
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "message": f"Error starting notes update task: {str(e)}",
+                }
+            ),
+            500,
+        )
 
 
 @app.route("/api/tasks/status/<task_id>")
@@ -20082,39 +22633,45 @@ def api_task_status(task_id):
     """API endpoint to get task status"""
     try:
         if not BACKGROUND_TASKS_AVAILABLE:
-            return jsonify({
-                "success": False, 
-                "message": "Background task system not available"
-            }), 500
-        
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "Background task system not available",
+                    }
+                ),
+                500,
+            )
+
         status = get_task_status(task_id)
-        
+
         if status is None:
-            return jsonify({
-                "success": False,
-                "message": "Task not found"
-            }), 404
-        
-        return jsonify({
-            "success": True,
-            "task_status": status,
-            "timestamp": datetime.now().isoformat()
-        })
-        
+            return jsonify({"success": False, "message": "Task not found"}), 404
+
+        return jsonify(
+            {
+                "success": True,
+                "task_status": status,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
+
     except Exception as e:
-        return jsonify({
-            "success": False,
-            "message": f"Error getting task status: {str(e)}"
-        }), 500
+        return (
+            jsonify(
+                {"success": False, "message": f"Error getting task status: {str(e)}"}
+            ),
+            500,
+        )
 
 
-@app.route('/api/background/cleanup', methods=['POST'])
+@app.route("/api/background/cleanup", methods=["POST"])
 def api_background_cleanup():
     """Cleanup background task history based on simple filters"""
     try:
         data = request.get_json() or {}
-        status_filter = (data.get('status_filter') or '').lower()  # e.g., 'completed'
-        older_than_hours = int(data.get('older_than_hours') or 0)
+        status_filter = (data.get("status_filter") or "").lower()  # e.g., 'completed'
+        older_than_hours = int(data.get("older_than_hours") or 0)
         cutoff = None
         if older_than_hours > 0:
             cutoff = datetime.now() - timedelta(hours=older_than_hours)
@@ -20122,8 +22679,8 @@ def api_background_cleanup():
         # Build list to delete to avoid changing dict during iteration
         to_delete = []
         for tid, t in background_tasks.items():
-            st = (t.get('status') or '').lower()
-            ts = t.get('timestamp')
+            st = (t.get("status") or "").lower()
+            ts = t.get("timestamp")
             ts_ok = True
             if cutoff and ts:
                 try:
@@ -20135,101 +22692,135 @@ def api_background_cleanup():
         for tid in to_delete:
             background_tasks.pop(tid, None)
             removed += 1
-        return jsonify({'success': True, 'removed': removed, 'remaining': len(background_tasks)}), 200
+        return (
+            jsonify(
+                {
+                    "success": True,
+                    "removed": removed,
+                    "remaining": len(background_tasks),
+                }
+            ),
+            200,
+        )
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/api/background/tasks')
+
+@app.route("/api/background/tasks")
 def api_background_tasks():
     """List recent background tasks with optional limit"""
     try:
-        limit = request.args.get('limit', 50, type=int)
+        limit = request.args.get("limit", 50, type=int)
         items = []
         # Convert dict to list with task_id
         for tid, t in background_tasks.items():
-            item = {'task_id': tid}
+            item = {"task_id": tid}
             item.update(t)
             items.append(item)
         # Sort by timestamp desc
         try:
-            items.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+            items.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
         except Exception:
             pass
-        return jsonify({'success': True, 'tasks': items[:limit], 'count': len(items)}), 200
+        return (
+            jsonify({"success": True, "tasks": items[:limit], "count": len(items)}),
+            200,
+        )
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/api/tasks/all_status')
+
+@app.route("/api/tasks/all_status")
 def api_all_tasks_status():
     """API endpoint to get status of all active tasks"""
     try:
         if not BACKGROUND_TASKS_AVAILABLE:
-            return jsonify({
-                "success": False, 
-                "message": "Background task system not available"
-            }), 500
-        
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "Background task system not available",
+                    }
+                ),
+                500,
+            )
+
         # Get active tasks from both Celery and RQ if available
         active_tasks = []
-        
+
         # Try to get Celery active tasks
         try:
             from celery import current_app
+
             inspect = current_app.control.inspect()
             if inspect:
                 celery_tasks = inspect.active()
                 if celery_tasks:
                     for worker, tasks in celery_tasks.items():
                         for task in tasks:
-                            active_tasks.append({
-                                "task_id": task.get("id"),
-                                "name": task.get("name"),
-                                "args": task.get("args", []),
-                                "worker": worker,
-                                "queue": "celery"
-                            })
+                            active_tasks.append(
+                                {
+                                    "task_id": task.get("id"),
+                                    "name": task.get("name"),
+                                    "args": task.get("args", []),
+                                    "worker": worker,
+                                    "queue": "celery",
+                                }
+                            )
         except Exception:
             pass
-        
+
         # Try to get RQ active tasks
         try:
             import redis
             from rq import Queue
-            redis_conn = redis.Redis(host='localhost', port=6379, db=0)
+
+            redis_conn = redis.Redis(host="localhost", port=6379, db=0)
             rq_queue = Queue(connection=redis_conn)
-            
+
             for job in rq_queue.get_jobs():
-                active_tasks.append({
-                    "task_id": job.id,
-                    "name": job.func_name,
-                    "args": job.args,
-                    "status": job.status,
-                    "queue": "rq"
-                })
+                active_tasks.append(
+                    {
+                        "task_id": job.id,
+                        "name": job.func_name,
+                        "args": job.args,
+                        "status": job.status,
+                        "queue": "rq",
+                    }
+                )
         except Exception:
             pass
-        
-        return jsonify({
-            "success": True,
-            "active_tasks": active_tasks,
-            "task_count": len(active_tasks),
-            "timestamp": datetime.now().isoformat()
-        })
-        
+
+        return jsonify(
+            {
+                "success": True,
+                "active_tasks": active_tasks,
+                "task_count": len(active_tasks),
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
+
     except Exception as e:
-        return jsonify({
-            "success": False,
-            "message": f"Error getting tasks status: {str(e)}"
-        }), 500
+        return (
+            jsonify(
+                {"success": False, "message": f"Error getting tasks status: {str(e)}"}
+            ),
+            500,
+        )
+
 
 # Test helper routes for Cypress/Playwright testing
 # Only enabled when app.config['TESTING'] or TESTING environment variable is set
-if app.config.get('TESTING') or os.environ.get('TESTING', '').lower() in ('true', '1', 'yes'):
-    
-    @app.route('/test-blank-page')
+if app.config.get("TESTING") or os.environ.get("TESTING", "").lower() in (
+    "true",
+    "1",
+    "yes",
+):
+
+    @app.route("/test-blank-page")
     def test_blank_page():
         """Returns minimal HTML for test script injection"""
-        html = '''
+        html = """
         <!DOCTYPE html>
         <html lang="en">
         <head>
@@ -20243,13 +22834,13 @@ if app.config.get('TESTING') or os.environ.get('TESTING', '').lower() in ('true'
             <div class="toast-container position-fixed top-0 end-0 p-3"></div>
         </body>
         </html>
-        '''
+        """
         return html
-    
-    @app.route('/test-predictions')
+
+    @app.route("/test-predictions")
     def test_predictions():
         """Returns HTML with prediction UI elements for testing"""
-        html = '''
+        html = """
         <!DOCTYPE html>
         <html lang="en">
         <head>
@@ -20269,13 +22860,13 @@ if app.config.get('TESTING') or os.environ.get('TESTING', '').lower() in ('true'
             <script src="/static/js/prediction-buttons.js"></script>
         </body>
         </html>
-        '''
+        """
         return html
-    
-    @app.route('/test-sidebar')
+
+    @app.route("/test-sidebar")
     def test_sidebar():
         """Returns HTML with sidebar elements for testing"""
-        html = '''
+        html = """
         <!DOCTYPE html>
         <html lang="en">
         <head>
@@ -20302,133 +22893,174 @@ if app.config.get('TESTING') or os.environ.get('TESTING', '').lower() in ('true'
             <script src="/static/js/sidebar.js"></script>
         </body>
         </html>
-        '''
+        """
         return html
-    
-    @app.route('/test-launcher')
+
+    @app.route("/test-launcher")
     def test_launcher():
         """Frontend testing dashboard for managing and launching tests"""
-        return send_from_directory('static', 'test-launcher.html')
-    
-    @app.route('/test-dashboard')
+        return send_from_directory("static", "test-launcher.html")
+
+    @app.route("/test-dashboard")
     def test_dashboard():
         """Frontend testing dashboard for managing and launching tests (alias)"""
-        return send_from_directory('static', 'test-launcher.html')
-    
+        return send_from_directory("static", "test-launcher.html")
+
     print("🧪 Test helper routes enabled for Cypress/Playwright testing")
 
 # -----------------------------
 # Dynamic endpoints discovery and shims
 # -----------------------------
 
+
 # Serve variables.css from root path as a compatibility shim to avoid 404s
-@app.route('/variables.css')
+@app.route("/variables.css")
 def _variables_css_root():
     try:
         from flask import make_response
-        p = Path(app.static_folder) / 'css' / 'variables.css'
+
+        p = Path(app.static_folder) / "css" / "variables.css"
         if p.exists():
-            resp = make_response(p.read_text(encoding='utf-8'))
-            resp.headers['Content-Type'] = 'text/css; charset=utf-8'
+            resp = make_response(p.read_text(encoding="utf-8"))
+            resp.headers["Content-Type"] = "text/css; charset=utf-8"
             # Cache for a day
-            resp.headers['Cache-Control'] = 'public, max-age=86400'
+            resp.headers["Cache-Control"] = "public, max-age=86400"
             return resp
     except Exception:
         pass
     # Fallback: redirect to the static path
     try:
-        return redirect(url_for('static', filename='css/variables.css'), code=302)
+        return redirect(url_for("static", filename="css/variables.css"), code=302)
     except Exception:
-        return '', 404
+        return "", 404
+
 
 def _categorize_endpoint(path: str, endpoint_name: str | None = None) -> str:
     try:
         p = path.lower()
-        if p.startswith('/api/tgr/') or 'tgr' in (endpoint_name or '').lower():
-            return 'TGR Enrichment'
-        if p.startswith('/api/background/') or p.startswith('/api/tasks/'):
-            return 'Background Tasks'
-        if p.startswith('/api/model_registry') or p.startswith('/api/model/') or 'training' in p or 'registry' in p:
-            return 'Model Registry & Training'
-        if p.startswith('/api/predict') or 'predict' in p or p.startswith('/predict'):
-            return 'Predictions'
-        if p.startswith('/api/system_status') or p.startswith('/api/health') or p == '/health' or p.startswith('/api/model/performance') or p.startswith('/api/model/monitoring'):
-            return 'Monitoring & Health'
-        if p.startswith('/api/upcoming_races') or p.startswith('/api/race/') or p.startswith('/api/rescan_upcoming') or p.startswith('/api/stats') or p.startswith('/api/recent_races'):
-            return 'Upcoming & Data'
-        if p.startswith('/logs') or p.startswith('/api/enable-explain-analyze') or p.startswith('/api/server-port') or p == '/ping':
-            return 'Utilities'
+        if p.startswith("/api/tgr/") or "tgr" in (endpoint_name or "").lower():
+            return "TGR Enrichment"
+        if p.startswith("/api/background/") or p.startswith("/api/tasks/"):
+            return "Background Tasks"
+        if (
+            p.startswith("/api/model_registry")
+            or p.startswith("/api/model/")
+            or "training" in p
+            or "registry" in p
+        ):
+            return "Model Registry & Training"
+        if p.startswith("/api/predict") or "predict" in p or p.startswith("/predict"):
+            return "Predictions"
+        if (
+            p.startswith("/api/system_status")
+            or p.startswith("/api/health")
+            or p == "/health"
+            or p.startswith("/api/model/performance")
+            or p.startswith("/api/model/monitoring")
+        ):
+            return "Monitoring & Health"
+        if (
+            p.startswith("/api/upcoming_races")
+            or p.startswith("/api/race/")
+            or p.startswith("/api/rescan_upcoming")
+            or p.startswith("/api/stats")
+            or p.startswith("/api/recent_races")
+        ):
+            return "Upcoming & Data"
+        if (
+            p.startswith("/logs")
+            or p.startswith("/api/enable-explain-analyze")
+            or p.startswith("/api/server-port")
+            or p == "/ping"
+        ):
+            return "Utilities"
         # Pages that are not under /api
-        if not p.startswith('/api'):
+        if not p.startswith("/api"):
             # map known pages to categories
-            if p in ('/monitoring', '/model_health'):
-                return 'Monitoring & Health'
-            if p in ('/model_registry',):
-                return 'Model Registry & Training'
-            if p in ('/predictions', '/predict_page'):
-                return 'Predictions'
-            if p.startswith('/tgr/'):
-                return 'TGR Enrichment'
-            if p in ('/races', '/race') or p.startswith('/race/'):
-                return 'Upcoming & Data'
-            return 'Utilities'
-        return 'Utilities'
+            if p in ("/monitoring", "/model_health"):
+                return "Monitoring & Health"
+            if p in ("/model_registry",):
+                return "Model Registry & Training"
+            if p in ("/predictions", "/predict_page"):
+                return "Predictions"
+            if p.startswith("/tgr/"):
+                return "TGR Enrichment"
+            if p in ("/races", "/race") or p.startswith("/race/"):
+                return "Upcoming & Data"
+            return "Utilities"
+        return "Utilities"
     except Exception:
-        return 'Utilities'
+        return "Utilities"
 
-@app.route('/api/endpoints')
+
+@app.route("/api/endpoints")
 def api_list_endpoints():
     """Return a categorized list of available endpoints (pages and APIs).
     Fields per item: path, methods, endpoint_name, docstring, category, requires_body, is_safe_action, is_page
     """
     try:
         items = []
-        no_body_keywords = ('rescan', 'refresh', 'retry', 'stop', 'start')
+        no_body_keywords = ("rescan", "refresh", "retry", "stop", "start")
         known_no_body = {
-            '/api/rescan_upcoming',
-            '/api/predict_all_upcoming_races_enhanced',
+            "/api/rescan_upcoming",
+            "/api/predict_all_upcoming_races_enhanced",
         }
         for rule in app.url_map.iter_rules():
             path = str(rule.rule)
-            if path.startswith('/static'):
+            if path.startswith("/static"):
                 continue
-            methods = sorted([m for m in (rule.methods or []) if m not in ('HEAD', 'OPTIONS')])
+            methods = sorted(
+                [m for m in (rule.methods or []) if m not in ("HEAD", "OPTIONS")]
+            )
             endpoint_name = str(rule.endpoint)
             view_func = app.view_functions.get(rule.endpoint)
-            docstring = ''
+            docstring = ""
             try:
-                docstring = (view_func.__doc__ or '').strip() if view_func else ''
+                docstring = (view_func.__doc__ or "").strip() if view_func else ""
             except Exception:
-                docstring = ''
+                docstring = ""
             category = _categorize_endpoint(path, endpoint_name)
-            is_page = not path.startswith('/api')
+            is_page = not path.startswith("/api")
             requires_body = False
             is_safe_action = True
-            if 'POST' in methods:
+            if "POST" in methods:
                 # default assume body required unless path suggests otherwise
-                requires_body = not (path in known_no_body or any(k in path.lower() for k in no_body_keywords))
+                requires_body = not (
+                    path in known_no_body
+                    or any(k in path.lower() for k in no_body_keywords)
+                )
                 is_safe_action = not requires_body
-            items.append({
-                'path': path,
-                'methods': methods,
-                'endpoint_name': endpoint_name,
-                'docstring': docstring,
-                'category': category,
-                'requires_body': requires_body,
-                'is_safe_action': is_safe_action,
-                'is_page': is_page,
-            })
-        return jsonify({'success': True, 'endpoints': items, 'timestamp': datetime.now().isoformat()})
+            items.append(
+                {
+                    "path": path,
+                    "methods": methods,
+                    "endpoint_name": endpoint_name,
+                    "docstring": docstring,
+                    "category": category,
+                    "requires_body": requires_body,
+                    "is_safe_action": is_safe_action,
+                    "is_page": is_page,
+                }
+            )
+        return jsonify(
+            {
+                "success": True,
+                "endpoints": items,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
     except Exception as e:
         try:
             logger.warning(f"/api/endpoints error: {e}")
         except Exception:
             pass
-        return jsonify({'success': False, 'endpoints': [], 'error': str(e)}), 200
+        return jsonify({"success": False, "endpoints": [], "error": str(e)}), 200
+
 
 # --- Shims for referenced endpoints ---
 
-@app.route('/api/model/performance')
+
+@app.route("/api/model/performance")
 def api_model_performance():
     """Lightweight performance snapshot for monitoring.js. Always 200 with success flag.
     Returns: { success, performance_metrics: {accuracy, precision, recall, f1_score, history:[{date, accuracy, precision}]}, monitoring_events:[], timestamp }
@@ -20441,22 +23073,49 @@ def api_model_performance():
             t = now - timedelta(minutes=(9 - i) * 15)
             acc = 0.88 + (i % 3) * 0.01
             prec = 0.86 + (i % 4) * 0.01
-            hist.append({'date': t.isoformat(), 'accuracy': round(acc, 4), 'precision': round(prec, 4)})
+            hist.append(
+                {
+                    "date": t.isoformat(),
+                    "accuracy": round(acc, 4),
+                    "precision": round(prec, 4),
+                }
+            )
         perf = {
-            'accuracy': 0.90,
-            'precision': 0.88,
-            'recall': 0.87,
-            'f1_score': 0.875,
-            'history': hist,
+            "accuracy": 0.90,
+            "precision": 0.88,
+            "recall": 0.87,
+            "f1_score": 0.875,
+            "history": hist,
         }
         events = [
-            {'timestamp': now.isoformat(), 'event_type': 'performance_check', 'message': 'OK', 'accuracy': perf['accuracy']},
+            {
+                "timestamp": now.isoformat(),
+                "event_type": "performance_check",
+                "message": "OK",
+                "accuracy": perf["accuracy"],
+            },
         ]
-        return jsonify({'success': True, 'performance_metrics': perf, 'monitoring_events': events, 'timestamp': now.isoformat()})
+        return jsonify(
+            {
+                "success": True,
+                "performance_metrics": perf,
+                "monitoring_events": events,
+                "timestamp": now.isoformat(),
+            }
+        )
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e), 'performance_metrics': {}, 'monitoring_events': [], 'timestamp': datetime.now().isoformat()})
+        return jsonify(
+            {
+                "success": False,
+                "error": str(e),
+                "performance_metrics": {},
+                "monitoring_events": [],
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
 
-@app.route('/api/model/monitoring/drift', methods=['POST'])
+
+@app.route("/api/model/monitoring/drift", methods=["POST"])
 def api_model_monitoring_drift():
     """Minimal drift-check shim used by monitoring.js. Never 500s on user input.
     Returns: { success, drift_results: {drift_detected, drift_score, history:[{date, drift_score}]}, timestamp }
@@ -20467,7 +23126,7 @@ def api_model_monitoring_drift():
         # Fake drift score, vary slightly on window param
         base = 0.35
         try:
-            w = float(payload.get('window', 0))
+            w = float(payload.get("window", 0))
             base = min(0.9, max(0.1, base + (w % 3) * 0.05))
         except Exception:
             pass
@@ -20475,47 +23134,67 @@ def api_model_monitoring_drift():
         for i in range(10):
             t = now - timedelta(hours=(9 - i))
             s = round(min(0.99, max(0.01, base + ((i % 2) - 0.5) * 0.1)), 3)
-            history.append({'date': t.isoformat(), 'drift_score': s})
+            history.append({"date": t.isoformat(), "drift_score": s})
         drift = {
-            'drift_detected': base > 0.5,
-            'drift_score': round(base, 3),
-            'history': history,
+            "drift_detected": base > 0.5,
+            "drift_score": round(base, 3),
+            "history": history,
         }
-        return jsonify({'success': True, 'drift_results': drift, 'timestamp': now.isoformat()})
+        return jsonify(
+            {"success": True, "drift_results": drift, "timestamp": now.isoformat()}
+        )
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e), 'drift_results': {'drift_detected': False, 'drift_score': 0, 'history': []}, 'timestamp': datetime.now().isoformat()})
+        return jsonify(
+            {
+                "success": False,
+                "error": str(e),
+                "drift_results": {
+                    "drift_detected": False,
+                    "drift_score": 0,
+                    "history": [],
+                },
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
 
-@app.route('/api/model_registry/train', methods=['POST'])
+
+@app.route("/api/model_registry/train", methods=["POST"])
 def api_model_registry_train_alias():
     """Alias shim to model_training_api.trigger_training for frontend compatibility."""
     try:
         # Import the handler and invoke directly under current request context
         from model_training_api import trigger_training  # type: ignore
+
         return trigger_training()
     except Exception as e:
-        return jsonify({'success': False, 'error': f'Cannot trigger training: {str(e)}'}), 200
+        return (
+            jsonify({"success": False, "error": f"Cannot trigger training: {str(e)}"}),
+            200,
+        )
 
 
 def _sanitize_prediction_name(name: str) -> str:
     import re as _re
+
     # allow alphanum, dash, underscore and dot, then strip path traversal patterns
-    s = _re.sub(r'[^A-Za-z0-9._-]+', '', str(name or ''))
+    s = _re.sub(r"[^A-Za-z0-9._-]+", "", str(name or ""))
     # collapse leading dots and remove any parent dir refs
-    s = s.lstrip('.')
-    s = s.replace('..', '')
+    s = s.lstrip(".")
+    s = s.replace("..", "")
     return s[:128]
 
-@app.route('/api/prediction_detail_file/<name>')
+
+@app.route("/api/prediction_detail_file/<name>")
 def api_prediction_detail_file(name):
     """Read a saved prediction JSON by normalized name. Looks under ./predictions.
     Accepts bare names (with or without 'prediction_' prefix) and resolves a matching file.
     """
     try:
         safe = _sanitize_prediction_name(name)
-        base_dir = os.environ.get('PREDICTIONS_DIR', './predictions')
+        base_dir = os.environ.get("PREDICTIONS_DIR", "./predictions")
         candidates = [
-            os.path.join(base_dir, f'{safe}.json'),
-            os.path.join(base_dir, f'prediction_{safe}.json'),
+            os.path.join(base_dir, f"{safe}.json"),
+            os.path.join(base_dir, f"prediction_{safe}.json"),
         ]
         match = None
         for c in candidates:
@@ -20523,41 +23202,56 @@ def api_prediction_detail_file(name):
                 match = c
                 break
         if not match:
-            return jsonify({'success': False, 'error': f'Prediction not found for {safe}'}), 200
-        with open(match, 'r', encoding='utf-8', errors='ignore') as f:
+            return (
+                jsonify(
+                    {"success": False, "error": f"Prediction not found for {safe}"}
+                ),
+                200,
+            )
+        with open(match, "r", encoding="utf-8", errors="ignore") as f:
             data = json.load(f)
-        return jsonify({'success': True, 'prediction': data, 'file': os.path.basename(match)})
+        return jsonify(
+            {"success": True, "prediction": data, "file": os.path.basename(match)}
+        )
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 200
+        return jsonify({"success": False, "error": str(e)}), 200
 
-@app.route('/api/race_files_status_simple')
+
+@app.route("/api/race_files_status_simple")
 def api_race_files_status_simple():
     """List predicted races status based on files in ./predictions."""
     try:
-        base_dir = os.environ.get('PREDICTIONS_DIR', './predictions')
+        base_dir = os.environ.get("PREDICTIONS_DIR", "./predictions")
         out = []
         if os.path.exists(base_dir):
             for fn in sorted(os.listdir(base_dir)):
-                if not fn.endswith('.json'):
+                if not fn.endswith(".json"):
                     continue
-                if 'summary' in fn:
+                if "summary" in fn:
                     continue
                 path = os.path.join(base_dir, fn)
-                race_name = os.path.splitext(fn)[0].replace('prediction_', '')
+                race_name = os.path.splitext(fn)[0].replace("prediction_", "")
                 try:
                     mtime = datetime.fromtimestamp(os.path.getmtime(path)).isoformat()
                 except Exception:
                     mtime = None
-                out.append({'race_name': race_name, 'filename': fn, 'predicted_at': mtime})
-        return jsonify({'success': True, 'predicted_races': out, 'count': len(out)})
+                out.append(
+                    {"race_name": race_name, "filename": fn, "predicted_at": mtime}
+                )
+        return jsonify({"success": True, "predicted_races": out, "count": len(out)})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e), 'predicted_races': [], 'count': 0}), 200
+        return (
+            jsonify(
+                {"success": False, "error": str(e), "predicted_races": [], "count": 0}
+            ),
+            200,
+        )
 
 
 def create_cli_parser():
     """Create CLI argument parser for Flask app"""
     import argparse
-    
+
     parser = argparse.ArgumentParser(
         description="Greyhound Racing Dashboard Flask Application",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -20565,40 +23259,34 @@ def create_cli_parser():
 Examples:
   python app.py --enable-profiling
   python app.py --host 127.0.0.1 --port 8080 --enable-profiling
-        """
+        """,
     )
-    
+
     parser.add_argument(
-        '--host',
-        default='127.0.0.1',
-        help='Host to bind to (default: 127.0.0.1)'
+        "--host", default="127.0.0.1", help="Host to bind to (default: 127.0.0.1)"
     )
-    
+
     parser.add_argument(
-        '--port',
+        "--port",
         type=int,
         default=DEFAULT_PORT,
-        help=f'Port to bind to (default: {DEFAULT_PORT})'
+        help=f"Port to bind to (default: {DEFAULT_PORT})",
     )
-    
+
+    parser.add_argument("--debug", action="store_true", help="Enable Flask debug mode")
+
     parser.add_argument(
-        '--debug',
-        action='store_true',
-        help='Enable Flask debug mode'
+        "--enable-profiling",
+        action="store_true",
+        help="Enable profiling for performance analysis (default: disabled for zero overhead)",
     )
-    
+
     parser.add_argument(
-        '--enable-profiling',
-        action='store_true',
-        help='Enable profiling for performance analysis (default: disabled for zero overhead)'
+        "--enable-scraping",
+        action="store_true",
+        help="Enable live scraping endpoints (sets ENABLE_LIVE_SCRAPING=1 and ENABLE_RESULTS_SCRAPERS=1)",
     )
-    
-    parser.add_argument(
-        '--enable-scraping',
-        action='store_true',
-        help='Enable live scraping endpoints (sets ENABLE_LIVE_SCRAPING=1 and ENABLE_RESULTS_SCRAPERS=1)'
-    )
-    
+
     return parser
 
 
@@ -20611,31 +23299,41 @@ def main():
     # These defaults only apply when running this script directly (python3 app.py).
     # They preserve temporal safety by disabling scrapers and enabling DB-backed TGR features.
     try:
+
         def _set_default_env(k: str, v: str) -> None:
             if os.environ.get(k) in (None, ""):
                 os.environ[k] = v
-        _set_default_env('PREDICTION_IMPORT_MODE', 'prediction_only')
-        _set_default_env('ENABLE_RESULTS_SCRAPERS', '0')
-        _set_default_env('ENABLE_SCRAPING_DEFAULT', '0')  # do not auto-enable scraping
-        _set_default_env('TGR_ENABLED', '1')  # enable DB-only TGR by default
+
+        _set_default_env("PREDICTION_IMPORT_MODE", "prediction_only")
+        _set_default_env("ENABLE_RESULTS_SCRAPERS", "0")
+        _set_default_env("ENABLE_SCRAPING_DEFAULT", "0")  # do not auto-enable scraping
+        _set_default_env("TGR_ENABLED", "1")  # enable DB-only TGR by default
         # Keep Flask config in sync with these env toggles
         try:
-            app.config['PREDICTION_IMPORT_MODE'] = os.environ.get('PREDICTION_IMPORT_MODE', 'prediction_only')
-            app.config['ENABLE_RESULTS_SCRAPERS'] = str(os.environ.get('ENABLE_RESULTS_SCRAPERS', '0')).lower() in ('1', 'true', 'yes')
-            app.config['ENABLE_LIVE_SCRAPING'] = str(os.environ.get('ENABLE_LIVE_SCRAPING', '0')).lower() in ('1', 'true', 'yes')
+            app.config["PREDICTION_IMPORT_MODE"] = os.environ.get(
+                "PREDICTION_IMPORT_MODE", "prediction_only"
+            )
+            app.config["ENABLE_RESULTS_SCRAPERS"] = str(
+                os.environ.get("ENABLE_RESULTS_SCRAPERS", "0")
+            ).lower() in ("1", "true", "yes")
+            app.config["ENABLE_LIVE_SCRAPING"] = str(
+                os.environ.get("ENABLE_LIVE_SCRAPING", "0")
+            ).lower() in ("1", "true", "yes")
         except Exception:
             pass
-        print("ℹ️ Defaulting to DB-only TGR (TGR_ENABLED=1, PREDICTION_IMPORT_MODE=prediction_only, ENABLE_RESULTS_SCRAPERS=0)")
+        print(
+            "ℹ️ Defaulting to DB-only TGR (TGR_ENABLED=1, PREDICTION_IMPORT_MODE=prediction_only, ENABLE_RESULTS_SCRAPERS=0)"
+        )
     except Exception:
         pass
-    
+
     # Configure profiling based on CLI flag
     if args.enable_profiling:
         set_profiling_enabled(True)
         print("🔍 Profiling enabled for Flask app")
     else:
         set_profiling_enabled(False)
-    
+
     # Show profiling status for debugging
     if is_profiling():
         print("📊 Flask app running with profiling enabled")
@@ -20650,19 +23348,24 @@ def main():
     # Enable scraping by default when running via `python3 app.py`,
     # or when explicitly requested via CLI/env.
     enable_scraping = (
-        getattr(args, 'enable_scraping', False)
-        or str(os.environ.get('ENABLE_SCRAPING_DEFAULT', '1')).lower() in ('1', 'true', 'yes')
-        or str(os.environ.get('ENABLE_LIVE_SCRAPING', '0')).lower() in ('1', 'true', 'yes')
-        or str(os.environ.get('ENABLE_RESULTS_SCRAPERS', '0')).lower() in ('1', 'true', 'yes')
+        getattr(args, "enable_scraping", False)
+        or str(os.environ.get("ENABLE_SCRAPING_DEFAULT", "1")).lower()
+        in ("1", "true", "yes")
+        or str(os.environ.get("ENABLE_LIVE_SCRAPING", "0")).lower()
+        in ("1", "true", "yes")
+        or str(os.environ.get("ENABLE_RESULTS_SCRAPERS", "0")).lower()
+        in ("1", "true", "yes")
     )
     if enable_scraping:
         try:
             global ENABLE_LIVE_SCRAPING, ENABLE_RESULTS_SCRAPERS
             ENABLE_LIVE_SCRAPING = True
             ENABLE_RESULTS_SCRAPERS = True
-            app.config['ENABLE_LIVE_SCRAPING'] = True
-            app.config['ENABLE_RESULTS_SCRAPERS'] = True
-            print("🕷️ Live scraping enabled (ENABLE_LIVE_SCRAPING=1, ENABLE_RESULTS_SCRAPERS=1)")
+            app.config["ENABLE_LIVE_SCRAPING"] = True
+            app.config["ENABLE_RESULTS_SCRAPERS"] = True
+            print(
+                "🕷️ Live scraping enabled (ENABLE_LIVE_SCRAPING=1, ENABLE_RESULTS_SCRAPERS=1)"
+            )
         except Exception:
             pass
 
@@ -20671,20 +23374,16 @@ def main():
 
     # Safe host fallback if a redacted/invalid value is provided
     host_arg = args.host
-    if not host_arg or '*' in str(host_arg):
-        host_arg = '127.0.0.1'
+    if not host_arg or "*" in str(host_arg):
+        host_arg = "127.0.0.1"
 
     # Set the global server port for the info endpoint
     global CURRENT_SERVER_PORT
     CURRENT_SERVER_PORT = args.port
     print(f"🚀 Setting server port to {args.port}")
-    
+
     # Run Flask app with configured options
-    app.run(
-        host=host_arg,
-        port=args.port,
-        debug=args.debug
-    )
+    app.run(host=host_arg, port=args.port, debug=args.debug)
 
 
 if __name__ == "__main__":

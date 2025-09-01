@@ -3,15 +3,16 @@
 Script to fix field size and implement automated validation checks.
 """
 
-import sqlite3
 import logging
+import sqlite3
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 class DataFixer:
-    def __init__(self, db_path='greyhound_racing_data.db'):
+    def __init__(self, db_path="greyhound_racing_data.db"):
         self.db_path = db_path
 
     def connect_db(self):
@@ -21,7 +22,7 @@ class DataFixer:
     def update_field_sizes(self):
         """Fix field size calculations in database"""
         logger.info("=== UPDATING FIELD SIZES ===")
-        
+
         with self.connect_db() as conn:
             # Update field_size based on actual runner count
             update_query = """
@@ -37,7 +38,7 @@ class DataFixer:
                 WHERE drd.race_id = race_metadata.race_id
             );
             """
-            
+
             cursor = conn.cursor()
             cursor.execute(update_query)
             updated_rows = cursor.rowcount
@@ -50,19 +51,19 @@ class DataFixer:
 
         validation_queries = [
             {
-                'description': 'Detect races with zero runners',
-                'query': """SELECT race_id FROM race_metadata WHERE field_size == 0;"""
+                "description": "Detect races with zero runners",
+                "query": """SELECT race_id FROM race_metadata WHERE field_size == 0;""",
             },
             {
-                'description': 'Detect races with more than 12 runners',
-                'query': """SELECT race_id FROM race_metadata WHERE field_size > 12;"""
-            }
+                "description": "Detect races with more than 12 runners",
+                "query": """SELECT race_id FROM race_metadata WHERE field_size > 12;""",
+            },
         ]
 
         with self.connect_db() as conn:
             for check in validation_queries:
                 cursor = conn.cursor()
-                cursor.execute(check['query'])
+                cursor.execute(check["query"])
                 rows = cursor.fetchall()
                 logger.info(f"{check['description']} - Found {len(rows)} issues")
 

@@ -23,12 +23,12 @@ import os
 import random
 import sqlite3
 from pathlib import Path
-from scripts.db_utils import open_sqlite_readonly
 
 import numpy as np
 import pandas as pd
 
 from ml_system_v4 import MLSystemV4
+from scripts.db_utils import open_sqlite_readonly
 
 
 def parse_args():
@@ -44,7 +44,11 @@ def parse_args():
 def main() -> int:
     args = parse_args()
     # Use analytics DB for reading
-    db_path = os.getenv("ANALYTICS_DB_PATH") or os.getenv("GREYHOUND_DB_PATH") or "greyhound_racing_data.db"
+    db_path = (
+        os.getenv("ANALYTICS_DB_PATH")
+        or os.getenv("GREYHOUND_DB_PATH")
+        or "greyhound_racing_data.db"
+    )
 
     ml = MLSystemV4(db_path)
 
@@ -104,6 +108,7 @@ def main() -> int:
 
         # Build race df
         rows = []
+
         def _to_float(v, default=None):
             try:
                 if v is None:
@@ -114,6 +119,7 @@ def main() -> int:
                 return float(s)
             except Exception:
                 return default
+
         for i, (dog, box, wgt, sp) in enumerate(dogs, 1):
             rows.append(
                 {
@@ -123,7 +129,11 @@ def main() -> int:
                     "weight": _to_float(wgt, 30.0),
                     "starting_price": _to_float(sp, 3.0),
                     "trainer_name": None,
-                    "venue": (str(venue).upper().replace(" ", "_").replace("/", "_") if venue else None),
+                    "venue": (
+                        str(venue).upper().replace(" ", "_").replace("/", "_")
+                        if venue
+                        else None
+                    ),
                     "grade": (str(grade).upper() if grade else None),
                     "track_condition": "Good",
                     "weather": "Fine",
@@ -194,12 +204,19 @@ def main() -> int:
     all_p_np = np.array(all_p, dtype=float)
     all_y_np = np.array(all_y, dtype=int)
     eps = 1e-9
-    brier = float(np.mean((all_p_np - all_y_np) ** 2)) if len(all_p_np) else float("nan")
-    ll = float(
-        -np.mean(
-            all_y_np * np.log(all_p_np + eps) + (1 - all_y_np) * np.log(1 - all_p_np + eps)
+    brier = (
+        float(np.mean((all_p_np - all_y_np) ** 2)) if len(all_p_np) else float("nan")
+    )
+    ll = (
+        float(
+            -np.mean(
+                all_y_np * np.log(all_p_np + eps)
+                + (1 - all_y_np) * np.log(1 - all_p_np + eps)
+            )
         )
-    ) if len(all_p_np) else float("nan")
+        if len(all_p_np)
+        else float("nan")
+    )
 
     metrics = {
         "races_evaluated": processed,
@@ -218,4 +235,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

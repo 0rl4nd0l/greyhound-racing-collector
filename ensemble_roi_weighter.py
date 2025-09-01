@@ -79,7 +79,9 @@ class EnsembleROIWeighter:
                 logger.info(
                     "This is expected for new systems without prediction history"
                 )
-                logger.info("ROI optimization will be enabled once predictions are stored")
+                logger.info(
+                    "ROI optimization will be enabled once predictions are stored"
+                )
                 raise ValueError(
                     "No historical prediction data - equal weights fallback"
                 )

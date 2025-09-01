@@ -3,6 +3,7 @@ GPTService: Thin adapter over utils.openai_wrapper.OpenAIWrapper
 - Centralizes GPT usage for the /api/gpt/* endpoints
 - Avoids reliance on archived enhancers; keeps endpoint contracts intact
 """
+
 from __future__ import annotations
 
 import json
@@ -11,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from config.openai_config import get_openai_config, OpenAIConfig
+from config.openai_config import OpenAIConfig, get_openai_config
 
 
 @dataclass
@@ -39,10 +40,12 @@ class GPTService:
         try:
             # OpenAI Python SDK v1.x style client
             from openai import OpenAI  # type: ignore
+
             # Prefer constructing with an explicit httpx client to avoid
             # version/env mismatches (e.g., proxies kw) in OpenAI internals
             try:
                 import httpx  # type: ignore
+
                 http_client = httpx.Client(timeout=30.0)
                 self._client = OpenAI(http_client=http_client)
             except Exception:
@@ -57,8 +60,10 @@ class GPTService:
             # Last-resort retry: try plain client once if http_client path failed due to signature mismatch
             try:
                 from openai import OpenAI  # type: ignore
+
                 self._client = OpenAI()
                 from utils.openai_wrapper import OpenAIWrapper
+
                 self._wrapper = OpenAIWrapper(self._client, self.cfg)
                 self._available = True
                 self._error = None
@@ -72,16 +77,25 @@ class GPTService:
 
     @property
     def init(self) -> GPTServiceInit:
-        return GPTServiceInit(available=self.gpt_available, model=self.model, error=self._error)
+        return GPTServiceInit(
+            available=self.gpt_available, model=self.model, error=self._error
+        )
 
     # Internal helper to get JSON response with token usage
-    def _respond_json_with_usage(self, prompt: str, system: Optional[str] = None) -> Dict[str, Any]:
+    def _respond_json_with_usage(
+        self, prompt: str, system: Optional[str] = None
+    ) -> Dict[str, Any]:
         if not self.gpt_available:
             return {"error": self._error or "OpenAI unavailable"}
         # Use respond_text so we capture usage; enforce JSON-only in system message
         try:
             from utils.openai_wrapper import OpenAIWrapper  # for type hints only
-            sysmsg = (system + "\nReturn valid JSON only.") if system else "Return valid JSON only."
+
+            sysmsg = (
+                (system + "\nReturn valid JSON only.")
+                if system
+                else "Return valid JSON only."
+            )
             resp = self._wrapper.respond_text(prompt=prompt, system=sysmsg)
             text = resp.text or "{}"
             data = json.loads(text)
@@ -130,7 +144,12 @@ class GPTService:
                 try:
                     v = r.get("win_prob")
                     if v is None:
-                        v = r.get("final_score") or r.get("win_probability") or r.get("confidence") or 0.0
+                        v = (
+                            r.get("final_score")
+                            or r.get("win_probability")
+                            or r.get("confidence")
+                            or 0.0
+                        )
                     v = float(v)
                 except Exception:
                     v = 0.0
@@ -155,11 +174,14 @@ class GPTService:
                 "Make only light adjustments to baseline; keep ordering similar unless strong cues exist."
             )
             # Provide minimal context; keep token usage small
-            runners_lines = [f"{i+1}. {names[i]} (base={base_norm[i]:.3f})" for i in range(len(names))]
+            runners_lines = [
+                f"{i+1}. {names[i]} (base={base_norm[i]:.3f})"
+                for i in range(len(names))
+            ]
             prompt = (
-                "Runners (name with baseline):\n" +
-                "\n".join(runners_lines) +
-                "\n\nReturn JSON with key 'scores' only. Example: {\"scores\":[{\"dog_name\":\"NAME\",\"gpt_score\":0.123}]}"
+                "Runners (name with baseline):\n"
+                + "\n".join(runners_lines)
+                + '\n\nReturn JSON with key \'scores\' only. Example: {"scores":[{"dog_name":"NAME","gpt_score":0.123}]}'
             )
             data = self._respond_json_with_usage(prompt=prompt, system=system)
             # Validate shape and coerce
@@ -212,61 +234,75 @@ class GPTService:
         All fields are optional; returns best-effort values.
         """
         ctx: Dict[str, Any] = {
-            'participants': [],
-            'distance': None,
-            'grade': None,
-            'venue': None,
-            'race_date': None,
-            'race_number': None,
+            "participants": [],
+            "distance": None,
+            "grade": None,
+            "venue": None,
+            "race_date": None,
+            "race_number": None,
         }
         try:
             from utils.csv_metadata import parse_race_csv_meta  # type: ignore
+
             meta = parse_race_csv_meta(race_file_path)
-            if isinstance(meta, dict) and meta.get('status') == 'success':
-                ctx['venue'] = meta.get('venue') or None
-                ctx['race_date'] = meta.get('race_date') or None
-                ctx['race_number'] = meta.get('race_number') or None
-                d = meta.get('distance')
+            if isinstance(meta, dict) and meta.get("status") == "success":
+                ctx["venue"] = meta.get("venue") or None
+                ctx["race_date"] = meta.get("race_date") or None
+                ctx["race_number"] = meta.get("race_number") or None
+                d = meta.get("distance")
                 if d is not None:
-                    ctx['distance'] = str(d)
-                g = meta.get('grade')
+                    ctx["distance"] = str(d)
+                g = meta.get("grade")
                 if g is not None:
-                    ctx['grade'] = str(g)
+                    ctx["grade"] = str(g)
         except Exception:
             pass
         # Participants via pandas if available, else fallback to simple parse
         try:
             import pandas as pd  # type: ignore
+
             try:
                 df = pd.read_csv(race_file_path)
             except Exception:
                 df = None
-            if df is not None and 'Dog Name' in df.columns:
-                INVALID = {"nan", "none", "null", "n/a", "na", "unknown", "unnamed", "placeholder", "tba", "tbd", ""}
+            if df is not None and "Dog Name" in df.columns:
+                INVALID = {
+                    "nan",
+                    "none",
+                    "null",
+                    "n/a",
+                    "na",
+                    "unknown",
+                    "unnamed",
+                    "placeholder",
+                    "tba",
+                    "tbd",
+                    "",
+                }
                 # Build (box_int, name) entries
                 entries: list[tuple[Optional[int], str]] = []
-                has_box_col = 'Box' in df.columns
+                has_box_col = "Box" in df.columns
                 # Iterate rows (limited)
                 for idx, row in df.iterrows():
                     try:
-                        name_raw = str(row.get('Dog Name', '')).strip().strip('"')
+                        name_raw = str(row.get("Dog Name", "")).strip().strip('"')
                     except Exception:
-                        name_raw = ''
+                        name_raw = ""
                     if not name_raw:
                         continue
                     box_int: Optional[int] = None
                     # If Box column exists, try to parse it first
                     if has_box_col:
                         try:
-                            box_val = row.get('Box')
-                            if box_val is not None and str(box_val).strip() != '':
+                            box_val = row.get("Box")
+                            if box_val is not None and str(box_val).strip() != "":
                                 bi = int(float(str(box_val)))
                                 if 1 <= bi <= 8:
                                     box_int = bi
                         except Exception:
                             box_int = None
                     # If box still unknown, try to parse numeric prefix from name
-                    parts = name_raw.split('. ', 1)
+                    parts = name_raw.split(". ", 1)
                     if box_int is None and len(parts) == 2 and parts[0].isdigit():
                         try:
                             bi = int(parts[0])
@@ -304,20 +340,32 @@ class GPTService:
                 formatted = [
                     (f"B{bi} {nm}" if bi is not None else nm) for bi, nm in dedup
                 ]
-                ctx['participants'] = formatted[:8]
+                ctx["participants"] = formatted[:8]
         except Exception:
             # Fallback: line-based parse
             try:
                 entries: list[tuple[Optional[int], str]] = []
-                with open(race_file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                    INVALID = {"nan", "none", "null", "n/a", "na", "unknown", "unnamed", "placeholder", "tba", "tbd", ""}
+                with open(race_file_path, "r", encoding="utf-8", errors="ignore") as f:
+                    INVALID = {
+                        "nan",
+                        "none",
+                        "null",
+                        "n/a",
+                        "na",
+                        "unknown",
+                        "unnamed",
+                        "placeholder",
+                        "tba",
+                        "tbd",
+                        "",
+                    }
                     for line in f:
                         line = line.strip().strip('"')
-                        if not line or ',' not in line:
+                        if not line or "," not in line:
                             continue
                         # Use first field as Dog Name surrogate
-                        first = line.split(',', 1)[0].strip()
-                        parts = first.split('. ', 1)
+                        first = line.split(",", 1)[0].strip()
+                        parts = first.split(". ", 1)
                         box_int: Optional[int] = None
                         name_clean = None
                         if len(parts) == 2 and parts[0].isdigit():
@@ -330,7 +378,7 @@ class GPTService:
                             name_clean = parts[1].strip()
                         else:
                             name_clean = first
-                        ls = (name_clean or '').strip().lower()
+                        ls = (name_clean or "").strip().lower()
                         if not name_clean or name_clean.isdigit() or ls in INVALID:
                             continue
                         entries.append((box_int, name_clean))
@@ -354,7 +402,7 @@ class GPTService:
                 formatted = [
                     (f"B{bi} {nm}" if bi is not None else nm) for bi, nm in dedup
                 ]
-                ctx['participants'] = formatted[:8]
+                ctx["participants"] = formatted[:8]
             except Exception:
                 pass
         return ctx
@@ -371,12 +419,12 @@ class GPTService:
         filename = os.path.basename(race_file_path or "")
         # Collect lightweight CSV context to enrich prompt
         csv_ctx = self._collect_csv_context(race_file_path)
-        participants = ", ".join(csv_ctx.get('participants') or [])
-        venue = csv_ctx.get('venue') or 'Unknown'
-        race_date = csv_ctx.get('race_date') or 'Unknown'
-        race_number = csv_ctx.get('race_number') or 'Unknown'
-        distance = csv_ctx.get('distance') or 'Unknown'
-        grade = csv_ctx.get('grade') or 'Unknown'
+        participants = ", ".join(csv_ctx.get("participants") or [])
+        venue = csv_ctx.get("venue") or "Unknown"
+        race_date = csv_ctx.get("race_date") or "Unknown"
+        race_number = csv_ctx.get("race_number") or "Unknown"
+        distance = csv_ctx.get("distance") or "Unknown"
+        grade = csv_ctx.get("grade") or "Unknown"
 
         system = (
             "You are a concise greyhound racing analyst. \n"
@@ -423,25 +471,29 @@ Context:
         # Normalize optional sections that may arrive as strings
         bs = data.get("betting_strategy")
         if not isinstance(bs, dict):
-            data["betting_strategy"] = {"betting_strategy": bs if isinstance(bs, str) else ""}
+            data["betting_strategy"] = {
+                "betting_strategy": bs if isinstance(bs, str) else ""
+            }
         pa = data.get("pattern_analysis")
         if not isinstance(pa, dict):
-            data["pattern_analysis"] = {"venue_patterns": pa if isinstance(pa, str) else ""}
+            data["pattern_analysis"] = {
+                "venue_patterns": pa if isinstance(pa, str) else ""
+            }
 
         # Minimal required fields
         ri = data["race_info"]
         ri.setdefault("filename", filename)
         # Try to backfill race_info with csv_ctx when present
-        if venue and (ri.get('venue') in (None, '', 'Unknown')):
-            ri['venue'] = venue
-        if race_date and (ri.get('date') in (None, '', 'Unknown')):
-            ri['date'] = race_date
-        if race_number and (ri.get('race_number') in (None, '', 'Unknown')):
-            ri['race_number'] = race_number
-        if distance and (ri.get('distance') in (None, '', 'Unknown')):
-            ri['distance'] = distance
-        if grade and (ri.get('grade') in (None, '', 'Unknown')):
-            ri['grade'] = grade
+        if venue and (ri.get("venue") in (None, "", "Unknown")):
+            ri["venue"] = venue
+        if race_date and (ri.get("date") in (None, "", "Unknown")):
+            ri["date"] = race_date
+        if race_number and (ri.get("race_number") in (None, "", "Unknown")):
+            ri["race_number"] = race_number
+        if distance and (ri.get("distance") in (None, "", "Unknown")):
+            ri["distance"] = distance
+        if grade and (ri.get("grade") in (None, "", "Unknown")):
+            ri["grade"] = grade
 
         data["gpt_race_analysis"].setdefault("analysis_confidence", 0.4)
         data["analysis_summary"].setdefault("gpt_available", True)
@@ -458,38 +510,44 @@ Context:
         # Fallbacks: if toggles are enabled but sections are empty, provide concise templated content
         try:
             if include_betting_strategy:
-                bs_obj = data.get('betting_strategy')
+                bs_obj = data.get("betting_strategy")
                 if not isinstance(bs_obj, dict):
                     bs_obj = {}
-                    data['betting_strategy'] = bs_obj
-                bs_text = (bs_obj.get('betting_strategy') or '').strip()
+                    data["betting_strategy"] = bs_obj
+                bs_text = (bs_obj.get("betting_strategy") or "").strip()
                 if not bs_text:
-                    picks = csv_ctx.get('participants') or []
+                    picks = csv_ctx.get("participants") or []
                     if isinstance(picks, list):
                         picks = [p for p in picks if isinstance(p, str) and p.strip()]
-                    top = ', '.join(picks[:2]) if picks else 'top selection'
-                    bs_obj['betting_strategy'] = f"Small win bet on {top}. Conservative staking (0.5–1u). Manage risk if wide boxes dominate early."
+                    top = ", ".join(picks[:2]) if picks else "top selection"
+                    bs_obj["betting_strategy"] = (
+                        f"Small win bet on {top}. Conservative staking (0.5–1u). Manage risk if wide boxes dominate early."
+                    )
             if include_pattern_analysis:
-                pa_obj = data.get('pattern_analysis')
+                pa_obj = data.get("pattern_analysis")
                 if not isinstance(pa_obj, dict):
                     pa_obj = {}
-                    data['pattern_analysis'] = pa_obj
-                pa_text = (pa_obj.get('venue_patterns') or '').strip()
+                    data["pattern_analysis"] = pa_obj
+                pa_text = (pa_obj.get("venue_patterns") or "").strip()
                 if not pa_text:
-                    v = venue if isinstance(venue, str) else 'this track'
-                    dist_s = str(distance) if distance is not None else 'distance'
+                    v = venue if isinstance(venue, str) else "this track"
+                    dist_s = str(distance) if distance is not None else "distance"
                     if dist_s.isdigit():
                         dist_s = f"{dist_s}m"
-                    g = grade if isinstance(grade, str) else ''
-                    g_part = f", {g} grade" if g else ''
-                    pa_obj['venue_patterns'] = f"{v} {dist_s}{g_part}: inside draws and early speed often help. Watch the first split and adjust expectations for track bias."
+                    g = grade if isinstance(grade, str) else ""
+                    g_part = f", {g} grade" if g else ""
+                    pa_obj["venue_patterns"] = (
+                        f"{v} {dist_s}{g_part}: inside draws and early speed often help. Watch the first split and adjust expectations for track bias."
+                    )
         except Exception:
             # Never fail enhancement on fallback generation
             pass
 
         return data
 
-    def enhance_multiple_races(self, race_files: List[str], max_races: int = 5) -> Dict[str, Any]:
+    def enhance_multiple_races(
+        self, race_files: List[str], max_races: int = 5
+    ) -> Dict[str, Any]:
         if not isinstance(race_files, list):
             return {"error": "race_files must be a list"}
         limited = race_files[: max(0, int(max_races or 0)) or len(race_files)]
@@ -532,26 +590,32 @@ No winners or results should be fabricated.
 """
         data = self._respond_json_with_usage(prompt=prompt, system=system)
         if "error" in data:
-            return {"date": date_str, "insights": [], "summary": str(data["error"]) }
+            return {"date": date_str, "insights": [], "summary": str(data["error"])}
         # Fallbacks to ensure minimal content
         try:
             data.setdefault("date", date_str)
-            ins = data.get('insights')
+            ins = data.get("insights")
             if not isinstance(ins, list):
                 ins = []
             # Coerce to strings and drop empties
             ins = [str(x).strip() for x in ins if str(x).strip()]
             while len(ins) < 3:
                 if len(ins) == 0:
-                    ins.append("Track conditions and early pace will influence outcomes today.")
+                    ins.append(
+                        "Track conditions and early pace will influence outcomes today."
+                    )
                 elif len(ins) == 1:
-                    ins.append("Monitor inside draws and late market changes for signals.")
+                    ins.append(
+                        "Monitor inside draws and late market changes for signals."
+                    )
                 else:
                     ins.append("Use conservative staking on higher-confidence setups.")
-            data['insights'] = ins[:6]
-            summ = data.get('summary')
+            data["insights"] = ins[:6]
+            summ = data.get("summary")
             if not isinstance(summ, str) or not summ.strip():
-                data['summary'] = f"{date_str}: Stable conditions and competitive fields; watch early pace and track bias."
+                data["summary"] = (
+                    f"{date_str}: Stable conditions and competitive fields; watch early pace and track bias."
+                )
         except Exception:
             pass
         return data
@@ -592,13 +656,18 @@ Race IDs: {', '.join(race_ids)}
         data.setdefault("recommendations", [])
         # Fallback content to ensure readability
         try:
-            if not isinstance(data.get('executive_summary'), str) or not data.get('executive_summary').strip():
+            if (
+                not isinstance(data.get("executive_summary"), str)
+                or not data.get("executive_summary").strip()
+            ):
                 n = len(race_ids)
                 races_label = f"{n} race(s)" if n else "the selected races"
-                data['executive_summary'] = f"Summary generated from {races_label}. Focus on early speed, inside draws, and recent form indicators. Manage staking conservatively."
-            recs = data.get('recommendations')
+                data["executive_summary"] = (
+                    f"Summary generated from {races_label}. Focus on early speed, inside draws, and recent form indicators. Manage staking conservatively."
+                )
+            recs = data.get("recommendations")
             if not isinstance(recs, list) or len(recs) == 0:
-                data['recommendations'] = [
+                data["recommendations"] = [
                     "Monitor early pace and inside draws; adjust expectations for track bias",
                     "Use conservative staking (0.5–1u) on higher confidence picks",
                     "Watch late market/track changes and reassess risk",
@@ -606,4 +675,3 @@ Race IDs: {', '.join(race_ids)}
         except Exception:
             pass
         return data
-

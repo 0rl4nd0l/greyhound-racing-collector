@@ -17,11 +17,11 @@ Author: AI Assistant
 Date: July 11, 2025
 """
 
+import argparse
 import json
 import logging
 import os
 import threading
-import argparse
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -46,8 +46,8 @@ class EnhancedLogger:
         self.lock = threading.Lock()
 
         # Debug mode state - can be set via --debug flag or DEBUG env var
-        self.debug_mode = self._check_debug_mode()        
-# Setup Python logging with JSON formatting
+        self.debug_mode = self._check_debug_mode()
+        # Setup Python logging with JSON formatting
         self.setup_python_logging()
 
         # Add rotating file handler
@@ -66,17 +66,17 @@ class EnhancedLogger:
     def _check_debug_mode(self) -> bool:
         """Determine if debug mode is enabled via env or argument"""
         parser = argparse.ArgumentParser(add_help=False)
-        parser.add_argument('--debug', action='store_true')
+        parser.add_argument("--debug", action="store_true")
         args, _ = parser.parse_known_args()
 
         # Check environment variable or command-line argument
-        return os.getenv('DEBUG', '0') == '1' or args.debug
-    
+        return os.getenv("DEBUG", "0") == "1" or args.debug
+
     def setup_python_logging(self):
         """Setup Python logging with file handlers"""
         # Set debug level if debug mode is enabled
         log_level = logging.DEBUG if self.debug_mode else logging.INFO
-        
+
         # Configure root logger
         logging.basicConfig(
             level=log_level,
@@ -106,7 +106,7 @@ class EnhancedLogger:
         debug_handler = logging.FileHandler(self.debug_log_file)
 
         formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-        
+
         process_handler.setFormatter(formatter)
         error_handler.setFormatter(formatter)
         debug_handler.setFormatter(formatter)
@@ -114,7 +114,7 @@ class EnhancedLogger:
         self.process_logger.addHandler(process_handler)
         self.error_logger.addHandler(error_handler)
         self.debug_logger.addHandler(debug_handler)
-        
+
         # Add debug handler to all loggers in debug mode
         if self.debug_mode:
             self.process_logger.addHandler(debug_handler)
@@ -126,8 +126,12 @@ class EnhancedLogger:
         from logging.handlers import RotatingFileHandler
 
         # Define a rotating handler with a max size of 5MB and up to 3 backup files
-        rotating_file_handler = RotatingFileHandler(self.system_log_file, maxBytes=5*1024*1024, backupCount=3)
-        rotating_file_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+        rotating_file_handler = RotatingFileHandler(
+            self.system_log_file, maxBytes=5 * 1024 * 1024, backupCount=3
+        )
+        rotating_file_handler.setFormatter(
+            logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+        )
 
         # Add this handler to the root logger
         logging.getLogger().addHandler(rotating_file_handler)
@@ -173,8 +177,12 @@ class EnhancedLogger:
                 "component": "process",
                 "file": str(self.process_log_file),
                 "action": details.get("action", "unknown") if details else "unknown",
-                "cache_status": details.get("cache_status", "unknown") if details else "unknown",
-                "validation_errors": details.get("validation_errors", []) if details else [],
+                "cache_status": (
+                    details.get("cache_status", "unknown") if details else "unknown"
+                ),
+                "validation_errors": (
+                    details.get("validation_errors", []) if details else []
+                ),
                 "outcome": details.get("outcome", "unknown") if details else "unknown",
                 "message": message,
                 "details": details or {},
@@ -186,7 +194,7 @@ class EnhancedLogger:
                 self.web_logs["process"] = self.web_logs["process"][-1000:]
 
         self.save_web_logs()
-        
+
         # Also log to main_workflow.jsonl
         workflow_entry = {
             "timestamp": timestamp,
@@ -198,25 +206,25 @@ class EnhancedLogger:
             "validation_errors": (details or {}).get("validation_errors", []),
             "outcome": (details or {}).get("outcome", "unknown"),
             "message": message,
-            "details": details or {}
+            "details": details or {},
         }
         with open(self.workflow_log_file, "a") as f:
             json.dump(workflow_entry, f)
             f.write("\n")
-    
+
     def log_race_operation(
-        self, 
-        race_date: str, 
-        venue: str, 
-        race_number: str, 
-        operation: str, 
+        self,
+        race_date: str,
+        venue: str,
+        race_number: str,
+        operation: str,
         reason: str,
         http_status: Optional[int] = None,
         verbose_fetch: bool = False,
-        level: str = "INFO"
+        level: str = "INFO",
     ):
         """Log per-race operations in the specified format: [SKIP|CACHE|FETCH] 2025-07-25 AP_K R4 – reason
-        
+
         Args:
             race_date: Date in YYYY-MM-DD format
             venue: Venue code (e.g., AP_K)
@@ -231,11 +239,11 @@ class EnhancedLogger:
         if level in ["WARNING", "ERROR"] or verbose_fetch:
             # Format the structured log line
             log_line = f"[{operation}] {race_date} {venue} R{race_number} – {reason}"
-            
+
             # Add HTTP status if provided
             if http_status is not None:
                 log_line += f" (HTTP {http_status})"
-            
+
             # Log to appropriate level
             if level == "ERROR":
                 self.process_logger.error(log_line)
@@ -243,7 +251,7 @@ class EnhancedLogger:
                 self.process_logger.warning(log_line)
             else:
                 self.process_logger.info(log_line)
-            
+
             # Add to web logs with structured data
             timestamp = datetime.now().isoformat()
             with self.lock:
@@ -258,16 +266,16 @@ class EnhancedLogger:
                     "reason": reason,
                     "http_status": http_status,
                     "message": log_line,
-                    "structured_format": True
+                    "structured_format": True,
                 }
                 self.web_logs["process"].append(log_entry)
-                
+
                 # Keep only last 1000 entries
                 if len(self.web_logs["process"]) > 1000:
                     self.web_logs["process"] = self.web_logs["process"][-1000:]
-            
+
             self.save_web_logs()
-            
+
             # Also log to main_workflow.jsonl
             workflow_entry = {
                 "timestamp": timestamp,
@@ -280,7 +288,7 @@ class EnhancedLogger:
                 "reason": reason,
                 "http_status": http_status,
                 "message": log_line,
-                "verbose_fetch_enabled": verbose_fetch
+                "verbose_fetch_enabled": verbose_fetch,
             }
             with open(self.workflow_log_file, "a") as f:
                 json.dump(workflow_entry, f)
@@ -375,16 +383,16 @@ class EnhancedLogger:
     def info(self, message: str, context: Optional[Dict] = None):
         """Log info messages"""
         self.log_process(message, level="INFO", details=context)
-    
+
     def debug(self, message: str, context: Optional[Dict] = None):
         """Log debug messages"""
         if self.debug_mode:
             # Log to file with debug logger
             self.debug_logger.debug(message)
-            
+
             # Add to web logs if in debug mode
             timestamp = datetime.now().isoformat()
-            
+
             with self.lock:
                 log_entry = {
                     "timestamp": timestamp,
@@ -394,13 +402,13 @@ class EnhancedLogger:
                     "details": context or {},
                 }
                 self.web_logs["debug"].append(log_entry)
-                
+
                 # Keep only last 1000 debug entries
                 if len(self.web_logs["debug"]) > 1000:
                     self.web_logs["debug"] = self.web_logs["debug"][-1000:]
-            
+
             self.save_web_logs()
-    
+
     def error(self, message: str, exc_info: bool = False, **kwargs):
         """Log error messages (compatibility method)"""
         if exc_info:
@@ -498,24 +506,28 @@ class KeyMismatchLogger:
     def __init__(self, logger):
         self.logger = logger
 
-    def log_key_error(self, error_context=None, dog_record=None, error=None, file_path=None):
+    def log_key_error(
+        self, error_context=None, dog_record=None, error=None, file_path=None
+    ):
         """Logs KeyError with detailed context including dog record and race file path.
-        
+
         Supports both old and new interfaces:
         - New: log_key_error(error_context={...}, dog_record={...})
         - Old: log_key_error(error, dog_record, file_path)
         """
         # Handle new enhanced interface
         if error_context is not None and isinstance(error_context, dict):
-            message = f"KeyError in {error_context.get('operation', 'unknown operation')}"
-            
+            message = (
+                f"KeyError in {error_context.get('operation', 'unknown operation')}"
+            )
+
             # Extract information from error_context
-            race_file_path = error_context.get('race_file_path', 'unknown')
-            missing_key = error_context.get('missing_key', 'unknown')
-            available_keys = error_context.get('available_keys', [])
-            step = error_context.get('step', 'unknown')
-            operation = error_context.get('operation', 'unknown')
-            
+            race_file_path = error_context.get("race_file_path", "unknown")
+            missing_key = error_context.get("missing_key", "unknown")
+            available_keys = error_context.get("available_keys", [])
+            step = error_context.get("step", "unknown")
+            operation = error_context.get("operation", "unknown")
+
             # Log with comprehensive context
             self.logger.log_error(
                 message,
@@ -525,12 +537,12 @@ class KeyMismatchLogger:
                     "missing_key": missing_key,
                     "available_keys": available_keys,
                     "step": step,
-                    "dog_record": dog_record or error_context.get('dog_record', {}),
+                    "dog_record": dog_record or error_context.get("dog_record", {}),
                     "error_type": "KeyError",
-                    "enhanced_logging": True
+                    "enhanced_logging": True,
                 },
             )
-            
+
             # Also print detailed error information for immediate visibility
             print(f"\n🚨 KEYERROR DETECTED:")
             print(f"   Operation: {operation}")
@@ -541,7 +553,7 @@ class KeyMismatchLogger:
             if dog_record:
                 print(f"   Dog Record: {dog_record}")
             print(f"   Stack trace logged to error files\n")
-        
+
         # Handle old interface for backward compatibility
         elif error is not None and dog_record is not None:
             self.logger.log_error(
@@ -550,10 +562,10 @@ class KeyMismatchLogger:
                 context={
                     "dog_record": dog_record,
                     "race_file_path": file_path or "unknown",
-                    "legacy_interface": True
+                    "legacy_interface": True,
                 },
             )
-        
+
         else:
             # Fallback logging
             self.logger.log_error(
@@ -563,8 +575,8 @@ class KeyMismatchLogger:
                     "dog_record": dog_record,
                     "error": str(error) if error else None,
                     "file_path": file_path,
-                    "insufficient_context": True
-                }
+                    "insufficient_context": True,
+                },
             )
 
 

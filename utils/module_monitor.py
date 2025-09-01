@@ -44,6 +44,7 @@ def _classify(mod_names: List[str]) -> Tuple[List[str], List[str], List[str]]:
     """Classify module names into (allowed, disallowed, unknown) via utils.module_guard."""
     try:
         from utils import module_guard  # Local import to avoid import-time side effects
+
         allowed, disallowed, _strict = module_guard._compile_policy()
 
         def starts_with_any(name: str, prefixes: List[str]) -> bool:
@@ -51,7 +52,11 @@ def _classify(mod_names: List[str]) -> Tuple[List[str], List[str], List[str]]:
 
         disallowed_loaded = [m for m in mod_names if starts_with_any(m, disallowed)]
         allowed_loaded = [m for m in mod_names if starts_with_any(m, allowed)]
-        unknown_loaded = [m for m in mod_names if m not in disallowed_loaded and m not in allowed_loaded]
+        unknown_loaded = [
+            m
+            for m in mod_names
+            if m not in disallowed_loaded and m not in allowed_loaded
+        ]
         return allowed_loaded, disallowed_loaded, unknown_loaded
     except Exception:
         # If guard unavailable, treat all as unknown
@@ -67,26 +72,30 @@ def log_startup_modules(extra: Dict | None = None) -> None:
     _STARTUP_SNAPSHOT = take_snapshot()
     _LAST_SNAPSHOT = set(_STARTUP_SNAPSHOT)
     allowed, disallowed, unknown = _classify(sorted(_STARTUP_SNAPSHOT))
-    _write_event({
-        "module": "module_monitor",
-        "severity": "INFO",
-        "event": "module_snapshot",
-        "context": "startup",
-        "counts": {
-            "total": len(_STARTUP_SNAPSHOT),
-            "allowed": len(allowed),
-            "disallowed": len(disallowed),
-            "unknown": len(unknown),
-        },
-        "samples": {
-            "disallowed": disallowed[:20],
-            "unknown": unknown[:20],
-        },
-        **(extra or {}),
-    })
+    _write_event(
+        {
+            "module": "module_monitor",
+            "severity": "INFO",
+            "event": "module_snapshot",
+            "context": "startup",
+            "counts": {
+                "total": len(_STARTUP_SNAPSHOT),
+                "allowed": len(allowed),
+                "disallowed": len(disallowed),
+                "unknown": len(unknown),
+            },
+            "samples": {
+                "disallowed": disallowed[:20],
+                "unknown": unknown[:20],
+            },
+            **(extra or {}),
+        }
+    )
 
 
-def log_request_modules(request_path: str, method: str = "GET", context: str = "request") -> None:
+def log_request_modules(
+    request_path: str, method: str = "GET", context: str = "request"
+) -> None:
     """Log newly loaded modules since the previous snapshot. Emits alert if disallowed are added
     and the request appears to be a prediction flow (heuristic by path).
     """
@@ -97,14 +106,16 @@ def log_request_modules(request_path: str, method: str = "GET", context: str = "
     _LAST_SNAPSHOT = set(current)
 
     if not added:
-        _write_event({
-            "module": "module_monitor",
-            "severity": "DEBUG",
-            "event": "module_delta",
-            "context": context,
-            "request": {"path": request_path, "method": method},
-            "added_count": 0,
-        })
+        _write_event(
+            {
+                "module": "module_monitor",
+                "severity": "DEBUG",
+                "event": "module_delta",
+                "context": context,
+                "request": {"path": request_path, "method": method},
+                "added_count": 0,
+            }
+        )
         return
 
     allowed, disallowed, unknown = _classify(added)
@@ -129,34 +140,43 @@ def log_request_modules(request_path: str, method: str = "GET", context: str = "
     _write_event(payload)
 
     # Heuristic: if this looks like a prediction operation, escalate on disallowed
-    looks_like_prediction = any(k in request_path for k in ["predict", "api/predict", "predict_page"]) or context.startswith("prediction")
+    looks_like_prediction = any(
+        k in request_path for k in ["predict", "api/predict", "predict_page"]
+    ) or context.startswith("prediction")
     if disallowed and looks_like_prediction:
-        _write_event({
-            "module": "module_monitor",
-            "severity": "CRITICAL",
-            "event": "unexpected_module_load",
-            "context": context,
-            "request": {"path": request_path, "method": method},
-            "message": "Disallowed modules loaded during prediction",
-            "disallowed": disallowed,
-            "unknown_sample": unknown[:15],
-        })
+        _write_event(
+            {
+                "module": "module_monitor",
+                "severity": "CRITICAL",
+                "event": "unexpected_module_load",
+                "context": context,
+                "request": {"path": request_path, "method": method},
+                "message": "Disallowed modules loaded during prediction",
+                "disallowed": disallowed,
+                "unknown_sample": unknown[:15],
+            }
+        )
 
 
 def time_block(metric_name: str, context: str = "request"):
     """Context manager to time a code block and log the metric."""
+
     class _Timer:
         def __enter__(self):
             self.t0 = time.time()
             return self
+
         def __exit__(self, exc_type, exc, tb):
             duration_ms = (time.time() - self.t0) * 1000.0
-            _write_event({
-                "module": "module_monitor",
-                "severity": "INFO",
-                "event": "perf_metric",
-                "context": context,
-                "metric": metric_name,
-                "duration_ms": round(duration_ms, 2),
-            })
+            _write_event(
+                {
+                    "module": "module_monitor",
+                    "severity": "INFO",
+                    "event": "perf_metric",
+                    "context": context,
+                    "metric": metric_name,
+                    "duration_ms": round(duration_ms, 2),
+                }
+            )
+
     return _Timer()

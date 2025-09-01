@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 
 import requests
 from bs4 import BeautifulSoup
+
 from utils.http_client import get_shared_session
 
 
@@ -195,9 +196,7 @@ def scrape_all_races():
                 race_name = race_name_part.replace("-", " ").title()
 
             race_url = (
-                href
-                if href.startswith("http")
-                else f"https://www.thedogs.com.au{href}"
+                href if href.startswith("http") else f"https://www.thedogs.com.au{href}"
             )
 
             race_info = {
@@ -238,7 +237,6 @@ def scrape_all_races():
         )
 
     return races
-
 
 
 def get_today_races():

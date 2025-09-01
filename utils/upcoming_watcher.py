@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import time
 import threading
+import time
 from pathlib import Path
-from typing import Optional, Callable, List
+from typing import Callable, List, Optional
 
 # NOTE: Avoid importing watchdog at module import time. Lazy import inside start_upcoming_watcher.
 Observer = object  # type: ignore
@@ -55,7 +55,9 @@ class Debounce:
 
 
 class UpcomingHandler(FileSystemEventHandler):  # type: ignore[misc]
-    def __init__(self, on_change: Callable[[List[Path]], None], debounce_seconds: float = 1.0):
+    def __init__(
+        self, on_change: Callable[[List[Path]], None], debounce_seconds: float = 1.0
+    ):
         self._changed: List[Path] = []
         self._on_change = on_change
         self._debounce = Debounce(debounce_seconds, self._emit)
@@ -73,7 +75,9 @@ class UpcomingHandler(FileSystemEventHandler):  # type: ignore[misc]
         try:
             if getattr(event, "is_directory", False):
                 return
-            p = Path(getattr(event, "dest_path", None) or getattr(event, "src_path", ""))
+            p = Path(
+                getattr(event, "dest_path", None) or getattr(event, "src_path", "")
+            )
             if not p or p.suffix.lower() != CSV_SUFFIX or is_partial_or_hidden(p):
                 return
             # Collect file and debounce emit
@@ -107,14 +111,20 @@ def start_upcoming_watcher(
     global WATCHDOG_AVAILABLE, Observer, FileSystemEventHandler, FileSystemEvent
     if not WATCHDOG_AVAILABLE:
         try:
+            from watchdog.events import FileSystemEvent as _FileSystemEvent
+            from watchdog.events import (
+                FileSystemEventHandler as _FileSystemEventHandler,
+            )
             from watchdog.observers import Observer as _Observer  # type: ignore
-            from watchdog.events import FileSystemEventHandler as _FileSystemEventHandler, FileSystemEvent as _FileSystemEvent  # type: ignore
+
             Observer = _Observer
             FileSystemEventHandler = _FileSystemEventHandler
             FileSystemEvent = _FileSystemEvent
             WATCHDOG_AVAILABLE = True
         except Exception:
-            print("[upcoming-watcher] watchdog not installed; skipping directory watcher.")
+            print(
+                "[upcoming-watcher] watchdog not installed; skipping directory watcher."
+            )
             return None
 
     upcoming_dir = upcoming_dir or UPCOMING_RACES_DIR
@@ -126,7 +136,11 @@ def start_upcoming_watcher(
 
     # Define a real handler subclassing watchdog's FileSystemEventHandler to ensure proper dispatch
     class _RealUpcomingHandler(FileSystemEventHandler):  # type: ignore[misc]
-        def __init__(self, on_change_cb: Callable[[List[Path]], None], debounce_seconds: float = 1.0):
+        def __init__(
+            self,
+            on_change_cb: Callable[[List[Path]], None],
+            debounce_seconds: float = 1.0,
+        ):
             super().__init__()
             self._changed: List[Path] = []
             self._on_change = on_change_cb
@@ -145,7 +159,9 @@ def start_upcoming_watcher(
             try:
                 if getattr(event, "is_directory", False):
                     return
-                p = Path(getattr(event, "dest_path", None) or getattr(event, "src_path", ""))
+                p = Path(
+                    getattr(event, "dest_path", None) or getattr(event, "src_path", "")
+                )
                 if not p or p.suffix.lower() != CSV_SUFFIX or is_partial_or_hidden(p):
                     return
                 self._changed.append(p)

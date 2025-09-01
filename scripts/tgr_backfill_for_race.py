@@ -21,6 +21,7 @@ import os
 import sqlite3
 import sys
 from typing import List
+
 from scripts.db_utils import open_sqlite_writable
 
 # Ensure project root on sys.path
@@ -50,11 +51,25 @@ def get_dogs_for_race(db_path: str, race_id: str) -> List[str]:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Backfill TGR enhanced data for a specific race")
+    parser = argparse.ArgumentParser(
+        description="Backfill TGR enhanced data for a specific race"
+    )
     parser.add_argument("--db", dest="db_path", required=True, help="Path to SQLite DB")
-    parser.add_argument("--race-id", dest="race_id", required=True, help="Race ID to backfill")
-    parser.add_argument("--rate-limit", dest="rate_limit", default="2.5", help="TGR scraper rate limit (seconds)")
-    parser.add_argument("--no-cache", dest="no_cache", action="store_true", help="Disable scraper cache for fresh fetch")
+    parser.add_argument(
+        "--race-id", dest="race_id", required=True, help="Race ID to backfill"
+    )
+    parser.add_argument(
+        "--rate-limit",
+        dest="rate_limit",
+        default="2.5",
+        help="TGR scraper rate limit (seconds)",
+    )
+    parser.add_argument(
+        "--no-cache",
+        dest="no_cache",
+        action="store_true",
+        help="Disable scraper cache for fresh fetch",
+    )
     args = parser.parse_args()
 
     db_path = args.db_path
@@ -118,4 +133,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
