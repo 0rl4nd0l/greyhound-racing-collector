@@ -406,6 +406,7 @@ class AdvisoryGenerator:
                 client = getattr(self, 'openai_client', None)
                 if client is not None and hasattr(client, 'chat'):
                     # Minimal healthcheck-style call; tests patch this to raise.
+                    # Using max_tokens (not max_completion_tokens) for Chat Completions API
                     _ = client.chat.completions.create(  # type: ignore[attr-defined]
                         model="gpt-4o-mini",
                         messages=[{"role": "system", "content": "healthcheck"}],
