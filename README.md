@@ -1,4 +1,8 @@
-# Greyhound Racing Prediction Pipeline
+# Greyhound Racing Predictor
+
+> **📁 Archive Notice**: As of September 1, 2025, this project has been optimized from 23GB to 3.8GB.  
+> **19.2GB of historical data** has been safely archived to external storage.  
+> See **[ARCHIVE_INDEX.md](docs/ARCHIVE_INDEX.md)** for complete archive details and restoration instructions.
 
 ## Overview
 

@@ -147,6 +147,7 @@ dmypy.json
 !package.json
 !requirements.json
 !config.json.example
+!docs/ARCHIVE_MANIFEST.json
 archive/
 
 # Additional database patterns (comprehensive)

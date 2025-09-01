@@ -1,0 +1,292 @@
+{
+  "archive_metadata": {
+    "created_date": "2025-09-01",
+    "archive_location": "/Users/test/Desktop/greyhound_racing_collector_archive/",
+    "future_location": "EXTERNAL_HARD_DRIVE",
+    "total_size_gb": 19.2,
+    "files_archived": 5094,
+    "lines_archived": 370800,
+    "git_branch": "cleanup/workspace-optimization-2025-09-01",
+    "git_commits": [
+      "8a35ee57 - Update app.py configuration",
+      "60c6aaa9 - Move archive directory contents to external storage",
+      "db565ef9 - Add cleanup documentation and new utility scripts",
+      "3901d125 - Complete workspace cleanup - remove remaining artifacts",
+      "eec2d808 - Update advisory.py with latest configurations",
+      "53b2e582 - Finalize cleanup log with completion status"
+    ]
+  },
+  "archive_structure": {
+    "large_folders/2025-09": {
+      "archive": {
+        "size_gb": 16.0,
+        "description": "Historical codebase with 193,519 Python files",
+        "priority": "LOW",
+        "key_subdirectories": [
+          "archived_configs",
+          "backup_before_cleanup",
+          "corrupt_historical_race_data",
+          "corrupt_or_legacy_race_files",
+          "database_and_migrations",
+          "ingestion_legacy",
+          "ml_systems_old"
+        ],
+        "key_files": [
+          "backup_verification.py",
+          "cleanup_duplicate_predictions.py.disabled", 
+          "complete_reset.py",
+          "comprehensive_data_rebuilder.py",
+          "comprehensive_database_fix.py",
+          "com.greyhound.git-backup.plist",
+          "predictor.py",
+          "odds_dataclasses.py",
+          "test_parsing.py",
+          "prevent_unknown_venues.py",
+          "ingestion_manager.py",
+          "live_prediction_system.py",
+          "test_duplicate_prevention.py"
+        ],
+        "race_csv_files": 4800,
+        "python_files": 193519
+      },
+      "node_modules": {
+        "size_mb": 377,
+        "description": "Frontend development dependencies",
+        "priority": "MEDIUM",
+        "regenerable": true,
+        "key_packages": [
+          "@playwright/test",
+          "@types/node",
+          "cypress", 
+          "jest",
+          "typescript",
+          "webpack"
+        ],
+        "total_packages": "1000+"
+      },
+      "comprehensive_form_cache": {
+        "size_mb": 57,
+        "description": "Cached form processing data",
+        "priority": "LOW",
+        "regenerable": true
+      }
+    },
+    "backups/2025-09": {
+      "backups": {
+        "size_mb": 361,
+        "description": "System and workflow backups",
+        "priority": "MEDIUM",
+        "files": [
+          "archive_logs.py",
+          "manifests/main_workflow.jsonl"
+        ]
+      },
+      "database_backups": {
+        "size_mb": 91,
+        "description": "Database snapshots and backups",
+        "priority": "HIGH",
+        "critical": true
+      }
+    },
+    "models/2025-09": {
+      "model_registry.bak-20250830-123307": {
+        "size_mb": 251,
+        "description": "Complete model registry backup",
+        "priority": "HIGH",
+        "critical": true
+      },
+      "ai_models": {
+        "description": "Legacy AI model files",
+        "priority": "LOW"
+      },
+      "ml_models_v3": {
+        "description": "Version 3 ML models", 
+        "priority": "MEDIUM"
+      }
+    },
+    "logs/2025-09": {
+      "old_logs": {
+        "description": "Historical log files older than 30 days",
+        "priority": "LOW"
+      }
+    },
+    "data/2025-09": {
+      "race_debug_json": {
+        "files": "Race_01_UNKNOWN_*.json",
+        "count": 50,
+        "description": "Debug race processing files",
+        "priority": "LOW"
+      },
+      "debug_html": {
+        "files": "*.html", 
+        "count": 20,
+        "description": "Debug HTML outputs",
+        "priority": "LOW"
+      }
+    },
+    "cache/2025-09": {
+      "__pycache__": {
+        "description": "Python bytecode cache",
+        "regenerable": true,
+        "priority": "NONE"
+      },
+      ".pytest_cache": {
+        "description": "Pytest cache files",
+        "regenerable": true,
+        "priority": "NONE"
+      },
+      ".mypy_cache": {
+        "description": "MyPy type checking cache",
+        "regenerable": true,
+        "priority": "NONE"
+      },
+      ".ruff_cache": {
+        "description": "Ruff linter cache",
+        "regenerable": true,
+        "priority": "NONE"
+      }
+    },
+    "environments/2025-09": {
+      ".venv311": {
+        "description": "Old Python 3.11 virtual environment",
+        "regenerable": true,
+        "priority": "NONE"
+      },
+      "venv": {
+        "description": "Legacy virtual environment",
+        "regenerable": true,
+        "priority": "NONE"
+      }
+    },
+    "testing/2025-09": {
+      "cypress": {
+        "files": [
+          "e2e/endpoints-menu.cy.js",
+          "videos/endpoints-menu.cy.js.mp4"
+        ],
+        "description": "Cypress test files and recordings",
+        "priority": "LOW"
+      },
+      "playwright": {
+        "files": [
+          "e2e/endpoints-menu.spec.ts"
+        ],
+        "description": "Playwright test files",
+        "priority": "LOW"
+      }
+    }
+  },
+  "restoration_priorities": {
+    "HIGH": {
+      "items": [
+        "backups/2025-09/database_backups",
+        "models/2025-09/model_registry.bak-20250830-123307"
+      ],
+      "reason": "Critical for system operation and data integrity"
+    },
+    "MEDIUM": {
+      "items": [
+        "backups/2025-09/backups", 
+        "large_folders/2025-09/node_modules",
+        "large_folders/2025-09/archive/corrupt_or_legacy_race_files",
+        "models/2025-09/ml_models_v3"
+      ],
+      "reason": "Useful for development and research"
+    },
+    "LOW": {
+      "items": [
+        "large_folders/2025-09/archive",
+        "data/2025-09",
+        "logs/2025-09/old_logs",
+        "testing/2025-09",
+        "models/2025-09/ai_models"
+      ],
+      "reason": "Historical data and debug artifacts"
+    },
+    "NONE": {
+      "items": [
+        "cache/2025-09",
+        "environments/2025-09"
+      ],
+      "reason": "Regenerable caches and environments"
+    }
+  },
+  "current_active_system": {
+    "preserved_files": [
+      "app.py",
+      "weather_enhanced_predictor.py", 
+      "upcoming_race_predictor.py",
+      "comprehensive_enhanced_ml_system.py",
+      "automation_scheduler.py",
+      "enhanced_race_analyzer.py",
+      "sportsbet_odds_integrator.py",
+      "venue_mapping_fix.py"
+    ],
+    "preserved_directories": [
+      "templates/",
+      "static/", 
+      "tests/",
+      "predictions/",
+      "model_registry/",
+      "data/",
+      "docs/"
+    ],
+    "database": "greyhound_racing_data.db",
+    "virtual_environment": ".venv",
+    "model_registry_models": 11
+  },
+  "search_index": {
+    "python_files_by_category": {
+      "ml_systems": [
+        "ml_systems_old/prediction_v3_diagnostic.py",
+        "ml_systems_old/enhanced_pipeline_v2.py", 
+        "ml_systems_old/enhanced_feature_engineering_v2.py",
+        "comprehensive_data_rebuilder.py",
+        "predictor.py"
+      ],
+      "scrapers": [
+        "ingestion_legacy/test_scraper.py",
+        "ingestion_legacy/greyhound_results_scraper_navigator_20250730173229.py",
+        "ingestion_legacy/enhanced_expert_form_scraper.py",
+        "ingestion_legacy/form_guide_scraper_2025.py",
+        "ingestion_legacy/greyhound_results_scraper_navigator.py",
+        "ingestion_legacy/advanced_scraper.py"
+      ],
+      "utilities": [
+        "backup_verification.py",
+        "test_parsing.py",
+        "prevent_unknown_venues.py", 
+        "ingestion_manager.py",
+        "test_duplicate_prevention.py"
+      ],
+      "database": [
+        "database_and_migrations/app_original.py",
+        "database_and_migrations/create_unified_database_original.py",
+        "database_and_migrations/ml_system_v3_original.py",
+        "database_and_migrations/prediction_pipeline_v3_original.py",
+        "comprehensive_database_fix.py"
+      ]
+    },
+    "csv_data_files": {
+      "corrupt_or_legacy_race_files": 4800,
+      "corrupt_historical_race_data": 1,
+      "backup_before_cleanup": "organized_csvs with various datasets"
+    }
+  },
+  "restoration_commands": {
+    "high_priority": [
+      "cp -r /Volumes/ArchiveDrive/greyhound_racing_collector_archive/archived_content/backups/2025-09/database_backups/ ./backups/",
+      "cp -r /Volumes/ArchiveDrive/greyhound_racing_collector_archive/archived_content/models/2025-09/model_registry.bak-*/ ./"
+    ],
+    "medium_priority": [
+      "cp -r /Volumes/ArchiveDrive/greyhound_racing_collector_archive/archived_content/backups/2025-09/backups/ ./",
+      "npm install  # Alternative to copying node_modules",
+      "cp -r /Volumes/ArchiveDrive/greyhound_racing_collector_archive/archived_content/large_folders/2025-09/archive/corrupt_or_legacy_race_files/ ./data/historical/"
+    ],
+    "full_restoration": [
+      "cp -r /Volumes/ArchiveDrive/greyhound_racing_collector_archive/archived_content/large_folders/2025-09/archive/ ./",
+      "cp -r /Volumes/ArchiveDrive/greyhound_racing_collector_archive/archived_content/large_folders/2025-09/node_modules/ ./",
+      "cp -r /Volumes/ArchiveDrive/greyhound_racing_collector_archive/archived_content/data/2025-09/ ./debug/"
+    ]
+  }
+}
