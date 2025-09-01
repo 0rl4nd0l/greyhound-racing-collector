@@ -189,3 +189,84 @@ predictions/backtests/
 server.out
 flask_app.pid
 .venv311/
+
+# ===== GIT SWARM PREVENTION =====
+# Critical patterns that caused CPU crisis
+
+# All virtual environments (comprehensive)
+.venv*/
+venv*/
+env*/
+ENV*/
+.virtualenv/
+virtualenv/
+
+# Node.js dependencies and build artifacts
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm/
+.yarn/
+
+# Python compiled and cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Large data directories
+processed/
+upcoming_races_temp/
+unprocessed/
+ml_models_v4/
+mlruns/
+archive/
+repair_work/
+database_backups/
+backups/
+system_backup_*/
+
+# Testing and reporting artifacts
+test-results/
+playwright-report/
+reports/
+htmlcov/
+.coverage*
+.pytest_cache/
+
+# Runtime and process files
+*.pid
+*.lock
+*.out
+*.log
+server.*
+nohup.out
+
+# Database patterns (all variations)
+*.db*
+*.sqlite*
+*.sql
+
+# Temporary and build files
+temp/
+tmp/
+.tmp/
+dist/
+build/
+.build/
+*.egg-info/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store*
+Thumbs.db
+desktop.ini
