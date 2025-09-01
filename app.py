@@ -393,6 +393,49 @@ def get_gpt_enhancer():
 
 
 app = Flask(__name__)
+
+# Initialize memory monitoring EARLY for OOM prevention
+try:
+    from monitoring.tracemalloc_tools import init_tracemalloc, setup_sigusr1_handler
+    from monitoring.memory_logger import start_memory_logger, log_connection_pool_stats
+    from monitoring.memory_watchdog import (
+        start_memory_watchdog, clear_caches_on_memory_pressure, 
+        kill_orphaned_chrome_processes
+    )
+    
+    # Initialize tracemalloc for leak detection
+    init_tracemalloc()
+    
+    # Setup signal handler for heap dumps
+    setup_sigusr1_handler()
+    
+    # Start memory watchdog
+    start_memory_watchdog(
+        rss_soft_mb=int(os.getenv("MEM_SOFT_MB", "900")),
+        rss_hard_mb=int(os.getenv("MEM_HARD_MB", "1200")), 
+        check_sec=int(os.getenv("MEM_CHECK_SEC", "5")),
+        on_soft=lambda rss: clear_caches_on_memory_pressure(),
+        on_hard=lambda rss: kill_orphaned_chrome_processes()
+    )
+    
+    # Start memory logger with connection pool stats
+    def _pool_probe():
+        try:
+            if DB_OPTIMIZATION_ENABLED:
+                pool = get_db_pool()
+                log_connection_pool_stats(pool)
+        except Exception:
+            pass
+    
+    start_memory_logger(
+        interval_sec=int(os.getenv("MEM_LOG_INTERVAL", "15")),
+        extra_probes=_pool_probe
+    )
+    
+    print("🔬 Memory monitoring initialized (watchdog + logger + tracemalloc)")
+except Exception as e:
+    print(f"⚠️ Memory monitoring initialization failed: {e}")
+
 # Static caching defaults: 1 year for static assets in production
 try:
     app.config.setdefault('SEND_FILE_MAX_AGE_DEFAULT', 31536000)
@@ -1485,18 +1528,47 @@ if start_upcoming_watcher is not None:
     except Exception as e:
         print(f"⚠️ Failed to start upcoming races watcher: {e}")
 
-# Resolve database path from Flask config/env with safe default
-DATABASE_PATH = str(app.config.get('DATABASE_PATH') or os.environ.get('DATABASE_PATH') or "greyhound_racing_data.db")
-# Ensure parent directory exists if a custom path with directories is provided
+# Import database routing utilities
 try:
-    _db_parent = os.path.dirname(DATABASE_PATH)
-    if _db_parent and not os.path.exists(_db_parent):
-        os.makedirs(_db_parent, exist_ok=True)
-except Exception:
-    pass
-# Ensure GREYHOUND_DB_PATH is set to the absolute DB path so subprocesses (e.g., training) use the same DB
+    from scripts.db_utils import get_analytics_db_path, get_staging_db_path, open_sqlite_readonly, open_sqlite_writable
+    DB_ROUTING_AVAILABLE = True
+    print("🚀 Database routing system available")
+except ImportError as e:
+    print(f"⚠️ Database routing system not available: {e}")
+    DB_ROUTING_AVAILABLE = False
+    # Fallback functions
+    def get_analytics_db_path():
+        return str(app.config.get('DATABASE_PATH') or os.environ.get('DATABASE_PATH') or "greyhound_racing_data.db")
+    def get_staging_db_path():
+        return str(app.config.get('DATABASE_PATH') or os.environ.get('DATABASE_PATH') or "greyhound_racing_data.db")
+    def open_sqlite_readonly(db_path=None):
+        import sqlite3
+        path = db_path or get_analytics_db_path()
+        return sqlite3.connect(path)
+    def open_sqlite_writable(db_path=None):
+        import sqlite3
+        path = db_path or get_staging_db_path()
+        return sqlite3.connect(path)
+
+# Resolve database paths using the new routing system
+DATABASE_PATH = get_analytics_db_path()  # Default to analytics for backward compatibility
+STAGING_DATABASE_PATH = get_staging_db_path()
+ANALYTICS_DATABASE_PATH = get_analytics_db_path()
+
+# Ensure parent directories exist
+for db_path in [DATABASE_PATH, STAGING_DATABASE_PATH, ANALYTICS_DATABASE_PATH]:
+    try:
+        _db_parent = os.path.dirname(db_path)
+        if _db_parent and not os.path.exists(_db_parent):
+            os.makedirs(_db_parent, exist_ok=True)
+    except Exception:
+        pass
+
+# Set environment variables for subprocess compatibility
 try:
     os.environ.setdefault('GREYHOUND_DB_PATH', str(Path(DATABASE_PATH).resolve()))
+    os.environ.setdefault('STAGING_DB_PATH', str(Path(STAGING_DATABASE_PATH).resolve()))
+    os.environ.setdefault('ANALYTICS_DB_PATH', str(Path(ANALYTICS_DATABASE_PATH).resolve()))
 except Exception:
     pass
 UNPROCESSED_DIR = str(DATA_DIR / "unprocessed")
@@ -6615,8 +6687,9 @@ except Exception as e:
 # Initialize database manager
 print("🗄️ Initializing database manager...")
 try:
-    db_manager = DatabaseManager(DATABASE_PATH)
-    print(f"✅ Database manager initialized successfully with database: {DATABASE_PATH}")
+    # Use the analytics database path for read operations in the UI
+    db_manager = DatabaseManager(ANALYTICS_DATABASE_PATH)
+    print(f"✅ Database manager initialized successfully with analytics database: {ANALYTICS_DATABASE_PATH}")
     # Ensure key indexes exist for fast results lookup
     try:
         if ensure_results_indexes():
