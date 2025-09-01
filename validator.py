@@ -78,6 +78,4 @@ def validate_output(file_path):
         print(f"Unexpected error: {e}")
         return validation_result
 
-# Example usage
-validate_output('output.json')
 

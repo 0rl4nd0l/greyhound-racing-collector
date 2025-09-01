@@ -128,10 +128,17 @@ class PredictionPipelineV4:
                                         p['dog_name'] = p.get('dog_clean_name')
                                     if 'name' not in p and 'dog_clean_name' in p:
                                         p['name'] = p.get('dog_clean_name')
+                                    # Normalize probability keys for UI consumers
                                     if p.get('win_prob') is None and p.get('win_probability') is not None:
                                         try:
                                             wp = float(p.get('win_probability'))
                                             p['win_prob'] = max(0.0, min(1.0, wp))
+                                        except Exception:
+                                            pass
+                                    if p.get('win_probability') is None and p.get('win_prob_norm') is not None:
+                                        try:
+                                            wp2 = float(p.get('win_prob_norm'))
+                                            p['win_probability'] = max(0.0, min(1.0, wp2))
                                         except Exception:
                                             pass
                     except Exception:

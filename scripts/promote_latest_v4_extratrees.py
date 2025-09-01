@@ -18,6 +18,7 @@ from pathlib import Path as _P
 sys.path.insert(0, str(_P(__file__).resolve().parents[1]))
 
 from model_registry import get_model_registry, ModelMetadata  # type: ignore
+from scripts.db_guard import db_guard
 
 def main() -> int:
     reg = get_model_registry()
@@ -48,9 +49,13 @@ def main() -> int:
 
     # Update symlinks
     try:
-        # Access metadata JSON for symlink creation
-        reg._save_registry()  # persist index
-        reg._create_best_model_symlinks(latest)  # type: ignore[attr-defined]
+        from os import getenv as _ge
+        db_path = _ge('GREYHOUND_DB_PATH') or _ge('DATABASE_PATH') or 'greyhound_racing_data.db'
+        with db_guard(db_path=db_path, label='promote_latest_v4_extratrees') as guard:
+            guard.expect_table_growth('ml_model_registry', min_delta=0)
+            # Access metadata JSON for symlink creation
+            reg._save_registry()  # persist index
+            reg._create_best_model_symlinks(latest)  # type: ignore[attr-defined]
     except Exception:
         pass
 

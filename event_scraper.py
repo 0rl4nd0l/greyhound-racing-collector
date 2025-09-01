@@ -2,8 +2,7 @@ from datetime import datetime
 from urllib.parse import urlparse
 
 import requests
-from requests.adapters import HTTPAdapter
-from urllib3 import Retry
+from utils.http_client import get_shared_session
 
 from scraper_exception import ScraperException
 from sportsbook_factory import SportsbookFactory
@@ -25,12 +24,8 @@ class EventScraper:
         self.timestamp_api_invoked = None
         self.timestamp_api_completed = None
 
-        # Configure the session for retries
-        self.session = requests.Session()
-        retry_strategy = Retry(total=3)
-        adapter = HTTPAdapter(max_retries=retry_strategy)
-        self.session.mount("https://", adapter)
-        self.session.mount("http://", adapter)
+        # Configure the session using shared process-wide session
+        self.session = get_shared_session()
 
     def validate_url(self, url):
         parsed_url = urlparse(url)
@@ -65,6 +60,7 @@ class EventScraper:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.131 Safari/537.36",
         }
 
+        response = None
         try:
             response = self.session.get(
                 self.api_url,
@@ -72,22 +68,24 @@ class EventScraper:
                 headers=headers,
                 params=params if params else self.sportsbook.get_api_params(),
             )
-
             response.raise_for_status()
             self.json_response = response.json()
             self.request_end_timestamp = datetime.now()
-
         except requests.HTTPError as ex:
             self.request_end_timestamp = datetime.now()
             raise ScraperException(ScraperException.SERVER_ERROR)
-
         except requests.Timeout:
             self.request_end_timestamp = datetime.now()
             raise ScraperException(ScraperException.TIMEOUT_ERROR)
-
         except requests.ConnectionError:
             self.request_end_timestamp = datetime.now()
             raise ScraperException(ScraperException.CONNECTION_ERROR)
+        finally:
+            if response is not None:
+                try:
+                    response.close()
+                except Exception:
+                    pass
 
     def write_odds_to_csv(self, csv_outfile):
         self.csv_outfile = csv_outfile

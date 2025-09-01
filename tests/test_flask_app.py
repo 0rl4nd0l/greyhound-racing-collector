@@ -3,12 +3,13 @@
 Minimal Flask app for testing - runs on port 5002
 """
 
-from flask import Flask, jsonify, request
+import glob
 import json
 import os
-import glob
-import pandas as pd
 from datetime import datetime
+
+import pandas as pd
+from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
@@ -19,16 +20,20 @@ _upcoming_races_cache = {
     "expires_in_minutes": 5,  # Cache for 5 minutes
 }
 
+
 def load_upcoming_races(refresh=False):
     """Helper function to load upcoming races from CSV and JSON files."""
     global _upcoming_races_cache
     now = datetime.now()
 
     # Check if we should use cache
-    if (not refresh and _upcoming_races_cache["data"] is not None and 
-        _upcoming_races_cache["timestamp"] is not None and 
-        (now - _upcoming_races_cache["timestamp"]).total_seconds() < 
-        (_upcoming_races_cache["expires_in_minutes"] * 60)):
+    if (
+        not refresh
+        and _upcoming_races_cache["data"] is not None
+        and _upcoming_races_cache["timestamp"] is not None
+        and (now - _upcoming_races_cache["timestamp"]).total_seconds()
+        < (_upcoming_races_cache["expires_in_minutes"] * 60)
+    ):
         print("Using cached race list")  # This is the log message we need to check
         return _upcoming_races_cache["data"]
 
@@ -52,12 +57,23 @@ def load_upcoming_races(refresh=False):
                     for _, row in df.iterrows():
                         # Build race metadata without post-outcome fields
                         race_metadata = {
-                            "name": row.get("Race Name", row.get("name", "Unknown Race")),
-                            "venue": row.get("Venue", row.get("venue", "Unknown Venue")),
+                            "name": row.get(
+                                "Race Name", row.get("name", "Unknown Race")
+                            ),
+                            "venue": row.get(
+                                "Venue", row.get("venue", "Unknown Venue")
+                            ),
                             "date": row.get("Date", row.get("date", "Unknown Date")),
-                            "distance": row.get("Distance", row.get("distance", "Unknown Distance")),
-                            "grade": row.get("Grade", row.get("grade", "Unknown Grade")),
-                            "number": row.get("Race Number", row.get("number", row.get("race_number", 0))),
+                            "distance": row.get(
+                                "Distance", row.get("distance", "Unknown Distance")
+                            ),
+                            "grade": row.get(
+                                "Grade", row.get("grade", "Unknown Grade")
+                            ),
+                            "number": row.get(
+                                "Race Number",
+                                row.get("number", row.get("race_number", 0)),
+                            ),
                             "filename": filename,  # Include source filename
                         }
                         # Explicitly exclude post-outcome fields
@@ -74,51 +90,54 @@ def load_upcoming_races(refresh=False):
 
     return races
 
-@app.route('/')
-def home():
-    return jsonify({
-        "status": "running",
-        "message": "Greyhound Racing Test Flask Server",
-        "port": 5002
-    })
 
-@app.route('/api/upcoming_races')
+@app.route("/")
+def home():
+    return jsonify(
+        {
+            "status": "running",
+            "message": "Greyhound Racing Test Flask Server",
+            "port": 5002,
+        }
+    )
+
+
+@app.route("/api/upcoming_races")
 def upcoming_races():
     """API endpoint to get upcoming races from files"""
     races = []
     upcoming_dir = "./upcoming_races"
-    
+
     # Get CSV files
     csv_files = glob.glob(os.path.join(upcoming_dir, "*.csv"))
     for csv_file in csv_files:
-        races.append({
-            "file": os.path.basename(csv_file),
-            "type": "csv",
-            "path": csv_file
-        })
-    
-    # Get JSON files  
+        races.append(
+            {"file": os.path.basename(csv_file), "type": "csv", "path": csv_file}
+        )
+
+    # Get JSON files
     json_files = glob.glob(os.path.join(upcoming_dir, "*.json"))
     for json_file in json_files:
-        races.append({
-            "file": os.path.basename(json_file),
-            "type": "json", 
-            "path": json_file
-        })
-    
-    return jsonify({
-        "success": True,
-        "upcoming_races": races,
-        "total_files": len(races),
-        "csv_count": len(csv_files),
-        "json_count": len(json_files)
-    })
+        races.append(
+            {"file": os.path.basename(json_file), "type": "json", "path": json_file}
+        )
 
-@app.route('/api/upcoming_races_csv')
+    return jsonify(
+        {
+            "success": True,
+            "upcoming_races": races,
+            "total_files": len(races),
+            "csv_count": len(csv_files),
+            "json_count": len(json_files),
+        }
+    )
+
+
+@app.route("/api/upcoming_races_csv")
 def api_upcoming_races_csv():
     """API endpoint to fetch upcoming races from CSV and JSON files with caching"""
     try:
-        refresh = request.args.get('refresh', 'false').lower() == 'true'
+        refresh = request.args.get("refresh", "false").lower() == "true"
         races = load_upcoming_races(refresh=refresh)
 
         # Prepare response data
@@ -134,48 +153,54 @@ def api_upcoming_races_csv():
         return jsonify(response_data)
 
     except Exception as e:
-        return jsonify({
-            "success": False, 
-            "error": f"Error fetching upcoming races: {str(e)}"
-        }), 500
+        return (
+            jsonify(
+                {"success": False, "error": f"Error fetching upcoming races: {str(e)}"}
+            ),
+            500,
+        )
 
-@app.route('/api/clear_cache')
+
+@app.route("/api/clear_cache")
 def clear_cache():
     """API endpoint to clear in-memory cache"""
     global _upcoming_races_cache
     # Clear the cache
     _upcoming_races_cache["data"] = None
     _upcoming_races_cache["timestamp"] = None
-    return jsonify({
-        "success": True,
-        "message": "Cache cleared",
-        "refresh": True
-    })
+    return jsonify({"success": True, "message": "Cache cleared", "refresh": True})
 
-@app.route('/api/database_status')
+
+@app.route("/api/database_status")
 def database_status():
     """Check database status"""
     db_file = "greyhound_racing_data.db"
-    
+
     if os.path.exists(db_file):
         stat_info = os.stat(db_file)
-        return jsonify({
-            "success": True,
-            "database_exists": True,
-            "database_size": stat_info.st_size,
-            "last_modified": stat_info.st_mtime
-        })
+        return jsonify(
+            {
+                "success": True,
+                "database_exists": True,
+                "database_size": stat_info.st_size,
+                "last_modified": stat_info.st_mtime,
+            }
+        )
     else:
-        return jsonify({
-            "success": False,
-            "database_exists": False,
-            "message": "Database not found"
-        })
+        return jsonify(
+            {
+                "success": False,
+                "database_exists": False,
+                "message": "Database not found",
+            }
+        )
+
 
 if __name__ == "__main__":
     # Get PORT from environment or default to 5002
     import os
-    PORT = int(os.environ.get('PORT', 5002))
-    
+
+    PORT = int(os.environ.get("PORT", 5002))
+
     print(f"🚀 Starting test Flask server on port {PORT}...")
     app.run(host="0.0.0.0", port=PORT)

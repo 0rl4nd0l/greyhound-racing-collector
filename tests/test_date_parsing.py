@@ -86,13 +86,13 @@ def test_date_parsing():
 
     # Summary
     print("=" * 50)
-    print(f"📊 TEST SUMMARY:")
+    print("📊 TEST SUMMARY:")
     print(f"   ✅ Passed: {passed}")
     print(f"   ❌ Failed: {failed}")
     print(f"   📈 Success Rate: {passed/(passed+failed)*100:.1f}%")
 
     if failed == 0:
-        print(f"\n🎉 All tests passed! Flexible date parsing is working correctly.")
+        print("\n🎉 All tests passed! Flexible date parsing is working correctly.")
         return True
     else:
         print(f"\n⚠️ {failed} test(s) failed. Please check the implementation.")

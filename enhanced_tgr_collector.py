@@ -38,13 +38,19 @@ class EnhancedTGRCollector:
         # Initialize components if available
         if HAS_TGR_COMPONENTS:
             try:
+                import os
+                # Allow env overrides
+                rate_limit = float(os.getenv('TGR_RATE_LIMIT', '3.0'))
+                use_cache = os.getenv('TGR_DISABLE_CACHE', '0').lower() not in ('1','true','yes')
+                cache_dir = os.getenv('TGR_CACHE_DIR', '.tgr_cache')
                 self.scraper = TheGreyhoundRecorderScraper(
-                    rate_limit=3.0,  # Be respectful to TGR servers
-                    cache_dir=".tgr_cache",
-                    use_cache=True
+                    rate_limit=rate_limit,  # Be respectful to TGR servers
+                    cache_dir=cache_dir,
+                    use_cache=use_cache
                 )
                 self.integrator = TGRPredictionIntegrator(db_path=self.db_path)
                 logger.info("✅ Enhanced TGR collector initialized with all components")
+                logger.info(f"   TGR settings: rate_limit={rate_limit}s, use_cache={use_cache}, cache_dir={cache_dir}")
             except Exception as e:
                 logger.error(f"Failed to initialize TGR components: {e}")
         else:
@@ -97,6 +103,18 @@ class EnhancedTGRCollector:
                 
                 # Collect enhanced data from TGR
                 enhanced_data = self.scraper.fetch_enhanced_dog_data(dog_name)
+                
+                # Fallback: attempt dog profile scraping if no entries found
+                if not enhanced_data or not enhanced_data.get('form_entries'):
+                    try:
+                        profile_entries = self.scraper.fetch_dog_profile_history(dog_name)
+                        if profile_entries:
+                            enhanced_data = enhanced_data or {'dog_name': dog_name}
+                            enhanced_data['form_entries'] = profile_entries
+                            enhanced_data.setdefault('recent_comments', [])
+                            logger.info(f"🐕 Profile fallback collected {len(profile_entries)} entries for {dog_name}")
+                    except Exception as _e:
+                        logger.debug(f"Profile fallback failed for {dog_name}: {_e}")
                 
                 if enhanced_data and enhanced_data.get('form_entries'):
                     # Store to database

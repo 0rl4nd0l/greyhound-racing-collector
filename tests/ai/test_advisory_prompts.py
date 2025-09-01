@@ -1,5 +1,6 @@
 import re
-from src.ai.prompts import system_prompt, DOMAIN_RULES
+
+from src.ai.prompts import DOMAIN_RULES, system_prompt
 
 
 def test_domain_rules_wording():
@@ -15,7 +16,9 @@ def test_system_prompt_includes_rules_for_advisory():
     assert "historical data" in p
     assert "race data" in p
     # Ensure winner source rule present
-    assert re.search(r"winners?\s+must\s+come\s+from\s+the\s+race\s+webpage", p, re.IGNORECASE)
+    assert re.search(
+        r"winners?\s+must\s+come\s+from\s+the\s+race\s+webpage", p, re.IGNORECASE
+    )
 
 
 def test_system_prompt_roles_minimal_length():
@@ -23,4 +26,3 @@ def test_system_prompt_roles_minimal_length():
     for role in ("advisory", "analyst", "bettor", "daily"):
         p = system_prompt(role)
         assert len(p) < 400, "Prompt should be concise"
-

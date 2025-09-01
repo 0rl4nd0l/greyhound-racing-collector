@@ -7,6 +7,7 @@ Safely migrates the database to support enhanced TGR data capture
 while preserving existing data.
 """
 
+import argparse
 import sqlite3
 import logging
 import json
@@ -20,7 +21,9 @@ def migrate_tgr_enhancement(db_path: str = "greyhound_racing_data.db"):
     """Migrate database to support enhanced TGR functionality."""
     
     logger.info("🚀 Starting TGR enhancement migration...")
+    logger.info(f"   Target DB: {db_path}")
     
+    conn = None
     try:
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
@@ -267,8 +270,11 @@ def migrate_tgr_enhancement(db_path: str = "greyhound_racing_data.db"):
         # Migrate existing TGR cache data to enhanced format
         logger.info("🔄 Migrating existing TGR cache data...")
         
-        cursor.execute("SELECT COUNT(*) FROM tgr_feature_cache")
-        existing_cache_count = cursor.fetchone()[0]
+        try:
+            cursor.execute("SELECT COUNT(*) FROM tgr_feature_cache")
+            existing_cache_count = cursor.fetchone()[0]
+        except Exception:
+            existing_cache_count = 0
         
         if existing_cache_count > 0:
             logger.info(f"Found {existing_cache_count} existing cache entries to migrate")
@@ -320,14 +326,18 @@ def migrate_tgr_enhancement(db_path: str = "greyhound_racing_data.db"):
     except Exception as e:
         logger.error(f"❌ Migration failed: {e}")
         if conn:
-            conn.rollback()
-            conn.close()
+            try:
+                conn.rollback()
+                conn.close()
+            except Exception:
+                pass
         raise
 
 def verify_migration(db_path: str = "greyhound_racing_data.db"):
     """Verify the migration was successful."""
     
     logger.info("🔍 Verifying TGR enhancement migration...")
+    logger.info(f"   Target DB: {db_path}")
     
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -346,8 +356,11 @@ def verify_migration(db_path: str = "greyhound_racing_data.db"):
     for table in expected_tables:
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", [table])
         if cursor.fetchone():
-            cursor.execute(f"SELECT COUNT(*) FROM {table}")
-            count = cursor.fetchone()[0]
+            try:
+                cursor.execute(f"SELECT COUNT(*) FROM {table}")
+                count = cursor.fetchone()[0]
+            except Exception:
+                count = 0
             logger.info(f"✅ {table}: {count} records")
         else:
             logger.error(f"❌ Missing table: {table}")
@@ -362,11 +375,17 @@ def verify_migration(db_path: str = "greyhound_racing_data.db"):
             logger.error(f"❌ Missing view: {view}")
     
     # Check enhanced cache migration
-    cursor.execute("SELECT COUNT(*) FROM tgr_enhanced_feature_cache")
-    enhanced_cache_count = cursor.fetchone()[0]
+    try:
+        cursor.execute("SELECT COUNT(*) FROM tgr_enhanced_feature_cache")
+        enhanced_cache_count = cursor.fetchone()[0]
+    except Exception:
+        enhanced_cache_count = 0
     
-    cursor.execute("SELECT COUNT(*) FROM tgr_feature_cache")
-    original_cache_count = cursor.fetchone()[0]
+    try:
+        cursor.execute("SELECT COUNT(*) FROM tgr_feature_cache")
+        original_cache_count = cursor.fetchone()[0]
+    except Exception:
+        original_cache_count = 0
     
     logger.info(f"📊 Cache migration: {original_cache_count} original → {enhanced_cache_count} enhanced")
     
@@ -377,6 +396,7 @@ def populate_sample_enhanced_data(db_path: str = "greyhound_racing_data.db"):
     """Populate some sample enhanced TGR data for testing."""
     
     logger.info("🧪 Populating sample enhanced TGR data...")
+    logger.info(f"   Target DB: {db_path}")
     
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -469,14 +489,21 @@ def populate_sample_enhanced_data(db_path: str = "greyhound_racing_data.db"):
     logger.info("✅ Sample enhanced TGR data populated")
 
 if __name__ == "__main__":
-    # Run the migration
-    migrate_tgr_enhancement()
-    
-    # Populate sample data
-    populate_sample_enhanced_data()
-    
-    print("🎉 TGR Enhancement Migration Complete!")
-    print("   - Enhanced TGR tables created")
-    print("   - Existing cache data migrated") 
-    print("   - Sample data populated")
-    print("   - Ready for enhanced TGR data capture!")
+    parser = argparse.ArgumentParser(description="Migrate database for enhanced TGR support")
+    parser.add_argument("--db", dest="db_path", default="greyhound_racing_data.db", help="Path to SQLite DB to migrate")
+    parser.add_argument("--no-sample", dest="no_sample", action="store_true", help="Do not populate sample data")
+    parser.add_argument("--verify-only", dest="verify_only", action="store_true", help="Only verify migration state and exit")
+    args = parser.parse_args()
+
+    if args.verify_only:
+        verify_migration(args.db_path)
+    else:
+        migrate_tgr_enhancement(args.db_path)
+        if not args.no_sample:
+            populate_sample_enhanced_data(args.db_path)
+        print("🎉 TGR Enhancement Migration Complete!")
+        print("   - Enhanced TGR tables created (or verified)")
+        print("   - Existing cache data migrated (if present)")
+        if not args.no_sample:
+            print("   - Sample data populated")
+        print("   - Ready for enhanced TGR data capture!")

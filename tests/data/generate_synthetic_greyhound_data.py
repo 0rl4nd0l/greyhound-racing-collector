@@ -1,8 +1,7 @@
 import argparse
-import json
-import os
-import random
 import hashlib
+import json
+import random
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -18,7 +17,9 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
-def generate_block(start_time: datetime, n_races: int, rng: random.Random, np_rng: np.random.Generator):
+def generate_block(
+    start_time: datetime, n_races: int, rng: random.Random, np_rng: np.random.Generator
+):
     rows_hist = []
     rows_race = []
     for i in range(n_races):
@@ -39,30 +40,34 @@ def generate_block(start_time: datetime, n_races: int, rng: random.Random, np_rn
             track = rng.choice(["WENT", "SAND", "MEAD", "BEND"])  # venue code
             grade = rng.choice(["A1", "A2", "A3", "B1", "B2"])
             box = d + 1
-            rows_hist.append({
-                "race_id": race_id,
-                "dog_id": dog_id,
-                "dog_name": dog_name,
-                "age_months": age,
-                "weight_kg": weight,
-                "recent_finish1": recent1,
-                "recent_finish2": recent2,
-                "recent_finish3": recent3,
-                "avg_split_time": split,
-                "track_code": track,
-                "grade": grade,
-                "box": box,
-                "race_datetime": race_time.isoformat(),
-            })
+            rows_hist.append(
+                {
+                    "race_id": race_id,
+                    "dog_id": dog_id,
+                    "dog_name": dog_name,
+                    "age_months": age,
+                    "weight_kg": weight,
+                    "recent_finish1": recent1,
+                    "recent_finish2": recent2,
+                    "recent_finish3": recent3,
+                    "avg_split_time": split,
+                    "track_code": track,
+                    "grade": grade,
+                    "box": box,
+                    "race_datetime": race_time.isoformat(),
+                }
+            )
         winner_dog_id = f"D{race_id}-{winner_ix+1:02d}"
-        rows_race.append({
-            "race_id": race_id,
-            "race_datetime": race_time.isoformat(),
-            "weather": rng.choice(["Fine", "Rain", "Overcast"]),
-            "track_condition": rng.choice(["Fast", "Good", "Slow"]),
-            "winning_time": float(np.clip(np_rng.normal(29.9, 0.6), 28.0, 31.5)),
-            "winner_dog_id": winner_dog_id,
-        })
+        rows_race.append(
+            {
+                "race_id": race_id,
+                "race_datetime": race_time.isoformat(),
+                "weather": rng.choice(["Fine", "Rain", "Overcast"]),
+                "track_condition": rng.choice(["Fast", "Good", "Slow"]),
+                "winning_time": float(np.clip(np_rng.normal(29.9, 0.6), 28.0, 31.5)),
+                "winner_dog_id": winner_dog_id,
+            }
+        )
     return pd.DataFrame(rows_hist), pd.DataFrame(rows_race)
 
 
@@ -109,4 +114,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

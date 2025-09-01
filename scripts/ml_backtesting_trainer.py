@@ -67,7 +67,9 @@ SKLEARN_AVAILABLE = SKLEARN_CORE_AVAILABLE and SKLEARN_FULL_AVAILABLE
 
 class MLBacktestingTrainer:
     def __init__(self, db_path="greyhound_racing_data.db"):
-        self.db_path = db_path
+        # Allow overriding DB path via environment for compatibility with other tools
+        env_db = os.getenv("ANALYTICS_DB_PATH") or os.getenv("GREYHOUND_DB_PATH")
+        self.db_path = env_db if env_db else db_path
         self.results_dir = Path("./ml_backtesting_results")
         self.results_dir.mkdir(exist_ok=True)
 
@@ -114,7 +116,14 @@ class MLBacktestingTrainer:
     def load_historical_race_data(self, months_back=12):
         """Load historical race data with outcomes for training/validation"""
         try:
-            conn = sqlite3.connect(self.db_path)
+            # Open read-only to avoid creating WAL/SHM and ensure no writes
+            db_uri = f"file:{os.path.abspath(self.db_path)}?mode=ro"
+            conn = sqlite3.connect(db_uri, uri=True)
+            try:
+                conn.execute("PRAGMA query_only=ON")
+                conn.execute("PRAGMA foreign_keys=ON")
+            except Exception:
+                pass
 
             # Calculate date range
             end_date = datetime.now()
@@ -124,47 +133,190 @@ class MLBacktestingTrainer:
                 f"📊 Loading historical data from {start_date.date()} to {end_date.date()}"
             )
 
-            # Enhanced query with more features
-            query = """
+            # Introspect table schemas to adapt to different DB variants
+            def get_columns(c, table):
+                try:
+                    cur = c.execute(f"PRAGMA table_info({table})")
+                    return {row[1] for row in cur.fetchall()}
+                except Exception:
+                    return set()
+
+            drd_cols = get_columns(conn, "dog_race_data")
+            rm_cols = get_columns(conn, "race_metadata")
+
+            def pick(candidates, available):
+                for cand in candidates:
+                    if cand in available:
+                        return cand
+                return None
+
+            # Map actual columns
+            dog_name_actual = pick(["dog_clean_name", "dog_name", "name"], drd_cols)
+            finish_pos_actual = pick(["finish_position", "position", "place"], drd_cols)
+            box_actual = pick(["box_number", "box", "trap"], drd_cols)
+            weight_actual = pick(["weight", "dog_weight"], drd_cols)
+            sp_actual = pick(["starting_price", "odds", "sp", "start_price"], drd_cols)
+            perf_actual = pick(["performance_rating"], drd_cols)
+            speed_actual = pick(["speed_rating"], drd_cols)
+            class_actual = pick(["class_rating"], drd_cols)
+            time_actual = pick(["individual_time", "time", "finish_time"], drd_cols)
+            margin_actual = pick(["margin", "winning_margin"], drd_cols)
+
+            field_size_actual = pick(["field_size", "num_runners", "runners"], rm_cols)
+            distance_actual = pick(["distance", "race_distance"], rm_cols)
+            venue_actual = pick(["venue", "track", "course"], rm_cols)
+            track_cond_actual = pick(["track_condition", "going", "condition"], rm_cols)
+            weather_actual = pick(["weather"], rm_cols)
+            temp_actual = pick(["temperature", "temp"], rm_cols)
+            grade_actual = pick(["grade", "class"], rm_cols)
+            date_actual = pick(["race_date", "date"], rm_cols)
+            time_of_day_actual = pick(["race_time", "time"], rm_cols)
+            start_dt_actual = pick(["start_datetime", "start_time", "datetime"], rm_cols)
+
+            # Ensure essential columns exist
+            essential_missing = []
+            if finish_pos_actual is None:
+                essential_missing.append("finish_position")
+            if date_actual is None:
+                essential_missing.append("race_date")
+            if dog_name_actual is None:
+                essential_missing.append("dog_name")
+            if essential_missing:
+                raise RuntimeError(
+                    f"Database missing essential columns: {', '.join(essential_missing)}"
+                )
+
+            # Build SELECT clause with aliases to standard names used downstream
+            sel = []
+            sel.append("drd.race_id")
+            sel.append(f"drd.{dog_name_actual} AS dog_clean_name")
+            sel.append(f"drd.{finish_pos_actual} AS finish_position")
+            sel.append(f"drd.{box_actual} AS box_number" if box_actual else "NULL AS box_number")
+            sel.append(f"drd.{weight_actual} AS weight" if weight_actual else "NULL AS weight")
+            sel.append(f"drd.{sp_actual} AS starting_price" if sp_actual else "NULL AS starting_price")
+            sel.append(f"drd.{perf_actual} AS performance_rating" if perf_actual else "NULL AS performance_rating")
+            sel.append(f"drd.{speed_actual} AS speed_rating" if speed_actual else "NULL AS speed_rating")
+            sel.append(f"drd.{class_actual} AS class_rating" if class_actual else "NULL AS class_rating")
+            sel.append(f"drd.{time_actual} AS individual_time" if time_actual else "NULL AS individual_time")
+            sel.append(f"drd.{margin_actual} AS margin" if margin_actual else "NULL AS margin")
+
+            sel.append(f"rm.{field_size_actual} AS field_size" if field_size_actual else "NULL AS field_size")
+            sel.append(f"rm.{distance_actual} AS distance" if distance_actual else "NULL AS distance")
+            sel.append(f"rm.{venue_actual} AS venue" if venue_actual else "NULL AS venue")
+            sel.append(f"rm.{track_cond_actual} AS track_condition" if track_cond_actual else "NULL AS track_condition")
+            sel.append(f"rm.{weather_actual} AS weather" if weather_actual else "NULL AS weather")
+            sel.append(f"rm.{temp_actual} AS temperature" if temp_actual else "NULL AS temperature")
+            sel.append(f"rm.{grade_actual} AS grade" if grade_actual else "NULL AS grade")
+            sel.append(f"rm.{date_actual} AS race_date")
+            sel.append(f"rm.{time_of_day_actual} AS race_time" if time_of_day_actual else "NULL AS race_time")
+            sel.append(f"rm.{start_dt_actual} AS start_datetime" if start_dt_actual else "NULL AS start_datetime")
+
+            # Context subqueries
+            sel.append("(SELECT COUNT(*) FROM dog_race_data WHERE race_id = drd.race_id) AS total_runners")
+            if time_actual:
+                sel.append(
+                    f"(SELECT MIN({time_actual}) FROM dog_race_data WHERE race_id = drd.race_id AND {time_actual} IS NOT NULL) AS winning_time"
+                )
+            else:
+                sel.append("NULL AS winning_time")
+
+            select_clause = ",\n                ".join(sel)
+
+            # Always apply date filtering on the Python side because race_date formats are mixed
+            # (e.g., "22 July 2025" and "2025-07-24"). SQL-side date() would exclude non-ISO rows.
+            use_sql_date_filter = False
+
+            # WHERE clause honoring available columns
+            where_conditions = [
+                f"drd.{finish_pos_actual} IS NOT NULL",
+                f"drd.{finish_pos_actual} != ''",
+                f"drd.{finish_pos_actual} != 'N/A'",
+            ]
+            if use_sql_date_filter:
+                # Normalize SQL date filtering to date() to handle both 'YYYY-MM-DD' and 'YYYY-MM-DD HH:MM:SS'
+                where_conditions.append(f"date(rm.{date_actual}) >= date(?)")
+                where_conditions.append(f"date(rm.{date_actual}) <= date(?)")
+
+            where_clause = " AND \n            ".join(where_conditions)
+
+            query = f"""
             SELECT 
-                drd.race_id,
-                drd.dog_clean_name,
-                drd.finish_position,
-                drd.box_number,
-                drd.weight,
-                drd.starting_price,
-                drd.performance_rating,
-                drd.speed_rating,
-                drd.class_rating,
-                drd.individual_time,
-                drd.margin,
-                rm.field_size,
-                rm.distance,
-                rm.venue,
-                rm.track_condition,
-                rm.weather,
-                rm.temperature,
-                rm.grade,
-                rm.race_date,
-                rm.race_time,
-                -- Winner information for context
-                (SELECT COUNT(*) FROM dog_race_data WHERE race_id = drd.race_id) as total_runners,
-                (SELECT MIN(individual_time) FROM dog_race_data WHERE race_id = drd.race_id AND individual_time IS NOT NULL) as winning_time
+                {select_clause}
             FROM dog_race_data drd
             JOIN race_metadata rm ON drd.race_id = rm.race_id
-            WHERE drd.finish_position IS NOT NULL 
-            AND drd.finish_position != ''
-            AND drd.finish_position != 'N/A'
-            AND rm.race_date >= ?
-            AND rm.race_date <= ?
-            AND drd.individual_time IS NOT NULL
-            ORDER BY rm.race_date ASC, drd.race_id, drd.finish_position
+            WHERE {where_clause}
+            ORDER BY rm.{date_actual} ASC, drd.race_id, drd.{finish_pos_actual}
             """
 
-            df = pd.read_sql_query(
-                query, conn, params=[start_date.isoformat(), end_date.isoformat()]
-            )
+            params = [start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')] if use_sql_date_filter else []
+            df = pd.read_sql_query(query, conn, params=params)
             conn.close()
+
+            # Fallback: if SQL date filter returned zero rows, retry without SQL date filter
+            if use_sql_date_filter and (df is None or len(df) == 0):
+                try:
+                    db_uri_fb = f"file:{os.path.abspath(self.db_path)}?mode=ro"
+                    conn_fb = sqlite3.connect(db_uri_fb, uri=True)
+                    try:
+                        conn_fb.execute("PRAGMA query_only=ON")
+                        conn_fb.execute("PRAGMA foreign_keys=ON")
+                    except Exception:
+                        pass
+                    fallback_conditions = [c for c in where_conditions if not c.strip().startswith("date(")]
+                    fallback_where = " AND \n            ".join(fallback_conditions)
+                    fallback_query = f"""
+                    SELECT 
+                        {select_clause}
+                    FROM dog_race_data drd
+                    JOIN race_metadata rm ON drd.race_id = rm.race_id
+                    WHERE {fallback_where}
+                    ORDER BY rm.{date_actual} ASC, drd.race_id, drd.{finish_pos_actual}
+                    """
+                    df = pd.read_sql_query(fallback_query, conn_fb)
+                    conn_fb.close()
+                except Exception:
+                    pass
+
+            # Convert race_date to datetime for reliable downstream sorting/filters
+            if "race_date" in df.columns:
+                # Robust mixed-format parsing per row to avoid vectorized inference issues
+                def _parse_date_mixed(val):
+                    if pd.isna(val):
+                        return pd.NaT
+                    s = str(val).strip()
+                    # Try strict ISO patterns first
+                    for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S"):
+                        try:
+                            return pd.to_datetime(s, format=fmt)
+                        except Exception:
+                            pass
+                    # Fallback to flexible parsing with dayfirst for textual dates (e.g., '22 July 2025')
+                    try:
+                        return pd.to_datetime(s, dayfirst=True, errors="raise")
+                    except Exception:
+                        return pd.NaT
+                df["race_date"] = df["race_date"].apply(_parse_date_mixed)
+
+                # Fallback: if race_date missing but start_datetime present, use it
+                if "start_datetime" in df.columns:
+                    def _parse_start_dt(val):
+                        if pd.isna(val):
+                            return pd.NaT
+                        s = str(val).strip()
+                        try:
+                            return pd.to_datetime(s, errors="coerce")
+                        except Exception:
+                            return pd.NaT
+                    start_dt_parsed = df["start_datetime"].apply(_parse_start_dt)
+                    na_mask = df["race_date"].isna() & start_dt_parsed.notna()
+                    df.loc[na_mask, "race_date"] = start_dt_parsed[na_mask]
+
+                # If SQL date filter wasn't used, apply Python-side date window
+                if not use_sql_date_filter:
+                    start_dt = pd.to_datetime(start_date)
+                    end_dt = pd.to_datetime(end_date)
+                    mask = (df["race_date"] >= start_dt) & (df["race_date"] <= end_dt)
+                    df = df[mask].copy()
 
             print(
                 f"✅ Loaded {len(df)} race records covering {df['race_id'].nunique()} races"
@@ -221,41 +373,38 @@ class MLBacktestingTrainer:
                 (df["dog_clean_name"] == dog_name) & (df["race_date"] < race_date)
             ].sort_values("race_date", ascending=False)
 
-            if len(historical_data) >= 1:  # Need at least some history
-                # Calculate enhanced features
-                enhanced_features = self.calculate_dog_features(historical_data, row)
-                # Handle finish position parsing
-                try:
-                    finish_position = int(str(row["finish_position"]).replace("=", ""))
-                except (ValueError, TypeError):
-                    continue  # Skip records with invalid finish positions
+            # Cold-start enabled: build features even if no prior races (defaults will be used)
+            enhanced_features = self.calculate_dog_features(historical_data, row)
+            # Handle finish position parsing
+            try:
+                finish_position = int(str(row["finish_position"]).replace("=", ""))
+            except (ValueError, TypeError):
+                continue  # Skip records with invalid finish positions
 
-                enhanced_features.update(
-                    {
-                        "race_id": race_id,
-                        "dog_name": dog_name,
-                        "finish_position": finish_position,
-                        "is_winner": 1 if finish_position == 1 else 0,
-                        "is_placer": 1 if finish_position <= 3 else 0,
-                        "is_top_half": (
-                            1
-                            if finish_position <= row.get("total_runners", 8) // 2
-                            else 0
-                        ),
-                        "race_date": race_date,
-                        # Current race context
-                        "current_box": row["box_number"],
-                        "current_weight": row["weight"],
-                        "current_odds": row["starting_price"],
-                        "field_size": row["field_size"],
-                        "distance": row["distance"],
-                        "venue": row["venue"],
-                        "track_condition": row["track_condition"],
-                        "grade": row["grade"],
-                    }
-                )
+            enhanced_features.update(
+                {
+                    "race_id": race_id,
+                    "dog_name": dog_name,
+                    "finish_position": finish_position,
+                    "is_winner": 1 if finish_position == 1 else 0,
+                    "is_placer": 1 if finish_position <= 3 else 0,
+                    "is_top_half": (
+                        1 if finish_position <= max(int(row.get("total_runners", 8)) // 2, 1) else 0
+                    ),
+                    "race_date": race_date,
+                    # Current race context
+                    "current_box": row["box_number"],
+                    "current_weight": row["weight"],
+                    "current_odds": row["starting_price"],
+                    "field_size": row["field_size"],
+                    "distance": row["distance"],
+                    "venue": row["venue"],
+                    "track_condition": row["track_condition"],
+                    "grade": row["grade"],
+                }
+            )
 
-                enhanced_records.append(enhanced_features)
+            enhanced_records.append(enhanced_features)
 
         enhanced_df = pd.DataFrame(enhanced_records)
         total_time = time.time() - start_time
@@ -372,12 +521,14 @@ class MLBacktestingTrainer:
                         distances.append(float(str(d).replace("m", "")))
                     except ValueError:
                         pass  # Skip invalid distances
+            dist_val = current_race.get("distance", "500")
             try:
-                current_distance = float(
-                    current_race.get("distance", "500").replace("m", "")
-                )
-            except ValueError:
-                current_distance = 500  # Default if parsing fails
+                if pd.isna(dist_val):
+                    current_distance = 500.0
+                else:
+                    current_distance = float(str(dist_val).replace("m", ""))
+            except Exception:
+                current_distance = 500.0  # Default if parsing fails
             distance_experience = (
                 sum(1 for d in distances if abs(d - current_distance) <= 50)
                 / len(distances)
@@ -533,11 +684,52 @@ class MLBacktestingTrainer:
         )
         feature_columns.append("current_odds_log")
 
-        # Handle distance field (convert strings like '525m' to numeric)
+        # Handle distance field robustly (strings like '525m', numbers, or bytes blobs)
         if "distance" in enhanced_df.columns:
-            enhanced_df["distance_numeric"] = enhanced_df["distance"].apply(
-                lambda x: float(str(x).replace("m", "")) if pd.notna(x) else 500.0
-            )
+            def _parse_distance(val):
+                if pd.isna(val):
+                    return 500.0
+                # Numeric types
+                if isinstance(val, (int, float, np.integer, np.floating)):
+                    try:
+                        return float(val)
+                    except Exception:
+                        return 500.0
+                # Bytes/BLOBs (common in some SQLite dumps)
+                if isinstance(val, (bytes, bytearray)):
+                    b = bytes(val)
+                    # Try little-endian integer widths 2/4/8
+                    for width in (2, 4, 8):
+                        if len(b) == width:
+                            try:
+                                num = int.from_bytes(b, byteorder="little", signed=False)
+                                if 100 <= num <= 2000:
+                                    return float(num)
+                            except Exception:
+                                pass
+                    # Fallback: try to decode and extract digits
+                    try:
+                        s = b.decode("utf-8", errors="ignore")
+                    except Exception:
+                        s = ""
+                    import re as _re
+                    m = _re.search(r"(\d{2,4})", s)
+                    if m:
+                        return float(m.group(1))
+                    return 500.0
+                # Strings or other types
+                s = str(val)
+                s = s.replace("m", "").strip()
+                import re as _re
+                m = _re.search(r"(\d+(?:\.\d+)?)", s)
+                if m:
+                    try:
+                        return float(m.group(1))
+                    except Exception:
+                        return 500.0
+                return 500.0
+
+            enhanced_df["distance_numeric"] = enhanced_df["distance"].apply(_parse_distance)
             # Replace 'distance' with 'distance_numeric' in feature columns
             if "distance" in feature_columns:
                 feature_columns = [
@@ -684,9 +876,9 @@ class MLBacktestingTrainer:
         X_resampled_scaled = scaler.fit_transform(X_resampled)
         X_test_scaled = scaler.transform(X_test)
 
-        best_model = None
+        best_model_obj = None
         best_score = 0
-        best_params = None
+        best_params_final = None
         best_model_name = None
 
         total_models = len(self.model_configs)
@@ -727,66 +919,149 @@ class MLBacktestingTrainer:
                 verbose=0,
             )
 
-            # Define optuna objective
+            # Define optuna objective (use the simplified param grid defined above)
+            optuna_param_grid = param_grid
             def objective(trial):
                 model_class = config["model"]
                 params = {
                     key: trial.suggest_categorical(key, values)
-                    for key, values in config["params"].items()
+                    for key, values in optuna_param_grid.items()
                 }
-                model = model_class(**params, random_state=42)
-                model = CalibratedClassifierCV(model, method="sigmoid")
-                score = cross_val_score(
-                    model, X_resampled_scaled, y_resampled, cv=tscv, scoring="f1"
-                ).mean()
-                return score
+                # Add class weighting for imbalance where supported
+                params_local = dict(params)
+                try:
+                    if model_class.__name__ in ("RandomForestClassifier", "LogisticRegression"):
+                        params_local["class_weight"] = "balanced"
+                except Exception:
+                    pass
+                model = model_class(**params_local, random_state=42)
+                # Manual TimeSeriesSplit with robust AUC computation that skips invalid folds
+                aucs = []
+                for tr_idx, va_idx in tscv.split(X_resampled_scaled):
+                    X_tr, X_va = X_resampled_scaled[tr_idx], X_resampled_scaled[va_idx]
+                    y_tr, y_va = y_resampled.iloc[tr_idx], y_resampled.iloc[va_idx]
+                    # If either split has a single class, skip this fold
+                    if y_va.nunique() < 2 or y_tr.nunique() < 2:
+                        continue
+                    try:
+                        model.fit(X_tr, y_tr)
+                        if hasattr(model, "predict_proba"):
+                            proba = model.predict_proba(X_va)[:, 1]
+                        else:
+                            scores = model.decision_function(X_va)
+                            vmin, vmax = np.min(scores), np.max(scores)
+                            proba = (scores - vmin) / (vmax - vmin + 1e-12)
+                        aucs.append(roc_auc_score(y_va, proba))
+                    except Exception:
+                        continue
+                # If no valid folds, return a neutral score
+                return float(np.mean(aucs)) if len(aucs) > 0 else 0.5
 
             # Optuna study
             study = optuna.create_study(direction="maximize")
             study.optimize(objective, n_trials=30)
 
-            # Retrain with best params
-            best_params = study.best_params
-            best_model = model_class(**best_params, random_state=42)
-            best_model = CalibratedClassifierCV(best_model, method="sigmoid")
-            best_model.fit(X_resampled_scaled, y_resampled)
+            # Retrain with best params (with class weighting where supported)
+            current_params = study.best_params
+            params_local = dict(current_params)
+            try:
+                if model_class.__name__ in ("RandomForestClassifier", "LogisticRegression"):
+                    params_local["class_weight"] = "balanced"
+            except Exception:
+                pass
 
-            # Evaluate on test set
-            y_pred = best_model.predict(X_test_scaled)
-            test_score = f1_score(y_test, y_pred, average="binary")
+            # Threshold tuning on a small validation slice of the training set
+            n_train = len(X_resampled_scaled)
+            split_inner = int(max(10, n_train * 0.9))
+            X_tr_inner = X_resampled_scaled[:split_inner]
+            y_tr_inner = y_resampled.iloc[:split_inner]
+            X_val_inner = X_resampled_scaled[split_inner:]
+            y_val_inner = y_resampled.iloc[split_inner:]
 
-            # Log to MLflow
-            mlflow.log_params(best_params)
-            mlflow.log_metric("f1_score", test_score)
-            mlflow.log_artifact("model", best_model)
+            base_model = model_class(**params_local, random_state=42)
+            if len(y_tr_inner.unique()) >= 2 and len(y_val_inner) > 0:
+                try:
+                    base_model.fit(X_tr_inner, y_tr_inner)
+                    if hasattr(base_model, "predict_proba"):
+                        val_proba = base_model.predict_proba(X_val_inner)[:, 1]
+                    else:
+                        # Fallback to decision_function if no proba
+                        val_proba = base_model.decision_function(X_val_inner)
+                        # map to 0-1 via min-max
+                        import numpy as _np
+                        vmin, vmax = _np.min(val_proba), _np.max(val_proba)
+                        val_proba = (val_proba - vmin) / (vmax - vmin + 1e-12)
+                    # Scan thresholds to maximize accuracy on inner val
+                    thresholds = np.linspace(0.05, 0.95, 19)
+                    best_thr = 0.5
+                    best_acc = 0.0
+                    for thr in thresholds:
+                        preds = (val_proba >= thr).astype(int)
+                        acc = accuracy_score(y_val_inner, preds)
+                        if acc > best_acc:
+                            best_acc = acc
+                            best_thr = thr
+                except Exception:
+                    best_thr = 0.5
+            else:
+                best_thr = 0.5
 
-            # Color code the results
-            if test_score >= 0.65:
+            # Fit final model on full training
+            current_model = model_class(**params_local, random_state=42)
+            current_model.fit(X_resampled_scaled, y_resampled)
+
+            # Evaluate on test set with tuned threshold and report AUC as well
+            if hasattr(current_model, "predict_proba"):
+                y_proba = current_model.predict_proba(X_test_scaled)[:, 1]
+            else:
+                y_proba = current_model.decision_function(X_test_scaled)
+                vmin, vmax = np.min(y_proba), np.max(y_proba)
+                y_proba = (y_proba - vmin) / (vmax - vmin + 1e-12)
+            y_pred = (y_proba >= best_thr).astype(int)
+
+            test_accuracy = accuracy_score(y_test, y_pred)
+            try:
+                auc = roc_auc_score(y_test, y_proba)
+            except Exception:
+                auc = float("nan")
+
+            # Log to MLflow (best-effort, ignore if MLflow not configured)
+            try:
+                mlflow.log_params(params_local)
+                mlflow.log_metric("accuracy", test_accuracy)
+                mlflow.log_metric("roc_auc", auc)
+                mlflow.log_metric("threshold", best_thr)
+            except Exception:
+                pass
+
+            # Color code the results (by accuracy)
+            if test_accuracy >= 0.65:
                 result_color = "🟢"
-            elif test_score >= 0.55:
+            elif test_accuracy >= 0.55:
                 result_color = "🟡"
             else:
                 result_color = "🔴"
 
-            print(f"      {result_color} Test F1 Score: {test_score:.3f}")
-            print(f"      🔧 Best params: {best_params}")
+            print(f"      {result_color} Test Accuracy: {test_accuracy:.3f} | AUC: {auc:.3f} | thr={best_thr:.2f}")
+            print(f"      🔧 Best params: {params_local}")
 
-            if test_score > best_score:
-                best_score = test_score
-                best_model = best_model
-                best_params = best_params
+            if best_model_name is None or test_accuracy >= best_score:
+                best_score = test_accuracy
+                best_model_obj = current_model
+                best_params_final = params_local
                 best_model_name = model_name
 
         print(f"\n🏆 OPTIMIZATION COMPLETE!")
-        print(f"   🥇 Best Model: {best_model_name.replace('_', ' ').title()}")
+        name_for_print = (best_model_name.replace('_', ' ').title() if best_model_name else '<none>')
+        print(f"   🥇 Best Model: {name_for_print}")
         print(f"   📊 Test Accuracy: {best_score:.3f}")
-        print(f"   🎯 Parameters: {best_params}")
+        print(f"   🎯 Parameters: {best_params_final}")
 
         return {
-            "model": best_model,
+            "model": best_model_obj,
             "model_name": best_model_name,
             "test_accuracy": best_score,
-            "params": best_params,
+            "params": best_params_final,
             "scaler": scaler,
             "feature_columns": feature_columns,
         }
@@ -1006,8 +1281,23 @@ class MLBacktestingTrainer:
                     X_train_scaled = scaler.fit_transform(X_train)
 
                     base_model = model_class(**params, random_state=42) if model_class else best_model_info["model"]
-                    model = CalibratedClassifierCV(base_model, method="sigmoid")
-                    model.fit(X_train_scaled, y_train)
+                    # Guard: calibration can fail if a CV fold contains a single class.
+                    # Fallback to no calibration when class counts are too low.
+                    y_vals = np.array(y_train)
+                    cls, counts = np.unique(y_vals, return_counts=True)
+                    min_count = counts.min() if len(counts) > 0 else 0
+                    use_calibration = min_count >= 2
+                    if use_calibration:
+                        try:
+                            model = CalibratedClassifierCV(base_model, method="sigmoid", cv=3)
+                            model.fit(X_train_scaled, y_train)
+                        except Exception:
+                            # Fallback to uncalibrated if calibration fails
+                            model = base_model
+                            model.fit(X_train_scaled, y_train)
+                    else:
+                        model = base_model
+                        model.fit(X_train_scaled, y_train)
 
                     cached_model = model
                     cached_scaler = scaler
@@ -1042,7 +1332,7 @@ class MLBacktestingTrainer:
 
                 # Save per-race JSONL entry
                 record = {
-                    "race_id": int(race_id) if pd.notna(race_id) else str(race_id),
+                    "race_id": str(race_id),
                     "race_date": str(pd.to_datetime(grp["race_date"]).date()),
                     "predicted_top": str(top_row["dog_name"]),
                     "predicted_prob": float(top_row["pred_win_prob"]),
@@ -1052,6 +1342,7 @@ class MLBacktestingTrainer:
                     "field_size": int(len(race_df)),
                     "odds_top": float(odds_top) if odds_top is not None and not np.isnan(odds_top) else None,
                     "expected_value_top": ev,
+                    "scorable": bool(actual_winner_name is not None),
                 }
                 f_out.write(json.dumps(record) + "\n")
 
@@ -1074,6 +1365,14 @@ class MLBacktestingTrainer:
 
         top1_acc = float(race_level_df["correct"].mean()) if not race_level_df.empty else 0.0
         topk_rate = float(race_level_df["top_k_hit"].mean()) if not race_level_df.empty else 0.0
+        # Scorable-only metrics (exclude races where the actual winner row is missing)
+        if not race_level_df.empty and "scorable" in race_level_df.columns:
+            sc_df = race_level_df[race_level_df["scorable"] == True]
+            top1_acc_scorable = float(sc_df["correct"].mean()) if not sc_df.empty else None
+            topk_rate_scorable = float(sc_df["top_k_hit"].mean()) if not sc_df.empty else None
+        else:
+            top1_acc_scorable = None
+            topk_rate_scorable = None
         # MRR: reciprocal rank of actual winner
         mrr_vals = []
         if not race_level_df.empty:
@@ -1106,6 +1405,10 @@ class MLBacktestingTrainer:
         print("\n📈 WALK-FORWARD RESULTS:")
         print(f"   🎯 Top-1 accuracy: {top1_acc:.3f}")
         print(f"   🎯 Top-{top_k} hit rate: {topk_rate:.3f}")
+        if top1_acc_scorable is not None:
+            print(f"   🎯 Top-1 accuracy (scorable only): {top1_acc_scorable:.3f}")
+        if topk_rate_scorable is not None:
+            print(f"   🎯 Top-{top_k} hit rate (scorable only): {topk_rate_scorable:.3f}")
         if mrr is not None:
             print(f"   📐 MRR: {mrr:.3f}")
         if log_loss_val is not None:
@@ -1126,6 +1429,8 @@ class MLBacktestingTrainer:
             "metrics": {
                 "top1_accuracy": top1_acc,
                 "topk_hit_rate": topk_rate,
+                "top1_accuracy_scorable": top1_acc_scorable,
+                "topk_hit_rate_scorable": topk_rate_scorable,
                 "mrr": mrr,
                 "log_loss": log_loss_val,
                 "brier": brier_val,
@@ -1404,7 +1709,14 @@ class MLBacktestingTrainer:
         # Step 1: Load and analyze basic data
         print("\n📊 STEP 1: Loading Historical Data")
         print("-" * 50)
-        conn = sqlite3.connect(self.db_path)
+        # Open read-only for simplified analysis as well
+        db_uri = f"file:{os.path.abspath(self.db_path)}?mode=ro"
+        conn = sqlite3.connect(db_uri, uri=True)
+        try:
+            conn.execute("PRAGMA query_only=ON")
+            conn.execute("PRAGMA foreign_keys=ON")
+        except Exception:
+            pass
         
         # Calculate date range
         end_date = datetime.now()

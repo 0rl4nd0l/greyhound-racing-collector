@@ -19,6 +19,7 @@ Version: 1.0.0 - Expert form approach implementation
 import os
 import sys
 import requests
+from utils.http_client import get_shared_session
 import time
 import random
 from datetime import datetime, timedelta
@@ -53,10 +54,10 @@ class ExpertFormCsvScraper:
         self.collected_races = self.race_file_manager.collected_races
         self.existing_files = self.race_file_manager.existing_files
         
-        # Setup session with proper headers
-        self.session = requests.Session()
+        # Setup shared session with proper headers
+        self.session = get_shared_session()
         self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/********* Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.5',
             'Accept-Encoding': 'gzip, deflate, br',
@@ -197,13 +198,21 @@ class ExpertFormCsvScraper:
             self.safe_log(f"Accessing expert-form page: {expert_form_url}")
             
             # Step 1: Get the expert-form page
-            response = self.session.get(expert_form_url, timeout=30)
-            if response.status_code != 200:
-                self.safe_log(f"Expert-form page not accessible: {response.status_code}", "WARNING")
-                return False
-            
-            self.stats['expert_form_found'] += 1
-            soup = BeautifulSoup(response.content, 'html.parser')
+            response = None
+            try:
+                response = self.session.get(expert_form_url, timeout=30)
+                if response.status_code != 200:
+                    self.safe_log(f"Expert-form page not accessible: {response.status_code}", "WARNING")
+                    return False
+                
+                self.stats['expert_form_found'] += 1
+                soup = BeautifulSoup(response.content, 'html.parser')
+            finally:
+                if response is not None:
+                    try:
+                        response.close()
+                    except Exception:
+                        pass
             
             # Step 2: Find the CSV download form
             form_info = self.find_csv_download_form(soup, expert_form_url)
@@ -213,17 +222,25 @@ class ExpertFormCsvScraper:
             # Step 3: Submit the form to get CSV data
             self.safe_log(f"Submitting form ({form_info['method']}) to: {form_info['action']}")
             
-            if form_info['method'] == 'POST':
-                form_response = self.session.post(form_info['action'], data=form_info['data'], timeout=30)
-            else:
-                form_response = self.session.get(form_info['action'], params=form_info['data'], timeout=30)
-            
-            if form_response.status_code != 200:
-                self.safe_log(f"Form submission failed: {form_response.status_code}", "ERROR")
-                return False
-            
-            content_type = form_response.headers.get('content-type', '').lower()
-            content = form_response.text.strip()
+            form_response = None
+            try:
+                if form_info['method'] == 'POST':
+                    form_response = self.session.post(form_info['action'], data=form_info['data'], timeout=30)
+                else:
+                    form_response = self.session.get(form_info['action'], params=form_info['data'], timeout=30)
+                
+                if form_response.status_code != 200:
+                    self.safe_log(f"Form submission failed: {form_response.status_code}", "ERROR")
+                    return False
+                
+                content_type = form_response.headers.get('content-type', '').lower()
+                content = form_response.text.strip()
+            finally:
+                if form_response is not None:
+                    try:
+                        form_response.close()
+                    except Exception:
+                        pass
             
             # Check if we got CSV data directly
             if 'csv' in content_type or 'text/plain' in content_type:
@@ -237,9 +254,17 @@ class ExpertFormCsvScraper:
             # Check if response contains a download URL
             if content.startswith('http'):
                 self.safe_log(f"Got CSV download URL: {content}")
-                csv_response = self.session.get(content, timeout=30)
-                if csv_response.status_code == 200:
-                    return self.save_csv_content(csv_response.text, filename)
+                csv_response = None
+                try:
+                    csv_response = self.session.get(content, timeout=30)
+                    if csv_response.status_code == 200:
+                        return self.save_csv_content(csv_response.text, filename)
+                finally:
+                    if csv_response is not None:
+                        try:
+                            csv_response.close()
+                        except Exception:
+                            pass
             
             # Check if response is HTML with a download link
             if '<' in content and '>' in content:
@@ -254,9 +279,17 @@ class ExpertFormCsvScraper:
                             href = f"{self.base_url}/{href}"
                         
                         self.safe_log(f"Found CSV link in response: {href}")
-                        csv_response = self.session.get(href, timeout=30)
-                        if csv_response.status_code == 200:
-                            return self.save_csv_content(csv_response.text, filename)
+                        csv_response = None
+                        try:
+                            csv_response = self.session.get(href, timeout=30)
+                            if csv_response.status_code == 200:
+                                return self.save_csv_content(csv_response.text, filename)
+                        finally:
+                            if csv_response is not None:
+                                try:
+                                    csv_response.close()
+                                except Exception:
+                                    pass
             
             self.safe_log(f"Unexpected response format ({len(content)} chars)", "WARNING")
             return False

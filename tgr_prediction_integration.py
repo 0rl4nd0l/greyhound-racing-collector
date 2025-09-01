@@ -17,6 +17,7 @@ Key Features:
 import logging
 import sqlite3
 import json
+import os
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple, Any, Optional
 from pathlib import Path
@@ -64,6 +65,22 @@ class TGRPredictionIntegrator:
         self.enable_tgr_lookup = enable_tgr_lookup
         self.cache_duration_hours = cache_duration_hours
         self.use_scraper = use_scraper
+        
+        # Track DB table availability to avoid noisy errors when tables are missing
+        self._tgr_db_available: Optional[bool] = None
+        try:
+            self._tgr_db_available = self._detect_tgr_tables()
+            if self._tgr_db_available is False:
+                logger.info("TGR DB tables not present; will prefer scraper-only mode when enabled")
+        except Exception:
+            # On any unexpected error, leave as None (unknown) and proceed
+            self._tgr_db_available = None
+        
+        # Allow on-demand scraping fallback only when explicitly permitted
+        try:
+            self._allow_on_demand_scrape = str(os.getenv('ALLOW_TGR_ON_DEMAND_SCRAPE', '0')).lower() in ('1','true','yes','on')
+        except Exception:
+            self._allow_on_demand_scrape = False
         
         # Initialize TGR scraper only if explicitly enabled
         self.tgr_scraper = None
@@ -137,62 +154,184 @@ class TGRPredictionIntegrator:
             logger.warning(f"Failed to fetch TGR data for {dog_name}: {e}")
             return self._get_default_tgr_features()
     def _search_tgr_dog_form(self, dog_name: str, race_timestamp: datetime) -> List[Dict[str, Any]]:
-        """Search TGR for historical form data for a specific dog."""
-        
-        # This would typically involve:
-        # 1. Searching TGR database/cache for the dog
-        # 2. If not found, scraping TGR for recent form guides containing the dog
-        # 3. Parsing the form data
-        
-        form_data = []
-        
-        try:
-            # First check our database for existing TGR form data
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            # Look for existing TGR form data (if we have dog entries)
-            query = """
-                SELECT gdf.race_date, gdf.venue, gdf.distance, gdf.box_number,
-                       gdf.finishing_position, gdf.race_time, gdf.split_times,
-                       gdf.margin, gdf.weight, gdf.comments
-                FROM gr_dog_form gdf
-                JOIN gr_dog_entries gde ON gdf.dog_entry_id = gde.id  
-                WHERE UPPER(gde.dog_name) = UPPER(?)
-                  AND gdf.race_date < date(?)
-                  AND gdf.race_date >= date(?, '-365 days')
-                ORDER BY gdf.race_date DESC
-                LIMIT 20
-            """
-            
-            cursor.execute(query, [dog_name, race_timestamp.strftime('%Y-%m-%d'), race_timestamp.strftime('%Y-%m-%d')])
-            rows = cursor.fetchall()
-            
-            for row in rows:
-                form_entry = {
-                    'race_date': row[0],
-                    'venue': row[1],
-                    'distance': row[2],
-                    'box_number': row[3],
-                    'finish_position': row[4],
-                    'race_time': row[5],
-                    'split_times': json.loads(row[6]) if row[6] else {},
-                    'margin': row[7],
-                    'weight': row[8],
-                    'comments': row[9]
-                }
-                form_data.append(form_entry)
-            
-            conn.close()
-            
-            # If we don't have enough data, we could trigger a TGR scrape here
-            # For now, we'll use what we have in the database
-            
-            logger.debug(f"Found {len(form_data)} TGR form entries for {dog_name}")
-            
-        except Exception as e:
-            logger.error(f"Error querying TGR form data for {dog_name}: {e}")
-        
+        """Search TGR for historical form data for a specific dog.
+        Tries legacy GR tables first (gr_dog_form + gr_dog_entries). If unavailable or empty,
+        falls back to enhanced tables (tgr_enhanced_dog_form) and derives fields where needed.
+        """
+        form_data: List[Dict[str, Any]] = []
+        # Preferred cutoff window (1 year lookback)
+        cutoff = race_timestamp.strftime('%Y-%m-%d')
+
+        # If we already know TGR tables are not available, skip DB attempts
+        if self._tgr_db_available is False:
+            logger.debug("Skipping TGR DB queries (tables not present); will use scraper if enabled")
+        else:
+            # Attempt 1: Legacy schema join (source-of-truth when available)
+            try:
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+                query_legacy = """
+                    SELECT gdf.race_date, gdf.venue, gdf.distance, gdf.box_number,
+                           gdf.finishing_position, gdf.race_time, gdf.split_times,
+                           gdf.margin, gdf.weight, gdf.comments
+                    FROM gr_dog_form gdf
+                    JOIN gr_dog_entries gde ON gdf.dog_entry_id = gde.id  
+                    WHERE UPPER(gde.dog_name) = UPPER(?)
+                      AND date(gdf.race_date) < date(?)
+                      AND date(gdf.race_date) >= date(?, '-365 days')
+                    ORDER BY gdf.race_date DESC
+                    LIMIT 20
+                """
+                cursor.execute(query_legacy, [dog_name, cutoff, cutoff])
+                rows = cursor.fetchall()
+                for row in rows:
+                    form_entry = {
+                        'race_date': row[0],
+                        'venue': row[1],
+                        'distance': row[2],
+                        'box_number': row[3],
+                        'finish_position': row[4],
+                        'race_time': row[5],
+                        'split_times': json.loads(row[6]) if row[6] else {},
+                        'margin': row[7],
+                        'weight': row[8],
+                        'comments': row[9]
+                    }
+                    form_data.append(form_entry)
+                conn.close()
+                if form_data:
+                    logger.debug(f"Found {len(form_data)} TGR legacy form entries for {dog_name}")
+                    return form_data
+            except Exception as e:
+                if 'no such table' in str(e).lower():
+                    logger.info(f"Legacy TGR tables not found while querying for {dog_name}; will try enhanced or scraper")
+                    self._tgr_db_available = False  # mark as unavailable to avoid future attempts
+                else:
+                    logger.warning(f"Error querying legacy TGR form data for {dog_name}: {e}")
+
+            # Attempt 2: Enhanced schema (dog_name-based) fallback
+            try:
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+                # Align with tgr_enhanced_dog_form schema (no finishing_position/race_time columns)
+                query_enh = """
+                    SELECT race_date, venue, distance, box_number,
+                           comments, weight, recent_form
+                    FROM tgr_enhanced_dog_form
+                    WHERE UPPER(dog_name) = UPPER(?)
+                      AND date(race_date) < date(?)
+                      AND date(race_date) >= date(?, '-365 days')
+                    ORDER BY race_date DESC
+                    LIMIT 20
+                """
+                cursor.execute(query_enh, [dog_name, cutoff, cutoff])
+                rows = cursor.fetchall()
+                for row in rows:
+                    race_date, venue, distance, box_number, comments, weight, recent_form = row
+                    # Derive finish position using recent_form JSON array (most recent first)
+                    derived_pos = None
+                    try:
+                        if recent_form:
+                            arr = json.loads(recent_form) if isinstance(recent_form, str) else (recent_form or [])
+                            for x in arr:
+                                try:
+                                    if str(x).strip().isdigit():
+                                        derived_pos = int(str(x).strip())
+                                        break
+                                except Exception:
+                                    continue
+                    except Exception:
+                        derived_pos = None
+                    form_entry = {
+                        'race_date': race_date,
+                        'venue': venue,
+                        'distance': distance,
+                        'box_number': box_number,
+                        'finish_position': derived_pos,
+                        'race_time': None,
+                        'split_times': {},
+                        'margin': None,
+                        'weight': weight,
+                        'comments': comments,
+                    }
+                    form_data.append(form_entry)
+                conn.close()
+                if form_data:
+                    logger.debug(f"Enhanced fallback: found {len(form_data)} entries for {dog_name}")
+            except Exception as e:
+                if 'no such table' in str(e).lower():
+                    logger.info(f"Enhanced TGR table not found while querying for {dog_name}; will use scraper if enabled")
+                    self._tgr_db_available = False
+                else:
+                    logger.warning(f"Error querying enhanced TGR form data for {dog_name}: {e}")
+
+        # Attempt 3: Targeted scrape-and-persist (only when scraper is enabled and allowed)
+        if not form_data and getattr(self, 'tgr_scraper', None) and getattr(self, '_allow_on_demand_scrape', False):
+            try:
+                # Use EnhancedTGRCollector for a focused scrape of this dog
+                from enhanced_tgr_collector import EnhancedTGRCollector
+                collector = EnhancedTGRCollector(db_path=self.db_path)
+                _ = collector.collect_comprehensive_dog_data([dog_name])
+                
+                # If DB exists, re-query enhanced table after scraping
+                if self._tgr_db_available is not False:
+                    try:
+                        conn = sqlite3.connect(self.db_path)
+                        cursor = conn.cursor()
+                        query_enh = """
+                            SELECT race_date, venue, distance, box_number,
+                                   comments, weight, recent_form
+                            FROM tgr_enhanced_dog_form
+                            WHERE UPPER(dog_name) = UPPER(?)
+                              AND date(race_date) < date(?)
+                              AND date(race_date) >= date(?, '-365 days')
+                            ORDER BY race_date DESC
+                            LIMIT 20
+                        """
+                        cursor.execute(query_enh, [dog_name, cutoff, cutoff])
+                        rows = cursor.fetchall()
+                        for row in rows:
+                            race_date, venue, distance, box_number, comments, weight, recent_form = row
+                            derived_pos = None
+                            try:
+                                if recent_form:
+                                    arr = json.loads(recent_form) if isinstance(recent_form, str) else (recent_form or [])
+                                    for x in arr:
+                                        try:
+                                            if str(x).strip().isdigit():
+                                                derived_pos = int(str(x).strip())
+                                                break
+                                        except Exception:
+                                            continue
+                            except Exception:
+                                derived_pos = None
+                            form_entry = {
+                                'race_date': race_date,
+                                'venue': venue,
+                                'distance': distance,
+                                'box_number': box_number,
+                                'finish_position': derived_pos,
+                                'race_time': None,
+                                'split_times': {},
+                                'margin': None,
+                                'weight': weight,
+                                'comments': comments,
+                            }
+                            form_data.append(form_entry)
+                        conn.close()
+                        if form_data:
+                            logger.debug(f"Scrape fallback: found {len(form_data)} entries for {dog_name}")
+                    except Exception as e:
+                        if 'no such table' in str(e).lower():
+                            logger.info("Enhanced TGR table still not present after scrape; skipping re-query")
+                            self._tgr_db_available = False
+                        else:
+                            logger.debug(f"Re-query after scrape failed for {dog_name}: {e}")
+            except Exception as e:
+                logger.warning(f"Targeted TGR scrape failed for {dog_name}: {e}")
+        elif not form_data and getattr(self, 'tgr_scraper', None) and not getattr(self, '_allow_on_demand_scrape', False):
+            logger.debug("On-demand TGR scrape fallback disabled by ALLOW_TGR_ON_DEMAND_SCRAPE=0; returning defaults")
+
         return form_data
     
     def _calculate_tgr_features(self, form_data: List[Dict[str, Any]], race_timestamp: datetime) -> Dict[str, Any]:
@@ -316,6 +455,27 @@ class TGRPredictionIntegrator:
             features.update(self._get_default_tgr_features())
         
         return features
+    
+    def _detect_tgr_tables(self) -> bool:
+        """Check if any TGR-related tables exist in the DB (legacy or enhanced)."""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cur = conn.cursor()
+            tables = ['gr_dog_form', 'gr_dog_entries', 'tgr_enhanced_dog_form']
+            present = False
+            for t in tables:
+                try:
+                    cur.execute(f"PRAGMA table_info({t})")
+                    rows = cur.fetchall()
+                    if rows:
+                        present = True
+                        break
+                except Exception:
+                    continue
+            conn.close()
+            return present
+        except Exception:
+            return False
     
     def _get_default_tgr_features(self) -> Dict[str, Any]:
         """Return default TGR features when no data is available."""

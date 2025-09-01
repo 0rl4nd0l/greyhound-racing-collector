@@ -8,6 +8,7 @@ import argparse
 import json
 from pathlib import Path
 from model_registry import get_model_registry, ModelMetadata
+from scripts.db_guard import db_guard
 
 def main():
     ap = argparse.ArgumentParser()
@@ -16,6 +17,8 @@ def main():
 
     reg = get_model_registry()
     idx = getattr(reg, 'model_index', {})
+    from os import getenv as _ge
+    db_path = _ge('GREYHOUND_DB_PATH') or _ge('DATABASE_PATH') or 'greyhound_racing_data.db'
     mid = args.model_id
     if mid not in idx or not isinstance(idx[mid], dict):
         print(json.dumps({"success": False, "error": f"model_id '{mid}' not found"}))
@@ -29,10 +32,12 @@ def main():
 
     # Persist and update symlinks
     try:
-        # Access protected methods intentionally for maintenance
-        reg._save_registry()  # type: ignore
-        md = ModelMetadata(**idx[mid])
-        reg._create_best_model_symlinks(md)  # type: ignore
+        with db_guard(db_path=db_path, label='mark_registry_best') as guard:
+            guard.expect_table_growth('ml_model_registry', min_delta=0)
+            # Access protected methods intentionally for maintenance
+            reg._save_registry()  # type: ignore
+            md = ModelMetadata(**idx[mid])
+            reg._create_best_model_symlinks(md)  # type: ignore
         print(json.dumps({"success": True, "marked_best": mid}))
     except Exception as e:
         print(json.dumps({"success": False, "error": str(e)}))

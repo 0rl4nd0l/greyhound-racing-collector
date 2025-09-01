@@ -934,6 +934,10 @@ Set these environment variables (e.g., in a .env file or via the shell) to contr
   - Example: ENABLE_ENDPOINT_DROPDOWNS=1
   - Note (2025-08-28): The dropdowns are no longer auto-enabled in testing/debug modes; enable explicitly via the env var when needed. The /api/endpoints route and endpoints-menu.js remain available behind this flag.
   - CI: The UI E2E job in .github/workflows/backend-tests.yml is currently disabled with `if: ${{ false }}`. Remove that guard to re-enable the UI E2E job.
+- DISABLE_NAV_DROPDOWNS
+  - Description: Hides the main top navigation dropdowns (e.g., Races, ML, System, Help) even when UI_MODE=advanced. Useful for demos or a simplified UI while retaining advanced pages.
+  - Default: 0
+  - Example: DISABLE_NAV_DROPDOWNS=1
 - TESTING
   - Description: Enables various test helpers and routes when true. Keep false in normal runs.
   - Default: false
@@ -1028,6 +1032,19 @@ Archive-first policy
 
 For a step-by-step visual walkthrough, see docs/Upcoming_Races_User_Guide.md
 
+## Production Hardening and Safety Defaults
+
+This repository enforces a strict “no fabricated outputs” policy in production paths. All mock, placeholder, or random-based logic is removed or explicitly gated behind development-only environment flags. API endpoints fail fast (HTTP 503) when predictors are unavailable.
+
+Key environment flags (default OFF):
+- UNIFIED_ALLOW_BASIC_FALLBACK — allow dev-only basic fallback in unified_predictor.py
+- ML_V4_ALLOW_HEURISTIC — allow dev-only single-dog heuristic in ml_system_v4.py
+- ML_V4_ALLOW_SIMULATED_ODDS — allow dev-only simulated odds for EV learning in ml_system_v4.py
+- TGR_ALLOW_PLACEHOLDER — allow dev-only race insights placeholder in TGR scraper
+- ALLOW_SYNTHETIC_TEST_MODEL — allow synthetic-data test trainer script
+
+See docs/hardening.md for full details.
+
 ## Repository Structure
 
 -   `app.py`: Main Flask application.
@@ -1061,3 +1078,7 @@ The following files have been moved to the `/archive` directory as they have bee
 -   `enhanced_odds_collector.py` - Superseded by hybrid_odds_scraper.py
 
 **Note**: These scripts have been replaced by the enhanced API endpoints (`/api/predict_single_race_enhanced`, `/api/predict_all_upcoming_races_enhanced`) which provide intelligent pipeline selection, comprehensive error handling, and better integration with the main application.
+
+---
+
+For details on the production hardening policy and safety defaults, see docs/hardening.md.

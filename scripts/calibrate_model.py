@@ -56,7 +56,7 @@ def find_registration_script() -> Path | None:
             continue
     return None
 
-def main() -e int:
+def main() -> int:
     args = parse_args()
 
     # Require --promote flag to proceed
@@ -169,7 +169,6 @@ def main() -e int:
         "stderr_tail": (proc.stderr[-200:] if proc.stderr else None)
     }))
 
-    return 0 if (success and model_id) else 4
     return 0 if (success and model_id) else 4
 
 

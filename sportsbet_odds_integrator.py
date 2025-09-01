@@ -18,10 +18,12 @@ import json
 import re
 import sqlite3
 import time
+import os
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
 import requests
+from utils.http_client import get_shared_session
 
 # IMPORTANT: Avoid importing Playwright at module import time to satisfy module_guard
 # We will lazily import it only within methods that need it.
@@ -51,11 +53,15 @@ class SportsbetOddsIntegrator:
     def __init__(self, db_path="greyhound_racing_data.db"):
         self.db_path = db_path
         self.base_url = "https://www.sportsbet.com.au"
+        # Default greyhound landing URL; can be overridden if needed
+        self.greyhound_url = f"{self.base_url}/betting/greyhound-racing"
+        # Selenium WebDriver placeholder (lazy-initialized)
+        self.driver = None
         if redis:
             self.redis_client = redis.StrictRedis(host="localhost", port=6379, db=0)
         else:
             self.redis_client = None
-        self.session = requests.Session()
+        self.session = get_shared_session()
         self.odds_cache = {}
         self.update_interval = 30  # seconds
         self.setup_session()
@@ -170,8 +176,49 @@ class SportsbetOddsIntegrator:
         """
         )
 
+        # Ensure legacy compatibility columns exist regardless of initial create order
+        # Some tests and older schemas expect a generic 'url' column as well
+        try:
+            cursor.execute("ALTER TABLE race_metadata ADD COLUMN url TEXT")
+        except sqlite3.OperationalError:
+            # Column already exists or table created elsewhere; ignore
+            pass
+        try:
+            cursor.execute("ALTER TABLE race_metadata ADD COLUMN sportsbet_url TEXT")
+        except sqlite3.OperationalError:
+            # Column already exists; ignore
+            pass
+
         conn.commit()
         conn.close()
+
+    def _selenium_primitives(self):
+        """Lazily import Selenium primitives to avoid module load-time imports.
+        Returns (By, WebDriverWait, EC, TimeoutException).
+        """
+        try:
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+            from selenium.common.exceptions import TimeoutException
+            return By, WebDriverWait, EC, TimeoutException
+        except Exception as e:
+            raise RuntimeError(f"Selenium primitives unavailable: {e}")
+
+    def setup_driver(self, headless: bool = True) -> bool:
+        """Initialize Selenium WebDriver via drivers.get_chrome_driver (lazy).
+        Returns True on success, False otherwise.
+        """
+        try:
+            from drivers import get_chrome_driver
+            self.driver = get_chrome_driver(headless=headless)
+            if not getattr(self, "greyhound_url", None):
+                self.greyhound_url = f"{self.base_url}/betting/greyhound-racing"
+            return True
+        except Exception as e:
+            print(f"⚠️ WebDriver setup failed: {e}")
+            self.driver = None
+            return False
 
     def fetch_odds(self):
         """Fetch odds using headless Playwright.
@@ -450,6 +497,7 @@ class SportsbetOddsIntegrator:
 
     def extract_races_from_dom(self) -> List[Dict]:
         """Extract upcoming races from DOM table with countdown timers"""
+        By, WebDriverWait, EC, TimeoutException = self._selenium_primitives()
         races = []
 
         try:
@@ -675,6 +723,7 @@ class SportsbetOddsIntegrator:
 
     def get_race_odds_from_page(self, race_info: Dict) -> Dict:
         """Navigate to individual race page and extract live odds"""
+        By, WebDriverWait, EC, TimeoutException = self._selenium_primitives()
         try:
             venue_url = race_info.get("venue_url")
             if not venue_url:
@@ -773,6 +822,7 @@ class SportsbetOddsIntegrator:
 
     def extract_odds_strategy_runner_cards(self) -> List[Dict]:
         """Extract odds using robust Sportsbet-specific DOM selectors with comprehensive fallbacks"""
+        By, WebDriverWait, EC, TimeoutException = self._selenium_primitives()
         odds_data = []
 
         try:
@@ -1063,6 +1113,7 @@ class SportsbetOddsIntegrator:
 
     def _extract_odds_with_fallbacks(self, card, card_number: int) -> tuple[float, str]:
         """Extract odds with comprehensive fallback strategies"""
+        By, WebDriverWait, EC, TimeoutException = self._selenium_primitives()
         odds_decimal = 0.0
         odds_text = ""
 
@@ -1207,6 +1258,7 @@ class SportsbetOddsIntegrator:
 
     def _extract_from_broader_containers(self) -> List[Dict]:
         """Extract from broader containers when individual runners don't work"""
+        By, WebDriverWait, EC, TimeoutException = self._selenium_primitives()
         odds_data = []
         try:
             broader_selectors = [
@@ -1943,6 +1995,7 @@ class SportsbetOddsIntegrator:
 
     def extract_odds_strategy_table(self) -> List[Dict]:
         """Extract odds using table-based strategy"""
+        By, WebDriverWait, EC, TimeoutException = self._selenium_primitives()
         odds_data = []
 
         try:
@@ -2181,6 +2234,7 @@ class SportsbetOddsIntegrator:
 
     def find_next_race_from_meeting(self, meeting_url: str) -> Optional[str]:
         """Navigate to meeting page and find the next available race URL"""
+        By, WebDriverWait, EC, TimeoutException = self._selenium_primitives()
         try:
             print(f"  🏟️  Navigating to meeting page: {meeting_url}")
             self.driver.get(meeting_url)
@@ -2286,6 +2340,7 @@ class SportsbetOddsIntegrator:
         self, expected_venue: str = None
     ) -> Optional[int]:
         """Extract race number from the current page, venue-specific"""
+        By, WebDriverWait, EC, TimeoutException = self._selenium_primitives()
         try:
             url = self.driver.current_url
             print(f"  🔗 Current URL: {url}")
@@ -2433,6 +2488,7 @@ class SportsbetOddsIntegrator:
 
     def get_today_races(self) -> List[Dict]:
         """Get today's greyhound races from Sportsbet with live odds"""
+        By, WebDriverWait, EC, TimeoutException = self._selenium_primitives()
         self.setup_driver()
 
         if not self.driver:

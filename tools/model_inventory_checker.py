@@ -42,25 +42,29 @@ def get_file_size_mb(file_path: str) -> float:
         return 0.0
 
 def discover_model_files() -> List[str]:
-    """Discover all model files in the repository."""
+    """Discover model artifact files under known model directories only.
+
+    This avoids scanning caches and non-model pickles.
+    """
     model_extensions = [".joblib", ".pkl", ".h5", ".pt", ".pth"]
     model_files = []
     
-    # Search locations
+    # Restrict to dedicated model directories
     search_paths = [
-        ".",
-        "models",
-        "model_registry", 
         "model_registry/models",
         "ml_models_v4",
+        "ml_models",
         "comprehensive_trained_models",
-        "archive",
         "advanced_models"
     ]
+    
+    excluded_dirs = {".git", ".cache", ".pytest_cache", "tests", "test-results", "artifacts", "node_modules"}
     
     for search_path in search_paths:
         if os.path.exists(search_path):
             for root, dirs, files in os.walk(search_path):
+                # prune excluded dirs
+                dirs[:] = [d for d in dirs if d not in excluded_dirs]
                 for file in files:
                     if any(file.endswith(ext) for ext in model_extensions):
                         full_path = os.path.join(root, file)
@@ -180,7 +184,7 @@ def generate_inventory_report():
     """Generate comprehensive model inventory report."""
     print("🔍 Discovering model files...")
     model_files = discover_model_files()
-    print(f"Found {len(model_files)} model files")
+    print(f"Found {len(model_files)} candidate artifact files")
     
     # Load registry metadata
     registry_metadata = load_registry_metadata()
@@ -193,6 +197,7 @@ def generate_inventory_report():
     
     print("🧪 Testing model loading...")
     successful_loads = 0
+    true_models = 0
     
     for i, file_path in enumerate(model_files):
         print(f"  [{i+1}/{len(model_files)}] Testing {file_path}...")
@@ -225,13 +230,18 @@ def generate_inventory_report():
         
         if model_info["load_success"]:
             successful_loads += 1
-            print(f"    ✅ Success: {model_info['model_type']} with {model_info['feature_count']} features")
+            # Only report true model objects (have predict or predict_proba)
+            if model_info.get("has_predict_method") or model_info.get("has_predict_proba_method"):
+                true_models += 1
+                print(f"    ✅ Model: {model_info['model_type']} with {model_info['feature_count']} features")
+                inventory["models"].append(model_info)
+            else:
+                print("    ↪️  Skipped non-model artifact (no predict methods)")
         else:
             print(f"    ❌ Failed: {model_info.get('load_error', 'Unknown error')}")
-        
-        inventory["models"].append(model_info)
     
     inventory["successful_loads"] = successful_loads
+    inventory["true_models"] = true_models
     inventory["load_success_rate"] = successful_loads / len(model_files) if model_files else 0
     
     # Save inventory report
@@ -245,13 +255,13 @@ def generate_inventory_report():
     print(f"   Load success rate: {inventory['load_success_rate']:.1%}")
     print(f"   Report saved: {output_path}")
     
-    # Identify best candidates
-    working_models = [m for m in inventory["models"] if m["load_success"]]
-    pipeline_models = [m for m in working_models if m["is_pipeline"]]
-    registry_models = [m for m in working_models if m["in_registry"]]
+    # Identify best candidates among true models
+    working_models = [m for m in inventory["models"] if m.get("load_success")]
+    pipeline_models = [m for m in working_models if m.get("is_pipeline")]
+    registry_models = [m for m in working_models if m.get("in_registry")]
     
     print(f"\n🎯 Model Categories:")
-    print(f"   Working models: {len(working_models)}")
+    print(f"   True models discovered: {len(working_models)}")
     print(f"   Pipeline models: {len(pipeline_models)}")
     print(f"   Registry models: {len(registry_models)}")
     

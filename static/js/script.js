@@ -1,6 +1,7 @@
 // Greyhound Racing Dashboard JavaScript
 // =====================================
 
+
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize dashboard
     initializeDashboard();
@@ -23,8 +24,18 @@ function highlightActiveNavItem() {
     
     // Use Array.from to ensure forEach is available on all browsers
     Array.from(navLinks).forEach(link => {
-        if (link.getAttribute('href') === currentPath) {
-            link.style.backgroundColor = 'rgba(255,255,255,0.3)';
+        const href = link.getAttribute('href');
+        // Clear any legacy inline background to maintain WCAG contrast
+        if (link.style && link.style.backgroundColor) {
+            link.style.backgroundColor = '';
+        }
+        if (href === currentPath) {
+            // Prefer semantic active state and accessible name
+            link.classList.add('active');
+            if (!link.getAttribute('aria-current')) {
+                link.setAttribute('aria-current', 'page');
+            }
+            // Ensure high-contrast text color is enforced via CSS, not inline styles
         }
     });
 }

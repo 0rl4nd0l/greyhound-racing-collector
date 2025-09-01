@@ -6,7 +6,15 @@ Archive-first bootstrap for a clean development database.
 - Recreates schema exactly from models.py (SQLAlchemy Base.metadata.create_all)
 - Attempts to stamp Alembic to head (non-fatal if Alembic is unavailable)
 
-This script is safe to run repeatedly and respects the project's archive-first policy.
+GUARDRAILS (destructive operation):
+- Requires ALLOW_DB_RESET=1
+- Blocks when ENVIRONMENT=production
+- Blocks if a sentinel file `.db_protected` exists next to the DB
+- Interactive confirmation in TTY: type "RESET DB" to proceed
+- In non-interactive mode, also require FORCE=1
+
+This script follows the project's archive-first policy and will refuse to run
+without explicit approval.
 """
 from __future__ import annotations
 
@@ -87,10 +95,45 @@ def create_schema(url: str) -> None:
         print(f"(Non-fatal) Alembic stamp skipped: {e}")
 
 
+def _guardrails(db_file: Path) -> None:
+    # Env gate
+    if os.environ.get("ALLOW_DB_RESET") != "1":
+        raise SystemExit("Refused: ALLOW_DB_RESET=1 is required for destructive reset")
+
+    # Environment lock
+    if os.environ.get("ENVIRONMENT", "development").lower() == "production":
+        raise SystemExit("Refused: ENVIRONMENT=production is not allowed for reset")
+
+    # Sentinel protection: either sibling .db_protected or file-specific .protected
+    sentinel_dir = db_file.parent / ".db_protected"
+    sentinel_file = db_file.with_suffix(db_file.suffix + ".protected")
+    if sentinel_dir.exists() or sentinel_file.exists():
+        raise SystemExit(f"Refused: protection sentinel present ({sentinel_dir if sentinel_dir.exists() else sentinel_file})")
+
+    # Human-in-the-loop confirmation when interactive
+    try:
+        is_tty = sys.__stdin__.isatty()  # type: ignore[attr-defined]
+    except Exception:
+        is_tty = False
+
+    if is_tty and os.environ.get("FORCE") != "1":
+        print(f"This will ARCHIVE and RECREATE the database at: {db_file}")
+        confirm = input("Type 'RESET DB' to proceed: ").strip()
+        if confirm != "RESET DB":
+            raise SystemExit("Refused: Confirmation failed")
+
+    if (not is_tty) and os.environ.get("FORCE") != "1":
+        raise SystemExit("Refused: Non-interactive reset requires FORCE=1")
+
+
 def main() -> int:
     db_file = _db_file_from_url(DB_URL)
     print(f"Using DATABASE_URL={DB_URL}")
     print(f"Resolved DB file: {db_file}")
+
+    # Apply guardrails before any destructive action
+    _guardrails(db_file)
+
     archive_existing_db(db_file)
     create_schema(DB_URL)
     print("Bootstrap complete.")

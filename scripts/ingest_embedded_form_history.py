@@ -34,8 +34,11 @@ import os
 import re
 import sqlite3
 from dataclasses import dataclass
+from scripts.db_utils import open_sqlite_writable
 from datetime import datetime
 from typing import Dict, List, Optional
+
+from scripts.db_guard import db_guard
 
 # Local import for venue normalization
 try:
@@ -219,7 +222,7 @@ def upsert_embedded_history(db_path: str, csv_path: str) -> Dict[str, int]:
     if not rows:
         return {"inserted": 0, "skipped": 0}
 
-    conn = sqlite3.connect(db_path)
+    conn = open_sqlite_writable(db_path)
     try:
         ensure_tables(conn)
         cur = conn.cursor()
@@ -277,9 +280,13 @@ def main():
     ap.add_argument("--db", required=False, help="SQLite DB path (defaults to $GREYHOUND_DB_PATH or greyhound_racing_data.db)")
     args = ap.parse_args()
 
-    db_path = args.db or os.getenv("GREYHOUND_DB_PATH") or "greyhound_racing_data.db"
-    stats = upsert_embedded_history(db_path, args.csv)
-    print(f"✅ Ingested embedded history from {args.csv} -> DB={db_path} | inserted={stats['inserted']} skipped={stats['skipped']}")
+    # Prefer staging DB for writers
+    db_path = args.db or os.getenv("STAGING_DB_PATH") or os.getenv("GREYHOUND_DB_PATH") or "greyhound_racing_data_stage.db"
+    # Guarded write (pre-backup, post-validate)
+    with db_guard(db_path=db_path, label="ingest_embedded_form_history") as guard:
+        guard.expect_table_growth("dog_race_data", min_delta=0)
+        stats = upsert_embedded_history(db_path, args.csv)
+        print(f"✅ Ingested embedded history from {args.csv} -> DB={db_path} | inserted={stats['inserted']} skipped={stats['skipped']}")
 
 
 if __name__ == "__main__":

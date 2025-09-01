@@ -697,26 +697,11 @@ def _process_files_fast(
 
 
 if __name__ == '__main__':
-    import argparse
-    
-    parser = argparse.ArgumentParser(description="Bulk CSV ingestion with optimization")
-    parser.add_argument('--cache-ratio', type=float, default=0.95,
-                       help='Cache ratio threshold for early exit (default: 0.95)')
-    parser.add_argument('--unprocessed-threshold', type=int, default=5,
-                       help='Max unprocessed files for early exit (default: 5)')
-    parser.add_argument('--disable-early-exit', action='store_true',
-                       help='Disable early exit optimization')
-    parser.add_argument('--legacy-mode', action='store_true',
-                       help='Use legacy bulk ingestion without optimization')
-    
-    args = parser.parse_args()
-    
-    if args.legacy_mode:
-        print("🔄 Running in legacy mode without optimization")
-        bulk_ingest_with_database_save()
-    else:
-        bulk_ingest_with_early_exit_optimization(
-            cache_ratio_threshold=args.cache_ratio,
-            unprocessed_threshold=args.unprocessed_threshold,
-            enable_early_exit=not args.disable_early_exit
-        )
+    import sys
+    print(
+        "This script is DEPRECATED and archived. Use staged ingestion instead:\n"
+        "  - scripts/ingest_csv_history.py (single file)\n"
+        "  - scripts/ingest_processed_directory.py (batch directory)\n"
+        "Ref: archive/bulk_ingestion/bulk_csv_ingest.py"
+    )
+    sys.exit(2)

@@ -1,6 +1,4 @@
-import os
 import json
-import time
 from pathlib import Path
 
 import pytest
@@ -18,6 +16,7 @@ Dog X,1,2025-08-15,520m,GOSF
 Dog Y,2,2025-08-15,520m,GOSF
 """
 
+
 @pytest.fixture()
 def temp_env_dirs(tmp_path, monkeypatch):
     data_dir = tmp_path / "data"
@@ -33,6 +32,7 @@ def temp_env_dirs(tmp_path, monkeypatch):
 
     # Reload config.paths to pick up env changes
     import importlib
+
     if "config.paths" in list(importlib.sys.modules.keys()):
         importlib.reload(importlib.import_module("config.paths"))
 
@@ -46,13 +46,17 @@ def temp_env_dirs(tmp_path, monkeypatch):
 def _fresh_ingestor():
     # Ensure fresh import of ingestor to read updated paths
     import importlib
+
     if "ingestion.ingest_race_csv" in list(importlib.sys.modules.keys()):
         importlib.reload(importlib.import_module("ingestion.ingest_race_csv"))
     from ingestion.ingest_race_csv import ingest_form_guide_csv
+
     return ingest_form_guide_csv
 
 
-def test_classification_rejects_race_data_like_schema(tmp_path, monkeypatch, temp_env_dirs):
+def test_classification_rejects_race_data_like_schema(
+    tmp_path, monkeypatch, temp_env_dirs
+):
     # A CSV that resembles upcoming race data (has dog_name + box exact keys)
     bad_content = "Dog_Name,box,race_date,race_number\nA,1,2025-08-12,3\n"
     src = tmp_path / "bad.csv"
@@ -153,4 +157,3 @@ def test_manifest_updates_on_publish_and_dedup(tmp_path, temp_env_dirs):
     data2 = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert key in data2
     assert Path(data2[key]["file_path"]).name == key
-

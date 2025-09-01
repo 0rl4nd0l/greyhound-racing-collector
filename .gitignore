@@ -148,3 +148,43 @@ dmypy.json
 !requirements.json
 !config.json.example
 archive/
+
+# Additional database patterns (comprehensive)
+*.db*
+*.sqlite*
+
+# ML Models and training outputs
+ml_models_v4/
+mlruns/
+*.model
+*.h5
+*.onnx
+
+# CSV data directories causing git issues
+processed/
+upcoming_races_temp/
+unprocessed/
+
+# Large backup and repair directories
+repair_work/
+database_backups/
+backups/
+system_backup_*/
+
+# Test results and reports
+test-results/
+playwright-report/
+reports/
+predictions/backtests/
+
+# Cache directories
+.cache/
+.ft_cache/
+.webassets-cache/
+
+# Temporary and runtime files
+*.pid
+*.out
+*.lock
+server.out
+flask_app.pid

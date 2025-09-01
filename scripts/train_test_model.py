@@ -17,7 +17,14 @@ from sklearn.metrics import roc_auc_score
 from sklearn.preprocessing import label_binarize
 
 def main():
-    # Create dummy training data
+    # Guard: synthetic training is disabled by default. Enable for dev only.
+    if os.getenv("ALLOW_SYNTHETIC_TEST_MODEL", "0").lower() not in ("1", "true", "yes"):
+        print(
+            "This script uses synthetic data and is disabled by default. Set ALLOW_SYNTHETIC_TEST_MODEL=1 to run.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    # Create dummy training data (dev only)
     X, y = make_classification(n_samples=1000, n_features=10, n_classes=3, random_state=42)
     
     # Train lightweight model

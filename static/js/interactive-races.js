@@ -115,6 +115,79 @@ function ensurePredictionResultsElements() {
     }
 }
 
+// TGR feature helpers: read state from UI/localStorage/cookie, update badge, and sync cookie for backend fallback
+function getTgrEnabledFromToggle() {
+    try {
+        const el = document.getElementById('tgr-features-toggle');
+        if (el) return !!el.checked;
+    } catch (e) {}
+    return null;
+}
+function getTgrEnabledFromLocalStorage() {
+    try {
+        const v = String(localStorage.getItem('tgr_enabled') || '').trim();
+        if (!v) return null;
+        return v === '1' || v.toLowerCase() === 'true';
+    } catch (e) { return null; }
+}
+function getTgrEnabledFromCookie() {
+    try {
+        const m = document.cookie.match(/(?:^|; )tgr_enabled=([^;]+)/);
+        if (m) {
+            const v = decodeURIComponent(m[1]);
+            return v === '1' || String(v).toLowerCase() === 'true';
+        }
+    } catch (e) {}
+    return null;
+}
+function getTgrEnabled() {
+    const a = getTgrEnabledFromToggle();
+    if (a !== null) return a;
+    const b = getTgrEnabledFromLocalStorage();
+    if (b !== null) return b;
+    const c = getTgrEnabledFromCookie();
+    if (c !== null) return c;
+    return false;
+}
+function setTgrCookie(enabled) {
+    try {
+        const val = enabled ? '1' : '0';
+        // 1 year expiry, lax same-site
+        document.cookie = `tgr_enabled=${val}; path=/; max-age=${60*60*24*365}; SameSite=Lax`;
+    } catch (e) {}
+}
+function syncTgrCookieFromState() {
+    try { setTgrCookie(getTgrEnabled()); } catch (e) {}
+}
+function updateTgrStatusBadge() {
+    try {
+        const badge = document.getElementById('tgr-status-badge');
+        if (!badge) return;
+        const enabled = getTgrEnabled();
+        badge.textContent = enabled ? 'TGR: Enabled' : 'TGR: Disabled';
+        badge.className = 'badge ms-2 ' + (enabled ? 'bg-success' : 'bg-secondary');
+    } catch (e) {}
+}
+// Listen for changes to the toggle or localStorage updates (from other tabs/pages)
+window.addEventListener('storage', (e) => {
+    try {
+        if (e && e.key === 'tgr_enabled') {
+            updateTgrStatusBadge();
+            syncTgrCookieFromState();
+        }
+    } catch (e) {}
+});
+// If a toggle exists on this page, reflect changes live
+document.addEventListener('change', (e) => {
+    try {
+        const t = e.target && (e.target.id === 'tgr-features-toggle' ? e.target : (e.target.closest && e.target.closest('#tgr-features-toggle')));
+        if (t) {
+            updateTgrStatusBadge();
+            syncTgrCookieFromState();
+        }
+    } catch (e) {}
+});
+
 document.addEventListener('DOMContentLoaded', () => {
     const state = {
         races: [],
@@ -204,6 +277,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize the page
     async function init() {
         try {
+            updateTgrStatusBadge();
+            syncTgrCookieFromState();
             await loadRaces();
             setupEventListeners();
             renderRaces();
@@ -705,7 +780,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Predicting...';
                 const prResp = await fetchWithErrorHandling('/api/predict_single_race_enhanced', {
                     method: 'POST',
-                    body: JSON.stringify({ race_filename: dlData.filename })
+                    body: JSON.stringify({ race_filename: dlData.filename, tgr_enabled: getTgrEnabled() })
                 });
                 const prData = await prResp.json();
                 if (!prData || prData.success !== true) {
@@ -728,7 +803,7 @@ document.addEventListener('DOMContentLoaded', () => {
             button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Working...';
             const resp = await fetchWithErrorHandling('/api/download_and_predict_race', {
                 method: 'POST',
-                body: JSON.stringify({ venue, race_number: String(raceNumber).trim() })
+                body: JSON.stringify({ venue, race_number: String(raceNumber).trim(), tgr_enabled: getTgrEnabled() })
             });
             const data = await resp.json();
             if (!data || data.success !== true) {
@@ -1073,7 +1148,8 @@ document.addEventListener('DOMContentLoaded', () => {
             button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running All Predictions...';
             
             const response = await fetchWithErrorHandling('/api/predict_all_upcoming_races_enhanced', { 
-                method: 'POST' 
+                method: 'POST',
+                body: JSON.stringify({ tgr_enabled: getTgrEnabled() })
             });
             
             if (!response.ok) {
@@ -1147,6 +1223,8 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 requestBody.race_id = raceId;
             }
+            // Include TGR toggle state
+            requestBody.tgr_enabled = getTgrEnabled();
             
             const response = await fetchWithErrorHandling('/api/predict_single_race_enhanced', {
                 method: 'POST',
@@ -1248,6 +1326,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     } else {
                         requestBody.race_id = raceId;
                     }
+                    // Include TGR toggle state
+                    requestBody.tgr_enabled = getTgrEnabled();
                     
                     const response = await fetchWithErrorHandling('/api/predict_single_race_enhanced', {
                         method: 'POST',

@@ -63,7 +63,19 @@ function updateSidebarWithData(data) {
     // Update System Health
     const healthContainer = document.getElementById('sidebar-system-health');
     if (healthContainer && data.db_stats) {
-        healthContainer.innerHTML = `<strong>Total Races:</strong> ${data.db_stats.total_races}`;
+        let healthHtml = `<strong>Total Races:</strong> ${data.db_stats.total_races}`;
+        // Append GPT diagnostics summary if available
+        try {
+            const gpt = data.gpt_diagnostics || {};
+            if (typeof gpt === 'object' && ('json_files_count' in gpt || 'archives_count' in gpt)) {
+                const jsonCount = typeof gpt.json_files_count === 'number' ? gpt.json_files_count : 0;
+                const zipCount = typeof gpt.archives_count === 'number' ? gpt.archives_count : 0;
+                healthHtml += `<div class="mt-2"><strong>GPT Diagnostics:</strong> JSON ${jsonCount}, Archives ${zipCount}</div>`;
+            }
+        } catch (e) {
+            // non-fatal
+        }
+        healthContainer.innerHTML = healthHtml;
     }
 }
 

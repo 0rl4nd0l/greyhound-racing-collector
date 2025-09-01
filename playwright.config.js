@@ -19,7 +19,7 @@ module.exports = defineConfig({
   ],
   
   /* Run tests in files in parallel */
-  fullyParallel: true,
+  fullyParallel: false,
   
   /* Fail the build on CI if you accidentally left test.only in the source code. */
   forbidOnly: !!process.env.CI,
@@ -28,7 +28,7 @@ module.exports = defineConfig({
   retries: process.env.CI ? 2 : 0,
   
   /* Opt out of parallel tests on CI. */
-  workers: process.env.CI ? 1 : undefined,
+  workers: 1,
   
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: [
@@ -128,7 +128,10 @@ module.exports = defineConfig({
       FLASK_ENV: 'testing',
       MODULE_GUARD_STRICT: '0',
       PREDICTION_IMPORT_MODE: 'relaxed',
-      ENABLE_ENDPOINT_DROPDOWNS: '1'
+      ENABLE_ENDPOINT_DROPDOWNS: '1',
+      TESTING: '1',
+'TRAINING_MAX_SECS': '30',
+      'DISABLE_NAV_DROPDOWNS': '1'
     }
   },
 });

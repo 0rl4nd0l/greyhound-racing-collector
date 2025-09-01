@@ -102,6 +102,12 @@ class OptimizedTemporalFeatureBuilder:
                 self.tgr_integrator = None
         else:
             logger.info("ℹ️ TGR integration disabled in optimized builder (set TGR_ENABLED=1 to enable)")
+        
+        # Runtime toggle for including TGR features (default depends on integrator availability)
+        try:
+            self._tgr_runtime_enabled = bool(self.tgr_integrator)
+        except Exception:
+            self._tgr_runtime_enabled = False
     
     def _get_cache_key(self, *args) -> str:
         """Generate cache key from arguments."""
@@ -213,6 +219,7 @@ class OptimizedTemporalFeatureBuilder:
         return result
     
     def create_historical_features(self, historical_data: pd.DataFrame,
+                                 target_timestamp: datetime,
                                  target_venue: str = None, target_grade: str = None,
                                  target_distance: float = None) -> Dict[str, float]:
         """Create features from historical races with exponential decay weighting."""
@@ -276,7 +283,8 @@ class OptimizedTemporalFeatureBuilder:
         # Temporal features
         if len(historical_data) > 0 and 'race_timestamp' in historical_data.columns:
             last_race_timestamp = historical_data['race_timestamp'].iloc[0]
-            days_since_last = (datetime.now() - last_race_timestamp).days
+            # Use target_timestamp rather than wall-clock now() to avoid time drift in backtests/training
+            days_since_last = (target_timestamp - last_race_timestamp).days
             features['days_since_last_race'] = float(days_since_last)
             
             # Race frequency
@@ -363,6 +371,7 @@ class OptimizedTemporalFeatureBuilder:
             # Create historical features
             historical_features = self.create_historical_features(
                 historical_data,
+                target_timestamp,
                 target_venue=dog_row.get('venue'),
                 target_grade=dog_row.get('grade'),
                 target_distance=pd.to_numeric(dog_row.get('distance'), errors='coerce')
@@ -370,12 +379,21 @@ class OptimizedTemporalFeatureBuilder:
             
             features.update(historical_features)
             
-            # Add TGR features if TGR integration is available
-            if self.tgr_integrator:
+            # Add TGR features if TGR integration is available and runtime toggle is enabled
+            if self.tgr_integrator and getattr(self, '_tgr_runtime_enabled', False):
                 try:
                     tgr_features = self.tgr_integrator._get_tgr_historical_features(
                         dog_name, target_timestamp
                     )
+                    # Ensure expected defaults when values missing
+                    try:
+                        expected = self.tgr_integrator.get_feature_names()
+                        defaults = self.tgr_integrator._get_default_tgr_features()
+                        for col in expected:
+                            if col not in tgr_features:
+                                tgr_features[col] = defaults.get(col, 0.0)
+                    except Exception:
+                        pass
                     features.update(tgr_features)
                 except Exception as e:
                     logger.warning(f"Failed to get TGR features for {dog_name}: {e}")
@@ -438,6 +456,15 @@ class OptimizedTemporalFeatureBuilder:
         logger.info("✅ Temporal integrity validation passed")
         return True
     
+    def set_tgr_enabled(self, enabled: bool) -> None:
+        """Enable/disable inclusion of TGR features at runtime without reinitializing."""
+        try:
+            self._tgr_runtime_enabled = bool(enabled)
+            status = "enabled" if self._tgr_runtime_enabled else "disabled"
+            logger.info(f"[OptimizedBuilder] TGR feature inclusion runtime toggle {status}")
+        except Exception as e:
+            logger.debug(f"[OptimizedBuilder] Failed to set TGR runtime toggle: {e}")
+
     def clear_caches(self):
         """Clear all caches to free memory."""
         self._timestamp_cache.clear()

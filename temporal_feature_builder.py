@@ -77,6 +77,30 @@ class TemporalFeatureBuilder:
             tgr_flag = False
             allow_tgr = False
             use_scraper = False
+        
+        # Safety: only allow DB-backed TGR when the expected tables exist; otherwise disable to avoid noisy errors
+        def _tgr_tables_present(db_path: str) -> bool:
+            try:
+                conn = sqlite3.connect(db_path)
+                cur = conn.cursor()
+                def _has_table(name: str) -> bool:
+                    try:
+                        cur.execute(f"PRAGMA table_info({name})")
+                        return bool(cur.fetchall())
+                    except Exception:
+                        return False
+                # Either legacy pair (gr_dog_form + gr_dog_entries) or enhanced table can drive DB-only mode
+                legacy_ok = _has_table('gr_dog_form') and _has_table('gr_dog_entries')
+                enhanced_ok = _has_table('tgr_enhanced_dog_form')
+                conn.close()
+                return bool(legacy_ok or enhanced_ok)
+            except Exception:
+                return False
+        
+        if allow_tgr and not use_scraper and not _tgr_tables_present(self.db_path):
+            # In DB-only mode and no tables are present, turn off TGR integration to prevent errors
+            allow_tgr = False
+            logger.info("ℹ️ TGR integration disabled automatically: required DB tables not found (DB-only mode)")
         if TGRPredictionIntegrator and allow_tgr:
             try:
                 # Enable DB-only TGR during prediction; allow scraper only in non-prediction mode
@@ -135,6 +159,20 @@ class TemporalFeatureBuilder:
         except:
             # Last resort - use race_date as-is
             return pd.to_datetime(race_row['race_date'])
+
+    def _to_meters(self, val: Any) -> float:
+        """Parse a distance value like '500m' or '520 m' to a numeric meters float.
+        Returns NaN when parsing fails.
+        """
+        try:
+            if pd.isna(val):
+                return np.nan
+            s = str(val)
+            import re
+            m = re.search(r"(\d+(?:\.\d+)?)", s)
+            return float(m.group(1)) if m else np.nan
+        except Exception:
+            return np.nan
     
     def load_dog_historical_data(self, dog_name: str, target_timestamp: datetime, 
                                 lookback_days: int = None) -> pd.DataFrame:
@@ -203,7 +241,8 @@ class TemporalFeatureBuilder:
                     ORDER BY r.race_date DESC, r.race_time DESC
                     LIMIT 100
                     """
-                    historical_data = pd.read_sql_query(query_fallback, conn, params=[sanitized, cutoff_date])
+                    with sqlite3.connect(self.db_path) as conn2:
+                        historical_data = pd.read_sql_query(query_fallback, conn2, params=[sanitized, cutoff_date])
                     raw_count = len(historical_data)
                     logger.debug(
                         f"Fallback DB query for sanitized dog='{sanitized}': raw_rows={raw_count}"
@@ -247,6 +286,7 @@ class TemporalFeatureBuilder:
             return pd.DataFrame()
     
     def create_historical_features(self, historical_data: pd.DataFrame, 
+                                 target_timestamp: datetime,
                                  target_venue: str = None, target_grade: str = None,
                                  target_distance: float = None) -> Dict[str, float]:
         """Create features from historical races with exponential decay weighting and contextual adjustments."""
@@ -262,9 +302,13 @@ class TemporalFeatureBuilder:
         historical_data['individual_time_numeric'] = pd.to_numeric(
             historical_data['individual_time'], errors='coerce'
         )
-        historical_data['distance_numeric'] = pd.to_numeric(
-            historical_data['distance'], errors='coerce'
-        )
+        if 'distance' in historical_data.columns:
+            try:
+                historical_data['distance_numeric'] = historical_data['distance'].apply(self._to_meters)
+            except Exception:
+                historical_data['distance_numeric'] = pd.to_numeric(historical_data.get('distance', np.nan), errors='coerce')
+        else:
+            historical_data['distance_numeric'] = np.nan
         
         # Create exponential decay weights (most recent races weighted more)
         num_races = len(historical_data)
@@ -422,7 +466,8 @@ class TemporalFeatureBuilder:
         if len(historical_data) > 0:
             # Days since last race
             last_race_timestamp = historical_data['race_timestamp'].iloc[0]
-            days_since_last = (datetime.now() - last_race_timestamp).days
+            # Use target_timestamp rather than wall-clock now() to avoid time drift in backtests/training
+            days_since_last = (target_timestamp - last_race_timestamp).days
             features['days_since_last_race'] = float(days_since_last)
             
             # Race frequency (races per month)
@@ -553,9 +598,10 @@ class TemporalFeatureBuilder:
             
             historical_features = self.create_historical_features(
                 historical_data,
+                target_timestamp,
                 target_venue=dog_row.get('venue'),
                 target_grade=dog_row.get('grade'),
-                target_distance=pd.to_numeric(dog_row.get('distance'), errors='coerce')
+                target_distance=self._to_meters(dog_row.get('distance'))
             )
             
             # Combine features: CSV-derived values take precedence over DB-derived ones when present
@@ -705,10 +751,16 @@ def create_temporal_assertion_hook():
                     except ValueError:
                         continue
                 
+                enforce_future_block = os.getenv('ENFORCE_FUTURE_BLOCK', '1').lower() not in ('0', 'false', 'no')
                 if race_date and race_date > current_date:
-                    raise AssertionError(
-                        f"TEMPORAL LEAKAGE DETECTED: Race {race_id} for dog {dog_name} is in the future: {race_date} (current: {current_date})"
-                    )
+                    if enforce_future_block:
+                        raise AssertionError(
+                            f"TEMPORAL LEAKAGE DETECTED: Race {race_id} for dog {dog_name} is in the future: {race_date} (current: {current_date})"
+                        )
+                    else:
+                        logger.info(
+                            f"Skipping future-date temporal assertion for race {race_id} (ENFORCE_FUTURE_BLOCK=0)."
+                        )
             except AssertionError:
                 # Re-raise AssertionError (temporal leakage detection)
                 raise

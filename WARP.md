@@ -52,6 +52,14 @@ Performance and security
 - Load testing (Locust): locust --headless -u 10 -r 1 -f load_tests/locustfile.py --run-time 2m --csv=perf-test-report
 - Security checks (Makefile target): make security  # runs bandit -r . and safety check
 
+Performance tips (Warp and browser tests)
+- Playwright defaults are conservative for local dev to avoid CPU spikes:
+  - workers=1 and fullyParallel=false are set in playwright.config.*
+  - To temporarily increase parallelism on a faster machine: npm run test:playwright -- --workers=4
+- Warp Agent Mode: for very large repos, background codebase indexing can be heavy
+  - Recommended: in Warp Settings, turn off Agent Mode > Codebase context auto-indexing for this repo, then restart Warp
+  - Alternatively, use another terminal for CPU-sensitive runs or keep Warp deprioritized (renice +19)
+
 Utilities
 - Schema drift baseline: make schema-baseline
 - Schema drift monitor: make schema-monitor

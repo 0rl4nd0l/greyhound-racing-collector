@@ -2,13 +2,15 @@ import os
 import tempfile
 import time
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime
 
-from utils.file_naming import (build_prediction_filename,
-                               is_valid_prediction_filename,
-                               parse_prediction_filename,
-                               get_filename_for_race_id,
-                               get_race_id_from_filename)
+from utils.file_naming import (
+    build_prediction_filename,
+    get_filename_for_race_id,
+    get_race_id_from_filename,
+    is_valid_prediction_filename,
+    parse_prediction_filename,
+)
 
 
 class TestPredictionFilename(unittest.TestCase):
@@ -31,19 +33,25 @@ class TestPredictionFilename(unittest.TestCase):
                 f.write("Historical race data")
 
             # Test finding in the upcoming directory
-            filename, full_path = get_filename_for_race_id(race_id, [upcoming_dir, historical_dir])
+            filename, full_path = get_filename_for_race_id(
+                race_id, [upcoming_dir, historical_dir]
+            )
             self.assertEqual(filename, f"{race_id}.csv")
             self.assertEqual(full_path, upcoming_file)
 
             # Test finding in the historical directory if not found in upcoming
             os.remove(upcoming_file)  # Remove from upcoming to test historical
-            filename, full_path = get_filename_for_race_id(race_id, [upcoming_dir, historical_dir])
+            filename, full_path = get_filename_for_race_id(
+                race_id, [upcoming_dir, historical_dir]
+            )
             self.assertEqual(filename, f"{race_id}_old.csv")
             self.assertEqual(full_path, historical_file)
 
             # Test no file found
             os.remove(historical_file)
-            filename, full_path = get_filename_for_race_id(race_id, [upcoming_dir, historical_dir])
+            filename, full_path = get_filename_for_race_id(
+                race_id, [upcoming_dir, historical_dir]
+            )
             self.assertIsNone(filename)
             self.assertIsNone(full_path)
 
@@ -129,7 +137,7 @@ class TestFilenameResolution(unittest.TestCase):
         """Test various filename pattern matching."""
         with tempfile.TemporaryDirectory() as tmpdir:
             race_id = "01_MAN_2025-01-15"
-            
+
             # Create file with "Race" prefix
             test_file = os.path.join(tmpdir, f"Race_{race_id}.csv")
             with open(test_file, "w") as f:
@@ -144,7 +152,7 @@ class TestFilenameResolution(unittest.TestCase):
         """Test partial matching when exact patterns don't match."""
         with tempfile.TemporaryDirectory() as tmpdir:
             race_id = "MAN"
-            
+
             # Create file that contains the race_id but doesn't match exact patterns
             test_file = os.path.join(tmpdir, "Some_MAN_Race_File.csv")
             with open(test_file, "w") as f:
@@ -179,11 +187,11 @@ class TestFilenameResolution(unittest.TestCase):
             os.makedirs(dir2)
 
             race_id = "test_race"
-            
+
             # Create files in both directories
             file1 = os.path.join(dir1, f"{race_id}.csv")
             file2 = os.path.join(dir2, f"{race_id}.csv")
-            
+
             with open(file1, "w") as f:
                 f.write("dir1 data")
             with open(file2, "w") as f:

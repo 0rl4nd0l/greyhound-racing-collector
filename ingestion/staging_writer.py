@@ -72,9 +72,23 @@ def sniff_dialect_and_headers(csv_path: Path) -> Tuple[csv.Dialect, List[str]]:
 
 def parse_date(value: str) -> Optional[str]:
     value = (value or "").strip()
-    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d", "%d %b %Y", "%b %d, %Y"):
+    # Normalize common separators used in filenames
+    norm = value.replace("_", " ")
+    # Try a variety of common formats, including full month names (e.g., "03 July 2025")
+    for fmt in (
+        "%Y-%m-%d",   # ISO
+        "%d/%m/%Y",
+        "%d-%m-%Y",
+        "%Y/%m/%d",
+        "%d %b %Y",   # 03 Jul 2025
+        "%d %B %Y",   # 03 July 2025
+        "%b %d, %Y",  # Jul 03, 2025
+        "%B %d, %Y",  # July 03, 2025
+        "%d_%b_%Y",   # 03_Jul_2025 (fallback for odd filenames)
+        "%d_%B_%Y",   # 03_July_2025
+    ):
         try:
-            return datetime.strptime(value, fmt).strftime(CANONICAL_DATE_FORMAT)
+            return datetime.strptime(norm, fmt).strftime(CANONICAL_DATE_FORMAT)
         except Exception:
             continue
     if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
@@ -93,8 +107,10 @@ def normalize_venue(value: str) -> str:
 
 # Fallback filename patterns
 FILENAME_PATTERNS = [
-    # Race 7 - MURR - 2025-08-24.csv
-    re.compile(r"race\s*(?P<race_number>\d+)\s*-\s*(?P<venue>[A-Za-z0-9_\-/]+)\s*-\s*(?P<race_date>\d{4}-\d{2}-\d{2})", re.IGNORECASE),
+    # Race 7 - MURR - 2025-08-24.csv (ISO date)
+re.compile(r"race[\s_]*(?P<race_number>\d+)[\s_]*[-_][\s_]*(?P<venue>[A-Za-z0-9_\-/]+)[\s_]*[-_][\s_]*(?P<race_date>\d{4}-\d{2}-\d{2})", re.IGNORECASE),
+    # Race 7 - MURR - 03 July 2025.csv (human date with full month name)
+re.compile(r"race[\s_]*(?P<race_number>\d+)[\s_]*[-_][\s_]*(?P<venue>[A-Za-z0-9_\-/]+)[\s_]*[-_][\s_]*(?P<race_date>\d{1,2}[\s_]+[A-Za-z]{3,9}[\s_]+\d{4})", re.IGNORECASE),
     # 2025-08-24_MURR_R7.csv or 2025-08-24-murr-7.csv
     re.compile(r"(?P<race_date>\d{4}-\d{2}-\d{2})[_-](?P<venue>[A-Za-z0-9_\-/]+)[_-]R?(?P<race_number>\d+)", re.IGNORECASE),
 ]

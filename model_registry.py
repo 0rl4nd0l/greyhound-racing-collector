@@ -324,6 +324,8 @@ class ModelRegistry:
                         return float(getattr(md, "f1_score", 0.0) or 0.0)
                     if selection_metric == "correct_winners":
                         return float(getattr(md, "correct_winners", 0.0) or 0.0)
+                    if selection_metric == "top1_rate":
+                        return float(getattr(md, "top1_rate", 0.0) or 0.0)
                     # Default: composite performance score
                     return float(self._calculate_model_score(md))
                 except Exception:
@@ -605,7 +607,10 @@ class ModelRegistry:
         return models[:limit]
 
     def list_models(self, active_only: bool = True) -> List[ModelMetadata]:
-        """List all registered models"""
+        """List all registered models.
+
+        Skips entries whose artifacts are missing on disk to avoid downstream load errors.
+        """
         models = []
         for model_id, model_data in self.model_index.items():
             if not isinstance(model_data, dict):
@@ -616,6 +621,15 @@ class ModelRegistry:
                 continue
             try:
                 metadata = ModelMetadata(**model_data)
+                # Skip models whose artifacts are missing to reduce noisy load errors
+                model_exists = os.path.exists(metadata.model_file_path)
+                scaler_exists = os.path.exists(metadata.scaler_file_path)
+                if not (model_exists and scaler_exists):
+                    logger.warning(
+                        f"Skipping registry model '{model_id}' due to missing artifacts: "
+                        f"model_exists={model_exists}, scaler_exists={scaler_exists}"
+                    )
+                    continue
                 models.append(metadata)
             except (TypeError, KeyError) as e:
                 logger.warning(f"Error loading metadata for {model_id}: {e}")
@@ -626,13 +640,13 @@ class ModelRegistry:
 
     def set_best_selection_policy(self, metric: str = "auc") -> bool:
         """Set the policy used to auto-select the best model.
-        Supported metrics: 'performance_score' (default composite), 'auc', 'accuracy', 'f1_score', 'correct_winners'.
+        Supported metrics: 'performance_score' (default composite), 'auc', 'accuracy', 'f1_score', 'correct_winners', 'top1_rate'.
         Returns True if updated.
         """
         with self._lock:
             try:
                 metric = str(metric or "").strip().lower()
-                if metric not in {"performance_score", "auc", "accuracy", "f1_score", "correct_winners"}:
+                if metric not in {"performance_score", "auc", "accuracy", "f1_score", "correct_winners", "top1_rate"}:
                     raise ValueError(f"Unsupported metric: {metric}")
                 self.config["best_selection_metric"] = metric
                 self._save_config()
@@ -651,6 +665,7 @@ class ModelRegistry:
         """
         with self._lock:
             try:
+                metric = str(metric or "").strip().lower()
                 # Build candidate list
                 candidates = []
                 for model_id, model_data in self.model_index.items():
@@ -669,7 +684,10 @@ class ModelRegistry:
                         elif metric == "f1_score":
                             score = float(md.f1_score or 0.0)
                         elif metric == "correct_winners":
-                            score = float(md.correct_winners or 0.0)
+                            # Raw counts can bias toward larger eval sets; prefer top1_rate if available
+                            score = float(md.top1_rate if (md.top1_rate and md.races_evaluated) else (md.correct_winners or 0.0))
+                        elif metric == "top1_rate":
+                            score = float(md.top1_rate or 0.0)
                         else:
                             score = float(self._calculate_model_score(md))
                         candidates.append((model_id, score, md))

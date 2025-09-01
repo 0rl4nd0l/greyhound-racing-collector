@@ -15,6 +15,8 @@ sys.path.insert(0, str(_P(__file__).resolve().parents[1]))
 
 from model_registry import get_model_registry
 from sklearn.preprocessing import FunctionTransformer
+from scripts.db_guard import db_guard
+import os
 
 MODELS_DIR = Path('ml_models_v4')
 
@@ -61,7 +63,13 @@ def main():
     registry = get_model_registry()
     model_name = 'V4_ExtraTrees'
     model_type = 'CalibratedPipeline'
-    model_id = registry.register_model(
+
+    # Guarded registration (pre-backup, post-validate)
+    # Model registration is a write operation, use staging DB
+    db_path = os.getenv('STAGING_DB_PATH') or os.getenv('GREYHOUND_DB_PATH') or os.getenv('DATABASE_PATH') or 'greyhound_racing_data_stage.db'
+    with db_guard(db_path=db_path, label='register_latest_v4_model') as guard:
+        guard.expect_table_growth('ml_model_registry', min_delta=0)
+        model_id = registry.register_model(
         model_obj=calibrated,
         scaler_obj=scaler,
         model_name=model_name,

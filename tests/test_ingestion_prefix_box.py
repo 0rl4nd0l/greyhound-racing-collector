@@ -1,9 +1,8 @@
 import os
-from pathlib import Path
 import tempfile
-import pytest
+from pathlib import Path
 
-from csv_ingestion import FormGuideCsvIngestor, create_ingestor, FormGuideCsvIngestionError
+from csv_ingestion import create_ingestor
 
 
 def make_csv(content: str) -> str:
@@ -60,4 +59,3 @@ def test_prefix_respected_even_if_box_column_present():
         assert str(r.get("box")) == "4"
     finally:
         os.unlink(p)
-

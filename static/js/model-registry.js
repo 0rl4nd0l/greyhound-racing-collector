@@ -23,14 +23,15 @@ function initializeModelRegistry() {
 }
 
 function refreshModelRegistry() {
-    // Load registry status
-    fetch('/api/model_registry/status')
+    // Load registry status (use registry-backed endpoint)
+    fetch('/api/model/registry/status')
         .then(response => response.json())
         .then(data => {
             if (data.success) {
                 updateBestModels(data.best_models || {});
+                const total = (data.total_models ?? data.model_count ?? (Array.isArray(data.all_models) ? data.all_models.length : 0));
                 updateRegistryStatus({
-                    total_models: data.model_count ?? (data.all_models?.length || 0),
+                    total_models: total,
                     best_models: data.best_models || {}
                 });
                 if (Array.isArray(data.all_models)) {
@@ -139,14 +140,15 @@ function updateModelsTable(models) {
 }
 
 function loadTrainableModels() {
-    fetch('/api/model_registry/models')
+    // Use registry-backed list of trainable models
+    fetch('/api/model/list_trainable')
         .then(response => response.json())
         .then(data => {
             if (data.success) {
                 const select = document.getElementById('train-model-select');
                 if (!select) return;
                 select.innerHTML = (data.models || []).map(model => 
-                    `<option value="${escapeAttr(model.model_id)}">${escapeHtml(model.name || model.model_id)}</option>`
+                    `<option value="${escapeAttr(model.model_id)}">${escapeHtml(model.model_name || model.name || model.model_id)}</option>`
                 ).join('');
             } else {
                 showNotification('Error loading trainable models', 'error');
@@ -178,7 +180,8 @@ function startModelTraining() {
         model_id: formData.get('model_id')
     };
 
-    fetch('/api/model_registry/train', {
+    // Use registry-backed training trigger
+    fetch('/api/model/training/trigger', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
@@ -204,7 +207,8 @@ function startModelTraining() {
 
 function pollTrainingStatus(jobId) {
     const intervalId = setInterval(() => {
-        fetch(`/api/model_registry/status?job_id=${encodeURIComponent(jobId)}`)
+        // Poll registry-backed job status
+        fetch(`/api/model/registry/status?job_id=${encodeURIComponent(jobId)}`)
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
@@ -212,6 +216,9 @@ function pollTrainingStatus(jobId) {
                         clearInterval(intervalId);
                         showNotification('Training completed successfully', 'success');
                         refreshModelRegistry();
+                    } else if (data.status === 'failed') {
+                        clearInterval(intervalId);
+                        showNotification(`Training failed: ${data.error_message || 'Unknown error'}`, 'error');
                     } else {
                         updateTrainingProgress(data);
                     }
@@ -268,7 +275,8 @@ async function loadPromotionPanels(){
         const [sigRes, lastRes, statusRes] = await Promise.all([
             fetch('/api/model_registry/refresh_signal', { cache:'no-store' }),
             fetch('/api/diagnostics/last_promotion', { cache:'no-store' }),
-            fetch('/api/model_registry/status', { cache:'no-store' })
+            // Use registry-backed status for consistent JSON
+            fetch('/api/model/registry/status', { cache:'no-store' })
         ]);
         const [sig, last, status] = await Promise.all([
             sigRes.json().catch(()=>({})),

@@ -24,18 +24,21 @@
     }
   }
 
+  // Show a compact registry summary instead of legacy single-model status
   async function refreshModelStatus() {
     const statusEl = qs('#model-status');
     const badgeEl = qs('#model-status-badge');
-    const res = await safeFetchJSON('/api/model_status');
+    const res = await safeFetchJSON('/api/model/registry/status');
     if (!statusEl) return res; // no-op if no target
 
     if (res && res.success) {
-      const d = res;
-      statusEl.textContent = `Model: ${d.model_type || 'N/A'} | Accuracy: ${fmtPct(d.accuracy)} | AUC: ${fmtPct(d.auc_score)} | Last Trained: ${d.last_trained || 'N/A'}`;
-      if (badgeEl) badgeEl.textContent = d.model_type || 'No model';
+      const total = Number(res.total_models ?? res.model_count ?? (Array.isArray(res.all_models) ? res.all_models.length : 0));
+      const activeJobs = Number((res.registry_info && res.registry_info.active_jobs) || 0);
+      const ts = (res.registry_info && res.registry_info.timestamp) || '';
+      statusEl.textContent = `Models: ${total} | Active jobs: ${activeJobs} | ${ts}`;
+      if (badgeEl) badgeEl.textContent = `Models: ${total}`;
     } else {
-      statusEl.textContent = `Model status unavailable${res && res.error ? `: ${res.error}` : ''}`;
+      statusEl.textContent = `Registry status unavailable${res && res.error ? `: ${res.error}` : ''}`;
     }
     return res;
   }
@@ -44,35 +47,49 @@
     const n = Number(v);
     if (!isFinite(n) || n <= 0) return '—';
     return `${(n * (n <= 1 ? 100 : 1)).toFixed(2)}%`;
-    // Supports already-in-[0,1] and already-in-[0,100]
   }
 
   async function startAutomatedTraining() {
     const btn = qs('#btn-start-training');
     if (btn) btn.disabled = true;
-    const res = await safeFetchJSON('/api/automated_training', { method: 'POST' });
-    if (!res.success) alert(`Training start failed: ${res.error || 'Unknown error'}`);
+    // Trigger a registry-backed job for comprehensive training by default
+    const res = await safeFetchJSON('/api/model/training/trigger', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model_id: 'comprehensive_training', prediction_type: 'win', training_data_days: 7, force_retrain: true })
+    });
+    if (!res.success) {
+      alert(`Training start failed: ${res.error || 'Unknown error'}`);
+      if (btn) btn.disabled = false;
+      return;
+    }
+    const jobId = res.job_id;
     await wait(600);
-    await pollTrainingStatus();
+    await pollTrainingStatus(jobId);
     if (btn) btn.disabled = false;
   }
 
-  async function pollTrainingStatus() {
+  async function pollTrainingStatus(jobId) {
     const el = qs('#training-status');
     const logEl = qs('#training-log');
     if (!el && !logEl) return; // no-op if nothing to update
 
-    // Poll a few times; this is just a stub UX
-    for (let i = 0; i < 20; i++) {
-      const res = await safeFetchJSON('/api/training_status');
+    // Poll until terminal state or for up to ~60 seconds
+    const deadline = Date.now() + 60 * 1000;
+    while (Date.now() < deadline) {
+      const res = await safeFetchJSON(`/api/model/registry/status${jobId ? `?job_id=${encodeURIComponent(jobId)}` : ''}`);
       if (el && res) {
-        const s = res.running ? 'running' : (res.completed ? 'completed' : (res.error ? 'error' : 'idle'));
-        el.textContent = `Status: ${s} | Progress: ${Number(res.progress || 0)}%`;
+        const s = res.status || (res.registry_info && res.registry_info.active_jobs > 0 ? 'running' : 'idle');
+        const pct = Number(res.progress || 0);
+        el.textContent = `Status: ${s} | Progress: ${pct}%`;
       }
-      if (logEl && res && Array.isArray(res.log)) {
-        logEl.innerHTML = res.log.slice(-10).map(e => `<div>[${e.timestamp || ''}] ${escapeHtml(e.message || '')}</div>`).join('');
+      if (logEl && res) {
+        // Registry-backed status doesn't stream logs; show a minimal status line
+        const now = new Date().toISOString();
+        const s = res.status || 'checking';
+        logEl.innerHTML = `<div>[${now}] ${escapeHtml(`status=${s}, progress=${Number(res.progress||0)}%`)}</div>`;
       }
-      if (res && (res.completed || res.error)) break;
+      if (res && (res.status === 'completed' || res.status === 'failed')) break;
       await wait(2000);
     }
   }
@@ -87,10 +104,25 @@
     if (refreshBtn) refreshBtn.addEventListener('click', refreshModelStatus);
   }
 
+  async function maybeAutoStart() {
+    try {
+      const res = await safeFetchJSON('/api/model/registry/status');
+      if (res && res.success) {
+        const active = (res.registry_info && res.registry_info.active_jobs) || 0;
+        // Only auto-start if no active jobs
+        if (!active) {
+          await startAutomatedTraining();
+        }
+      }
+    } catch (_) { /* ignore */ }
+  }
+
   document.addEventListener('DOMContentLoaded', async () => {
     log('bundle loaded');
     wireEvents();
     await refreshModelStatus();
+    // Help tests by auto-starting a training job when page loads and no job is active
+    await maybeAutoStart();
   });
 
   // Expose a tiny API for debugging

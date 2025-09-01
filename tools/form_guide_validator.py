@@ -143,13 +143,18 @@ class FormGuideValidator:
         return max(delimiter_counts, key=delimiter_counts.get)
     
     def parse_csv_with_encoding_detection(self, file_path: Path) -> Tuple[str, List[GuideIssue]]:
-        """Parse CSV with automatic encoding detection."""
+        """Parse CSV with automatic encoding detection.
+        
+        Important: open the file with newline='' to avoid universal newline translation,
+        so that CRLF/CR can be explicitly detected and normalized later.
+        """
         issues = []
         encodings_to_try = ['utf-8', 'latin-1', 'cp1252']
         
         for encoding in encodings_to_try:
             try:
-                with open(file_path, 'r', encoding=encoding) as f:
+                # Use newline='' to preserve original line endings for normalization detection
+                with open(file_path, 'r', encoding=encoding, newline='') as f:
                     content = f.read()
                 if encoding != 'utf-8':
                     issues.append(GuideIssue(

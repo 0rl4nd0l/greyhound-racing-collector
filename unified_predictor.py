@@ -805,7 +805,18 @@ class UnifiedPredictor:
         return result
 
     def _basic_fallback_prediction(self, race_file_path: str) -> Dict[str, Any]:
-        """Basic fallback prediction when all other methods fail"""
+        """Basic fallback prediction when all other methods fail.
+
+        Default: disabled to avoid fabricated outputs in production. Enable only for
+        local development by setting UNIFIED_ALLOW_BASIC_FALLBACK=1.
+        """
+        import os
+        if os.getenv("UNIFIED_ALLOW_BASIC_FALLBACK", "0").lower() not in ("1", "true", "yes"): 
+            return {
+                "success": False,
+                "error": "basic_fallback_disabled",
+                "predictions": [],
+            }
         try:
             import random
 

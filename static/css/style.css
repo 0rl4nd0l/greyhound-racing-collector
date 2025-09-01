@@ -82,6 +82,8 @@ nav.navbar.navbar-dark.bg-primary .dropdown-toggle,
 #racesDropdown, #analysisDropdown, #aiMlDropdown, #systemDropdown, #helpDropdown {
     color: #ffffff !important;
 }
+/* Remove translucent overlays that reduce contrast on navbar links/brand */
+nav.navbar a, nav.navbar .navbar-brand { background-color: transparent !important; }
 /* Darken primary background for better contrast if needed */
 nav.navbar.navbar-dark.bg-primary, .bg-primary {
     background-color: #0a3d8f !important;
@@ -126,31 +128,34 @@ nav.navbar.navbar-dark.bg-primary {
 .navbar.navbar-dark.bg-primary .navbar-nav .nav-link.active {
     color: #ffffff !important;
 }
-/* Darken card headers with bg-* + text-white to meet contrast */
+/* Accessibility: ensure muted text meets contrast on light backgrounds */
+.text-muted { color: #495057 !important; }
+/* Accessibility: breadcrumb contrast on light backgrounds */
+.breadcrumb .breadcrumb-item > a { color: #084298 !important; }
+.breadcrumb .breadcrumb-item.active { color: #495057 !important; }
+/* Accessibility: race time color for sufficient contrast on white */
+.race-time { color: #155724 !important; }
+/* Improve text contrast on colored cards/badges */
+/* Ensure adequate contrast for info and warning backgrounds by using dark text */
+.bg-info, .card.bg-info, .bg-info.text-white, .card.bg-info.text-white, .badge.bg-info { color: #052c65 !important; }
+.bg-warning, .card.bg-warning, .bg-warning.text-white, .card.bg-warning.text-white, .badge.bg-warning { color: #343a40 !important; }
+/* Primary/success cards keep white text but use darker backgrounds where necessary */
 .card-header.bg-primary.text-white { background-color: #0a3d8f !important; color: #ffffff !important; }
 .card-header.bg-success.text-white { background-color: #146c43 !important; color: #ffffff !important; }
-.card-header.bg-info.text-white { background-color: #087990 !important; color: #ffffff !important; }
-.card-header.text-white h5, .card-header.text-white .mb-0 { color: #ffffff !important; }
-
-/* Ensure success/info backgrounds are dark enough when combined with white text */
-.bg-success.text-white,
-.card.bg-success.text-white .card-body,
-.bg-info.text-white,
-.card.bg-info.text-white .card-body {
-    color: #ffffff !important;
-}
-/* Override global h3 color inside text-white blocks to actually be white */
+.card-header.bg-info.text-white { background-color: #087990 !important; color: #052c65 !important; }
+.card-header.text-white h5, .card-header.text-white .mb-0 { color: inherit !important; }
+/* Avoid low-contrast muted white text on colored backgrounds */
+.bg-primary .text-white-50, .bg-success .text-white-50, .bg-info .text-white-50, .bg-warning .text-white-50 { color: currentColor !important; opacity: 1 !important; }
+/* Override global h3 color inside colored cards to inherit for proper contrast */
 .text-white h3,
 .bg-primary.text-white .card-body h3,
 .bg-success.text-white .card-body h3,
-.bg-info.text-white .card-body h3 {
-    color: #ffffff !important;
-}
+.bg-info.text-white .card-body h3 { color: inherit !important; }
 /* Improve outline button and status label contrast */
 .text-info { color: #055160 !important; }
 .text-warning { color: #664d03 !important; }
-.btn-outline-info > strong { color: #055160 !important; }
-.btn-outline-warning > strong { color: #664d03 !important; }
+.btn-outline-info, .btn-outline-info > strong { color: #055160 !important; border-color: #055160 !important; }
+.btn-outline-warning, .btn-outline-warning > strong { color: #664d03 !important; border-color: #664d03 !important; }
 /* Improve disabled outline secondary on white background (higher specificity) */
 .btn.btn-outline-secondary.disabled, .btn.btn-outline-secondary:disabled { color: #495057 !important; border-color: #6c757d !important; }
 /* Ensure success badges meet contrast */
@@ -160,7 +165,13 @@ nav.navbar.navbar-dark.bg-primary {
 /* Improve badge bg-light text-* contrast on light background */
 .badge.bg-light.text-success { color: #0a684d !important; }
 .badge.bg-light.text-secondary { color: #495057 !important; }
-.badge.bg-light.text-secondary { color: #495057 !important; }
+
+/* Endpoints menu accessibility improvements */
+.endpoints-menu label { color: #ffffff !important; }
+.navbar.navbar-dark.bg-primary .endpoints-menu label { color: #ffffff !important; }
+.endpoints-menu .link-secondary { color: #ffffff !important; text-decoration: underline !important; }
+/* Ensure selects are readable on various backgrounds */
+.endpoints-select-wrap select { background-color: #ffffff; color: #212529; }
 
 /* Table Styles */
 table {

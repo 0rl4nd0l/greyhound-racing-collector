@@ -55,8 +55,11 @@ class EnhancedPredictionService:
         return self.ml_system is not None
     
     def predict_race_enhanced(self, race_data: pd.DataFrame, race_id: str, 
-                            market_odds: Optional[Dict[str, float]] = None) -> Dict[str, Any]:
-        """Generate enhanced predictions with accuracy optimization."""
+                            market_odds: Optional[Dict[str, float]] = None,
+                            tgr_enabled: Optional[bool] = None) -> Dict[str, Any]:
+        """Generate enhanced predictions with accuracy optimization.
+        tgr_enabled: when provided, toggles runtime inclusion of TGR features.
+        """
         
         if not self.is_available():
             return {
@@ -68,6 +71,13 @@ class EnhancedPredictionService:
         
         try:
             logger.info(f"🎯 Generating enhanced predictions for race: {race_id}")
+            
+            # Respect runtime TGR toggle if provided
+            try:
+                if tgr_enabled is not None and hasattr(self.ml_system, 'set_tgr_enabled'):
+                    self.ml_system.set_tgr_enabled(bool(tgr_enabled))
+            except Exception:
+                pass
             
             # Use the ML System V4 with integrated accuracy optimizer
             result = self.ml_system.predict_race(race_data, race_id, market_odds)
@@ -127,8 +137,10 @@ class EnhancedPredictionService:
                 'fallback_reason': 'Service exception occurred'
             }
     
-    def predict_race_file_enhanced(self, race_file_path: str) -> Dict[str, Any]:
-        """Generate enhanced predictions from race file."""
+    def predict_race_file_enhanced(self, race_file_path: str, tgr_enabled: Optional[bool] = None) -> Dict[str, Any]:
+        """Generate enhanced predictions from race file.
+        tgr_enabled: when provided, toggles runtime inclusion of TGR features.
+        """
         
         try:
             # Use Prediction Pipeline V4 if available
@@ -136,7 +148,11 @@ class EnhancedPredictionService:
             pipeline = PredictionPipelineV4(self.db_path)
             
             # Generate predictions using the pipeline
-            result = pipeline.predict_race_file(race_file_path)
+            try:
+                result = pipeline.predict_race_file(race_file_path, tgr_enabled=tgr_enabled)
+            except TypeError:
+                # Backward-compat if pipeline signature not updated
+                result = pipeline.predict_race_file(race_file_path)
             
             if result.get('success'):
                 # Enhance the result with additional quality metrics
@@ -198,7 +214,7 @@ class EnhancedPredictionService:
             logger.error(f"Enhanced file prediction failed: {e}")
             return {
                 'success': False,
-                'error': f'Enhanced file prediction error: {str(e)}',
+                'error': f'Enhanced prediction error: {str(e)}',
                 'race_file': race_file_path
             }
     
@@ -475,16 +491,18 @@ def get_enhanced_prediction_service(db_path: str = "greyhound_racing_data.db") -
 # Convenience functions for integration
 def predict_race_enhanced(race_data: pd.DataFrame, race_id: str, 
                          market_odds: Optional[Dict[str, float]] = None,
-                         db_path: str = "greyhound_racing_data.db") -> Dict[str, Any]:
+                         db_path: str = "greyhound_racing_data.db",
+                         tgr_enabled: Optional[bool] = None) -> Dict[str, Any]:
     """Generate enhanced predictions for a race."""
     service = get_enhanced_prediction_service(db_path)
-    return service.predict_race_enhanced(race_data, race_id, market_odds)
+    return service.predict_race_enhanced(race_data, race_id, market_odds, tgr_enabled=tgr_enabled)
 
 def predict_race_file_enhanced(race_file_path: str, 
-                              db_path: str = "greyhound_racing_data.db") -> Dict[str, Any]:
+                              db_path: str = "greyhound_racing_data.db",
+                              tgr_enabled: Optional[bool] = None) -> Dict[str, Any]:
     """Generate enhanced predictions from a race file."""
     service = get_enhanced_prediction_service(db_path)
-    return service.predict_race_file_enhanced(race_file_path)
+    return service.predict_race_file_enhanced(race_file_path, tgr_enabled=tgr_enabled)
 
 if __name__ == "__main__":
     # Test the enhanced prediction service

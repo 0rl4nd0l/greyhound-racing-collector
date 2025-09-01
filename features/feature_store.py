@@ -34,9 +34,7 @@ if pd is not None:  # pragma: no cover - environment dependent
 try:  # pragma: no cover - environment dependent
     from scipy.stats import ks_2samp  # type: ignore
 except Exception:  # pragma: no cover
-    def ks_2samp(a, b):
-        # Fallback dummy KS test returning no drift
-        return 0.0, 1.0
+    ks_2samp = None  # Disable drift detection without SciPy
 
 
 class FeatureStore:
@@ -137,6 +135,7 @@ class FeatureStore:
         If dependencies are missing, return an empty report to avoid breaking callers.
         """
         if pd is None or np is None or ks_2samp is None:
+            logging.warning("DRIFT_DETECTION_DISABLED missing dependencies (pandas/numpy/scipy)")
             return {}
         drifts = {}
         for col in current_features.columns:
@@ -154,23 +153,60 @@ class FeatureStore:
         return drifts
 
     def load_v4_model_contract(self):
-        """Load the V4 model feature contract."""
-        contract_path = Path("docs/model_contracts/V4_ExtraTrees_20250819.json")
+        """Load the canonical V4 model feature contract.
         
-        if not contract_path.exists():
-            # Fallback to relative path resolution
-            contract_path = Path(__file__).parent.parent / "docs/model_contracts/V4_ExtraTrees_20250819.json"
+        Preference order for expected features:
+        1) numerical_columns + categorical_columns (keeps saved order)
+        2) features (legacy flat list fallback)
+        """
+        # Candidate paths (repo-root and module-relative)
+        candidates = [
+            Path("docs/model_contracts/v4_feature_contract.json"),
+            Path(__file__).parent.parent / "docs/model_contracts/v4_feature_contract.json",
+        ]
+        contract_path = None
+        for p in candidates:
+            try:
+                if p.exists():
+                    contract_path = p
+                    break
+            except Exception:
+                continue
         
-        if not contract_path.exists():
+        if contract_path is None:
             raise FileNotFoundError(
-                f"V4 model contract not found at {contract_path}. "
-                "Run inspect_model_features.py to generate it."
+                "V4 model contract not found at docs/model_contracts/v4_feature_contract.json. "
+                "Run 'python3 scripts/verify_feature_contract.py --refresh' to generate it."
             )
         
-        with open(contract_path, 'r') as f:
-            contract = json.load(f)
+        with open(contract_path, 'r', encoding='utf-8') as f:
+            try:
+                contract = json.load(f) or {}
+            except Exception as e:
+                raise ValueError(f"Failed to read V4 contract JSON at {contract_path}: {e}")
         
-        return contract['features']
+        # Prefer explicit numerical/categorical columns; fall back to legacy flat list
+        expected_features = []
+        try:
+            nums = contract.get('numerical_columns') or []
+            cats = contract.get('categorical_columns') or []
+            if nums or cats:
+                expected_features = list(nums) + list(cats)
+        except Exception:
+            expected_features = []
+        
+        if not expected_features:
+            # Legacy fallback: flat ordered feature list
+            flist = contract.get('features')
+            if isinstance(flist, list) and flist:
+                expected_features = list(flist)
+        
+        if not expected_features:
+            raise ValueError(
+                "V4 contract present but contains no 'numerical_columns'/'categorical_columns' or 'features' list"
+            )
+        
+        return expected_features
 
     def enforce_v4_contract(self, features_df, log_missing=True):
         """Enforce V4 model contract by reindexing DataFrame to match expected features.

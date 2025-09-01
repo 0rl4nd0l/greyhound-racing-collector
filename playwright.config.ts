@@ -1,5 +1,10 @@
 import { defineConfig } from "@playwright/test";
 
+// Ensure tests default to port 5002 unless overridden
+process.env.DEFAULT_PORT = process.env.DEFAULT_PORT || '5002';
+process.env.FLASK_BASE_URL = process.env.FLASK_BASE_URL || 'http://localhost:5002';
+process.env.BASE_URL = process.env.BASE_URL || 'http://localhost:5002';
+
 export default defineConfig({
   timeout: 120000,
   testDir: './tests',
@@ -13,18 +18,34 @@ export default defineConfig({
     '**/*.test.js',
     '**/*.test.ts'
   ],
+  fullyParallel: false,
+  workers: 1,
   use: {
-    baseURL: "http://localhost:5000",
+    baseURL: "http://localhost:5003",
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     actionTimeout: 15000
   },
   webServer: {
-command: 'DISABLE_STARTUP_GUARD=1 BACKGROUND_BASE_URL=http://localhost:5000 E2E_BASE_URL=http://localhost:5000 V4_MAX_RACES=50 V4_TREES=100 V4_MAX_DEPTH=12 V4_MIN_SAMPLES_LEAF=3 V4_CALIB_FOLDS=3 V4_SKIP_IMPORTANCE=1 PORT=5000 ./.venv/bin/python app.py --host 127.0.0.1 --port 5000',
-    url: 'http://localhost:5000',
-    reuseExistingServer: true,
-    timeout: 240000
+    command: 'PORT=5003 ./.venv/bin/python app.py --host 127.0.0.1 --port 5003',
+    url: 'http://localhost:5003',
+    reuseExistingServer: false,
+    timeout: 240000,
+    env: {
+      TESTING: '1',
+      TRAINING_MAX_SECS: '30',
+      DISABLE_STARTUP_GUARD: '1',
+      ENABLE_ENDPOINT_DROPDOWNS: '1',
+      DISABLE_NAV_DROPDOWNS: '1',
+      BACKGROUND_BASE_URL: 'http://localhost:5003',
+      E2E_BASE_URL: 'http://localhost:5003',
+      V4_MAX_RACES: '50',
+      V4_TREES: '100',
+      V4_MAX_DEPTH: '12',
+      V4_MIN_SAMPLES_LEAF: '3',
+      V4_CALIB_FOLDS: '3',
+      V4_SKIP_IMPORTANCE: '1'
+    }
   },
   reporter: [["list"], ["html", { outputFolder: "tests/artifacts/playwright-report" }]]
 });
-

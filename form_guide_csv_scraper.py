@@ -20,6 +20,7 @@ Version: 3.0.1 - Fixed regex patterns and centralized date parsing
 import os
 import sys
 import requests
+from utils.http_client import get_shared_session
 import time
 import random
 from datetime import datetime, timedelta
@@ -122,7 +123,7 @@ class FormGuideCsvScraper:
         # Note: We collect all historical races (previous day or earlier) for training data
         
         # Setup session
-        self.session = requests.Session()
+        self.session = get_shared_session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         })
@@ -412,11 +413,19 @@ class FormGuideCsvScraper:
                 race_url = race_info['url']
                 print(f"🏁 Downloading CSV from race: {race_url}")
                 
-                response = self.session.get(race_url, timeout=30)
-                last_http_status = response.status_code
-                response.raise_for_status()
-                
-                soup = BeautifulSoup(response.content, 'html.parser')
+                response = None
+                try:
+                    response = self.session.get(race_url, timeout=30)
+                    last_http_status = response.status_code
+                    response.raise_for_status()
+                    
+                    soup = BeautifulSoup(response.content, 'html.parser')
+                finally:
+                    if response is not None:
+                        try:
+                            response.close()
+                        except Exception:
+                            pass
                 
                 # Method 1: Look for CSV download links using multiple selectors
                 csv_selectors = [
@@ -460,11 +469,19 @@ class FormGuideCsvScraper:
                     
                     # Test if direct URL works
                     try:
-                        test_response = self.session.head(direct_csv_url, timeout=10)
-                        if test_response.status_code == 200:
-                            csv_url = direct_csv_url
-                            if self.verbose_fetch:
-                                print(f"   ✅ Direct CSV URL works: {direct_csv_url}")
+                        test_response = None
+                        try:
+                            test_response = self.session.head(direct_csv_url, timeout=10)
+                            if test_response.status_code == 200:
+                                csv_url = direct_csv_url
+                                if self.verbose_fetch:
+                                    print(f"   ✅ Direct CSV URL works: {direct_csv_url}")
+                        finally:
+                            if test_response is not None:
+                                try:
+                                    test_response.close()
+                                except Exception:
+                                    pass
                     except:
                         pass
                 
@@ -478,12 +495,20 @@ class FormGuideCsvScraper:
                     
                     for alt_url in alternative_urls:
                         try:
-                            test_response = self.session.head(alt_url, timeout=5)
-                            if test_response.status_code == 200:
-                                csv_url = alt_url
-                                if self.verbose_fetch:
-                                    print(f"   ✅ Alternative CSV URL works: {alt_url}")
-                                break
+                            test_response = None
+                            try:
+                                test_response = self.session.head(alt_url, timeout=5)
+                                if test_response.status_code == 200:
+                                    csv_url = alt_url
+                                    if self.verbose_fetch:
+                                        print(f"   ✅ Alternative CSV URL works: {alt_url}")
+                                    break
+                            finally:
+                                if test_response is not None:
+                                    try:
+                                        test_response.close()
+                                    except Exception:
+                                        pass
                         except:
                             continue
                 
@@ -506,9 +531,19 @@ class FormGuideCsvScraper:
                         csv_url = f"{self.base_url}/{csv_url}"
                 
                 # Download CSV content
-                csv_response = self.session.get(csv_url, timeout=30)
-                last_http_status = csv_response.status_code  # Update with CSV download status
-                csv_response.raise_for_status()
+                csv_response = None
+                try:
+                    csv_response = self.session.get(csv_url, timeout=30)
+                    last_http_status = csv_response.status_code  # Update with CSV download status
+                    csv_response.raise_for_status()
+                finally:
+                    # We will read csv_response.text after ensuring object exists; keep content before closing
+                    csv_text = csv_response.text if csv_response is not None else ""
+                    if csv_response is not None:
+                        try:
+                            csv_response.close()
+                        except Exception:
+                            pass
                 
                 # Use centralized date parsing for consistent formatting
                 try:
@@ -523,7 +558,7 @@ class FormGuideCsvScraper:
                 
                 # Save CSV file
                 with open(filepath, 'w', encoding='utf-8') as f:
-                    f.write(csv_response.text)
+                    f.write(csv_text)
                 
                 print(f"✅ Downloaded: {filename}")
                 return True, last_http_status
@@ -948,13 +983,21 @@ class FormGuideCsvScraper:
             if self.verbose_fetch:
                 print(f"📅 Discovering races for {date_str} from {racing_url}")
             
-            response = self.session.get(racing_url, timeout=30)
-            if response.status_code != 200:
-                if self.verbose_fetch:
-                    print(f"⚠️ Failed to get racing page for {date_str}: HTTP {response.status_code}")
-                return []
-            
-            soup = BeautifulSoup(response.content, 'html.parser')
+            response = None
+            try:
+                response = self.session.get(racing_url, timeout=30)
+                if response.status_code != 200:
+                    if self.verbose_fetch:
+                        print(f"⚠️ Failed to get racing page for {date_str}: HTTP {response.status_code}")
+                    return []
+                
+                soup = BeautifulSoup(response.content, 'html.parser')
+            finally:
+                if response is not None:
+                    try:
+                        response.close()
+                    except Exception:
+                        pass
             
             # Find race links - they typically follow patterns like:
             # /racing/venue/YYYY-MM-DD/race_number/race-name

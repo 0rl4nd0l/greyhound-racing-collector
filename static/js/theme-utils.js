@@ -90,6 +90,34 @@
       }
     } catch (_) {}
   }
+  // Delegated click as a safety net (works even if inline handlers are blocked)
+  document.addEventListener('click', function(e){
+    var t = e.target && (e.target.id === 'theme-toggle' ? e.target : e.target.closest && e.target.closest('#theme-toggle'));
+    if (t) {
+      if (typeof e.preventDefault === 'function') e.preventDefault();
+      if (window.ThemeUtils && typeof window.ThemeUtils.toggle === 'function') {
+        window.ThemeUtils.toggle();
+      } else if (typeof window.toggleTheme === 'function') {
+        window.toggleTheme();
+      }
+    }
+  }, true);
+
+  // Keyboard activation support
+  document.addEventListener('keydown', function(e){
+    var isActivator = (e.key === 'Enter' || e.key === ' ' || e.code === 'Space');
+    if (!isActivator) return;
+    var active = document.activeElement;
+    if (active && active.id === 'theme-toggle') {
+      if (typeof e.preventDefault === 'function') e.preventDefault();
+      if (window.ThemeUtils && typeof window.ThemeUtils.toggle === 'function') {
+        window.ThemeUtils.toggle();
+      } else if (typeof window.toggleTheme === 'function') {
+        window.toggleTheme();
+      }
+    }
+  }, true);
+
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function(){ initTheme(); bindToggle(); });
   } else {

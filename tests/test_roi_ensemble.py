@@ -6,8 +6,7 @@ Test script for ROI-optimized ensemble system.
 import logging
 import sys
 
-from advanced_ensemble_ml_system import (AdvancedEnsembleMLSystem,
-                                         train_advanced_ensemble)
+from advanced_ensemble_ml_system import AdvancedEnsembleMLSystem
 from ensemble_roi_weighter import optimize_ensemble_weights
 
 # Setup logging
@@ -67,11 +66,12 @@ def test_ensemble_system():
 
             # Test prediction with real data from database
             logger.info("Loading real dog data from database for prediction test...")
-            
+
             try:
                 import sqlite3
-                conn = sqlite3.connect('greyhound_racing_data.db')
-                
+
+                conn = sqlite3.connect("greyhound_racing_data.db")
+
                 # Get a real dog entry from the database
                 query = """
                 SELECT * FROM dog_race_data 
@@ -82,24 +82,33 @@ def test_ensemble_system():
                   AND field_size IS NOT NULL
                 LIMIT 1
                 """
-                
+
                 import pandas as pd
+
                 df = pd.read_sql_query(query, conn)
                 conn.close()
-                
+
                 if not df.empty:
                     # Convert the database row to the format expected by the predictor
                     real_dog = df.iloc[0].to_dict()
-                    
+
                     # Use the dog's actual starting price as market odds for testing
-                    market_odds = real_dog.get('starting_price', 3.0)
-                    
-                    prediction = ensemble_system.predict(real_dog, market_odds=market_odds)
-                    logger.info(f"✅ Test prediction on real dog '{real_dog.get('name', 'Unknown')}': {prediction}")
+                    market_odds = real_dog.get("starting_price", 3.0)
+
+                    prediction = ensemble_system.predict(
+                        real_dog, market_odds=market_odds
+                    )
+                    logger.info(
+                        f"✅ Test prediction on real dog '{real_dog.get('name', 'Unknown')}': {prediction}"
+                    )
                 else:
-                    logger.warning("No suitable real dog data found for prediction test")
-                    logger.info("✅ Ensemble training and saving completed successfully")
-                    
+                    logger.warning(
+                        "No suitable real dog data found for prediction test"
+                    )
+                    logger.info(
+                        "✅ Ensemble training and saving completed successfully"
+                    )
+
             except Exception as e:
                 logger.warning(f"Could not load real dog data for testing: {e}")
                 logger.info("✅ Ensemble training and saving completed successfully")

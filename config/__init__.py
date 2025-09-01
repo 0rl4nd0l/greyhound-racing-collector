@@ -19,7 +19,8 @@ class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'greyhound_racing_secret_key_2025'
 
     # Database settings
-    DATABASE_PATH = os.environ.get('DATABASE_PATH') or 'greyhound_racing_data.db'
+    # Prefer GREYHOUND_DB_PATH when provided; fall back to DATABASE_PATH for backward compatibility
+    DATABASE_PATH = os.environ.get('GREYHOUND_DB_PATH') or os.environ.get('DATABASE_PATH') or 'greyhound_racing_data.db'
 
     # Feature flags and modes (defaults aligned with live UI usage; CI/tests override via env)
     ENABLE_RESULTS_SCRAPERS = str(os.environ.get('ENABLE_RESULTS_SCRAPERS', '1')).lower() not in ('0', 'false', 'no', 'off')

@@ -1,7 +1,7 @@
 # Makefile for the Greyhound Racing Collector project
 # Updated for unified environment structure
 
-.PHONY: help init deps lock test lint format e2e perf security schema-tests schema-baseline schema-monitor contract-validate contract-validate-api install-hooks clean
+.PHONY: help init deps lock test lint format e2e perf security schema-tests schema-baseline schema-monitor contract-validate contract-validate-api install-hooks clean check-preflight check-v4-sanity
 
 VENV := .venv
 PYTHON := $(VENV)/bin/python
@@ -60,13 +60,31 @@ test:
 	$(PYTEST) tests/unit/ tests/integration/ --cov=.
 
 # Run database schema consistency tests
+# DESTRUCTIVE: schema-prepare archives and recreates the DB. Guarded by env checks.
 schema-prepare:
-	@echo "Bootstrapping clean development database from models.py..."
-	$(PYTHON) scripts/bootstrap_test_db.py
+	@echo "Bootstrapping clean development database from models.py (DESTRUCTIVE)..."
+	@if [ "$$ALLOW_DB_RESET" != "1" ]; then \
+		echo "ERROR: ALLOW_DB_RESET=1 is required to run schema-prepare"; \
+		exit 1; \
+	fi
+	@if [ "$${ENVIRONMENT:-development}" = "production" ]; then \
+		echo "ERROR: ENVIRONMENT=production is not allowed for reset"; \
+		exit 1; \
+	fi
+	@if [ "$$CONFIRM" != "RESET_DB" ]; then \
+		echo "ERROR: set CONFIRM=RESET_DB to proceed"; \
+		exit 1; \
+	fi
+	ALLOW_DB_RESET=1 FORCE=1 $(PYTHON) scripts/bootstrap_test_db.py
 
-schema-tests: schema-prepare
-	@echo "Running database schema consistency tests (standalone)..."
+# Safe schema tests (non-destructive)
+schema-tests:
+	@echo "Running database schema consistency tests (safe, non-destructive)..."
 	$(PYTHON) tests/test_database_schema_consistency.py
+
+# Explicitly destructive schema tests that reset the DB first
+schema-tests-reset: schema-prepare schema-tests
+	@echo "Completed destructive schema test run."
 
 # Create baseline schema snapshot
 schema-baseline:
@@ -176,3 +194,61 @@ run-api-dev-toolbar:
 # Clean up environment
 clean:
 	rm -rf $(VENV)
+
+# Database restore from latest archive SQL dump
+.PHONY: db-restore-latest
+db-restore-latest:
+	@echo "Restoring DB from latest archive SQL dump..."
+	bash scripts/restore_db_from_archive.sh
+
+# Quick DB verification: integrity and row counts
+.PHONY: db-verify
+db-verify:
+	@echo "Running DB integrity and row count checks..."
+	@sqlite3 greyhound_racing_data.db "PRAGMA integrity_check;"
+	@sqlite3 greyhound_racing_data.db "SELECT 'race_metadata', COUNT(*) FROM race_metadata;"
+	@sqlite3 greyhound_racing_data.db "SELECT 'dog_race_data', COUNT(*) FROM dog_race_data;"
+
+# Patch/verify schema columns and indexes
+.PHONY: db-patch-schema
+db-patch-schema:
+	@echo "Verifying and patching DB schema..."
+	python3 scripts/verify_and_patch_schema.py
+
+# App smoke test (safe, no scraping)
+.PHONY: smoke-test
+smoke-test:
+	@echo "Running app smoke test (safe, non-network)..."
+	TESTING=1 ENABLE_LIVE_SCRAPING=0 ENABLE_RESULTS_SCRAPERS=0 $(VENV)/bin/python scripts/smoke_test_app.py
+
+# DB maintenance (non-destructive)
+.PHONY: db-analyze db-vacuum guard-run
+
+db-analyze:
+	@echo "Analyzing and optimizing DB..."
+	@sqlite3 greyhound_racing_data.db "PRAGMA analysis_limit=400; ANALYZE; PRAGMA optimize;"
+
+db-vacuum:
+	@echo "Vacuuming, analyzing and optimizing DB..."
+	@sqlite3 greyhound_racing_data.db "VACUUM; ANALYZE; PRAGMA analysis_limit=400; PRAGMA optimize;"
+
+# Run any writer command under DB guard (backup + integrity + optional optimize)
+# Usage: make guard-run CMD='python scripts/register_latest_v4_model.py' [DB=path] [LABEL=name]
+# Optional: DB_GUARD_OPTIMIZE=analyze|vacuum to enable post-op optimization
+# Example: DB_GUARD_OPTIMIZE=analyze make guard-run CMD='python scripts/ingest_csv_history.py --csv "Race 7 - ... .csv"'
+
+guard-run:
+	@if [ -z "$(CMD)" ]; then echo "Usage: make guard-run CMD='python your_script.py args' [DB=path] [LABEL=name]"; exit 2; fi; \
+	DB_PATH="$(DB)"; LABEL="$(LABEL)"; \
+	if [ -z "$$DB_PATH" ]; then DB_PATH="greyhound_racing_data.db"; fi; \
+	$(PYTHON) scripts/run_with_db_guard.py --db "$$DB_PATH" --label "$$LABEL" -- $(CMD)
+
+# Quick ML v4 checks
+.PHONY: check-preflight check-v4-sanity
+check-preflight:
+	@echo "Running V4 DB preflight checks..."
+	$(PYTHON) scripts/dev/check_preflight.py
+
+check-v4-sanity:
+	@echo "Running V4 data preparation sanity check..."
+	$(PYTHON) scripts/dev/check_v4_sanity.py --max-races $${MAX_RACES:-200}

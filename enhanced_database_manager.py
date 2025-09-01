@@ -93,11 +93,43 @@ class EnhancedDatabaseManager:
         try:
             conn = sqlite3.connect(self.db_path)
             # Enable foreign keys and optimize performance
-            conn.execute("PRAGMA foreign_keys = ON")
-            conn.execute("PRAGMA journal_mode = WAL")
-            conn.execute("PRAGMA synchronous = NORMAL")
-            conn.execute("PRAGMA cache_size = 10000")
-            conn.execute("PRAGMA temp_store = MEMORY")
+            try:
+                conn.execute("PRAGMA foreign_keys = ON")
+            except Exception:
+                pass
+
+            # Disable WAL and heavy PRAGMAs when running tests or when explicitly requested
+            disable_wal = False
+            try:
+                if os.environ.get("SQLITE_DISABLE_WAL", "0").lower() in ("1", "true", "yes"):
+                    disable_wal = True
+                if os.environ.get("PYTEST_CURRENT_TEST"):
+                    disable_wal = True
+                if os.environ.get("FLASK_ENV", "").lower() == "testing" or os.environ.get("TESTING", "0").lower() in ("1", "true", "yes"):
+                    disable_wal = True
+            except Exception:
+                disable_wal = False
+
+            try:
+                if disable_wal:
+                    conn.execute("PRAGMA journal_mode = DELETE")
+                    conn.execute("PRAGMA synchronous = OFF")
+                else:
+                    conn.execute("PRAGMA journal_mode = WAL")
+                    conn.execute("PRAGMA synchronous = NORMAL")
+                    conn.execute("PRAGMA cache_size = 10000")
+                    conn.execute("PRAGMA temp_store = MEMORY")
+                    try:
+                        conn.execute("PRAGMA mmap_size = 268435456")
+                    except Exception:
+                        pass
+            except Exception:
+                # Fallback-safe settings
+                try:
+                    conn.execute("PRAGMA journal_mode = DELETE")
+                    conn.execute("PRAGMA synchronous = OFF")
+                except Exception:
+                    pass
 
             # Set Row factory for easier data handling
             conn.row_factory = sqlite3.Row

@@ -30,7 +30,12 @@ def get_chrome_driver(headless=True):
         WebDriver: Configured Chrome WebDriver instance
     """
     if _SELENIUM_DISABLED:
-        raise RuntimeError('Selenium disabled via DISABLE_SELENIUM=1')
+        try:
+            import pytest  # type: ignore
+            pytest.skip('Selenium disabled via DISABLE_SELENIUM=1')
+        except Exception:
+            # Fallback if pytest not available: raise a clear runtime error
+            raise RuntimeError('Selenium disabled via DISABLE_SELENIUM=1')
 
     options = Options()
 

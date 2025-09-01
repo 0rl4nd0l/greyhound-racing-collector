@@ -26,8 +26,10 @@ import json
 import os
 import sqlite3
 from typing import List, Dict, Optional
+from scripts.db_utils import open_sqlite_writable
 
 from ingestion.staging_writer import parse_race_csv_for_staging, RaceMeta
+from scripts.db_guard import db_guard
 
 
 CREATE_STAGING_SQL = {
@@ -212,10 +214,11 @@ def upsert_dogs(conn: sqlite3.Connection, dogs: List[Dict[str, object]]) -> None
 def pick_db_path(cli_db: Optional[str]) -> str:
     if cli_db:
         return cli_db
-    env_db = os.getenv("GREYHOUND_DB_PATH")
+    # Prefer staging DB for writers
+    env_db = os.getenv("STAGING_DB_PATH") or os.getenv("GREYHOUND_DB_PATH")
     if env_db and env_db.strip():
         return env_db
-    return "greyhound_racing_data.db"
+    return "greyhound_racing_data_stage.db"
 
 
 def main():
@@ -229,15 +232,19 @@ def main():
     # Parse
     meta, dogs = parse_race_csv_for_staging(args.csv)
 
-    # Connect and stage/upsert
-    conn = sqlite3.connect(db_path)
-    try:
-        ensure_staging_tables(conn)
-        upsert_race_metadata(conn, meta, field_size=len(dogs))
-        upsert_dogs(conn, dogs)
-        print(f"✅ Ingested {args.csv}: race_id={meta.race_id}, dogs={len(dogs)} -> DB={db_path}")
-    finally:
-        conn.close()
+    # Guarded DB operation (pre-backup, post-validate)
+    with db_guard(db_path=db_path, label="ingest_csv_history") as guard:
+        guard.expect_table_growth("race_metadata", min_delta=0)
+        guard.expect_table_growth("dog_race_data", min_delta=0)
+        # Connect and stage/upsert (use writable/staging DB)
+        conn = open_sqlite_writable(db_path)
+        try:
+            ensure_staging_tables(conn)
+            upsert_race_metadata(conn, meta, field_size=len(dogs))
+            upsert_dogs(conn, dogs)
+            print(f"✅ Ingested {args.csv}: race_id={meta.race_id}, dogs={len(dogs)} -> DB={db_path}")
+        finally:
+            conn.close()
 
 
 if __name__ == "__main__":

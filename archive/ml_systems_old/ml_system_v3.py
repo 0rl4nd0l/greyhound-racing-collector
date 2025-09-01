@@ -14,6 +14,7 @@ This is the primary prediction system with basic ML as fallback.
 
 import logging
 import sqlite3
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -65,6 +66,13 @@ try:
 except ImportError:
     SHAP_EXPLAINABILITY_AVAILABLE = False
     print("⚠️ SHAP explainability not available")
+
+# Allow disabling SHAP via environment for CI stability
+try:
+    if str(os.getenv('DISABLE_SHAP', '0')).strip().lower() in ('1', 'true', 'yes', 'on'):
+        SHAP_EXPLAINABILITY_AVAILABLE = False
+except Exception:
+    pass
 
 # Import probability calibrator
 try:

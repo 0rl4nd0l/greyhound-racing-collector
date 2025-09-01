@@ -20,6 +20,7 @@ import json
 import sys
 from datetime import datetime
 from pathlib import Path
+import os
 
 # Ensure project root on sys.path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -37,6 +38,7 @@ from sklearn.metrics import accuracy_score, roc_auc_score, brier_score_loss
 
 from ml_system_v4 import MLSystemV4
 from model_registry import get_model_registry
+from scripts.db_guard import db_guard
 
 CONTRACT_PATH = Path("docs/model_contracts/V4_ExtraTrees_20250819.json")
 
@@ -54,7 +56,9 @@ def load_contract_features() -> list[str] | None:
 
 
 def main() -> int:
-    system = MLSystemV4()
+    # Training reads from analytics DB
+    db_path = os.getenv('ANALYTICS_DB_PATH') or os.getenv('GREYHOUND_DB_PATH') or 'greyhound_racing_data.db'
+    system = MLSystemV4(db_path)
 
     # Prepare data
     train_data, test_data = system.prepare_time_ordered_data()
@@ -82,12 +86,14 @@ def main() -> int:
     X_test = test_features.drop(['race_id', 'dog_clean_name', 'target', 'target_timestamp'], axis=1, errors='ignore')
     y_test = test_features['target']
 
-    # Detect categorical/numeric columns (mirror MLSystemV4)
-    categorical_columns = [c for c in X_train.columns if c in ['venue', 'grade', 'track_condition', 'weather', 'trainer_name']]
-    exclude_columns = ['race_date', 'race_time']
+    # Detect categorical/numeric columns (mirror MLSystemV4), guarding against missing columns in splits
+    cat_candidates = ['venue', 'grade', 'track_condition', 'weather', 'trainer_name']
+    shared_cols = set(X_train.columns).intersection(set(X_test.columns))
+    categorical_columns = [c for c in cat_candidates if c in shared_cols]
+    exclude_columns = ['race_date', 'race_time']  # exclude non-numeric date/time strings
     numerical_columns = [
         c for c in X_train.columns
-        if c not in categorical_columns + exclude_columns and pd.api.types.is_numeric_dtype(X_train[c])
+        if c in shared_cols and c not in categorical_columns + exclude_columns and pd.api.types.is_numeric_dtype(X_train[c])
     ]
 
     # Preprocessor
@@ -192,9 +198,12 @@ def main() -> int:
     contract_features = load_contract_features()
     feature_names = contract_features if contract_features else list(X_train.columns)
 
-    # Register
+    # Register (guarded) - writes to staging DB
     registry = get_model_registry()
-    model_id = registry.register_model(
+    registry_db_path = os.getenv('STAGING_DB_PATH') or os.getenv('GREYHOUND_DB_PATH') or 'greyhound_racing_data_stage.db'
+    with db_guard(db_path=registry_db_path, label='train_register_v4_hgb') as guard:
+        guard.expect_table_growth('ml_model_registry', min_delta=0)
+        model_id = registry.register_model(
         model_obj=calibrated,
         scaler_obj=FunctionTransformer(validate=False),
         model_name='V4_HistGradientBoosting',

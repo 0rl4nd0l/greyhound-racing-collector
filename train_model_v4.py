@@ -54,9 +54,18 @@ class ConditionalRetrainingManager:
     """Manages conditional retraining of MLSystemV4 based on various triggers."""
     
     def __init__(self, db_path: str = "greyhound_racing_data.db"):
-        self.db_path = db_path
-        self.ml_system = MLSystemV4(db_path)
-        self.data_monitor = DataMonitor(db_path)
+        # Resolve DB path to an absolute, stable location to avoid accidental empty DB creation
+        env_db = os.getenv('GREYHOUND_DB_PATH') or os.getenv('DATABASE_PATH')
+        # Prefer explicit env var, else use provided db_path arg, else fall back to repo-root default
+        candidate = env_db if (env_db and str(env_db).strip()) else db_path
+        if candidate and str(candidate).strip():
+            resolved_db = str(Path(candidate).expanduser().resolve())
+        else:
+            # Default to repo-root greyhound_racing_data.db
+            resolved_db = str((Path(__file__).resolve().parent / 'greyhound_racing_data.db').resolve())
+        self.db_path = resolved_db
+        self.ml_system = MLSystemV4(self.db_path)
+        self.data_monitor = DataMonitor(self.db_path)
         
         # Retraining thresholds and conditions
         self.thresholds = {
