@@ -188,3 +188,4 @@ predictions/backtests/
 *.lock
 server.out
 flask_app.pid
+.venv311/
