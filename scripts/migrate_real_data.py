@@ -22,6 +22,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+# Route DB writes via staging by default
+try:
+    from scripts.db_utils import open_sqlite_writable
+except Exception:
+    def open_sqlite_writable(db_path: str | None = None):
+        import os as _os, sqlite3 as _sqlite3
+        path = db_path or _os.getenv("STAGING_DB_PATH") or "greyhound_racing_data_stage.db"
+        return _sqlite3.connect(_os.path.abspath(path))
+
 # Ensure project root on sys.path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -78,7 +87,7 @@ def migrate_race_data(
     print("🔄 Starting real data migration for ML training...")
     print(f"📂 Database: {db_path}")
 
-    conn = sqlite3.connect(db_path)
+    conn = open_sqlite_writable(db_path)
     cursor = conn.cursor()
 
     # Clean existing data if requested
@@ -244,7 +253,7 @@ def validate_migration(db_path: str) -> None:
     """Validate the migrated data quality."""
     print("🔍 Validating migrated data quality...")
 
-    conn = sqlite3.connect(db_path)
+    conn = open_sqlite_writable(db_path)
 
     # Check record counts
     tables_to_check = ["dog_race_data", "race_metadata", "enhanced_expert_data"]

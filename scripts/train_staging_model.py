@@ -4,6 +4,15 @@ import pickle
 import sqlite3
 from pathlib import Path
 
+# Use routed read-only connection for staging reads
+try:
+    from scripts.db_utils import open_sqlite_readonly
+except Exception:
+    def open_sqlite_readonly(db_path: str | None = None):
+        import os as _os, sqlite3 as _sqlite3
+        path = db_path or _os.getenv("STAGING_DB_PATH") or "greyhound_racing_data_staging.db"
+        return _sqlite3.connect(f"file:{_os.path.abspath(path)}?mode=ro", uri=True)
+
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import LabelEncoder
@@ -13,9 +22,9 @@ def create_simple_model():
     print("🤖 Training simple model with staging data...")
 
     # Connect to staging database
-    db_path = "greyhound_racing_data_staging.db"
+    db_path = os.getenv("STAGING_DB_PATH", "greyhound_racing_data_staging.db")
 
-    with sqlite3.connect(db_path) as conn:
+    with open_sqlite_readonly(db_path) as conn:
         # Get training data
         query = """
         SELECT 

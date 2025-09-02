@@ -24,6 +24,19 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+# Route DB access via project utilities
+try:
+    from scripts.db_utils import open_sqlite_readonly, open_sqlite_writable
+except Exception:
+    def open_sqlite_readonly(db_path: str | None = None):
+        import os as _os, sqlite3 as _sqlite3
+        path = db_path or _os.getenv("ANALYTICS_DB_PATH") or _os.getenv("GREYHOUND_DB_PATH") or "greyhound_racing_data.db"
+        return _sqlite3.connect(f"file:{_os.path.abspath(path)}?mode=ro", uri=True)
+    def open_sqlite_writable(db_path: str | None = None):
+        import os as _os, sqlite3 as _sqlite3
+        path = db_path or _os.getenv("STAGING_DB_PATH") or "greyhound_racing_data_stage.db"
+        return _sqlite3.connect(_os.path.abspath(path))
+
 import pandas as pd
 
 # Add project root to path
@@ -49,7 +62,7 @@ class DataIntegrityCleanup:
         """Create backup before any modifications."""
         print(f"📦 Creating backup at {self.backup_path}")
         try:
-            with sqlite3.connect(self.db_path) as source:
+            with open_sqlite_readonly(self.db_path) as source:
                 with sqlite3.connect(self.backup_path) as backup:
                     source.backup(backup)
             print(f"✅ Backup created successfully")
@@ -62,7 +75,7 @@ class DataIntegrityCleanup:
         """Analyze all duplicate issues comprehensively."""
         print("🔍 Analyzing duplicate data issues...")
         
-        conn = sqlite3.connect(self.db_path)
+        conn = open_sqlite_readonly(self.db_path)
         
         # 1. Box number duplicates
         box_dups_query = """
@@ -157,7 +170,7 @@ class DataIntegrityCleanup:
             print("   [DRY RUN] Would resolve box number duplicates")
             return len(duplicates_data)
         
-        conn = sqlite3.connect(self.db_path)
+        conn = open_sqlite_writable(self.db_path)
         cursor = conn.cursor()
         fixed_count = 0
         
@@ -192,7 +205,7 @@ class DataIntegrityCleanup:
             print("   [DRY RUN] Would resolve dog name duplicates")
             return len(duplicates_data)
         
-        conn = sqlite3.connect(self.db_path)
+        conn = open_sqlite_writable(self.db_path)
         cursor = conn.cursor()
         fixed_count = 0
         

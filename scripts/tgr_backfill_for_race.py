@@ -22,7 +22,7 @@ import sqlite3
 import sys
 from typing import List
 
-from scripts.db_utils import open_sqlite_writable
+from scripts.db_utils import open_sqlite_writable, open_sqlite_readonly
 
 # Ensure project root on sys.path
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -32,7 +32,7 @@ from enhanced_tgr_collector import EnhancedTGRCollector
 
 
 def get_dogs_for_race(db_path: str, race_id: str) -> List[str]:
-    conn = sqlite3.connect(db_path)
+    conn = open_sqlite_readonly(db_path)
     cur = conn.cursor()
     try:
         cur.execute(
