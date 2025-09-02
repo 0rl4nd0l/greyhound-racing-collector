@@ -19,16 +19,56 @@ import sys
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
+# Route DB access via project utilities
+try:
+    from scripts.db_utils import (
+        open_sqlite_readonly,
+        open_sqlite_writable,
+        get_staging_db_path,
+        get_analytics_db_path,
+    )
+except Exception:
+    # Safe fallbacks
+    def open_sqlite_readonly(db_path: str | None = None):
+        import os as _os, sqlite3 as _sqlite3
+        path = db_path or _os.getenv("ANALYTICS_DB_PATH") or _os.getenv("GREYHOUND_DB_PATH") or "greyhound_racing_data.db"
+        conn = _sqlite3.connect(f"file:{_os.path.abspath(path)}?mode=ro", uri=True)
+        try:
+            conn.execute("PRAGMA query_only=ON")
+            conn.execute("PRAGMA foreign_keys=ON")
+        except Exception:
+            pass
+        return conn
+
+    def open_sqlite_writable(db_path: str | None = None):
+        import os as _os, sqlite3 as _sqlite3
+        path = db_path or _os.getenv("STAGING_DB_PATH") or "greyhound_racing_data_stage.db"
+        conn = _sqlite3.connect(_os.path.abspath(path))
+        try:
+            conn.execute("PRAGMA foreign_keys=ON")
+        except Exception:
+            pass
+        return conn
+
+    def get_staging_db_path(default: str = "greyhound_racing_data_stage.db") -> str:
+        import os as _os
+        return _os.getenv("STAGING_DB_PATH") or default
+
+    def get_analytics_db_path(default: str = "greyhound_racing_data.db") -> str:
+        import os as _os
+        return _os.getenv("ANALYTICS_DB_PATH") or _os.getenv("GREYHOUND_DB_PATH") or default
+
 
 class RaceStatusManager:
     """Comprehensive race status management"""
 
-    def __init__(self, db_path: str = "greyhound_racing_data.db"):
-        self.db_path = db_path
+    def __init__(self, db_path: str = None):
+        # Default to analytics for read paths; writers will open staging explicitly
+        self.db_path = db_path or get_analytics_db_path()
 
     def get_status_overview(self) -> Dict[str, Any]:
         """Get comprehensive status overview"""
-        conn = sqlite3.connect(self.db_path)
+        conn = open_sqlite_readonly(self.db_path)
         cursor = conn.cursor()
 
         try:
@@ -111,7 +151,9 @@ class RaceStatusManager:
         note: str = None,
     ) -> bool:
         """Update status for a specific race"""
-        conn = sqlite3.connect(self.db_path)
+        # Writers should target staging DB
+        writable_path = self.db_path if self.db_path and self.db_path != get_analytics_db_path() else get_staging_db_path()
+        conn = open_sqlite_writable(writable_path)
         cursor = conn.cursor()
 
         try:
@@ -167,7 +209,9 @@ class RaceStatusManager:
         note: str = None,
     ) -> int:
         """Bulk update race status based on criteria"""
-        conn = sqlite3.connect(self.db_path)
+        # Writers should target staging DB
+        writable_path = self.db_path if self.db_path and self.db_path != get_analytics_db_path() else get_staging_db_path()
+        conn = open_sqlite_writable(writable_path)
         cursor = conn.cursor()
 
         try:
@@ -248,7 +292,7 @@ class RaceStatusManager:
 
     def get_problematic_races(self, limit: int = 50) -> List[Dict[str, Any]]:
         """Get races that might have data quality issues"""
-        conn = sqlite3.connect(self.db_path)
+        conn = open_sqlite_readonly(self.db_path)
         cursor = conn.cursor()
 
         try:

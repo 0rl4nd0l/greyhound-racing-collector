@@ -16,6 +16,25 @@ import sys
 from datetime import datetime
 from typing import Dict, List, Optional
 
+# Use project DB routing utilities
+try:
+    from scripts.db_utils import open_sqlite_readonly, get_analytics_db_path
+except Exception:
+    # Fallbacks if routing utilities are unavailable
+    def open_sqlite_readonly(db_path: str | None = None):
+        import sqlite3 as _sqlite3
+        path = db_path or os.getenv("ANALYTICS_DB_PATH") or os.getenv("GREYHOUND_DB_PATH") or "greyhound_racing_data.db"
+        conn = _sqlite3.connect(f"file:{os.path.abspath(path)}?mode=ro", uri=True)
+        try:
+            conn.execute("PRAGMA query_only=ON")
+            conn.execute("PRAGMA foreign_keys=ON")
+        except Exception:
+            pass
+        return conn
+
+    def get_analytics_db_path(default: str = "greyhound_racing_data.db") -> str:
+        return os.getenv("ANALYTICS_DB_PATH") or os.getenv("GREYHOUND_DB_PATH") or default
+
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -45,8 +64,8 @@ except ImportError:
     UnifiedPredictor = None
 
 # Configuration
-# Prefer GREYHOUND_DB_PATH when provided; fall back to DATABASE_PATH, then default file
-DATABASE_PATH = os.getenv("GREYHOUND_DB_PATH") or os.getenv(
+# Prefer routed analytics DB when available; fall back to legacy envs, then default file
+DATABASE_PATH = get_analytics_db_path() or os.getenv("GREYHOUND_DB_PATH") or os.getenv(
     "DATABASE_PATH", "greyhound_racing_data.db"
 )
 UPCOMING_DIR = os.getenv("UPCOMING_RACES_DIR", "./upcoming_races")
@@ -183,7 +202,8 @@ async def health_check():
         # Check database connectivity
         database_status = "connected"
         try:
-            conn = sqlite3.connect(DATABASE_PATH)
+            # Open read-only against analytics DB to respect routing and safety
+            conn = open_sqlite_readonly(DATABASE_PATH)
             cursor = conn.cursor()
             cursor.execute("SELECT COUNT(*) FROM dogs LIMIT 1")
             conn.close()
