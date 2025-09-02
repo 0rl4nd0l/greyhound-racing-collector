@@ -26,10 +26,8 @@ def main():
             file=sys.stderr,
         )
         sys.exit(2)
-    # Create dummy training data (dev only)
-    X, y = make_classification(
-        n_samples=1000, n_features=10, n_classes=3, random_state=42
-    )
+    # Create dummy training data (dev only) - binary classification for greyhound racing
+    X, y = make_classification(n_samples=1000, n_features=10, n_classes=2, random_state=42)
 
     # Train lightweight model
     model = RandomForestClassifier(n_estimators=10, random_state=42)
@@ -39,12 +37,12 @@ def main():
 
     # Test prediction latency
     test_start = time.time()
-    y_pred_prob = model.predict_proba(X[:100])
+    y_pred_prob_subset = model.predict_proba(X[:100])
     prediction_latency = (time.time() - test_start) / 100  # Average per prediction
 
-    # Calculate AUC (using one-vs-rest for multiclass)
-    y_bin = label_binarize(y, classes=[0, 1, 2])
-    auc = roc_auc_score(y_bin, y_pred_prob, multi_class="ovr")
+    # Calculate AUC for binary classification using full dataset
+    y_pred_prob = model.predict_proba(X)
+    auc = roc_auc_score(y, y_pred_prob[:, 1])
 
     # Save model
     joblib.dump(model, "test_model.pkl")

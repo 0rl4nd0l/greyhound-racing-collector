@@ -143,7 +143,7 @@ class QAAnalyzer:
                 d.dog_clean_name,
                 d.box_number,
                 d.finish_position,
-                d.sportsbet_win_odds,
+                d.odds,
                 CASE WHEN d.finish_position = 1 THEN 1 ELSE 0 END as actual_win
             FROM race_metadata r
             JOIN dog_race_data d ON r.race_id = d.race_id

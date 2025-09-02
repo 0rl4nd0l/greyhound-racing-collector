@@ -240,7 +240,7 @@ class TemporalFeatureBuilder:
             SELECT 
                 d.*,
                 r.venue, r.grade, r.distance, r.track_condition, r.weather,
-                r.temperature, r.humidity, r.wind_speed, r.field_size,
+                NULL AS temperature, NULL AS humidity, NULL AS wind_speed, r.field_size,
                 r.race_date, r.race_time, r.winner_name, r.winner_odds, r.winner_margin,
                 e.pir_rating, e.first_sectional, e.win_time, e.bonus_time
             FROM dog_race_data d
@@ -281,14 +281,14 @@ class TemporalFeatureBuilder:
                     SELECT 
                         d.*,
                         r.venue, r.grade, r.distance, r.track_condition, r.weather,
-                        r.temperature, r.humidity, r.wind_speed, r.field_size,
+                        NULL AS temperature, NULL AS humidity, NULL AS wind_speed, r.field_size,
                         r.race_date, r.race_time, r.winner_name, r.winner_odds, r.winner_margin,
                         e.pir_rating, e.first_sectional, e.win_time, e.bonus_time
                     FROM dog_race_data d
                     LEFT JOIN race_metadata r ON d.race_id = r.race_id
                     LEFT JOIN enhanced_expert_data e ON d.race_id = e.race_id 
                         AND d.dog_clean_name = e.dog_clean_name
-                    WHERE REPLACE(REPLACE(REPLACE(REPLACE(d.dog_clean_name,'"',''),"'",''),'`',''),'’','') = ?
+                    WHERE REPLACE(REPLACE(REPLACE(REPLACE(d.dog_clean_name,'"',''),"'",''),'`',''),''','') = ?
                         AND r.race_date IS NOT NULL
                         AND d.finish_position IS NOT NULL
                         AND date(r.race_date) >= date(?)

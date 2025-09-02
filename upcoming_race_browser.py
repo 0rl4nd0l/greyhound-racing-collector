@@ -849,10 +849,15 @@ class UpcomingRaceBrowser:
             if not csv_info:
                 return {"success": False, "error": "No CSV download link found"}
 
-            # Download CSV
+            # Download CSV content
+            content = None
             csv_response = None
             try:
-                if isinstance(csv_info, dict) and csv_info.get("type") == "form_post":
+                if isinstance(csv_info, dict) and csv_info.get("type") == "direct_csv":
+                    # We already have the CSV data
+                    content = csv_info.get("data")
+                    print(f"   ✅ Using CSV data returned from form submission")
+                elif isinstance(csv_info, dict) and csv_info.get("type") == "form_post":
                     # Handle form POST request
                     csv_response = self.session.post(
                         csv_info["url"], data=csv_info["data"], timeout=30
@@ -875,14 +880,18 @@ class UpcomingRaceBrowser:
 
                     csv_response = self.session.get(csv_url, timeout=30)
 
-                if csv_response.status_code != 200:
-                    return {
-                        "success": False,
-                        "error": f"Failed to download CSV: {csv_response.status_code}",
-                    }
-
-                # Validate CSV content
-                content = csv_response.text
+                # Get content from response if we made a request
+                if content is None:
+                    if csv_response and csv_response.status_code != 200:
+                        return {
+                            "success": False,
+                            "error": f"Failed to download CSV: {csv_response.status_code}",
+                        }
+                    
+                    if csv_response:
+                        content = csv_response.text
+                    else:
+                        return {"success": False, "error": "No CSV content received"}
             finally:
                 if csv_response is not None:
                     try:
@@ -1160,21 +1169,53 @@ class UpcomingRaceBrowser:
                                 )
 
                             if form_response.status_code == 200:
-                                # The response should contain the actual download URL (like the working scraper)
-                                download_url = form_response.text.strip()
-
+                                content_type = form_response.headers.get("content-type", "").lower()
+                                response_text = form_response.text.strip()
+                                
                                 print(
                                     f"   📄 Response length: {len(form_response.content)} bytes"
                                 )
-                                print(f"   📄 Response content: {download_url[:200]}")
+                                print(f"   📄 Content-Type: {content_type}")
+                                print(f"   📄 Response preview: {response_text[:200]}")
 
-                                if download_url.startswith("http"):
-                                    print(f"   ✅ Got CSV download URL: {download_url}")
-                                    return download_url
-                                else:
-                                    print(
-                                        f"   ⚠️ Unexpected response format: {download_url[:100]}"
-                                    )
+                                # Check if we got CSV data directly
+                                if "csv" in content_type or "text/plain" in content_type:
+                                    if response_text and len(response_text.split("\n")) > 1:
+                                        lines = response_text.split("\n")
+                                        first_line = lines[0].lower()
+                                        if any(header in first_line for header in ["dog", "name", "runner", "placing", "box"]):
+                                            print(f"   ✅ Got CSV data directly from form submission")
+                                            # Return form info structure for CSV data
+                                            return {"type": "direct_csv", "data": response_text}
+                                
+                                # Check if response contains a direct download URL (original behavior)
+                                if response_text.startswith("http"):
+                                    print(f"   ✅ Got CSV download URL: {response_text}")
+                                    return response_text
+                                    
+                                # Check if HTML response contains a download link
+                                if "<" in response_text and ">" in response_text:
+                                    from bs4 import BeautifulSoup
+                                    response_soup = BeautifulSoup(response_text, "html.parser")
+                                    
+                                    # Look for download links in the response
+                                    csv_links = response_soup.find_all("a", href=True)
+                                    for link in csv_links:
+                                        href = link.get("href")
+                                        link_text = link.get_text().strip().lower()
+                                        if href and ("csv" in href.lower() or "csv" in link_text or "export" in link_text):
+                                            if href.startswith("/"):
+                                                csv_url = f"{self.base_url}{href}"
+                                            elif href.startswith("http"):
+                                                csv_url = href
+                                            else:
+                                                csv_url = f"{self.base_url}/{href}"
+                                            print(f"   ✅ Found CSV link in form response: {csv_url}")
+                                            return csv_url
+                                
+                                print(
+                                    f"   ⚠️ Form returned HTML instead of CSV data - this suggests the form submission failed"
+                                )
                             else:
                                 print(
                                     f"   ❌ Form submission failed with status: {form_response.status_code}"

@@ -396,6 +396,116 @@ class FormGuideValidator:
         return df, all_issues
 
 
+def validate_form_guide_csv(file_path: Union[str, Path]) -> Tuple[bool, Optional[pd.DataFrame], Dict, Optional[str]]:
+    """Centralized form guide CSV validation routine.
+    
+    Returns tuple of (ok, normalized_df_or_none, validation_report_dict, quarantine_reason_or_none)
+    
+    Args:
+        file_path: Path to the CSV file to validate
+        
+    Returns:
+        ok: True if validation passed, False if should be quarantined
+        normalized_df: Processed DataFrame if successful, None if failed
+        validation_report: Dict containing issues, warnings, and stats
+        quarantine_reason: String reason for quarantine if ok=False, None otherwise
+    """
+    file_path = Path(file_path)
+    
+    # Initialize validation report
+    validation_report = {
+        "file": str(file_path),
+        "status": "unknown",
+        "errors": [],
+        "warnings": [],
+        "info": [],
+        "parsing_stats": {},
+        "unique_dogs_found": 0,
+        "total_rows": 0
+    }
+    
+    quarantine_reason = None
+    
+    try:
+        # Check if file exists and is readable
+        if not file_path.exists():
+            validation_report["status"] = "error"
+            validation_report["errors"].append("File does not exist")
+            quarantine_reason = f"File not found: {file_path}"
+            return False, None, validation_report, quarantine_reason
+        
+        if file_path.stat().st_size == 0:
+            validation_report["status"] = "error"
+            validation_report["errors"].append("File is empty")
+            quarantine_reason = f"Empty file: {file_path}"
+            return False, None, validation_report, quarantine_reason
+        
+        # Validate file extension
+        if not file_path.suffix.lower() == '.csv':
+            validation_report["status"] = "error"
+            validation_report["errors"].append(f"Invalid file extension: {file_path.suffix}")
+            quarantine_reason = f"Non-CSV file extension: {file_path.suffix}"
+            return False, None, validation_report, quarantine_reason
+        
+        # Create validator and process file
+        validator = FormGuideValidator()
+        
+        try:
+            df, all_issues = validator.validate_csv_file(file_path)
+        except Exception as parse_error:
+            validation_report["status"] = "error"
+            validation_report["errors"].append(f"CSV parsing failed: {str(parse_error)}")
+            quarantine_reason = f"Parse error: {str(parse_error)}"
+            return False, None, validation_report, quarantine_reason
+        
+        # Process issues into validation report
+        for issue in all_issues:
+            if issue.severity == ValidationSeverity.ERROR:
+                validation_report["errors"].append(issue.message)
+            elif issue.severity == ValidationSeverity.WARNING:
+                validation_report["warnings"].append(issue.message)
+            else:  # INFO
+                validation_report["info"].append(issue.message)
+        
+        # Add parsing stats
+        validation_report["parsing_stats"] = validator.parsing_stats.copy()
+        validation_report["total_rows"] = len(df) if df is not None else 0
+        
+        # Count unique dogs if we have data
+        if df is not None and not df.empty:
+            # Try to find dog name column
+            dog_name_cols = [col for col in df.columns if 'dog' in col.lower() and 'name' in col.lower()]
+            if dog_name_cols:
+                dog_name_col = dog_name_cols[0]
+                unique_dogs = df[dog_name_col].dropna().nunique()
+                validation_report["unique_dogs_found"] = unique_dogs
+                
+                # Check 10 dog max constraint
+                if unique_dogs > 10:
+                    validation_report["errors"].append(f"Too many unique dogs: {unique_dogs} (max 10 allowed)")
+        
+        # Determine if validation passed
+        has_critical_errors = len(validation_report["errors"]) > 0
+        
+        if has_critical_errors:
+            validation_report["status"] = "error"
+            # Construct quarantine reason from errors
+            error_summary = "; ".join(validation_report["errors"][:3])  # First 3 errors
+            if len(validation_report["errors"]) > 3:
+                error_summary += f" (+{len(validation_report['errors']) - 3} more)"
+            quarantine_reason = f"Validation failed: {error_summary}"
+            return False, None, validation_report, quarantine_reason
+        else:
+            validation_report["status"] = "success"
+            return True, df, validation_report, None
+    
+    except Exception as unexpected_error:
+        validation_report["status"] = "error"
+        validation_report["errors"].append(f"Unexpected validation error: {str(unexpected_error)}")
+        quarantine_reason = f"Unexpected error: {str(unexpected_error)}"
+        return False, None, validation_report, quarantine_reason
+
+
 def save_to_json(file_path: Path, data: dict):
     with file_path.open("w") as json_file:
         json.dump(data, json_file, indent=4)
