@@ -25,6 +25,19 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+# Route DB access via helpers
+try:
+    from scripts.db_utils import open_sqlite_readonly, open_sqlite_writable
+except Exception:
+    def open_sqlite_readonly(db_path: str | None = None):
+        import os as _os, sqlite3 as _sqlite3
+        path = db_path or _os.getenv("ANALYTICS_DB_PATH") or _os.getenv("GREYHOUND_DB_PATH") or "greyhound_racing_data.db"
+        return _sqlite3.connect(f"file:{Path(path).resolve()}?mode=ro", uri=True)
+    def open_sqlite_writable(db_path: str | None = None):
+        import os as _os, sqlite3 as _sqlite3
+        path = db_path or _os.getenv("STAGING_DB_PATH") or "greyhound_racing_data_stage.db"
+        return _sqlite3.connect(str(Path(path).resolve()))
+
 
 class MLDataPipelineFixer:
     """Fixes the ML training data pipeline by migrating data and retraining models."""
@@ -76,7 +89,7 @@ class MLDataPipelineFixer:
 
         # Check staging database
         try:
-            with sqlite3.connect(self.staging_db) as conn:
+            with open_sqlite_readonly(self.staging_db) as conn:
                 cursor = conn.cursor()
                 cursor.execute(
                     "SELECT COUNT(*) FROM csv_dog_history_staging WHERE finish_position IS NOT NULL"
@@ -99,7 +112,7 @@ class MLDataPipelineFixer:
 
         # Check canonical database
         try:
-            with sqlite3.connect(self.canonical_db) as conn:
+            with open_sqlite_readonly(self.canonical_db) as conn:
                 cursor = conn.cursor()
                 cursor.execute(
                     "SELECT COUNT(*) FROM dog_performances WHERE finish_position IS NOT NULL"
@@ -147,7 +160,8 @@ class MLDataPipelineFixer:
         ]
 
         try:
-            with sqlite3.connect(self.current_db) as conn:
+            with open_sqlite_writable(self.current_db) as conn:
+onn:
                 cursor = conn.cursor()
                 for index_sql in indexes_to_create:
                     cursor.execute(index_sql)

@@ -16,11 +16,26 @@ Author: AI Assistant
 
 import json
 import sqlite3
+import sqlite3
 import sys
 import time
-import warnings
 from datetime import datetime, timedelta
 from pathlib import Path
+
+# Route read-only analytics access
+try:
+    from scripts.db_utils import open_sqlite_readonly
+except Exception:
+    def open_sqlite_readonly(db_path: str | None = None):
+        import os as _os, sqlite3 as _sqlite3
+        path = db_path or _os.getenv("ANALYTICS_DB_PATH") or _os.getenv("GREYHOUND_DB_PATH") or "greyhound_racing_data.db"
+        conn = _sqlite3.connect(f"file:{Path(path).resolve()}?mode=ro", uri=True)
+        try:
+            conn.execute("PRAGMA query_only=ON")
+            conn.execute("PRAGMA foreign_keys=ON")
+        except Exception:
+            pass
+        return conn
 
 import numpy as np
 import pandas as pd
@@ -47,7 +62,7 @@ class RealDataMLTrainer:
     def load_real_data(self, months_back=12):
         """Load real historical race data from the database"""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = open_sqlite_readonly(self.db_path)
             
             # Calculate date range
             end_date = datetime.now()
