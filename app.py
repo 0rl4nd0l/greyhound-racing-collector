@@ -333,6 +333,17 @@ except ImportError as e:
     MODEL_TRAINING_API_AVAILABLE = False
     model_training_bp = None
 
+# Import analytics API blueprint
+try:
+    from analytics_api import analytics_bp
+
+    ANALYTICS_API_AVAILABLE = True
+    print("🚀 Analytics API blueprint available")
+except ImportError as e:
+    print(f"⚠️ Analytics API blueprint not available: {e}")
+    ANALYTICS_API_AVAILABLE = False
+    analytics_bp = None
+
 # Import Guardian Service for file integrity protection
 try:
     from services.guardian_service import get_guardian_service, start_guardian_service
@@ -532,11 +543,11 @@ ASSET_VERSION = os.environ.get("ASSET_VERSION", datetime.now().strftime("%Y%m%d%
 @app.context_processor
 def inject_ui_mode():
     try:
-        mode = str(os.environ.get("UI_MODE", "simple")).lower()
+        mode = str(os.environ.get("UI_MODE", "advanced")).lower()
         if mode not in ("simple", "advanced"):
-            mode = "simple"
+            mode = "advanced"
     except Exception:
-        mode = "simple"
+        mode = "advanced"
     return {
         "UI_MODE": mode,
         "ASSET_VERSION": ASSET_VERSION,
@@ -920,58 +931,84 @@ def after_request(response):
                 except Exception:
                     pass
 
-                # Inject a lightweight TGR Process button on the scraping status page
+                # Optionally hide Upload nav entry via HIDE_UPLOAD_NAV=1 (or hide link in any menu)
                 try:
-                    if (
-                        request.path in ("/scraping", "/scraping_status")
-                        and "\u003c/body\u003e" in html
-                        and 'id="btn-tgr-process"' not in html
-                    ):
-                        tgr_btn = (
+                    env_hide_upload = str(os.environ.get("HIDE_UPLOAD_NAV", "0")).lower() in ("1", "true", "yes", "on")
+                    if env_hide_upload:
+                        hide_upload_css = (
+                            '<style id="hide-upload-nav">'
+                            'a[href="/upload"], [href="/upload"] { display: none !important; }'
+                            "</style>"
+                        )
+                        if "</head>" in html:
+                            html = html.replace("</head>", f"\n{hide_upload_css}\n</head>")
+                        elif "<body" in html:
+                            try:
+                                _b = html.find("<body")
+                                _be = html.find(">", _b)
+                                if _b != -1 and _be != -1:
+                                    html = html[: _be + 1] + f"\n{hide_upload_css}\n" + html[_be + 1 :]
+                                else:
+                                    html = f"{hide_upload_css}\n" + html
+                            except Exception:
+                                html = f"{hide_upload_css}\n" + html
+                        else:
+                            html = f"{hide_upload_css}\n" + html
+                except Exception:
+                    pass
+
+                # Inject a lightweight TGR Process button on the scraping status page
+                # Runtime-aware TGR UI toggle: consult /api/tgr/feature_flag to show/hide button
+                try:
+                    if request.path in ("/scraping", "/scraping_status") and "\u003c/body\u003e" in html:
+                        _tgr_flag_js = (
                             "\n<script>(function(){\n"
-                            "  function ensureTgrUi(){\n"
+                            "  function ensureBtn(enabled){\n"
                             "    try{\n"
-                            "      var c = document.querySelector('.toast-container');\n"
-                            "      if(!c){\n"
-                            "        c = document.createElement('div');\n"
-                            "        c.className='toast-container position-fixed top-0 end-0 p-3';\n"
-                            "        document.body.appendChild(c);\n"
-                            "      }\n"
-                            "      var btn = document.getElementById('btn-tgr-process');\n"
-                            "      if(!btn){\n"
-                            "        btn = document.createElement('button');\n"
-                            "        btn.id='btn-tgr-process';\n"
-                            "        btn.type='button';\n"
-                            "        btn.className='btn btn-sm btn-primary';\n"
-                            "        btn.style.position='fixed'; btn.style.bottom='20px'; btn.style.right='20px'; btn.style.zIndex='1050';\n"
-                            "        btn.title='Process Data with TGR Enrichment';\n"
-                            "        btn.textContent='Process Data (TGR)';\n"
-                            "        document.body.appendChild(btn);\n"
-                            "        btn.addEventListener('click', function(){\n"
-                            "          try{\n"
-                            "            fetch('/api/process_data', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({tgr_enabled:true})})\n"
-                            "              .then(r=>r.json()).then(function(resp){\n"
-                            "                var m = (resp && resp.success) ? 'Started processing with TGR' : ('Failed: '+(resp && (resp.message||resp.error)));\n"
-                            "                var toast = document.createElement('div');\n"
-                            "                toast.className='toast align-items-center text-bg-dark border-0 show';\n"
-                            "                toast.role='alert'; toast.ariaLive='assertive'; toast.ariaAtomic='true';\n"
-                            '                toast.innerHTML=\'<div class="d-flex"><div class="toast-body">\'+m+\'</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button></div>\';\n'
-                            "                c.appendChild(toast);\n"
-                            "                setTimeout(function(){ try{toast.remove();}catch(e){} }, 4000);\n"
-                            "              });\n"
-                            "          }catch(e){}\n"
-                            "        });\n"
+                            "      var existing = document.getElementById('btn-tgr-process');\n"
+                            "      if(enabled){\n"
+                            "        if(!existing){\n"
+                            "          var c = document.querySelector('.toast-container');\n"
+                            "          if(!c){ c = document.createElement('div'); c.className='toast-container position-fixed top-0 end-0 p-3'; document.body.appendChild(c); }\n"
+                            "          var btn = document.createElement('button');\n"
+                            "          btn.id='btn-tgr-process'; btn.type='button';\n"
+                            "          btn.className='btn btn-sm btn-primary';\n"
+                            "          btn.style.position='fixed'; btn.style.bottom='20px'; btn.style.right='20px'; btn.style.zIndex='1050';\n"
+                            "          btn.title='Process Data with TGR Enrichment'; btn.textContent='Process Data (TGR)';\n"
+                            "          document.body.appendChild(btn);\n"
+                            "          btn.addEventListener('click', function(){\n"
+                            "            try{\n"
+                            "              fetch('/api/process_data', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({tgr_enabled:true})})\n"
+                            "                .then(r=>r.json()).then(function(resp){\n"
+                            "                  var m = (resp && resp.success) ? 'Started processing with TGR' : ('Failed: '+(resp && (resp.message||resp.error)));\n"
+                            "                  var toast = document.createElement('div');\n"
+                            "                  toast.className='toast align-items-center text-bg-dark border-0 show'; toast.role='alert'; toast.ariaLive='assertive'; toast.ariaAtomic='true';\n"
+                            "                  toast.innerHTML='<div class=\"d-flex\"><div class=\"toast-body\">'+m+'</div><button type=\"button\" class=\"btn-close btn-close-white me-2 m-auto\" data-bs-dismiss=\"toast\" aria-label=\"Close\"></button></div>';\n"
+                            "                  c.appendChild(toast); setTimeout(function(){ try{toast.remove();}catch(e){} }, 4000);\n"
+                            "                });\n"
+                            "            }catch(e){}\n"
+                            "          });\n"
+                            "        }\n"
+                            "      }else{\n"
+                            "        if(existing){ try{ existing.remove(); }catch(e){} }\n"
                             "      }\n"
                             "    }catch(e){}\n"
                             "  }\n"
-                            "  if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', ensureTgrUi, {once:true}); } else { ensureTgrUi(); }\n"
+                            "  function refresh(){\n"
+                            "    try{ fetch('/api/tgr/feature_flag', {cache:'no-store'})\n"
+                            "      .then(function(r){ return r.json(); })\n"
+                            "      .then(function(j){ ensureBtn(!!(j && j.enabled)); })\n"
+                            "      .catch(function(){ ensureBtn(false); }); }catch(e){ ensureBtn(false); }\n"
+                            "  }\n"
+                            "  if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', refresh, {once:true}); } else { refresh(); }\n"
+                            "  try{ if(!window.__tgrFlagInterval){ window.__tgrFlagInterval=setInterval(refresh, 5000); } }catch(e){}\n"
+                            "  try{ document.addEventListener('visibilitychange', function(){ if(!document.hidden){ refresh(); } }, {passive:true}); }catch(e){}\n"
                             "})();</script>\n"
                         )
-                        html = html.replace(
-                            "\u003c/body\u003e", tgr_btn + "\n\u003c/body\u003e"
-                        )
+                        html = html.replace("\u003c/body\u003e", _tgr_flag_js + "\n\u003c/body\u003e")
                 except Exception:
                     pass
+
 
                 # Cache-bust key static assets by appending ?v=ASSET_VERSION when missing
                 try:
@@ -1050,6 +1087,22 @@ def after_request(response):
                         "/interactive-races",
                         "/interactive_races",
                     ):
+                        # Dev option: force raw interactive JS instead of Vite bundle without rebuilding
+                        try:
+                            def _truthy_flag_local(val) -> bool:
+                                try:
+                                    if isinstance(val, bool):
+                                        return val
+                                    s = str(val).strip().lower()
+                                    return s in ("1", "true", "yes", "on")
+                                except Exception:
+                                    return False
+                            if _truthy_flag_local(os.environ.get("DEV_FORCE_RAW_INTERACTIVE")):
+                                import re as _re
+                                # Replace any Vite interactive bundle reference with the raw script (cache-busted)
+                                html = _re.sub(r"/static/dist/[^\"']*interactive[^\"']*\.js", f"/static/js/interactive-races.js?v={ASSET_VERSION}", html)
+                        except Exception:
+                            pass
                         # Only inject fallback if neither the fallback script nor the Vite bundle is present
                         if not (
                             (vite_pred_btn and vite_pred_btn in html)
@@ -1133,6 +1186,13 @@ if MODEL_TRAINING_API_AVAILABLE and model_training_bp:
     print("🎯 Model Training API routes registered successfully")
 else:
     print("⚠️ Model Training API routes not registered - blueprint not available")
+
+# Register analytics API blueprint if available
+if 'ANALYTICS_API_AVAILABLE' in globals() and ANALYTICS_API_AVAILABLE and analytics_bp:
+    app.register_blueprint(analytics_bp)
+    print("📊 Analytics API routes registered successfully")
+else:
+    print("⚠️ Analytics API routes not registered - blueprint not available")
 
 # Enable CORS for all domains on all routes
 CORS(
@@ -1811,9 +1871,11 @@ if start_upcoming_watcher is not None:
 
             # Debounce to avoid multiple refreshes for a batch
             start_upcoming_watcher(
-                UPCOMING_RACES_DIR, _on_upcoming_change, debounce_seconds=1.0
+                app.config.get("UPCOMING_DIR", UPCOMING_RACES_DIR),
+                _on_upcoming_change,
+                debounce_seconds=1.0,
             )
-            print("✅ Upcoming races watcher started")
+            print("✅ Upcoming races watcher started (watching configured UPCOMING_DIR)")
         else:
             print("ℹ️ Upcoming races watcher disabled via WATCH_UPCOMING=0")
     except Exception as e:
@@ -1899,9 +1961,22 @@ try:
 except Exception:
     pass
 
-# Upload configuration
+# Upload configuration and logical upcoming directory (CSV fallback/upload)
 ALLOWED_EXTENSIONS = {"csv"}
-app.config["UPLOAD_FOLDER"] = UPCOMING_DIR
+# Prefer UNPROCESSED_DIR at runtime; keep legacy UPCOMING_DIR during tests for compatibility
+try:
+    effective_upcoming_dir = (
+        UNPROCESSED_DIR if not app.config.get("TESTING") else UPCOMING_DIR
+    )
+except Exception:
+    effective_upcoming_dir = UNPROCESSED_DIR
+app.config["UPCOMING_DIR"] = effective_upcoming_dir
+app.config["UPLOAD_FOLDER"] = effective_upcoming_dir
+# Ensure environment variable for UpcomingRaceBrowser default directory
+try:
+    os.environ.setdefault("UNPROCESSED_DIR", UNPROCESSED_DIR)
+except Exception:
+    pass
 
 
 # Serve selected log files securely (read-only)
@@ -2217,11 +2292,217 @@ def _queue_tgr_enrichment_jobs(dog_names: list, priority: int = 8) -> dict:
         return {"queued": [], "count": 0, "error": str(e)}
 
 
+# --- TGR feature gating helpers and feature flag endpoint ---
+
+def _tgr_feature_enabled() -> bool:
+    """Return True if TGR features are enabled.
+    Order of precedence:
+      1) app.config['TGR_ENABLED_API_OVERRIDE'] if set (bool-like)
+      2) app.config['TGR_ENABLED'] if truthy boolean
+      3) env TGR_ENABLED in (1,true,yes,on)
+    """
+    try:
+        override = app.config.get("TGR_ENABLED_API_OVERRIDE", None)
+        if override is not None:
+            return bool(override)
+    except Exception:
+        pass
+    try:
+        cfg = app.config.get("TGR_ENABLED")
+        if isinstance(cfg, bool) and cfg:
+            return True
+    except Exception:
+        pass
+    try:
+        s = str(os.environ.get("TGR_ENABLED", "0")).strip().lower()
+        return s in ("1", "true", "yes", "on")
+    except Exception:
+        return False
+
+
+def _tgr_disabled_response():
+    from flask import jsonify
+
+    return (
+        jsonify(
+            {
+                "success": False,
+                "error": "tgr_disabled",
+                "message": "TGR features are disabled. Use /api/tgr/feature_flag to enable or set TGR_ENABLED=1.",
+            }
+        ),
+        403,
+    )
+
+
+@app.route("/api/tgr/feature_flag", methods=["GET", "POST", "PUT", "DELETE"])
+def api_tgr_feature_flag():
+    """Get or set the runtime TGR feature flag.
+    - GET: returns { enabled, override, env }
+    - POST/PUT: body { enabled: true|false } sets an in-process override
+    - DELETE: clears override and falls back to env/config
+    """
+    try:
+        from flask import jsonify, request
+
+        if request.method == "GET":
+            return (
+                jsonify(
+                    {
+                        "success": True,
+                        "enabled": _tgr_feature_enabled(),
+                        "override": app.config.get("TGR_ENABLED_API_OVERRIDE", None),
+                        "env": os.environ.get("TGR_ENABLED"),
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                ),
+                200,
+            )
+
+        if request.method in ("POST", "PUT"):
+            data = request.get_json(silent=True) or {}
+            enabled = data.get("enabled")
+            # Accept string values like "1"/"true"
+            if isinstance(enabled, str):
+                v = enabled.strip().lower()
+                if v in ("1", "true", "yes", "on"):
+                    enabled = True
+                elif v in ("0", "false", "no", "off"):
+                    enabled = False
+            if enabled is None:
+                return jsonify({"success": False, "error": "missing_enabled"}), 400
+            app.config["TGR_ENABLED_API_OVERRIDE"] = bool(enabled)
+            return (
+                jsonify(
+                    {
+                        "success": True,
+                        "enabled": _tgr_feature_enabled(),
+                        "source": "api_override",
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                ),
+                200,
+            )
+
+        # DELETE -> clear override
+        app.config.pop("TGR_ENABLED_API_OVERRIDE", None)
+        return (
+            jsonify(
+                {
+                    "success": True,
+                    "enabled": _tgr_feature_enabled(),
+                    "source": "env",
+                    "timestamp": datetime.now().isoformat(),
+                }
+            ),
+            200,
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# --- Upload-based prediction admin flag (diagnostics-only) ---
+
+def _upload_prediction_enabled() -> bool:
+    """Return True if upload-based prediction is enabled.
+    Order of precedence:
+      1) app.config['UPLOAD_PREDICTION_ENABLED_OVERRIDE'] if set (bool-like)
+      2) app.config['UPLOAD_PREDICTION_ENABLED'] if truthy boolean
+      3) env UPLOAD_PREDICTION_ENABLED in (1,true,yes,on)
+    Defaults to False (disabled) to discourage arbitrary upload predictions.
+    """
+    try:
+        override = app.config.get("UPLOAD_PREDICTION_ENABLED_OVERRIDE", None)
+        if override is not None:
+            return bool(override)
+    except Exception:
+        pass
+    try:
+        cfg = app.config.get("UPLOAD_PREDICTION_ENABLED")
+        if isinstance(cfg, bool) and cfg:
+            return True
+    except Exception:
+        pass
+    try:
+        s = str(os.environ.get("UPLOAD_PREDICTION_ENABLED", "0")).strip().lower()
+        return s in ("1", "true", "yes", "on")
+    except Exception:
+        return False
+
+
+@app.route("/api/admin/upload_prediction_flag", methods=["GET", "POST", "PUT", "DELETE"])
+def api_admin_upload_prediction_flag():
+    """Admin-only runtime flag to enable/disable upload-based predictions.
+    - GET: returns { enabled, override, env }
+    - POST/PUT: body { enabled: true|false } sets an in-process override
+    - DELETE: clears override and falls back to env/config
+    """
+    try:
+        from flask import jsonify, request
+
+        if request.method == "GET":
+            return (
+                jsonify(
+                    {
+                        "success": True,
+                        "enabled": _upload_prediction_enabled(),
+                        "override": app.config.get("UPLOAD_PREDICTION_ENABLED_OVERRIDE", None),
+                        "env": os.environ.get("UPLOAD_PREDICTION_ENABLED"),
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                ),
+                200,
+            )
+
+        if request.method in ("POST", "PUT"):
+            data = request.get_json(silent=True) or {}
+            enabled = data.get("enabled")
+            # Accept string values like "1"/"true"
+            if isinstance(enabled, str):
+                v = enabled.strip().lower()
+                if v in ("1", "true", "yes", "on"):
+                    enabled = True
+                elif v in ("0", "false", "no", "off"):
+                    enabled = False
+            if enabled is None:
+                return jsonify({"success": False, "error": "missing_enabled"}), 400
+            app.config["UPLOAD_PREDICTION_ENABLED_OVERRIDE"] = bool(enabled)
+            return (
+                jsonify(
+                    {
+                        "success": True,
+                        "enabled": _upload_prediction_enabled(),
+                        "source": "api_override",
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                ),
+                200,
+            )
+
+        # DELETE -> clear override
+        app.config.pop("UPLOAD_PREDICTION_ENABLED_OVERRIDE", None)
+        return (
+            jsonify(
+                {
+                    "success": True,
+                    "enabled": _upload_prediction_enabled(),
+                    "source": "env",
+                    "timestamp": datetime.now().isoformat(),
+                }
+            ),
+            200,
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @app.route("/api/tgr/refresh_for_race", methods=["POST"])
 def api_tgr_refresh_for_race():
     """Queue TGR enrichment jobs for all dogs in a provided race file.
     Body JSON: {"race_file": "Race 1 - VENUE - YYYY-MM-DD.csv", "priority": 8}
     """
+    if not _tgr_feature_enabled():
+        return _tgr_disabled_response()
     try:
         from flask import jsonify, request
 
@@ -2272,6 +2553,8 @@ def api_tgr_refresh_for_dogs():
     """Queue TGR enrichment jobs for an explicit list of dogs.
     Body JSON: {"dogs": ["DOG A", "DOG B"], "priority": 8}
     """
+    if not _tgr_feature_enabled():
+        return _tgr_disabled_response()
     try:
         from flask import jsonify, request
 
@@ -2419,6 +2702,8 @@ def _ensure_tgr_jobs_schema():
 
 @app.route("/api/tgr/settings", methods=["GET", "PUT"])
 def api_tgr_settings():
+    if not _tgr_feature_enabled():
+        return _tgr_disabled_response()
     try:
         _ensure_tgr_settings_table()
         if request.method == "GET":
@@ -2474,6 +2759,8 @@ def api_tgr_settings():
 
 @app.route("/api/tgr/jobs", methods=["GET"])
 def api_tgr_jobs():
+    if not _tgr_feature_enabled():
+        return _tgr_disabled_response()
     try:
         _ensure_tgr_jobs_schema()
         status = request.args.get(
@@ -2557,6 +2844,8 @@ def api_tgr_jobs():
 
 @app.route("/api/tgr/jobs/<job_id>", methods=["GET"])
 def api_tgr_job_detail(job_id):
+    if not _tgr_feature_enabled():
+        return _tgr_disabled_response()
     try:
         _ensure_tgr_jobs_schema()
         conn = sqlite3.connect(DATABASE_PATH)
@@ -2604,6 +2893,8 @@ def api_tgr_job_detail(job_id):
 
 @app.route("/api/tgr/jobs/retry", methods=["POST"])
 def api_tgr_jobs_retry():
+    if not _tgr_feature_enabled():
+        return _tgr_disabled_response()
     try:
         _ensure_tgr_jobs_schema()
         data = request.get_json(silent=True) or {}
@@ -2641,6 +2932,8 @@ def api_tgr_jobs_retry():
 
 @app.route("/api/tgr/jobs/cancel", methods=["POST"])
 def api_tgr_jobs_cancel():
+    if not _tgr_feature_enabled():
+        return _tgr_disabled_response()
     try:
         _ensure_tgr_jobs_schema()
         data = request.get_json(silent=True) or {}
@@ -2773,9 +3066,10 @@ def rescan_upcoming():
         # Clear cache so next queries rebuild
         UPCOMING_API_CACHE["data"] = None
         UPCOMING_API_CACHE["created_at"] = None
-        # Optionally build a lightweight listing summary
+        # Optionally build a lightweight listing summary from the configured directory
         files = []
-        for name in os.listdir(UPCOMING_DIR):
+        target_upcoming = app.config.get("UPCOMING_DIR", UPCOMING_DIR)
+        for name in os.listdir(target_upcoming):
             if (
                 name.endswith(".csv")
                 and not name.startswith(".")
@@ -3473,7 +3767,7 @@ def api_predict_file():
             "prediction_result": prediction_result,
             "resolved_path": race_file_path,
         }
-        # Surface model metadata at top-level for convenience
+        # Surface model metadata and metrics at top-level for convenience
         try:
             if isinstance(prediction_result, dict):
                 if prediction_result.get("primary_model_id"):
@@ -3484,6 +3778,8 @@ def api_predict_file():
                     )
                 if prediction_result.get("model_ids_used") is not None:
                     resp["model_ids_used"] = prediction_result.get("model_ids_used")
+                if prediction_result.get("metrics") is not None:
+                    resp["metrics"] = prediction_result.get("metrics")
         except Exception:
             pass
         if computed:
@@ -5030,9 +5326,10 @@ def api_upcoming_races():
                 # Use UpcomingRaceBrowser for comprehensive live data
                 from upcoming_race_browser import UpcomingRaceBrowser
 
-                # Ensure browser uses the same upcoming directory as the Flask app
+                # Ensure browser uses the same directories as the Flask app
                 try:
                     os.environ["UPCOMING_RACES_DIR"] = UPCOMING_DIR
+                    os.environ.setdefault("UNPROCESSED_DIR", UNPROCESSED_DIR)
                 except Exception:
                     pass
                 browser = UpcomingRaceBrowser()
@@ -5174,7 +5471,40 @@ def api_upcoming_races():
         except Exception:
             pass
 
-        return jsonify(response_payload)
+        # ETag support and short client-side caching to prevent re-downloading unchanged data
+        try:
+            import hashlib, json as _json
+            etag_hash = hashlib.sha256(
+                _json.dumps(paginated_races, sort_keys=True, default=str).encode("utf-8")
+            ).hexdigest()
+            # Accept multiple If-None-Match variants
+            inm = request.headers.get("If-None-Match", "") or ""
+            inm_vals = {inm.strip(), inm.strip().strip('"'), inm.strip().replace('W/"', '').strip('"')}
+            if etag_hash in inm_vals:
+                resp = Response(status=304)
+                resp.headers["ETag"] = f'"{etag_hash}"'
+                try:
+                    import os as _os
+                    max_age = int(_os.environ.get("UPCOMING_RACES_CLIENT_MAX_AGE_SECONDS", "15"))
+                except Exception:
+                    max_age = 15
+                resp.headers["Cache-Control"] = f"public, max-age={max_age}"
+                resp.headers["X-Index-Generated-At"] = datetime.now().isoformat()
+                return resp
+            else:
+                resp = jsonify(response_payload)
+                resp.headers["ETag"] = f'"{etag_hash}"'
+                try:
+                    import os as _os
+                    max_age = int(_os.environ.get("UPCOMING_RACES_CLIENT_MAX_AGE_SECONDS", "15"))
+                except Exception:
+                    max_age = 15
+                resp.headers["Cache-Control"] = f"public, max-age={max_age}"
+                resp.headers["X-Index-Generated-At"] = datetime.now().isoformat()
+                return resp
+        except Exception:
+            # Fallback to normal response if ETag computation fails
+            return jsonify(response_payload)
 
     except Exception as e:
         logger.error(f"Error in /api/upcoming_races: {str(e)}")
@@ -5522,6 +5852,7 @@ def api_upcoming_races_csv():
                     "filename": filename,
                     "file_mtime": file_mtime,
                 }
+
 
                 races_data.append(race_data)
 
@@ -6632,6 +6963,8 @@ def api_predict_single_race():
                         response_data["model_ids_used"] = prediction_result.get(
                             "model_ids_used"
                         )
+                    if prediction_result.get("metrics") is not None:
+                        response_data["metrics"] = prediction_result.get("metrics")
             except Exception:
                 pass
             return jsonify(response_data)
@@ -6666,7 +6999,17 @@ def api_predict_single_race():
 @app.route("/predict_single", methods=["POST"])
 def predict_single():
     """Predict single race from an uploaded CSV file."""
+    # Gate upload-based prediction behind admin-controlled flag
     try:
+        if not _upload_prediction_enabled():
+            return (
+                jsonify({
+                    "success": False,
+                    "error": "upload_prediction_disabled",
+                    "message": "Upload-based prediction is disabled. Use Download + Predict from upcoming races instead.",
+                }),
+                403,
+            )
         if "file" not in request.files:
             return jsonify({"error": "No file part"}), 400
 
@@ -7964,6 +8307,8 @@ def scraping_status():
 
 @app.route("/tgr/enrichment")
 def tgr_enrichment_admin():
+    if not _tgr_feature_enabled():
+        return ("Not Found", 404)
     try:
         return render_template("tgr_admin.html")
     except Exception as e:
@@ -8027,7 +8372,7 @@ def model_registry_view():
 
 @app.route("/upload", methods=["GET", "POST"])
 def upload_file():
-    """Upload form guide CSV for processing"""
+    """Upload form guide CSV for processing (staging only when upload-based prediction is disabled)"""
     if request.method == "POST":
         # Check if the post request has the file part
         if "file" not in request.files:
@@ -8049,10 +8394,22 @@ def upload_file():
             os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 
             file.save(file_path)
-            flash(
-                f'File "{filename}" uploaded successfully and ready for predictions!',
-                "success",
-            )
+            try:
+                if _upload_prediction_enabled():
+                    flash(
+                        f'File "{filename}" uploaded successfully and ready for predictions!',
+                        "success",
+                    )
+                else:
+                    flash(
+                        f'File "{filename}" uploaded and staged. Upload-based prediction is disabled; use Download + Predict from Upcoming Races.',
+                        "info",
+                    )
+            except Exception:
+                flash(
+                    f'File "{filename}" uploaded successfully.',
+                    "success",
+                )
             return redirect(url_for("scraping_status"))
         else:
             flash("Invalid file type. Please upload a CSV file.", "error")
@@ -8084,26 +8441,32 @@ def api_system_status():
         start_time = time.time()
 
         if OPTIMIZATION_ENABLED:
-            # Use optimized queries for better performance
-            optimized_queries = get_optimized_queries(DATABASE_PATH)
+            try:
+                # Use optimized queries for better performance
+                optimized_queries = get_optimized_queries(DATABASE_PATH)
 
-            # Get comprehensive system stats in a single query
-            system_stats = optimized_queries.get_comprehensive_system_stats()
-            db_stats = system_stats.get("database", {})
+                # Get comprehensive system stats in a single query
+                system_stats = optimized_queries.get_comprehensive_system_stats()
+                db_stats = system_stats.get("database", {})
 
-            # Get logs (optimized if stored in database)
-            logs = optimized_queries.get_recent_logs_optimized(limit=50)
+                # Get logs (optimized if stored in database)
+                logs = optimized_queries.get_recent_logs_optimized(limit=50)
 
-            # Fallback to logger if no database logs
-            if not logs:
+                # Fallback to logger if no database logs
+                if not logs:
+                    logs = logger.get_web_logs(limit=50)
+
+                # Get model metrics (optimized)
+                model_metrics = get_model_predictions()
+
+                # Add query performance info
+                query_performance = optimized_queries.get_query_performance_stats()
+            except Exception:
+                # Graceful fallback if optimized path fails
                 logs = logger.get_web_logs(limit=50)
-
-            # Get model metrics (optimized)
-            model_metrics = get_model_predictions()
-
-            # Add query performance info
-            query_performance = optimized_queries.get_query_performance_stats()
-
+                model_metrics = get_model_predictions()
+                db_stats = db_manager.get_database_stats()
+                query_performance = {"optimized": False}
         else:
             # Fallback to original implementation
             logs = logger.get_web_logs(limit=50)
@@ -8127,7 +8490,10 @@ def api_system_status():
                 "archives_count": len(zip_files),
             }
         except Exception:
-            gpt_diag = {}
+            gpt_diag = {
+                "json_files_count": 0,
+                "archives_count": 0,
+            }
 
         return {
             "success": True,
@@ -8610,6 +8976,146 @@ def api_model_registry_refresh_signal():
         logging.error(f"[MODEL_REGISTRY] refresh_signal read error: {e}")
         return {"success": False, "error": str(e)}, 500
 
+
+@app.route("/api/model_registry/promote_by_metric", methods=["POST"])
+def api_model_registry_promote_by_metric():
+    """Promote best model by a specified metric (UI-friendly).
+    Body: {metric: 'top1_rate'|'correct_winners'|'auc'|'accuracy'|'f1_score'|'performance_score', prediction_type?: 'win'}
+    """
+    try:
+        payload = request.get_json(silent=True) or {}
+        metric = str(payload.get("metric", "top1_rate") or "top1_rate").strip().lower()
+        prediction_type = str(payload.get("prediction_type", "win") or "win").strip().lower()
+        allowed = {"top1_rate", "correct_winners", "auc", "accuracy", "f1_score", "performance_score"}
+        if metric not in allowed:
+            return {"success": False, "error": f"Unsupported metric: {metric}"}, 400
+        from model_registry import get_model_registry  # local import to avoid cycles
+        reg = get_model_registry()
+        # Set policy and promote
+        reg.set_best_selection_policy(metric)
+        best_id = reg.auto_promote_best_by_metric(metric, prediction_type=prediction_type)
+        # Load metadata
+        md = None
+        try:
+            best = reg.get_best_model()
+            if best is not None:
+                _, _, md = best
+        except Exception:
+            md = None
+        return {
+            "success": True,
+            "promoted_model_id": best_id,
+            "best_metadata": (asdict(md) if md else None),
+            "selection_policy": metric,
+            "prediction_type": prediction_type,
+        }
+    except Exception as e:
+        logging.error(f"[MODEL_REGISTRY] promote_by_metric error: {e}")
+        return {"success": False, "error": str(e)}, 500
+
+
+@app.route("/api/model_registry/top5", methods=["GET"])
+def api_model_registry_top5():
+    """Return top 5 models by the specified metric (default top1_rate). Query: ?metric=top1_rate&prediction_type=win"""
+    try:
+        metric = str(request.args.get("metric", "top1_rate") or "top1_rate").strip().lower()
+        prediction_type = str(request.args.get("prediction_type", "win") or "win").strip().lower()
+        from model_registry import get_model_registry, ModelMetadata  # type: ignore
+        reg = get_model_registry()
+        # Collect active models, optionally filter by prediction_type if stored
+        rows = []
+        for mid, data in getattr(reg, "model_index", {}).items():
+            if not isinstance(data, dict) or not data.get("is_active", True):
+                continue
+            try:
+                if prediction_type and data.get("prediction_type") not in (None, "", prediction_type):
+                    continue
+                md = ModelMetadata(**data)
+                rows.append(md)
+            except Exception:
+                continue
+        # Choose sort key
+        def key_top1(m):
+            return float(getattr(m, "top1_rate", 0.0) or 0.0)
+        def key_auc(m):
+            return float(getattr(m, "auc", 0.0) or 0.0)
+        def key_acc(m):
+            return float(getattr(m, "accuracy", 0.0) or 0.0)
+        def key_f1(m):
+            return float(getattr(m, "f1_score", 0.0) or 0.0)
+        def key_score(m):
+            return float(getattr(m, "performance_score", 0.0) or 0.0)
+        # Sort logic
+        if metric == "auc":
+            rows.sort(key=lambda m: (key_auc(m), key_top1(m), key_acc(m)), reverse=True)
+        elif metric == "accuracy":
+            rows.sort(key=lambda m: (key_acc(m), key_auc(m), key_top1(m)), reverse=True)
+        elif metric == "f1_score":
+            rows.sort(key=lambda m: (key_f1(m), key_auc(m), key_acc(m)), reverse=True)
+        elif metric == "performance_score":
+            rows.sort(key=lambda m: key_score(m), reverse=True)
+        elif metric == "correct_winners":
+            rows.sort(key=lambda m: (int(getattr(m, "correct_winners", 0) or 0), key_top1(m)), reverse=True)
+        else:  # top1_rate default
+            rows.sort(key=lambda m: (key_top1(m), key_auc(m), key_acc(m)), reverse=True)
+        # Build payload
+        top = []
+        for m in rows[:5]:
+            top.append({
+                "model_id": m.model_id,
+                "model_name": m.model_name,
+                "created_at": m.created_at,
+                "is_best": m.is_best,
+                "prediction_type": m.prediction_type,
+                "accuracy": m.accuracy,
+                "auc": m.auc,
+                "top1_rate": getattr(m, "top1_rate", None),
+            })
+        return {"success": True, "metric": metric, "prediction_type": prediction_type, "top5": top}
+    except Exception as e:
+        logging.error(f"[MODEL_REGISTRY] top5 error: {e}")
+        return {"success": False, "error": str(e)}, 500
+
+# New: expose latest cohort report and latest registry CSV for frontend UI
+@app.route("/api/backtests/cohort/latest", methods=["GET"])
+@cached_endpoint(ttl=30)
+def api_backtests_cohort_latest():
+    try:
+        base = Path(app.root_path) / "ml_backtesting_results"
+        if not base.exists():
+            return {"success": False, "error": "No results directory"}, 404
+        files = sorted(base.glob("cohort_report_*.json"))
+        if not files:
+            return {"success": False, "error": "No cohort reports found"}, 404
+        latest = files[-1]
+        with latest.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        return {"success": True, "file": str(latest), "report": data}
+    except Exception as e:
+        logging.error(f"/api/backtests/cohort/latest error: {e}")
+        return {"success": False, "error": str(e)}, 500
+
+@app.route("/api/registry/report", methods=["GET"])
+@cached_endpoint(ttl=30)
+def api_registry_report_download():
+    try:
+        base = Path(app.root_path) / "model_registry"
+        if not base.exists():
+            return {"success": False, "error": "Registry directory not found"}, 404
+        files = sorted(base.glob("registry_report_*.csv"))
+        if not files:
+            return {"success": False, "error": "No registry report CSVs found"}, 404
+        latest = files[-1]
+        # Stream as a download
+        return send_file(
+            latest,
+            as_attachment=True,
+            download_name="registry_report_latest.csv",
+            mimetype="text/csv",
+        )
+    except Exception as e:
+        logging.error(f"/api/registry/report error: {e}")
+        return {"success": False, "error": str(e)}, 500
 
 @app.route("/api/race/<race_id>")
 def api_race_detail(race_id):
@@ -9156,18 +9662,19 @@ def process_data_background():
             safe_log_to_processing(
                 "🧩 TGR: Scanning upcoming races to queue enrichment jobs...", "INFO"
             )
-            if not os.path.exists(UPCOMING_DIR):
+            upcoming_dir = app.config.get("UPCOMING_DIR", UPCOMING_DIR)
+            if not os.path.exists(upcoming_dir):
                 safe_log_to_processing(
-                    f"TGR: Upcoming directory not found: {UPCOMING_DIR}", "WARNING"
+                    f"TGR: Upcoming directory not found: {upcoming_dir}", "WARNING"
                 )
                 return {"queued": 0, "completed": 0}
             # Collect unique dog names across CSVs
             all_dogs = []
-            for name in sorted(os.listdir(UPCOMING_DIR)):
+            for name in sorted(os.listdir(upcoming_dir)):
                 if not name.endswith(".csv") or name.startswith("."):
                     continue
                 try:
-                    path = os.path.join(UPCOMING_DIR, name)
+                    path = os.path.join(upcoming_dir, name)
                     dogs = _extract_participant_dogs_from_csv(path)
                     if dogs:
                         all_dogs.extend(dogs)
@@ -11580,6 +12087,25 @@ def api_predict_single_race_standalone():
                     predictions_dir, prediction_filename
                 )
 
+                # Ensure confidence_source and confidence_reason present per-runner for V3 payloads
+                try:
+                    preds_v3 = []
+                    if isinstance(prediction_result, dict):
+                        for _key in ("predictions", "enhanced_predictions"):
+                            if isinstance(prediction_result.get(_key), list):
+                                preds_v3 = prediction_result.get(_key) or []
+                                break
+                    if preds_v3:
+                        for _p in preds_v3:
+                            if not isinstance(_p, dict):
+                                continue
+                            if _p.get("confidence_source") is None:
+                                _p["confidence_source"] = "v3"
+                            if _p.get("confidence_reason") is None:
+                                _p["confidence_reason"] = "V3 pipeline confidence (legacy mapping)"
+                except Exception:
+                    pass
+
                 # Save prediction result
                 with open(prediction_file_path, "w") as f:
                     json.dump(prediction_result, f, indent=2, default=str)
@@ -11590,13 +12116,17 @@ def api_predict_single_race_standalone():
                     f"⚠️ Could not save prediction file: {save_error}", level="WARNING"
                 )
 
-            return jsonify(
-                {
-                    "success": True,
-                    "message": f"Prediction completed for {race_filename}",
-                    "prediction": prediction_result,
-                }
-            )
+            resp_payload = {
+                "success": True,
+                "message": f"Prediction completed for {race_filename}",
+                "prediction": prediction_result,
+            }
+            try:
+                if isinstance(prediction_result, dict) and prediction_result.get("metrics") is not None:
+                    resp_payload["metrics"] = prediction_result.get("metrics")
+            except Exception:
+                pass
+            return jsonify(resp_payload)
         else:
             return (
                 jsonify(
@@ -11807,7 +12337,36 @@ def api_predict_single_race_enhanced():
         LEGACY_UPCOMING_DIR = os.path.abspath(
             os.path.join(os.getcwd(), "upcoming_races")
         )
-        search_dirs = [UPCOMING_DIR, HISTORICAL_DIR, LEGACY_UPCOMING_DIR]
+        # Include all known locations where a race CSV could be saved or staged.
+        # Priority order: configured UPCOMING_DIR used by the running app (often data/unprocessed in non-test),
+        # then legacy/configured upcoming, then processed/historical, then legacy top-level.
+        search_dirs = [
+            app.config.get("UPCOMING_DIR", UPCOMING_DIR),
+            UPCOMING_DIR,
+            UNPROCESSED_DIR,
+            PROCESSED_DIR,
+            HISTORICAL_DIR,
+            LEGACY_UPCOMING_DIR,
+        ]
+        # Deduplicate while preserving order and only keep existing directories
+        try:
+            _seen = set()
+            _cleaned = []
+            for d in search_dirs:
+                if not d:
+                    continue
+                try:
+                    ap = os.path.abspath(d)
+                except Exception:
+                    ap = d
+                if ap in _seen:
+                    continue
+                if os.path.exists(d):
+                    _cleaned.append(d)
+                    _seen.add(ap)
+            search_dirs = _cleaned or search_dirs
+        except Exception:
+            pass
 
         # If race_filename is missing but race_id is present, derive filename
         if race_id and not race_filename:
@@ -12044,7 +12603,7 @@ def api_predict_single_race_enhanced():
                         race_file_path, tgr_enabled=tgr_enabled
                     )
                 )
-                predictor_used = "PredictionPipelineV4"
+                predictor_used = "EnhancedPredictionService"
 
                 # Check if prediction was actually successful
                 if prediction_result and prediction_result.get("success"):
@@ -12451,6 +13010,37 @@ def api_predict_single_race_enhanced():
                                     p["place_prob"] = float(
                                         max(0.0, min(1.0, norm[i] * 1.6))
                                     )
+                            # Ensure confidence metadata present when upstream omitted it
+                            try:
+                                _src_hint = (str(predictor_used or "").lower())
+                            except Exception:
+                                _src_hint = ""
+                            for p in preds_save:
+                                if not isinstance(p, dict):
+                                    continue
+                                if p.get("confidence_source") is None:
+                                    if ("v4" in _src_hint) or ("enhanced" in _src_hint) or ("ml" in _src_hint):
+                                        p["confidence_source"] = "ml_v4"
+                                    elif "v3" in _src_hint:
+                                        p["confidence_source"] = "v3"
+                                    elif "unified" in _src_hint:
+                                        p["confidence_source"] = "unified"
+                                    elif "comprehensive" in _src_hint:
+                                        p["confidence_source"] = "comprehensive"
+                                    else:
+                                        p["confidence_source"] = "unknown"
+                                if p.get("confidence_reason") is None:
+                                    cs = p.get("confidence_source")
+                                    if cs == "ml_v4":
+                                        p["confidence_reason"] = "ML V4 margin+entropy+completeness blend"
+                                    elif cs == "v3":
+                                        p["confidence_reason"] = "V3 pipeline confidence mapping"
+                                    elif cs == "unified":
+                                        p["confidence_reason"] = "Unified pipeline heuristic + ML blend"
+                                    elif cs == "comprehensive":
+                                        p["confidence_reason"] = "Comprehensive pipeline heuristics"
+                                    else:
+                                        p["confidence_reason"] = "Confidence rationale not provided"
                     except Exception:
                         pass
                 except Exception:
@@ -12619,6 +13209,13 @@ def api_predict_single_race_enhanced():
                                     or first.get("prediction_score")
                                     or first.get("confidence")
                                     or 0,
+                                    "win_prob": first.get("win_prob")
+                                    or first.get("win_prob_norm")
+                                    or first.get("win_probability"),
+                                    "confidence": first.get("confidence"),
+                                    "confidence_label": first.get("confidence_label"),
+                                    "confidence_source": first.get("confidence_source"),
+                                    "confidence_reason": first.get("confidence_reason"),
                                     "key_factors": first.get("key_factors") or [],
                                 }
                                 tp = payload_to_save["top_pick"]
@@ -12680,7 +13277,7 @@ def api_predict_single_race_enhanced():
                 "model_registry_best": model_registry_best,
                 "timestamp": datetime.now().isoformat(),
             }
-            # Surface model metadata at top-level
+            # Surface model metadata and metrics at top-level
             try:
                 if isinstance(prediction_result, dict):
                     if prediction_result.get("primary_model_id"):
@@ -12693,6 +13290,8 @@ def api_predict_single_race_enhanced():
                         )
                     if prediction_result.get("model_ids_used") is not None:
                         resp["model_ids_used"] = prediction_result.get("model_ids_used")
+                    if prediction_result.get("metrics") is not None:
+                        resp["metrics"] = prediction_result.get("metrics")
             except Exception:
                 pass
             return jsonify(resp)
@@ -12708,6 +13307,14 @@ def api_predict_single_race_enhanced():
             if include_synthetic:
                 try:
                     preds = synthetic_predictions_from_csv(race_file_path)
+                    # Annotate synthetic predictions with confidence metadata for UI consistency
+                    try:
+                        for _p in preds:
+                            if isinstance(_p, dict):
+                                _p.setdefault("confidence_source", "synthetic")
+                                _p.setdefault("confidence_reason", "Synthetic fallback from CSV heuristics")
+                    except Exception:
+                        pass
                     synthetic_payload = {
                         "success": True,
                         "predictions": preds,
@@ -12766,7 +13373,6 @@ def api_predict_all_upcoming_races_enhanced():
         results = []
         processed_files = []
 
-        # Step 1: Enumerate CSV files in UPCOMING_DIR
         logger.info(f"🔍 Step 1: Scanning upcoming races directory: {UPCOMING_DIR}")
         if not os.path.exists(UPCOMING_DIR):
             logger.error(f"❌ Upcoming races directory not found: {UPCOMING_DIR}")
@@ -13615,6 +14221,70 @@ def api_prediction_detail(race_name):
         with open(prediction_file, "r") as f:
             prediction_data = json.load(f)
 
+        # Backward-compat: inject confidence metadata defaults for legacy saved files
+        try:
+            preds_list = (
+                prediction_data.get("predictions")
+                or prediction_data.get("enhanced_predictions")
+                or []
+            )
+            # Infer source from predictor_used or analysis_version/model_info
+            try:
+                _src_hint = str(
+                    prediction_data.get("predictor_used")
+                    or prediction_data.get("analysis_version")
+                    or prediction_data.get("model_info")
+                    or ""
+                ).lower()
+            except Exception:
+                _src_hint = ""
+
+            def _infer_source(h: str) -> str:
+                try:
+                    h = (h or "").lower()
+                    if (
+                        ("v4" in h)
+                        or ("enhanced" in h)
+                        or ("ml system v4" in h)
+                        or ("predictionpipelinev4" in h)
+                    ):
+                        return "ml_v4"
+                    if "v3" in h:
+                        return "v3"
+                    if "unified" in h:
+                        return "unified"
+                    if "comprehensive" in h:
+                        return "comprehensive"
+                    return "unknown"
+                except Exception:
+                    return "unknown"
+
+            def _default_reason(cs: str | None) -> str:
+                if cs == "ml_v4":
+                    return "ML V4 margin+entropy+completeness blend"
+                if cs == "v3":
+                    return "V3 pipeline confidence mapping"
+                if cs == "unified":
+                    return "Unified pipeline heuristic + ML blend"
+                if cs == "comprehensive":
+                    return "Comprehensive pipeline heuristics"
+                return "Confidence rationale not provided"
+
+            _src = _infer_source(_src_hint)
+            if isinstance(preds_list, list) and preds_list:
+                for _p in preds_list:
+                    if not isinstance(_p, dict):
+                        continue
+                    if _p.get("confidence_source") is None:
+                        _p["confidence_source"] = _src
+                    if _p.get("confidence_reason") is None:
+                        _p["confidence_reason"] = _default_reason(_p.get("confidence_source"))
+                # Ensure normalized key exists for consumers
+                if prediction_data.get("predictions") is None:
+                    prediction_data["predictions"] = preds_list
+        except Exception:
+            pass
+
         # Extract race context information - handle both race_info and race_context formats
         race_context = prediction_data.get("race_context", {})
         race_info = prediction_data.get("race_info", {})
@@ -13951,23 +14621,33 @@ def api_prediction_detail(race_name):
             # Handle confidence level properly
             confidence_level = first_pred.get("confidence_level", "Unknown")
 
-            # If confidence level is missing, NaN, or null, derive from prediction score
+            # If missing/invalid, derive from numeric confidence (preferred), else fallback to prediction score
             if (
                 not confidence_level
                 or confidence_level in ["NaN", "nan", "null", "None", "Unknown"]
                 or str(confidence_level).lower() in ["nan", "null", "none"]
             ):
-
-                # Derive confidence from prediction score
-                score_val = safe_float(prediction_score, 0)
-                if score_val >= 0.7:
-                    confidence_level = "HIGH"
-                elif score_val >= 0.5:
-                    confidence_level = "MEDIUM"
-                elif score_val >= 0.3:
-                    confidence_level = "LOW"
+                conf_numeric = safe_float(first_pred.get("confidence"), None)
+                if conf_numeric is not None:
+                    if conf_numeric >= 0.7:
+                        confidence_level = "HIGH"
+                    elif conf_numeric >= 0.5:
+                        confidence_level = "MEDIUM"
+                    elif conf_numeric >= 0.3:
+                        confidence_level = "LOW"
+                    else:
+                        confidence_level = "VERY_LOW"
                 else:
-                    confidence_level = "VERY_LOW"
+                    # Derive confidence from prediction score as last resort
+                    score_val = safe_float(prediction_score, 0)
+                    if score_val >= 0.7:
+                        confidence_level = "HIGH"
+                    elif score_val >= 0.5:
+                        confidence_level = "MEDIUM"
+                    elif score_val >= 0.3:
+                        confidence_level = "LOW"
+                    else:
+                        confidence_level = "VERY_LOW"
 
             # Format confidence level for display
             if isinstance(confidence_level, str):
@@ -14053,6 +14733,13 @@ def api_prediction_detail(race_name):
         predictor_used = prediction_data.get("predictor_used") or prediction_data.get(
             "pipeline_used"
         )
+        # Ensure full ensemble is default unless explicitly overridden
+        try:
+            import os as _os
+            if not _os.getenv("ENSEMBLE_MODE"):
+                _os.environ.setdefault("ENSEMBLE_MODE", "full_ensemble")
+        except Exception:
+            pass
         if (
             not prediction_methods or len(prediction_methods) == 0
         ) and predictor_used == "PredictionPipelineV4":
@@ -15749,6 +16436,12 @@ def ml_dashboard():
     return render_template("ml_dashboard.html")
 
 
+@app.route("/analytics")
+def analytics_page():
+    """Analytics dashboard page"""
+    return render_template("analytics.html")
+
+
 @app.route("/upcoming")
 def upcoming_races():
     """Browse upcoming races page with initial server-rendered data for fast paint"""
@@ -16352,7 +17045,10 @@ def load_upcoming_races_unified(refresh=False, fast=True):
     import pandas as pd
 
     # Use the configured upcoming directory (env or config) instead of hardcoded path
-    upcoming_races_dir = UPCOMING_DIR
+    try:
+        upcoming_races_dir = current_app.config.get("UPCOMING_DIR", UPCOMING_DIR)
+    except Exception:
+        upcoming_races_dir = UPCOMING_DIR
     races = []
     report = {"files": [], "summary": {"total_files": 0, "errors": 0, "warnings": 0}}
 
@@ -16612,9 +17308,10 @@ def api_upcoming_races_stream():
         try:
             from upcoming_race_browser import UpcomingRaceBrowser
 
-            # Ensure browser uses the same upcoming directory as the Flask app
+            # Ensure browser uses the same directories as the Flask app
             try:
                 os.environ["UPCOMING_RACES_DIR"] = UPCOMING_DIR
+                os.environ.setdefault("UNPROCESSED_DIR", UNPROCESSED_DIR)
             except Exception:
                 pass
             browser = UpcomingRaceBrowser()
@@ -16848,9 +17545,19 @@ def api_download_upcoming_race():
 
         from upcoming_race_browser import UpcomingRaceBrowser
 
-        # Ensure downloader writes/reads to the same directory as the Flask app
+        # Ensure downloader writes/reads to the same directories as the Flask app
+        # Respect any test-provided overrides by only setting defaults.
         try:
-            os.environ["UPCOMING_RACES_DIR"] = UPCOMING_DIR
+            os.environ.setdefault("UPCOMING_RACES_DIR", UPCOMING_DIR)
+            os.environ.setdefault("UNPROCESSED_DIR", UNPROCESSED_DIR)
+            # Create directories if they don't exist
+            try:
+                if os.environ.get("UPCOMING_RACES_DIR"):
+                    os.makedirs(os.environ["UPCOMING_RACES_DIR"], exist_ok=True)
+                if os.environ.get("UNPROCESSED_DIR"):
+                    os.makedirs(os.environ["UNPROCESSED_DIR"], exist_ok=True)
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -16894,31 +17601,202 @@ def api_download_upcoming_race():
                             filename = f"{slug}.csv"
                     except Exception:
                         filename = None
-                # Build filepath in UPCOMING_DIR and confirm existence
+                # Resolve filepath in preferred directories (UNPROCESSED first, then legacy UPCOMING)
                 try:
                     if filename:
-                        candidate = os.path.join(UPCOMING_DIR, filename)
-                        if os.path.exists(candidate):
-                            filepath = candidate
-                        else:
-                            # Try to locate file loosely by name fragment
-                            for f in os.listdir(UPCOMING_DIR):
+                        for base_dir in (UNPROCESSED_DIR, UPCOMING_DIR):
+                            if not base_dir or not os.path.exists(base_dir):
+                                continue
+                            candidate = os.path.join(base_dir, filename)
+                            if os.path.exists(candidate):
+                                filepath = candidate
+                                break
+                            # Fuzzy locate by fragment within this directory
+                            for f in os.listdir(base_dir):
                                 if f.endswith(".csv") and filename in f:
-                                    filepath = os.path.join(UPCOMING_DIR, f)
+                                    filepath = os.path.join(base_dir, f)
                                     filename = f
                                     break
+                            if filepath:
+                                break
                 except Exception:
                     filepath = None
                 if filename and filepath and os.path.exists(filepath):
                     used_cached = True
                 else:
-                    return (
-                        jsonify({"success": False, "error": err or "Unknown error"}),
-                        500,
-                    )
+                    # New: attempt to find an existing cached CSV for this URL and use it
+                    def _derive_expected_filename_from_url(url):
+                        try:
+                            parts = str(url or "").strip("/").split("/")
+                            i = parts.index("racing")
+                            venue_slug = parts[i + 1] if len(parts) > i + 1 else None
+                            url_date = parts[i + 2] if len(parts) > i + 2 else None
+                            race_num = parts[i + 3] if len(parts) > i + 3 else None
+                            # Map venue slug to code using browser's mapping when available
+                            try:
+                                venue_code = browser.venue_map.get(
+                                    venue_slug, venue_slug.upper() if venue_slug else None
+                                )
+                            except Exception:
+                                venue_code = venue_slug.upper() if venue_slug else None
+                            if race_num and venue_code and url_date:
+                                return f"Race {race_num} - {venue_code} - {url_date}.csv"
+                            return None
+                        except Exception:
+                            return None
+
+                    def _find_cached_file_for_url(url):
+                        try:
+                            cand_name = _derive_expected_filename_from_url(url)
+                            # Components for fuzzy matching
+                            parts = str(url or "").strip("/").split("/")
+                            race_num = parts[-1] if parts else None
+                            venue_slug = parts[-3] if len(parts) >= 3 else None
+                            url_date = parts[-2] if len(parts) >= 2 else None
+                            try:
+                                venue_code = browser.venue_map.get(
+                                    venue_slug, venue_slug.upper() if venue_slug else None
+                                )
+                            except Exception:
+                                venue_code = venue_slug.upper() if venue_slug else None
+                            for base_dir in (UNPROCESSED_DIR, UPCOMING_DIR):
+                                if not base_dir or not os.path.exists(base_dir):
+                                    continue
+                                # Exact candidate
+                                if cand_name:
+                                    candidate = os.path.join(base_dir, cand_name)
+                                    if os.path.exists(candidate):
+                                        return cand_name, candidate
+                                # Fuzzy by components
+                                try:
+                                    for f in os.listdir(base_dir):
+                                        if not f.endswith(".csv"):
+                                            continue
+                                        if race_num and f.startswith(f"Race {race_num}"):
+                                            if venue_code and venue_code in f and (not url_date or url_date in f):
+                                                return f, os.path.join(base_dir, f)
+                                except Exception:
+                                    continue
+                            return None, None
+                        except Exception:
+                            return None, None
+
+                    cached_name, cached_path = _find_cached_file_for_url(race_url)
+                    if cached_name and cached_path and os.path.exists(cached_path):
+                        filename = cached_name
+                        filepath = cached_path
+                        used_cached = True
+                        try:
+                            logger.info(
+                                f"Using cached file for {race_url}: {filename}"
+                            )
+                        except Exception:
+                            pass
+                    else:
+                        # Map upstream errors to appropriate status codes
+                        err_l = (err or "").lower()
+                        if "404" in err_l:
+                            status = 404
+                        elif any(
+                            tok in err_l
+                            for tok in [
+                                "response was html",
+                                "no csv download link",
+                                "failed to download csv",
+                                "empty csv",
+                                "insufficient data",
+                                "header not comma-separated",
+                                "doesn't appear to be a form guide",
+                            ]
+                        ):
+                            status = 502
+                        else:
+                            status = 500
+                        return jsonify({"success": False, "error": err or "Unknown error"}), status
             else:
-                # Some other error
-                return jsonify({"success": False, "error": err or "Unknown error"}), 500
+                # New: also try cached fallback for other upstream errors
+                def _derive_expected_filename_from_url(url):
+                    try:
+                        parts = str(url or "").strip("/").split("/")
+                        i = parts.index("racing")
+                        venue_slug = parts[i + 1] if len(parts) > i + 1 else None
+                        url_date = parts[i + 2] if len(parts) > i + 2 else None
+                        race_num = parts[i + 3] if len(parts) > i + 3 else None
+                        try:
+                            venue_code = browser.venue_map.get(
+                                venue_slug, venue_slug.upper() if venue_slug else None
+                            )
+                        except Exception:
+                            venue_code = venue_slug.upper() if venue_slug else None
+                        if race_num and venue_code and url_date:
+                            return f"Race {race_num} - {venue_code} - {url_date}.csv"
+                        return None
+                    except Exception:
+                        return None
+
+                def _find_cached_file_for_url(url):
+                    try:
+                        cand_name = _derive_expected_filename_from_url(url)
+                        parts = str(url or "").strip("/").split("/")
+                        race_num = parts[-1] if parts else None
+                        venue_slug = parts[-3] if len(parts) >= 3 else None
+                        url_date = parts[-2] if len(parts) >= 2 else None
+                        try:
+                            venue_code = browser.venue_map.get(
+                                venue_slug, venue_slug.upper() if venue_slug else None
+                            )
+                        except Exception:
+                            venue_code = venue_slug.upper() if venue_slug else None
+                        for base_dir in (UNPROCESSED_DIR, UPCOMING_DIR):
+                            if not base_dir or not os.path.exists(base_dir):
+                                continue
+                            if cand_name:
+                                candidate = os.path.join(base_dir, cand_name)
+                                if os.path.exists(candidate):
+                                    return cand_name, candidate
+                            try:
+                                for f in os.listdir(base_dir):
+                                    if not f.endswith(".csv"):
+                                        continue
+                                    if race_num and f.startswith(f"Race {race_num}"):
+                                        if venue_code and venue_code in f and (not url_date or url_date in f):
+                                            return f, os.path.join(base_dir, f)
+                            except Exception:
+                                continue
+                        return None, None
+                    except Exception:
+                        return None, None
+
+                cached_name, cached_path = _find_cached_file_for_url(race_url)
+                if cached_name and cached_path and os.path.exists(cached_path):
+                    filename = cached_name
+                    filepath = cached_path
+                    used_cached = True
+                    try:
+                        logger.info(f"Using cached file for {race_url}: {filename}")
+                    except Exception:
+                        pass
+                else:
+                    # Some other error (use upstream-aware status mapping)
+                    err_l = (err or "").lower()
+                    if "404" in err_l:
+                        status = 404
+                    elif any(
+                        tok in err_l
+                        for tok in [
+                            "response was html",
+                            "no csv download link",
+                            "failed to download csv",
+                            "empty csv",
+                            "insufficient data",
+                            "header not comma-separated",
+                            "doesn't appear to be a form guide",
+                        ]
+                    ):
+                        status = 502
+                    else:
+                        status = 500
+                    return jsonify({"success": False, "error": err or "Unknown error"}), status
 
         # Validate CSV is not empty; if empty, remove and retry once
         if not _is_valid_csv(filepath):
@@ -16959,6 +17837,32 @@ def api_download_upcoming_race():
                         ),
                         502,
                     )
+
+        # Additional integrity validation to prevent HTML masquerading as CSV
+        try:
+            from utils.file_integrity_guardian import FileIntegrityGuardian
+            guardian = FileIntegrityGuardian()
+            _vr = guardian.validate_file(filepath)
+            _html = any(isinstance(i, str) and "CSV file contains HTML content" in i for i in _vr.issues)
+            if _vr.should_quarantine or _html:
+                try:
+                    if filepath and os.path.exists(filepath):
+                        os.remove(filepath)
+                except Exception:
+                    pass
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": "Upstream returned HTML instead of CSV",
+                            "status": 502,
+                        }
+                    ),
+                    502,
+                )
+        except Exception:
+            # Fail open here; guardian will run again during pipeline stages
+            pass
 
         return jsonify(
             {
@@ -17221,6 +18125,21 @@ def enhanced_analysis_page():
     return render_template("enhanced_analysis.html")
 
 
+# Simple Analytics UI to surface cohort report and registry CSV
+@app.route("/analytics")
+def analytics_page():
+    try:
+        html_path = Path(app.root_path) / "static" / "analytics.html"
+        if not html_path.exists():
+            return (
+                "Analytics UI not found. Please ensure static/analytics.html exists.",
+                404,
+            )
+        return send_file(html_path)
+    except Exception as e:
+        return (f"Error loading analytics UI: {e}", 500)
+
+
 # ML Training API Endpoints
 
 
@@ -17228,6 +18147,62 @@ def enhanced_analysis_page():
 def ml_training_dashboard():
     """ML Training Dashboard page"""
     return render_template("ml_training.html")
+
+
+@app.route("/model-registry", methods=["GET"])
+def model_registry_page():
+    """Model Registry Dashboard page (native UI)."""
+    # Force-clear Jinja template cache to pick up template edits and avoid stale compiled state
+    try:
+        current_app.jinja_env.cache.clear()
+    except Exception:
+        pass
+    try:
+        from model_registry import get_model_registry, ModelMetadata  # type: ignore
+        reg = get_model_registry()
+        # Active models only
+        models = reg.list_models() or []
+        model_count = len(models)
+        active_models = model_count
+        # Average accuracy across active
+        try:
+            accs = [m.accuracy for m in models if getattr(m, "accuracy", None) is not None]
+            avg_accuracy = (sum(accs) / len(accs)) if accs else 0.0
+        except Exception:
+            avg_accuracy = 0.0
+        # Best metadata
+        best_model = None
+        try:
+            md = reg.get_best_model_metadata()
+            if md is not None:
+                # Coerce created_at to datetime for template strftime usage
+                from datetime import datetime
+                try:
+                    if isinstance(md.created_at, str) and md.created_at:
+                        md.created_at = datetime.fromisoformat(md.created_at)
+                except Exception:
+                    pass
+                best_model = md
+        except Exception:
+            best_model = None
+        return render_template(
+            "model_registry_page.html",
+            model_count=model_count,
+            active_models=active_models,
+            avg_accuracy=avg_accuracy,
+            best_model=best_model,
+            models=models,
+        )
+    except Exception as e:
+        # Fallback to minimal render with safe defaults
+        return render_template(
+            "model_registry_page.html",
+            model_count=0,
+            active_models=0,
+            avg_accuracy=0.0,
+            best_model=None,
+            models=[],
+        )
 
 
 @app.route("/ml-training-simple")
@@ -17238,8 +18213,21 @@ def ml_training_simple():
 
 @app.route("/api/model_status")
 def api_model_status():
-    """Get current model status and performance metrics"""
+    """Get current model status and performance metrics - Updated for real temporal models"""
     try:
+        # First priority: Try to get real temporal model status
+        try:
+            from real_model_integration import get_real_model_status
+            real_status = get_real_model_status()
+            if real_status.get('success'):
+                print("✅ Using real temporal model status for API")
+                return jsonify(real_status)
+        except ImportError:
+            print("⚠️ Real model integration not available")
+        except Exception as e:
+            print(f"⚠️ Error getting real model status: {e}")
+        
+        # Fallback to existing model loading logic
         import json
         from pathlib import Path
 
@@ -20450,6 +21438,368 @@ def api_database_maintenance_status():
         )
 
 
+# Minimal endpoints to support Database Manager UI tabs
+@app.route("/api/database/stats")
+def api_database_stats():
+    """Return basic database statistics used by the UI header cards"""
+    try:
+        total_tables = 0
+        total_races = 0
+        total_dogs = 0
+        db_size = 0
+
+        try:
+            if os.path.exists(DATABASE_PATH):
+                db_size = os.path.getsize(DATABASE_PATH)
+        except Exception:
+            db_size = 0
+
+        try:
+            conn = sqlite3.connect(DATABASE_PATH)
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+            total_tables = cur.fetchone()[0] or 0
+            
+            # Count races if table exists
+            try:
+                cur.execute("SELECT COUNT(*) FROM race_metadata")
+                total_races = cur.fetchone()[0] or 0
+            except Exception:
+                total_races = 0
+            
+            # Count dogs if table exists
+            try:
+                cur.execute("SELECT COUNT(*) FROM dog_race_data")
+                total_dogs = cur.fetchone()[0] or 0
+            except Exception:
+                total_dogs = 0
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+        def humanize_bytes(n: int) -> str:
+            try:
+                for unit in ['bytes', 'KB', 'MB', 'GB', 'TB']:
+                    if n < 1024.0:
+                        return f"{n:.1f} {unit}" if unit != 'bytes' else f"{int(n)} {unit}"
+                    n /= 1024.0
+                return f"{n:.1f} PB"
+            except Exception:
+                return str(n)
+
+        return jsonify(
+            {
+                "success": True,
+                "total_tables": total_tables,
+                "total_races": total_races,
+                "total_dogs": total_dogs,
+                "database_size": humanize_bytes(db_size),
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
+    except Exception as e:
+        return jsonify({"success": False, "message": f"Failed to compute stats: {str(e)}"}), 500
+
+
+@app.route("/api/database/overview")
+def api_database_overview():
+    """Return high-level overview metrics for the Overview tab"""
+    try:
+        # Build from stats and simple heuristics
+        stats_resp = api_database_stats()
+        try:
+            stats_json, status_code = stats_resp[0].json, stats_resp[1]
+        except Exception:
+            stats_json = stats_resp.get_json() if hasattr(stats_resp, 'get_json') else {}
+        
+        total_races = (stats_json or {}).get("total_races", 0)
+
+        # Simple health heuristic: base 85 + small bonus if races present
+        health_score = 85
+        if total_races > 0:
+            health_score = min(95, 85 + 5)
+
+        overview = {
+            "success": True,
+            "health_score": health_score,
+            "queries_per_second": 0.0,  # Placeholder (requires instrumentation)
+            "avg_latency": 0.0,          # Placeholder
+            "active_connections": 1,     # SQLite single connection
+            "timestamp": datetime.now().isoformat(),
+        }
+        return jsonify(overview)
+    except Exception as e:
+        return jsonify({"success": False, "message": f"Failed to build overview: {str(e)}"}), 500
+
+
+@app.route("/api/database/tables")
+def api_database_tables():
+    """Return a list of tables with basic stats"""
+    try:
+        tables = []
+        conn = sqlite3.connect(DATABASE_PATH)
+        cur = conn.cursor()
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+        table_names = [r[0] for r in cur.fetchall()]
+        for name in table_names:
+            row_count = None
+            try:
+                cur.execute(f"SELECT COUNT(*) FROM {name}")
+                row_count = cur.fetchone()[0]
+            except Exception:
+                row_count = None
+            tables.append(
+                {
+                    "name": name,
+                    "row_count": row_count,
+                    "size_human": None,  # Not trivially available per table in SQLite
+                    "health": 85,        # Neutral default
+                    "description": None,
+                }
+            )
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({"success": True, "tables": tables, "count": len(tables), "timestamp": datetime.now().isoformat()})
+    except Exception as e:
+        return jsonify({"success": False, "message": f"Failed to list tables: {str(e)}"}), 500
+
+
+@app.route("/api/database/queries/slow")
+def api_database_queries_slow():
+    """Return slow queries from query_monitoring if available.
+
+    Query params:
+      - limit: max number of rows (default 50)
+      - min_ms: minimum execution_time in ms to include (default 100.0)
+
+    Response: { success, queries: [{query, execution_time, query_plan, timestamp}], count, enabled }
+    """
+    try:
+        limit = max(1, min(int(request.args.get("limit", 50)), 500))
+        try:
+            min_ms = float(request.args.get("min_ms", 100.0))
+        except Exception:
+            min_ms = 100.0
+        queries = []
+        enabled = False
+        try:
+            conn = sqlite3.connect(DATABASE_PATH)
+            cur = conn.cursor()
+            # Ensure table exists; if not, return empty with enabled=False
+            cur.execute(
+                """
+                SELECT name FROM sqlite_master
+                WHERE type='table' AND name='query_monitoring'
+                """
+            )
+            exists = cur.fetchone() is not None
+            if exists:
+                enabled = True
+                cur.execute(
+                    """
+                    SELECT query, execution_time, query_plan, timestamp
+                    FROM query_monitoring
+                    WHERE execution_time >= ?
+                    ORDER BY execution_time DESC, timestamp DESC
+                    LIMIT ?
+                    """,
+                    (min_ms, limit),
+                )
+                rows = cur.fetchall()
+                for r in rows:
+                    queries.append(
+                        {
+                            "query": r[0],
+                            "execution_time": float(r[1]) if r[1] is not None else None,
+                            "query_plan": r[2],
+                            "timestamp": r[3],
+                        }
+                    )
+            try:
+                conn.close()
+            except Exception:
+                pass
+        except Exception:
+            # Fallthrough to empty queries
+            enabled = False
+        return jsonify(
+            {
+                "success": True,
+                "enabled": enabled,
+                "count": len(queries),
+                "queries": queries,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/api/database/migrations/status")
+def api_database_migrations_status():
+    """Return minimal migrations status"""
+    try:
+        current = None
+        try:
+            conn = sqlite3.connect(DATABASE_PATH)
+            cur = conn.cursor()
+            cur.execute("SELECT version_num FROM alembic_version LIMIT 1")
+            row = cur.fetchone()
+            current = row[0] if row else None
+        except Exception:
+            current = None
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        return jsonify({"success": True, "current": current, "head": current, "pending": [], "timestamp": datetime.now().isoformat()})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/api/database/schema/drift")
+def api_database_schema_drift():
+    """Return minimal schema drift info"""
+    try:
+        return jsonify({"success": True, "drift_detected": False, "details": {}, "timestamp": datetime.now().isoformat()})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/api/database/logs")
+def api_database_logs():
+    """Return recent database-related logs"""
+    try:
+        limit = max(1, min(1000, int(request.args.get("limit", 100))))
+        logs_path = os.path.join("logs", "app_debug.log")
+        entries = []
+        if os.path.exists(logs_path):
+            try:
+                with open(logs_path, "r", encoding="utf-8", errors="ignore") as f:
+                    lines = f.readlines()[-limit:]
+                for line in lines:
+                    # Simple parse: timestamp - name - level - message
+                    parts = line.strip().split(" - ")
+                    entry = {
+                        "timestamp": parts[0] if parts else datetime.now().isoformat(),
+                        "level": (parts[2] if len(parts) > 2 else "INFO").upper(),
+                        "message": parts[3] if len(parts) > 3 else line.strip(),
+                    }
+                    entries.append(entry)
+            except Exception:
+                pass
+        return jsonify({"success": True, "logs": entries, "timestamp": datetime.now().isoformat()})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/api/database/ops/<operation>", methods=["POST"])
+def api_database_ops(operation):
+    """Execute safe database operations for SQLite"""
+    try:
+        operation = (operation or "").lower()
+        if operation not in ("vacuum", "analyze", "reindex"):
+            return jsonify({"success": False, "message": f"Unsupported operation: {operation}"}), 400
+        conn = sqlite3.connect(DATABASE_PATH)
+        cur = conn.cursor()
+        try:
+            if operation == "vacuum":
+                cur.execute("VACUUM")
+            elif operation == "analyze":
+                cur.execute("ANALYZE")
+            elif operation == "reindex":
+                cur.execute("REINDEX")
+            conn.commit()
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        return jsonify({"success": True, "operation": operation, "timestamp": datetime.now().isoformat()})
+    except Exception as e:
+        return jsonify({"success": False, "message": f"Operation failed: {str(e)}"}), 500
+
+
+@app.route("/api/db/events")
+def api_db_events():
+    """Minimal SSE endpoint for realtime UI fallback"""
+    try:
+        from flask import Response
+        import json as _json
+        
+        def _event(data: dict) -> str:
+            return f"data: {_json.dumps(data)}\n\n"
+        
+        def generate():
+            # Send a heartbeat and some minimal metrics once; client will reconnect periodically
+            yield _event({"type": "heartbeat", "timestamp": datetime.now().isoformat()})
+            yield _event({"type": "metric", "timestamp": datetime.now().isoformat(), "payload": {"health_score": 85, "queries_per_second": 0.0, "avg_latency": 0.0}})
+        
+        return Response(generate(), mimetype='text/event-stream')
+    except Exception as e:
+        return jsonify({"success": False, "message": f"SSE error: {str(e)}"}), 500
+
+
+@app.route("/ws/db")
+def websocket_db_metrics():
+    """WebSocket-like DB metrics endpoint (HTTP fallback).
+    Returns a single JSON payload with basic DB stats so that clients probing
+    a ws:// path do not see a 404. The real-time UI already uses SSE fallback.
+    """
+    try:
+        # Compute quick stats similar to /api/database/stats
+        total_tables = 0
+        total_races = 0
+        total_dogs = 0
+        db_size_bytes = 0
+        try:
+            if os.path.exists(DATABASE_PATH):
+                db_size_bytes = os.path.getsize(DATABASE_PATH)
+        except Exception:
+            db_size_bytes = 0
+        try:
+            conn = sqlite3.connect(DATABASE_PATH)
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+            )
+            total_tables = cur.fetchone()[0] or 0
+            try:
+                cur.execute("SELECT COUNT(*) FROM race_metadata")
+                total_races = cur.fetchone()[0] or 0
+            except Exception:
+                total_races = 0
+            try:
+                cur.execute("SELECT COUNT(*) FROM dog_race_data")
+                total_dogs = cur.fetchone()[0] or 0
+            except Exception:
+                total_dogs = 0
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        payload = {
+            "type": "db_metrics",
+            "status": "ok",
+            "stats": {
+                "total_tables": total_tables,
+                "total_races": total_races,
+                "total_dogs": total_dogs,
+                "database_size_bytes": int(db_size_bytes),
+            },
+            "timestamp": datetime.now().isoformat(),
+        }
+        return jsonify(payload), 200
+    except Exception as e:
+        return jsonify({"type": "db_metrics", "status": "error", "error": str(e)}), 200
+
+
 @app.route("/api/database/backup_history")
 def api_database_backup_history():
     """Get database backup history"""
@@ -21454,14 +22804,6 @@ def api_download_and_predict_race():
                     break
 
             if not target_race:
-                # Build better error context
-                available_venues = sorted(
-                    {
-                        (r.get("venue") or "").strip()
-                        for r in all_races
-                        if r.get("venue")
-                    }
-                )
                 numbers_at_venue = sorted(
                     {
                         str(r.get("race_number"))
@@ -21521,21 +22863,26 @@ def api_download_and_predict_race():
                         filename = m.group(1).strip()
                 except Exception:
                     filename = None
-                # Resolve path under UPCOMING_DIR
+                # Resolve path in preferred directories (UNPROCESSED first, then legacy UPCOMING)
                 if filename:
-                    cand = os.path.join(UPCOMING_DIR, filename)
-                    if os.path.exists(cand):
-                        filepath = cand
-                        used_cached = True
-                    else:
-                        # Try to find by fuzzy match
+                    for base_dir in (UNPROCESSED_DIR, UPCOMING_DIR):
+                        if not base_dir or not os.path.exists(base_dir):
+                            continue
+                        cand = os.path.join(base_dir, filename)
+                        if os.path.exists(cand):
+                            filepath = cand
+                            used_cached = True
+                            break
+                        # Try to find by fuzzy match within this directory
                         try:
-                            for f in os.listdir(UPCOMING_DIR):
+                            for f in os.listdir(base_dir):
                                 if f.endswith(".csv") and filename in f:
                                     filename = f
-                                    filepath = os.path.join(UPCOMING_DIR, f)
+                                    filepath = os.path.join(base_dir, f)
                                     used_cached = True
                                     break
+                            if filepath:
+                                break
                         except Exception:
                             pass
             if not filepath:
@@ -21579,9 +22926,13 @@ def api_download_and_predict_race():
                             filename = m.group(1).strip()
                     except Exception:
                         pass
-                    cand2 = os.path.join(UPCOMING_DIR, filename) if filename else None
-                    if cand2 and os.path.exists(cand2):
-                        filepath = cand2
+                    # Try preferred directories again (UNPROCESSED, then UPCOMING)
+                    dirs_try = [UNPROCESSED_DIR, UPCOMING_DIR]
+                    for _dir in dirs_try:
+                        cand2 = os.path.join(_dir, filename) if (filename and _dir) else None
+                        if cand2 and os.path.exists(cand2):
+                            filepath = cand2
+                            break
                 if not _is_valid_csv(filepath):
                     return (
                         jsonify(
@@ -21708,6 +23059,8 @@ def api_download_and_predict_race():
                     )
                 if prediction_result.get("model_ids_used") is not None:
                     resp["model_ids_used"] = prediction_result.get("model_ids_used")
+                if prediction_result.get("metrics") is not None:
+                    resp["metrics"] = prediction_result.get("metrics")
         except Exception:
             pass
         return jsonify(resp)
@@ -23307,7 +24660,7 @@ def main():
         _set_default_env("PREDICTION_IMPORT_MODE", "prediction_only")
         _set_default_env("ENABLE_RESULTS_SCRAPERS", "0")
         _set_default_env("ENABLE_SCRAPING_DEFAULT", "0")  # do not auto-enable scraping
-        _set_default_env("TGR_ENABLED", "1")  # enable DB-only TGR by default
+        _set_default_env("TGR_ENABLED", "0")  # disable TGR by default
         # Keep Flask config in sync with these env toggles
         try:
             app.config["PREDICTION_IMPORT_MODE"] = os.environ.get(
@@ -23322,7 +24675,7 @@ def main():
         except Exception:
             pass
         print(
-            "ℹ️ Defaulting to DB-only TGR (TGR_ENABLED=1, PREDICTION_IMPORT_MODE=prediction_only, ENABLE_RESULTS_SCRAPERS=0)"
+            "ℹ️ Defaulting to TGR disabled (TGR_ENABLED=0); PREDICTION_IMPORT_MODE=prediction_only, ENABLE_RESULTS_SCRAPERS=0"
         )
     except Exception:
         pass

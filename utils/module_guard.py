@@ -267,6 +267,9 @@ def pre_prediction_sanity_check(
     _, disallowed_loaded, unknown_loaded = _classify_loaded_modules(allowed, disallowed)
 
     if disallowed_loaded:
+        # Capture initial snapshot before cleanup for policy decisions
+        initial_disallowed = list(disallowed_loaded)
+        initial_unknown = list(unknown_loaded)
         # Best-effort unload to reduce risk first
         for name in list(sys.modules.keys()):
             if any(name == p or name.startswith(p + ".") for p in disallowed):
@@ -278,10 +281,7 @@ def pre_prediction_sanity_check(
         _, disallowed_loaded_after, unknown_loaded_after = _classify_loaded_modules(
             allowed, disallowed
         )
-        if not disallowed_loaded_after:
-            return
-
-        # In manual web prediction flow, only block if actual results scrapers are present
+        # In manual web prediction flow, block if results scrapers were ever detected (even if purged)
         if context == "manual_prediction":
 
             def is_results_scraper(mod: str) -> bool:
@@ -294,6 +294,16 @@ def pre_prediction_sanity_check(
                     or mod.startswith("comprehensive_form_data_collector")
                 )
 
+            # Prefer initial detection to avoid races where modules are purged mid-check
+            initial_results_scrapers = [m for m in initial_disallowed if is_results_scraper(m)]
+            if initial_results_scrapers:
+                _raise_or_log_violation(
+                    initial_results_scrapers,
+                    initial_unknown,
+                    strict,
+                    context=context,
+                )
+            # Otherwise, if still present after purge, block as well
             results_scrapers_loaded = [
                 m for m in disallowed_loaded_after if is_results_scraper(m)
             ]
@@ -304,14 +314,15 @@ def pre_prediction_sanity_check(
                     strict,
                     context=context,
                 )
-            else:
-                # Non-scraper disallowed modules (e.g., playwright/selenium/watchdog) are tolerated here
-                # after cleanup to avoid false positives in tests; they are still removed above.
-                return
-        else:
-            _raise_or_log_violation(
-                disallowed_loaded_after, unknown_loaded_after, strict, context=context
-            )
+            # Non-scraper disallowed modules (e.g., playwright/selenium/watchdog) are tolerated here
+            # after cleanup to avoid false positives in tests; they are still removed above.
+            return
+        # For other contexts, if anything remains disallowed after cleanup, raise
+        if not disallowed_loaded_after:
+            return
+        _raise_or_log_violation(
+            disallowed_loaded_after, unknown_loaded_after, strict, context=context
+        )
 
 
 # Convenience alias used by callers
