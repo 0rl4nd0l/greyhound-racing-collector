@@ -33,7 +33,7 @@ export default defineConfig({
     actionTimeout: 15000
   },
   webServer: {
-    command: 'PORT=5003 ./.venv/bin/python app.py --host ********* --port 5003',
+command: 'PORT=5003 ./.venv/bin/python app.py --host 127.0.0.1 --port 5003',
     url: 'http://localhost:5003',
     reuseExistingServer: false,
     timeout: 240000,

@@ -120,7 +120,7 @@ module.exports = defineConfig({
 
   /* Run your local dev server before starting the tests */
   webServer: {
-    command: 'PORT=5002 ./.venv/bin/python app.py --host ********* --port 5002',
+command: 'PORT=5002 ./.venv/bin/python app.py --host 127.0.0.1 --port 5002',
     url: 'http://*********:5002',
     reuseExistingServer: !process.env.CI,
     timeout: 180000,
