@@ -6060,7 +6060,15 @@ def api_dev_ingest_downloads_once():
             v = app.config.get("TESTING")
             is_testing = bool(v) if isinstance(v, bool) else str(v).lower() in ("1", "true", "yes")
         except Exception:
-            pass
+            is_testing = False
+        if not is_testing:
+            try:
+                import os as _os
+                ev = _os.environ.get("TESTING")
+                if ev is not None and str(ev).strip().lower() in ("1", "true", "yes"):
+                    is_testing = True
+            except Exception:
+                pass
         if not is_testing:
             return jsonify({"success": False, "error": "Not allowed outside TESTING"}), 403
 
