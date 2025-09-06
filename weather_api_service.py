@@ -31,6 +31,8 @@ from typing import Dict, List, Optional, Tuple
 
 import requests
 
+from utils.http_client import get_shared_session
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -97,6 +99,9 @@ class BOMWeatherService:
 
         # Initialize venue mappings
         self.venue_locations = self._initialize_venue_locations()
+
+        # Shared HTTP session
+        self.session = get_shared_session()
 
         # Initialize database tables
         self._initialize_weather_tables()
@@ -364,10 +369,18 @@ class BOMWeatherService:
             # BOM API endpoint for current weather
             url = f"http://www.bom.gov.au/fwo/IDN60901/IDN60901.{venue.bom_station_id}.json"
 
-            response = requests.get(url, timeout=30)
-            response.raise_for_status()
+            response = None
+            try:
+                response = self.session.get(url, timeout=30)
+                response.raise_for_status()
 
-            data = response.json()
+                data = response.json()
+            finally:
+                if response is not None:
+                    try:
+                        response.close()
+                    except Exception:
+                        pass
 
             # Parse BOM response
             weather_data = self._parse_bom_current_weather(data, venue)
@@ -415,10 +428,18 @@ class BOMWeatherService:
             # BOM API endpoint for forecast
             url = f"http://www.bom.gov.au/fwo/IDN11060/IDN11060.{venue.bom_station_id}.json"
 
-            response = requests.get(url, timeout=30)
-            response.raise_for_status()
+            response = None
+            try:
+                response = self.session.get(url, timeout=30)
+                response.raise_for_status()
 
-            data = response.json()
+                data = response.json()
+            finally:
+                if response is not None:
+                    try:
+                        response.close()
+                    except Exception:
+                        pass
 
             # Parse BOM forecast response
             weather_data = self._parse_bom_forecast_weather(data, venue, target_date)

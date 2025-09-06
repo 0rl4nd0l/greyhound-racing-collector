@@ -4,12 +4,9 @@ Test script for the /api/predict_single_race endpoint
 """
 
 import json
-import os
-import signal
 import subprocess
 import sys
 import time
-from threading import Thread
 
 import requests
 

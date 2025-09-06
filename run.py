@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 # Import profiling configuration
-from profiling_config import set_profiling_enabled, is_profiling
+from profiling_config import is_profiling, set_profiling_enabled
 
 
 def run_collection():
@@ -29,7 +29,13 @@ def run_collection():
     try:
         print("📊 Running expert form CSV scraper for enhanced data collection...")
         result = subprocess.run(
-            [sys.executable, "expert_form_csv_scraper.py", "--days-ahead", "2", "--verbose"],
+            [
+                sys.executable,
+                "expert_form_csv_scraper.py",
+                "--days-ahead",
+                "2",
+                "--verbose",
+            ],
             capture_output=True,
             text=True,
             timeout=180,  # Extended timeout for expert form scraping
@@ -40,7 +46,9 @@ def run_collection():
             if result.stdout:
                 print(f"📊 Scraper output (last 200 chars): {result.stdout[-200:]}")
         else:
-            print(f"⚠️ Expert form CSV scraping issues: {result.stderr[:200] if result.stderr else 'Unknown error'}")
+            print(
+                f"⚠️ Expert form CSV scraping issues: {result.stderr[:200] if result.stderr else 'Unknown error'}"
+            )
     except subprocess.TimeoutExpired:
         print("⏰ Expert form CSV scraping timed out, please retry if needed.")
     except Exception as e:
@@ -88,36 +96,42 @@ def run_analysis(strict_scan: bool = False):
     # Use mtime heuristic for efficient file scanning
     try:
         from utils.mtime_heuristic import create_mtime_heuristic
-        
+
         heuristic = create_mtime_heuristic()
-        
+
         # Get files that need processing using mtime optimization
-        files_to_process = list(heuristic.scan_directory_optimized(
-            unprocessed_dir, 
-            strict_scan=strict_scan,
-            file_extensions=['.csv']
-        ))
-        
+        files_to_process = list(
+            heuristic.scan_directory_optimized(
+                unprocessed_dir, strict_scan=strict_scan, file_extensions=[".csv"]
+            )
+        )
+
         if not files_to_process:
             if strict_scan:
                 print("ℹ️ No CSV files found in unprocessed directory")
             else:
-                print("ℹ️ No new files to process (use --strict-scan to force full re-scan)")
+                print(
+                    "ℹ️ No new files to process (use --strict-scan to force full re-scan)"
+                )
             return
 
         print(f"📊 Found {len(files_to_process)} files to process")
         if not strict_scan:
             stats = heuristic.get_scan_statistics()
-            if stats.get('heuristic_enabled'):
-                print(f"🚀 Using mtime optimization (last processed: {stats.get('last_processed_datetime', 'N/A')})")
-        
+            if stats.get("heuristic_enabled"):
+                print(
+                    f"🚀 Using mtime optimization (last processed: {stats.get('last_processed_datetime', 'N/A')})"
+                )
+
         # Convert FileEntry objects to file paths for compatibility
         unprocessed_files = [entry.name for entry in files_to_process]
-        
+
     except ImportError as e:
         print(f"⚠️ Mtime heuristic not available, falling back to full scan: {e}")
         # Fallback to traditional directory listing
-        unprocessed_files = [f for f in os.listdir(unprocessed_dir) if f.endswith(".csv")]
+        unprocessed_files = [
+            f for f in os.listdir(unprocessed_dir) if f.endswith(".csv")
+        ]
         if not unprocessed_files:
             print("ℹ️ No unprocessed files found")
             return
@@ -197,9 +211,12 @@ def basic_file_processing():
     if processed_file_paths:
         try:
             from utils.mtime_heuristic import create_mtime_heuristic
+
             heuristic = create_mtime_heuristic()
             heuristic.update_processed_mtime_from_files(processed_file_paths)
-            print(f"🚀 Updated mtime heuristic with {len(processed_file_paths)} processed files")
+            print(
+                f"🚀 Updated mtime heuristic with {len(processed_file_paths)} processed files"
+            )
         except Exception as e:
             print(f"⚠️ Mtime heuristic update failed (non-critical): {e}")
 
@@ -212,8 +229,7 @@ def run_prediction(race_file_path=None):
 
     # Use comprehensive prediction pipeline
     try:
-        from comprehensive_prediction_pipeline import \
-            ComprehensivePredictionPipeline
+        from comprehensive_prediction_pipeline import ComprehensivePredictionPipeline
 
         pipeline = ComprehensivePredictionPipeline()
 
@@ -281,33 +297,29 @@ Examples:
   python run.py analyze                    # Use mtime optimization
   python run.py analyze --strict-scan      # Disable mtime heuristic for full re-scan
   python run.py predict race.csv --enable-profiling
-        """
+        """,
     )
-    
+
     parser.add_argument(
-        'command',
-        choices=['collect', 'analyze', 'predict'],
-        help='Command to execute'
+        "command", choices=["collect", "analyze", "predict"], help="Command to execute"
     )
-    
+
     parser.add_argument(
-        'race_file_path',
-        nargs='?',
-        help='Path to race file (for predict command)'
+        "race_file_path", nargs="?", help="Path to race file (for predict command)"
     )
-    
+
     parser.add_argument(
-        '--enable-profiling',
-        action='store_true',
-        help='Enable profiling for performance analysis (default: disabled for zero overhead)'
+        "--enable-profiling",
+        action="store_true",
+        help="Enable profiling for performance analysis (default: disabled for zero overhead)",
     )
-    
+
     parser.add_argument(
-        '--strict-scan',
-        action='store_true',
-        help='Disable mtime heuristic for full file re-scan (default: use mtime optimization)'
+        "--strict-scan",
+        action="store_true",
+        help="Disable mtime heuristic for full file re-scan (default: use mtime optimization)",
     )
-    
+
     return parser
 
 
@@ -315,18 +327,18 @@ def main():
     """Main entry point with profiling support"""
     parser = create_parser()
     args = parser.parse_args()
-    
+
     # Configure profiling based on CLI flag
     if args.enable_profiling:
         set_profiling_enabled(True)
         print("🔍 Profiling enabled")
     else:
         set_profiling_enabled(False)
-    
+
     # Show profiling status for debugging
     if is_profiling():
         print("📊 Running with profiling enabled")
-    
+
     # Execute command
     if args.command == "collect":
         run_collection()

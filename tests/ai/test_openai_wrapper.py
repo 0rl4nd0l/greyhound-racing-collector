@@ -1,6 +1,7 @@
 import json
-from unittest.mock import MagicMock
 import types
+from unittest.mock import MagicMock
+
 import pytest
 
 from utils.openai_wrapper import OpenAIWrapper
@@ -16,13 +17,17 @@ class DummyHTTPError(Exception):
 def mock_client_success_text():
     client = types.SimpleNamespace()
     # Responses API style
-    resp_obj = types.SimpleNamespace(output_text="hello world", usage={"total_tokens": 10})
+    resp_obj = types.SimpleNamespace(
+        output_text="hello world", usage={"total_tokens": 10}
+    )
     client.responses = types.SimpleNamespace(create=MagicMock(return_value=resp_obj))
     # Chat fallback
     choice_msg = types.SimpleNamespace(content="unused")
     choice = types.SimpleNamespace(message=choice_msg)
     chat_resp = types.SimpleNamespace(choices=[choice], usage={"total_tokens": 10})
-    client.chat = types.SimpleNamespace(completions=types.SimpleNamespace(create=MagicMock(return_value=chat_resp)))
+    client.chat = types.SimpleNamespace(
+        completions=types.SimpleNamespace(create=MagicMock(return_value=chat_resp))
+    )
     return client
 
 
@@ -37,15 +42,21 @@ def mock_client_rate_limit_then_ok():
         calls["n"] += 1
         if calls["n"] < 3:
             raise DummyHTTPError(429)
-        return types.SimpleNamespace(output_text="recovered", usage={"total_tokens": 12})
+        return types.SimpleNamespace(
+            output_text="recovered", usage={"total_tokens": 12}
+        )
 
-    client.responses = types.SimpleNamespace(create=MagicMock(side_effect=flappy_create))
+    client.responses = types.SimpleNamespace(
+        create=MagicMock(side_effect=flappy_create)
+    )
 
     # Chat fallback (shouldn't be used here)
     choice_msg = types.SimpleNamespace(content="chat recovered")
     choice = types.SimpleNamespace(message=choice_msg)
     chat_resp = types.SimpleNamespace(choices=[choice], usage={"total_tokens": 12})
-    client.chat = types.SimpleNamespace(completions=types.SimpleNamespace(create=MagicMock(return_value=chat_resp)))
+    client.chat = types.SimpleNamespace(
+        completions=types.SimpleNamespace(create=MagicMock(return_value=chat_resp))
+    )
     return client
 
 
@@ -57,7 +68,9 @@ def mock_client_force_chat():
     choice_msg = types.SimpleNamespace(content="from chat")
     choice = types.SimpleNamespace(message=choice_msg)
     chat_resp = types.SimpleNamespace(choices=[choice], usage={"total_tokens": 8})
-    client.chat = types.SimpleNamespace(completions=types.SimpleNamespace(create=MagicMock(return_value=chat_resp)))
+    client.chat = types.SimpleNamespace(
+        completions=types.SimpleNamespace(create=MagicMock(return_value=chat_resp))
+    )
     return client
 
 
@@ -101,4 +114,3 @@ def test_respond_json_invalid_raises(mock_client_success_text):
     w = OpenAIWrapper(mock_client_success_text)
     with pytest.raises(ValueError):
         _ = w.respond_json("return json")
-

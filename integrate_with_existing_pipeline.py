@@ -9,10 +9,15 @@ existing prediction pipeline files with minimal code changes.
 
 import logging
 from pathlib import Path
-from prediction_sanity_integration import apply_sanity_checks_to_response, with_sanity_checks
+
+from prediction_sanity_integration import (
+    apply_sanity_checks_to_response,
+    with_sanity_checks,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 def show_ml_system_v3_integration():
     """
@@ -20,7 +25,7 @@ def show_ml_system_v3_integration():
     """
     print("🔧 ML System V3 Integration")
     print("=" * 40)
-    
+
     integration_steps = """
 1. In ml_system_v3.py, add this import at the top:
    from prediction_sanity_integration import apply_sanity_checks_to_response
@@ -63,8 +68,9 @@ def show_ml_system_v3_integration():
 3. Enable sanity checks in the constructor (__init__):
    self.enable_sanity_checks = True  # Add this line
 """
-    
+
     print(integration_steps)
+
 
 def show_prediction_pipeline_v3_integration():
     """
@@ -72,7 +78,7 @@ def show_prediction_pipeline_v3_integration():
     """
     print("\n🔧 Prediction Pipeline V3 Integration")
     print("=" * 40)
-    
+
     integration_steps = """
 1. In prediction_pipeline_v3.py, add this import at the top:
    from prediction_sanity_integration import with_sanity_checks
@@ -105,8 +111,9 @@ def show_prediction_pipeline_v3_integration():
      }
    }
 """
-    
+
     print(integration_steps)
+
 
 def show_app_py_integration():
     """
@@ -114,7 +121,7 @@ def show_app_py_integration():
     """
     print("\n🔧 Flask App.py Integration")
     print("=" * 40)
-    
+
     integration_steps = """
 1. In app.py, add this import at the top:
    from prediction_sanity_integration import apply_sanity_checks_to_response
@@ -151,8 +158,9 @@ def show_app_py_integration():
 
 3. The API response will now include sanity check information for debugging.
 """
-    
+
     print(integration_steps)
+
 
 def create_patch_files():
     """
@@ -160,9 +168,9 @@ def create_patch_files():
     """
     print("\n📄 Creating Integration Patch Files")
     print("=" * 40)
-    
+
     # ML System V3 patch
-    ml_patch = '''--- ml_system_v3.py.orig
+    ml_patch = """--- ml_system_v3.py.orig
 +++ ml_system_v3.py
 @@ -1,4 +1,5 @@
  # ... existing imports ...
@@ -190,8 +198,8 @@ def create_patch_files():
 +                result = response['predictions'][0]
 +            
              return result
-'''
-    
+"""
+
     # Pipeline V3 patch
     pipeline_patch = '''--- prediction_pipeline_v3.py.orig
 +++ prediction_pipeline_v3.py
@@ -208,20 +216,21 @@ def create_patch_files():
      def predict_race_file(self, race_file_path: str, enhancement_level="full") -> dict:
          """Main prediction method with intelligent fallback and enhancement levels."""
 '''
-    
+
     # Save patch files
     patches_dir = Path("integration_patches")
     patches_dir.mkdir(exist_ok=True)
-    
+
     with open(patches_dir / "ml_system_v3.patch", "w") as f:
         f.write(ml_patch)
-    
+
     with open(patches_dir / "prediction_pipeline_v3.patch", "w") as f:
         f.write(pipeline_patch)
-    
+
     print(f"✅ Patch files created in {patches_dir}/")
     print("   - ml_system_v3.patch")
     print("   - prediction_pipeline_v3.patch")
+
 
 def main():
     """
@@ -229,8 +238,9 @@ def main():
     """
     print("🚀 SANITY CHECKS INTEGRATION GUIDE")
     print("=" * 50)
-    
-    print("""
+
+    print(
+        """
 This guide shows you exactly how to add sanity checks to your existing 
 prediction pipeline with minimal code changes.
 
@@ -243,14 +253,16 @@ The integration provides:
 ✅ NaN value handling
 ✅ Detailed logging
 ✅ Zero downtime deployment
-""")
-    
+"""
+    )
+
     show_ml_system_v3_integration()
     show_prediction_pipeline_v3_integration()
     show_app_py_integration()
     create_patch_files()
-    
-    print(f"""
+
+    print(
+        f"""
 🎯 NEXT STEPS:
 1. Choose your integration method:
    - Decorator (@with_sanity_checks) - Easiest
@@ -269,7 +281,9 @@ The integration provides:
 🔍 For testing, run:
    python test_sanity_checks.py
    python comprehensive_sanity_demo.py
-""")
+"""
+    )
+
 
 if __name__ == "__main__":
     main()

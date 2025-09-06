@@ -10,19 +10,24 @@ This test suite includes:
 - Evaluation of model accuracy and drift
 """
 
-import unittest
+import json
 import logging
 import sqlite3
+import unittest
+
+from sklearn.metrics import roc_auc_score
+
 from ml_system_v4 import MLSystemV4
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 class TestGreyhoundPredictionSystem(unittest.TestCase):
 
-    DB_PATH = 'greyhound_racing_data.db'
-    
+    DB_PATH = "greyhound_racing_data.db"
+
     def setUp(self):
         """Initialize resources for testing."""
         self.ml_system = MLSystemV4(self.DB_PATH)
@@ -71,36 +76,38 @@ class TestGreyhoundPredictionSystem(unittest.TestCase):
     def test_prediction_pipeline(self):
         """Test prediction pipeline with mock data."""
         mock_dog = {
-            'name': 'Test Dog',
-            'box_number': 1,
-            'weight': 32.5,
-            'starting_price': 2.5,
-            'individual_time': 25.5,
-            'field_size': 8,
-            'temperature': 22.0,
-            'humidity': 65.0,
-            'wind_speed': 12.0
+            "name": "Test Dog",
+            "box_number": 1,
+            "weight": 32.5,
+            "starting_price": 2.5,
+            "individual_time": 25.5,
+            "field_size": 8,
+            "temperature": 22.0,
+            "humidity": 65.0,
+            "wind_speed": 12.0,
         }
 
         prediction_result = self.ml_system.predict(mock_dog)
-        self.assertIn('win_probability', prediction_result)
-        self.assertIn('confidence', prediction_result)
+        self.assertIn("win_probability", prediction_result)
+        self.assertIn("confidence", prediction_result)
         logger.info("✅ Prediction pipeline test successful.")
 
     def test_model_accuracy_and_drift(self):
         """Evaluate model accuracy and check for drift."""
         # Load baseline metrics
         try:
-            with open('baseline_metrics.json') as f:
+            with open("baseline_metrics.json") as f:
                 baseline_metrics = json.load(f)
 
-            test_data, test_labels = self.ml_system.prepare_time_ordered_data(split='test')
+            test_data, test_labels = self.ml_system.prepare_time_ordered_data(
+                split="test"
+            )
             predictions = self.ml_system.evaluate_model(test_data)
             # Calculate current metrics
             current_auc = roc_auc_score(test_labels, predictions)
 
             # Check drift
-            baseline_auc = baseline_metrics['roc_auc']
+            baseline_auc = baseline_metrics["roc_auc"]
             drift = abs(baseline_auc - current_auc)
             logger.info(f"Drift: {drift:.3f}")
             self.assertLess(drift, 0.05, "Model drift exceeds acceptable threshold.")
@@ -108,5 +115,6 @@ class TestGreyhoundPredictionSystem(unittest.TestCase):
         except FileNotFoundError:
             self.fail("Baseline metrics file not found.")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main(verbosity=2)

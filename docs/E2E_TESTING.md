@@ -291,3 +291,30 @@ For issues with E2E testing:
 2. Review test logs in generated log files
 3. Run tests in headed mode for visual debugging
 4. Consult Playwright documentation for browser automation issues
+
+---
+
+## Test-only Endpoints and API-only E2E
+
+To improve stability and eliminate network/SSE flakiness during CI, an API-only Playwright E2E spec is provided:
+
+- Spec: `tests/playwright/e2e/upcoming-ingestion-api-flow.spec.ts`
+- Behavior: programmatically simulates a CSV download, triggers a one-off ingestion via a test-only API, and asserts results via `/api/upcoming_races_csv`.
+
+Test-only ingestion endpoint:
+- Path: `/api/dev/ingest_downloads_once`
+- Method: POST
+- Availability: ONLY when `TESTING` is enabled (via app config or `TESTING=1` env). Requests outside TESTING return HTTP 403.
+- Purpose: Deterministic ingestion during E2E to avoid relying on filesystem watchers.
+
+Usage example in tests:
+```ts
+const ing = await request.post('/api/dev/ingest_downloads_once');
+expect(ing.ok()).toBeTruthy();
+const j = await ing.json();
+expect(j.success).toBeTruthy();
+```
+
+Note on flaky UI flow:
+- The UI-based spec `tests/playwright/e2e/upcoming-ingestion-ui-flow.spec.ts` is skipped in CI by default to avoid flakes.
+- Prefer the API-only spec above for CI. Re-enable the UI spec locally when iterating on front-end readiness markers.

@@ -17,10 +17,16 @@ import numpy as np
 import pandas as pd
 
 from enhanced_feature_engineering_v2 import EnhancedFeatureEngineer
-from features import (FeatureStore, V3BoxPositionFeatures,
-                      V3CompetitionFeatures, V3DistanceStatsFeatures,
-                      V3RecentFormFeatures, V3TrainerFeatures,
-                      V3VenueAnalysisFeatures, V3WeatherTrackFeatures)
+from features import (
+    FeatureStore,
+    V3BoxPositionFeatures,
+    V3CompetitionFeatures,
+    V3DistanceStatsFeatures,
+    V3RecentFormFeatures,
+    V3TrainerFeatures,
+    V3VenueAnalysisFeatures,
+    V3WeatherTrackFeatures,
+)
 
 
 def test_versioned_features():

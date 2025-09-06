@@ -4,6 +4,7 @@ Shared prompt fragments for AI interactions.
 - Centralizes domain rules and role-specific system prompts
 - Keeps prompts short, consistent, and testable
 """
+
 from __future__ import annotations
 
 from typing import Literal
@@ -16,7 +17,9 @@ DOMAIN_RULES = (
 )
 
 
-def system_prompt(role: Literal["advisory", "analyst", "bettor", "daily"] = "analyst") -> str:
+def system_prompt(
+    role: Literal["advisory", "analyst", "bettor", "daily"] = "analyst"
+) -> str:
     """Return a concise system prompt with embedded domain rules.
 
     Roles:
@@ -41,6 +44,4 @@ def system_prompt(role: Literal["advisory", "analyst", "bettor", "daily"] = "ana
 
 def instructions_for_json_output() -> str:
     """Short instruction snippet for structured JSON outputs when needed."""
-    return (
-        "Return valid JSON only. Include keys: 'summary', 'highlights', 'risks' where applicable."
-    )
+    return "Return valid JSON only. Include keys: 'summary', 'highlights', 'risks' where applicable."

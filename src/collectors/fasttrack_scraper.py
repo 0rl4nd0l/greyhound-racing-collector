@@ -1,16 +1,14 @@
 import hashlib
-import json
 import logging
 import re
 import time
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 import requests
 from bs4 import BeautifulSoup
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
+
+from utils.http_client import get_shared_session
 
 # TODO: Make these configurable
 BASE_URL = "https://fasttrack.grv.org.au"
@@ -50,17 +48,8 @@ class FastTrackScraper:
         self.last_request_time = 0
         self.logger = logging.getLogger(__name__)
 
-        # Configure requests session with retry logic
-        self.session = requests.Session()
-        retry_strategy = Retry(
-            total=3,
-            status_forcelist=[429, 500, 502, 503, 504],
-            allowed_methods=["HEAD", "GET", "OPTIONS"],
-            backoff_factor=1,
-        )
-        adapter = HTTPAdapter(max_retries=retry_strategy)
-        self.session.mount("http://", adapter)
-        self.session.mount("https://", adapter)
+        # Use shared HTTP session with centralized retry logic
+        self.session = get_shared_session()
 
         # Set a realistic user agent
         self.session.headers.update(
@@ -177,20 +166,22 @@ class FastTrackScraper:
         self.logger.debug(f"Requesting URL: {url}")
         self.last_request_time = time.time()
 
+        response = None
         try:
             response = self.session.get(url, timeout=30)
             response.raise_for_status()
+            text = response.text
 
             # Cache the response if caching is enabled
             if self.use_cache:
                 try:
                     with open(cache_file, "w", encoding="utf-8") as f:
-                        f.write(response.text)
+                        f.write(text)
                     self.logger.debug(f"Cached response for: {url}")
                 except Exception as e:
                     self.logger.warning(f"Failed to cache response for {url}: {e}")
 
-            return BeautifulSoup(response.text, "html.parser")
+            return BeautifulSoup(text, "html.parser")
 
         except requests.exceptions.RequestException as e:
             self.logger.error(f"Failed to fetch {url}: {e}")
@@ -198,6 +189,12 @@ class FastTrackScraper:
         except Exception as e:
             self.logger.error(f"Unexpected error fetching {url}: {e}")
             return None
+        finally:
+            if response is not None:
+                try:
+                    response.close()
+                except Exception:
+                    pass
 
     def _parse_dog(self, soup: BeautifulSoup) -> Dict[str, Any]:
         """

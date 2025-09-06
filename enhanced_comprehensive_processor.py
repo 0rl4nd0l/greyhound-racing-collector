@@ -39,8 +39,7 @@ def profile_function(func):
 # Selenium for advanced scraping
 try:
     from selenium import webdriver
-    from selenium.common.exceptions import (NoSuchElementException,
-                                            TimeoutException)
+    from selenium.common.exceptions import NoSuchElementException, TimeoutException
     from selenium.webdriver.chrome.options import Options
     from selenium.webdriver.common.by import By
     from selenium.webdriver.support import expected_conditions as EC
@@ -68,6 +67,20 @@ try:
     SKLEARN_AVAILABLE = True
 except ImportError:
     SKLEARN_AVAILABLE = False
+
+# TGR (The Greyhound Recorder) Integration
+try:
+    from enhanced_tgr_collector import EnhancedTGRCollector
+    from src.collectors.the_greyhound_recorder_scraper import (
+        TheGreyhoundRecorderScraper,
+    )
+    from tgr_prediction_integration import TGRPredictionIntegrator
+
+    TGR_AVAILABLE = True
+    print("✅ TGR components imported successfully")
+except ImportError as e:
+    print(f"⚠️ TGR components not available: {e}")
+    TGR_AVAILABLE = False
 
 # Global processing status variables (imported from app.py if available)
 processing_lock = threading.Lock()
@@ -137,34 +150,51 @@ class EnhancedComprehensiveProcessor:
         print(f"📦 Batch Size: {batch_size}")
 
     def setup_driver(self):
-        """Setup Chrome driver for enhanced scraping"""
+        """Setup Chrome driver for enhanced scraping with webdriver-manager fallback"""
         try:
-            # Try to find ChromeDriver in common locations
             import shutil
 
-            chromedriver_path = shutil.which("chromedriver")
-
-            if not chromedriver_path:
-                print("⚠️ ChromeDriver not found in PATH, skipping web scraping")
-                self.driver = None
-                return
+            from selenium.webdriver.chrome.service import Service
+            from webdriver_manager.chrome import ChromeDriverManager
 
             options = Options()
-            options.add_argument("--headless")
+            # Use modern headless for Chrome 109 and newer
+            options.add_argument("--headless=new")
             options.add_argument("--no-sandbox")
             options.add_argument("--disable-dev-shm-usage")
             options.add_argument("--disable-gpu")
             options.add_argument("--window-size=1920,1080")
+            options.add_argument("--disable-blink-features=AutomationControlled")
             options.add_argument(
-                "--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+                "--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Safari/537.36"
             )
 
-            self.driver = webdriver.Chrome(options=options)
-            print("✅ Chrome driver initialized")
+            # Allow overriding Chrome binary path if needed
+            chrome_binary = os.getenv("CHROME_BINARY")
+            if chrome_binary and os.path.exists(chrome_binary):
+                options.binary_location = chrome_binary
+
+            # Prefer system chromedriver if present; otherwise auto-install
+            chromedriver_path = shutil.which("chromedriver")
+            if chromedriver_path:
+                service = Service(executable_path=chromedriver_path)
+                print(f"✅ Using system ChromeDriver from: {chromedriver_path}")
+            else:
+                print(
+                    f"ℹ️ ChromeDriver not found in PATH - auto-downloading via webdriver-manager..."
+                )
+                service = Service(ChromeDriverManager().install())
+
+            self.driver = webdriver.Chrome(service=service, options=options)
+            self.enable_web_scraping = True
+            print("✅ Chrome driver initialized successfully")
         except Exception as e:
             print(f"⚠️ Chrome driver setup failed: {e}")
-            print("⚠️ Web scraping features disabled")
+            print(
+                "⚠️ Web scraping features disabled, continuing with CSV-only processing"
+            )
             self.driver = None
+            self.enable_web_scraping = False
 
     def init_database(self):
         """Initialize comprehensive database with all advanced tables"""
@@ -308,6 +338,15 @@ class EnhancedComprehensiveProcessor:
         conn.close()
         print("✅ Enhanced database initialized")
 
+    def cleanup(self):
+        """Clean up resources, especially web driver"""
+        try:
+            if self.driver:
+                self.driver.quit()
+                print("✅ Chrome driver closed")
+        except Exception as e:
+            print(f"⚠️ Error closing Chrome driver: {e}")
+
     def _migrate_database_schema(self, cursor):
         """Migrate database schema to add missing columns"""
         try:
@@ -324,25 +363,33 @@ class EnhancedComprehensiveProcessor:
                 ("weather_location", "TEXT"),
                 ("weather_timestamp", "DATETIME"),
                 ("weather_adjustment_factor", "REAL"),
+                # New result status tracking columns
+                ("results_status", "TEXT DEFAULT 'pending'"),
+                ("winner_source", "TEXT"),
+                ("scraping_attempts", "INTEGER DEFAULT 0"),
+                ("last_scraped_at", "DATETIME"),
+                ("parse_confidence", "REAL DEFAULT 1.0"),
             ]
 
-            # Get existing columns
-            cursor.execute("PRAGMA table_info(race_metadata)")
-            existing_columns = [row[1] for row in cursor.fetchall()]
-
-            # Add missing columns
+            # Use helper method to safely add columns
             for column_name, column_type in new_columns:
-                if column_name not in existing_columns:
-                    try:
-                        cursor.execute(
-                            f"ALTER TABLE race_metadata ADD COLUMN {column_name} {column_type}"
-                        )
-                        print(f"   ✅ Added column: {column_name}")
-                    except Exception as e:
-                        print(f"   ⚠️ Could not add column {column_name}: {e}")
+                self._add_column_if_missing(
+                    cursor, "race_metadata", column_name, column_type
+                )
 
         except Exception as e:
             print(f"   ⚠️ Database migration error: {e}")
+
+    def _add_column_if_missing(self, cursor, table: str, column: str, col_type: str):
+        """Add a column to a table if it doesn't already exist"""
+        try:
+            cursor.execute(f"PRAGMA table_info({table})")
+            cols = [r[1] for r in cursor.fetchall()]
+            if column not in cols:
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+                print(f"   ✅ Added column: {table}.{column}")
+        except Exception as e:
+            print(f"   ⚠️ Could not add column {table}.{column}: {e}")
 
     def group_dog_data(self, df: pd.DataFrame) -> List[List[Any]]:
         """Group dog data by dog name, associating blank rows with previous dog name"""
@@ -533,7 +580,7 @@ class EnhancedComprehensiveProcessor:
             # STEP 3: Group and process dog data properly
             print(f"   🐕 Grouping dog data by name...")
             dog_groups = self.group_dog_data(df)
-            
+
             # LOGGING: Number of rows returned by ingestor
             print(f"   📊 DEBUG: Number of rows from CSV ingestor: {len(df)}")
             print(f"   📊 DEBUG: Number of dog groups created: {len(dog_groups)}")
@@ -545,8 +592,10 @@ class EnhancedComprehensiveProcessor:
                 )
                 if dog_data:
                     processed_dogs.append(dog_data)
-                    
-            print(f"   📊 DEBUG: Number of processed dogs for DB insertion: {len(processed_dogs)}")
+
+            print(
+                f"   📊 DEBUG: Number of processed dogs for DB insertion: {len(processed_dogs)}"
+            )
 
             # STEP 4: Validate and fix winner data consistency
             print(f"   🔧 Validating winner data consistency...")
@@ -581,13 +630,20 @@ class EnhancedComprehensiveProcessor:
                 f"   📊 Processed {len(processed_dogs)} dogs (grouped from {len(df)} rows)"
             )
 
-            # STEP 7: Check if race should be excluded - strict criteria
+            # STEP 7: Check if race should be excluded - now with relaxed criteria
             has_scraped_data = enhanced_race_info.get("scraped_successfully", False)
             has_winner = enhanced_race_info.get("winner_name", "") != ""
             has_url = enhanced_race_info.get("url", "") != ""
             has_positioned_dogs = any(
                 dog.get("finish_position") not in ["N/A", "", None]
                 for dog in processed_dogs
+            )
+
+            # Check if race data is sufficient even without scraping
+            data_sufficient_without_scraping = (
+                self.is_race_data_sufficient_without_scraping(
+                    enhanced_race_info, processed_dogs
+                )
             )
 
             # Enhanced data consistency checks
@@ -611,6 +667,24 @@ class EnhancedComprehensiveProcessor:
                 )
                 for dog in processed_dogs
             )
+
+            # DO NOT infer winner from form guide - repository policy prohibits this
+            # Winners must only come from race webpage scraping to maintain data integrity
+            if not has_winner and data_sufficient_without_scraping:
+                print(
+                    f"   📋 Winner not available from scraping - leaving winner_name empty per repository policy"
+                )
+                print(f"   🔧 Setting results_status to 'pending' for later backfill")
+                enhanced_race_info["winner_name"] = ""  # Keep empty
+                enhanced_race_info["winner_source"] = None
+                enhanced_race_info["results_status"] = "pending"
+                enhanced_race_info["data_quality_note"] = (
+                    "Winner pending - requires scraping backfill"
+                )
+                has_winner = False  # Explicitly false since we don't infer
+
+                # Update winner_in_data check (will be false since no winner)
+                winner_in_data = False
 
             # Check for duplicate positions and handle dead heats
             positions = [
@@ -731,33 +805,68 @@ class EnhancedComprehensiveProcessor:
             if winner_box:
                 print(f"   🏆 Winner from box {winner_box} ({actual_field_size} field)")
 
-            # Only include races that have ALL of:
-            # 1. Successfully scraped data
-            # 2. Clear winner
-            # 3. Race URL
-            # 4. Winner in positioned dogs
-            # 5. No duplicate positions
-            # Note: Positioning ratio removed - scratched dogs don't invalidate race data
-            if not (
+            # Modified exclusion logic: Allow races with sufficient data even without scraping
+            # Standard criteria (strict - requires all): scraped data + winner + URL + winner in data + no duplicates
+            meets_strict_criteria = (
                 has_scraped_data
                 and has_winner
                 and has_url
                 and winner_in_data
                 and not has_duplicates
-            ):
+            )
+
+            # Relaxed criteria (fallback): sufficient data quality + winner + no duplicates
+            meets_relaxed_criteria = (
+                data_sufficient_without_scraping
+                and has_winner  # This could be scraped or inferred
+                and winner_in_data  # Winner must still be in our data
+                and not has_duplicates  # Still can't have position duplicates
+            )
+
+            # Include race if it meets either strict OR relaxed criteria
+            if not (meets_strict_criteria or meets_relaxed_criteria):
                 print(
-                    f"   🚫 Excluding race {enhanced_race_info['race_id']} - data quality issues"
+                    f"   🚫 Excluding race {enhanced_race_info['race_id']} - insufficient data quality"
                 )
                 print(
-                    f"      Scraped: {has_scraped_data}, Winner: {has_winner}, URL: {has_url}"
+                    f"      Strict criteria: Scraped: {has_scraped_data}, Winner: {has_winner}, URL: {has_url}, Winner in data: {winner_in_data}, No duplicates: {not has_duplicates}"
                 )
                 print(
-                    f"      Positioning: {positioning_ratio:.1%}, Winner in data: {winner_in_data}, Duplicates: {has_duplicates}"
+                    f"      Relaxed criteria: Data sufficient: {data_sufficient_without_scraping}, Winner: {has_winner}, Winner in data: {winner_in_data}, No duplicates: {not has_duplicates}"
+                )
+                print(
+                    f"      Result: Strict={meets_strict_criteria}, Relaxed={meets_relaxed_criteria}"
                 )
 
                 # Move excluded race to processed folder to avoid reprocessing
                 self.move_to_processed(csv_file_path, status="excluded")
-                return {"status": "excluded", "reason": "Data quality issues"}
+                return {"status": "excluded", "reason": "Insufficient data quality"}
+
+            # Log which criteria were met and set appropriate results_status
+            if meets_strict_criteria:
+                print(f"   ✅ Race meets strict criteria - proceeding with processing")
+                enhanced_race_info["results_status"] = "complete"
+                enhanced_race_info["winner_source"] = "scrape"
+            else:
+                print(
+                    f"   📋 Race meets relaxed criteria (form guide based) - proceeding with processing"
+                )
+                enhanced_race_info["data_quality_note"] = (
+                    enhanced_race_info.get("data_quality_note", "")
+                    + " [Processed via relaxed criteria]"
+                )
+                if enhanced_race_info.get("winner_name"):
+                    enhanced_race_info["results_status"] = (
+                        "partial_scraping_failed"  # Has winner but scraping issues
+                    )
+                    enhanced_race_info["winner_source"] = (
+                        "inferred"  # If winner came from somewhere else
+                    )
+                else:
+                    enhanced_race_info["results_status"] = (
+                        "pending"  # No winner available
+                    )
+                    enhanced_race_info["winner_source"] = None
 
             # STEP 8: Collect and store weather data for this race
             print(
@@ -772,6 +881,73 @@ class EnhancedComprehensiveProcessor:
                 )
             else:
                 print(f"   ⚠️ Weather data not available for this race")
+
+            # STEP 8.5: Fetch TGR data for dogs involved in this race
+            if TGR_AVAILABLE and self.processing_mode != "minimal":
+                print(f"   🌐 Fetching TGR data for dogs in this race...")
+                try:
+                    # Initialize Enhanced Data Integrator for TGR functionality
+                    from enhanced_data_integration import EnhancedDataIntegrator
+
+                    tgr_integrator = EnhancedDataIntegrator(self.db_path)
+
+                    # Prepare race context for TGR integration
+                    race_context = {
+                        "venue": race_info["venue"],
+                        "race_date": race_info["race_date"],
+                        "race_number": race_info["race_number"],
+                        "race_id": race_info["race_id"],
+                    }
+
+                    # Fetch live TGR data for all dogs in this race
+                    tgr_enhanced_dogs = tgr_integrator.fetch_live_tgr_data_for_dogs(
+                        processed_dogs, race_context
+                    )
+
+                    # Update processed_dogs with TGR-enhanced data
+                    processed_dogs = tgr_enhanced_dogs
+
+                    # Get TGR race insights
+                    tgr_race_insights = tgr_integrator.get_tgr_race_insights(
+                        race_info["venue"],
+                        (
+                            race_info["race_date"].strftime("%Y-%m-%d")
+                            if hasattr(race_info["race_date"], "strftime")
+                            else str(race_info["race_date"])
+                        ),
+                        race_info["race_number"],
+                    )
+
+                    if tgr_race_insights:
+                        enhanced_race_info["tgr_insights"] = tgr_race_insights
+                        print(f"   ✅ TGR race insights collected")
+
+                    # Calculate TGR enhancement statistics
+                    tgr_enhanced_count = sum(
+                        1 for dog in processed_dogs if dog.get("has_tgr_data")
+                    )
+                    enhanced_race_info["tgr_enhanced_dogs"] = tgr_enhanced_count
+                    enhanced_race_info["tgr_enhancement_ratio"] = (
+                        tgr_enhanced_count / len(processed_dogs)
+                        if processed_dogs
+                        else 0
+                    )
+
+                    print(
+                        f"   🌐 TGR integration completed: {tgr_enhanced_count}/{len(processed_dogs)} dogs enhanced"
+                    )
+
+                except Exception as e:
+                    print(f"   ⚠️ TGR integration failed: {e}")
+                    # Continue processing without TGR data
+                    pass
+            else:
+                if not TGR_AVAILABLE:
+                    print(
+                        f"   ℹ️ TGR components not available - skipping TGR integration"
+                    )
+                else:
+                    print(f"   ⚡ Minimal mode: Skipping TGR integration")
 
             # STEP 9: Save combined data to database
             self.save_to_database(enhanced_race_info, processed_dogs)
@@ -798,42 +974,119 @@ class EnhancedComprehensiveProcessor:
     def extract_race_info_from_filename_and_csv(
         self, filepath: str, df: pd.DataFrame
     ) -> Optional[Dict[str, Any]]:
-        """Extract race information from CSV filename and data"""
+        """Extract race information from CSV filename and data with enhanced parsing for hyphenated venues"""
         filename = os.path.basename(filepath)
 
-        # Try multiple filename patterns
-        patterns = [
-            # Pattern 1: "Race_XX_VENUE_YYYY-MM-DD.csv" (current format)
-            (r"Race_(\d+)_([A-Z0-9_]+)_(\d{4}-\d{2}-\d{2})\.csv", "%Y-%m-%d"),
-            # Pattern 2: "Race X - VENUE - YYYY-MM-DD.csv" (new format from upcoming races)
-            (r"Race (\d+) - ([A-Z0-9_]+) - (\d{4}-\d{2}-\d{2})\.csv", "%Y-%m-%d"),
-            # Pattern 3: "Race X - VENUE - DD Month YYYY.csv" (legacy format)
-            (r"Race (\d+) - ([A-Z0-9_]+) - (\d{1,2} \w+ \d{4})\.csv", "%d %B %Y"),
-            # Pattern 4: "Race X - VENUE - D Month YYYY.csv" (single digit day)
-            (r"Race (\d+) - ([A-Z0-9_]+) - (\d{1} \w+ \d{4})\.csv", "%d %B %Y"),
-        ]
+        # Normalize filename: strip extension, clean up spacing
+        base_filename = filename.replace(".csv", "")
+        base_filename = re.sub(r"\s+", " ", base_filename).strip()
 
         race_number = None
         venue = None
         race_date = None
 
+        print(f"   🔍 Parsing filename: {filename}")
+
+        # Enhanced patterns supporting hyphenated and sponsored venues
+        patterns = [
+            # Pattern A: Race N - Venue - YYYY-MM-DD (supports hyphenated venues)
+            (
+                r"^Race\s*(\d{1,2})\s*[-_]\s*([A-Za-z0-9\s\'&\.\-]+?)\s*[-_]\s*(\d{4}[-/]\d{2}[-/]\d{2})$",
+                "%Y-%m-%d",
+            ),
+            # Pattern B: YYYY-MM-DD - Race N - Venue
+            (
+                r"^(\d{4}[-/]\d{2}[-/]\d{2})\s*[-_]\s*(?:Race|R)\s*(\d{1,2})\s*[-_]\s*([A-Za-z0-9\s\'&\.\-]+)$",
+                "%Y-%m-%d",
+            ),
+            # Pattern C: Venue - Race N - YYYY-MM-DD
+            (
+                r"^([A-Za-z0-9\s\'&\.\-]+)\s*[-_]\s*(?:Race|R)\s*(\d{1,2})\s*[-_]\s*(\d{4}[-/]\d{2}[-/]\d{2})$",
+                "%Y-%m-%d",
+            ),
+            # Pattern D: Venue_RN_YYYY-MM-DD (compact format)
+            (
+                r"^([A-Za-z0-9\s\'&\.\-]+)[-_](?:R|Race)\s*(\d{1,2})[-_](\d{4}[-/]\d{2}[-/]\d{2})$",
+                "%Y-%m-%d",
+            ),
+            # Legacy patterns for backward compatibility
+            # Pattern 1: "Race_XX_VENUE_YYYY-MM-DD.csv" (current format)
+            (r"Race_(\d+)_([A-Z0-9_]+)_(\d{4}-\d{2}-\d{2})", "%Y-%m-%d"),
+            # Pattern 2: "Race X - VENUE - YYYY-MM-DD.csv" (basic format)
+            (r"Race (\d+) - ([A-Z0-9_]+) - (\d{4}-\d{2}-\d{2})", "%Y-%m-%d"),
+            # Pattern 3: "Race X - VENUE - DD Month YYYY.csv" (legacy format)
+            (r"Race (\d+) - ([A-Z0-9_]+) - (\d{1,2} \w+ \d{4})", "%d %B %Y"),
+            # Pattern 4: "Race X - VENUE - D Month YYYY.csv" (single digit day)
+            (r"Race (\d+) - ([A-Z0-9_]+) - (\d{1} \w+ \d{4})", "%d %B %Y"),
+        ]
+
+        # Try each pattern
         for pattern, date_format in patterns:
-            match = re.match(pattern, filename)
+            match = re.search(pattern, base_filename)
             if match:
-                race_number = int(match.group(1))
-                venue = match.group(2)
-                date_str = match.group(3)
+                groups = match.groups()
+
+                # Determine which group is which based on pattern structure
+                if pattern.startswith("^Race"):
+                    # Pattern A: Race N - Venue - Date
+                    race_number = int(groups[0])
+                    venue = groups[1].strip()
+                    date_str = groups[2]
+                elif pattern.startswith("^(\\d{4}"):
+                    # Pattern B: Date - Race N - Venue
+                    date_str = groups[0]
+                    race_number = int(groups[1])
+                    venue = groups[2].strip()
+                elif pattern.startswith("^([A-Za-z"):
+                    # Pattern C: Venue - Race N - Date
+                    venue = groups[0].strip()
+                    race_number = int(groups[1])
+                    date_str = groups[2]
+                else:
+                    # Legacy patterns
+                    race_number = int(groups[0])
+                    venue = groups[1]
+                    date_str = groups[2]
+
+                # Clean up venue name
+                venue = re.sub(r"\s+", " ", venue).strip()
+
+                # Normalize date string for parsing
+                date_str = date_str.replace("/", "-")
 
                 # Parse date
                 try:
                     race_date = datetime.strptime(date_str, date_format).date()
+                    print(
+                        f"   ✅ Filename parsed: Venue='{venue}', Race={race_number}, Date={race_date}"
+                    )
                     break
-                except ValueError:
+                except ValueError as e:
+                    print(
+                        f"   ⚠️ Date parsing failed for '{date_str}' with format '{date_format}': {e}"
+                    )
                     continue
 
+        # If filename parsing failed, try CSV header fallbacks
+        if race_number is None or venue is None or race_date is None:
+            print(f"   📋 Filename parsing incomplete - trying CSV header fallbacks...")
+            csv_info = self._extract_from_csv_headers(df)
+
+            if csv_info:
+                race_number = race_number or csv_info.get("race_number")
+                venue = venue or csv_info.get("venue")
+                race_date = race_date or csv_info.get("race_date")
+
+                if race_number and venue and race_date:
+                    print(
+                        f"   ✅ CSV fallback successful: Venue='{venue}', Race={race_number}, Date={race_date}"
+                    )
+
+        # Final validation and race ID generation
         if race_number is not None and venue is not None and race_date is not None:
-            # Generate race ID
-            race_id = f"{venue.lower()}_{race_date}_{race_number}"
+            # Generate deterministic race ID with normalized venue
+            canonical_venue = re.sub(r"[-\s]+", "-", venue.upper())
+            race_id = f"{canonical_venue}_{race_date}_{race_number:02d}"
 
             # Extract grade and distance from CSV data
             grade = ""
@@ -867,7 +1120,229 @@ class EnhancedComprehensiveProcessor:
                 "distance": distance,  # Add distance from CSV
             }
 
+        print(f"   ❌ Could not extract race info from filename or CSV headers")
         return None
+
+    def _extract_from_csv_headers(self, df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+        """Extract race info from CSV column headers and data as fallback"""
+        if df.empty:
+            return None
+
+        # Sample first 20 non-empty rows to find header info
+        sample_rows = df.dropna(how="all").head(20)
+        if sample_rows.empty:
+            return None
+
+        result = {}
+
+        # Look for venue in column names and data
+        venue_columns = ["Venue", "Track", "Meeting", "Course", "Location"]
+        for col in venue_columns:
+            if col in df.columns:
+                venue_values = sample_rows[col].dropna().astype(str)
+                if not venue_values.empty:
+                    venue = venue_values.iloc[0].strip()
+                    if venue and venue != "nan":
+                        result["venue"] = venue
+                        break
+
+        # Look for race number
+        race_columns = ["Race", "Race No", "Race Number", "R"]
+        for col in race_columns:
+            if col in df.columns:
+                race_values = sample_rows[col].dropna()
+                if not race_values.empty:
+                    race_str = str(race_values.iloc[0]).strip()
+                    # Extract number, handle formats like "R6", "Race 6", "6"
+                    race_match = re.search(r"(\d+)", race_str)
+                    if race_match:
+                        result["race_number"] = int(race_match.group(1))
+                        break
+
+        # Look for date
+        date_columns = ["Date", "Meeting Date", "Race Date"]
+        for col in date_columns:
+            if col in df.columns:
+                date_values = sample_rows[col].dropna().astype(str)
+                if not date_values.empty:
+                    date_str = date_values.iloc[0].strip()
+                    if date_str and date_str != "nan":
+                        # Try multiple date formats
+                        date_formats = [
+                            "%Y-%m-%d",
+                            "%d/%m/%Y",
+                            "%m/%d/%Y",
+                            "%d-%m-%Y",
+                            "%d %B %Y",
+                            "%d %b %Y",
+                        ]
+                        for fmt in date_formats:
+                            try:
+                                result["race_date"] = datetime.strptime(
+                                    date_str, fmt
+                                ).date()
+                                break
+                            except ValueError:
+                                continue
+                        if "race_date" in result:
+                            break
+
+        return result if result else None
+
+    def is_minimum_race_info_present(self, race_info: Dict[str, Any]) -> bool:
+        """Check if minimum required race information is present for processing"""
+        required_fields = ["venue", "race_number", "race_date"]
+
+        for field in required_fields:
+            if not race_info.get(field):
+                return False
+
+            # Additional validation
+            if field == "venue" and race_info[field] in [
+                "Unknown",
+                "UNKNOWN",
+                "UNK",
+                "",
+            ]:
+                return False
+            if field == "race_number" and race_info[field] <= 0:
+                return False
+
+        return True
+
+    def is_race_data_sufficient_without_scraping(
+        self, race_info: Dict[str, Any], processed_dogs: List[Dict[str, Any]]
+    ) -> bool:
+        """Check if race data is sufficient for processing even without successful scraping"""
+        try:
+            # Check if minimum race info is present
+            if not self.is_minimum_race_info_present(race_info):
+                return False
+
+            # Check if we have a reasonable number of dogs (4-12 is typical for greyhound racing)
+            num_dogs = len(processed_dogs)
+            if num_dogs < 4 or num_dogs > 12:
+                return False
+
+            # Check if most dogs have valid basic information
+            dogs_with_names = sum(
+                1 for dog in processed_dogs if dog.get("dog_clean_name", "").strip()
+            )
+            name_completeness = dogs_with_names / num_dogs if num_dogs > 0 else 0
+
+            if name_completeness < 0.8:  # At least 80% should have names
+                return False
+
+            # Check if we have some historical performance data from form guides
+            dogs_with_historical = sum(
+                1
+                for dog in processed_dogs
+                if dog.get("historical_records")
+                and len(dog.get("historical_records", "[]")) > 10
+            )  # Some JSON data
+            historical_completeness = (
+                dogs_with_historical / num_dogs if num_dogs > 0 else 0
+            )
+
+            # Check if we have some timing or performance data
+            dogs_with_times = sum(
+                1
+                for dog in processed_dogs
+                if dog.get("individual_time", "").strip()
+                and dog.get("individual_time") != "nan"
+            )
+            time_completeness = dogs_with_times / num_dogs if num_dogs > 0 else 0
+
+            # Race is sufficient if we have decent data completeness
+            # Even without scraping, form guides provide valuable historical data
+            sufficient_data_quality = (
+                name_completeness >= 0.8
+                and (  # Good name coverage
+                    historical_completeness >= 0.5 or time_completeness >= 0.3
+                )  # Some performance data
+            )
+
+            return sufficient_data_quality
+
+        except Exception as e:
+            print(f"   ⚠️ Error checking race data sufficiency: {e}")
+            return False
+
+    def infer_plausible_winner_from_form_guide(
+        self, processed_dogs: List[Dict[str, Any]]
+    ) -> Optional[str]:
+        """Infer a plausible winner from form guide data when scraping fails"""
+        try:
+            if not processed_dogs:
+                return None
+
+            # Score each dog based on available form guide data
+            scored_dogs = []
+
+            for dog in processed_dogs:
+                score = 0.0
+                dog_name = dog.get("dog_clean_name", "").strip()
+
+                if not dog_name:
+                    continue
+
+                # Factor 1: Best time (lower is better)
+                best_time = dog.get("best_time", 0)
+                if best_time > 0 and 25.0 <= best_time <= 40.0:  # Realistic range
+                    # Convert to score (lower time = higher score)
+                    time_score = max(0, 100 - ((best_time - 25) * 4))
+                    score += time_score * 0.3  # 30% weight
+
+                # Factor 2: Recent form (count of wins in recent races)
+                recent_form = dog.get("recent_form", "")
+                if recent_form:
+                    win_count = recent_form.count("1")
+                    form_score = (
+                        (win_count / len(recent_form)) * 100 if recent_form else 0
+                    )
+                    score += form_score * 0.4  # 40% weight
+
+                # Factor 3: Win rate from historical data
+                win_rate = dog.get("win_rate", 0)
+                if win_rate > 0:
+                    score += win_rate * 100 * 0.2  # 20% weight
+
+                # Factor 4: Starting price (lower odds = higher probability)
+                sp = dog.get("starting_price", 0)
+                if sp > 1.0:  # Valid odds
+                    # Convert to probability and scale
+                    implied_prob = min(1.0, 1.0 / sp) * 100
+                    score += implied_prob * 0.1  # 10% weight
+
+                scored_dogs.append(
+                    {
+                        "dog_name": dog_name,
+                        "score": score,
+                        "best_time": best_time,
+                        "recent_form": recent_form,
+                        "win_rate": win_rate,
+                        "starting_price": sp,
+                    }
+                )
+
+            # Sort by score and return top dog if score is reasonable
+            scored_dogs.sort(key=lambda x: x["score"], reverse=True)
+
+            if scored_dogs and scored_dogs[0]["score"] > 20.0:  # Minimum threshold
+                winner = scored_dogs[0]
+                print(
+                    f"   🎯 Inferred plausible winner from form guide: {winner['dog_name']} (score: {winner['score']:.1f})"
+                )
+                print(
+                    f"      - Best time: {winner['best_time']:.2f}s, Form: {winner['recent_form']}, Win rate: {winner['win_rate']:.2%}"
+                )
+                return winner["dog_name"]
+
+            return None
+
+        except Exception as e:
+            print(f"   ⚠️ Error inferring winner from form guide: {e}")
+            return None
 
     def scrape_race_results(self, race_info: Dict[str, Any]) -> Dict[str, Any]:
         """Scrape race results including winners, odds, track conditions, and speed ratings from thedogs.com.au"""
@@ -1398,8 +1873,9 @@ class EnhancedComprehensiveProcessor:
     def extract_track_conditions(self, soup) -> Optional[Dict[str, Any]]:
         """Enhanced track condition extraction with false positive prevention"""
         try:
-            from enhanced_track_condition_extractor import \
-                EnhancedTrackConditionExtractor
+            from enhanced_track_condition_extractor import (
+                EnhancedTrackConditionExtractor,
+            )
 
             # Use enhanced extractor
             extractor = EnhancedTrackConditionExtractor()
@@ -1768,8 +2244,8 @@ class EnhancedComprehensiveProcessor:
         try:
             # First try to access the expert form page directly
             # Remove query parameters like ?trial=false before adding /expert-form
-            base_url = race_url.split('?')[0].rstrip('/')
-            expert_form_url = base_url + '/expert-form'
+            base_url = race_url.split("?")[0].rstrip("/")
+            expert_form_url = base_url + "/expert-form"
             print(f"   🎯 Attempting to access expert form: {expert_form_url}")
 
             try:
@@ -3256,7 +3732,9 @@ class EnhancedComprehensiveProcessor:
                         dog.get("best_time", 0.0),
                     ),
                 )
-                print(f"   📊 DEBUG: Attempting to insert data for dog {dog['dog_clean_name']} into database")
+                print(
+                    f"   📊 DEBUG: Attempting to insert data for dog {dog['dog_clean_name']} into database"
+                )
 
             conn.commit()
             print(
@@ -3390,6 +3868,34 @@ class EnhancedComprehensiveProcessor:
         print(f"   ✅ Processed: {results['processed_count']}")
         print(f"   ❌ Failed: {results['failed_count']}")
         print(f"   ⏭️ Skipped: {results['skipped_count']}")
+
+        # Step 2: Attempt to backfill winners for pending races if web driver is available
+        if self.driver and self.enable_web_scraping and results["processed_count"] > 0:
+            print(f"\n🔄 Starting backfill process for pending races...")
+            backfill_results = self.backfill_winners_for_pending_races(
+                max_races=25, max_retries_per_race=3
+            )
+
+            if backfill_results.get("status") == "success":
+                results["backfill_results"] = backfill_results
+                print(f"\n📈 Backfill Summary:")
+                print(
+                    f"   ✅ Winners backfilled: {backfill_results.get('backfilled_count', 0)}"
+                )
+                print(
+                    f"   ❌ Backfill failed: {backfill_results.get('failed_count', 0)}"
+                )
+                print(
+                    f"   ⏭️ Backfill skipped: {backfill_results.get('skipped_count', 0)}"
+                )
+            else:
+                print(
+                    f"   ⚠️ Backfill process: {backfill_results.get('status', 'unknown')}"
+                )
+        elif not self.driver or not self.enable_web_scraping:
+            print(f"\n⚠️ Web driver not available - skipping backfill process")
+        else:
+            print(f"\n💡 No new races processed - skipping backfill")
 
         return results
 
@@ -3575,6 +4081,321 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         except Exception as e:
             print(f"     ❌ Error collecting weather data: {e}")
             return None
+
+    def backfill_winners_for_pending_races(
+        self, max_races: int = 50, max_retries_per_race: int = 3
+    ) -> Dict[str, Any]:
+        """Backfill winners for races with pending status by attempting to scrape race results"""
+        if not self.driver or not self.enable_web_scraping:
+            print("⚠️ Web driver not available for backfilling - skipping")
+            return {"status": "skipped", "reason": "No web driver available"}
+
+        print(f"🔄 Starting backfill process for pending races (max: {max_races})...")
+
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        try:
+            # Query pending races ordered by most recent first
+            cursor.execute(
+                """
+                SELECT race_id, venue, race_number, race_date, url, 
+                       scraping_attempts, last_scraped_at
+                FROM race_metadata 
+                WHERE results_status = 'pending' 
+                   OR (results_status IS NULL AND (winner_name IS NULL OR winner_name = ''))
+                ORDER BY race_date DESC, race_number ASC
+                LIMIT ?
+                """,
+                (max_races,),
+            )
+
+            pending_races = cursor.fetchall()
+
+            if not pending_races:
+                print("✅ No pending races found for backfill")
+                return {
+                    "status": "success",
+                    "message": "No pending races",
+                    "backfilled_count": 0,
+                }
+
+            print(f"📊 Found {len(pending_races)} pending races for backfill")
+
+            backfill_results = {
+                "status": "success",
+                "backfilled_count": 0,
+                "failed_count": 0,
+                "skipped_count": 0,
+                "results": [],
+            }
+
+            for race_row in pending_races:
+                (
+                    race_id,
+                    venue,
+                    race_number,
+                    race_date,
+                    existing_url,
+                    scraping_attempts,
+                    last_scraped_at,
+                ) = race_row
+                scraping_attempts = scraping_attempts or 0
+
+                print(f"\n🎯 Backfilling race: {race_id}")
+
+                # Skip if already attempted too many times
+                if scraping_attempts >= max_retries_per_race:
+                    print(
+                        f"   ⏭️ Skipping - already attempted {scraping_attempts} times (max: {max_retries_per_race})"
+                    )
+                    backfill_results["skipped_count"] += 1
+                    backfill_results["results"].append(
+                        {
+                            "race_id": race_id,
+                            "status": "skipped",
+                            "reason": f"Max retries exceeded ({scraping_attempts})",
+                        }
+                    )
+                    continue
+
+                # Parse race_date string back to date object
+                try:
+                    if isinstance(race_date, str):
+                        race_date_obj = datetime.strptime(race_date, "%Y-%m-%d").date()
+                    else:
+                        race_date_obj = race_date
+                except:
+                    print(f"   ❌ Invalid race date format: {race_date}")
+                    backfill_results["failed_count"] += 1
+                    continue
+
+                # Create race_info dict for scraping
+                race_info = {
+                    "race_id": race_id,
+                    "venue": venue,
+                    "race_number": race_number,
+                    "race_date": race_date_obj,
+                }
+
+                # Attempt to scrape race results
+                try:
+                    print(
+                        f"   🌐 Attempting to scrape results for {venue} Race {race_number} on {race_date}..."
+                    )
+                    race_results = self.scrape_race_results(race_info)
+
+                    # Update scraping attempts
+                    cursor.execute(
+                        """
+                        UPDATE race_metadata 
+                        SET scraping_attempts = ?, last_scraped_at = ?
+                        WHERE race_id = ?
+                        """,
+                        (scraping_attempts + 1, datetime.now(), race_id),
+                    )
+
+                    # Check if we successfully scraped a winner
+                    if race_results.get("scraped_successfully") and race_results.get(
+                        "winner"
+                    ):
+                        winner_name = race_results["winner"]
+                        winner_components = self.parse_scraped_result_components(
+                            winner_name
+                        )
+                        clean_winner_name = (
+                            winner_components["clean_name"] or winner_name
+                        )
+
+                        # Update race metadata with winner info
+                        cursor.execute(
+                            """
+                            UPDATE race_metadata 
+                            SET winner_name = ?, winner_source = 'scrape', 
+                                winner_odds = ?, winner_time = ?, 
+                                url = ?, results_status = 'complete',
+                                track_condition = ?, weather = ?
+                            WHERE race_id = ?
+                            """,
+                            (
+                                clean_winner_name,
+                                race_results.get("winner_odds"),
+                                race_results.get("winner_time"),
+                                race_results.get("race_url") or existing_url,
+                                race_results.get("track_condition"),
+                                race_results.get("weather"),
+                                race_id,
+                            ),
+                        )
+
+                        print(
+                            f"   ✅ Successfully backfilled winner: {clean_winner_name}"
+                        )
+                        backfill_results["backfilled_count"] += 1
+                        backfill_results["results"].append(
+                            {
+                                "race_id": race_id,
+                                "status": "success",
+                                "winner": clean_winner_name,
+                                "attempts": scraping_attempts + 1,
+                            }
+                        )
+
+                    else:
+                        print(f"   ⚠️ Scraping failed - no winner found")
+                        backfill_results["failed_count"] += 1
+                        backfill_results["results"].append(
+                            {
+                                "race_id": race_id,
+                                "status": "failed",
+                                "reason": "No winner found in scraped data",
+                                "attempts": scraping_attempts + 1,
+                            }
+                        )
+
+                    # Short delay between attempts to be respectful
+                    time.sleep(2)
+
+                except Exception as e:
+                    print(f"   ❌ Scraping error: {e}")
+                    # Still update attempts count
+                    cursor.execute(
+                        """
+                        UPDATE race_metadata 
+                        SET scraping_attempts = ?, last_scraped_at = ?
+                        WHERE race_id = ?
+                        """,
+                        (scraping_attempts + 1, datetime.now(), race_id),
+                    )
+
+                    backfill_results["failed_count"] += 1
+                    backfill_results["results"].append(
+                        {
+                            "race_id": race_id,
+                            "status": "error",
+                            "error": str(e),
+                            "attempts": scraping_attempts + 1,
+                        }
+                    )
+
+                # Commit after each race to preserve progress
+                conn.commit()
+
+            print(f"\n📈 Backfill Summary:")
+            print(
+                f"   ✅ Successfully backfilled: {backfill_results['backfilled_count']}"
+            )
+            print(f"   ❌ Failed: {backfill_results['failed_count']}")
+            print(f"   ⏭️ Skipped: {backfill_results['skipped_count']}")
+
+            return backfill_results
+
+        except Exception as e:
+            print(f"❌ Backfill process error: {e}")
+            return {"status": "error", "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_pending_race_statistics(self) -> Dict[str, Any]:
+        """Get statistics about races with pending winner status"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        try:
+            # Count total pending races
+            cursor.execute(
+                """
+                SELECT COUNT(*) as total_pending
+                FROM race_metadata 
+                WHERE results_status = 'pending' 
+                   OR (results_status IS NULL AND (winner_name IS NULL OR winner_name = ''))
+                """
+            )
+            total_pending = cursor.fetchone()[0]
+
+            # Count pending races by venue
+            cursor.execute(
+                """
+                SELECT venue, COUNT(*) as count
+                FROM race_metadata 
+                WHERE results_status = 'pending' 
+                   OR (results_status IS NULL AND (winner_name IS NULL OR winner_name = ''))
+                GROUP BY venue
+                ORDER BY count DESC
+                """
+            )
+            by_venue = dict(cursor.fetchall())
+
+            # Count pending races by scraping attempts
+            cursor.execute(
+                """
+                SELECT 
+                    COALESCE(scraping_attempts, 0) as attempts,
+                    COUNT(*) as count
+                FROM race_metadata 
+                WHERE results_status = 'pending' 
+                   OR (results_status IS NULL AND (winner_name IS NULL OR winner_name = ''))
+                GROUP BY COALESCE(scraping_attempts, 0)
+                ORDER BY attempts
+                """
+            )
+            by_attempts = dict(cursor.fetchall())
+
+            # Get recent pending races (sample)
+            cursor.execute(
+                """
+                SELECT race_id, venue, race_number, race_date, 
+                       COALESCE(scraping_attempts, 0) as attempts
+                FROM race_metadata 
+                WHERE results_status = 'pending' 
+                   OR (results_status IS NULL AND (winner_name IS NULL OR winner_name = ''))
+                ORDER BY race_date DESC, race_number ASC
+                LIMIT 10
+                """
+            )
+            recent_sample = cursor.fetchall()
+
+            # Count races with complete status for comparison
+            cursor.execute(
+                """
+                SELECT COUNT(*) as total_complete
+                FROM race_metadata 
+                WHERE results_status = 'complete' 
+                   AND winner_name IS NOT NULL 
+                   AND winner_name != ''
+                """
+            )
+            total_complete = cursor.fetchone()[0]
+
+            statistics = {
+                "total_pending": total_pending,
+                "total_complete": total_complete,
+                "completion_rate": (
+                    total_complete / (total_pending + total_complete)
+                    if (total_pending + total_complete) > 0
+                    else 0
+                ),
+                "by_venue": by_venue,
+                "by_attempts": by_attempts,
+                "recent_sample": [
+                    {
+                        "race_id": row[0],
+                        "venue": row[1],
+                        "race_number": row[2],
+                        "race_date": row[3],
+                        "attempts": row[4],
+                    }
+                    for row in recent_sample
+                ],
+            }
+
+            return statistics
+
+        except Exception as e:
+            print(f"❌ Error getting pending race statistics: {e}")
+            return {"error": str(e)}
+        finally:
+            conn.close()
 
 
 def main():

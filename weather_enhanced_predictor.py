@@ -31,8 +31,8 @@ import pandas as pd
 
 from constants import DOG_NAME_KEY
 from json_utils import safe_correlation, safe_float, safe_json_dump, safe_mean
-from utils.file_naming import build_prediction_filename
 from logger import key_mismatch_logger
+from utils.file_naming import build_prediction_filename
 
 warnings.filterwarnings("ignore")
 
@@ -478,9 +478,9 @@ class WeatherEnhancedPredictor:
                             "dog_record": dict(dog_info),
                             "available_keys": list(dog_info.keys()),
                             "missing_key": DOG_NAME_KEY,
-                            "step": "weather_enhanced_prediction_processing"
+                            "step": "weather_enhanced_prediction_processing",
                         },
-                        dog_record=dict(dog_info)
+                        dog_record=dict(dog_info),
                     )
                     continue
 
@@ -590,7 +590,9 @@ class WeatherEnhancedPredictor:
                                 "weather_adjustment_factor": float(weather_adjustment),
                                 "weather_adjusted_score": float(fallback_score),
                                 "prediction_score": float(fallback_score),
-                                "win_probability": float(fallback_score),  # Alias for consistency
+                                "win_probability": float(
+                                    fallback_score
+                                ),  # Alias for consistency
                                 "confidence": 0.1,
                                 "historical_races": len(dog_historical),
                                 "form_data_races": len(dog_form_data),
@@ -610,7 +612,9 @@ class WeatherEnhancedPredictor:
                             "weather_adjustment_factor": float(weather_adjustment),
                             "weather_adjusted_score": float(basic_score),
                             "prediction_score": float(basic_score),
-                            "win_probability": float(basic_score),  # Alias for consistency
+                            "win_probability": float(
+                                basic_score
+                            ),  # Alias for consistency
                             "confidence": 0.05,
                             "historical_races": len(dog_historical),
                             "form_data_races": len(dog_form_data),
@@ -711,9 +715,9 @@ class WeatherEnhancedPredictor:
                             "dog_record": dict(dog),
                             "available_keys": list(dog.keys()),
                             "missing_key": DOG_NAME_KEY,
-                            "step": "form_data_loading_participating_dogs_processing"
+                            "step": "form_data_loading_participating_dogs_processing",
                         },
-                        dog_record=dict(dog)
+                        dog_record=dict(dog),
                     )
 
             # Filter form data for participating dogs
@@ -1309,12 +1313,12 @@ class WeatherEnhancedPredictor:
                             "dog_record": dict(dog),
                             "available_keys": list(dog.keys()),
                             "missing_key": DOG_NAME_KEY,
-                            "step": "fallback_prediction_processing"
+                            "step": "fallback_prediction_processing",
                         },
-                        dog_record=dict(dog)
+                        dog_record=dict(dog),
                     )
                     continue
-                
+
                 prediction_value = max(0.1, 0.8 - (i * 0.1))
                 predictions.append(
                     {

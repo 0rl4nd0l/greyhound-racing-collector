@@ -5,30 +5,33 @@ Investigates specific issues found in temporal coverage analysis and provides ac
 """
 
 import sqlite3
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from datetime import datetime, timedelta
 import warnings
-warnings.filterwarnings('ignore')
+from datetime import datetime, timedelta
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
+
+warnings.filterwarnings("ignore")
+
 
 class AnomalyInvestigator:
     def __init__(self, db_path):
         self.db_path = db_path
         self.conn = sqlite3.connect(db_path)
-        
+
     def __enter__(self):
         return self
-        
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.conn.close()
-    
+
     def investigate_gap_period(self):
         """Investigate the July 19-22 gap period in detail"""
         print("🔍 INVESTIGATING JULY 19-22 GAP PERIOD")
         print("=" * 50)
-        
+
         # Check races around the gap period
         query = """
         SELECT race_date, COUNT(*) as race_count, 
@@ -40,11 +43,11 @@ class AnomalyInvestigator:
         GROUP BY race_date
         ORDER BY race_date
         """
-        
+
         gap_data = pd.read_sql_query(query, self.conn)
         print("Race activity around the gap period:")
         print(gap_data.to_string(index=False))
-        
+
         # Check if any races exist with invalid dates that might belong to gap period
         invalid_date_query = """
         SELECT race_date, venue, race_name, created_at
@@ -52,12 +55,12 @@ class AnomalyInvestigator:
         WHERE race_date NOT LIKE '____-__-__'
         OR race_date IS NULL
         """
-        
+
         invalid_dates = pd.read_sql_query(invalid_date_query, self.conn)
         if not invalid_dates.empty:
             print(f"\n⚠️  Found {len(invalid_dates)} races with invalid dates:")
             print(invalid_dates.to_string(index=False))
-        
+
         # Analyze venue patterns during gap
         venue_analysis = """
         SELECT venue, 
@@ -69,18 +72,18 @@ class AnomalyInvestigator:
         HAVING before_gap > 0 OR after_gap > 0
         ORDER BY (before_gap + after_gap) DESC
         """
-        
+
         venue_patterns = pd.read_sql_query(venue_analysis, self.conn)
         print(f"\n📍 Venue activity patterns around gap:")
         print(venue_patterns.to_string(index=False))
-        
+
         return gap_data, invalid_dates, venue_patterns
-    
+
     def investigate_retroactive_data(self):
         """Investigate the retroactive data issue for Race ID 143"""
         print("\n🔍 INVESTIGATING RETROACTIVE DATA ISSUE (Race ID 143)")
         print("=" * 60)
-        
+
         # Get details of Race 143 and surrounding races
         query = """
         SELECT race_id, race_name, venue, race_date, created_at,
@@ -92,11 +95,11 @@ class AnomalyInvestigator:
         WHERE race_id BETWEEN 140 AND 146
         ORDER BY created_at
         """
-        
+
         retroactive_context = pd.read_sql_query(query, self.conn)
         print("Context around Race 143:")
         print(retroactive_context.to_string(index=False))
-        
+
         # Check for patterns in retroactive edits
         retroactive_pattern_query = """
         WITH race_sequence AS (
@@ -110,17 +113,17 @@ class AnomalyInvestigator:
         FROM race_sequence
         WHERE race_date < prev_race_date AND created_at > prev_created_at
         """
-        
+
         retroactive_count = pd.read_sql_query(retroactive_pattern_query, self.conn)
         print(f"\nTotal retroactive data instances: {retroactive_count.iloc[0, 0]}")
-        
+
         return retroactive_context
-    
+
     def analyze_data_collection_patterns(self):
         """Analyze data collection patterns and identify potential issues"""
         print("\n🔍 ANALYZING DATA COLLECTION PATTERNS")
         print("=" * 50)
-        
+
         # Daily collection patterns
         daily_pattern_query = """
         SELECT 
@@ -134,11 +137,11 @@ class AnomalyInvestigator:
         GROUP BY DATE(created_at)
         ORDER BY collection_date
         """
-        
+
         collection_patterns = pd.read_sql_query(daily_pattern_query, self.conn)
         print("Daily collection patterns:")
         print(collection_patterns.to_string(index=False))
-        
+
         # Check for batch loading patterns
         batch_analysis = """
         SELECT 
@@ -152,18 +155,18 @@ class AnomalyInvestigator:
         HAVING races_in_hour > 10
         ORDER BY races_in_hour DESC
         """
-        
+
         batch_patterns = pd.read_sql_query(batch_analysis, self.conn)
         print(f"\nLarge batch collections (>10 races per hour):")
         print(batch_patterns.to_string(index=False))
-        
+
         return collection_patterns, batch_patterns
-    
+
     def identify_schema_changes(self):
         """Identify potential schema changes based on data patterns"""
         print("\n🔍 IDENTIFYING POTENTIAL SCHEMA CHANGES")
         print("=" * 50)
-        
+
         # Check for changes in venue naming patterns
         venue_evolution_query = """
         SELECT 
@@ -174,31 +177,39 @@ class AnomalyInvestigator:
         GROUP BY DATE(created_at)
         ORDER BY collection_date
         """
-        
+
         venue_evolution = pd.read_sql_query(venue_evolution_query, self.conn)
-        
+
         # Identify unusual venue patterns
         unusual_venues = []
         for idx, row in venue_evolution.iterrows():
-            venues = str(row['venues_collected']).split(',')
+            venues = str(row["venues_collected"]).split(",")
             for venue in venues:
                 venue = venue.strip()
                 # Check for venues that don't follow typical patterns
-                if len(venue) < 3 or venue.upper() == venue or not venue.replace(' ', '').isalnum():
-                    if venue not in ['AP', 'GRDN']:  # Known exceptions
-                        unusual_venues.append({
-                            'date': row['collection_date'],
-                            'venue': venue,
-                            'reason': 'unusual_pattern'
-                        })
-        
+                if (
+                    len(venue) < 3
+                    or venue.upper() == venue
+                    or not venue.replace(" ", "").isalnum()
+                ):
+                    if venue not in ["AP", "GRDN"]:  # Known exceptions
+                        unusual_venues.append(
+                            {
+                                "date": row["collection_date"],
+                                "venue": venue,
+                                "reason": "unusual_pattern",
+                            }
+                        )
+
         if unusual_venues:
             print("Unusual venue patterns detected:")
             for venue_issue in unusual_venues:
-                print(f"  {venue_issue['date']}: '{venue_issue['venue']}' ({venue_issue['reason']})")
+                print(
+                    f"  {venue_issue['date']}: '{venue_issue['venue']}' ({venue_issue['reason']})"
+                )
         else:
             print("No unusual venue patterns detected.")
-        
+
         # Check for data quality degradation over time
         quality_timeline = """
         SELECT 
@@ -212,18 +223,18 @@ class AnomalyInvestigator:
         GROUP BY DATE(created_at)
         ORDER BY collection_date
         """
-        
+
         quality_data = pd.read_sql_query(quality_timeline, self.conn)
         print(f"\nData quality timeline:")
         print(quality_data.to_string(index=False))
-        
+
         return venue_evolution, unusual_venues, quality_data
-    
+
     def generate_recommendations(self):
         """Generate actionable recommendations based on findings"""
         print("\n📋 RECOMMENDATIONS FOR TEMPORAL COVERAGE IMPROVEMENT")
         print("=" * 70)
-        
+
         recommendations = [
             {
                 "priority": "HIGH",
@@ -234,8 +245,8 @@ class AnomalyInvestigator:
                     "Add daily data collection monitoring",
                     "Set up alerts for missing data periods > 2 days",
                     "Create backfill mechanism for detected gaps",
-                    "Verify if gap was due to no races or scraping failure"
-                ]
+                    "Verify if gap was due to no races or scraping failure",
+                ],
             },
             {
                 "priority": "MEDIUM",
@@ -246,8 +257,8 @@ class AnomalyInvestigator:
                     "Add race_date vs created_at validation rules",
                     "Log all data updates with before/after states",
                     "Flag records where race_date < previous race_date",
-                    "Consider implementing data versioning"
-                ]
+                    "Consider implementing data versioning",
+                ],
             },
             {
                 "priority": "MEDIUM",
@@ -258,8 +269,8 @@ class AnomalyInvestigator:
                     "Create venue master data table",
                     "Implement venue code validation",
                     "Map abbreviations to full venue names",
-                    "Add venue data quality checks"
-                ]
+                    "Add venue data quality checks",
+                ],
             },
             {
                 "priority": "LOW",
@@ -270,26 +281,26 @@ class AnomalyInvestigator:
                     "Add collection timestamp granularity",
                     "Monitor for unusual batch patterns",
                     "Implement distributed collection timing",
-                    "Track extraction vs race date correlations"
-                ]
-            }
+                    "Track extraction vs race date correlations",
+                ],
+            },
         ]
-        
+
         for rec in recommendations:
             print(f"\n🎯 {rec['priority']} PRIORITY - {rec['category']}")
             print(f"Issue: {rec['issue']}")
             print(f"Recommendation: {rec['recommendation']}")
             print("Action Items:")
-            for item in rec['action_items']:
+            for item in rec["action_items"]:
                 print(f"  ✓ {item}")
-        
+
         return recommendations
-    
+
     def create_monitoring_queries(self):
         """Create SQL queries for ongoing temporal monitoring"""
         print("\n📊 MONITORING QUERIES FOR ONGOING TEMPORAL ANALYSIS")
         print("=" * 60)
-        
+
         queries = {
             "daily_gap_detection": """
             -- Daily Gap Detection Query
@@ -313,7 +324,6 @@ class AnomalyInvestigator:
             LEFT JOIN daily_counts dc ON ds.check_date = dc.race_date
             ORDER BY ds.check_date DESC;
             """,
-            
             "retroactive_data_detection": """
             -- Retroactive Data Detection Query
             WITH race_sequence AS (
@@ -329,7 +339,6 @@ class AnomalyInvestigator:
             FROM race_sequence
             WHERE race_date < prev_race_date AND created_at > prev_created_at;
             """,
-            
             "venue_anomaly_detection": """
             -- Venue Anomaly Detection Query
             SELECT venue, COUNT(*) as race_count,
@@ -347,7 +356,6 @@ class AnomalyInvestigator:
             HAVING venue_type != 'NORMAL'
             ORDER BY race_count DESC;
             """,
-            
             "collection_pattern_monitoring": """
             -- Collection Pattern Monitoring Query
             SELECT 
@@ -368,72 +376,86 @@ class AnomalyInvestigator:
             GROUP BY DATE(created_at)
             HAVING pattern_type != 'NORMAL'
             ORDER BY collection_date DESC;
-            """
+            """,
         }
-        
+
         for query_name, query_sql in queries.items():
             print(f"\n--- {query_name.replace('_', ' ').title()} ---")
             print(query_sql.strip())
-        
+
         # Save queries to file for future use
-        with open('./temporal_monitoring_queries.sql', 'w') as f:
+        with open("./temporal_monitoring_queries.sql", "w") as f:
             f.write("-- Temporal Coverage Monitoring Queries\n")
             f.write("-- Generated by Temporal Anomaly Investigation\n\n")
             for query_name, query_sql in queries.items():
                 f.write(f"-- {query_name.replace('_', ' ').title()}\n")
                 f.write(query_sql.strip())
-                f.write("\n\n" + "="*50 + "\n\n")
-        
+                f.write("\n\n" + "=" * 50 + "\n\n")
+
         print(f"\n💾 Monitoring queries saved to 'temporal_monitoring_queries.sql'")
-        
+
         return queries
-    
+
     def run_full_investigation(self):
         """Run complete anomaly investigation"""
         print("🚨 TEMPORAL ANOMALY DEEP DIVE INVESTIGATION")
         print("=" * 60)
-        
+
         # Investigate specific issues
         gap_data, invalid_dates, venue_patterns = self.investigate_gap_period()
         retroactive_context = self.investigate_retroactive_data()
         collection_patterns, batch_patterns = self.analyze_data_collection_patterns()
         venue_evolution, unusual_venues, quality_data = self.identify_schema_changes()
-        
+
         # Generate recommendations
         recommendations = self.generate_recommendations()
-        
+
         # Create monitoring queries
         monitoring_queries = self.create_monitoring_queries()
-        
+
         return {
-            'gap_analysis': {'gap_data': gap_data, 'invalid_dates': invalid_dates, 'venue_patterns': venue_patterns},
-            'retroactive_analysis': retroactive_context,
-            'collection_analysis': {'patterns': collection_patterns, 'batches': batch_patterns},
-            'schema_analysis': {'venue_evolution': venue_evolution, 'unusual_venues': unusual_venues, 'quality_data': quality_data},
-            'recommendations': recommendations,
-            'monitoring_queries': monitoring_queries
+            "gap_analysis": {
+                "gap_data": gap_data,
+                "invalid_dates": invalid_dates,
+                "venue_patterns": venue_patterns,
+            },
+            "retroactive_analysis": retroactive_context,
+            "collection_analysis": {
+                "patterns": collection_patterns,
+                "batches": batch_patterns,
+            },
+            "schema_analysis": {
+                "venue_evolution": venue_evolution,
+                "unusual_venues": unusual_venues,
+                "quality_data": quality_data,
+            },
+            "recommendations": recommendations,
+            "monitoring_queries": monitoring_queries,
         }
+
 
 def main():
     """Main investigation execution"""
     database_path = "./databases/race_data.db"
-    
+
     try:
         with AnomalyInvestigator(database_path) as investigator:
             results = investigator.run_full_investigation()
-            print(f"\n" + "="*60)
+            print(f"\n" + "=" * 60)
             print("🎯 INVESTIGATION COMPLETE")
-            print("="*60)
+            print("=" * 60)
             print("Key outputs generated:")
             print("  ✓ Detailed anomaly analysis")
             print("  ✓ Actionable recommendations")
             print("  ✓ Monitoring SQL queries (temporal_monitoring_queries.sql)")
             print("  ✓ Implementation roadmap")
-            
+
     except Exception as e:
         print(f"Error during investigation: {e}")
         import traceback
+
         traceback.print_exc()
+
 
 if __name__ == "__main__":
     main()

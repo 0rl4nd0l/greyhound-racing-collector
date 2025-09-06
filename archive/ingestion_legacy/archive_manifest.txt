@@ -1,6 +1,0 @@
-/Users/orlandolee/greyhound_racing_collector/archive/ingestion_legacy/form_guide_scraper_2025.py -> outdated_scripts/form_guide_scraper_2025.py
-/Users/orlandolee/greyhound_racing_collector/archive/ingestion_legacy/greyhound_results_scraper_navigator.py -> outdated_scripts/greyhound_results_scraper_navigator.py
-/Users/orlandolee/greyhound_racing_collector/archive/ingestion_legacy/advanced_scraper.py -> archive/scripts_2025_07_23/advanced_scraper.py
-/Users/orlandolee/greyhound_racing_collector/archive/ingestion_legacy/greyhound_results_scraper_navigator_20250730173229.py -> archive/scripts_2025_07_23/greyhound_results_scraper_navigator.py
-/Users/orlandolee/greyhound_racing_collector/archive/ingestion_legacy/test_scraper.py -> archive/test_scraper.py
-/Users/orlandolee/greyhound_racing_collector/archive/ingestion_legacy/enhanced_expert_form_scraper.py -> archive_unused_scripts/data_processing/enhanced_expert_form_scraper.py

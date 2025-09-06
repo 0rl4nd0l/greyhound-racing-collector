@@ -39,6 +39,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
+
 # NOTE: Do not import TheGreyhoundRecorderScraper at module level to avoid heavy deps
 # It will be imported lazily when first needed using importlib.import_module
 
@@ -116,7 +117,9 @@ class ComprehensiveFormDataCollector:
         if self.greyhound_recorder is not None:
             return self.greyhound_recorder
         try:
-            import importlib, sys as _sys
+            import importlib
+            import sys as _sys
+
             # Ensure collector path is available for import by module name used in repo
             collectors_path = "src/collectors"
             if collectors_path not in _sys.path:
@@ -359,7 +362,9 @@ class ComprehensiveFormDataCollector:
             if self.greyhound_recorder is None:
                 self._load_greyhound_recorder()
             if self.greyhound_recorder is None:
-                logger.warning("Greyhound Recorder scraper unavailable; skipping this source")
+                logger.warning(
+                    "Greyhound Recorder scraper unavailable; skipping this source"
+                )
                 return {"success": False, "error": "scraper_unavailable"}
 
             # Get current form guides

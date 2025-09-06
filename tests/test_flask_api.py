@@ -173,7 +173,7 @@ def test_api_races_paginated_json_structure(client):
 
             for field in expected_runner_fields:
                 assert field in runner, f"Missing field '{field}' in runner object"
-            assert type(runner["box_number"]) is int, f"box_number should be an integer"
+            assert type(runner["box_number"]) is int, "box_number should be an integer"
 
 
 def save_snapshot(name, data):

@@ -29,6 +29,8 @@ from typing import Dict, List, Optional, Tuple
 
 import requests
 
+from utils.http_client import get_shared_session
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -99,6 +101,9 @@ class OpenMeteoWeatherService:
 
         # Initialize database tables
         self._initialize_weather_tables()
+
+        # Shared HTTP session
+        self.session = get_shared_session()
 
     def _initialize_venue_locations(self) -> Dict[str, VenueLocation]:
         """Initialize venue to coordinate mappings"""
@@ -529,10 +534,18 @@ class OpenMeteoWeatherService:
                 "forecast_days": 1,
             }
 
-            response = requests.get(url, params=params, timeout=30)
-            response.raise_for_status()
+            response = None
+            try:
+                response = self.session.get(url, params=params, timeout=30)
+                response.raise_for_status()
 
-            data = response.json()
+                data = response.json()
+            finally:
+                if response is not None:
+                    try:
+                        response.close()
+                    except Exception:
+                        pass
 
             # Parse current weather
             if "current_weather" in data:
@@ -650,10 +663,18 @@ class OpenMeteoWeatherService:
                 "end_date": target_date,
             }
 
-            response = requests.get(url, params=params, timeout=30)
-            response.raise_for_status()
+            response = None
+            try:
+                response = self.session.get(url, params=params, timeout=30)
+                response.raise_for_status()
 
-            data = response.json()
+                data = response.json()
+            finally:
+                if response is not None:
+                    try:
+                        response.close()
+                    except Exception:
+                        pass
 
             # Parse daily forecast
             if "daily" in data and data["daily"]["time"]:

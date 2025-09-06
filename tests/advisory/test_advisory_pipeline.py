@@ -1,6 +1,6 @@
-import json
-from advisory import AdvisoryGenerator
 import pytest
+
+from advisory import AdvisoryGenerator
 
 
 @pytest.fixture
@@ -51,22 +51,31 @@ def test_advisory_pipeline_shapes_output(sample_inputs, monkeypatch):
                 },
             }
 
-    from advisory import QAAnalyzer as RealQA
-
     monkeypatch.setattr("advisory.QAAnalyzer", lambda: FakeAnalyzer())
     gen = AdvisoryGenerator(api_key=None)
 
     out = gen.generate_advisory(data=sample_inputs)
     assert out["success"] is True
     assert "messages" in out and isinstance(out["messages"], list)
-    assert any(m["type"] in ("WARNING", "CRITICAL", "INFO") for m in out["messages"])  # types present
+    assert any(
+        m["type"] in ("WARNING", "CRITICAL", "INFO") for m in out["messages"]
+    )  # types present
 
     # JSON-shaped ML output
     ml = out["ml_json"]
-    assert set(["version", "timestamp", "summary", "messages", "raw_validation", "raw_analysis", "feature_flags"]).issubset(ml.keys())
+    assert set(
+        [
+            "version",
+            "timestamp",
+            "summary",
+            "messages",
+            "raw_validation",
+            "raw_analysis",
+            "feature_flags",
+        ]
+    ).issubset(ml.keys())
     assert isinstance(ml["summary"], dict)
 
     # Domain rule check: ensure winner present in race_data, not inferred from historical
     assert "race_data" in out["analysis_results"] or "race_data" in sample_inputs
     assert sample_inputs["race_data"]["winner"] == "Fast Pup"
-

@@ -1,0 +1,418 @@
+[2025-08-31 11:32:31 +1000] [54463] [INFO] Starting gunicorn 23.0.0
+[2025-08-31 11:32:31 +1000] [54463] [INFO] Listening at: http://0.0.0.0:5002 (54463)
+[2025-08-31 11:32:31 +1000] [54463] [INFO] Using worker: gthread
+[2025-08-31 11:32:31 +1000] [54506] [INFO] Booting worker with pid: 54506
+[2025-08-31 11:32:31 +1000] [54515] [INFO] Booting worker with pid: 54515
+[2025-08-31 11:32:31 +1000] [54517] [INFO] Booting worker with pid: 54517
+2025-08-31 11:32:42,128 - ml_system_v4 - INFO - 🗄️ MLSystemV4 using database: /Users/test/Desktop/greyhound_racing_collector/databases/canonical_greyhound_data.db
+2025-08-31 11:32:42,128 - ml_system_v4 - INFO - 🗄️ MLSystemV4 using database: /Users/test/Desktop/greyhound_racing_collector/databases/canonical_greyhound_data.db
+2025-08-31 11:32:42,128 - ml_system_v4 - INFO - 🗄️ MLSystemV4 using database: /Users/test/Desktop/greyhound_racing_collector/databases/canonical_greyhound_data.db
+2025-08-31 11:32:42,133 - temporal_feature_builder - INFO - ℹ️ TGR integration disabled (set TGR_ENABLED=1 to override)
+2025-08-31 11:32:42,133 - temporal_feature_builder - INFO - ℹ️ TGR integration disabled (set TGR_ENABLED=1 to override)
+2025-08-31 11:32:42,134 - temporal_feature_builder - INFO - ℹ️ TGR integration disabled (set TGR_ENABLED=1 to override)
+2025-08-31 11:32:42,137 - model_registry - INFO - 🗂️  Model Registry initialized: 10 models tracked
+2025-08-31 11:32:42,137 - model_registry - INFO - 🗂️  Model Registry initialized: 10 models tracked
+2025-08-31 11:32:42,137 - model_registry - INFO - 🗂️  Model Registry initialized: 10 models tracked
+2025-08-31 11:32:42,161 - ml_system_v4 - INFO - 📥 Loaded model from Model Registry (best model)
+2025-08-31 11:32:42,161 - ml_system_v4 - INFO - 📥 Loaded model from Model Registry (best model)
+2025-08-31 11:32:42,161 - ml_system_v4 - INFO - 📥 Loaded model from Model Registry (best model)
+2025-08-31 11:32:42,172 - enhanced_accuracy_optimizer - INFO - 🎯 Enhanced Accuracy Optimizer initialized
+2025-08-31 11:32:42,173 - enhanced_accuracy_optimizer - INFO - 🎯 Enhanced Accuracy Optimizer initialized
+2025-08-31 11:32:42,173 - enhanced_accuracy_optimizer - INFO - 🎯 Enhanced Accuracy Optimizer initialized
+2025-08-31 11:32:42,174 - enhanced_accuracy_optimizer - INFO - 🎯 Enhanced Accuracy Optimizer initialized
+2025-08-31 11:32:42,174 - enhanced_accuracy_optimizer - INFO - 🎯 Enhanced Accuracy Optimizer initialized
+2025-08-31 11:32:42,175 - enhanced_accuracy_optimizer - INFO - 🎯 Enhanced Accuracy Optimizer initialized
+2025-08-31 11:32:42,176 - enhanced_accuracy_optimizer - INFO - 🎯 Enhanced accuracy optimization integrated with ML System V4
+2025-08-31 11:32:42,176 - enhanced_accuracy_optimizer - INFO - 🎯 Enhanced accuracy optimization integrated with ML System V4
+2025-08-31 11:32:42,176 - enhanced_accuracy_optimizer - INFO - 🎯 Enhanced accuracy optimization integrated with ML System V4
+2025-08-31 11:32:42,177 - ml_system_v4 - INFO - 🎯 Enhanced accuracy optimizer integrated successfully
+2025-08-31 11:32:42,178 - ml_system_v4 - INFO - 🎯 Enhanced accuracy optimizer integrated successfully
+2025-08-31 11:32:42,178 - ml_system_v4 - INFO - 🎯 Enhanced accuracy optimizer integrated successfully
+2025-08-31 11:32:42,179 - ml_system_v4 - INFO - 🛡️ ML System V4 initialized with temporal leakage protection and enhanced accuracy
+2025-08-31 11:32:42,179 - ml_system_v4 - INFO - 🛡️ ML System V4 initialized with temporal leakage protection and enhanced accuracy
+2025-08-31 11:32:42,180 - ml_system_v4 - INFO - 🛡️ ML System V4 initialized with temporal leakage protection and enhanced accuracy
+2025-08-31 11:32:42,180 - enhanced_prediction_service - INFO - ✅ Enhanced Prediction Service initialized with accuracy optimization
+2025-08-31 11:32:42,181 - enhanced_prediction_service - INFO - ✅ Enhanced Prediction Service initialized with accuracy optimization
+2025-08-31 11:32:42,181 - enhanced_prediction_service - INFO - ✅ Enhanced Prediction Service initialized with accuracy optimization
+2025-08-31 11:32:42,387 - db_performance_optimizer - INFO - 🔗 SQLite Connection Pool initialized:
+2025-08-31 11:32:42,387 - db_performance_optimizer - INFO - 🔗 SQLite Connection Pool initialized:
+2025-08-31 11:32:42,388 - db_performance_optimizer - INFO - 🔗 SQLite Connection Pool initialized:
+2025-08-31 11:32:42,389 - db_performance_optimizer - INFO -    📊 Pool size: 20
+2025-08-31 11:32:42,389 - db_performance_optimizer - INFO -    📊 Pool size: 20
+2025-08-31 11:32:42,390 - db_performance_optimizer - INFO -    📊 Pool size: 20
+2025-08-31 11:32:42,391 - db_performance_optimizer - INFO -    📁 Database: /Users/test/Desktop/greyhound_racing_collector/databases/canonical_greyhound_data.db
+2025-08-31 11:32:42,391 - db_performance_optimizer - INFO -    📁 Database: /Users/test/Desktop/greyhound_racing_collector/databases/canonical_greyhound_data.db
+2025-08-31 11:32:42,391 - db_performance_optimizer - INFO -    📁 Database: /Users/test/Desktop/greyhound_racing_collector/databases/canonical_greyhound_data.db
+2025-08-31 11:32:42,393 - db_performance_optimizer - INFO -    ⏱️ Timeout: 30.0s
+2025-08-31 11:32:42,393 - db_performance_optimizer - INFO -    ⏱️ Timeout: 30.0s
+2025-08-31 11:32:42,393 - db_performance_optimizer - INFO -    ⏱️ Timeout: 30.0s
+2025-08-31 11:32:42,394 - db_performance_optimizer - INFO - 🚀 Database optimization initialized
+2025-08-31 11:32:42,394 - db_performance_optimizer - INFO - 🚀 Database optimization initialized
+2025-08-31 11:32:42,395 - db_performance_optimizer - INFO - 🚀 Database optimization initialized
+2025-08-31 11:32:42,398 - root - INFO - [MODEL_REGISTRY] Initializing model registry system...
+2025-08-31 11:32:42,399 - root - INFO - [MODEL_REGISTRY] Initializing model registry system...
+2025-08-31 11:32:42,399 - root - INFO - [MODEL_REGISTRY] Initializing model registry system...
+2025-08-31 11:32:42,400 - system - INFO - [MODEL_REGISTRY] [MODEL_REGISTRY] Initializing model registry system...
+2025-08-31 11:32:42,401 - system - INFO - [MODEL_REGISTRY] [MODEL_REGISTRY] Initializing model registry system...
+2025-08-31 11:32:42,401 - system - INFO - [MODEL_REGISTRY] [MODEL_REGISTRY] Initializing model registry system...
+2025-08-31 11:32:42,409 - root - INFO - [MODEL_REGISTRY] Model registry initialized successfully: 10 models tracked
+2025-08-31 11:32:42,410 - root - INFO - [MODEL_REGISTRY] Model registry initialized successfully: 10 models tracked
+2025-08-31 11:32:42,410 - root - INFO - [MODEL_REGISTRY] Model registry initialized successfully: 10 models tracked
+2025-08-31 11:32:42,411 - system - INFO - [MODEL_REGISTRY] [MODEL_REGISTRY] Model registry initialized successfully: 10 models tracked
+2025-08-31 11:32:42,412 - system - INFO - [MODEL_REGISTRY] [MODEL_REGISTRY] Model registry initialized successfully: 10 models tracked
+2025-08-31 11:32:42,412 - system - INFO - [MODEL_REGISTRY] [MODEL_REGISTRY] Model registry initialized successfully: 10 models tracked
+🚫 All profiling functionality has been disabled to prevent conflicts
+📋 Enhanced Logger initialized - Log directory: logs
+🔍 Debug mode: DISABLED
+🚀 CSV ingestion system available
+✅ Unified form guide ingestion available
+🚀 Endpoint optimization enabled (caching + optimized queries)
+🚀 Database performance optimization enabled
+⚠️ Strategy Manager not available
+🚀 Batch prediction pipeline available
+🚀 Background task system available
+🚀 Asset management system available
+🚀 Model training API blueprint available
+🛡️ Guardian Service available
+🚀 ML System V4 (Advanced) available
+🎯 Enhanced Prediction Service (Advanced Accuracy Optimizer) available
+🛡️ Module guard startup check passed
+✅ Asset management system initialized successfully
+🎯 Model Training API routes registered successfully
+[watcher] Watching /Users/test/Downloads for new form guide CSVs...
+✅ Downloads watcher started
+[upcoming-watcher] Watching /Users/test/Desktop/greyhound_racing_collector/data/upcoming_races for CSV changes...
+✅ Upcoming races watcher started
+✅ Database performance optimization initialized
+✅ Model registry initialized successfully: 10 models tracked
+🗄️ Initializing database manager...
+✅ Database manager initialized successfully with database: /Users/test/Desktop/greyhound_racing_collector/databases/canonical_greyhound_data.db
+✅ Ensured DB result indexes
+✅ Ensured minimal ML schema columns/tables
+127.0.0.1 - - [31/Aug/2025:11:32:42 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+2025-08-31 11:32:42,470 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 6.71ms
+127.0.0.1 - - [31/Aug/2025:11:32:42 +1000] "GET /api/stats HTTP/1.1" 200 279 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+🚫 All profiling functionality has been disabled to prevent conflicts
+📋 Enhanced Logger initialized - Log directory: logs
+🔍 Debug mode: DISABLED
+🚀 CSV ingestion system available
+✅ Unified form guide ingestion available
+🚀 Endpoint optimization enabled (caching + optimized queries)
+🚀 Database performance optimization enabled
+⚠️ Strategy Manager not available
+🚀 Batch prediction pipeline available
+🚀 Background task system available
+🚀 Asset management system available
+🚀 Model training API blueprint available
+🛡️ Guardian Service available
+🚀 ML System V4 (Advanced) available
+🎯 Enhanced Prediction Service (Advanced Accuracy Optimizer) available
+🛡️ Module guard startup check passed
+✅ Asset management system initialized successfully
+🎯 Model Training API routes registered successfully
+[watcher] Watching /Users/test/Downloads for new form guide CSVs...
+✅ Downloads watcher started
+[upcoming-watcher] Watching /Users/test/Desktop/greyhound_racing_collector/data/upcoming_races for CSV changes...
+✅ Upcoming races watcher started
+✅ Database performance optimization initialized
+✅ Model registry initialized successfully: 10 models tracked
+🗄️ Initializing database manager...
+✅ Database manager initialized successfully with database: /Users/test/Desktop/greyhound_racing_collector/databases/canonical_greyhound_data.db
+✅ Ensured DB result indexes
+✅ Ensured minimal ML schema columns/tables
+127.0.0.1 - - [31/Aug/2025:11:32:46 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+2025-08-31 11:32:54,921 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 2.81ms
+2025-08-31 11:32:54,940 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 4.29ms
+127.0.0.1 - - [31/Aug/2025:11:32:54 +1000] "GET / HTTP/1.1" 200 38348 "-" "curl/8.7.1"
+127.0.0.1 - - [31/Aug/2025:11:33:01 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+2025-08-31 11:33:01,931 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 3.62ms
+🚫 All profiling functionality has been disabled to prevent conflicts
+📋 Enhanced Logger initialized - Log directory: logs
+🔍 Debug mode: DISABLED
+🚀 CSV ingestion system available
+✅ Unified form guide ingestion available
+🚀 Endpoint optimization enabled (caching + optimized queries)
+🚀 Database performance optimization enabled
+⚠️ Strategy Manager not available
+🚀 Batch prediction pipeline available
+🚀 Background task system available
+🚀 Asset management system available
+🚀 Model training API blueprint available
+🛡️ Guardian Service available
+🚀 ML System V4 (Advanced) available
+🎯 Enhanced Prediction Service (Advanced Accuracy Optimizer) available
+🛡️ Module guard startup check passed
+✅ Asset management system initialized successfully
+🎯 Model Training API routes registered successfully
+[watcher] Watching /Users/test/Downloads for new form guide CSVs...
+✅ Downloads watcher started
+[upcoming-watcher] Watching /Users/test/Desktop/greyhound_racing_collector/data/upcoming_races for CSV changes...
+✅ Upcoming races watcher started
+✅ Database performance optimization initialized
+✅ Model registry initialized successfully: 10 models tracked
+🗄️ Initializing database manager...
+✅ Database manager initialized successfully with database: /Users/test/Desktop/greyhound_racing_collector/databases/canonical_greyhound_data.db
+✅ Ensured DB result indexes
+✅ Ensured minimal ML schema columns/tables
+127.0.0.1 - - [31/Aug/2025:11:33:01 +1000] "GET /api/stats HTTP/1.1" 200 279 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:11:33:16 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:11:33:31 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+2025-08-31 11:33:31,947 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 2.25ms
+127.0.0.1 - - [31/Aug/2025:11:33:31 +1000] "GET /api/stats HTTP/1.1" 200 278 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:11:33:52 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:11:34:08 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+2025-08-31 11:34:08,898 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 4.59ms
+127.0.0.1 - - [31/Aug/2025:11:34:08 +1000] "GET /api/stats HTTP/1.1" 200 279 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:11:34:35 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+2025-08-31 11:35:07,951 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 4.66ms
+127.0.0.1 - - [31/Aug/2025:11:35:07 +1000] "GET /api/stats HTTP/1.1" 200 279 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:11:35:21 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:11:35:36 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+2025-08-31 11:35:37,946 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 7.31ms
+127.0.0.1 - - [31/Aug/2025:11:35:37 +1000] "GET /api/stats HTTP/1.1" 200 279 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:11:35:51 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+2025-08-31 11:36:16,953 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 11.15ms
+127.0.0.1 - - [31/Aug/2025:11:36:16 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:11:36:17 +1000] "GET /api/stats HTTP/1.1" 200 278 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+2025-08-31 11:36:24,286 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 10.02ms
+2025-08-31 11:36:24,355 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 34.58ms
+127.0.0.1 - - [31/Aug/2025:11:36:24 +1000] "GET / HTTP/1.1" 200 38348 "-" "curl/8.7.1"
+2025-08-31 11:36:56,415 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 12.33ms
+127.0.0.1 - - [31/Aug/2025:11:36:56 +1000] "GET /api/stats HTTP/1.1" 200 279 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:11:36:56 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:11:37:15 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+2025-08-31 11:38:23,160 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 7.10ms
+127.0.0.1 - - [31/Aug/2025:11:38:23 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:11:38:23 +1000] "GET /api/stats HTTP/1.1" 200 278 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+2025-08-31 11:40:38,526 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 24.18ms
+127.0.0.1 - - [31/Aug/2025:11:40:38 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:11:40:38 +1000] "GET /api/stats HTTP/1.1" 200 279 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:11:41:37 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+2025-08-31 11:41:37,689 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 41.58ms
+127.0.0.1 - - [31/Aug/2025:11:41:37 +1000] "GET /api/stats HTTP/1.1" 200 278 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+2025-08-31 11:50:53,444 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 17.44ms
+127.0.0.1 - - [31/Aug/2025:11:50:53 +1000] "GET /api/stats HTTP/1.1" 200 279 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:11:50:53 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+2025-08-31 14:28:03,668 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 68.37ms
+127.0.0.1 - - [31/Aug/2025:14:28:03 +1000] "GET /api/stats HTTP/1.1" 200 278 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:14:28:03 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+2025-08-31 15:37:58,459 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 15.56ms
+127.0.0.1 - - [31/Aug/2025:15:37:58 +1000] "GET /api/stats HTTP/1.1" 200 278 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:37:59 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:38:14 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:38:23 +1000] "GET /interactive-races HTTP/1.1" 200 6514 "http://localhost:5002/ml-dashboard" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:38:23 +1000] "GET /static/js/theme-utils.js?v=20250831113242 HTTP/1.1" 200 1265 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:38:23 +1000] "GET /static/js/endpoints-menu.js?v=1756618703572 HTTP/1.1" 200 3534 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:38:23 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:38:23 +1000] "GET /api/endpoints HTTP/1.1" 200 9045 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:38:23 +1000] "GET /api/races/paginated?sort_by=race_date&order=desc&page=1&per_page=12&search= HTTP/1.1" 200 3670 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:38:25 +1000] "GET /api/race_files_status HTTP/1.1" 200 73197 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:38:38 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+🏁 Upcoming Race Browser initialized
+📂 Upcoming races directory: /Users/test/Desktop/greyhound_racing_collector/data/upcoming_races
+🔍 Scraping live races for 2025-08-31...
+   📋 Found 2 cached races for 2025-08-31
+   ✅ Added 2 cached races to results
+   🔄 Enhancing cached races with live times...
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/healesville/2025-08-31/2 (attempt 1)
+     ⚠️ Race page not found (404)
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/healesville/2025-08-31/1 (attempt 1)
+     ⚠️ Race page not found (404)
+   🌐 Fetching: https://www.thedogs.com.au/racing/2025-08-31
+   🔍 Found 120 potential race links
+   📊 Processing races for 11 venues
+     🏟️ Processing 12 races for richmond
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/richmond/2025-08-31/1/ladbrokes-quick-multi-maiden?trial=false (attempt 1)
+     🏟️ Processing 10 races for grafton
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/grafton/2025-08-31/1/ladbrokes-quick-multi-maiden?trial=false (attempt 1)
+     🏟️ Processing 8 races for broken-hill
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/broken-hill/2025-08-31/1/far-west-rural-supplies-0-2-win?trial=false (attempt 1)
+     ✅ Found race time: 5:22 PM (from page text - 24hr)
+     🏟️ Processing 12 races for healesville
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/healesville/2025-08-31/1/montrose-iga-liquor?trial=false (attempt 1)
+     ✅ Found race time: 7:19 PM (from page text - 24hr)
+     🏟️ Processing 12 races for capalaba
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/capalaba/2025-08-31/1/bet-nation?trial=false (attempt 1)
+     ✅ Found race time: 5:35 PM (from page text - 24hr)
+     🏟️ Processing 11 races for mount-gambier
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/mount-gambier/2025-08-31/1/metal-worx-maiden-stake-pr1-division1?trial=false (attempt 1)
+     ✅ Found race time: 11:03 AM (from page text - 24hr)
+     🏟️ Processing 11 races for rockhampton
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/rockhampton/2025-08-31/1/garrards-horse-hound?trial=false (attempt 1)
+     ✅ Found race time: 12:05 PM (from page text - 24hr)
+     🏟️ Processing 12 races for sale
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/sale/2025-08-31/1/wheeler-builders?trial=false (attempt 1)
+     ✅ Found race time: 11:57 AM (from page text - 24hr)
+     🏟️ Processing 11 races for gawler
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/gawler/2025-08-31/1/the-bunyip-stake-pr1-division1?trial=false (attempt 1)
+     ✅ Found race time: 5:02 PM (from page text - 24hr)
+     🏟️ Processing 12 races for ladbrokes-q-straight
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/ladbrokes-q-straight/2025-08-31/1/greyhounds-make-great-pets?trial=false (attempt 1)
+     ✅ Found race time: 5:19 PM (from page text - 24hr)
+     🏟️ Processing 9 races for darwin
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/darwin/2025-08-31/1/sign-city-winnellie-cup-h-division1?trial=false (attempt 1)
+     ✅ Found race time: 5:57 PM (from page text - 24hr)
+     ✅ Found race time: 7:09 PM (from page text - 24hr)
+     ✅ Found race time: 5:48 PM (from page text - 24hr)
+   📊 Found 120 total races across 11 venues
+   🌐 Found 120 live races from main page for 2025-08-31
+   ➕ Added 118 additional live races to cached races
+   📊 Total races found: 120 (Cached: 2, Live: 120)
+🔍 Scraping live races for 2025-09-01...
+   🌐 Fetching: https://www.thedogs.com.au/racing/2025-09-01
+   🔍 Found 131 potential race links
+   📊 Processing races for 12 venues
+     🏟️ Processing 10 races for gunnedah
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/gunnedah/2025-09-01/1/welcome-to-gunnedah-maiden?trial=false (attempt 1)
+     🏟️ Processing 12 races for nowra
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/nowra/2025-09-01/1/shoalhaven-greyhounds-as-pets-maiden?trial=false (attempt 1)
+     🏟️ Processing 11 races for maitland
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/maitland/2025-09-01/1/welcome-to-maitland-gbota-maiden-heat-1-h?trial=false (attempt 1)
+     ✅ Found race time: 3:22 PM (from page text - 24hr)
+     🏟️ Processing 14 races for ballarat
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/ballarat/2025-09-01/1/14-races-today?trial=false (attempt 1)
+     ✅ Found race time: 7:02 PM (from page text - 24hr)
+     🏟️ Processing 14 races for shepparton
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/shepparton/2025-09-01/1/14-races-today-ht1?trial=false (attempt 1)
+     ✅ Found race time: 6:13 PM (from page text - 24hr)
+     🏟️ Processing 13 races for warrnambool
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/warrnambool/2025-09-01/1/13-races-tonight-300-rank?trial=false (attempt 1)
+     ✅ Found race time: 1:19 PM (from page text - 24hr)
+     🏟️ Processing 11 races for northam
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/northam/2025-09-01/1/monday-s-northam?trial=false (attempt 1)
+     ✅ Found race time: 10:51 AM (from page text - 24hr)
+     🏟️ Processing 12 races for ladbrokes-q2-parklands
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/ladbrokes-q2-parklands/2025-09-01/1/ladbrokes-same-race-multi?trial=false (attempt 1)
+     ✅ Found race time: 2:27 PM (from page text - 24hr)
+     🏟️ Processing 10 races for angle-park
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/angle-park/2025-09-01/1/greyhounds-as-pets-maiden-stake-ctb-division1?trial=false (attempt 1)
+     ✅ Found race time: 6:16 PM (from page text - 24hr)
+     🏟️ Processing 11 races for sandown
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/sandown/2025-09-01/1/sportsbet-ht1?trial=false (attempt 1)
+     ✅ Found race time: 3:19 PM (from page text - 24hr)
+     🏟️ Processing 11 races for launceston
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/launceston/2025-09-01/1/ladbrokes-quick-multi-division1?trial=false (attempt 1)
+     ✅ Found race time: 6:33 PM (from page text - 24hr)
+     🏟️ Processing 2 races for ladbrokes-q-straight
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/ladbrokes-q-straight/2025-09-01/1/the-q-engineered-by-stp-consultants?trial=false (attempt 1)
+     ✅ Found race time: 10:27 PM (from page text - 24hr)
+     ✅ Found race time: 6:59 PM (from page text - 24hr)
+     ✅ Found race time: 7:12 PM (from page text - 24hr)
+   📊 Found 131 total races across 12 venues
+   🌐 Found 131 live races from main page for 2025-09-01
+   ➕ Added 131 additional live races to cached races
+   📊 Total races found: 131 (Cached: 0, Live: 131)
+🔍 Scraping live races for 2025-09-02...
+   🌐 Fetching: https://www.thedogs.com.au/racing/2025-09-02
+   🔍 Found 140 potential race links
+   📊 Processing races for 12 venues
+     🏟️ Processing 11 races for grafton
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/grafton/2025-09-02/1/ladbrokes-quick-multi-maiden?trial=false (attempt 1)
+     🏟️ Processing 12 races for bulli
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/bulli/2025-09-02/1/75-years-of-racing-at-bulli-2025-maiden?trial=false (attempt 1)
+     🏟️ Processing 12 races for gosford
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/gosford/2025-09-02/1/welcome-to-gbota-gosford-maiden?trial=false (attempt 1)
+     ✅ Found race time: 3:21 PM (from page text - 24hr)
+     🏟️ Processing 10 races for murray-bridge-straight
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/murray-bridge-straight/2025-09-02/1/fischer-motors-maiden-stake-pr2-division1?trial=false (attempt 1)
+     ✅ Found race time: 6:58 PM (from page text - 24hr)
+     🏟️ Processing 10 races for hobart
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/hobart/2025-09-02/1/coal-valley-excavation-hire-division1?trial=false (attempt 1)
+     ✅ Found race time: 6:48 PM (from page text - 24hr)
+     🏟️ Processing 14 races for ladbrokes-q1-lakeside
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/ladbrokes-q1-lakeside/2025-09-02/1/ladbrokes-srm-in-multis-maiden-h?trial=false (attempt 1)
+     ✅ Found race time: 11:50 AM (from page text - 24hr)
+     🏟️ Processing 13 races for geelong
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/geelong/2025-09-02/1/13-races-tonight-0-1-win-250-rank?trial=false (attempt 1)
+     ✅ Found race time: 2:16 PM (from page text - 24hr)
+     🏟️ Processing 12 races for horsham
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/horsham/2025-09-02/1/crymelon-kennels?trial=false (attempt 1)
+     ✅ Found race time: 11:56 AM (from page text - 24hr)
+     🏟️ Processing 10 races for angle-park
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/angle-park/2025-09-02/1/fresh-pet-food-co-n-p-tg-1-4w-series-f-pr2-divis?trial=false (attempt 1)
+     ✅ Found race time: 3:06 PM (from page text - 24hr)
+     🏟️ Processing 12 races for warragul
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/warragul/2025-09-02/1/greyhound-adoption-program?trial=false (attempt 1)
+     ✅ Found race time: 2:19 PM (from page text - 24hr)
+     🏟️ Processing 12 races for townsville
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/townsville/2025-09-02/1/judy-olsen-townsville-maiden-1000-h?trial=false (attempt 1)
+     ✅ Found race time: 6:39 PM (from page text - 24hr)
+     🏟️ Processing 12 races for mandurah
+     🕐 Scraping race time from: https://www.thedogs.com.au/racing/mandurah/2025-09-02/1/free-entry-tabtouch-park?trial=false (attempt 1)
+     ✅ Found race time: 6:55 PM (from page text - 24hr)
+     ✅ Found race time: 6:45 PM (from page text - 24hr)
+     ✅ Found race time: 8:10 PM (from page text - 24hr)
+   📊 Found 140 total races across 12 venues
+   🌐 Found 140 live races from main page for 2025-09-02
+   ➕ Added 139 additional live races to cached races
+   📊 Total races found: 139 (Cached: 0, Live: 140)
+127.0.0.1 - - [31/Aug/2025:15:38:40 +1000] "GET /api/upcoming_races_stream?source=live&days=2 HTTP/1.1" 200 489846 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:38:53 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+2025-08-31 15:38:53,662 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 16.91ms
+127.0.0.1 - - [31/Aug/2025:15:38:53 +1000] "GET /api/stats HTTP/1.1" 200 279 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:39:08 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:39:23 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+2025-08-31 15:39:23,658 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 12.77ms
+127.0.0.1 - - [31/Aug/2025:15:39:23 +1000] "GET /api/stats HTTP/1.1" 200 279 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+2025-08-31 15:39:31,006 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 3.24ms
+2025-08-31 15:39:31,039 - db_performance_optimizer - INFO - ⏱️ get_recent_races executed in 16.06ms
+127.0.0.1 - - [31/Aug/2025:15:39:31 +1000] "GET / HTTP/1.1" 200 38348 "-" "curl/8.7.1"
+127.0.0.1 - - [31/Aug/2025:15:39:33 +1000] "GET /api/optimizer/status HTTP/1.1" 200 268 "-" "curl/8.7.1"
+127.0.0.1 - - [31/Aug/2025:15:39:38 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:39:52 +1000] "GET /api/optimizer/status HTTP/1.1" 200 268 "-" "Python-urllib/3.11"
+127.0.0.1 - - [31/Aug/2025:15:39:53 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+2025-08-31 15:39:53,654 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 8.47ms
+127.0.0.1 - - [31/Aug/2025:15:39:53 +1000] "GET /api/stats HTTP/1.1" 200 279 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:40:08 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:40:23 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+2025-08-31 15:40:23,650 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 4.75ms
+127.0.0.1 - - [31/Aug/2025:15:40:23 +1000] "GET /api/stats HTTP/1.1" 200 278 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:40:38 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:40:53 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+2025-08-31 15:40:53,654 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 6.34ms
+127.0.0.1 - - [31/Aug/2025:15:40:53 +1000] "GET /api/stats HTTP/1.1" 200 279 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:41:08 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:41:23 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+2025-08-31 15:41:23,670 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 18.99ms
+127.0.0.1 - - [31/Aug/2025:15:41:23 +1000] "GET /api/stats HTTP/1.1" 200 278 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:41:38 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:41:53 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+2025-08-31 15:41:53,658 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 8.02ms
+127.0.0.1 - - [31/Aug/2025:15:41:53 +1000] "GET /api/stats HTTP/1.1" 200 279 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:42:08 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:42:23 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+2025-08-31 15:42:23,660 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 8.81ms
+127.0.0.1 - - [31/Aug/2025:15:42:23 +1000] "GET /api/stats HTTP/1.1" 200 279 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:42:38 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:42:53 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+2025-08-31 15:42:53,657 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 8.76ms
+127.0.0.1 - - [31/Aug/2025:15:42:53 +1000] "GET /api/stats HTTP/1.1" 200 279 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:43:08 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:43:23 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+2025-08-31 15:43:23,658 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 8.22ms
+127.0.0.1 - - [31/Aug/2025:15:43:23 +1000] "GET /api/stats HTTP/1.1" 200 279 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:43:38 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:43:53 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+2025-08-31 15:43:53,655 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 4.51ms
+127.0.0.1 - - [31/Aug/2025:15:43:53 +1000] "GET /api/stats HTTP/1.1" 200 279 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:44:08 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:44:23 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+2025-08-31 15:44:23,655 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 4.44ms
+127.0.0.1 - - [31/Aug/2025:15:44:23 +1000] "GET /api/stats HTTP/1.1" 200 279 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:44:38 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:44:53 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+2025-08-31 15:44:53,660 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 8.01ms
+127.0.0.1 - - [31/Aug/2025:15:44:53 +1000] "GET /api/stats HTTP/1.1" 200 278 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:45:08 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:45:23 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+2025-08-31 15:45:23,693 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 19.58ms
+127.0.0.1 - - [31/Aug/2025:15:45:23 +1000] "GET /api/stats HTTP/1.1" 200 278 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:45:38 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+127.0.0.1 - - [31/Aug/2025:15:45:53 +1000] "GET /api/diagnostics/summary HTTP/1.1" 200 61 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+2025-08-31 15:45:53,656 - db_performance_optimizer - INFO - ⏱️ get_database_stats executed in 5.74ms
+127.0.0.1 - - [31/Aug/2025:15:45:53 +1000] "GET /api/stats HTTP/1.1" 200 278 "http://localhost:5002/interactive-races" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15"
+[2025-08-31 15:45:56 +1000] [54463] [INFO] Handling signal: term
+[2025-08-31 15:45:56 +1000] [54515] [INFO] Worker exiting (pid: 54515)
+[2025-08-31 15:45:56 +1000] [54517] [INFO] Worker exiting (pid: 54517)
+[2025-08-31 15:45:56 +1000] [54506] [INFO] Worker exiting (pid: 54506)
+[2025-08-31 15:45:58 +1000] [54463] [INFO] Shutting down: Master

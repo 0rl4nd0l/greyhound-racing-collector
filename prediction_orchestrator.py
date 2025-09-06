@@ -21,8 +21,11 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-from advanced_ensemble_ml_system import (AdvancedEnsembleMLSystem,
-                                         BettingStrategyOptimizer)
+from advanced_ensemble_ml_system import (
+    AdvancedEnsembleMLSystem,
+    BettingStrategyOptimizer,
+)
+
 # Import all available prediction systems
 from ml_system_v3 import MLSystemV3
 
@@ -120,7 +123,7 @@ class PredictionOrchestrator:
                     betting_rec = optimizer.calculate_betting_value(
                         prediction["win_probability"],
                         market_odds,
-                        prediction["confidence"]
+                        prediction["confidence"],
                     )
                     prediction["expected_value"] = betting_rec.get("expected_value")
                     prediction["betting_recommendation"] = betting_rec
@@ -136,7 +139,9 @@ class PredictionOrchestrator:
 
             # Ensure expected_value is always present in prediction response
             if "expected_value" not in prediction:
-                prediction["expected_value"] = prediction.get("betting_recommendation", {}).get("expected_value", 0)
+                prediction["expected_value"] = prediction.get(
+                    "betting_recommendation", {}
+                ).get("expected_value", 0)
 
             return {
                 "success": True,

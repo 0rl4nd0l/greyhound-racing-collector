@@ -1,9 +1,7 @@
 import json
 import os
-import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -79,7 +77,7 @@ def test_e2e_smoke_test(setup_test_environment):
     test_data = setup_test_environment
     test_race_file = test_data["test_race_file"]
 
-    print(f"\n🧪 Starting E2E smoke test...")
+    print("\n🧪 Starting E2E smoke test...")
     print(f"📁 Test race file: {test_race_file}")
 
     # --- 1. Test `python run.py collect` ---
@@ -207,11 +205,11 @@ def test_e2e_smoke_test(setup_test_environment):
             # Validate top pick has required fields
             assert "dog_name" in top_pick or "name" in top_pick
 
-            print(f"\n✅ E2E smoke test passed!")
+            print("\n✅ E2E smoke test passed!")
             print(f"📄 Prediction artifact saved at: {latest_prediction_file}")
         else:
-            print(f"\n⚠️ E2E test completed with warnings - no predictions generated")
-            print(f"📄 Prediction file exists but contains no predictions")
+            print("\n⚠️ E2E test completed with warnings - no predictions generated")
+            print("📄 Prediction file exists but contains no predictions")
     else:
         # If no prediction files exist, create a minimal test artifact
         test_artifact = PREDICTIONS_DIR / f"e2e_test_artifact_{int(time.time())}.json"
@@ -228,5 +226,5 @@ def test_e2e_smoke_test(setup_test_environment):
         with open(test_artifact, "w") as f:
             json.dump(test_result, f, indent=2)
 
-        print(f"\n⚠️ E2E test completed with warnings")
+        print("\n⚠️ E2E test completed with warnings")
         print(f"📄 Test artifact saved at: {test_artifact}")

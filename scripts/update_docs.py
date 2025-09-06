@@ -6,6 +6,7 @@ This script is called by the pre-push git hook.
 
 import sys
 
+
 def main():
     """
     Placeholder documentation update function.
@@ -14,6 +15,7 @@ def main():
     print("Documentation update script executed successfully.")
     print("No documentation updates needed at this time.")
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

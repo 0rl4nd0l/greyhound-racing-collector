@@ -1,0 +1,34 @@
+#!/bin/sh
+# pre-push git hook: validate the V4 feature contract before pushing
+# Skippable with SKIP_CONTRACT_CHECK=1
+
+if [ "$SKIP_CONTRACT_CHECK" = "1" ] || [ "$SKIP_CONTRACT_CHECK" = "true" ]; then
+  echo "[pre-push] Skipping feature contract validation (SKIP_CONTRACT_CHECK set)"
+  exit 0
+fi
+
+ROOT_DIR=$(git rev-parse --show-toplevel 2>/dev/null)
+if [ -z "$ROOT_DIR" ]; then
+  echo "[pre-push] Could not determine repo root"
+  exit 1
+fi
+
+PY=python3
+if command -v python3 >/dev/null 2>&1; then
+  PY=python3
+elif command -v python >/dev/null 2>&1; then
+  PY=python
+fi
+
+echo "[pre-push] Validating feature contract (python mode, strict)..."
+cd "$ROOT_DIR" || exit 1
+$PY scripts/verify_feature_contract.py --refresh --strict --json
+STATUS=$?
+if [ $STATUS -ne 0 ]; then
+  echo "[pre-push] Contract validation failed. To bypass temporarily: export SKIP_CONTRACT_CHECK=1"
+  exit $STATUS
+fi
+
+echo "[pre-push] Contract validation passed."
+exit 0
+

@@ -1,12 +1,13 @@
 import glob
-import pandas as pd
 from typing import List
+
+import pandas as pd
 
 
 def process_csv_files(
-    logs_csv: str = 'race_logs_normalized.csv',
-    input_glob: str = './processed/step6_cleanup/*.csv',
-    output_csv: str = 'discrepancies_report.csv'
+    logs_csv: str = "race_logs_normalized.csv",
+    input_glob: str = "./processed/step6_cleanup/*.csv",
+    output_csv: str = "discrepancies_report.csv",
 ) -> None:
     """Process and compare race CSV files against logs to find discrepancies.
 
@@ -26,8 +27,8 @@ def process_csv_files(
         csv_df = pd.read_csv(file_path)
 
         # Extract race ID and timestamp columns from the CSV; assumed to be 'race_id' and 'DATE'
-        race_id_col = 'race_id'
-        timestamp_col = 'DATE'
+        race_id_col = "race_id"
+        timestamp_col = "DATE"
 
         # Perform left joins to identify missing log entries
         merged_df = pd.merge(
@@ -35,14 +36,14 @@ def process_csv_files(
             logs_df,
             left_on=[race_id_col, timestamp_col],
             right_on=[race_id_col, timestamp_col],
-            how='left',
+            how="left",
             indicator=True,
         )
 
         # Identify missing log entries, log-only races, and conflicting fields
-        missing_logs_df = merged_df[merged_df['_merge'] == 'left_only']
-        log_only_races_df = merged_df[merged_df['_merge'] == 'right_only']
-        conflicting_fields = merged_df[merged_df['_merge'] == 'both']
+        missing_logs_df = merged_df[merged_df["_merge"] == "left_only"]
+        log_only_races_df = merged_df[merged_df["_merge"] == "right_only"]
+        conflicting_fields = merged_df[merged_df["_merge"] == "both"]
 
         # Collect discrepancies
         discrepancies.append(missing_logs_df)

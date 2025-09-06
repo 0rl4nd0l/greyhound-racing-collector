@@ -18,8 +18,10 @@ from pathlib import Path
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from prometheus_client import CollectorRegistry, Gauge, generate_latest
+
 try:
     from monitoring.prometheus_exporter import get_prometheus_exporter
+
     PROMETHEUS_ENHANCED = True
 except ImportError:
     PROMETHEUS_ENHANCED = False
@@ -309,12 +311,15 @@ def log_response(response):
     return response
 
 
-def run_server(host="localhost", port=int(os.environ.get('DEFAULT_PORT', '5002')), debug=False):
+def run_server(
+    host="localhost", port=int(os.environ.get("DEFAULT_PORT", "5002")), debug=False
+):
     """Run the monitoring web server"""
     # Allow PORT to be overridden by environment variable
     import os
-    port = int(os.environ.get('PORT', port))
-    
+
+    port = int(os.environ.get("PORT", port))
+
     logger.log_system(
         f"Starting monitoring web server on http://{host}:{port}", "INFO", "WEB_SERVER"
     )

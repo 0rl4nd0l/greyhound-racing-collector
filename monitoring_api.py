@@ -18,6 +18,25 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+# Route DB access via project utilities
+try:
+    from scripts.db_utils import open_sqlite_readonly, get_analytics_db_path
+except Exception:
+    def open_sqlite_readonly(db_path: str | None = None):
+        import os as _os, sqlite3 as _sqlite3
+        path = db_path or _os.getenv("ANALYTICS_DB_PATH") or _os.getenv("GREYHOUND_DB_PATH") or "greyhound_racing_data.db"
+        conn = _sqlite3.connect(f"file:{_os.path.abspath(path)}?mode=ro", uri=True)
+        try:
+            conn.execute("PRAGMA query_only=ON")
+            conn.execute("PRAGMA foreign_keys=ON")
+        except Exception:
+            pass
+        return conn
+
+    def get_analytics_db_path(default: str = "greyhound_racing_data.db") -> str:
+        import os as _os
+        return _os.getenv("ANALYTICS_DB_PATH") or _os.getenv("GREYHOUND_DB_PATH") or default
+
 import numpy as np
 import pandas as pd
 import psutil
@@ -28,8 +47,8 @@ from logger import logger
 class MonitoringAPI:
     """Real-time monitoring API for prediction system performance tracking"""
 
-    def __init__(self, database_path: str = "greyhound_racing_data.db"):
-        self.database_path = database_path
+    def __init__(self, database_path: str = None):
+        self.database_path = database_path or get_analytics_db_path()
         self.predictions_dir = Path("./predictions")
         self.ml_results_dir = Path("./ml_backtesting_results")
         self.feature_results_dir = Path("./feature_analysis_results")
@@ -329,7 +348,7 @@ class MonitoringAPI:
     def _check_database_health(self) -> Dict[str, Any]:
         """Check database connectivity and health"""
         try:
-            conn = sqlite3.connect(self.database_path)
+            conn = open_sqlite_readonly(self.database_path)
             cursor = conn.cursor()
 
             # Check basic connectivity
@@ -687,7 +706,7 @@ class MonitoringAPI:
     def _check_data_freshness(self) -> float:
         """Check how old the latest data is (in hours)"""
         try:
-            conn = sqlite3.connect(self.database_path)
+            conn = open_sqlite_readonly(self.database_path)
             cursor = conn.cursor()
 
             cursor.execute("SELECT MAX(extraction_timestamp) FROM race_metadata")

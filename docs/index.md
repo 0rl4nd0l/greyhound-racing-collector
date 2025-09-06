@@ -84,8 +84,8 @@ Current system performance (as of latest deployment):
 
 - [Getting Started Guide](development/setup.md)
 - [API Documentation](api/endpoints.md)
-- [System Health Dashboard](http://localhost:5000/api/status)
-- [Prometheus Metrics](http://localhost:5000/metrics)
+- [System Health Dashboard](http://localhost:5002/api/status)
+- [Prometheus Metrics](http://localhost:5002/metrics)
 - [GitHub Repository](https://github.com/orlandolee/greyhound_racing_collector)
 
 ## 📞 Support

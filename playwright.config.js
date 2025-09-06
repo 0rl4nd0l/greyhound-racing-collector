@@ -5,10 +5,21 @@ const { defineConfig, devices } = require('@playwright/test');
  * @see https://playwright.dev/docs/test-configuration
  */
 module.exports = defineConfig({
-  testDir: './tests/playwright',
+  testDir: './tests',
+  // Only run Playwright E2E specs; ignore unit/integration Jest tests
+  testMatch: [
+    'e2e/**/*.spec.@(ts|js)',
+    'playwright/**/*.spec.@(ts|js)'
+  ],
+  testIgnore: [
+    'unit/**',
+    'integration/**',
+    '**/*.test.js',
+    '**/*.test.ts'
+  ],
   
   /* Run tests in files in parallel */
-  fullyParallel: true,
+  fullyParallel: false,
   
   /* Fail the build on CI if you accidentally left test.only in the source code. */
   forbidOnly: !!process.env.CI,
@@ -17,7 +28,7 @@ module.exports = defineConfig({
   retries: process.env.CI ? 2 : 0,
   
   /* Opt out of parallel tests on CI. */
-  workers: process.env.CI ? 1 : undefined,
+  workers: 1,
   
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: [
@@ -28,7 +39,7 @@ module.exports = defineConfig({
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
-baseURL: `http://127.0.0.1:${process.env.DEFAULT_PORT || '5002'}`,
+    baseURL: `http://127.0.0.1:${process.env.PORT || '5002'}`,
     
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
@@ -108,12 +119,19 @@ baseURL: `http://127.0.0.1:${process.env.DEFAULT_PORT || '5002'}`,
   ],
 
   /* Run your local dev server before starting the tests */
-  // webServer: {
-  //   command: 'python app.py',
-  //   url: 'http://127.0.0.1:5002',
-  //   reuseExistingServer: !process.env.CI,
-  //   env: {
-  //     FLASK_ENV: 'testing'
-  //   }
-  // },
+  webServer: {
+command: 'PORT=5002 ./.venv/bin/python app.py --host 127.0.0.1 --port 5002',
+    url: 'http://*********:5002',
+    reuseExistingServer: !process.env.CI,
+    timeout: 180000,
+    env: {
+      FLASK_ENV: 'testing',
+      MODULE_GUARD_STRICT: '0',
+      PREDICTION_IMPORT_MODE: 'relaxed',
+      ENABLE_ENDPOINT_DROPDOWNS: '1',
+      TESTING: '1',
+'TRAINING_MAX_SECS': '30',
+      'DISABLE_NAV_DROPDOWNS': '1'
+    }
+  },
 });

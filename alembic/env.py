@@ -17,6 +17,50 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 from models import Base
 
+# Restrict autogenerate comparisons to a curated set; ignore legacy/aux tables that are not modeled
+IGNORED_TABLES = set(
+    [
+        "race_analytics",
+        "tgr_dog_performance_summary",
+        "tgr_enrichment_jobs",
+        "dogs_ft_extra",
+        "dog_performance_ft_extra",
+        "races_ft_extra",
+        "expert_form_analysis",
+        "dog_race_data_backup",
+        "dog_race_data_backup_box_number_fix",
+        "query_monitoring",
+        "value_bets",
+        "detailed_race_history",
+    ]
+)
+IGNORED_INDEX_PREFIXES = (
+    "idx_tgr_",
+    "idx_race_analytics_",
+    "idx_races_ft_extra_",
+    "idx_dogs_ft_extra_",
+)
+
+
+def _include_object(object, name, type_, reflected, compare_to):
+    try:
+        # Skip tables that are managed outside of SQLAlchemy models or considered legacy/auxiliary
+        if type_ == "table" and name in IGNORED_TABLES:
+            return False
+        # Skip indexes on ignored tables or matching known ignored prefixes
+        if type_ == "index":
+            parent = getattr(object, "table", None)
+            parent_name = getattr(parent, "name", None)
+            if parent_name in IGNORED_TABLES:
+                return False
+            if any(str(name or "").startswith(p) for p in IGNORED_INDEX_PREFIXES):
+                return False
+    except Exception:
+        # On any unexpected error, do not skip the object
+        pass
+    return True
+
+
 target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,
@@ -43,6 +87,8 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        compare_type=True,
+        include_object=_include_object,
     )
 
     with context.begin_transaction():
@@ -63,7 +109,12 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            compare_type=True,
+            include_object=_include_object,
+        )
 
         with context.begin_transaction():
             context.run_migrations()

@@ -1,24 +1,19 @@
 from __future__ import annotations
 
-import time
 import threading
+import time
 from pathlib import Path
-from typing import Optional, Callable
+from typing import Callable, Optional
 
-try:
-    from watchdog.observers import Observer
-    from watchdog.events import FileSystemEventHandler, FileSystemEvent
-    WATCHDOG_AVAILABLE = True
-except Exception:
-    # Soft dependency; module can be imported even if watchdog isn't installed
-    Observer = object  # type: ignore
-    FileSystemEventHandler = object  # type: ignore
-    FileSystemEvent = object  # type: ignore
-    WATCHDOG_AVAILABLE = False
+# NOTE: Do not import watchdog at module import time to avoid loading it in prediction-only processes.
+# We'll import it lazily inside start_download_watcher if enabled.
+Observer = object  # type: ignore
+FileSystemEventHandler = object  # type: ignore
+FileSystemEvent = object  # type: ignore
+WATCHDOG_AVAILABLE = False
 
+from config.paths import ARCHIVE_DIR, DOWNLOADS_WATCH_DIR, UPCOMING_RACES_DIR
 from ingestion.ingest_race_csv import ingest_form_guide_csv
-from config.paths import DOWNLOADS_WATCH_DIR, UPCOMING_RACES_DIR, ARCHIVE_DIR
-
 
 PARTIAL_SUFFIXES = (".crdownload", ".part", ".tmp")
 
@@ -36,6 +31,7 @@ def wait_for_stable(path: Path, checks: int = 3, interval: float = 0.5) -> bool:
     # Accelerate in test runs to avoid flakiness
     try:
         import os as _os
+
         if _os.getenv("PYTEST_CURRENT_TEST"):
             checks = 1
             interval = 0.05
@@ -87,20 +83,34 @@ class DownloadHandler(FileSystemEventHandler):  # type: ignore[misc]
         try:
             if getattr(event, "is_directory", False):
                 return
-            p = Path(getattr(event, "dest_path", None) or getattr(event, "src_path", ""))
+            p = Path(
+                getattr(event, "dest_path", None) or getattr(event, "src_path", "")
+            )
             if not p or p.suffix.lower() != ".csv" or is_partial_or_hidden(p):
                 return
-            # Give the browser a moment to finish writing
-            time.sleep(0.5)
+            # Give the browser a moment to finish writing (shorter in tests)
+            try:
+                import os as _os
+
+                _sleep = 0.5
+                if _os.getenv("PYTEST_CURRENT_TEST"):
+                    _sleep = 0.05
+            except Exception:
+                _sleep = 0.5
+            time.sleep(_sleep)
             if not wait_for_stable(p):
                 return
             self.on_csv_ready(p)
         except Exception as e:
-            print(f"[watcher] ingestion failed for {getattr(event, 'src_path', 'unknown')}: {e}")
+            print(
+                f"[watcher] ingestion failed for {getattr(event, 'src_path', 'unknown')}: {e}"
+            )
 
 
-def start_download_watcher(downloads_dir: Optional[Path] = None,
-                            on_csv_ready: Optional[Callable[[Path], None]] = None) -> Optional[Observer]:
+def start_download_watcher(
+    downloads_dir: Optional[Path] = None,
+    on_csv_ready: Optional[Callable[[Path], None]] = None,
+) -> Optional[Observer]:
     """
     Start a minimal cross-platform watcher for the user's Downloads folder.
 
@@ -111,9 +121,23 @@ def start_download_watcher(downloads_dir: Optional[Path] = None,
 
     Returns the Observer if started, else None (e.g., watchdog not installed).
     """
+    # Lazy import watchdog only if we intend to start the watcher
+    global WATCHDOG_AVAILABLE, Observer, FileSystemEventHandler, FileSystemEvent
     if not WATCHDOG_AVAILABLE:
-        print("[watcher] watchdog not installed; skipping Downloads watcher.")
-        return None
+        try:
+            from watchdog.events import FileSystemEvent as _FileSystemEvent
+            from watchdog.events import (
+                FileSystemEventHandler as _FileSystemEventHandler,
+            )
+            from watchdog.observers import Observer as _Observer  # type: ignore
+
+            Observer = _Observer
+            FileSystemEventHandler = _FileSystemEventHandler
+            FileSystemEvent = _FileSystemEvent
+            WATCHDOG_AVAILABLE = True
+        except Exception:
+            print("[watcher] watchdog not installed; skipping Downloads watcher.")
+            return None
 
     downloads_dir = downloads_dir or DOWNLOADS_WATCH_DIR
 
@@ -139,13 +163,56 @@ def start_download_watcher(downloads_dir: Optional[Path] = None,
                     Path(target_dir).mkdir(parents=True, exist_ok=True)
                     target_path.write_bytes(content)
                 except Exception as e:
-                    print(f"[watcher] fallback write failed for {target_path.name}: {e}")
+                    print(
+                        f"[watcher] fallback write failed for {target_path.name}: {e}"
+                    )
         finally:
             # On success (or best-effort), archive the source from Downloads
             archive_processed_source(p)
-        print(f"[watcher] Ingested and published: {published.name} -\u003e {UPCOMING_RACES_DIR}")
+        print(
+            f"[watcher] Ingested and published: {published.name} -\u003e {UPCOMING_RACES_DIR}"
+        )
 
-    handler = DownloadHandler(on_csv_ready or default_on_csv_ready)
+    # Define a real handler subclassing watchdog's FileSystemEventHandler to ensure dispatch works
+    class _RealDownloadHandler(FileSystemEventHandler):  # type: ignore[misc]
+        def __init__(self, on_csv_ready_cb: Callable[[Path], None]):
+            super().__init__()
+            self._on_csv_ready_cb = on_csv_ready_cb
+
+        def on_created(self, event: FileSystemEvent):  # type: ignore[override]
+            self._maybe_process(event)
+
+        def on_moved(self, event: FileSystemEvent):  # type: ignore[override]
+            self._maybe_process(event)
+
+        def _maybe_process(self, event: FileSystemEvent):
+            try:
+                if getattr(event, "is_directory", False):
+                    return
+                p = Path(
+                    getattr(event, "dest_path", None) or getattr(event, "src_path", "")
+                )
+                if not p or p.suffix.lower() != ".csv" or is_partial_or_hidden(p):
+                    return
+                # Give the browser a moment to finish writing (shorter in tests)
+                try:
+                    import os as _os
+
+                    _sleep = 0.5
+                    if _os.getenv("PYTEST_CURRENT_TEST"):
+                        _sleep = 0.05
+                except Exception:
+                    _sleep = 0.5
+                time.sleep(_sleep)
+                if not wait_for_stable(p):
+                    return
+                self._on_csv_ready_cb(p)
+            except Exception as e:
+                print(
+                    f"[watcher] ingestion failed for {getattr(event, 'src_path', 'unknown')}: {e}"
+                )
+
+    handler = _RealDownloadHandler(on_csv_ready or default_on_csv_ready)
     observer: Observer = Observer()  # type: ignore[assignment]
     observer.schedule(handler, str(downloads_dir), recursive=False)
     observer.start()

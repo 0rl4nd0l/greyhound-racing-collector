@@ -81,14 +81,14 @@ class PipelineProfiler:
         Disabled profiling function - just execute the function without profiling.
         """
         function_name = func.__name__
-        
+
         # Just execute the function without any profiling
         try:
             result = func(*args, **kwargs)
         except Exception as e:
             result = None
             raise e
-        
+
         # Return a dummy profile result
         return ProfileResult(
             function_name=function_name,
@@ -99,7 +99,7 @@ class PipelineProfiler:
             call_count=0,
             bottlenecks=[],
             timestamp=datetime.now().isoformat(),
-            result=result
+            result=result,
         )
 
     def profile_sql_queries(self, db_path: str) -> List[SQLQueryProfile]:
@@ -479,14 +479,14 @@ def track_sequence(step_name: str, component: str, step_type: str = "processing"
     """
     Disabled context manager - returns dummy context manager.
     """
-    
+
     class DummySequenceTracker:
         def __enter__(self):
             return self
-        
+
         def __exit__(self, exc_type, exc_val, exc_tb):
             pass  # Do nothing
-    
+
     return DummySequenceTracker()
 
 

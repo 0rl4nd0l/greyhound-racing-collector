@@ -1,9 +1,7 @@
-import sys
 import os
 import shutil
-import requests
-import json
-import pandas as pd
+import sys
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from prediction_pipeline_v4 import PredictionPipelineV4
@@ -25,7 +23,7 @@ def test_backend():
     # Locate an available sample CSV (avoid quarantined ones)
     if not os.path.isdir(SAMPLES_DIR):
         raise FileNotFoundError(f"Samples directory not found: {SAMPLES_DIR}")
-    candidates = [f for f in os.listdir(SAMPLES_DIR) if f.endswith('.csv')]
+    candidates = [f for f in os.listdir(SAMPLES_DIR) if f.endswith(".csv")]
     if not candidates:
         raise FileNotFoundError("No sample CSV files found under tests/sample_csv_data")
 
@@ -49,7 +47,9 @@ def test_backend():
         print(f"Predictions count: {len(preds)}")
         # Basic shape validation
         assert isinstance(preds, list), "Predictions should be a list"
-        assert all("dog_clean_name" in p or "dog_name" in p for p in preds), "Each prediction should include a dog name"
+        assert all(
+            "dog_clean_name" in p or "dog_name" in p for p in preds
+        ), "Each prediction should include a dog name"
     else:
         print(f"Backend prediction error: {result.get('error')}")
 
@@ -80,7 +80,7 @@ def test_api():
         if not os.path.isdir(SAMPLES_DIR):
             print("Samples directory missing; skipping API test.")
             return None
-        candidates = [f for f in os.listdir(SAMPLES_DIR) if f.endswith('.csv')]
+        candidates = [f for f in os.listdir(SAMPLES_DIR) if f.endswith(".csv")]
         if not candidates:
             print("No sample CSV found; skipping API test.")
             return None
@@ -99,10 +99,14 @@ def test_api():
         # Validate format
         assert resp.status_code in (200, 201), "API should return success status code"
         assert isinstance(data, dict), "API response should be JSON object"
-        assert data.get("success") is True, "API should indicate success (may be degraded)"
+        assert (
+            data.get("success") is True
+        ), "API should indicate success (may be degraded)"
         # Prefer real predictions if available, but accept degraded response as success path
         if "predictions" in data:
-            assert isinstance(data["predictions"], list), "predictions should be a list when present"
+            assert isinstance(
+                data["predictions"], list
+            ), "predictions should be a list when present"
             print(f"API predictions: {len(data['predictions'])}")
 
     # Cleanup copied file
@@ -117,7 +121,9 @@ def test_api():
 def test_frontend_integration():
     """Placeholder: Verify frontend integration expectations."""
     print("\n=== Testing Frontend Integration ===")
-    print("Ensure frontend triggers /api/predict_single_race_enhanced and renders results without errors")
+    print(
+        "Ensure frontend triggers /api/predict_single_race_enhanced and renders results without errors"
+    )
 
 
 if __name__ == "__main__":
@@ -125,4 +131,3 @@ if __name__ == "__main__":
     test_api()
     test_frontend_integration()
     print("\n=== E2E Test Complete ===")
-

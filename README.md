@@ -1,10 +1,16 @@
-# Greyhound Racing Prediction Pipeline
+# Greyhound Racing Predictor
+
+> **📁 Archive Notice**: As of September 1, 2025, this project has been optimized from 23GB to 3.8GB.  
+> **19.2GB of historical data** has been safely archived to external storage.  
+> See **[ARCHIVE_INDEX.md](docs/ARCHIVE_INDEX.md)** for complete archive details and restoration instructions.
 
 ## Overview
 
 A comprehensive machine learning system for predicting greyhound race outcomes using advanced feature engineering, temporal leakage protection, and probability calibration.
 
 For common commands and a high-level architecture overview, see WARP.md.
+
+See also: [V4 Prediction System Analysis](reports/prediction_system_analysis.md) — full prediction flow, formulas (normalization, confidence, EV), environment toggles, and failure modes.
 
 ## Key Features
 
@@ -217,6 +223,34 @@ export PORT=8080
 python app.py
 ```
 
+### UI Modes and Feature Flags
+
+The web UI supports a simplified and an advanced mode, plus an opt-in dynamic endpoints menu.
+
+- UI_MODE: Controls navigation complexity and some heavy assets.
+  - simple (default): Minimal top-level nav (Dashboard, Upcoming, Predict, Logs).
+  - advanced: Full navigation (Races, Analysis, AI/ML, System, Help, etc.).
+
+  Examples:
+  - macOS/Linux
+    - UI_MODE=simple python app.py
+    - UI_MODE=advanced python app.py
+  - Windows PowerShell
+    - $env:UI_MODE='simple'; python app.py
+    - $env:UI_MODE='advanced'; python app.py
+
+- ENABLE_ENDPOINT_DROPDOWNS: Toggle the dynamic endpoints dropdown toolbar (opt-in).
+  - 0 (default): Disabled.
+  - 1: Enabled. Injects a menu that enumerates available Flask endpoints for quick navigation (primarily for dev/testing).
+
+  Examples:
+  - macOS/Linux: ENABLE_ENDPOINT_DROPDOWNS=1 python app.py
+  - Windows PowerShell: $env:ENABLE_ENDPOINT_DROPDOWNS='1'; python app.py
+
+Notes:
+- All advanced routes remain accessible by direct URL in both modes; only visibility in the navbar changes.
+- CI can set UI_MODE=advanced to exercise the full UI surface.
+
 ##### Port Conflict Resolution
 
 If you encounter "port already in use" errors, use these troubleshooting commands:
@@ -364,6 +398,8 @@ The advisory system is designed to integrate seamlessly with the prediction work
 ## API Documentation
 
 The application provides a comprehensive RESTful API for interacting with the prediction system and its data. Below are the key endpoints.
+
+Tip: To validate V4 feature contracts via the UI, see docs/CONTRACT_VALIDATION.md (UI-based validation).
 
 ### Upcoming Races CSVs (source of truth)
 - Folder path: `./upcoming_races`
@@ -892,6 +928,24 @@ Note on archive-first policy
 
 Set these environment variables (e.g., in a .env file or via the shell) to control paths and behavior.
 
+- DISABLE_ASSET_MINIFY
+  - Description: When set to 1, skip webassets minification filters to avoid optional deps (jsmin/cssmin). Recommended for local/dev unless you need minified bundles.
+  - Default: 1
+  - Example: DISABLE_ASSET_MINIFY=1
+- ENABLE_ENDPOINT_DROPDOWNS
+  - Description: Enables a dev-only dropdown toolbar in the UI that lists all server endpoints by category. Useful for QA; keep disabled in prod.
+  - Default: 0
+  - Example: ENABLE_ENDPOINT_DROPDOWNS=1
+  - Note (2025-08-28): The dropdowns are no longer auto-enabled in testing/debug modes; enable explicitly via the env var when needed. The /api/endpoints route and endpoints-menu.js remain available behind this flag.
+  - CI: The UI E2E job in .github/workflows/backend-tests.yml is currently disabled with `if: ${{ false }}`. Remove that guard to re-enable the UI E2E job.
+- DISABLE_NAV_DROPDOWNS
+  - Description: Hides the main top navigation dropdowns (e.g., Races, ML, System, Help) even when UI_MODE=advanced. Useful for demos or a simplified UI while retaining advanced pages.
+  - Default: 0
+  - Example: DISABLE_NAV_DROPDOWNS=1
+- TESTING
+  - Description: Enables various test helpers and routes when true. Keep false in normal runs.
+  - Default: false
+  - Example: TESTING=false
 - UPCOMING_RACES_DIR
   - Description: Directory the UI/API enumerates for upcoming race CSVs
   - Default: ./upcoming_races (some setups use ./upcoming_races_temp)
@@ -915,9 +969,16 @@ Set these environment variables (e.g., in a .env file or via the shell) to contr
 
 Example .env
 
+# Core
 UPCOMING_RACES_DIR=./upcoming_races
 PREDICTIONS_DIR=./predictions
 ARCHIVE_ROOT=./archive
+
+# UI/dev toggles
+DISABLE_ASSET_MINIFY=1
+ENABLE_ENDPOINT_DROPDOWNS=0
+TESTING=false
+
 # Optional automation (set only if you run a watcher)
 DOWNLOADS_WATCH_DIR=~/Downloads
 
@@ -975,6 +1036,19 @@ Archive-first policy
 
 For a step-by-step visual walkthrough, see docs/Upcoming_Races_User_Guide.md
 
+## Production Hardening and Safety Defaults
+
+This repository enforces a strict “no fabricated outputs” policy in production paths. All mock, placeholder, or random-based logic is removed or explicitly gated behind development-only environment flags. API endpoints fail fast (HTTP 503) when predictors are unavailable.
+
+Key environment flags (default OFF):
+- UNIFIED_ALLOW_BASIC_FALLBACK — allow dev-only basic fallback in unified_predictor.py
+- ML_V4_ALLOW_HEURISTIC — allow dev-only single-dog heuristic in ml_system_v4.py
+- ML_V4_ALLOW_SIMULATED_ODDS — allow dev-only simulated odds for EV learning in ml_system_v4.py
+- TGR_ALLOW_PLACEHOLDER — allow dev-only race insights placeholder in TGR scraper
+- ALLOW_SYNTHETIC_TEST_MODEL — allow synthetic-data test trainer script
+
+See docs/hardening.md for full details.
+
 ## Repository Structure
 
 -   `app.py`: Main Flask application.
@@ -1008,3 +1082,7 @@ The following files have been moved to the `/archive` directory as they have bee
 -   `enhanced_odds_collector.py` - Superseded by hybrid_odds_scraper.py
 
 **Note**: These scripts have been replaced by the enhanced API endpoints (`/api/predict_single_race_enhanced`, `/api/predict_all_upcoming_races_enhanced`) which provide intelligent pipeline selection, comprehensive error handling, and better integration with the main application.
+
+---
+
+For details on the production hardening policy and safety defaults, see docs/hardening.md.

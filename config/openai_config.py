@@ -8,7 +8,6 @@ import os
 from dataclasses import dataclass
 from typing import Optional
 
-
 # Reasonable defaults; can be overridden via environment
 # Prefer fast/affordable model by default; upgrade per workload if needed
 DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")

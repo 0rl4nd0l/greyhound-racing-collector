@@ -14,10 +14,10 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
-from form_guide_csv_scraper import FormGuideScraper
 
 from comprehensive_prediction_pipeline import ComprehensivePredictionPipeline
 from enhanced_data_integration import EnhancedDataIntegrator
+from form_guide_csv_scraper import FormGuideScraper
 from upcoming_race_browser import UpcomingRaceBrowser
 
 # Page configuration
@@ -47,6 +47,7 @@ class FileManager:
         self.race_browser = None
         self.data_integrator = None
         self.processor = None
+        self.tgr_available = False
 
         self._initialize_systems()
 
@@ -97,6 +98,19 @@ class FileManager:
             print(f"⚠️ Enhanced Comprehensive Processor initialization failed: {e}")
             self.processor = None
 
+        # Check TGR integration availability
+        try:
+            if self.data_integrator and hasattr(self.data_integrator, "tgr_available"):
+                self.tgr_available = self.data_integrator.tgr_available
+                print(
+                    f"✅ TGR integration status: {'Available' if self.tgr_available else 'Not Available'}"
+                )
+            else:
+                self.tgr_available = False
+        except Exception as e:
+            print(f"⚠️ TGR status check failed: {e}")
+            self.tgr_available = False
+
     def get_pipeline_status(self):
         """Get status of all pipeline components"""
         return {
@@ -104,6 +118,7 @@ class FileManager:
             "race_browser": self.race_browser is not None,
             "data_integrator": self.data_integrator is not None,
             "processor": self.processor is not None,
+            "tgr_integration": self.tgr_available,
         }
 
     def collect_latest_data(self):
@@ -223,7 +238,58 @@ class FileManager:
         name = file_path.name.lower()
         parent = file_path.parent.name.lower()
 
-        if name.startswith("race_"):
+        # Race data files - match various patterns
+        if (
+            name.startswith("race_")
+            or name.startswith("race ")
+            or (
+                "race" in name
+                and any(
+                    track in name
+                    for track in [
+                        "ap_k",
+                        "bal",
+                        "ben",
+                        "bul",
+                        "cann",
+                        "cap",
+                        "cas",
+                        "dapt",
+                        "dar",
+                        "dub",
+                        "gard",
+                        "gee",
+                        "goul",
+                        "graf",
+                        "hea",
+                        "hob",
+                        "hor",
+                        "lau",
+                        "mand",
+                        "mea",
+                        "mount",
+                        "murr",
+                        "nor",
+                        "now",
+                        "q1l",
+                        "qst",
+                        "rich",
+                        "rock",
+                        "sal",
+                        "san",
+                        "shep",
+                        "tar",
+                        "tem",
+                        "twn",
+                        "w_pk",
+                        "wag",
+                        "war",
+                        "wrgl",
+                    ]
+                )
+            )
+            or parent in ["processed", "completed", "unprocessed"]
+        ):
             return "Race Data"
         elif name.startswith("analysis_"):
             return "ML Analysis"
@@ -870,7 +936,7 @@ def main():
 
             # Recent expert form files
             st.subheader("Recent Expert Form Files")
-            recent_expert = expert_files.nlargest(10, "modified")[
+            recent_expert = expert_files.nlargest(50, "modified")[
                 ["name", "size_mb", "directory", "modified"]
             ]
             st.dataframe(recent_expert, use_container_width=True, hide_index=True)
