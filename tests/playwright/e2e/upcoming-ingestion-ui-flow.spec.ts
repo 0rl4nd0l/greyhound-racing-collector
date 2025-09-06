@@ -22,8 +22,12 @@ const CSV_CONTENT = `Race Date,Venue,Race Number,Dog Name,Box,Trainer
 
 test.describe('E2E: Upcoming Races ingestion and UI flow', () => {
   test('user sees new race in predictions after clicking Upcoming Races', async ({ page }) => {
+    // Warm up backend to ensure server is ready
+    try {
+      await page.request.get('/api/health');
+    } catch {}
     // Navigate to Upcoming page first
-await page.goto('/upcoming', { waitUntil: 'domcontentloaded' });
+    await page.goto('/upcoming', { waitUntil: 'domcontentloaded' });
 
     // Prepare a temp downloads dir in the test environment if provided via env
     const downloadsDir = process.env.DOWNLOADS_WATCH_DIR || path.resolve('tmp_e2e_downloads');
