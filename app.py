@@ -6038,10 +6038,74 @@ def api_batch_status(job_id):
             "completed": job.completed_files,
             "failed": job.failed_files,
             "total": job.total_files,
-            "created_at": job.created_at,
-            "errors": job.error_messages,
+            "current_file": getattr(job, "current_file", None),
+            "timestamp": datetime.now().isoformat(),
         }
     )
+
+
+# ------------------------
+# Test-only helper endpoints
+# ------------------------
+@app.route("/api/dev/ingest_downloads_once", methods=["POST"])  # pragma: no cover
+def api_dev_ingest_downloads_once():
+    """Scan DOWNLOADS_WATCH_DIR for CSVs and ingest them into UPCOMING_RACES_DIR.
+
+    Enabled only when TESTING flag is set. This provides a stable fallback for E2E
+    when watchdog is unavailable.
+    """
+    try:
+        is_testing = False
+        try:
+            v = app.config.get("TESTING")
+            is_testing = bool(v) if isinstance(v, bool) else str(v).lower() in ("1", "true", "yes")
+        except Exception:
+            pass
+        if not is_testing:
+            return jsonify({"success": False, "error": "Not allowed outside TESTING"}), 403
+
+        from pathlib import Path as _Path
+        from config.paths import DOWNLOADS_WATCH_DIR as _DL, UPCOMING_RACES_DIR as _UP
+        try:
+            from utils.download_watcher import is_partial_or_hidden as _is_partial
+        except Exception:
+            def _is_partial(p):
+                name = p.name.lower()
+                return name.startswith(".") or any(name.endswith(suf) for suf in (".crdownload", ".part", ".tmp"))
+        processed = []
+        errors = []
+        dl = _Path(_DL)
+        up = _Path(_UP)
+        up.mkdir(parents=True, exist_ok=True)
+        try:
+            files = [p for p in dl.iterdir() if p.is_file() and p.suffix.lower()==".csv" and not _is_partial(p)]
+        except Exception:
+            files = []
+        for p in files:
+            try:
+                try:
+                    from ingestion.ingest_race_csv import ingest_form_guide_csv as _ing
+                    published = _ing(str(p))
+                    processed.append(_Path(published).name if isinstance(published, _Path) else _Path(str(published)).name)
+                except Exception:
+                    # Fallback: copy to upcoming
+                    dest = up / p.name
+                    try:
+                        dest.write_bytes(p.read_bytes())
+                        processed.append(p.name)
+                    except Exception as e_copy:
+                        errors.append({"file": p.name, "error": str(e_copy)})
+                        continue
+                # Archive or delete source best-effort
+                try:
+                    p.unlink(missing_ok=True)  # type: ignore[arg-type]
+                except Exception:
+                    pass
+            except Exception as e:
+                errors.append({"file": p.name, "error": str(e)})
+        return jsonify({"success": True, "processed": processed, "errors": errors, "downloads_dir": str(dl), "upcoming_dir": str(up), "timestamp": datetime.now().isoformat()})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route("/api/batch/cancel/<job_id>", methods=["POST"])

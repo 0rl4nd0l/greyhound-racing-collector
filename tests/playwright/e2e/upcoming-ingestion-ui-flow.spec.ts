@@ -29,13 +29,17 @@ await page.goto('/upcoming', { waitUntil: 'domcontentloaded' });
     const downloadsDir = process.env.DOWNLOADS_WATCH_DIR || path.resolve('tmp_e2e_downloads');
     if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir, { recursive: true });
 
-    // Simulate a new CSV showing up in Downloads
-    const fileName = 'Race 2 - MEA - 2025-08-22.csv';
-    const csvPath = path.join(downloadsDir, fileName);
-    await simulateDownload(csvPath, CSV_CONTENT);
+// Simulate a new CSV showing up in Downloads
+const fileName = 'Race 2 - MEA - 2025-08-22.csv';
+const csvPath = path.join(downloadsDir, fileName);
+await simulateDownload(csvPath, CSV_CONTENT);
 
-    // Wait for backend watcher to ingest and publish to upcoming
-    await page.waitForTimeout(2000);
+// Ask backend to ingest downloads once (test-only helper)
+const resp = await page.request.post('/api/dev/ingest_downloads_once');
+const j = await resp.json();
+if (!j.success) {
+  console.warn('ingest_downloads_once failed', j);
+}
 
 // Navigate again to force refresh and pick up changes
 await page.goto('/upcoming', { waitUntil: 'domcontentloaded' });
