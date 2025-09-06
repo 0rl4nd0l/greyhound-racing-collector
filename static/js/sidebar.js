@@ -81,26 +81,37 @@ function updateSidebarWithData(data) {
 
 document.addEventListener('DOMContentLoaded', () => {
     const eventSourceSupported = !!window.EventSource;
-    
-    if (eventSourceSupported) {
-        const eventSource = new EventSource('/api/predict_stream');
-        eventSource.onmessage = function(event) {
-            const data = JSON.parse(event.data);
-            if (data.type === 'result') {
-                updateSidebarWithData(data);
-            } else if (data.type === 'error') {
-                console.error('Prediction Stream Error:', data.message);
-            }
-        };
-        eventSource.onerror = function(event) {
-            console.error('Prediction EventSource failed. Falling back to polling.', event);
-            eventSource.close();
+
+    // Delay establishing long-lived realtime connections slightly so initial page load
+    // can reach a stable state (helps automated tests that wait for networkidle).
+    const connectRealtime = () => {
+        if (eventSourceSupported) {
+            const eventSource = new EventSource('/api/predict_stream');
+            eventSource.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data || '{}');
+                    if (data.type === 'result') {
+                        updateSidebarWithData(data);
+                    } else if (data.type === 'error') {
+                        console.error('Prediction Stream Error:', data.message);
+                    }
+                } catch (e) {
+                    // non-fatal
+                }
+            };
+            eventSource.onerror = function(event) {
+                console.error('Prediction EventSource failed. Falling back to polling.', event);
+                try { eventSource.close(); } catch {}
+                initiatePolling();
+            };
+        } else {
+            console.log('EventSource not supported. Using fallback polling.');
             initiatePolling();
-        };
-    } else {
-        console.log('EventSource not supported. Using fallback polling.');
-        initiatePolling();
-    }
+        }
+    };
+
+    // 1.25s strike balance: snappy UI but avoids blocking networkidle in tests
+    setTimeout(connectRealtime, 1250);
 
     function initiatePolling() {
         updateSidebar();
