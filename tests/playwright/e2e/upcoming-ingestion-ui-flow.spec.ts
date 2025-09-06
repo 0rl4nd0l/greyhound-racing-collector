@@ -41,8 +41,8 @@ if (!j.success) {
   console.warn('ingest_downloads_once failed', j);
 }
 
-// Navigate again to force refresh and pick up changes
-await page.goto('/upcoming', { waitUntil: 'domcontentloaded' });
+// Ask UI to refresh upcoming list without full navigation
+await page.evaluate(() => (window as any).reloadUpcomingRaces && (window as any).reloadUpcomingRaces());
 
     // Now assert the new race appears (venue MEA and date 2025-08-22 somewhere on page)
     const foundVenue = await page.locator('text=MEA').first();

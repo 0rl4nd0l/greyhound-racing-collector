@@ -1601,8 +1601,19 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.predictionResultsBody.appendChild(summaryDiv);
     }
     
-    // Test-only export hook: expose displayPredictionResults when explicitly enabled
-    try { if (window && window.ENABLE_UI_EXPORTS) { window.displayPredictionResults = displayPredictionResults; } } catch (e) {}
+    // Test-only export hooks
+    try {
+        if (window && window.ENABLE_UI_EXPORTS) {
+            window.displayPredictionResults = displayPredictionResults;
+            window.reloadUpcomingRaces = async function() {
+                try {
+                    state.viewMode = 'upcoming';
+                    await loadRaces();
+                    renderRaces();
+                } catch (e) { console.warn('reloadUpcomingRaces failed', e); }
+            };
+        }
+    } catch (e) {}
     
     // Ensure details panel is expanded and rendered (safe public helper)
     window.__ensureExpandAndRender = async function(index) {

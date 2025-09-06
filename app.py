@@ -1181,12 +1181,21 @@ def after_request(response):
                         if testing_val:
                             if "window.E2E_DISABLE_REALTIME" not in html:
                                 inline = "<script>window.E2E_DISABLE_REALTIME=true;</script>"
-                                if "</body>" in html:
+                            if "</body>" in html:
                                     html = html.replace("</body>", inline + "</body>")
                                 elif "</head>" in html:
                                     html = html.replace("</head>", inline + "</head>")
                                 else:
                                     html = html + inline
+                            # Also enable UI exports for test helpers
+                            if "window.ENABLE_UI_EXPORTS" not in html:
+                                inline2 = "<script>window.ENABLE_UI_EXPORTS=true;</script>"
+                                if "</body>" in html:
+                                    html = html.replace("</body>", inline2 + "</body>")
+                                elif "</head>" in html:
+                                    html = html.replace("</head>", inline2 + "</head>")
+                                else:
+                                    html = html + inline2
                     except Exception:
                         pass
                 except Exception:
