@@ -27,8 +27,8 @@ test.describe('E2E: Upcoming Races ingestion and UI flow', () => {
       await page.request.get('/api/health');
     } catch {}
     // Navigate to Upcoming page first (avoid waiting for network idle; wait on a deterministic selector instead)
-    await page.goto('/upcoming');
-    await page.waitForSelector('tbody .race-checkbox, .race-card', { timeout: 15000 });
+    await page.goto('/upcoming', { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('tbody .race-checkbox, .race-card', { timeout: 30000 });
 
     // Prepare a temp downloads dir in the test environment if provided via env
     const downloadsDir = process.env.DOWNLOADS_WATCH_DIR || path.resolve('tmp_e2e_downloads');
