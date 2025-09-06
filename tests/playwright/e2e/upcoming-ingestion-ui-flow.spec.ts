@@ -48,12 +48,11 @@ if (!j.success) {
 // Ask UI to refresh upcoming list without full navigation
 await page.evaluate(() => (window as any).reloadUpcomingRaces && (window as any).reloadUpcomingRaces());
 
-    // Now assert the new race appears (venue MEA and date 2025-08-22 somewhere on page)
-    const foundVenue = await page.locator('text=MEA').first();
+    // Now assert the new race appears (venue code or name and date on page)
+    const foundVenue = await page.locator('text=/\\b(MEA|The Meadows)\\b/').first();
     await expect(foundVenue).toBeVisible();
 
-    // Optional: Verify the canonical filename shows up in any table/listing if rendered
-    // This selector may vary based on implementation; we look for date and race number as fallback
+    // Verify the date appears on the page
     await expect(page.locator('text=2025-08-22')).toBeVisible();
   });
 });
