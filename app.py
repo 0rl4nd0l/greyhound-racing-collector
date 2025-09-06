@@ -12207,6 +12207,28 @@ def api_predict_stream():
 
         from flask import Response, copy_current_request_context
 
+        # Fast-exit in testing to avoid long-lived SSE that blocks networkidle in E2E
+        try:
+            if bool(app.config.get("TESTING")):
+                def _test_stream():
+                    try:
+                        yield f"data: {json.dumps({'type': 'status', 'message': 'TESTING mode: predictions stream disabled'})}\n\n"
+                        yield f"data: {json.dumps({'type': 'complete', 'message': 'TESTING mode: stream closed'})}\n\n"
+                    except Exception:
+                        pass
+                return Response(
+                    _test_stream(),
+                    mimetype="text/event-stream",
+                    headers={
+                        "Cache-Control": "no-cache",
+                        "Connection": "keep-alive",
+                        "Access-Control-Allow-Origin": "*",
+                        "Access-Control-Allow-Headers": "Cache-Control",
+                    },
+                )
+        except Exception:
+            pass
+
         # Get parameters
         race_filenames = request.args.getlist("race_files")  # Multiple files support
         single_race = request.args.get("race_filename")  # Single file support
