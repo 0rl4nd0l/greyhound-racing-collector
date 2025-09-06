@@ -231,6 +231,24 @@ document.addEventListener('DOMContentLoaded', () => {
                                    document.querySelector('tbody');
         if (elements.racesTableBody) {
             console.log('Using fallback racesTableBody selector');
+        } else {
+            // Create a minimal table structure for upcoming races if not present
+            try {
+                const table = document.createElement('table');
+                table.id = 'upcoming-races-table';
+                table.className = 'table table-striped';
+                const thead = document.createElement('thead');
+                thead.innerHTML = '<tr><th></th><th>Race</th><th>Venue</th><th>Date/Time</th><th>Distance</th><th>Grade</th><th>Status</th><th>Actions</th></tr>';
+                const tbody = document.createElement('tbody');
+                table.appendChild(thead);
+                table.appendChild(tbody);
+                const container = document.querySelector('main') || document.body;
+                container.appendChild(table);
+                elements.racesTableBody = tbody;
+                console.log('Created fallback upcoming races table');
+            } catch (e) {
+                console.warn('Failed to create fallback table', e);
+            }
         }
     }
     if (!elements.selectAllCheckbox) {
@@ -270,8 +288,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (!elements.racesTableBody) {
         console.error('Interactive Races: races table body not found – cannot render races');
-        showToast('Page markup missing races table body. Please refresh or report this issue.', 'danger');
-        return;
+        // Attempt a last-chance creation
+        try {
+            const table = document.createElement('table');
+            table.id = 'upcoming-races-table';
+            const tbody = document.createElement('tbody');
+            table.appendChild(tbody);
+            const container = document.querySelector('main') || document.body;
+            container.appendChild(table);
+            elements.racesTableBody = tbody;
+        } catch {}
+        if (!elements.racesTableBody) {
+            showToast('Page markup missing races table body. Please refresh or report this issue.', 'danger');
+            return;
+        }
     }
 
     // Initialize the page
