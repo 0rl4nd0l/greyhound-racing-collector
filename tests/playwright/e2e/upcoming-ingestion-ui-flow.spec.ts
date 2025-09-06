@@ -37,8 +37,8 @@ await page.goto('/upcoming', { waitUntil: 'domcontentloaded' });
     // Wait for backend watcher to ingest and publish to upcoming
     await page.waitForTimeout(2000);
 
-    // Reload Upcoming page to pick up changes if not auto-refreshed
-await page.reload({ waitUntil: 'domcontentloaded' });
+// Navigate again to force refresh and pick up changes
+await page.goto('/upcoming', { waitUntil: 'domcontentloaded' });
 
     // Now assert the new race appears (venue MEA and date 2025-08-22 somewhere on page)
     const foundVenue = await page.locator('text=MEA').first();
