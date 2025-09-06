@@ -26,8 +26,9 @@ test.describe('E2E: Upcoming Races ingestion and UI flow', () => {
     try {
       await page.request.get('/api/health');
     } catch {}
-    // Navigate to Upcoming page first
-    await page.goto('/upcoming', { waitUntil: 'domcontentloaded' });
+    // Navigate to Upcoming page first (avoid waiting for network idle; wait on a deterministic selector instead)
+    await page.goto('/upcoming');
+    await page.waitForSelector('tbody .race-checkbox, .race-card', { timeout: 15000 });
 
     // Prepare a temp downloads dir in the test environment if provided via env
     const downloadsDir = process.env.DOWNLOADS_WATCH_DIR || path.resolve('tmp_e2e_downloads');
@@ -45,12 +46,13 @@ if (!j.success) {
   console.warn('ingest_downloads_once failed', j);
 }
 
-// Ask UI to refresh upcoming list without full navigation
+// Ask UI to refresh upcoming list without full navigation and wait for content
 await page.evaluate(() => (window as any).reloadUpcomingRaces && (window as any).reloadUpcomingRaces());
+await page.waitForSelector('tbody .race-checkbox, .race-card', { timeout: 15000 });
 
     // Now assert the new race appears (venue code or name and date on page)
     const foundVenue = await page.locator('text=/\\b(MEA|The Meadows)\\b/').first();
-    await expect(foundVenue).toBeVisible();
+    await expect(foundVenue).toBeVisible({ timeout: 15000 });
 
     // Verify the date appears on the page
     await expect(page.locator('text=2025-08-22')).toBeVisible();
