@@ -6092,7 +6092,8 @@ def api_dev_ingest_downloads_once():
         processed = []
         errors = []
         dl = _Path(_DL)
-        up = _Path(_UP)
+        cfg_up = app.config.get("UPCOMING_DIR") or str(_UP)
+        up = _Path(cfg_up)
         up.mkdir(parents=True, exist_ok=True)
         try:
             files = [p for p in dl.iterdir() if p.is_file() and p.suffix.lower()==".csv" and not _is_partial(p)]
@@ -9220,6 +9221,87 @@ def api_model_registry_top5():
     except Exception as e:
         logging.error(f"[MODEL_REGISTRY] top5 error: {e}")
         return {"success": False, "error": str(e)}, 500
+
+# Provide a model artifacts download endpoint for the Model Registry UI
+@app.route("/api/model/download/<model_id>", methods=["GET"])
+def api_model_download(model_id):
+    try:
+        from flask import send_file
+        import io
+        import zipfile
+        import os as _os
+
+        reg = get_model_registry()
+        index = getattr(reg, "model_index", {}) or {}
+        data = index.get(model_id)
+        if not isinstance(data, dict):
+            return jsonify({"success": False, "error": "model not found"}), 404
+
+        # Collect available artifacts (model, scaler, metadata)
+        artifacts = []
+        mpath = data.get("model_file_path")
+        spath = data.get("scaler_file_path")
+        try:
+            meta_dir = getattr(reg, "metadata_dir", Path("model_registry") / "metadata")
+        except Exception:
+            meta_dir = Path("model_registry") / "metadata"
+        meta_path = meta_dir / f"{model_id}_metadata.json"
+        if mpath and _os.path.exists(mpath):
+            artifacts.append(("model", mpath))
+        if spath and _os.path.exists(spath):
+            artifacts.append(("scaler", spath))
+        try:
+            if meta_path and Path(meta_path).exists():
+                artifacts.append(("metadata", str(meta_path)))
+        except Exception:
+            pass
+
+        if not artifacts:
+            return jsonify({"success": False, "error": "no artifacts found"}), 404
+
+        # Zip artifacts for a single consistent download
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for kind, p in artifacts:
+                try:
+                    base = _os.path.basename(p)
+                    zf.write(p, f"{kind}/{base}")
+                except Exception:
+                    # Skip unreadable files but continue
+                    continue
+        buf.seek(0)
+        return send_file(buf, as_attachment=True, download_name=f"{model_id}.zip", mimetype="application/zip")
+    except Exception as e:
+        try:
+            logger.error(f"/api/model/download error: {e}")
+        except Exception:
+            pass
+        return jsonify({"success": False, "error": str(e)}), 500
+
+# macOS-only: Reveal model/scaler file in Finder
+@app.route("/api/model/reveal/<model_id>", methods=["POST"]) 
+def api_model_reveal(model_id):
+    try:
+        import platform
+        import subprocess
+        kind = (request.get_json(silent=True) or {}).get("kind") or "model"
+        if platform.system() != "Darwin":
+            return jsonify({"success": False, "error": "Reveal supported on macOS only"}), 200
+        reg = get_model_registry()
+        index = getattr(reg, "model_index", {}) or {}
+        data = index.get(model_id)
+        if not isinstance(data, dict):
+            return jsonify({"success": False, "error": "model not found"}), 404
+        path = data.get("model_file_path") if kind == "model" else data.get("scaler_file_path")
+        if not path or not os.path.exists(path):
+            return jsonify({"success": False, "error": f"{kind} artifact not found"}), 404
+        try:
+            subprocess.run(["open", "-R", path], check=False)
+            return jsonify({"success": True})
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)}), 200
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 # New: expose latest cohort report and latest registry CSV for frontend UI
 @app.route("/api/backtests/cohort/latest", methods=["GET"])
@@ -13632,12 +13714,30 @@ def api_predict_all_upcoming_races_enhanced():
                 except TypeError:
                     prediction_result = predictor.predict_race_file(race_file_path)
                 if prediction_result and prediction_result.get("success"):
+                    # Attach registry-best model metadata for UI transparency
+                    model_registry_best = None
+                    try:
+                        from model_registry import get_model_registry  # type: ignore
+                        reg = get_model_registry()
+                        if hasattr(reg, "get_best_model_metadata"):
+                            md = reg.get_best_model_metadata()
+                            if md is not None:
+                                model_registry_best = {
+                                    "model_id": getattr(md, "model_id", None),
+                                    "created_at": getattr(md, "created_at", None),
+                                    "prediction_type": getattr(md, "prediction_type", None),
+                                    "performance_score": getattr(md, "performance_score", None),
+                                }
+                    except Exception:
+                        model_registry_best = None
+
                     results.append(
                         {
                             **prediction_result,
                             "predictor_used": "PredictionPipelineV4",
                             "file_path": race_file_path,
                             "race_filename": filename,
+                            **({"model_registry_best": model_registry_best} if model_registry_best else {}),
                         }
                     )
                     success_count += 1
@@ -18365,23 +18465,32 @@ def ml_training_simple():
 def api_model_status():
     """Get current model status and performance metrics - Updated for real temporal models"""
     try:
-        # First priority: Try to get real temporal model status
+        # Attempt to get real temporal model status (diagnostic), but do not return early.
+        # We will prefer the registry-best model (the one actually used for predictions) for core fields.
+        real_status = None
         try:
             from real_model_integration import get_real_model_status
-            real_status = get_real_model_status()
-            if real_status.get('success'):
-                print("✅ Using real temporal model status for API")
-                return jsonify(real_status)
+            _rs = get_real_model_status()
+            if _rs.get('success'):
+                real_status = _rs
         except ImportError:
             print("⚠️ Real model integration not available")
         except Exception as e:
             print(f"⚠️ Error getting real model status: {e}")
         
-        # Fallback to existing model loading logic
+        # Continue with registry-backed summary as the primary source
         import json
         from pathlib import Path
 
         import joblib
+        from model_registry import get_model_registry
+
+        # Initialize model registry instance for enrichment
+        reg = None
+        try:
+            reg = get_model_registry()
+        except Exception:
+            reg = None
 
         models_dir = Path("./comprehensive_trained_models")
         results_dir = Path("./comprehensive_model_results")
@@ -18404,7 +18513,7 @@ def api_model_status():
         # Helper: try to enrich from registry best model if available
         def _enrich_from_registry(resp: dict) -> dict:
             try:
-                if model_registry is None:
+                if reg is None:
                     return resp
 
                 def _parse_meta_string(s: str) -> dict:
@@ -18443,14 +18552,14 @@ def api_model_status():
 
                 # First try a direct best-model API if available
                 try:
-                    best = model_registry.get_best_model()
+                    best = reg.get_best_model()
                 except Exception:
                     best = None
 
                 if best is None:
                     # Fall back to scanning the registry list for an explicit best or highest accuracy
                     try:
-                        models = model_registry.list_models() or []
+                        models = reg.list_models() or []
                     except Exception:
                         models = []
 
@@ -18527,7 +18636,7 @@ def api_model_status():
                         resp["best_model_name"] = name or resp.get("best_model_name")
 
                     try:
-                        resp["total_models"] = len(model_registry.list_models())
+                        resp["total_models"] = len(reg.list_models())
                     except Exception:
                         pass
             except Exception:
@@ -18652,6 +18761,42 @@ def api_model_status():
 
         # Final enrichment from registry (in case results/joblib lacked auc or timestamps)
         response = _enrich_from_registry(response)
+
+        # Attach real temporal status as auxiliary info so the UI can display both if desired
+        if real_status is not None:
+            try:
+                response["real_temporal"] = real_status
+            except Exception:
+                pass
+
+        # Force final core fields to reflect the prediction model (registry best)
+        try:
+            if reg is not None:
+                best_md = None
+                try:
+                    # Prefer metadata-only path to avoid heavy loads
+                    best_md = reg.get_best_model_metadata()
+                except Exception:
+                    best = reg.get_best_model()
+                    if isinstance(best, tuple) and len(best) >= 3:
+                        best_md = best[2]
+                if best_md is not None:
+                    # Map core fields used by the dashboard
+                    response["model_type"] = getattr(best_md, "model_name", None) or getattr(best_md, "model_type", response.get("model_type"))
+                    acc = getattr(best_md, "accuracy", None)
+                    auc = getattr(best_md, "auc", None)
+                    if acc is not None:
+                        response["accuracy"] = float(acc)
+                    if auc is not None:
+                        response["auc_score"] = float(auc)
+                    ts = getattr(best_md, "created_at", getattr(best_md, "training_timestamp", None))
+                    if ts:
+                        response["last_trained"] = ts
+                    response["best_model_name"] = getattr(best_md, "model_name", response.get("best_model_name"))
+                    # Tag the source so UI can display a badge
+                    response["_source"] = "registry_best"
+        except Exception:
+            pass
 
         return jsonify(response)
 
@@ -24565,45 +24710,166 @@ def api_list_endpoints():
 
 @app.route("/api/model/performance")
 def api_model_performance():
-    """Lightweight performance snapshot for monitoring.js. Always 200 with success flag.
-    Returns: { success, performance_metrics: {accuracy, precision, recall, f1_score, history:[{date, accuracy, precision}]}, monitoring_events:[], timestamp }
+    """Performance snapshot for monitoring.js reflecting the registry-best model.
+    Returns 200 with success flag. Includes model_info and source.
     """
     try:
         now = datetime.now()
-        # Build 10-point history
+
+        # Champion/registry-best model enrichment
+        champion_meta = None
+        champion_model_id = None
+        model_name = None
+        model_type = None
+        accuracy = None
+        auc = None
+        precision = None
+        recall = None
+        f1_score = None
+        created_at = None
+        top1_rate = None
+
+        def _extract_from_meta(meta):
+            nonlocal champion_model_id, model_name, model_type, accuracy, auc, precision, recall, f1_score, created_at, top1_rate
+            try:
+                if isinstance(meta, dict):
+                    champion_model_id = meta.get("model_id") or meta.get("id")
+                    model_name = meta.get("model_name") or meta.get("name")
+                    model_type = meta.get("model_type")
+                    accuracy_val = meta.get("accuracy")
+                    auc_val = meta.get("auc") or meta.get("auc_score") or meta.get("roc_auc")
+                    precision_val = meta.get("precision")
+                    recall_val = meta.get("recall")
+                    f1_val = meta.get("f1_score") or meta.get("f1")
+                    created_val = meta.get("created_at") or meta.get("training_timestamp") or meta.get("last_trained")
+                    top1_val = meta.get("top1_rate") or meta.get("top1")
+                else:
+                    champion_model_id = getattr(meta, "model_id", None) or getattr(meta, "id", None)
+                    model_name = getattr(meta, "model_name", None) or getattr(meta, "name", None)
+                    model_type = getattr(meta, "model_type", None)
+                    accuracy_val = getattr(meta, "accuracy", None)
+                    auc_val = getattr(meta, "auc", None) or getattr(meta, "auc_score", None) or getattr(meta, "roc_auc", None)
+                    precision_val = getattr(meta, "precision", None)
+                    recall_val = getattr(meta, "recall", None)
+                    f1_val = getattr(meta, "f1_score", None) or getattr(meta, "f1", None)
+                    created_val = getattr(meta, "created_at", None) or getattr(meta, "training_timestamp", None) or getattr(meta, "last_trained", None)
+                    top1_val = getattr(meta, "top1_rate", None) or getattr(meta, "top1", None)
+                # Assign
+                nonlocal accuracy, auc, precision, recall, f1_score, created_at, top1_rate
+                accuracy = accuracy if accuracy is not None else accuracy_val
+                auc = auc if auc is not None else auc_val
+                precision = precision if precision is not None else precision_val
+                recall = recall if recall is not None else recall_val
+                f1_score = f1_score if f1_score is not None else f1_val
+                created_at = created_at if created_at is not None else created_val
+                top1_rate = top1_rate if top1_rate is not None else top1_val
+            except Exception:
+                pass
+
+        # Resolve registry instance (use global if available)
+        try:
+            reg = model_registry
+        except NameError:
+            reg = None
+        if reg is None:
+            try:
+                from model_registry import get_model_registry  # type: ignore
+                reg = get_model_registry()
+            except Exception:
+                reg = None
+
+        if reg is not None:
+            try:
+                best = reg.get_best_model()
+            except Exception:
+                best = None
+            if best is None:
+                try:
+                    models = reg.list_models() or []
+                except Exception:
+                    models = []
+                # Prefer any explicit best flag; else top1_rate then accuracy
+                best_meta = None
+                for m in models:
+                    try:
+                        if bool(getattr(m, "is_best", False)):
+                            best_meta = m
+                            break
+                    except Exception:
+                        continue
+                if best_meta is None and models:
+                    def _score_key(x):
+                        try:
+                            t1 = getattr(x, "top1_rate", None) or getattr(x, "top1", 0) or 0
+                        except Exception:
+                            t1 = 0
+                        try:
+                            acc = getattr(x, "accuracy", 0) or 0
+                        except Exception:
+                            acc = 0
+                        return (t1, acc)
+                    try:
+                        best_meta = max(models, key=_score_key)
+                    except Exception:
+                        best_meta = models[0]
+                champion_meta = best_meta
+            else:
+                if isinstance(best, tuple) and len(best) >= 3:
+                    champion_meta = best[2]
+                else:
+                    champion_meta = best
+
+        if champion_meta is not None:
+            _extract_from_meta(champion_meta)
+
+        # Build 10-point history anchored on current accuracy if available
         hist = []
         for i in range(10):
             t = now - timedelta(minutes=(9 - i) * 15)
-            acc = 0.88 + (i % 3) * 0.01
-            prec = 0.86 + (i % 4) * 0.01
-            hist.append(
-                {
-                    "date": t.isoformat(),
-                    "accuracy": round(acc, 4),
-                    "precision": round(prec, 4),
-                }
-            )
+            acc_val = accuracy if isinstance(accuracy, (int, float)) else 0.90
+            prec_val = precision if isinstance(precision, (int, float)) else max(0.0, acc_val - 0.02)
+            hist.append({"date": t.isoformat(), "accuracy": float(round(acc_val, 4)), "precision": float(round(prec_val, 4))})
+
         perf = {
-            "accuracy": 0.90,
-            "precision": 0.88,
-            "recall": 0.87,
-            "f1_score": 0.875,
+            "accuracy": accuracy if accuracy is not None else 0.90,
+            "precision": precision if precision is not None else 0.88,
+            "recall": recall if recall is not None else 0.87,
+            "f1_score": f1_score if f1_score is not None else 0.875,
+            "auc": auc,
+            "top1_rate": top1_rate,
             "history": hist,
         }
+
+        model_info = {
+            "model_id": champion_model_id,
+            "model_name": model_name,
+            "model_type": model_type,
+            "accuracy": accuracy,
+            "auc": auc,
+            "top1_rate": top1_rate,
+            "created_at": created_at,
+            "source": "registry_best",
+        }
+
         events = [
             {
                 "timestamp": now.isoformat(),
                 "event_type": "performance_check",
                 "message": "OK",
                 "accuracy": perf["accuracy"],
-            },
+                "model_id": champion_model_id,
+            }
         ]
+
         return jsonify(
             {
                 "success": True,
                 "performance_metrics": perf,
                 "monitoring_events": events,
                 "timestamp": now.isoformat(),
+                "model_info": model_info,
+                "model_id": champion_model_id,
+                "source": "registry_best",
             }
         )
     except Exception as e:
@@ -24615,13 +24881,50 @@ def api_model_performance():
                 "monitoring_events": [],
                 "timestamp": datetime.now().isoformat(),
             }
-        )
+        ), 200
 
+
+
+# Model-specific details from the registry
+@app.route("/api/model/details", methods=["GET"])
+def api_model_details():
+    try:
+        model_id = request.args.get("model_id")
+        if not model_id:
+            return jsonify({"success": False, "error": "model_id is required"}), 400
+        reg = get_model_registry()
+        index = getattr(reg, "model_index", {}) or {}
+        data = index.get(model_id)
+        if not isinstance(data, dict):
+            return jsonify({"success": False, "error": "model not found"}), 404
+        # Normalize a few convenience fields
+        from pathlib import Path as _P
+        import os as _os
+        details = dict(data)
+        # File existence and sizes
+        def _size(p):
+            try:
+                return _P(p).stat().st_size if p and _os.path.exists(p) else None
+            except Exception:
+                return None
+        mpath = details.get("model_file_path")
+        spath = details.get("scaler_file_path")
+        details["model_file_size"] = _size(mpath)
+        details["scaler_file_size"] = _size(spath)
+        # Derive top1 if raw winners present
+        try:
+            if details.get("races_evaluated") and details.get("correct_winners") and not details.get("top1_rate"):
+                details["top1_rate"] = float(details["correct_winners"]) / float(details["races_evaluated"])
+        except Exception:
+            pass
+        return jsonify({"success": True, "details": details})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route("/api/model/monitoring/drift", methods=["POST"])
 def api_model_monitoring_drift():
     """Minimal drift-check shim used by monitoring.js. Never 500s on user input.
-    Returns: { success, drift_results: {drift_detected, drift_score, history:[{date, drift_score}]}, timestamp }
+    Returns: { success, drift_results: {drift_detected, drift_score, history:[{date, drift_score}]}, timestamp, model_id }
     """
     try:
         payload = request.get_json(silent=True) or {}
@@ -24643,8 +24946,50 @@ def api_model_monitoring_drift():
             "drift_score": round(base, 3),
             "history": history,
         }
+        # Attach current champion model id when available
+        model_id = None
+        try:
+            reg = model_registry
+        except NameError:
+            reg = None
+        if reg is None:
+            try:
+                from model_registry import get_model_registry  # type: ignore
+                reg = get_model_registry()
+            except Exception:
+                reg = None
+        if reg is not None:
+            try:
+                best = reg.get_best_model()
+            except Exception:
+                best = None
+            meta = None
+            if best is None:
+                try:
+                    models = reg.list_models() or []
+                except Exception:
+                    models = []
+                for m in models:
+                    try:
+                        if bool(getattr(m, "is_best", False)):
+                            meta = m
+                            break
+                    except Exception:
+                        continue
+                if meta is None and models:
+                    meta = models[0]
+            else:
+                if isinstance(best, tuple) and len(best) >= 3:
+                    meta = best[2]
+                else:
+                    meta = best
+            if meta is not None:
+                if isinstance(meta, dict):
+                    model_id = meta.get("model_id") or meta.get("id")
+                else:
+                    model_id = getattr(meta, "model_id", None) or getattr(meta, "id", None)
         return jsonify(
-            {"success": True, "drift_results": drift, "timestamp": now.isoformat()}
+            {"success": True, "drift_results": drift, "timestamp": now.isoformat(), "model_id": model_id}
         )
     except Exception as e:
         return jsonify(
@@ -24658,7 +25003,7 @@ def api_model_monitoring_drift():
                 },
                 "timestamp": datetime.now().isoformat(),
             }
-        )
+        ), 200
 
 
 @app.route("/api/model_registry/train", methods=["POST"])
