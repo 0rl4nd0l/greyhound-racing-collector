@@ -80,6 +80,7 @@ function updateSidebarWithData(data) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    try { if (window && window.E2E_DISABLE_REALTIME) { return; } } catch (_) {}
     const eventSourceSupported = !!window.EventSource;
 
     // Delay establishing long-lived realtime connections slightly so initial page load

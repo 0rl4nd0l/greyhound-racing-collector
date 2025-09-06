@@ -1175,6 +1175,20 @@ def after_request(response):
                         else:
                             # Fallback: append if </body> is not found
                             html = html + banner
+
+                    # In testing mode, expose a global flag to disable realtime connections in the UI
+                    try:
+                        if testing_val:
+                            if "window.E2E_DISABLE_REALTIME" not in html:
+                                inline = "<script>window.E2E_DISABLE_REALTIME=true;</script>"
+                                if "</body>" in html:
+                                    html = html.replace("</body>", inline + "</body>")
+                                elif "</head>" in html:
+                                    html = html.replace("</head>", inline + "</head>")
+                                else:
+                                    html = html + inline
+                    except Exception:
+                        pass
                 except Exception:
                     # Never break response rendering for banner injection
                     pass

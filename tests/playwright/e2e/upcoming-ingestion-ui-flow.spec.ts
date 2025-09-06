@@ -23,7 +23,7 @@ const CSV_CONTENT = `Race Date,Venue,Race Number,Dog Name,Box,Trainer
 test.describe('E2E: Upcoming Races ingestion and UI flow', () => {
   test('user sees new race in predictions after clicking Upcoming Races', async ({ page }) => {
     // Navigate to Upcoming page first
-    await page.goto('/upcoming', { waitUntil: 'networkidle' });
+await page.goto('/upcoming', { waitUntil: 'domcontentloaded' });
 
     // Prepare a temp downloads dir in the test environment if provided via env
     const downloadsDir = process.env.DOWNLOADS_WATCH_DIR || path.resolve('tmp_e2e_downloads');
@@ -38,7 +38,7 @@ test.describe('E2E: Upcoming Races ingestion and UI flow', () => {
     await page.waitForTimeout(2000);
 
     // Reload Upcoming page to pick up changes if not auto-refreshed
-    await page.reload({ waitUntil: 'networkidle' });
+await page.reload({ waitUntil: 'domcontentloaded' });
 
     // Now assert the new race appears (venue MEA and date 2025-08-22 somewhere on page)
     const foundVenue = await page.locator('text=MEA').first();

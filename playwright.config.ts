@@ -1,9 +1,15 @@
 import { defineConfig } from "@playwright/test";
+import path from "path";
 
 // Ensure tests default to port 5002 unless overridden
 process.env.DEFAULT_PORT = process.env.DEFAULT_PORT || '5002';
 process.env.FLASK_BASE_URL = process.env.FLASK_BASE_URL || 'http://localhost:5002';
 process.env.BASE_URL = process.env.BASE_URL || 'http://localhost:5002';
+// Ensure a stable downloads watch directory for E2E and enable watchers
+const DL = process.env.DOWNLOADS_WATCH_DIR || path.resolve('tmp_e2e_downloads');
+process.env.DOWNLOADS_WATCH_DIR = DL;
+process.env.WATCH_DOWNLOADS = process.env.WATCH_DOWNLOADS || '1';
+process.env.WATCH_UPCOMING = process.env.WATCH_UPCOMING || '1';
 
 export default defineConfig({
   timeout: 120000,
@@ -27,7 +33,7 @@ export default defineConfig({
     actionTimeout: 15000
   },
   webServer: {
-    command: 'PORT=5003 ./.venv/bin/python app.py --host 127.0.0.1 --port 5003',
+    command: 'PORT=5003 ./.venv/bin/python app.py --host ********* --port 5003',
     url: 'http://localhost:5003',
     reuseExistingServer: false,
     timeout: 240000,
@@ -39,6 +45,9 @@ export default defineConfig({
       DISABLE_NAV_DROPDOWNS: '1',
       BACKGROUND_BASE_URL: 'http://localhost:5003',
       E2E_BASE_URL: 'http://localhost:5003',
+      WATCH_DOWNLOADS: '1',
+      WATCH_UPCOMING: '1',
+      DOWNLOADS_WATCH_DIR: DL,
       V4_MAX_RACES: '50',
       V4_TREES: '100',
       V4_MAX_DEPTH: '12',
