@@ -42,7 +42,7 @@ class Config:
     PROCESSED_DIR = str(BASE_DIR / "processed")
     HISTORICAL_DIR = str(BASE_DIR / "historical_races")
     UPCOMING_DIR = os.environ.get("UPCOMING_RACES_DIR") or str(
-        BASE_DIR / "upcoming_races"
+        BASE_DIR / "upcoming_races_temp"
     )
 
     # Upload settings
