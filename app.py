@@ -1181,7 +1181,7 @@ def after_request(response):
                         if testing_val:
                             if "window.E2E_DISABLE_REALTIME" not in html:
                                 inline = "<script>window.E2E_DISABLE_REALTIME=true;</script>"
-                            if "</body>" in html:
+                                if "</body>" in html:
                                     html = html.replace("</body>", inline + "</body>")
                                 elif "</head>" in html:
                                     html = html.replace("</head>", inline + "</head>")
