@@ -5287,25 +5287,50 @@ def api_races_paginated():
 
 @app.route("/api/upcoming_races")
 def api_upcoming_races():
-    """API endpoint for live upcoming races from thedogs.com.au (DEFAULT) with CSV fallback"""
+    """API endpoint for live upcoming races (strict live by default; no CSV fallback when strict_live=1)."""
     try:
         # Get parameters
-        days_ahead = request.args.get(
-            "days", 1, type=int
-        )  # Default to today + tomorrow
+        days_ahead = request.args.get("days", 1, type=int)  # today + days_ahead
         page = request.args.get("page", 1, type=int)
-        per_page = min(
-            request.args.get("per_page", 50, type=int), 100
-        )  # Max 100 per page
-        source = request.args.get("source", "live")  # 'live' or 'csv'
-        refresh = request.args.get("refresh", "false").lower() in ("1", "true", "yes")
+        per_page = min(request.args.get("per_page", 50, type=int), 100)  # Max 100 per page
+        source = (request.args.get("source", "live") or "live").lower()  # 'live' or 'csv'
+        refresh = (request.args.get("refresh", "false") or "false").lower() in ("1", "true", "yes")
+        strict_live = (request.args.get("strict_live", "1") or "1").lower() in ("1", "true", "yes")
 
-        # In test mode, validate CSV loader path early (unit tests patch this) and force CSV source
-        if app.config.get("TESTING"):
+        testing = bool(app.config.get("TESTING"))
+        can_live = ENABLE_LIVE_SCRAPING and ENABLE_RESULTS_SCRAPERS and not testing
+
+        # Enforce strict live policy: disallow CSV and refuse when live is disabled
+        if strict_live:
+            if source != "live":
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": "csv_not_allowed",
+                            "message": "CSV source is disabled for this endpoint when strict_live=1. Use /api/upcoming_races_csv if needed.",
+                        }
+                    ),
+                    400,
+                )
+            if not can_live:
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": "live_disabled",
+                            "message": "Live scraping is disabled by feature flags or testing mode",
+                        }
+                    ),
+                    403,
+                )
+
+        # In non-strict test mode, validate CSV loader path early (unit tests patch this) and force CSV source
+        if testing and not strict_live:
             try:
                 # This call is intentionally made so patched exceptions surface in tests
                 _ = load_upcoming_races(refresh=False)
-            except Exception as e:
+            except Exception:
                 # Re-raise to be handled by the outer except -> 500 as tests expect
                 raise
             # Force csv source during tests to avoid slow network scraping and enable mocking
@@ -5342,13 +5367,8 @@ def api_upcoming_races():
             # Ignore cache errors and continue
             pass
 
-        # PRIMARY: Use live scraping by default (but not during tests)
-        if (
-            source == "live"
-            and not app.config.get("TESTING")
-            and ENABLE_LIVE_SCRAPING
-            and ENABLE_RESULTS_SCRAPERS
-        ):
+        # PRIMARY: Use live scraping by default
+        if (source == "live" and can_live):
             try:
                 # Use UpcomingRaceBrowser for comprehensive live data
                 from upcoming_race_browser import UpcomingRaceBrowser
@@ -5382,12 +5402,35 @@ def api_upcoming_races():
 
             except Exception as live_error:
                 logger.error(f"Live scraping failed: {live_error}")
-                # Fallback to CSV data if live scraping fails
+                if strict_live:
+                    return (
+                        jsonify(
+                            {
+                                "success": False,
+                                "error": "live_fetch_failed",
+                                "message": f"Live scraping failed: {str(live_error)}",
+                            }
+                        ),
+                        503,
+                    )
+                # Fallback to CSV data if live scraping fails and strict_live is not enforced
                 logger.info("Falling back to CSV files from upcoming_races directory")
                 races = load_upcoming_races_with_guaranteed_fields(refresh=True)
                 source = "csv_fallback"
         else:
-            # Use CSV files when explicitly requested or during tests, or when live scraping is disabled
+            # Use CSV files when explicitly requested, during tests (non-strict), or when live scraping is disabled (non-strict)
+            if strict_live:
+                # Should not reach here because strict_live gating above would have returned 400/403
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": "csv_not_allowed",
+                            "message": "CSV source is disabled for this endpoint when strict_live=1. Use /api/upcoming_races_csv if needed.",
+                        }
+                    ),
+                    400,
+                )
             try:
                 # Prefer the unified loader (allows tests to patch load_upcoming_races)
                 races = load_upcoming_races(refresh=False)
@@ -5595,32 +5638,11 @@ def api_upcoming_races_csv():
         order = request.args.get("order", "desc")
         search = request.args.get("search", "").strip()
 
-        # Resolve upcoming directory from the active app context (tests may override this)
-        try:
-            upcoming_dir = current_app.config.get("UPCOMING_DIR", UPCOMING_DIR)
-        except Exception:
-            upcoming_dir = app.config.get("UPCOMING_DIR", UPCOMING_DIR)
+        # Resolve upcoming directory from module configuration; tests patch app.UPCOMING_DIR
+        upcoming_dir = UPCOMING_DIR
 
-        # Testing-mode fallback: if configured dir has no CSVs but a local tests/ working dir
-        # contains upcoming_races_temp with CSVs, prefer that to satisfy test fixtures
-        try:
-            is_testing = False
-            try:
-                v = current_app.config.get("TESTING")
-                is_testing = str(v).lower() in ("1", "true", "yes") if v is not None else is_testing
-            except Exception:
-                pass
-            if not is_testing:
-                is_testing = str(os.environ.get("TESTING", "")).lower() in ("1", "true", "yes")
-
-            if is_testing:
-                alt_dir = os.path.abspath(os.path.join(os.getcwd(), "upcoming_races_temp"))
-                cfg_dir = os.path.abspath(str(upcoming_dir))
-                if alt_dir != cfg_dir and os.path.isdir(alt_dir):
-                    # In testing, prefer the working-directory upcoming_races_temp to align with fixtures
-                    upcoming_dir = alt_dir
-        except Exception:
-            pass
+        # Testing-mode fallback removed: always respect configured UPCOMING_DIR (tests patch this)
+        # This ensures /api/upcoming_races_csv lists only files from the configured directory.
 
         # Check if upcoming races directory exists
         if not os.path.exists(upcoming_dir):
@@ -11552,8 +11574,49 @@ def synthetic_predictions_from_csv(csv_path: str) -> list:
 def api_race_files_status():
     """API endpoint to get status of race files - predicted vs unpredicted"""
     try:
+        import time as _time
+        # Lazy-init a small in-memory cache for this endpoint
+        try:
+            _rfs_cache_full  # type: ignore[name-defined]
+        except NameError:  # noqa: F821
+            # Structure: { ts: epoch_sec, sig: signature_string, payload: dict }
+            globals()["_rfs_cache_full"] = {"ts": 0, "sig": "", "payload": None}
+        _cache = globals()["_rfs_cache_full"]
+
         upcoming_dir = UPCOMING_DIR
         predictions_dir = "./predictions"
+
+        # Build a quick directory signature: counts + latest mtime
+        def _dir_sig(_path: str, _exts: set, _skip_contains: list | None = None) -> str:
+            try:
+                names = []
+                for _fn in os.listdir(_path):
+                    if _exts and not any(_fn.endswith(ext) for ext in _exts):
+                        continue
+                    if _skip_contains and any(s in _fn for s in _skip_contains):
+                        continue
+                    names.append(_fn)
+                latest = 0
+                for _fn in names:
+                    try:
+                        mt = os.path.getmtime(os.path.join(_path, _fn))
+                        if mt > latest:
+                            latest = mt
+                    except Exception:
+                        continue
+                return f"{_path}:{len(names)}:{int(latest)}"
+            except Exception:
+                return f"{_path}:0:0"
+
+        _sig = f"{_dir_sig(upcoming_dir, {'.csv'})}|{_dir_sig(predictions_dir, {'.json'}, _skip_contains=['summary'])}"
+        _now = _time.time()
+        # 60s TTL cache keyed by directory signature
+        if (
+            isinstance(_cache.get("payload"), dict)
+            and _cache.get("sig") == _sig
+            and (_now - float(_cache.get("ts", 0))) < 60
+        ):
+            return jsonify(_cache["payload"])
 
         # Get all CSV files in upcoming directory
         all_race_files = []
@@ -11870,16 +11933,22 @@ def api_race_files_status():
         # Sort unpredicted races by modification time (newest first)
         unpredicted_races.sort(key=lambda x: x["modified"], reverse=True)
 
-        return jsonify(
-            {
-                "success": True,
-                "predicted_races": predictions,
-                "unpredicted_races": unpredicted_races,
-                "total_predicted": len(predictions),
-                "total_unpredicted": len(unpredicted_races),
-                "total_files": len(all_race_files),
-            }
-        )
+        _payload = {
+            "success": True,
+            "predicted_races": predictions,
+            "unpredicted_races": unpredicted_races,
+            "total_predicted": len(predictions),
+            "total_unpredicted": len(unpredicted_races),
+            "total_files": len(all_race_files),
+        }
+        try:
+            # Update cache
+            _cache["payload"] = _payload
+            _cache["sig"] = _sig
+            _cache["ts"] = _now
+        except Exception:
+            pass
+        return jsonify(_payload)
 
     except Exception as e:
         return jsonify(
@@ -13571,6 +13640,95 @@ def api_predict_single_race_enhanced():
                     }
                 except Exception:
                     synthetic_payload = None
+            # Fallback: if we still don't have a synthetic payload, derive a minimal one directly from the CSV
+            if synthetic_payload is None:
+                try:
+                    _fallback_names = synthetic_predictions_from_csv(race_file_path)
+                    _fallback_preds = []
+                    for _n in _fallback_names or []:
+                        if isinstance(_n, dict):
+                            _fallback_preds.append(_n)
+                        else:
+                            _fallback_preds.append({"dog_name": str(_n)})
+                    if _fallback_preds:
+                        synthetic_payload = {
+                            "success": True,
+                            "predictions": _fallback_preds,
+                            "degraded": True,
+                        }
+                except Exception:
+                    pass
+            # Persist a minimal degraded prediction file when we have synthetic predictions, so
+            # /api/prediction_detail can enrich and the UI can display historical stats even for upcoming races.
+            try:
+                _persist_degraded = False
+                try:
+                    _persist_degraded = str(os.environ.get("PERSIST_DEGRADED_SYNTHETIC", "1")).lower() in ("1", "true", "yes")
+                except Exception:
+                    _persist_degraded = True
+                if _persist_degraded and synthetic_payload and synthetic_payload.get("success"):
+                    # Normalize predictions to a list of dicts with at least dog_name
+                    _preds_raw = synthetic_payload.get("predictions") or []
+                    _preds_norm = []
+                    for _p in _preds_raw:
+                        if isinstance(_p, dict):
+                            _preds_norm.append(_p)
+                        else:
+                            try:
+                                _preds_norm.append({"dog_name": str(_p)})
+                            except Exception:
+                                pass
+                    if _preds_norm:
+                        predictions_dir = "./predictions"
+                        os.makedirs(predictions_dir, exist_ok=True)
+                        try:
+                            # Derive a stable id from filename when possible
+                            _safe_id = None
+                            if race_filename:
+                                _safe_id = str(race_filename).replace(".csv", "")
+                            else:
+                                try:
+                                    _safe_id = os.path.splitext(os.path.basename(str(race_file_path)))[0]
+                                except Exception:
+                                    _safe_id = None
+                            if not _safe_id:
+                                _safe_id = f"race_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                            _out_path = os.path.join(predictions_dir, f"prediction_{_safe_id}.json")
+                            _payload_to_save = {
+                                "success": True,
+                                "degraded": True,
+                                "predictions": _preds_norm,
+                                "predictor_used": predictor_used,
+                                "prediction_timestamp": datetime.now().isoformat(),
+                                "race_info": {
+                                    "filename": race_filename or os.path.basename(str(race_file_path) if race_file_path else "")
+                                },
+                            }
+                            # Best-effort: attempt to add CSV meta for distance/grade/venue/date
+                            try:
+                                from utils.csv_metadata import parse_race_csv_meta as _parse_meta_dg
+                                _meta = _parse_meta_dg(str(race_file_path)) if race_file_path else None
+                                if isinstance(_meta, dict) and _meta.get("status") == "success":
+                                    ri = _payload_to_save.setdefault("race_info", {})
+                                    if _meta.get("race_date"):
+                                        ri["date"] = _meta.get("race_date")
+                                    if _meta.get("venue"):
+                                        ri["venue"] = _meta.get("venue")
+                                    if _meta.get("race_number") is not None:
+                                        ri["race_number"] = _meta.get("race_number")
+                                    if _meta.get("distance") is not None:
+                                        ri["distance"] = str(_meta.get("distance"))
+                                    if _meta.get("grade") is not None:
+                                        ri["grade"] = str(_meta.get("grade"))
+                            except Exception:
+                                pass
+                            with open(_out_path, "w") as _f:
+                                json.dump(_payload_to_save, _f, indent=2, default=str)
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
             return jsonify(
                 {
                     "success": True,
@@ -14454,6 +14612,13 @@ def api_prediction_detail(race_name):
                         file_path = os.path.join(predictions_dir, filename)
                         with open(file_path, "r") as f:
                             data = json.load(f)
+                        # Optionally skip degraded synthetic predictions from predicted list unless explicitly allowed
+                        try:
+                            _show_degraded = str(os.environ.get("SHOW_DEGRADED_IN_PREDICTED", "0")).lower() in ("1", "true", "yes")
+                        except Exception:
+                            _show_degraded = False
+                        if (data.get("degraded") is True) and not _show_degraded:
+                            continue
                         original_filename = (data.get("race_info", {}) or {}).get(
                             "filename", ""
                         )
@@ -16074,6 +16239,12 @@ def api_prediction_detail(race_name):
             enhanced_data["prediction_methods_used"] = prediction_methods
         if analysis_version:
             enhanced_data["analysis_version"] = analysis_version
+        # Propagate degraded flag from saved prediction file if present so UI can label appropriately
+        try:
+            if isinstance(prediction_data, dict) and prediction_data.get("degraded") is True:
+                enhanced_data["degraded"] = True
+        except Exception:
+            pass
 
         return jsonify({"success": True, "prediction": enhanced_data})
 
@@ -24778,7 +24949,13 @@ def api_model_performance():
             except Exception:
                 reg = None
 
+        selection_policy = None
         if reg is not None:
+            try:
+                # capture selection policy if available
+                selection_policy = (getattr(reg, "config", {}) or {}).get("best_selection_metric")
+            except Exception:
+                selection_policy = None
             try:
                 best = reg.get_best_model()
             except Exception:
@@ -24848,6 +25025,7 @@ def api_model_performance():
             "auc": auc,
             "top1_rate": top1_rate,
             "created_at": created_at,
+            "selection_policy": (selection_policy or "top1_rate"),
             "source": "registry_best",
         }
 
@@ -24869,6 +25047,7 @@ def api_model_performance():
                 "timestamp": now.isoformat(),
                 "model_info": model_info,
                 "model_id": champion_model_id,
+                "selection_policy": (selection_policy or "top1_rate"),
                 "source": "registry_best",
             }
         )
@@ -25067,9 +25246,49 @@ def api_prediction_detail_file(name):
 
 @app.route("/api/race_files_status_simple")
 def api_race_files_status_simple():
-    """List predicted races status based on files in ./predictions."""
+    """List predicted races status based on files in ./predictions.
+    Optimized for speed; includes a short-lived cache keyed by directory signature.
+    """
     try:
+        import time as _time
+        try:
+            _rfs_cache_simple  # type: ignore[name-defined]
+        except NameError:  # noqa: F821
+            globals()["_rfs_cache_simple"] = {"ts": 0, "sig": "", "payload": None}
+        _cache = globals()["_rfs_cache_simple"]
+
         base_dir = os.environ.get("PREDICTIONS_DIR", "./predictions")
+
+        def _dir_sig(_path: str, _exts: set, _skip_contains: list | None = None) -> str:
+            try:
+                names = []
+                for _fn in os.listdir(_path):
+                    if _exts and not any(_fn.endswith(ext) for ext in _exts):
+                        continue
+                    if _skip_contains and any(s in _fn for s in _skip_contains):
+                        continue
+                    names.append(_fn)
+                latest = 0
+                for _fn in names:
+                    try:
+                        mt = os.path.getmtime(os.path.join(_path, _fn))
+                        if mt > latest:
+                            latest = mt
+                    except Exception:
+                        continue
+                return f"{_path}:{len(names)}:{int(latest)}"
+            except Exception:
+                return f"{_path}:0:0"
+
+        _sig = _dir_sig(base_dir, {'.json'}, _skip_contains=['summary'])
+        _now = _time.time()
+        if (
+            isinstance(_cache.get("payload"), dict)
+            and _cache.get("sig") == _sig
+            and (_now - float(_cache.get("ts", 0))) < 30
+        ):
+            return jsonify(_cache["payload"])  # fast path
+
         out = []
         if os.path.exists(base_dir):
             for fn in sorted(os.listdir(base_dir)):
@@ -25086,7 +25305,14 @@ def api_race_files_status_simple():
                 out.append(
                     {"race_name": race_name, "filename": fn, "predicted_at": mtime}
                 )
-        return jsonify({"success": True, "predicted_races": out, "count": len(out)})
+        _payload = {"success": True, "predicted_races": out, "count": len(out)}
+        try:
+            _cache["payload"] = _payload
+            _cache["sig"] = _sig
+            _cache["ts"] = _now
+        except Exception:
+            pass
+        return jsonify(_payload)
     except Exception as e:
         return (
             jsonify(

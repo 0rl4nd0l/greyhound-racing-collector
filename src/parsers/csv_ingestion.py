@@ -40,6 +40,8 @@ class ValidationReport:
 class CsvIngestion:
     def __init__(self, file_path: str):
         self.file_path = file_path
+        # Track unicode cleanup count from the most recent pre_process call for downstream warnings
+        self._last_unicode_cleanup_count: int = 0
 
     def remove_bom(self, text: str) -> str:
         return text.replace("\ufeff", "")
@@ -126,16 +128,19 @@ class CsvIngestion:
         
         return final_text, total_removed
 
-    def pre_process(self, text: str) -> Tuple[str, str, int]:
+    def pre_process(self, text: str) -> Tuple[str, str]:
         """Enhanced preprocessing with invisible Unicode cleaning and improved delimiter detection.
         
-        Returns tuple of (processed_text, delimiter, unicode_cleanup_count).
+        Returns tuple of (processed_text, delimiter).
+        The count of cleaned invisible Unicode characters is stored in
+        self._last_unicode_cleanup_count for downstream consumers.
         """
         # Remove BOM
         text = self.remove_bom(text)
         
         # Clean invisible Unicode characters
         text, unicode_cleanup_count = self.clean_invisible_unicode(text)
+        self._last_unicode_cleanup_count = int(unicode_cleanup_count)
         
         # Normalize line endings
         text = text.replace("\r\n", "\n").replace("\r", "\n")
@@ -143,7 +148,7 @@ class CsvIngestion:
         # Enhanced delimiter detection
         delimiter = self.choose_delimiter(text)
         
-        return text, delimiter, unicode_cleanup_count
+        return text, delimiter
 
     def detect_headers(self, first_line: str, delimiter: str) -> List[str]:
         return first_line.split(delimiter)
@@ -433,7 +438,7 @@ class CsvIngestion:
         try:
             with open(self.file_path, "r", encoding="utf-8-sig") as f:  # Handle BOM automatically
                 content = f.read()
-                content, delimiter, unicode_cleanup_count = self.pre_process(content)
+                content, delimiter = self.pre_process(content)
 
                 # Calculate file hash for duplicate detection
                 file_hash = self.calculate_file_hash()
@@ -456,7 +461,11 @@ class CsvIngestion:
                 warnings = []
 
                 # Log Unicode cleanup if any chars were removed
+                unicode_cleanup_count = int(getattr(self, "_last_unicode_cleanup_count", 0) or 0)
                 if unicode_cleanup_count > 0:
+                    # Maintain backward-compatible warning message expected by tests
+                    warnings.append("Invisible characters found and removed")
+                    # Keep detailed message for logs and potential UI
                     warnings.append(f"Cleaned {unicode_cleanup_count} invisible Unicode characters")
                     logger.info(f"File {self.file_path}: Removed {unicode_cleanup_count} invisible Unicode characters")
 
