@@ -245,3 +245,29 @@ Your ML System V4 demonstrates **excellent technical implementation** with a rob
     <document_id>pY0KADJggzv2EbbFlaWLOv</document_id>
 </document>
 </citations>
+
+---
+
+## Real-race evaluation summary (2025-09-08)
+
+- Sample sizes: 400 and 800 most recent completed races
+- Optimizer flag: compared OFF vs ON
+- Calibration: isotonic (win/place) verified on 5,000 records
+
+400-race metrics
+- Baseline (OFF): Top-1=0.3325, Top-3=0.675, Brier=0.1229, LogLoss=0.4043, ROI≈-0.0025
+- Candidate (ON):  Top-1=0.3325, Top-3=0.675, Brier=0.1227, LogLoss=0.4033, ROI≈-0.0025
+- Gate result: ROLLBACK (no qualifying improvement; calibration PASS)
+
+800-race metrics
+- Baseline (OFF): Top-1=0.3500, Top-3=0.680, Brier=0.1226, LogLoss=0.4037, ROI≈0.0500
+- Candidate (ON):  Top-1=0.3500, Top-3=0.680, Brier=0.1223, LogLoss=0.4026, ROI≈0.0500
+- Gate result: ROLLBACK (no qualifying improvement; calibration PASS)
+
+Calibration verification
+- Win: Brier=0.0367, slope=0.833 (PASS vs ≤0.18 and |slope-1|≤0.2)
+- Place: Brier=0.1581, slope=1.035 (PASS vs ≤0.20 and |slope-1|≤0.25)
+
+Notes
+- The optimizer improves Brier/LogLoss marginally but not enough to pass the auto gate thresholds (Top‑1 +≥0.02, Top‑3 +≥0.03, or LogLoss −≥5%).
+- Evaluator now records place metrics and ROI proxy; trainer_name population added to reduce missing features in evaluation rows.
