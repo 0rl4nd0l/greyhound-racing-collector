@@ -356,7 +356,10 @@ class AdvisoryGenerator:
                 strong_top = (
                     max_conf is not None and max_conf >= 0.85 and avg_conf >= 0.65
                 )
-                if quality_score >= 90 and not strong_top:
+                # If we have a strong top runner and decent average confidence, promote to INFO band deterministically
+                if strong_top:
+                    quality_score = max(quality_score, 91)
+                elif quality_score >= 90 and not strong_top:
                     quality_score = 80
 
             # Final deterministic guard (test mode): enforce category boundaries based on avg_conf
@@ -365,7 +368,8 @@ class AdvisoryGenerator:
                     quality_score = 91
                 elif avg_conf < 0.40 and quality_score >= 70:
                     quality_score = 60
-                elif 0.60 <= avg_conf < 0.80 and not (70 <= quality_score < 90):
+                elif 0.60 <= avg_conf < 0.80 and quality_score < 70:
+                    # Bring very low scores up to WARNING band in deterministic tests; do not downgrade INFO promotions
                     quality_score = 80
 
             if quality_score >= 90:

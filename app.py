@@ -556,10 +556,11 @@ def inject_ui_mode():
 
 # Early startup module guard to ensure safe environment
 try:
-    from utils import module_guard
+    # Import submodule explicitly to avoid any shadowing of 'utils' by scripts/utils.py
+    from utils.module_guard import startup_module_sanity_check as _startup_guard
 
     if os.environ.get("DISABLE_STARTUP_GUARD", "0") != "1":
-        module_guard.startup_module_sanity_check()
+        _startup_guard()
         print("🛡️ Module guard startup check passed")
     else:
         print("🛡️ Module guard startup check skipped via DISABLE_STARTUP_GUARD=1")
@@ -1632,6 +1633,21 @@ def api_model_health():
             "python_version": _sys.version.split("\n")[0],
             "model_id": model_id,
         }
+        # Augment with monitoring (place odds/EV health) if available
+        try:
+            from monitoring_api import get_monitoring_api
+
+            mon = get_monitoring_api()
+            mh = mon.get_model_health()
+            if isinstance(mh, dict):
+                payload["place_odds_integration"] = mh.get("place_odds_integration")
+                payload["anomalies"] = mh.get("anomalies", [])
+                payload["consecutive_anomalies"] = mh.get("consecutive_anomalies")
+                payload["place_ev_metrics"] = mh.get("metrics")
+                payload["feature_flag_sources"] = mh.get("feature_flag_sources")
+                payload["threshold"] = mh.get("threshold")
+        except Exception:
+            pass
         return jsonify(payload), 200
     except Exception as e:
         try:
@@ -5650,6 +5666,8 @@ def api_upcoming_races_csv():
                 {
                     "success": True,
                     "races": [],
+                    "count": 0,
+                    "timestamp": datetime.now().isoformat(),
                     "pagination": {
                         "page": page,
                         "per_page": per_page,
@@ -5688,6 +5706,8 @@ def api_upcoming_races_csv():
                 {
                     "success": True,
                     "races": [],
+                    "count": 0,
+                    "timestamp": datetime.now().isoformat(),
                     "pagination": {
                         "page": page,
                         "per_page": per_page,
@@ -5912,9 +5932,6 @@ def api_upcoming_races_csv():
                         else f"{distance}"
                     ),
                     "field_size": field_size if field_size else 0,
-                    "winner_name": "Unknown",
-                    "winner_odds": "N/A",
-                    "winner_margin": "N/A",
                     "url": "",
                     "extraction_timestamp": formatted_mtime,
                     "track_condition": "Unknown",
@@ -5981,6 +5998,8 @@ def api_upcoming_races_csv():
             {
                 "success": True,
                 "races": paginated_races,
+                "count": len(paginated_races),
+                "timestamp": datetime.now().isoformat(),
                 "pagination": {
                     "page": page,
                     "per_page": per_page,
@@ -13633,6 +13652,24 @@ def api_predict_single_race_enhanced():
                                 _p.setdefault("confidence_reason", "Synthetic fallback from CSV heuristics")
                     except Exception:
                         pass
+                    # Ensure csv_* enrichment defaults exist on synthetic predictions
+                    try:
+                        defaults = {
+                            "csv_historical_races": 0,
+                            "csv_win_rate": 0.0,
+                            "csv_place_rate": 0.0,
+                            "csv_avg_finish_position": 10.0,
+                            "csv_best_finish_position": 0,
+                            "csv_recent_form": "",
+                            "csv_avg_time": 0.0,
+                            "csv_best_time": 0.0,
+                        }
+                        for _p in preds:
+                            if isinstance(_p, dict):
+                                for _k, _v in defaults.items():
+                                    _p.setdefault(_k, _v)
+                    except Exception:
+                        pass
                     synthetic_payload = {
                         "success": True,
                         "predictions": preds,
@@ -13651,6 +13688,24 @@ def api_predict_single_race_enhanced():
                         else:
                             _fallback_preds.append({"dog_name": str(_n)})
                     if _fallback_preds:
+                        # Ensure csv_* enrichment defaults exist on fallback predictions
+                        try:
+                            defaults = {
+                                "csv_historical_races": 0,
+                                "csv_win_rate": 0.0,
+                                "csv_place_rate": 0.0,
+                                "csv_avg_finish_position": 10.0,
+                                "csv_best_finish_position": 0,
+                                "csv_recent_form": "",
+                                "csv_avg_time": 0.0,
+                                "csv_best_time": 0.0,
+                            }
+                            for _p in _fallback_preds:
+                                if isinstance(_p, dict):
+                                    for _k, _v in defaults.items():
+                                        _p.setdefault(_k, _v)
+                        except Exception:
+                            pass
                         synthetic_payload = {
                             "success": True,
                             "predictions": _fallback_preds,
