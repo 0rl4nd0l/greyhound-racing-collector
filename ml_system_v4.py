@@ -278,8 +278,24 @@ class MLSystemV4:
         return None
 
     def _initialize_accuracy_optimizer(self):
-        """Initialize the enhanced accuracy optimizer."""
+        """Initialize the enhanced accuracy optimizer.
+
+        Set V4_DISABLE_ACCURACY_OPTIMIZER=1 to bypass integration and use the core
+        MLSystemV4.predict_race path (respects V4_NORMALIZATION_MODE, V4_TEMP_SOFTMAX, etc.).
+        """
         try:
+            # Allow opt-out via environment for evaluation/debug flows
+            if os.getenv("V4_DISABLE_ACCURACY_OPTIMIZER", "0").strip().lower() in (
+                "1",
+                "true",
+                "yes",
+            ):
+                logger.info(
+                    "🚫 V4_DISABLE_ACCURACY_OPTIMIZER=1 — skipping enhanced accuracy optimizer integration"
+                )
+                self.accuracy_optimizer = None
+                return
+
             from enhanced_accuracy_optimizer import (
                 AccuracyOptimizer,
                 integrate_enhanced_accuracy,
@@ -1566,12 +1582,14 @@ class MLSystemV4:
         """
         # Pre-prediction module sanity check (redundant defense-in-depth)
         try:
-            from utils import module_guard
-
-            _rid = str(race_id) if race_id is not None else str(race_data)
-            module_guard.pre_prediction_sanity_check(
-                context="MLSystemV4.predict_race", extra_info={"race_id": _rid}
-            )
+            import os as _os
+            if _os.getenv("V4_SKIP_MODULE_GUARD", "0").strip().lower() not in ("1", "true", "yes"):
+                # Import from package path to avoid being shadowed by scripts/utils.py when running scripts/*
+                from utils.module_guard import pre_prediction_sanity_check as _mg_check
+                _rid = str(race_id) if race_id is not None else str(race_data)
+                _mg_check(
+                    context="MLSystemV4.predict_race", extra_info={"race_id": _rid}
+                )
         except Exception as e:
             logger.error(
                 "🛑 Module guard blocked prediction for race {}: {}".format(race_id, e)
@@ -1698,7 +1716,7 @@ class MLSystemV4:
 
             # Prepare features for prediction
             X_pred = race_features.drop(
-                ["race_id", "dog_clean_name", "target", "target_timestamp"],
+                ["race_id", "dog_clean_name", "target", "target_timestamp", "race_time"],
                 axis=1,
                 errors="ignore",
             )
@@ -1745,28 +1763,22 @@ class MLSystemV4:
             except Exception:
                 pass
 
-            # Check for feature column mismatch (union of saved + derived columns to satisfy ColumnTransformer)
-            expected_set = (
-                set(self.feature_columns)
-                | set(self.numerical_columns or [])
-                | set(self.categorical_columns or [])
-                | derived_num
-                | derived_cat
-            )
-            missing_features = expected_set - set(X_pred.columns)
-            extra_features = set(X_pred.columns) - expected_set
+            # Check for feature column mismatch using the training feature order (source of truth)
+            expected_cols = list(self.feature_columns or [])
+            missing_features = [c for c in expected_cols if c not in X_pred.columns]
+            extra_features = [c for c in X_pred.columns if c not in expected_cols]
 
             if missing_features:
                 logger.warning(
-                    f"Missing features (will be filled with 0): {missing_features}"
+                    f"Missing features (will be filled with 0/defaults): {missing_features}"
                 )
             if extra_features:
                 logger.warning(
-                    f"Extra features (will be dropped by preprocessor): {extra_features}"
+                    f"Extra features (will be dropped): {set(extra_features)}"
                 )
 
-            # Ensure all required columns are present with proper data types
-            X_pred = X_pred.reindex(columns=sorted(expected_set), fill_value=0)
+            # Ensure required columns are present and in the exact training order to avoid signature drift
+            X_pred = X_pred.reindex(columns=expected_cols, fill_value=0)
 
             # Handle features based on their expected type in the trained model
             categorical_features_in_model = [
@@ -2048,15 +2060,24 @@ class MLSystemV4:
                 "match": bool(expected_sig == actual_sig),
             }
 
-            # Strict enforcement: abort if signature mismatches (schema drift)
+            # Strict enforcement by default: abort if signature mismatches (schema drift)
             if not signature_meta["match"]:
-                return {
-                    "success": False,
-                    "error": "Feature signature mismatch - possible schema drift",
-                    "race_id": race_id,
-                    "signature_meta": signature_meta,
-                    "fallback_reason": "Feature signature mismatch",
-                }
+                if os.getenv("V4_ALLOW_SIGNATURE_MISMATCH", "0").strip().lower() in (
+                    "1",
+                    "true",
+                    "yes",
+                ):
+                    logger.warning(
+                        "⚠️ Feature signature mismatch detected, but proceeding due to V4_ALLOW_SIGNATURE_MISMATCH=1"
+                    )
+                else:
+                    return {
+                        "success": False,
+                        "error": "Feature signature mismatch - possible schema drift",
+                        "race_id": race_id,
+                        "signature_meta": signature_meta,
+                        "fallback_reason": "Feature signature mismatch",
+                    }
 
             # Assemble race_info for validator/UI compatibility
             try:
@@ -2129,6 +2150,8 @@ class MLSystemV4:
                     ),
                     "normalization_sum": float(prob_sum),
                 },
+                # Explicitly expose optimizer status for UI/consumers
+                "optimizer_enabled": bool(getattr(self, "accuracy_optimizer", None)),
                 "explainability_meta": explainability_meta,
                 "ev_meta": {
                     "thresholds": self.ev_thresholds,
