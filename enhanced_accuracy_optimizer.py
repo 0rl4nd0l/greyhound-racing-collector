@@ -1106,12 +1106,20 @@ def integrate_enhanced_accuracy(ml_system_v4):
                         except Exception:
                             _race_dt = datetime.strptime(_raw, "%Y-%m-%d").date()
                     if _race_dt > _date.today():
-                        return {
-                            "success": False,
-                            "error": f"TEMPORAL LEAKAGE DETECTED: race_date {_raw} is in the future relative to today",
-                            "race_id": race_id,
-                            "fallback_reason": "Future race date detected",
-                        }
+                        # Environment-based override to allow future-date inference when explicitly enabled
+                        import os as _os
+                        _allow = str(_os.getenv("ALLOW_FUTURE_RACE_DATES", "")).strip().lower() in ("1", "true", "yes", "on")
+                        if not _allow:
+                            return {
+                                "success": False,
+                                "error": f"TEMPORAL LEAKAGE DETECTED: race_date {_raw} is in the future relative to today",
+                                "race_id": race_id,
+                                "fallback_reason": "Future race date detected",
+                            }
+                        else:
+                            logger.info(
+                                "⚠️ Future race date detected but ALLOW_FUTURE_RACE_DATES=1; proceeding with enhanced prediction"
+                            )
             except Exception:
                 # If parsing fails, continue to builder
                 pass
@@ -1140,6 +1148,15 @@ def integrate_enhanced_accuracy(ml_system_v4):
             )
 
             if result.get("success"):
+                # Surface explicit optimizer flags for UI/consumers
+                try:
+                    result["optimizer_enabled"] = True
+                    cfg = getattr(accuracy_optimizer, "config", {}) or {}
+                    mode = cfg.get("ensemble_mode")
+                    if mode:
+                        result["optimizer_mode"] = str(mode)
+                except Exception:
+                    pass
                 return result
             else:
                 # Fallback to original if available

@@ -29,7 +29,10 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import requests
-from bs4 import BeautifulSoup
+try:
+    import bs4
+except Exception as _bs4_import_error:
+    bs4 = None
 
 from utils.date_parsing import parse_date_flexible
 from utils.http_client import get_shared_session
@@ -61,9 +64,9 @@ class ExpertFormCsvScraper:
         self.session = get_shared_session()
         self.session.headers.update(
             {
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/********* Safari/537.36",
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.5",
+                "Accept-Language": "en-US,en;q=0.9",
                 "Accept-Encoding": "gzip, deflate, br",
                 "Connection": "keep-alive",
                 "Upgrade-Insecure-Requests": "1",
@@ -210,12 +213,42 @@ class ExpertFormCsvScraper:
         """Download CSV using the expert-form method"""
         try:
             expert_form_url = self.get_expert_form_url(race_url)
+            # Normalize to base race URL and warm cookies
+            base_url = (race_url or "").split("#", 1)[0].split("?", 1)[0].rstrip("/")
+            while base_url.lower().endswith("/expert-form"):
+                base_url = base_url[: -len("/expert-form")].rstrip("/")
+            try:
+                _ = self.session.get(
+                    base_url,
+                    timeout=20,
+                    headers={
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                        "Accept-Language": "en-US,en;q=0.9",
+                        "Upgrade-Insecure-Requests": "1",
+                    },
+                )
+            except Exception:
+                pass
             self.safe_log(f"Accessing expert-form page: {expert_form_url}")
 
             # Step 1: Get the expert-form page
             response = None
             try:
-                response = self.session.get(expert_form_url, timeout=30)
+                response = self.session.get(
+                    expert_form_url,
+                    timeout=30,
+                    headers={
+                        "Referer": base_url,
+                        "Origin": self.base_url,
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                        "Accept-Language": "en-US,en;q=0.9",
+                        "Upgrade-Insecure-Requests": "1",
+                        "Sec-Fetch-Site": "same-origin",
+                        "Sec-Fetch-Mode": "navigate",
+                        "Sec-Fetch-Dest": "document",
+                        "DNT": "1",
+                    },
+                )
                 if response.status_code != 200:
                     self.safe_log(
                         f"Expert-form page not accessible: {response.status_code}",
@@ -224,7 +257,11 @@ class ExpertFormCsvScraper:
                     return False
 
                 self.stats["expert_form_found"] += 1
-                soup = BeautifulSoup(response.content, "html.parser")
+                if bs4 is None:
+                    raise RuntimeError(
+                        "BeautifulSoup (bs4) is required for expert-form parsing. Please install it with 'pip install beautifulsoup4'."
+                    )
+                soup = bs4.BeautifulSoup(response.content, "html.parser")
             finally:
                 if response is not None:
                     try:
@@ -235,6 +272,96 @@ class ExpertFormCsvScraper:
             # Step 2: Find the CSV download form
             form_info = self.find_csv_download_form(soup, expert_form_url)
             if not form_info:
+                # No explicit form — try robust direct methods on expert-form page
+                self.safe_log("No export form found; trying direct CSV URLs", "WARNING")
+                # 2a. Try common query param variants
+                direct_urls = [
+                    f"{expert_form_url}?export=csv",
+                    f"{expert_form_url}?format=csv",
+                    f"{expert_form_url}?export_csv=1",
+                    f"{expert_form_url}?download=csv",
+                ]
+                for u in direct_urls:
+                    try:
+                        r = None
+                        try:
+                            r = self.session.get(u, timeout=30, headers={"Referer": expert_form_url})
+                            if r.status_code == 200:
+                                ctype = r.headers.get("content-type", "").lower()
+                                sample = (r.text or "").strip()[:400].lower()
+                                if ("csv" in ctype or "text" in ctype) and ("," in sample or "dog" in sample or "runner" in sample or "box" in sample):
+                                    self.safe_log(f"Direct CSV URL worked: {u}")
+                                    return self.save_csv_content(r.text, filename)
+                        finally:
+                            if r is not None:
+                                try:
+                                    r.close()
+                                except Exception:
+                                    pass
+                    except Exception as e:
+                        self.safe_log(f"Direct URL attempt failed: {u} — {e}", "WARNING")
+                        continue
+
+                # 2b. Scan anchors on expert-form page
+                try:
+                    links = soup.find_all("a", href=True)
+                    for link in links:
+                        href = link.get("href") or ""
+                        text = (link.get_text() or "").lower()
+                        if "csv" in href.lower() or "csv" in text or "export" in text or "download" in text:
+                            if href.startswith("/"):
+                                url = f"{self.base_url}{href}"
+                            elif href.startswith("http"):
+                                url = href
+                            else:
+                                url = f"{self.base_url}/{href}"
+                            self.safe_log(f"Found CSV-like anchor: {url}")
+                            r = None
+                            try:
+                                r = self.session.get(url, timeout=30, headers={"Referer": expert_form_url})
+                                if r.status_code == 200:
+                                    return self.save_csv_content(r.text, filename)
+                            finally:
+                                if r is not None:
+                                    try:
+                                        r.close()
+                                    except Exception:
+                                        pass
+                except Exception as e:
+                    self.safe_log(f"Anchor scan failed: {e}", "WARNING")
+
+                # 2c. Search script tags for CSV URLs
+                try:
+                    scripts = soup.find_all("script")
+                    import re as _re
+                    for s in scripts:
+                        txt = s.get_text() or ""
+                        if "csv" not in txt.lower():
+                            continue
+                        matches = _re.findall(r'["\']([^"\'\n]*csv[^"\'\n]*)["\']', txt, _re.I)
+                        for m in matches:
+                            if m.startswith("/"):
+                                url = f"{self.base_url}{m}"
+                            elif m.startswith("http"):
+                                url = m
+                            else:
+                                continue
+                            self.safe_log(f"Found CSV in script: {url}")
+                            r = None
+                            try:
+                                r = self.session.get(url, timeout=30, headers={"Referer": expert_form_url})
+                                if r.status_code == 200:
+                                    return self.save_csv_content(r.text, filename)
+                            finally:
+                                if r is not None:
+                                    try:
+                                        r.close()
+                                    except Exception:
+                                        pass
+                except Exception as e:
+                    self.safe_log(f"Script scan failed: {e}", "WARNING")
+
+                # If all direct methods failed, give up here
                 return False
 
             # Step 3: Submit the form to get CSV data
@@ -244,13 +371,20 @@ class ExpertFormCsvScraper:
 
             form_response = None
             try:
+                common_headers = {
+                    "Referer": expert_form_url,
+                    "Origin": self.base_url,
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Upgrade-Insecure-Requests": "1",
+                }
                 if form_info["method"] == "POST":
                     form_response = self.session.post(
-                        form_info["action"], data=form_info["data"], timeout=30
+                        form_info["action"], data=form_info["data"], timeout=30, headers=common_headers
                     )
                 else:
                     form_response = self.session.get(
-                        form_info["action"], params=form_info["data"], timeout=30
+                        form_info["action"], params=form_info["data"], timeout=30, headers=common_headers
                     )
 
                 if form_response.status_code != 200:
@@ -297,7 +431,11 @@ class ExpertFormCsvScraper:
 
             # Check if response is HTML with a download link
             if "<" in content and ">" in content:
-                response_soup = BeautifulSoup(content, "html.parser")
+                if bs4 is None:
+                    raise RuntimeError(
+                        "BeautifulSoup (bs4) is required for expert-form parsing. Please install it with 'pip install beautifulsoup4'."
+                    )
+                response_soup = bs4.BeautifulSoup(content, "html.parser")
                 csv_links = response_soup.find_all("a", href=True)
                 for link in csv_links:
                     href = link.get("href")

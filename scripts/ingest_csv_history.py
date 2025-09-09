@@ -25,11 +25,18 @@ import argparse
 import json
 import os
 import sqlite3
+from datetime import datetime
+from pathlib import Path
 from typing import Dict, List, Optional
 
 from ingestion.staging_writer import RaceMeta, parse_race_csv_for_staging
 from scripts.db_guard import db_guard
 from scripts.db_utils import open_sqlite_writable
+
+# Data quality logging setup
+DQ_DIR = Path("logs") / "data_quality"
+DQ_DIR.mkdir(parents=True, exist_ok=True)
+DQ_FILE = DQ_DIR / "weight_completeness.csv"
 
 CREATE_STAGING_SQL = {
     "csv_race_metadata_staging": """
@@ -178,7 +185,7 @@ def upsert_dogs(conn: sqlite3.Connection, dogs: List[Dict[str, object]]) -> None
             race_id, dog_name, dog_clean_name, box_number, finish_position, weight, starting_price,
             individual_time, sectional_1st, margin, extraction_timestamp, data_source, form_guide_json
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(race_id, dog_clean_name, box_number) DO UPDATE SET
+        ON CONFLICT(race_id, box_number) DO UPDATE SET
             finish_position      = COALESCE(excluded.finish_position, dog_race_data.finish_position),
             weight               = COALESCE(excluded.weight, dog_race_data.weight),
             starting_price       = COALESCE(excluded.starting_price, dog_race_data.starting_price),
@@ -222,6 +229,49 @@ def pick_db_path(cli_db: Optional[str]) -> str:
     return "greyhound_racing_data_stage.db"
 
 
+def _compute_and_log_weight_completeness(dogs: List[Dict[str, object]], meta: RaceMeta, src_path: str, db_path: str) -> None:
+    try:
+        total = len(dogs) if dogs is not None else 0
+        non_null = 0
+        for d in (dogs or []):
+            w = d.get("weight")
+            if w is None:
+                continue
+            s = str(w).strip()
+            if s and s.lower() not in {"nan", "none", "null"}:
+                try:
+                    float(s)
+                    non_null += 1
+                except Exception:
+                    # ignore unparsable weights
+                    pass
+        frac = (non_null / total) if total > 0 else 0.0
+        threshold_env = os.getenv("WEIGHT_ALERT_THRESHOLD")
+        try:
+            threshold = float(threshold_env) if threshold_env else 0.50
+        except Exception:
+            threshold = 0.50
+
+        # Append to CSV log (create header if new)
+        new_file = not DQ_FILE.exists()
+        with DQ_FILE.open("a", encoding="utf-8") as f:
+            if new_file:
+                f.write(
+                    "timestamp,file,race_id,total_dogs,weights_non_null,completeness,threshold,db\n"
+                )
+            f.write(
+                f"{datetime.utcnow().isoformat()}Z,{Path(src_path).name},{meta.race_id},{total},{non_null},{frac:.4f},{threshold:.2f},{db_path}\n"
+            )
+        if frac < threshold:
+            print(
+                f"⚠️ Weight completeness low for {Path(src_path).name} (race_id={meta.race_id}): "
+                f"{non_null}/{total} = {frac:.1%} (< {threshold:.0%}). Logged to {DQ_FILE}"
+            )
+    except Exception as _e:
+        # Non-fatal; continue
+        print(f"⚠️ Weight completeness check failed: {_e}")
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="Stage CSV dog histories and upsert into database"
@@ -242,6 +292,12 @@ def main():
 
     # Parse
     meta, dogs = parse_race_csv_for_staging(args.csv)
+
+    # Data-quality alert: weight completeness per batch
+    try:
+        _compute_and_log_weight_completeness(dogs, meta, args.csv, db_path)
+    except Exception:
+        pass
 
     # Guarded DB operation (pre-backup, post-validate)
     with db_guard(db_path=db_path, label="ingest_csv_history") as guard:

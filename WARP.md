@@ -20,6 +20,8 @@ Quickstart
   - export TESTING=false
   - export ENABLE_ENDPOINT_DROPDOWNS=0   # set to 1 only when you want the dev endpoints toolbar
   - export DISABLE_ASSET_MINIFY=1        # avoids jsmin/cssmin requirement; unset for minified bundles
+  - export V4_DISABLE_ACCURACY_OPTIMIZER=1 # default OFF; set to 0 to enable ensemble optimizer (UI shows Optimizer: ON/OFF)
+  - export ALLOW_FUTURE_RACE_DATES=0     # set to 1 to allow inference on future race dates (prediction-only override)
 
 Common commands
 Backend install and setup
@@ -59,6 +61,23 @@ Performance tips (Warp and browser tests)
 - Warp Agent Mode: for very large repos, background codebase indexing can be heavy
   - Recommended: in Warp Settings, turn off Agent Mode > Codebase context auto-indexing for this repo, then restart Warp
   - Alternatively, use another terminal for CPU-sensitive runs or keep Warp deprioritized (renice +19)
+
+Run API with Gunicorn (multi-worker, SSE-friendly)
+- Install deps (lock + install) then run via Makefile target:
+  - make lock && make deps
+  - make run-api-gunicorn
+- Tuning via env (safe defaults if unset):
+  - PORT=5002
+  - GUNICORN_WORKERS=2 (default is max(2, CPU count))
+  - GUNICORN_THREADS=4
+  - GUNICORN_WORKER_CLASS=gthread
+  - GUNICORN_KEEPALIVE=30, GUNICORN_TIMEOUT=120, GUNICORN_PRELOAD=0
+- Examples:
+  - GUNICORN_WORKERS=3 GUNICORN_THREADS=4 make run-api-gunicorn
+  - GUNICORN_BIND=127.0.0.1:5002 make run-api-gunicorn
+- Notes:
+  - Threaded workers preserve Server‑Sent Events without monkey‑patching.
+  - If you need gevent, install it separately and set GUNICORN_WORKER_CLASS=gevent.
 
 Utilities
 - Schema drift baseline: make schema-baseline

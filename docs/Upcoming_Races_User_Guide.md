@@ -55,3 +55,19 @@ FAQ
 - Q: Can I bulk-predict?
   - A: Use /api/predict_all_upcoming_races_enhanced to process all CSVs in the directory.
 
+## Upcoming races and degraded predictions (no leakage)
+
+- For future-dated races, the system blocks real probabilities to prevent temporal leakage.
+- To still show meaningful history in the details view, the backend can persist a minimal “degraded” prediction file using just the CSV dog names.
+- The details pane enriches those names from the analytics DB to display historical stats only (win/place/avg position). No probabilities are shown.
+
+Environment flags:
+- PERSIST_DEGRADED_SYNTHETIC (default 1)
+  - 1/true: save a minimal degraded prediction JSON per race so details can enrich
+  - 0/false: do not persist; details may show less information for upcoming races
+- SHOW_DEGRADED_IN_PREDICTED (default 0)
+  - 0/false: hide degraded files in the Predicted list panel (reduces confusion)
+  - 1/true: include degraded files in the Predicted list (for QA/diagnostics)
+
+This behavior does not affect model accuracy for valid races; it only improves upcoming-race context in the UI.
+

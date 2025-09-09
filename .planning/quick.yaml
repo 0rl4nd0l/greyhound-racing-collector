@@ -1,0 +1,25 @@
+- title: CPU re-check + Warp/git containment
+  context:
+    repo: /Users/test/Desktop/greyhound_racing_collector
+    os: MacOS
+    shell: zsh
+  checks:
+    - name: Snapshot
+      commands:
+        - uptime
+        - ps auxww | grep -E "git (diff|status|ls-files|rev-parse)" | grep -v grep || true
+    - name: Quarantine (safe)
+      commands:
+        - for p in $(pgrep -if "(WarpTerminal|warp)" || true); do renice +19 -p "$p" || true; done
+        - for p in $(pgrep -if "(WarpTerminal|warp)" || true); do pgrep -P "$p" -f "git (diff|status|ls-files|rev-parse)" | xargs -r kill -TERM; done
+        - sleep 1; for p in $(pgrep -if "(WarpTerminal|warp)" || true); do pgrep -P "$p" -f "git (diff|status|ls-files|rev-parse)" | xargs -r kill -KILL; done
+    - name: Mitigation
+      commands:
+        - echo "Disable Warp Agent Mode > Codebase context auto-indexing (WARP.md), restart Warp"
+        - git config --local status.showUntrackedFiles no || true
+    - name: Validate
+      commands:
+        - python scripts/monitor_system_health.py --detailed || true
+        - pytest -q || true
+        - uptime
+

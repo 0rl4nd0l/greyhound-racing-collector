@@ -118,6 +118,16 @@ def get_health():
         )
 
 
+@app.route("/api/model_health")
+def get_model_health_endpoint():
+    try:
+        data = monitoring.get_model_health()
+        return jsonify(data)
+    except Exception as e:
+        logger.log_error(f"Model health endpoint error: {str(e)}", context={"component": "web_api"})
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @app.route("/api/metrics")
 def get_metrics():
     """Get performance metrics"""

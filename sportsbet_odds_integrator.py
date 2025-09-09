@@ -740,6 +740,10 @@ class SportsbetOddsIntegrator:
         """
         try:
             conn = sqlite3.connect(self.db_path)
+            try:
+                conn.execute("PRAGMA busy_timeout=2000")
+            except Exception:
+                pass
             cur = conn.cursor()
             race_id = race_info.get("race_id")
             venue = race_info.get("venue")
@@ -848,7 +852,7 @@ class SportsbetOddsIntegrator:
             # Check if this is a meeting page that needs further navigation
             if "/meeting-" in full_url:
                 # Navigate to meeting page first to find individual race
-                individual_race_url = self.find_next_race_from_meeting(full_url)
+                individual_race_url = self.find_next_race_from_meeting(full_url, expected_venue=race_info.get("venue"))
                 if individual_race_url:
                     full_url = individual_race_url
                     print(f"  🎯 Found individual race URL: {full_url}")
@@ -856,8 +860,21 @@ class SportsbetOddsIntegrator:
                     print(f"  ⚠️  Could not find individual race from meeting page")
                     return race_info
 
-            # Navigate to the race page
+            # Navigate to the page (race or meeting or venue)
             self.driver.get(full_url)
+
+            # If this appears to be a venue/meet page without explicit race, try to find a race link
+            try:
+                current_url = self.driver.current_url or ""
+                title = (self.driver.title or "").lower()
+                if ("/race-" not in current_url) and ("/meeting-" not in current_url):
+                    # Try to discover a race link from this page
+                    discovered = self.find_next_race_from_meeting(current_url, expected_venue=race_info.get("venue"))
+                    if discovered:
+                        print(f"  🎯 Discovered race URL from venue page: {discovered}")
+                        self.driver.get(discovered)
+            except Exception as _e_discover:
+                print(f"  ⚠️  Venue-to-race discovery skipped: {_e_discover}")
 
             # Wait for page to load
             try:
@@ -914,8 +931,17 @@ class SportsbetOddsIntegrator:
                         ).strftime('%Y%m%d')
                     except Exception:
                         race_date_str = datetime.now().strftime('%Y%m%d')
+                    # Prefer discovered meeting slug for race_id if available
+                    meeting_slug_from_url = self._extract_meeting_slug_from_url(self.driver.current_url)
+                    if meeting_slug_from_url:
+                        race_info["meeting_slug"] = meeting_slug_from_url
+                    slug_for_id = (
+                        race_info.get("meeting_slug")
+                        or race_info.get("venue_slug")
+                        or race_info["venue"].lower().replace(" ", "-")
+                    )
                     race_info["race_id"] = (
-                        f"{venue_slug}_r{race_number}_{race_date_str}"
+                        f"{slug_for_id}_r{race_number}_{race_date_str}"
                     )
                     print(f"  📍 Updated race ID to: {race_info['race_id']}")
             else:
@@ -946,7 +972,7 @@ class SportsbetOddsIntegrator:
                 # Wait for price elements to appear (indicates odds are loaded)
                 WebDriverWait(self.driver, 12).until(
                     EC.presence_of_element_located(
-                        (By.CSS_SELECTOR, "[data-automation-id='price-text']")
+                        (By.CSS_SELECTOR, "[data-automation-id*='price-text']")
                     )
                 )
                 print(f"    ✅ Price elements loaded successfully")
@@ -971,42 +997,63 @@ class SportsbetOddsIntegrator:
             # Additional wait time for complex loading
             time.sleep(2)
 
-            # Find all runner containers using the specific Sportsbet selector
-            cards = self.driver.find_elements(
-                By.CSS_SELECTOR, "div[data-automation-id^='racecard-outcome-']"
+            # Find runner cards by anchoring on the outcome name and walking up to the outcome container
+            candidate_cards = self.driver.find_elements(
+                By.XPATH,
+                "//*[contains(@data-automation-id,'racecard-outcome-name')]/ancestor::*[contains(@data-automation-id,'racecard-outcome')][1]",
             )
 
-            if not cards:
+            if not candidate_cards:
+                # Fallback to previous broad selector
+                candidate_cards = self.driver.find_elements(
+                    By.CSS_SELECTOR, "div[data-automation-id^='racecard-outcome-']"
+                )
+
+            if not candidate_cards:
                 print(
                     f"  ⚠️  No Sportsbet runner containers found, falling back to broader approach..."
                 )
                 return self._extract_from_broader_containers()
 
-            print(f"  📊 Found {len(cards)} Sportsbet runner containers")
+            print(f"  📊 Found {len(candidate_cards)} Sportsbet runner containers")
 
             # Process each card individually with comprehensive error handling
             successful_extractions = 0
+            processed_names = set()
 
-            for i, card in enumerate(cards[:8]):  # Max 8 runners
-                print(f"  🐕 Processing runner card {i+1}/{min(len(cards), 8)}...")
+            for i, card in enumerate(candidate_cards[:8]):  # Max 8 runners
+                print(f"  🐕 Processing runner card {i+1}/{min(len(candidate_cards), 8)}...")
+
+                # Ensure element is in view (handles virtualization/lazy rendering)
+                try:
+                    self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", card)
+                except Exception:
+                    pass
 
                 # Extract dog name with multiple fallback strategies
                 dog_name = self._extract_dog_name_with_fallbacks(card, i + 1)
+
+                # Skip duplicates by cleaned name
+                if dog_name and self.clean_dog_name(dog_name) in processed_names:
+                    print(f"    🔁 Skipping duplicate runner '{dog_name}'")
+                    continue
 
                 # Extract odds with multiple fallback strategies
                 odds_decimal, odds_text = self._extract_odds_with_fallbacks(card, i + 1)
 
                 # Add to results if we have both name and odds
                 if dog_name and odds_decimal > 0:
+                    cleaned = self.clean_dog_name(dog_name)
                     odds_data.append(
                         {
                             "dog_name": dog_name,
-                            "dog_clean_name": self.clean_dog_name(dog_name),
+                            "dog_clean_name": cleaned,
                             "box_number": i + 1,
                             "odds_decimal": odds_decimal,
                             "odds_fractional": odds_text,
                         }
                     )
+                    processed_names.add(cleaned)
                     successful_extractions += 1
                     print(
                         f"    ✅ Successfully extracted: {dog_name} - ${odds_decimal:.2f}"
@@ -1025,7 +1072,7 @@ class SportsbetOddsIntegrator:
                     )
 
             print(
-                f"  📊 Extraction summary: {successful_extractions}/{len(cards)} cards successfully processed"
+                f"  📊 Extraction summary: {successful_extractions}/{len(candidate_cards)} cards successfully processed"
             )
 
             # Debug: Save screenshot/source if insufficient data found
@@ -1071,6 +1118,7 @@ class SportsbetOddsIntegrator:
 
     def _extract_dog_name_with_fallbacks(self, card, card_number: int) -> str:
         """Extract dog name with comprehensive fallback strategies"""
+        By, WebDriverWait, EC, TimeoutException = self._selenium_primitives()
         import re  # Import re at the beginning of the function
 
         dog_name = ""
@@ -1226,13 +1274,14 @@ class SportsbetOddsIntegrator:
     def _extract_odds_with_fallbacks(self, card, card_number: int) -> tuple[float, str]:
         """Extract odds with comprehensive fallback strategies"""
         By, WebDriverWait, EC, TimeoutException = self._selenium_primitives()
+        import re  # Ensure regex available for pattern checks
         odds_decimal = 0.0
         odds_text = ""
 
-        # Strategy 1: Primary selector
+        # Strategy 1: Primary selector (more permissive)
         try:
             odds_element = card.find_element(
-                By.CSS_SELECTOR, "div[data-automation-id='price-text'] span"
+                By.CSS_SELECTOR, "[data-automation-id*='price-text']"
             )
             odds_text = odds_element.text.strip()
             if odds_text:
@@ -1331,6 +1380,22 @@ class SportsbetOddsIntegrator:
 
         print(f"    ❌ No odds found for card {card_number}")
         return 0.0, ""
+
+    def _extract_meeting_slug_from_url(self, url: str) -> Optional[str]:
+        try:
+            from urllib.parse import urlparse
+            path = urlparse(url).path or ""
+            parts = [p for p in path.split('/') if p]
+            if 'greyhound-racing' in parts:
+                gi = parts.index('greyhound-racing')
+                if gi + 2 < len(parts):
+                    slug = parts[gi + 2]
+                    # Ensure this is a meeting slug (not race-*)
+                    if slug and not slug.startswith('race-') and 'meeting-' not in slug:
+                        return slug
+        except Exception:
+            return None
+        return None
 
     def _save_debug_info(self, successful_extractions: int):
         """Save debug information when insufficient data is found"""
@@ -1844,6 +1909,7 @@ class SportsbetOddsIntegrator:
 
     def _find_odds_for_runner(self, runner) -> Tuple[float, str]:
         """Find odds for a specific runner element"""
+        By, WebDriverWait, EC, TimeoutException = self._selenium_primitives()
         odds_decimal = 0.0
         odds_text = ""
 
@@ -1946,6 +2012,7 @@ class SportsbetOddsIntegrator:
 
     def extract_odds_strategy_separate_buttons(self) -> List[Dict]:
         """Try to match runners with separate odds buttons by position/order"""
+        By, WebDriverWait, EC, TimeoutException = self._selenium_primitives()
         odds_data = []
 
         try:
@@ -2278,6 +2345,7 @@ class SportsbetOddsIntegrator:
 
     def extract_dog_name_from_element(self, element) -> str:
         """Extract dog name from a runner element"""
+        By, WebDriverWait, EC, TimeoutException = self._selenium_primitives()
         name_selectors = [
             "[data-automation-id*='name']",
             "[data-automation-id*='runner']",
@@ -2310,6 +2378,7 @@ class SportsbetOddsIntegrator:
 
     def extract_odds_from_element(self, element) -> Tuple[str, float]:
         """Extract odds from a runner element"""
+        By, WebDriverWait, EC, TimeoutException = self._selenium_primitives()
         odds_selectors = [
             "[data-automation-id*='odds']",
             "[data-automation-id*='price']",
@@ -2344,45 +2413,185 @@ class SportsbetOddsIntegrator:
 
         return "", 0.0
 
-    def find_next_race_from_meeting(self, meeting_url: str) -> Optional[str]:
-        """Navigate to meeting page and find the next available race URL"""
+    def find_next_race_from_meeting(self, meeting_url: str, expected_venue: Optional[str] = None) -> Optional[str]:
+        """Navigate to meeting page and find the next available race URL.
+        If expected_venue is provided, attempt to locate the meeting link on the region page
+        whose text matches the venue's human-readable name.
+        """
         By, WebDriverWait, EC, TimeoutException = self._selenium_primitives()
         try:
-            print(f"  🏟️  Navigating to meeting page: {meeting_url}")
-            self.driver.get(meeting_url)
-
-            # Wait for page to load
+            from urllib.parse import urlparse, urljoin
+            # Lazy import to avoid hard dependency at module import time
             try:
-                WebDriverWait(self.driver, 10).until(
-                    lambda driver: driver.execute_script("return document.readyState")
-                    == "complete"
-                )
-            except TimeoutException:
-                print(f"  ⚠️  Timeout waiting for meeting page to load")
+                from config.venue_mapping import normalize_venue, get_venue_full_name, get_venue_state
+            except Exception:
+                normalize_venue = lambda x: (x or "").strip().upper()
+                get_venue_full_name = lambda x: x
+                get_venue_state = lambda x: "UNKNOWN"
 
-            time.sleep(2)  # Let dynamic content load
-
-            # Look for race navigation links with countdown timers
-            race_selectors = [
-                "a[href*='/race-']",  # Direct race links
-                "a[href*='race'][class*='countdown']",  # Race links with countdown class
-                "[class*='race-nav'] a",  # Race navigation links
-                "[class*='countdown'] a",  # Links within countdown elements
-                "a[href*='meeting'][href*='race']",  # Meeting-race links
-            ]
-
-            race_links = []
-            for selector in race_selectors:
+            # Derive region and meeting slug from incoming URL and prefer non-betting meeting page
+            parsed = urlparse(meeting_url)
+            path = parsed.path or ""
+            parts = [p for p in path.split('/') if p]
+            region = None
+            meeting_slug = None
+            if 'greyhound-racing' in parts:
                 try:
-                    elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                    if elements:
-                        race_links.extend(elements)
-                        print(
-                            f"    📋 Found {len(elements)} race links with selector: {selector}"
-                        )
-                        break
-                except:
-                    continue
+                    gi = parts.index('greyhound-racing')
+                    if gi + 1 < len(parts):
+                        region = parts[gi + 1]
+                    if gi + 2 < len(parts):
+                        seg = parts[gi + 2]
+                        # Treat the next segment as the meeting slug if it isn't already a race/meeting page
+                        if seg and not seg.startswith('race-') and 'meeting-' not in seg:
+                            meeting_slug = seg
+                except ValueError:
+                    pass
+            # If no region derived from URL but we have an Australian venue, assume australia-nz
+            if not region and expected_venue:
+                code = normalize_venue(expected_venue)
+                state = get_venue_state(code)
+                if state and state != "UNKNOWN":
+                    region = "australia-nz"
+
+            candidates: list[tuple[str, str]] = []
+            # 1) Non-betting meeting page (scoped)
+            if region and meeting_slug:
+                non_betting_meeting = urljoin(self.base_url, f"/greyhound-racing/{region}/{meeting_slug}")
+                candidates.append(("meeting", non_betting_meeting))
+            # 2) Try to resolve meeting slug by matching venue name on region page
+            resolved_meeting_from_text = None
+            if region and expected_venue:
+                expected_code = normalize_venue(expected_venue)
+                expected_name = get_venue_full_name(expected_code) or expected_code
+                # Normalize comparisons: lowercase and strip parenthesis content
+                def _norm(s: str) -> str:
+                    import re as _re
+                    s = (s or "").lower().strip()
+                    s = _re.sub(r"\([^)]*\)", "", s)
+                    s = s.replace("-", " ")
+                    s = " ".join(s.split())
+                    return s
+                expected_norm = _norm(expected_name)
+                region_main = urljoin(self.base_url, f"/greyhound-racing/{region}")
+                print(f"  🧭 Resolving meeting by text on region page: {region_main} (expect '{expected_name}')")
+                self.driver.get(region_main)
+                try:
+                    WebDriverWait(self.driver, 10).until(
+                        lambda driver: driver.execute_script("return document.readyState") == "complete"
+                    )
+                except TimeoutException:
+                    pass
+                time.sleep(1)
+                try:
+                    anchors = self.driver.find_elements(By.CSS_SELECTOR, f"a[href^='/greyhound-racing/{region}/']")
+                    best = None
+                    for a in anchors:
+                        try:
+                            href = a.get_attribute("href") or ""
+                            if not href or "/race-" in href:
+                                continue
+                            text = (a.text or "").strip()
+                            if not text:  # sometimes the text is within a child
+                                try:
+                                    text = a.get_attribute("aria-label") or ""
+                                except Exception:
+                                    text = ""
+                            text_norm = _norm(text)
+                            if text_norm and expected_norm and expected_norm in text_norm:
+                                best = href
+                                break
+                        except Exception:
+                            continue
+                    if best:
+                        print(f"  🔎 Matched meeting via text: {best}")
+                        resolved_meeting_from_text = best
+                except Exception as _e:
+                    print(f"  ⚠️  Meeting text resolution failed: {_e}")
+            # Derive target meeting slug for filtering if resolved by text
+            target_meeting_slug = None
+            if resolved_meeting_from_text:
+                try:
+                    parsed_res = urlparse(resolved_meeting_from_text)
+                    rparts = [p for p in (parsed_res.path or "").split('/') if p]
+                    if 'greyhound-racing' in rparts:
+                        gi2 = rparts.index('greyhound-racing')
+                        if gi2 + 2 < len(rparts):
+                            cand = rparts[gi2 + 2]
+                            if cand and not cand.startswith('race-') and 'meeting-' not in cand:
+                                target_meeting_slug = cand
+                except Exception:
+                    target_meeting_slug = None
+                candidates.append(("meeting", resolved_meeting_from_text))
+            # 3) Original URL (may redirect to generic page)
+            candidates.append(("original", meeting_url))
+            # 4) Region landing page as last resort
+            if region:
+                region_main = urljoin(self.base_url, f"/greyhound-racing/{region}")
+                candidates.append(("region", region_main))
+
+            def _load_and_collect(url: str, require_meeting: bool):
+                print(f"  🏟️  Navigating to meeting page: {url}")
+                self.driver.get(url)
+                try:
+                    WebDriverWait(self.driver, 10).until(
+                        lambda driver: driver.execute_script("return document.readyState")
+                        == "complete"
+                    )
+                except TimeoutException:
+                    print(f"  ⚠️  Timeout waiting for meeting page to load")
+                time.sleep(2)
+
+                # Look for race navigation links with countdown timers
+                race_selectors = [
+                    "a[href*='/race-']",  # Direct race links
+                    "a[href*='race'][class*='countdown']",  # Race links with countdown class
+                    "[class*='race-nav'] a",  # Race navigation links
+                    "[class*='countdown'] a",  # Links within countdown elements
+                    "a[href*='meeting'][href*='race']",  # Meeting-race links
+                ]
+
+                race_links = []
+                for selector in race_selectors:
+                    try:
+                        elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                        if elements:
+                            # Filter strictly to greyhound races and (optionally) to the same meeting
+                            filtered = []
+                            for el in elements:
+                                try:
+                                    href = el.get_attribute("href") or ""
+                                except Exception:
+                                    continue
+                                if "/race-" not in href or "/greyhound-racing/" not in href:
+                                    continue
+                                # Always constrain to the same region if known
+                                if region and f"/greyhound-racing/{region}/" not in href:
+                                    continue
+                                # Optionally constrain to the same meeting slug
+                                if require_meeting and region:
+                                    slug_to_match = meeting_slug or target_meeting_slug
+                                    if slug_to_match and f"/greyhound-racing/{region}/{slug_to_match}/" not in href:
+                                        continue
+                                filtered.append(el)
+                            if filtered:
+                                race_links.extend(filtered)
+                                print(
+                                    f"    📋 Found {len(filtered)} race links with selector: {selector}"
+                                )
+                                break
+                    except Exception:
+                        continue
+                return race_links
+
+            # Try candidates in order: scoped meeting (slug), resolved by text, original, region main
+            race_links = []
+            for kind, url in candidates:
+                # If we have a concrete meeting link (from slug or text), enforce meeting scoping
+                require_meeting = (kind in ("meeting", "original")) and bool(meeting_slug or resolved_meeting_from_text)
+                race_links = _load_and_collect(url, require_meeting)
+                if race_links:
+                    break
 
             if not race_links:
                 print(f"  ⚠️  No race links found on meeting page")
@@ -2396,6 +2605,9 @@ class SportsbetOddsIntegrator:
                 try:
                     href = link.get_attribute("href")
                     if not href or "/race-" not in href:
+                        continue
+                    # Filter strictly to greyhound races
+                    if "/greyhound-racing/" not in href:
                         continue
 
                     # Get text around the link to find countdown info
@@ -3041,20 +3253,22 @@ class SportsbetOddsIntegrator:
                         dog_odds["odds_fractional"],
                     ),
                 )
-                # Record odds movement for history
-                try:
-                    self.track_odds_movement(
-                        race_info["race_id"],
-                        dog_odds["dog_clean_name"],
-                        float(dog_odds["odds_decimal"]),
-                    )
-                except Exception:
-                    pass
 
             conn.commit()
             print(
                 f"✅ Saved race metadata and odds for {race_info['race_id']} ({len(odds_data)} dogs)"
             )
+
+            # Record odds movement for history after commit to avoid lock contention
+            try:
+                for dog_odds in odds_data:
+                    self.track_odds_movement(
+                        race_info["race_id"],
+                        dog_odds["dog_clean_name"],
+                        float(dog_odds["odds_decimal"]),
+                    )
+            except Exception:
+                pass
 
         except Exception as e:
             print(f"⚠️  Error saving race data: {e}")
@@ -3064,6 +3278,10 @@ class SportsbetOddsIntegrator:
     def track_odds_movement(self, race_id: str, dog_name: str, new_odds: float):
         """Track odds movements for a specific dog"""
         conn = sqlite3.connect(self.db_path)
+        try:
+            conn.execute("PRAGMA busy_timeout=2000")
+        except Exception:
+            pass
         cursor = conn.cursor()
 
         try:

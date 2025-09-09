@@ -80,6 +80,8 @@ debug/
 credentials.json
 config.ini
 .env
+.env.*
+!.env.example
 *.key
 *.pem
 credentials/

@@ -42,24 +42,89 @@ async function fetchWithErrorHandling(url, options = {}) {
 }
 
 // Prediction ordering helpers
-window.predOrderingMode = window.predOrderingMode || 'win_prob';
+function getStoredOrderingMode() {
+    try {
+        const v = (localStorage.getItem('pred_ordering_mode') || '').trim();
+        return (v === 'win_prob' || v === 'predicted_rank') ? v : null;
+    } catch (e) { return null; }
+}
+function setStoredOrderingMode(mode) {
+    try {
+        if (mode === 'win_prob' || mode === 'predicted_rank') {
+            localStorage.setItem('pred_ordering_mode', mode);
+        }
+    } catch (e) { /* ignore */ }
+}
+window.predOrderingMode = getStoredOrderingMode() || window.predOrderingMode || 'predicted_rank';
 function predictionScoreWinProb(p) {
     return Number(p.win_prob || p.normalized_win_probability || p.win_probability || p.final_score || p.prediction_score || p.confidence || 0);
 }
+function predictionScorePlaceProb(p) {
+    return Number(p.place_prob || p.place_prob_norm || p.normalized_place_probability || p.place_probability || p.place_top3_prob || 0);
+}
 function sortPreds(list, mode) {
     const arr = Array.isArray(list) ? [...list] : [];
-    if ((mode || window.predOrderingMode) === 'predicted_rank') {
+    const m = (mode || window.predOrderingMode);
+    if (m === 'predicted_rank') {
         return arr.sort((a, b) => {
             const ra = Number(a.predicted_rank ?? Number.POSITIVE_INFINITY);
             const rb = Number(b.predicted_rank ?? Number.POSITIVE_INFINITY);
             return ra - rb;
         });
     }
+    if (m === 'place_prob') {
+        return arr.sort((a, b) => predictionScorePlaceProb(b) - predictionScorePlaceProb(a));
+    }
     return arr.sort((a, b) => predictionScoreWinProb(b) - predictionScoreWinProb(a));
 }
 function getTopPick(list) {
     const s = sortPreds(list, 'win_prob');
     return s.length ? s[0] : null;
+}
+
+// Aggregate predictions by unique dog (collapse duplicates across ensemble/models)
+function _dogKey(p) {
+    try {
+        const n = (p && (p.dog_name || p.clean_name || p.name || ''))
+            .toString()
+            .trim()
+            .toLowerCase()
+            .replace(/\s+/g, ' ');
+        return n;
+    } catch {
+        return '';
+    }
+}
+function aggregateByDog(preds) {
+    const arr = Array.isArray(preds) ? preds : [];
+    const map = new Map();
+    for (const p of arr) {
+        const key = _dogKey(p);
+        if (!key) continue;
+        const score = predictionScoreWinProb(p);
+        if (!map.has(key)) {
+            map.set(key, { entry: { ...p }, _score: score, ensemble_count: 1 });
+        } else {
+            const rec = map.get(key);
+            // increment total proposals seen for this dog
+            rec.ensemble_count = (rec.ensemble_count || 1) + 1;
+            if (score > rec._score) {
+                // Keep best-scoring entry but carry forward ensemble_count
+                const cnt = rec.ensemble_count;
+                map.set(key, { entry: { ...p }, _score: score, ensemble_count: cnt });
+            } else {
+                map.set(key, rec);
+            }
+        }
+    }
+    return Array.from(map.values()).map(r => {
+        const e = { ...r.entry };
+        if (r.ensemble_count && !e.ensemble_count) e.ensemble_count = r.ensemble_count;
+        return e;
+    });
+}
+function dedupePreds(list) {
+    try { return aggregateByDog(list); } catch { return Array.isArray(list) ? list : []; }
 }
 
 // Toast notification function
@@ -168,6 +233,59 @@ function updateTgrStatusBadge() {
         badge.className = 'badge ms-2 ' + (enabled ? 'bg-success' : 'bg-secondary');
     } catch (e) {}
 }
+// Model health badge (Place EV state)
+async function updateModelHealthBadge() {
+    try {
+        const resp = await fetchWithErrorHandling('/api/model_health');
+        const data = await resp.json();
+        try { window.__modelHealth = data || {}; } catch (e) {}
+        const container = document.getElementById('prediction-results-container');
+        if (!container) return;
+        const header = container.querySelector('.card-header');
+        if (!header) return;
+        let badge = header.querySelector('#place-ev-badge');
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.id = 'place-ev-badge';
+            badge.className = 'badge ms-2';
+            header.appendChild(badge);
+        }
+        // Click to force refresh
+        try {
+            badge.style.cursor = 'pointer';
+            badge.title = 'Click to refresh Place EV health';
+            if (!badge._bound) {
+                badge.addEventListener('click', () => { try { updateModelHealthBadge(); } catch(_) {} });
+                badge._bound = true;
+            }
+        } catch(_) {}
+        const state = (data && data.place_odds_integration) || 'unknown';
+        const anomalies = (data && Array.isArray(data.anomalies)) ? data.anomalies.length : 0;
+        if (state === 'enabled') {
+            badge.className = 'badge ms-2 bg-success';
+            badge.textContent = anomalies > 0 ? `Place EV: Enabled (anomalies: ${anomalies})` : 'Place EV: Enabled';
+        } else if (state === 'disabled') {
+            badge.className = 'badge ms-2 bg-secondary';
+            badge.textContent = anomalies > 0 ? `Place EV: Disabled (anomalies: ${anomalies})` : 'Place EV: Disabled';
+        } else {
+            badge.className = 'badge ms-2 bg-dark';
+            badge.textContent = 'Place EV: Unknown';
+        }
+    } catch (e) {
+        // Silent on failure
+    }
+}
+
+function scheduleModelHealthAutoRefresh(intervalMs = 60000) {
+    try {
+        if (window.__modelHealthTimer) {
+            clearInterval(window.__modelHealthTimer);
+        }
+        window.__modelHealthTimer = setInterval(() => {
+            try { updateModelHealthBadge(); } catch(_) {}
+        }, intervalMs);
+    } catch (_) {}
+}
 // Listen for changes to the toggle or localStorage updates (from other tabs/pages)
 window.addEventListener('storage', (e) => {
     try {
@@ -189,6 +307,20 @@ document.addEventListener('change', (e) => {
 });
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Prevent double-initialization if the script is included twice
+    try {
+        if (window.__interactiveRacesInit === true) {
+            console.warn('Interactive Races: duplicate script load detected; skipping second init');
+            return;
+        }
+        window.__interactiveRacesInit = true;
+    } catch (_) {}
+    // Cleanup interval on unload
+    try {
+        window.addEventListener('beforeunload', () => {
+            try { if (window.__modelHealthTimer) clearInterval(window.__modelHealthTimer); } catch(_) {}
+        });
+    } catch(_) {}
     const state = {
         races: [],
         currentPage: 1,
@@ -309,6 +441,8 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             updateTgrStatusBadge();
             syncTgrCookieFromState();
+            try { await updateModelHealthBadge(); } catch (e) {}
+            try { scheduleModelHealthAutoRefresh(60000); } catch (e) {}
             await loadRaces();
             setupEventListeners();
             renderRaces();
@@ -326,38 +460,41 @@ document.addEventListener('DOMContentLoaded', () => {
         
         try {
             if (state.viewMode === 'upcoming') {
-                // 1) Fetch predicted status list (filenames for accurate filtering)
+                // 1) Quick predicted sets for exclusion (fast endpoint)
                 let predictedFilenameSet = new Set();
                 let predictedNameSet = new Set();
-                let predictedList = [];
                 try {
-                    const rs = await fetchWithErrorHandling('/api/race_files_status');
-                    const rd = await rs.json();
-                    const preds = Array.isArray(rd.predicted_races) ? rd.predicted_races : [];
-                    predictedList = preds;
-                    predictedFilenameSet = new Set(preds.map(p => (p.filename || '').trim()).filter(Boolean));
-                    predictedNameSet = new Set(preds.map(p => (p.race_name || '').trim()).filter(Boolean));
+                    const rsQuick = await fetchWithErrorHandling('/api/race_files_status_simple');
+                    const rdQuick = await rsQuick.json();
+                    const predsQuick = Array.isArray(rdQuick.predicted_races) ? rdQuick.predicted_races : [];
+                    predictedFilenameSet = new Set(predsQuick.map(p => (p.filename || '').trim()).filter(Boolean));
+                    predictedNameSet = new Set(predsQuick.map(p => (p.race_name || '').trim()).filter(Boolean));
                 } catch (e) {
-                    console.warn('Could not load predicted status:', e);
+                    console.warn('Quick predicted sets failed; proceeding without exclusion', e);
                 }
 
                 // 2) Stream upcoming races (live preferred; server falls back to CSV)
                 closeUpcomingStream();
                 const { races: streamed, total } = await loadUpcomingViaStream(predictedFilenameSet, predictedNameSet);
 
-                // 3) Persist streamed unpredicted races and predicted list for panel
+                // 3) Persist streamed unpredicted races and show immediately
                 state.races = Array.isArray(streamed) ? streamed : [];
-                state.predictedList = predictedList;
+                showToast(`Loaded ${total} upcoming; ${state.races.length} unpredicted shown. Loading predicted panel...`, 'info');
 
-                showToast(`Loaded ${total} upcoming; ${state.races.length} unpredicted shown. Predicted moved to Re-Predict panel.`, 'info');
-
-                // 4) Initialize and render predicted panel with filters
-                try {
-                    setupPredictedFilters();
-                    renderPredictedPanel();
-                } catch (e) {
-                    console.warn('Failed to render predicted panel:', e);
-                }
+                // 4) Populate predicted panel in the background using the rich (heavier) endpoint
+                (async () => {
+                    try {
+                        const rs = await fetchWithErrorHandling('/api/race_files_status');
+                        const rd = await rs.json();
+                        const preds = Array.isArray(rd.predicted_races) ? rd.predicted_races : [];
+                        state.predictedList = preds;
+                        setupPredictedFilters();
+                        renderPredictedPanel();
+                    } catch (e) {
+                        console.warn('Could not load full predicted status (non-blocking):', e);
+                        // If we want, we could show the simple list minimally here; for now, defer
+                    }
+                })();
 
             } else {
                 // Regular historical/paginated view as before
@@ -965,13 +1102,55 @@ document.addEventListener('DOMContentLoaded', () => {
     // Start SSE stream for upcoming races (live by default, server will fallback to CSV if needed)
     async function loadUpcomingViaStream(predictedFilenameSet, predictedNameSet) {
         return new Promise((resolve) => {
-            const days = Number(getQueryParam('days')) || 2;
+            // Default to live-only and a smaller window to reduce load; allow URL overrides
+            const days = Number(getQueryParam('days') ?? '') || 1;
+            // Default to LIVE for upcoming discovery; allow ?source=csv to override
             const requestedSource = getQueryParam('source') || 'live';
-            const strictLive = getQueryParam('strict_live') || '';
-            const url = `/api/upcoming_races_stream?source=${encodeURIComponent(requestedSource)}&days=${days}${strictLive ? `&strict_live=${encodeURIComponent(strictLive)}` : ''}`;
-            const es = new EventSource(url);
+            const strictLiveParam = getQueryParam('strict_live');
+            // Default to non-strict so the server can fall back to CSV when live is disabled
+            const strictLive = (strictLiveParam === null || strictLiveParam === undefined || strictLiveParam === '') ? '0' : String(strictLiveParam);
+            const url = `/api/upcoming_races_stream?source=${encodeURIComponent(requestedSource)}&days=${days}&strict_live=${encodeURIComponent(strictLive)}`;
+            try { console.info('[Interactive Races] Opening SSE:', url); } catch(_) {}
+            let es = new EventSource(url);
+            try { window.__upcomingSSE = es; } catch(_) {}
             const map = new Map();
             let total = 0;
+            let attemptedCsvFallback = false;
+
+            // Incremental render throttle
+            let lastRender = 0;
+            let addedSinceRender = 0;
+            const RENDER_EVERY_MS = 700;
+            const RENDER_EVERY_N = 15;
+
+            function renderNow() {
+                try {
+                    const arrUnsorted = Array.from(map.values());
+                    const nowSec = Math.floor(Date.now() / 1000);
+                    const melYmd = new Intl.DateTimeFormat('en-CA', { timeZone: 'Australia/Melbourne', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+                    const arr = arrUnsorted.filter((r) => {
+                        try {
+                            const ts = Number.isFinite(r._mel_ts_sec) ? r._mel_ts_sec : computeMelbourneTimestampSeconds(r);
+                            if (Number.isFinite(ts)) return ts >= nowSec;
+                            const ymd = String(r.race_date || r.date || '').slice(0, 10);
+                            if (!ymd) return true; // keep if date unknown
+                            return ymd >= melYmd;  // keep today or future
+                        } catch { return true; }
+                    });
+                    arr.sort((a, b) => {
+                        const [d1, unk1, t1, v1] = buildUpcomingSortKey(a);
+                        const [d2, unk2, t2, v2] = buildUpcomingSortKey(b);
+                        if (d1 !== d2) return d1 < d2 ? -1 : 1;  // date asc
+                        if (unk1 !== unk2) return unk1 - unk2;   // timed first
+                        if (t1 !== t2) return t1 - t2;           // time asc
+                        return String(v1).localeCompare(String(v2));
+                    });
+                    state.races = arr;
+                    renderRaces();
+                } catch (e) {
+                    console.warn('incremental render failed', e);
+                }
+            }
 
             try { state._sse = es; } catch {}
 
@@ -1004,31 +1183,19 @@ document.addEventListener('DOMContentLoaded', () => {
                         const key = fn || r.race_id || `${r.venue || ''}_${r.race_date || r.date || ''}_${r.race_number || ''}`;
                         r._mel_ts_sec = computeMelbourneTimestampSeconds(r);
                         map.set(key, r);
+                        addedSinceRender += 1;
+                        const now = Date.now();
+                        if ((now - lastRender) >= RENDER_EVERY_MS || addedSinceRender >= RENDER_EVERY_N) {
+                            renderNow();
+                            lastRender = now;
+                            addedSinceRender = 0;
+                        }
                     } else if (data.type === 'completion' || data.type === 'complete') {
                         // Accept both 'completion' (old client expectation) and 'complete' (server emission)
                         try { es.close(); } catch {}
                         try { state._sse = null; } catch {}
-                        const arrUnsorted = Array.from(map.values());
-                        const nowSec = Math.floor(Date.now() / 1000);
-                        const melYmd = new Intl.DateTimeFormat('en-CA', { timeZone: 'Australia/Melbourne', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-                        const arr = arrUnsorted.filter((r) => {
-                            try {
-                                const ts = Number.isFinite(r._mel_ts_sec) ? r._mel_ts_sec : computeMelbourneTimestampSeconds(r);
-                                if (Number.isFinite(ts)) return ts >= nowSec;
-                                const ymd = String(r.race_date || r.date || '').slice(0, 10);
-                                if (!ymd) return true; // keep if date unknown
-                                return ymd >= melYmd;  // keep today or future
-                            } catch { return true; }
-                        });
-                        arr.sort((a, b) => {
-                            const [d1, unk1, t1, v1] = buildUpcomingSortKey(a);
-                            const [d2, unk2, t2, v2] = buildUpcomingSortKey(b);
-                            if (d1 !== d2) return d1 < d2 ? -1 : 1;  // date asc
-                            if (unk1 !== unk2) return unk1 - unk2;   // timed first
-                            if (t1 !== t2) return t1 - t2;           // time asc
-                            return String(v1).localeCompare(String(v2));
-                        });
-                        resolve({ races: arr, total: total || arr.length });
+                        renderNow();
+                        resolve({ races: state.races || [], total: total || (state.races ? state.races.length : 0) });
                     }
                 } catch (e) {
                     console.warn('SSE parse error', e);
@@ -1036,8 +1203,71 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             es.onerror = () => {
+                try { console.warn('[Interactive Races] SSE network error; attempting fallback if allowed'); } catch(_) {}
                 try { es.close(); } catch {}
                 try { state._sse = null; } catch {}
+                // Automatic CSV fallback when live fails and strict_live is not set
+                if (!attemptedCsvFallback && (String(strictLive) !== '1') && String(requestedSource) === 'live') {
+                    attemptedCsvFallback = true;
+                    try { showToast('Live stream error. Falling back to CSV...', 'warning'); } catch(_) {}
+                    const urlCsv = `/api/upcoming_races_stream?source=csv&days=${days}&strict_live=0`;
+                    try { console.info('[Interactive Races] Opening CSV SSE fallback:', urlCsv); } catch(_) {}
+                    try {
+                        es = new EventSource(urlCsv);
+                        try { window.__upcomingSSE = es; } catch(_) {}
+                        try { state._sse = es; } catch(_) {}
+                    } catch(_) {
+                        resolve({ races: [], total: 0 });
+                        return;
+                    }
+                    es.onmessage = (evt) => {
+                        try {
+                            const data = JSON.parse(evt.data || '{}');
+                            if (!data || !data.type) return;
+                            if (data.type === 'status') {
+                                if (data.fallback_reason) {
+                                    showToast(`Source: ${data.source} (requested ${data.requested_source}); fallback: ${data.fallback_reason}`, 'info');
+                                }
+                            } else if (data.type === 'race' && data.race) {
+                                const r = data.race;
+                                total = data.total_found || total;
+                                const fn = (r.filename || '').trim();
+                                const rn = (r.race_name || '').trim();
+                                const hasPredicted = (
+                                    (predictedFilenameSet && typeof predictedFilenameSet.size === 'number' && predictedFilenameSet.size > 0) ||
+                                    (predictedNameSet && typeof predictedNameSet.size === 'number' && predictedNameSet.size > 0)
+                                );
+                                if (hasPredicted) {
+                                    if (fn && predictedFilenameSet && predictedFilenameSet.has(fn)) return;
+                                    if (!fn && rn && predictedNameSet && predictedNameSet.has(rn)) return;
+                                }
+                                const key = fn || r.race_id || `${r.venue || ''}_${r.race_date || r.date || ''}_${r.race_number || ''}`;
+                                r._mel_ts_sec = computeMelbourneTimestampSeconds(r);
+                                map.set(key, r);
+                                addedSinceRender += 1;
+                                const now = Date.now();
+                                if ((now - lastRender) >= RENDER_EVERY_MS || addedSinceRender >= RENDER_EVERY_N) {
+                                    renderNow();
+                                    lastRender = now;
+                                    addedSinceRender = 0;
+                                }
+                            } else if (data.type === 'completion' || data.type === 'complete') {
+                                try { es.close(); } catch {}
+                                try { state._sse = null; } catch {}
+                                renderNow();
+                                resolve({ races: state.races || [], total: total || (state.races ? state.races.length : 0) });
+                            }
+                        } catch (e) {
+                            console.warn('SSE (CSV) parse error', e);
+                        }
+                    };
+                    es.onerror = () => {
+                        try { es.close(); } catch {}
+                        try { state._sse = null; } catch {}
+                        resolve({ races: [], total: 0 });
+                    };
+                    return; // Do not resolve yet; let CSV fallback stream continue
+                }
                 resolve({ races: [], total: 0 });
             };
         });
@@ -1447,16 +1677,19 @@ document.addEventListener('DOMContentLoaded', () => {
                         <label class="input-group-text" for="ordering-select">Order by</label>
                         <select id="ordering-select" class="form-select form-select-sm">
                             <option value="win_prob">Win Probability</option>
+                            <option value="place_prob">Place Probability</option>
                             <option value="predicted_rank">Predicted Rank</option>
                         </select>
                     </div>`;
                 elements.predictionResultsBody.parentElement.insertBefore(toolbar, elements.predictionResultsBody);
                 const orderingSelect = document.getElementById('ordering-select');
                 if (orderingSelect) {
-                    orderingSelect.value = window.predOrderingMode || 'win_prob';
+                    const stored = getStoredOrderingMode();
+                    orderingSelect.value = stored || (window.predOrderingMode || 'predicted_rank');
                     if (!orderingSelect._bound) {
                         orderingSelect.addEventListener('change', () => {
-                            window.predOrderingMode = orderingSelect.value || 'win_prob';
+                            window.predOrderingMode = orderingSelect.value || 'predicted_rank';
+                            try { setStoredOrderingMode(window.predOrderingMode); } catch {}
                             try { showToast(`Ordering set to: ${window.predOrderingMode === 'predicted_rank' ? 'Predicted Rank' : 'Win Probability'}`, 'info'); } catch {}
                             // Re-render any expanded details panels to reflect new ordering
                             const panels = document.querySelectorAll('.prediction-details');
@@ -1480,16 +1713,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } else if (toolbar) {
                 const orderingSelect = document.getElementById('ordering-select');
-                if (orderingSelect) orderingSelect.value = window.predOrderingMode || 'win_prob';
+                if (orderingSelect) orderingSelect.value = getStoredOrderingMode() || (window.predOrderingMode || 'predicted_rank');
             }
         } catch (e) { console.warn('Ordering toolbar init failed', e); }
         
         // Use Array.from to ensure forEach is available on all browsers
         Array.from(results).forEach((result, index) => {
             // Normalize enhanced endpoint shape: some endpoints return { success, prediction: { predictions: [...] } }
-            const predictions = Array.isArray(result.predictions)
+            const predictionsRaw = Array.isArray(result.predictions)
                 ? result.predictions
                 : (result.prediction && Array.isArray(result.prediction.predictions) ? result.prediction.predictions : []);
+            const predictions = dedupePreds(predictionsRaw);
             // Determine effective success: honor explicit success, otherwise infer from predictions or success-shaped message
             let success = !!result.success;
             const msgTop = (result && (result.message || result.error)) || '';
@@ -1513,6 +1747,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     ? [...predictions].sort((a, b) => Number(b.win_prob || b.normalized_win_probability || b.final_score || b.prediction_score || b.win_probability || b.confidence || 0) - Number(a.win_prob || a.normalized_win_probability || a.final_score || a.prediction_score || a.win_probability || a.confidence || 0))
                     : [];
                 const topPick = result.top_pick || (sortedPreds.length ? sortedPreds[0] : (predictions ? predictions[0] : null));
+                const analyzedDogs = predictions.length;
+                const analyzedRaw = Array.isArray(predictionsRaw) ? predictionsRaw.length : analyzedDogs;
+                // Compute Top 3 Place summary line
+                const placeSorted = Array.isArray(predictions) ? [...predictions].sort((a,b)=> predictionScorePlaceProb(b)-predictionScorePlaceProb(a)) : [];
+                const top3Place = placeSorted.slice(0,3);
+                const top3PlaceText = top3Place.map(p => {
+                    const n = p.dog_name || p.name || 'Unknown';
+                    const prob = predictionScorePlaceProb(p);
+                    const probTxt = Number.isFinite(prob) ? `${(prob*100).toFixed(1)}%` : '';
+                    const evRaw = (p.ev_place !== undefined ? p.ev_place : (p.place_ev !== undefined ? p.place_ev : (p.evPlace !== undefined ? p.evPlace : null)));
+                    const evEnabled = !!(window.__modelHealth && window.__modelHealth.place_odds_integration === 'enabled');
+                    const evTxt = (evEnabled && Number.isFinite(Number(evRaw))) ? ` (EV ${(Number(evRaw)*100).toFixed(1)}%)` : '';
+                    return `${n} ${probTxt}${evTxt}`.trim();
+                }).filter(Boolean).join(', ');
+                const top3PlaceLine = top3PlaceText ? `<p class="mb-1"><strong>Top 3 Place:</strong> ${top3PlaceText}</p>` : '';
                 
                 if (topPick) {
                     const winProb = Number(topPick.win_prob || topPick.normalized_win_probability || topPick.final_score || topPick.win_probability || topPick.confidence || 0);
@@ -1529,6 +1778,21 @@ document.addEventListener('DOMContentLoaded', () => {
                         ? `<span class=\"badge bg-info ms-2\" title=\"GPT rerank applied${gptMeta.alpha!==undefined?`, alpha=${gptMeta.alpha}`:''}${gptMeta.tokens_used!==undefined?`, tokens=${gptMeta.tokens_used}`:''}\"><i class=\"fas fa-robot\"></i> GPT Rerank</span>`
                         : '';
                     
+                    // Prepare registry-best model string for summary line
+                    const __best = (result && result.model_registry_best) ? result.model_registry_best : {};
+                    const __modelStr = (__best && __best.model_id) ? ` | Model: ${__best.model_id}` : '';
+                    // Primary/ensemble models (when provided by backend on this result)
+                    const __primaryStr = result.primary_model_id ? ` | Primary: ${result.primary_model_id}` : '';
+                    const __usedStr = (Array.isArray(result.model_ids_used) && result.model_ids_used.length)
+                        ? ` | Ensemble: ${result.model_ids_used.slice(0,3).join(', ')}${result.model_ids_used.length>3?'…':''}`
+                        : '';
+                    // Calibration badge heuristics: methods mention 'calib', or model id contains 'CalibratedPipeline', or analysis mentions 'calib'
+                    const __methods = Array.isArray(result.prediction_methods_used) ? result.prediction_methods_used.join(' ').toLowerCase() : '';
+                    const __isCalibrated = (__methods.includes('calib')) ||
+                                           (typeof __best.model_id === 'string' && __best.model_id.toLowerCase().includes('calibratedpipeline')) ||
+                                           (String(result.analysis_version||'').toLowerCase().includes('calib'));
+                    const __calibBadge = __isCalibrated ? ` <span class=\"badge bg-primary ms-2\"><i class=\"fas fa-sliders-h\"></i> Calibrated</span>` : '';
+                    
                     resultDiv.innerHTML = `
                         <div class="d-flex justify-content-between align-items-start">
                             <div>
@@ -1539,12 +1803,14 @@ document.addEventListener('DOMContentLoaded', () => {
                                     <strong>Top Pick:</strong> ${dogName} 
                                     <span class="badge bg-success">${(winProb * 100).toFixed(1)}%</span>
                                 </p>
+                                ${top3PlaceLine}
                                 <small class="text-muted">
                                     <i class="fas fa-info-circle"></i> 
-                                    ${predictions.length} dogs analyzed
+                                    ${analyzedDogs} dogs analyzed${analyzedRaw !== analyzedDogs ? ` (from ${analyzedRaw} predictions)` : ''}
                                     ${result.predictor_used ? ` | Predictor: ${result.predictor_used}` : ''}
+                                    ${__modelStr}${__primaryStr}${__usedStr}
                                     ${encodedName ? ` | <a class=\"link-secondary\" href=\"${apiHref}\" target=\"_blank\" rel=\"noopener noreferrer\"><i class=\"fas fa-file-code\"></i> Raw JSON</a>` : ''}
-                                    ${gptBadge ? ` ${gptBadge}` : ''}
+                                    ${gptBadge ? ` ${gptBadge}` : ''}${__calibBadge}
                                     | <a href=\"#\" class=\"link-primary\" onclick=\"return __ensureExpandAndRender(${index});\"><i class=\"fas fa-eye\"></i> View Details</a>
                                 </small>
                             </div>
@@ -1629,6 +1895,56 @@ document.addEventListener('DOMContentLoaded', () => {
             </p>
         `;
         elements.predictionResultsBody.appendChild(summaryDiv);
+
+        // Update or insert registry best-selection policy footnote (client-side inference)
+        try {
+            const footId = 'registry-policy-footnote';
+            let foot = document.getElementById(footId);
+            if (!foot) {
+                foot = document.createElement('div');
+                foot.id = footId;
+                foot.className = 'text-muted small mt-2';
+                elements.predictionResultsBody.appendChild(foot);
+            }
+            // Fetch registry status and infer likely selection policy
+            (async () => {
+                try {
+                    const resp = await fetchWithErrorHandling('/api/model/registry/status');
+                    const data = await resp.json();
+                    const best = (data && data.best_models && data.best_models.win) ? data.best_models.win : null;
+                    const bestId = best && best.model_id ? String(best.model_id) : '';
+                    const models = Array.isArray(data && data.models) ? data.models : [];
+                    // Helper to get top model id by metric
+                    const getTopBy = (metric) => {
+                        try {
+                            let top = null; let max = -Infinity;
+                            models.forEach(m => {
+                                const v = Number(m && m[metric]);
+                                if (Number.isFinite(v) && v > max) { max = v; top = m && m.model_id; }
+                            });
+                            return top || '';
+                        } catch { return ''; }
+                    };
+                    const candidates = [
+                        'top1_rate',
+                        'correct_winners',
+                        'auc',
+                        'accuracy',
+                        'performance_score'
+                    ];
+                    let inferred = 'unknown';
+                    for (const metric of candidates) {
+                        const topId = getTopBy(metric);
+                        if (topId && bestId && topId === bestId) { inferred = metric; break; }
+                    }
+                    const policyText = inferred === 'unknown' ? 'Best model chosen by registry (policy unknown)' : `Best-selection policy (inferred): ${inferred}`;
+                    const bestText = bestId ? ` | Best: ${bestId}` : '';
+                    foot.textContent = `${policyText}${bestText}`;
+                } catch (e) {
+                    // Leave footnote silent on failure
+                }
+            })();
+        } catch (e) { /* non-fatal */ }
     }
     
     // Test-only export hooks
@@ -1660,6 +1976,54 @@ document.addEventListener('DOMContentLoaded', () => {
         return false;
     };
 
+    // Local table renderer for details view (order by win or place)
+    window.__renderDetailsTable = function(index, mode) {
+        try {
+            const list = (window.__detailsRunners && window.__detailsRunners[index]) ? window.__detailsRunners[index].slice() : [];
+            if (!Array.isArray(list) || list.length === 0) return;
+            const evEnabled = !!(window.__modelHealth && window.__modelHealth.place_odds_integration === 'enabled');
+            const sorted = (mode === 'place') ? list.sort((a,b)=> predictionScorePlaceProb(b) - predictionScorePlaceProb(a))
+                                             : list.sort((a,b)=> predictionScoreWinProb(b) - predictionScoreWinProb(a));
+            const rows = sorted.map((d, idx) => {
+                const name = d.dog_name || d.clean_name || d.name || 'Unknown';
+                const box = d.box_number || d.box || '';
+                const winProb = Number(d.win_prob || d.normalized_win_probability || d.final_score || d.prediction_score || d.win_probability || d.confidence || 0);
+                const placeProb = predictionScorePlaceProb(d);
+                const evRaw = (d.ev_place !== undefined ? d.ev_place : (d.place_ev !== undefined ? d.place_ev : (d.evPlace !== undefined ? d.evPlace : null)));
+                const evNum = Number(evRaw);
+                const winCls = (winProb >= 0.5) ? 'bg-success' : (winProb >= 0.25 ? 'bg-warning text-dark' : 'bg-secondary');
+                const plcCls = (placeProb >= 0.5) ? 'bg-success' : (placeProb >= 0.25 ? 'bg-warning text-dark' : 'bg-secondary');
+                const evCls = (!evEnabled || isNaN(evNum)) ? 'bg-secondary' : (evNum > 0.05 ? 'bg-success' : (evNum < -0.05 ? 'bg-danger' : 'bg-secondary'));
+                const evTxt = (!evEnabled || isNaN(evNum)) ? '—' : `${(evNum*100).toFixed(1)}%`;
+                return `
+                    <tr>
+                        <td class="text-muted">${idx+1}</td>
+                        <td>${name}</td>
+                        <td>${box}</td>
+                        <td><span class="badge ${winCls}">${(winProb*100).toFixed(1)}%</span></td>
+                        <td><span class="badge ${plcCls}">${Number.isFinite(placeProb)?(placeProb*100).toFixed(1)+'%':'—'}</span></td>
+                        <td><span class="badge ${evCls}">${evTxt}</span></td>
+                    </tr>`;
+            }).join('');
+            const tb = document.querySelector(`#details-table-${index} tbody`);
+            if (tb) tb.innerHTML = rows;
+        } catch (e) { console.warn('__renderDetailsTable failed', e); }
+    };
+
+    // Delegate change event for per-race table ordering
+    document.addEventListener('change', (e) => {
+        try {
+            const sel = e.target && (e.target.matches('select[data-ordering="details"]') ? e.target : (e.target.closest && e.target.closest('select[data-ordering="details"]')));
+            if (sel) {
+                const idx = parseInt(sel.getAttribute('data-index') || '-1', 10);
+                const mode = sel.value === 'place' ? 'place' : 'win';
+                if (Number.isFinite(idx)) {
+                    window.__renderDetailsTable(idx, mode);
+                }
+            }
+        } catch (_) {}
+    });
+
     // Internal helper to fetch and render details into the details div (id resolves via index)
     window.__fetchAndRenderDetails = async function(index) {
         const detailsDiv = document.getElementById(`details-${index}`);
@@ -1687,10 +2051,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     const pred = data.prediction;
                     const raceCtx = pred.race_context || {};
                     const enhanced = pred.enhanced_predictions || pred.predictions || [];
-                    const enhancedSorted = Array.isArray(enhanced)
-                        ? sortPreds(enhanced, window.predOrderingMode || 'win_prob')
+                    const enhancedUnique = dedupePreds(enhanced);
+                    const enhancedSorted = Array.isArray(enhancedUnique)
+                        ? sortPreds(enhancedUnique, window.predOrderingMode || 'predicted_rank')
                         : [];
-                    const topPick = pred.top_pick || (enhancedSorted.length ? enhancedSorted[0] : (enhanced.length ? enhanced[0] : null));
+                    const topPick = pred.top_pick || (enhancedSorted.length ? enhancedSorted[0] : (enhancedUnique.length ? enhancedUnique[0] : null));
 
                     let detailsHTML = '';
                     // Summary header with actions
@@ -1705,6 +2070,17 @@ document.addEventListener('DOMContentLoaded', () => {
                             <a class="btn btn-sm btn-outline-secondary" href="${downloadJsonHref}" download="${downloadJsonName}"><i class="fas fa-download"></i> Download JSON</a>
                           </div>
                         </div>`;
+
+                    // Degraded (synthetic) notice for upcoming races without real probabilities
+                    try {
+                        if (pred && pred.degraded === true) {
+                            detailsHTML += `
+                              <div class="alert alert-warning py-1 px-2 mb-2">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                Upcoming race: showing historical stats only (no real probabilities).
+                              </div>`;
+                        }
+                    } catch (e) { /* ignore */ }
 
                     // GPT rerank summary (badge) if available
                     try {
@@ -1726,11 +2102,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Technical summary of prediction pipeline (enhanced visibility)
                     try {
                         const predictor = pred.predictor_used || pred.model_used || 'Unknown';
+                        const optimizerEnabled = !!(pred.optimizer_enabled || pred.optimization_applied);
+                        const optimizerMode = pred.optimizer_mode || '';
                         const methodsArr = Array.isArray(pred.prediction_methods_used) ? pred.prediction_methods_used : (pred.prediction_method ? [pred.prediction_method] : []);
                         const methodsStr = methodsArr.length ? methodsArr.join(', ') : 'Unknown';
                         const analysisVersion = pred.analysis_version || pred.version || 'Unknown';
                         const timestamp = pred.prediction_timestamp || pred.timestamp || '';
-                        const totalDogs = Array.isArray(enhanced) ? enhanced.length : (Array.isArray(pred.predictions) ? pred.predictions.length : 0);
+                        const totalDogs = Array.isArray(enhancedUnique) ? enhancedUnique.length : (Array.isArray(pred.predictions) ? dedupePreds(pred.predictions).length : 0);
                         const dataSources = (() => {
                             try {
                                 const src = pred.data_sources || pred.sources || {};
@@ -1739,6 +2117,15 @@ document.addEventListener('DOMContentLoaded', () => {
                             } catch {}
                             return '';
                         })();
+                        // Models used (if provided by backend)
+                        const primaryModelId = pred.primary_model_id || '';
+                        const modelIdsUsed = (Array.isArray(pred.model_ids_used) && pred.model_ids_used.length) ? pred.model_ids_used.join(', ') : '';
+                        // Pull registry-best model info from the original result (not always persisted in pred file)
+                        const bestTop = (detailsResult && detailsResult.model_registry_best) ? detailsResult.model_registry_best : {};
+                        const bestModelId = bestTop && bestTop.model_id ? bestTop.model_id : '';
+                        const bestCreated = bestTop && bestTop.created_at ? bestTop.created_at : '';
+                        const bestScore = (bestTop && typeof bestTop.performance_score === 'number') ? `${(bestTop.performance_score*100).toFixed(1)}%` : '';
+                        const bestType = bestTop && bestTop.prediction_type ? bestTop.prediction_type : '';
 
                         detailsHTML += `
                           <div class="card mb-2">
@@ -1746,10 +2133,17 @@ document.addEventListener('DOMContentLoaded', () => {
                               <div class="row g-2 small">
                                 <div class="col-md-6"><strong>Predictor:</strong> ${predictor}</div>
                                 <div class="col-md-6"><strong>Methods:</strong> ${methodsStr}</div>
-                                <div class="col-md-6"><strong>Analysis Version:</strong> ${analysisVersion}</div>
-                                <div class="col-md-6"><strong>Prediction Time:</strong> ${timestamp || 'N/A'}</div>
-                                <div class="col-md-6"><strong>Dogs Analyzed:</strong> ${totalDogs}</div>
-                                ${dataSources ? `<div class="col-12"><strong>Data Sources:</strong> ${dataSources}</div>` : ''}
+                                <div class=\"col-md-6\"><strong>Analysis Version:</strong> ${analysisVersion}</div>
+                                <div class=\"col-md-6\"><strong>Prediction Time:</strong> ${timestamp || 'N/A'}</div>
+                                <div class=\"col-md-6\"><strong>Dogs Analyzed:</strong> ${totalDogs}</div>
+                                <div class=\"col-md-6\"><strong>Optimizer:</strong> ${optimizerEnabled ? 'ON' : 'OFF'}${optimizerMode ? ` (${optimizerMode})` : ''}</div>
+                                ${dataSources ? `<div class=\"col-12\"><strong>Data Sources:</strong> ${dataSources}</div>` : ''}
+                                ${primaryModelId ? `<div class=\"col-md-6\"><strong>Primary Model ID:</strong> ${primaryModelId}</div>` : ''}
+                                ${modelIdsUsed ? `<div class=\"col-12\"><strong>Models Used:</strong> ${modelIdsUsed}</div>` : ''}
+                                ${bestModelId ? `<div class=\"col-md-6\"><strong>Registry Best Model:</strong> ${bestModelId}</div>` : ''}
+                                ${bestCreated ? `<div class=\"col-md-6\"><strong>Model Created:</strong> ${bestCreated}</div>` : ''}
+                                ${bestScore ? `<div class=\"col-md-6\"><strong>Model Score:</strong> ${bestScore}</div>` : ''}
+                                ${bestType ? `<div class=\"col-md-6\"><strong>Prediction Type:</strong> ${bestType}</div>` : ''}
                               </div>
                             </div>
                           </div>`;
@@ -1762,8 +2156,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         let tpScore = Number(topPick.win_prob || topPick.normalized_win_probability || topPick.final_score || topPick.prediction_score || topPick.win_probability || topPick.confidence || 0);
                         let tpBox = topPick.box_number || topPick.box || 'N/A';
                         // Fallback: if no numeric score on top_pick, derive from first runner
-                        if ((!isFinite(tpScore) || tpScore === 0) && Array.isArray(enhanced) && enhanced.length) {
-                            const first = enhanced[0];
+                        if ((!isFinite(tpScore) || tpScore === 0) && Array.isArray(enhancedUnique) && enhancedUnique.length) {
+                            const first = enhancedUnique[0];
                             tpName = tpName !== 'Unknown' ? tpName : (first.dog_name || first.clean_name || tpName);
                             tpScore = Number(first.win_prob || first.normalized_win_probability || first.final_score || first.prediction_score || first.win_probability || first.confidence || tpScore);
                             tpBox = tpBox !== 'N/A' ? tpBox : (first.box_number || first.box || tpBox);
@@ -1778,13 +2172,73 @@ document.addEventListener('DOMContentLoaded', () => {
                           </div>`;
                     }
 
+                    // Top 3 Place card
+                    try {
+                        const placeSortedLocal = Array.isArray(enhancedUnique) ? [...enhancedUnique].sort((a,b)=> predictionScorePlaceProb(b) - predictionScorePlaceProb(a)) : [];
+                        const top3Local = placeSortedLocal.slice(0,3);
+                        if (top3Local.length) {
+                            const line = top3Local.map(p => {
+                                const n = p.dog_name || p.clean_name || 'Unknown';
+                                const prob = predictionScorePlaceProb(p);
+                                const probTxt = Number.isFinite(prob) ? `${(prob*100).toFixed(1)}%` : '';
+                                const evRaw = (p.ev_place !== undefined ? p.ev_place : (p.place_ev !== undefined ? p.place_ev : (p.evPlace !== undefined ? p.evPlace : null)));
+                                const evEnabled = !!(window.__modelHealth && window.__modelHealth.place_odds_integration === 'enabled');
+                                const evTxt = (evEnabled && Number.isFinite(Number(evRaw))) ? ` (EV ${(Number(evRaw)*100).toFixed(1)}%)` : '';
+                                return `${n} ${probTxt}${evTxt}`.trim();
+                            }).join(' • ');
+                            detailsHTML += `
+                              <div class="card mb-2">
+                                <div class="card-body p-2">
+                                  <h6 class="mb-1"><i class="fas fa-list-ol text-info"></i> Top 3 Place</h6>
+                                  <small>${line}</small>
+                                </div>
+                              </div>`;
+                        }
+                    } catch (e) { /* ignore */ }
+
+                    // Per-runner table with local ordering control
+                    try {
+                        if (Array.isArray(enhancedSorted) && enhancedSorted.length) {
+                            const defaultMode = (window.predOrderingMode === 'place_prob') ? 'place' : 'win';
+                            detailsHTML += `
+                              <div class="d-flex justify-content-end align-items-center mb-1">
+                                <label class="me-2 small">Order table by:</label>
+                                <select class="form-select form-select-sm w-auto" data-ordering="details" data-index="${index}">
+                                  <option value="win" ${defaultMode==='win'?'selected':''}>Win %</option>
+                                  <option value="place" ${defaultMode==='place'?'selected':''}>Place %</option>
+                                </select>
+                              </div>
+                              <div class="table-responsive mb-2">
+                                <table class="table table-sm table-striped align-middle" id="details-table-${index}">
+                                  <thead>
+                                    <tr>
+                                      <th>#</th>
+                                      <th>Dog</th>
+                                      <th>Box</th>
+                                      <th>Win %</th>
+                                      <th>Place %</th>
+                                      <th>EV Place</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody></tbody>
+                                </table>
+                              </div>
+                              <div class="text-muted small mb-2">EV Place is shown only when Place EV integration is enabled.</div>`;
+                            // store runners for local re-render
+                            try {
+                                window.__detailsRunners = window.__detailsRunners || {};
+                                window.__detailsRunners[index] = enhancedUnique;
+                            } catch (_) {}
+                        }
+                    } catch (e) { /* ignore */ }
+
                     if (Array.isArray(enhancedSorted) && enhancedSorted.length) {
                         detailsHTML += '<div class="row">';
                         enhancedSorted.forEach((d, idx) => {
                             const name = d.dog_name || d.clean_name || 'Unknown';
                             const score = Number(d.win_prob || d.normalized_win_probability || d.final_score || d.prediction_score || d.win_probability || d.confidence || 0);
                             const box = d.box_number || d.box || 'N/A';
-                            const extra = Array.isArray(d.key_factors) && d.key_factors.length ? `<div class="mt-1"><small>${d.key_factors.slice(0,3).join(' • ')}</small></div>` : '';
+                            const extra = Array.isArray(d.key_factors) && d.key_factors.length ? `<div class=\"mt-1\"><small>${d.key_factors.slice(0,3).join(' • ')}</small></div>` : '';
                             detailsHTML += `
                               <div class="col-md-6 mb-2">
                                 <div class="card card-sm">
@@ -1829,6 +2283,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     } catch {}
 
                     detailsDiv.innerHTML = detailsHTML || '<p class="text-muted">No detailed prediction data available.</p>';
+                    try {
+                        const defaultMode = (window.predOrderingMode === 'place_prob') ? 'place' : 'win';
+                        window.__renderDetailsTable(index, defaultMode);
+                    } catch (_) {}
                     detailsDiv.setAttribute('data-loaded', 'true');
                     try { console.log('Details loaded for index', index); showToast('Details loaded', 'success'); } catch {}
                     return;
@@ -1843,7 +2301,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const resultFallback = currentResults2[index];
         if (resultFallback && resultFallback.predictions && resultFallback.predictions.length > 0) {
             let detailsHTML = '<div class="row">';
-            const sortedPredsFallback = sortPreds(resultFallback.predictions, window.predOrderingMode || 'win_prob');
+            const sortedPredsFallback = sortPreds(dedupePreds(resultFallback.predictions), window.predOrderingMode || 'predicted_rank');
             Array.from(sortedPredsFallback).forEach((prediction, idx) => {
                 const winProb = Number(prediction.win_prob || prediction.normalized_win_probability || prediction.final_score || prediction.prediction_score || prediction.win_probability || prediction.confidence || 0);
                 const dogName = prediction.dog_name || prediction.name || 'Unknown';
@@ -1862,6 +2320,32 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
             });
             detailsHTML += '</div>';
+            // Append compact table with Place% and EV Place + local control
+            try {
+                const defaultMode = (window.predOrderingMode === 'place_prob') ? 'place' : 'win';
+                detailsHTML += `
+                  <div class="d-flex justify-content-end align-items-center mb-1">
+                    <label class="me-2 small">Order table by:</label>
+                    <select class="form-select form-select-sm w-auto" data-ordering="details" data-index="${index}">
+                      <option value="win" ${defaultMode==='win'?'selected':''}>Win %</option>
+                      <option value="place" ${defaultMode==='place'?'selected':''}>Place %</option>
+                    </select>
+                  </div>
+                  <div class="table-responsive mt-2">
+                    <table class="table table-sm table-striped align-middle" id="details-table-${index}">
+                      <thead>
+                        <tr><th>#</th><th>Dog</th><th>Box</th><th>Win %</th><th>Place %</th><th>EV Place</th></tr>
+                      </thead>
+                      <tbody></tbody>
+                    </table>
+                  </div>
+                  <div class="text-muted small mb-2">EV Place is shown only when Place EV integration is enabled.</div>`;
+                try {
+                    window.__detailsRunners = window.__detailsRunners || {};
+                    window.__detailsRunners[index] = sortedPredsFallback;
+                } catch (_) {}
+                window.__renderDetailsTable(index, defaultMode);
+            } catch (e) { /* ignore */ }
             if (resultFallback.message) {
                 detailsHTML += `<div class="mt-2"><small class="text-muted"><i class="fas fa-info-circle"></i> ${resultFallback.message}</small></div>`;
             }
@@ -1922,8 +2406,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     const pred = data.prediction;
                     const raceCtx = pred.race_context || {};
                     const enhanced = pred.enhanced_predictions || pred.predictions || [];
-                    const enhancedSorted = Array.isArray(enhanced)
-                        ? sortPreds(enhanced, window.predOrderingMode || 'win_prob')
+                    const enhancedUnique = dedupePreds(enhanced);
+                    const enhancedSorted = Array.isArray(enhancedUnique)
+                        ? sortPreds(enhancedUnique, window.predOrderingMode || 'predicted_rank')
                         : [];
                     const topPick = pred.top_pick || (enhancedSorted.length ? enhancedSorted[0] : null);
 
@@ -1940,6 +2425,17 @@ document.addEventListener('DOMContentLoaded', () => {
                             <a class="btn btn-sm btn-outline-secondary" href="${downloadJsonHref}" download="${downloadJsonName}"><i class="fas fa-download"></i> Download JSON</a>
                           </div>
                         </div>`;
+
+                    // Degraded (synthetic) notice for upcoming races without real probabilities
+                    try {
+                        if (pred && pred.degraded === true) {
+                            detailsHTML += `
+                              <div class="alert alert-warning py-1 px-2 mb-2">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                Upcoming race: showing historical stats only (no real probabilities).
+                              </div>`;
+                        }
+                    } catch (e) { /* ignore */ }
 
                     // GPT rerank summary (badge) if available
                     try {
@@ -1961,11 +2457,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Technical summary of prediction pipeline (enhanced visibility)
                     try {
                         const predictor = pred.predictor_used || pred.model_used || 'Unknown';
+                        const optimizerEnabled = !!(pred.optimizer_enabled || pred.optimization_applied);
+                        const optimizerMode = pred.optimizer_mode || '';
                         const methodsArr = Array.isArray(pred.prediction_methods_used) ? pred.prediction_methods_used : (pred.prediction_method ? [pred.prediction_method] : []);
                         const methodsStr = methodsArr.length ? methodsArr.join(', ') : 'Unknown';
                         const analysisVersion = pred.analysis_version || pred.version || 'Unknown';
                         const timestamp = pred.prediction_timestamp || pred.timestamp || '';
-                        const totalDogs = Array.isArray(enhanced) ? enhanced.length : (Array.isArray(pred.predictions) ? pred.predictions.length : 0);
+                        const totalDogs = Array.isArray(enhancedUnique) ? enhancedUnique.length : (Array.isArray(pred.predictions) ? dedupePreds(pred.predictions).length : 0);
                         const dataSources = (() => {
                             try {
                                 const src = pred.data_sources || pred.sources || {};
@@ -1981,10 +2479,11 @@ document.addEventListener('DOMContentLoaded', () => {
                               <div class="row g-2 small">
                                 <div class="col-md-6"><strong>Predictor:</strong> ${predictor}</div>
                                 <div class="col-md-6"><strong>Methods:</strong> ${methodsStr}</div>
-                                <div class="col-md-6"><strong>Analysis Version:</strong> ${analysisVersion}</div>
-                                <div class="col-md-6"><strong>Prediction Time:</strong> ${timestamp || 'N/A'}</div>
-                                <div class="col-md-6"><strong>Dogs Analyzed:</strong> ${totalDogs}</div>
-                                ${dataSources ? `<div class="col-12"><strong>Data Sources:</strong> ${dataSources}</div>` : ''}
+                                <div class=\"col-md-6\"><strong>Analysis Version:</strong> ${analysisVersion}</div>
+                                <div class=\"col-md-6\"><strong>Prediction Time:</strong> ${timestamp || 'N/A'}</div>
+                                <div class=\"col-md-6\"><strong>Dogs Analyzed:</strong> ${totalDogs}</div>
+                                <div class=\"col-md-6\"><strong>Optimizer:</strong> ${optimizerEnabled ? 'ON' : 'OFF'}${optimizerMode ? ` (${optimizerMode})` : ''}</div>
+                                ${dataSources ? `<div class=\"col-12\"><strong>Data Sources:</strong> ${dataSources}</div>` : ''}
                               </div>
                             </div>
                           </div>`;
@@ -1997,8 +2496,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         let tpName = topPick.dog_name || topPick.clean_name || 'Unknown';
                         let tpScore = Number(topPick.win_prob || topPick.normalized_win_probability || topPick.final_score || topPick.prediction_score || topPick.win_probability || topPick.confidence || 0);
                         let tpBox = topPick.box_number || topPick.box || 'N/A';
-                        if ((!isFinite(tpScore) || tpScore === 0) && Array.isArray(enhanced) && enhanced.length) {
-                            const first = enhanced[0];
+                        if ((!isFinite(tpScore) || tpScore === 0) && Array.isArray(enhancedUnique) && enhancedUnique.length) {
+                            const first = enhancedUnique[0];
                             tpName = tpName !== 'Unknown' ? tpName : (first.dog_name || first.clean_name || tpName);
                             tpScore = Number(first.win_prob || first.normalized_win_probability || first.final_score || first.prediction_score || first.win_probability || first.confidence || tpScore);
                             tpBox = tpBox !== 'N/A' ? tpBox : (first.box_number || first.box || tpBox);
@@ -2012,6 +2511,66 @@ document.addEventListener('DOMContentLoaded', () => {
                             </div>
                           </div>`;
                     }
+
+                    // Top 3 Place card
+                    try {
+                        const placeSortedLocal = Array.isArray(enhancedUnique) ? [...enhancedUnique].sort((a,b)=> predictionScorePlaceProb(b) - predictionScorePlaceProb(a)) : [];
+                        const top3Local = placeSortedLocal.slice(0,3);
+                        if (top3Local.length) {
+                            const line = top3Local.map(p => {
+                                const n = p.dog_name || p.clean_name || 'Unknown';
+                                const prob = predictionScorePlaceProb(p);
+                                const probTxt = Number.isFinite(prob) ? `${(prob*100).toFixed(1)}%` : '';
+                                const evRaw = (p.ev_place !== undefined ? p.ev_place : (p.place_ev !== undefined ? p.place_ev : (p.evPlace !== undefined ? p.evPlace : null)));
+                                const evEnabled = !!(window.__modelHealth && window.__modelHealth.place_odds_integration === 'enabled');
+                                const evTxt = (evEnabled && Number.isFinite(Number(evRaw))) ? ` (EV ${(Number(evRaw)*100).toFixed(1)}%)` : '';
+                                return `${n} ${probTxt}${evTxt}`.trim();
+                            }).join(' • ');
+                            detailsHTML += `
+                              <div class="card mb-2">
+                                <div class="card-body p-2">
+                                  <h6 class="mb-1"><i class="fas fa-list-ol text-info"></i> Top 3 Place</h6>
+                                  <small>${line}</small>
+                                </div>
+                              </div>`;
+                        }
+                    } catch (e) { /* ignore */ }
+
+                    // Runners grid
+                    // Per-runner table with local ordering control
+                    try {
+                        if (Array.isArray(enhancedSorted) && enhancedSorted.length) {
+                            const defaultMode = (window.predOrderingMode === 'place_prob') ? 'place' : 'win';
+                            detailsHTML += `
+                              <div class="d-flex justify-content-end align-items-center mb-1">
+                                <label class="me-2 small">Order table by:</label>
+                                <select class="form-select form-select-sm w-auto" data-ordering="details" data-index="${index}">
+                                  <option value="win" ${defaultMode==='win'?'selected':''}>Win %</option>
+                                  <option value="place" ${defaultMode==='place'?'selected':''}>Place %</option>
+                                </select>
+                              </div>
+                              <div class="table-responsive mb-2">
+                                <table class="table table-sm table-striped align-middle" id="details-table-${index}">
+                                  <thead>
+                                    <tr>
+                                      <th>#</th>
+                                      <th>Dog</th>
+                                      <th>Box</th>
+                                      <th>Win %</th>
+                                      <th>Place %</th>
+                                      <th>EV Place</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody></tbody>
+                                </table>
+                              </div>
+                              <div class="text-muted small mb-2">EV Place is shown only when Place EV integration is enabled.</div>`;
+                            try {
+                                window.__detailsRunners = window.__detailsRunners || {};
+                                window.__detailsRunners[index] = enhancedUnique;
+                            } catch (_) {}
+                        }
+                    } catch (e) { /* ignore */ }
 
                     // Runners grid
                     if (Array.isArray(enhancedSorted) && enhancedSorted.length) {
@@ -2162,6 +2721,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
 
                     detailsDiv.innerHTML = detailsHTML || '<p class="text-muted">No detailed prediction data available.</p>';
+                    try {
+                        const defaultMode = (window.predOrderingMode === 'place_prob') ? 'place' : 'win';
+                        window.__renderDetailsTable(index, defaultMode);
+                    } catch (_) {}
                     return;
                 }
             }
@@ -2173,7 +2736,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Fallback: minimal render from in-memory result
         if (detailResult && detailResult.predictions && detailResult.predictions.length > 0) {
             let detailsHTML = '<div class="row">';
-            const sortedPredsFallback2 = sortPreds(detailResult.predictions, window.predOrderingMode || 'win_prob');
+            const sortedPredsFallback2 = sortPreds(dedupePreds(detailResult.predictions), window.predOrderingMode || 'predicted_rank');
             Array.from(sortedPredsFallback2).forEach((prediction, idx) => {
                 const winProb = Number(prediction.win_prob || prediction.normalized_win_probability || prediction.final_score || prediction.prediction_score || prediction.win_probability || prediction.confidence || 0);
                 const dogName = prediction.dog_name || prediction.name || 'Unknown';
@@ -2192,6 +2755,32 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
             });
             detailsHTML += '</div>';
+            // Append compact table with Place% and EV Place + local control
+            try {
+                const defaultMode = (window.predOrderingMode === 'place_prob') ? 'place' : 'win';
+                detailsHTML += `
+                  <div class="d-flex justify-content-end align-items-center mb-1">
+                    <label class="me-2 small">Order table by:</label>
+                    <select class="form-select form-select-sm w-auto" data-ordering="details" data-index="${index}">
+                      <option value="win" ${defaultMode==='win'?'selected':''}>Win %</option>
+                      <option value="place" ${defaultMode==='place'?'selected':''}>Place %</option>
+                    </select>
+                  </div>
+                  <div class="table-responsive mt-2">
+                    <table class="table table-sm table-striped align-middle" id="details-table-${index}">
+                      <thead>
+                        <tr><th>#</th><th>Dog</th><th>Box</th><th>Win %</th><th>Place %</th><th>EV Place</th></tr>
+                      </thead>
+                      <tbody></tbody>
+                    </table>
+                  </div>
+                  <div class="text-muted small mb-2">EV Place is shown only when Place EV integration is enabled.</div>`;
+                try {
+                    window.__detailsRunners = window.__detailsRunners || {};
+                    window.__detailsRunners[index] = sortedPredsFallback2;
+                } catch (_) {}
+                window.__renderDetailsTable(index, defaultMode);
+            } catch (e) { /* ignore */ }
             if (detailResult.message) {
                 detailsHTML += `<div class="mt-2"><small class="text-muted"><i class="fas fa-info-circle"></i> ${detailResult.message}</small></div>`;
             }
@@ -2270,6 +2859,13 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 document.addEventListener('DOMContentLoaded', function() {
+    try {
+        if (window.__interactiveRacesBlock2Init === true) {
+            console.warn('Interactive Races (block2): duplicate script load detected; skipping second init');
+            return;
+        }
+        window.__interactiveRacesBlock2Init = true;
+    } catch (_) {}
     const state = {
         races: [],
         venues: [],
@@ -2554,4 +3150,31 @@ document.addEventListener('DOMContentLoaded', function() {
 
     init();
 });
+
+// Defensive SSE bootstrap: ensure the live stream starts even if optional bundles fail to load
+// This creates a lightweight EventSource connection that triggers the server-side scan.
+(function(){
+    try {
+        // Only in browser environments and when realtime isn't explicitly disabled
+        if (typeof window !== 'undefined' && !window.E2E_DISABLE_REALTIME) {
+            // Delay slightly to let primary initializers run; then probe if no stream yet
+            setTimeout(function(){
+                try {
+                    // If a previous probe exists and is connected, skip
+                    if (window.__sseProbe && window.__sseProbe.readyState !== undefined && window.__sseProbe.readyState <= 1) {
+                        return;
+                    }
+                    var params = new URLSearchParams(window.location.search || '');
+                    var days = params.get('days') || '1';
+                    var url = '/api/upcoming_races_stream?source=live&days=' + encodeURIComponent(days) + '&strict_live=0';
+                    var es = new EventSource(url);
+                    window.__sseProbe = es;
+                    // No-op handlers; this probe exists to kick off server streaming
+                    es.onmessage = function() { /* swallow */ };
+                    es.onerror = function(){ try { es.close(); } catch(e){} };
+                } catch (e) { /* swallow */ }
+            }, 1500);
+        }
+    } catch (e) { /* swallow */ }
+})();
 

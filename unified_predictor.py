@@ -1087,6 +1087,11 @@ class UnifiedPredictor:
             for i, pred in enumerate(predictions, 1):
                 pred["rank"] = i
                 pred["predicted_rank"] = i
+                # Ensure standard fields for downstream consumers
+                pred.setdefault("win_prob_norm", pred.get("ml_score"))
+                pred.setdefault("place_prob_norm", None)
+                pred.setdefault("ev_win", None)
+                pred.setdefault("ev_place", None)
 
             return {
                 "success": True,

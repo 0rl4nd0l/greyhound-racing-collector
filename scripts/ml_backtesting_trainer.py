@@ -28,6 +28,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from bisect import bisect_left
 
 warnings.filterwarnings("ignore")
 
@@ -117,6 +118,12 @@ class MLBacktestingTrainer:
         # Feature importance tracking
         self.feature_importance = {}
         self.correlation_analysis = {}
+        # Track features dropped during ML prep (100% missing)
+        self.last_dropped_features = []
+        # Track feature completeness (fraction of non-missing values)
+        self.last_feature_completeness = {}
+        # Cache for DB-backed weight history: {dog_name: (dates_sorted, weights_sorted)}
+        self._db_weight_history = None
 
         print("🎯 ML Backtesting Trainer Initialized")
 
@@ -422,6 +429,17 @@ class MLBacktestingTrainer:
         total_records = len(df)
         start_time = time.time()
 
+        # Optional: load DB-backed weight history once for fast lookups
+        enable_db_lookup = str(os.getenv("ENABLE_DB_WEIGHT_LOOKUP", "0")).strip() not in ("", "0", "false", "False")
+        db_lookback_days_env = os.getenv("WEIGHT_IMPUTE_LOOKBACK_DAYS")
+        db_lookback_days = int(db_lookback_days_env) if db_lookback_days_env else 365
+        if enable_db_lookup:
+            try:
+                self._db_weight_history = self._load_db_weight_history()
+            except Exception as _e:
+                print(f"⚠️ DB-backed weight history load failed: {_e}")
+                self._db_weight_history = None
+
         for idx, row in df.iterrows():
             if idx % 500 == 0:
                 elapsed = time.time() - start_time
@@ -490,6 +508,100 @@ class MLBacktestingTrainer:
             enhanced_records.append(enhanced_features)
 
         enhanced_df = pd.DataFrame(enhanced_records)
+
+        # Leakage-safe weight imputation hierarchy:
+        # 1) Use current_weight if present
+        # 2) Use within-dataset last known prior weight within lookback
+        # 3) Use DB-backed last known prior weight within lookback (optional)
+        # 4) Use within-dataset prior median
+        # Produce current_weight_imputed and weight_filled_flag
+        try:
+            lookback_days_env = os.getenv("WEIGHT_IMPUTE_LOOKBACK_DAYS")
+            lookback_days = int(lookback_days_env) if lookback_days_env else 365
+            enable_db_lookup = str(os.getenv("ENABLE_DB_WEIGHT_LOOKUP", "0")).strip() not in ("", "0", "false", "False")
+
+            # Ensure types
+            enhanced_df["current_weight"] = pd.to_numeric(
+                enhanced_df.get("current_weight"), errors="coerce"
+            )
+            enhanced_df["race_date"] = pd.to_datetime(enhanced_df["race_date"], errors="coerce")
+            enhanced_df["dog_name"] = enhanced_df["dog_name"].astype(str)
+
+            # Work on a sorted copy to compute prior stats
+            enhanced_df["__ord"] = np.arange(len(enhanced_df))
+            df_sorted = enhanced_df.sort_values(["dog_name", "race_date", "__ord"]).copy()
+
+            def _group_compute(g):
+                s = pd.to_numeric(g["current_weight"], errors="coerce")
+                # last known prior weight and its date (strictly before current)
+                last_weight = s.ffill().shift(1)
+                last_weight_date = g["race_date"].where(s.notna()).ffill().shift(1)
+                # prior-median (exclude current)
+                prior_median = s.shift(1).expanding().median()
+                out = pd.DataFrame(
+                    {
+                        "_last_weight": last_weight,
+                        "_last_weight_date": last_weight_date,
+                        "_prior_median_weight": prior_median,
+                    },
+                    index=g.index,
+                )
+                return out
+
+            aux = df_sorted.groupby("dog_name", group_keys=False).apply(_group_compute)
+            df_sorted = pd.concat([df_sorted, aux], axis=1)
+            # Days since last known weight
+            df_sorted["_days_since_last_weight"] = (
+                (df_sorted["race_date"] - df_sorted["_last_weight_date"]) / pd.Timedelta(days=1)
+            )
+
+            imputed = df_sorted["current_weight"].copy()
+            missing_mask = imputed.isna()
+
+            # Within-dataset last known prior weight
+            use_last = (
+                missing_mask
+                & df_sorted["_last_weight"].notna()
+                & (df_sorted["_days_since_last_weight"] <= float(lookback_days))
+            )
+            imputed.loc[use_last] = df_sorted.loc[use_last, "_last_weight"]
+
+            # DB-backed last known prior weight (optional)
+            if enable_db_lookup and self._db_weight_history:
+                try:
+                    # Iterate only remaining missing rows for DB lookup
+                    dbg_filled = 0
+                    to_fill_idx = imputed[imputed.isna()].index
+                    for ridx in to_fill_idx:
+                        dog = str(df_sorted.at[ridx, "dog_name"])
+                        rdt = pd.to_datetime(df_sorted.at[ridx, "race_date"], errors="coerce")
+                        if pd.isna(rdt) or not dog:
+                            continue
+                        val = self._db_lookup_last_weight(dog, rdt, lookback_days)
+                        if val is not None and np.isfinite(val):
+                            imputed.at[ridx] = float(val)
+                            dbg_filled += 1
+                    if dbg_filled > 0:
+                        print(f"   🔎 DB-backed weight fill applied to {dbg_filled} rows")
+                except Exception as _e:
+                    print(f"⚠️ DB-backed imputation step failed: {_e}")
+
+            # Fallback to prior median within dataset
+            fallback = imputed.isna() & df_sorted["_prior_median_weight"].notna()
+            imputed.loc[fallback] = df_sorted.loc[fallback, "_prior_median_weight"]
+
+            df_sorted["current_weight_imputed"] = imputed
+            df_sorted["weight_filled_flag"] = (
+                df_sorted["current_weight"].isna() & df_sorted["current_weight_imputed"].notna()
+            ).astype(int)
+
+            # Restore original row order
+            df_sorted = df_sorted.sort_values("__ord").drop(columns=["__ord"])
+            enhanced_df = df_sorted
+        except Exception as _e:
+            # Non-fatal; continue without imputation
+            pass
+
         total_time = time.time() - start_time
         print(f"\n\n✅ Feature creation completed!")
         print(f"   📊 Records processed: {total_records:,}")
@@ -738,6 +850,8 @@ class MLBacktestingTrainer:
             "recent_races_last_30d",
             "current_box",
             "current_weight",
+            "current_weight_imputed",
+            "weight_filled_flag",
             "field_size",
             "distance",
         ]
@@ -827,6 +941,9 @@ class MLBacktestingTrainer:
                     for col in feature_columns
                 ]
 
+        # Ensure no duplicate feature columns (order-preserving)
+        feature_columns = list(dict.fromkeys(feature_columns))
+
         # Filter to complete cases
         complete_df = enhanced_df[
             feature_columns
@@ -838,11 +955,88 @@ class MLBacktestingTrainer:
             if col in complete_df.columns:
                 complete_df[col] = pd.to_numeric(complete_df[col], errors="coerce")
 
+        # Compute feature completeness before imputation/dropping
+        try:
+            total_rows = len(complete_df)
+            miss_counts = complete_df[feature_columns].isna().sum().astype(int)
+            completeness = (
+                {c: (1.0 - (miss_counts[c] / float(total_rows))) if total_rows > 0 else 0.0 for c in feature_columns}
+            )
+            self.last_feature_completeness = completeness
+            low_comp = [c for c, frac in completeness.items() if frac < 0.95]
+            if low_comp:
+                # Sort by ascending completeness for readability
+                low_comp_sorted = sorted(low_comp, key=lambda x: completeness[x])
+                preview = [f"{c}:{completeness[c]:.1%}" for c in low_comp_sorted[:10]]
+                print(f"⚠️ Low feature completeness (<95%): {preview} {'...' if len(low_comp_sorted)>10 else ''}")
+        except Exception as _e:
+            # Non-fatal; continue
+            pass
+
+        # Drop features that are entirely missing (100% NaN) in this window
+        non_all_nan_cols = [c for c in feature_columns if complete_df[c].notna().any()]
+        dropped_all_nan = [c for c in feature_columns if c not in non_all_nan_cols]
+        if dropped_all_nan:
+            print(f"🧹 Dropping 100% missing features: {dropped_all_nan}")
+            feature_columns = non_all_nan_cols
+            # Track for downstream reporting
+            try:
+                self.last_dropped_features = list(dropped_all_nan)
+            except Exception:
+                pass
+
         # Fill missing values with median for numeric columns
+        # Deduplicate feature columns (safety) before imputation
+        feature_columns = list(dict.fromkeys(feature_columns))
+
         imputer = SimpleImputer(strategy="median")
-        complete_df[feature_columns] = imputer.fit_transform(
-            complete_df[feature_columns]
-        )
+
+        X = complete_df[feature_columns]
+        # Impute and assign back safely with aligned columns
+        try:
+            imputed = imputer.fit_transform(X)
+            if imputed.shape[1] != len(feature_columns):
+                # Diagnostics: identify all-NaN columns and top missing counts
+                missing_counts = X.isna().sum()
+                all_nan_cols = missing_counts[missing_counts == X.shape[0]].index.tolist()
+                top_missing = (
+                    missing_counts[missing_counts > 0]
+                    .sort_values(ascending=False)
+                    .head(10)
+                    .to_dict()
+                )
+                print(
+                    "🧪 Imputation diagnostics:",
+                    f"rows={X.shape[0]}",
+                    f"features={len(feature_columns)}",
+                    f"all_nan_cols={all_nan_cols}",
+                    f"top_missing_counts={top_missing}",
+                )
+                raise ValueError(
+                    f"Imputer output columns ({imputed.shape[1]}) != feature_columns length ({len(feature_columns)})."
+                )
+            imputed_df = pd.DataFrame(imputed, index=X.index, columns=feature_columns)
+            complete_df.loc[:, feature_columns] = imputed_df
+        except Exception as e:
+            print(f"⚠️ Imputation fallback due to: {e}. Using pandas median fill per column.")
+            for c in feature_columns:
+                med = pd.to_numeric(complete_df[c], errors="coerce").median()
+                if pd.isna(med):
+                    # Column entirely NaN or non-numeric; default to 0.0
+                    complete_df.loc[:, c] = pd.to_numeric(complete_df[c], errors="coerce").fillna(0.0)
+                else:
+                    complete_df.loc[:, c] = pd.to_numeric(complete_df[c], errors="coerce").fillna(med)
+
+        # Final sanity: replace infinities, then fill any residual NaNs per-column median (fallback 0.0)
+        complete_df.loc[:, feature_columns] = complete_df[feature_columns].replace([np.inf, -np.inf], np.nan)
+        if complete_df[feature_columns].isna().any().any():
+            for c in feature_columns:
+                col = pd.to_numeric(complete_df[c], errors="coerce")
+                med = np.nanmedian(col.values) if col.notna().any() else np.nan
+                if np.isnan(med):
+                    complete_df.loc[:, c] = col.fillna(0.0)
+                else:
+                    complete_df.loc[:, c] = col.fillna(med)
 
         print(
             f"✅ Prepared dataset with {len(complete_df)} samples and {len(feature_columns)} features"
@@ -1249,6 +1443,81 @@ class MLBacktestingTrainer:
             "individual_predictions": test_df,
         }
 
+    def _load_db_weight_history(self):
+        """Load DB-backed weight history for all dogs (dog_clean_name) across the full DB.
+        Returns a dict: {dog_name: (dates_sorted_list, weights_sorted_list)}
+        """
+        # Open read-only
+        db_uri = f"file:{os.path.abspath(self.db_path)}?mode=ro"
+        conn = sqlite3.connect(db_uri, uri=True)
+        try:
+            try:
+                conn.execute("PRAGMA query_only=ON")
+                conn.execute("PRAGMA foreign_keys=ON")
+            except Exception:
+                pass
+            sql = (
+                "SELECT drd.dog_clean_name AS dog_clean_name, rm.race_date AS race_date, drd.weight AS weight\n"
+                "FROM dog_race_data drd\n"
+                "JOIN race_metadata rm ON drd.race_id = rm.race_id\n"
+                "WHERE drd.weight IS NOT NULL AND drd.weight != ''"
+            )
+            df = pd.read_sql_query(sql, conn)
+        finally:
+            conn.close()
+
+        if df is None or len(df) == 0:
+            return {}
+
+        # Robust per-row date parsing similar to load_historical_race_data
+        def _parse_date_mixed(val):
+            if pd.isna(val):
+                return pd.NaT
+            s = str(val).strip()
+            for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S"):
+                try:
+                    return pd.to_datetime(s, format=fmt)
+                except Exception:
+                    pass
+            try:
+                return pd.to_datetime(s, dayfirst=True, errors="raise")
+            except Exception:
+                return pd.NaT
+
+        df["race_date"] = df["race_date"].apply(_parse_date_mixed)
+        df["weight"] = pd.to_numeric(df["weight"], errors="coerce")
+        df = df.dropna(subset=["dog_clean_name", "race_date", "weight"])  # keep clean
+
+        history = {}
+        for dog, g in df.groupby("dog_clean_name"):
+            g_sorted = g.sort_values("race_date")
+            dates = list(pd.to_datetime(g_sorted["race_date"]).tolist())
+            weights = list(g_sorted["weight"].astype(float).tolist())
+            history[str(dog)] = (dates, weights)
+        return history
+
+    def _db_lookup_last_weight(self, dog_name: str, cutoff_dt: pd.Timestamp, lookback_days: int) -> float:
+        """Find the last known weight for dog before cutoff_dt using preloaded DB history.
+        Returns None if not found or outside lookback.
+        """
+        if not self._db_weight_history:
+            return None
+        key = str(dog_name)
+        entry = self._db_weight_history.get(key)
+        if not entry:
+            return None
+        dates, weights = entry
+        if not dates:
+            return None
+        # Binary search for insertion point of cutoff_dt
+        idx = bisect_left(dates, cutoff_dt) - 1
+        if idx < 0:
+            return None
+        last_dt = dates[idx]
+        if (cutoff_dt - last_dt).days <= int(lookback_days):
+            return weights[idx]
+        return None
+
     def run_walk_forward_backtest(
         self,
         months_back=12,
@@ -1321,6 +1590,7 @@ class MLBacktestingTrainer:
         wf_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         preds_file = wf_dir / f"walk_forward_predictions_{timestamp}.jsonl"
+        dog_psv_file = wf_dir / f"walk_forward_dog_predictions_{timestamp}.psv"
 
         # Sorting and grouping
         df_sorted = ml_df.sort_values("race_date")
@@ -1353,6 +1623,7 @@ class MLBacktestingTrainer:
 
         race_level_rows = []  # For summary metrics
         all_dog_rows = []  # For prob-based metrics
+        dog_level_rows = []  # For calibration export: per-dog rows with real outcomes
 
         with open(preds_file, "w") as f_out:
             for _, grp in races_by_date.iterrows():
@@ -1514,6 +1785,21 @@ class MLBacktestingTrainer:
                         columns={"pred_win_prob": "p", "is_winner": "y"}
                     )
                 )
+                # Accumulate per-dog calibration rows with real outcomes and metadata
+                for _, dog_row in race_df.iterrows():
+                    try:
+                        dog_level_rows.append(
+                            {
+                                "race_id": str(race_id),
+                                "race_date": str(pd.to_datetime(grp["race_date"]).date()),
+                                "dog_clean_name": str(dog_row.get("dog_name") or dog_row.get("dog_clean_name") or "").strip(),
+                                "raw_win_prob": float(dog_row.get("pred_win_prob")),
+                                "actual_win": int(1 if int(dog_row.get("is_winner") or 0) == 1 else 0),
+                            }
+                        )
+                    except Exception:
+                        # Skip bad rows silently; calibration importer will validate
+                        pass
 
         # Aggregate metrics
         print("\nSTEP 6: Aggregating Metrics")
@@ -1592,6 +1878,16 @@ class MLBacktestingTrainer:
             print(f"   📉 Brier score: {brier_val:.4f}")
         print(f"   🗂️ Predictions saved: {preds_file}")
 
+        # Save per-dog calibration export (PSV) if collected
+        try:
+            if dog_level_rows:
+                calib_df = pd.DataFrame(dog_level_rows)
+                calib_df = calib_df.dropna(subset=["dog_clean_name", "raw_win_prob"]).copy()
+                calib_df.to_csv(dog_psv_file, sep="|", index=False)
+                print(f"   💾 Calibration PSV saved: {dog_psv_file}")
+        except Exception as _e:
+            print(f"   ⚠️ Could not save calibration PSV: {_e}")
+
         summary = {
             "mode": "walk_forward",
             "timestamp": datetime.now().isoformat(),
@@ -1600,6 +1896,10 @@ class MLBacktestingTrainer:
                 "rolling_window_days": rolling_window_days,
                 "retrain_frequency": retrain_frequency,
                 "top_k": top_k,
+            },
+            "ml_preprocessing": {
+                "dropped_features": getattr(self, "last_dropped_features", []),
+                "feature_completeness": getattr(self, "last_feature_completeness", {}),
             },
             "metrics": {
                 "top1_accuracy": top1_acc,
@@ -1614,6 +1914,7 @@ class MLBacktestingTrainer:
             },
             "files": {
                 "predictions_jsonl": str(preds_file),
+                "calibration_psv": str(dog_psv_file),
             },
         }
 
@@ -1818,6 +2119,10 @@ class MLBacktestingTrainer:
 
         # Compile results
         results = {
+            "ml_preprocessing": {
+                "dropped_features": getattr(self, "last_dropped_features", []),
+                "feature_completeness": getattr(self, "last_feature_completeness", {}),
+            },
             "backtest_summary": {
                 "total_races": historical_df["race_id"].nunique(),
                 "total_records": len(historical_df),

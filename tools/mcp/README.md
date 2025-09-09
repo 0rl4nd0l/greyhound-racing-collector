@@ -44,7 +44,7 @@ Test locally with MCP Inspector
 - Install the inspector: npm i -g @modelcontextprotocol/inspector
 - Launch a test session exposing this repo:
 
-mcp-inspector --server 'npx -y @modelcontextprotocol/server-filesystem --allowed-dirs /Users/test/Desktop/greyhound_racing_collector' --server 'npx -y @modelcontextprotocol/server-fetch'
+mcp-inspector --server 'npx -y @modelcontextprotocol/server-filesystem /Users/test/Desktop/greyhound_racing_collector' --server 'npx -y @modelcontextprotocol/server-fetch'
 
 Security notes
 - Filesystem server is scoped to this repo only. Add more paths with additional --allowed-dirs arguments if needed.

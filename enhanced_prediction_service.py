@@ -25,6 +25,194 @@ logger = logging.getLogger(__name__)
 class EnhancedPredictionService:
     """Service for generating highly accurate and unique predictions."""
 
+    def _apply_sp_tiebreaker(
+        self,
+        prediction_result: Dict[str, Any],
+        race_data: Optional[pd.DataFrame] = None,
+        market_odds: Optional[Dict[str, float]] = None,
+    ) -> None:
+        """Apply a small, transparent SP-based tie-breaker when the top runners are in a near tie.
+
+        Behavior (env-tunable):
+        - TIEBREAKER_SP_ENABLED: '1' to enable (default '0')
+        - TIEBREAKER_MARGIN_THRESH: float margin threshold for near tie (default 0.03)
+        - TIEBREAKER_BUMP: small additive bump to winner's prob before renorm (default 0.01)
+        - TIEBREAKER_TOPK: consider top-K runners within margin of the leader (default 2)
+        """
+        try:
+            if not isinstance(prediction_result, dict):
+                return
+            preds = prediction_result.get("predictions") or []
+            if not isinstance(preds, list) or len(preds) < 2:
+                return
+
+            # Read env switches
+            enabled = str(os.getenv("TIEBREAKER_SP_ENABLED", "0")).strip().lower() in (
+                "1",
+                "true",
+                "yes",
+            )
+            if not enabled:
+                return
+            try:
+                margin_thresh = float(os.getenv("TIEBREAKER_MARGIN_THRESH", "0.03"))
+            except Exception:
+                margin_thresh = 0.03
+            try:
+                bump = float(os.getenv("TIEBREAKER_BUMP", "0.01"))
+            except Exception:
+                bump = 0.01
+            try:
+                topk = int(os.getenv("TIEBREAKER_TOPK", "2"))
+            except Exception:
+                topk = 2
+            topk = max(2, min(topk, len(preds)))
+
+            # Sort by current probability
+            def _prob(p: Dict[str, Any]) -> float:
+                for k in ("win_prob", "win_prob_norm", "win_probability", "final_score", "confidence"):
+                    v = p.get(k)
+                    try:
+                        if v is None:
+                            continue
+                        x = float(v)
+                        if x > 1.0 and x <= 100.0:
+                            x = x / 100.0
+                        return max(0.0, min(1.0, x))
+                    except Exception:
+                        continue
+                return 0.0
+
+            preds.sort(key=lambda x: _prob(x), reverse=True)
+            p1 = _prob(preds[0])
+            p2 = _prob(preds[1])
+            if (p1 - p2) >= margin_thresh:
+                # Not a near tie; skip
+                prediction_result.setdefault("tiebreaker_meta", {}).update({"applied": False})
+                return
+
+            # Build SP lookup: prefer field in predictions; else race_data DataFrame; else market odds inverted
+            sp_map: Dict[str, float] = {}
+            # From predictions
+            for p in preds:
+                name = str(p.get("dog_name") or p.get("dog_clean_name") or p.get("name") or "").strip().upper()
+                if not name:
+                    continue
+                sp_val = p.get("starting_price")
+                try:
+                    if sp_val is not None:
+                        sp_map[name] = float(sp_val)
+                except Exception:
+                    pass
+            # From race_data DF
+            try:
+                if race_data is not None and isinstance(race_data, pd.DataFrame) and "dog_clean_name" in race_data.columns:
+                    for _, row in race_data.iterrows():
+                        nm = str(row.get("dog_clean_name") or "").strip().upper()
+                        if not nm:
+                            continue
+                        if nm not in sp_map and ("starting_price" in race_data.columns):
+                            try:
+                                sp_map[nm] = float(row.get("starting_price"))
+                            except Exception:
+                                pass
+            except Exception:
+                pass
+            # From market odds (if provided) -> implied SP approx (not perfect, but a proxy)
+            try:
+                if market_odds:
+                    for nm, odds in market_odds.items():
+                        key = str(nm).strip().upper()
+                        try:
+                            val = float(odds)
+                            if val > 0 and key not in sp_map:
+                                sp_map[key] = val
+                        except Exception:
+                            continue
+            except Exception:
+                pass
+
+            # Identify the near-tied top-K set
+            near_tied = [p for p in preds[:topk] if (p1 - _prob(p)) <= margin_thresh + 1e-12]
+            if len(near_tied) < 2:
+                prediction_result.setdefault("tiebreaker_meta", {}).update({"applied": False})
+                return
+
+            # Find the lowest SP among near-tied
+            def _name(p: Dict[str, Any]) -> str:
+                return str(p.get("dog_name") or p.get("dog_clean_name") or p.get("name") or "").strip().upper()
+
+            best = None
+            best_sp = float("inf")
+            for p in near_tied:
+                nm = _name(p)
+                sp_val = sp_map.get(nm)
+                if sp_val is None:
+                    continue
+                try:
+                    sp_f = float(sp_val)
+                except Exception:
+                    continue
+                if sp_f < best_sp:
+                    best_sp = sp_f
+                    best = p
+
+            if best is None or not (best_sp < float("inf")):
+                prediction_result.setdefault("tiebreaker_meta", {}).update({"applied": False})
+                return
+
+            # Apply bump to the chosen runner and renormalize
+            base_probs = [(_prob(p), p) for p in preds]
+            total = sum(x for x, _ in base_probs)
+            if total <= 0:
+                # If all zero, start from uniform
+                n = len(preds)
+                base = [1.0 / n] * n
+            else:
+                base = [x / total for x, _ in base_probs]
+
+            # Identify index for best
+            idx = next((i for i, (_, p) in enumerate(base_probs) if p is best), None)
+            if idx is None:
+                prediction_result.setdefault("tiebreaker_meta", {}).update({"applied": False})
+                return
+
+            base[idx] = base[idx] + bump
+            s2 = sum(base)
+            if s2 > 0:
+                base = [x / s2 for x in base]
+
+            # Write back probabilities and resort
+            for (prob, p), newp in zip(base_probs, base):
+                p["win_prob"] = float(newp)
+                p["win_prob_norm"] = float(newp)
+                p["win_probability"] = float(newp)
+                p["final_score"] = float(newp)
+
+            preds.sort(key=lambda x: _prob(x), reverse=True)
+            for i, p in enumerate(preds):
+                p["predicted_rank"] = i + 1
+
+            meta = prediction_result.setdefault("tiebreaker_meta", {})
+            meta.update(
+                {
+                    "applied": True,
+                    "method": "starting_price",
+                    "margin_threshold": float(margin_thresh),
+                    "bump": float(bump),
+                    "topk": int(topk),
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
+        except Exception as _e:
+            # Never fail predictions due to tiebreaker
+            try:
+                prediction_result.setdefault("tiebreaker_meta", {}).update(
+                    {"applied": False, "error": str(_e)}
+                )
+            except Exception:
+                pass
+
     def __init__(self, db_path: str = "greyhound_racing_data.db"):
         self.db_path = db_path
         self.ml_system = None
@@ -99,6 +287,41 @@ class EnhancedPredictionService:
             result = self.ml_system.predict_race(race_data, race_id, market_odds)
 
             if result.get("success"):
+                # Optional: apply near-tie SP-based tie-breaker before downstream metrics
+                try:
+                    self._apply_sp_tiebreaker(result, race_data=race_data, market_odds=market_odds)
+                except Exception:
+                    pass
+
+                # Overlay market metrics (implied prob, overround renorm, edge, EV, Kelly; optional logit-blend)
+                try:
+                    alpha_env = os.getenv("LOGIT_BLEND_ALPHA", None)
+                    alpha = None
+                    if alpha_env is not None:
+                        try:
+                            alpha = float(alpha_env)
+                        except Exception:
+                            alpha = None
+                    kelly_frac = None
+                    try:
+                        kelly_frac = float(os.getenv("KELLY_FRACTION", "0.25"))
+                    except Exception:
+                        kelly_frac = 0.25
+                    try:
+                        kelly_cap = float(os.getenv("KELLY_CAP", "0.05"))
+                    except Exception:
+                        kelly_cap = 0.05
+                    self._apply_market_overlay(
+                        result,
+                        market_odds or {},
+                        alpha=alpha,
+                        kelly_fraction=kelly_frac,
+                        kelly_cap=kelly_cap,
+                    )
+                except Exception:
+                    # Never fail predictions due to overlay issues
+                    pass
+
                 # Add enhanced service metadata
                 result["enhanced_service"] = {
                     "accuracy_optimization_applied": self.accuracy_optimizer
@@ -189,6 +412,13 @@ class EnhancedPredictionService:
                 result = pipeline.predict_race_file(race_file_path)
 
             if result.get("success"):
+                # Optional: apply near-tie SP-based tie-breaker before downstream metrics
+                try:
+                    # We don't have the original DataFrame here; use prediction fields and market_odds only
+                    self._apply_sp_tiebreaker(result, race_data=None, market_odds=None)
+                except Exception:
+                    pass
+
                 # Enhance the result with additional quality metrics
                 if "predictions" in result:
                     predictions = result["predictions"]
@@ -539,14 +769,42 @@ class EnhancedPredictionService:
 
             # Betting recommendations based on predictions
             if predictions:
-                top_prediction = max(
+                # Sort by probability to access top-2
+                ordered = sorted(
                     predictions,
                     key=lambda x: x.get("win_prob_norm", x.get("win_probability", 0)),
+                    reverse=True,
                 )
+                top_prediction = ordered[0]
+                sec_prediction = ordered[1] if len(ordered) > 1 else None
                 top_prob = top_prediction.get(
                     "win_prob_norm", top_prediction.get("win_probability", 0)
                 )
+                sec_prob = (
+                    sec_prediction.get("win_prob_norm", sec_prediction.get("win_probability", 0))
+                    if sec_prediction
+                    else 0
+                )
                 top_confidence = top_prediction.get("confidence", 0)
+
+                # Weak favorite advisory when the margin between top-2 is very small
+                try:
+                    weak_thresh = float(os.getenv("WEAK_FAVORITE_MARGIN_THRESH", "0.05"))
+                except Exception:
+                    weak_thresh = 0.05
+                margin = float(top_prob) - float(sec_prob)
+                if sec_prediction is not None and margin < weak_thresh:
+                    csv_wr = top_prediction.get("csv_win_rate")
+                    csv_afp = top_prediction.get("csv_avg_finish_position")
+                    wr_txt = (
+                        f", csv_win_rate={csv_wr:.2f}" if isinstance(csv_wr, (int, float)) else ""
+                    )
+                    afp_txt = (
+                        f", avg_finish_pos={csv_afp:.1f}" if isinstance(csv_afp, (int, float)) else ""
+                    )
+                    recommendations.append(
+                        f"Weak favorite: top-2 margin {margin:.3f} < {weak_thresh:.3f}{wr_txt}{afp_txt}"
+                    )
 
                 if top_prob > 0.4 and top_confidence > 0.7:
                     recommendations.append(
@@ -591,6 +849,136 @@ class EnhancedPredictionService:
             return "Poor"
         else:
             return "Very Poor"
+
+    def _apply_market_overlay(
+        self,
+        prediction_result: Dict[str, Any],
+        market_odds: Dict[str, float],
+        alpha: Optional[float] = None,
+        kelly_fraction: float = 0.25,
+        kelly_cap: float = 0.05,
+    ) -> None:
+        """Augment predictions with market metrics: implied probabilities (overround-adjusted),
+        edge vs market, EV for win, and capped fractional Kelly stakes. Optionally apply a
+        logit-blend between model and market for decision support (not training).
+        """
+        try:
+            preds = prediction_result.get("predictions") or []
+            if not preds:
+                return
+
+            # Build a name->odds map with cleaned keys
+            def _norm_key(name: str) -> str:
+                try:
+                    import re as _re
+                    s = str(name or "").upper().strip()
+                    s = _re.sub(r"[^\w\s]", "", s)
+                    return s
+                except Exception:
+                    return str(name or "").upper().strip()
+
+            odds_map = { _norm_key(k): float(v) for k, v in (market_odds or {}).items() if v is not None }
+
+            # Collect model probs and market implied
+            model_probs = []
+            names = []
+            mkt_raw = []
+            for p in preds:
+                nm = p.get("dog_name") or p.get("dog_clean_name") or p.get("name")
+                key = _norm_key(nm)
+                names.append(key)
+                # Prefer calibrated/normalized win
+                pm = None
+                for k in ("win_prob_norm", "win_probability", "win_prob", "final_score"):
+                    v = p.get(k)
+                    if v is None:
+                        continue
+                    try:
+                        pm = float(v)
+                        if pm > 1.0:
+                            pm = pm / 100.0
+                        break
+                    except Exception:
+                        continue
+                if pm is None:
+                    pm = 0.0
+                model_probs.append(max(0.0, min(1.0, pm)))
+                # Market implied
+                od = odds_map.get(key)
+                if od and od > 0:
+                    mkt_raw.append(1.0 / float(od))
+                else:
+                    mkt_raw.append(0.0)
+
+            # Renormalize per-race
+            import math
+            eps = 1e-12
+            s_model = sum(model_probs)
+            p_model = [ (x / s_model) if s_model > eps else (1.0/len(model_probs)) for x in model_probs ]
+            s_mkt = sum(mkt_raw)
+            p_mkt = [ (x / s_mkt) if s_mkt > eps else 0.0 for x in mkt_raw ]
+
+            # Optional logit-blend for decision support (alpha in [0,1])
+            def _sigmoid(x: float) -> float:
+                return 1.0 / (1.0 + math.exp(-x))
+            def _safe_logit(p: float) -> float:
+                p = min(1 - 1e-9, max(1e-9, p))
+                return math.log(p / (1 - p))
+            if alpha is not None and 0.0 <= alpha <= 1.0:
+                p_blend = []
+                for pm, mk in zip(p_model, p_mkt):
+                    lb = alpha * _safe_logit(pm) + (1.0 - alpha) * _safe_logit(mk if mk > 0 else 1.0/len(p_mkt))
+                    p_blend.append(_sigmoid(lb))
+                # Renormalize blended
+                sb = sum(p_blend)
+                if sb > eps:
+                    p_blend = [x / sb for x in p_blend]
+            else:
+                p_blend = p_model[:]
+
+            # Compute EV, edge, and Kelly
+            out = []
+            for i, p in enumerate(preds):
+                key = names[i]
+                odds = odds_map.get(key)
+                p_m = p_model[i]
+                p_b = p_blend[i]
+                mkt_p = p_mkt[i]
+                edge = None
+                ev_win = None
+                kelly = 0.0
+                if odds and odds > 0:
+                    edge = p_b - mkt_p  # decision edge
+                    ev_win = p_b * odds - 1.0
+                    # Kelly fraction for win
+                    try:
+                        numer = odds * p_b - (1.0 - p_b)
+                        denom = max(1e-9, (odds - 1.0))
+                        kelly_full = numer / denom
+                        kelly = max(0.0, kelly_fraction * kelly_full)
+                        if kelly_cap is not None:
+                            kelly = min(kelly, float(kelly_cap))
+                    except Exception:
+                        kelly = 0.0
+
+                # Write back fields
+                p["implied_prob_raw"] = mkt_raw[i]
+                p["implied_prob_norm"] = mkt_p
+                p["win_prob_norm"] = p_m  # ensure present
+                p["win_prob_blend"] = p_b
+                p["edge"] = edge
+                p["ev_win"] = ev_win
+                p["kelly_fraction"] = kelly
+
+            # Resort by blended prob (stable fallback by win_prob_norm)
+            preds.sort(key=lambda x: (x.get("win_prob_blend") or x.get("win_prob_norm") or 0.0), reverse=True)
+            for i, p in enumerate(preds):
+                p["predicted_rank"] = i + 1
+        except Exception as _e:
+            try:
+                prediction_result.setdefault("overlay_error", str(_e))
+            except Exception:
+                pass
 
     def get_service_status(self) -> Dict[str, Any]:
         """Get current service status and capabilities."""

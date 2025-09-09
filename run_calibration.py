@@ -23,17 +23,25 @@ logging.basicConfig(level=logging.INFO)
 BRIER_SCORE_THRESHOLD = 0.25
 
 
-def run_calibration(model_path: str) -> None:
+def run_calibration(model_path: str | None = None, model_globs: list[str] | None = None, retrain_calibrators: bool = False, db_path: str | None = None) -> None:
     """
     Run calibration process using the Probability Calibrator.
 
     :param model_path: Path to the model to calibrate.
     """
-    logging.info(f"🎯 Running calibration verification for model: {model_path}")
+    if model_globs and len(model_globs) > 0:
+        logging.info(f"🎯 Running calibration verification for models: {model_globs}")
+    else:
+        logging.info(f"🎯 Running calibration verification for model: {model_path}")
     logging.info("=" * 60)
 
     # Initialize calibrator
-    calibrator = ProbabilityCalibrator()
+    calibrator = ProbabilityCalibrator(db_path or "greyhound_racing_data.db")
+
+    if retrain_calibrators:
+        logging.info("🔁 Retraining isotonic calibrators from DB calibration set...")
+        if not calibrator.train_calibrators():
+            logging.error("❌ Failed to retrain calibrators")
 
     # Load calibration data
     cal_data = calibrator._load_calibration_data()
@@ -124,9 +132,14 @@ def run_calibration(model_path: str) -> None:
     # Evaluate place probability calibration
     if "raw_place_prob" in cal_data.columns and "actual_place" in cal_data.columns:
 
-        place_mask = ~(
-            np.isnan(cal_data["raw_place_prob"]) | np.isnan(cal_data["actual_place"])
-        )
+        # Coerce to numeric and handle non-numeric gracefully
+        try:
+            cal_data["raw_place_prob"] = pd.to_numeric(cal_data["raw_place_prob"], errors="coerce")
+            cal_data["actual_place"] = pd.to_numeric(cal_data["actual_place"], errors="coerce")
+        except Exception:
+            pass
+
+        place_mask = ~(cal_data["raw_place_prob"].isna() | cal_data["actual_place"].isna())
         if place_mask.sum() > 10:
             raw_place_probs = cal_data.loc[place_mask, "raw_place_prob"].values
             actual_places = cal_data.loc[place_mask, "actual_place"].values
@@ -252,12 +265,13 @@ def main():
     parser = argparse.ArgumentParser(
         description="Run calibration on model predictions."
     )
-    parser.add_argument(
-        "--model_path", type=str, required=True, help="Path to the model file"
-    )
+    parser.add_argument("--model_path", type=str, required=False, help="Path to the model file")
+    parser.add_argument("--model", action="append", help="Glob for model artifacts (repeatable)")
+    parser.add_argument("--retrain-calibrators", action="store_true", help="Retrain isotonic calibrators from DB calibration set")
+    parser.add_argument("--db", type=str, default=None, help="Path to SQLite DB (defaults to greyhound_racing_data.db)")
     args = parser.parse_args()
 
-    run_calibration(args.model_path)
+    run_calibration(args.model_path, args.model, args.retrain_calibrators, db_path=args.db)
 
 
 if __name__ == "__main__":

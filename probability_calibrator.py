@@ -310,10 +310,16 @@ class ProbabilityCalibrator:
         if "raw_place_prob" in cal_data.columns and "actual_place" in cal_data.columns:
             self.place_calibrator = IsotonicRegression(out_of_bounds="clip")
 
+            # Coerce to numeric and drop non-numeric values safely
+            try:
+                cal_data["raw_place_prob"] = pd.to_numeric(cal_data["raw_place_prob"], errors="coerce")
+                cal_data["actual_place"] = pd.to_numeric(cal_data["actual_place"], errors="coerce")
+            except Exception:
+                pass
+
             # Remove any NaN values
             place_mask = ~(
-                np.isnan(cal_data["raw_place_prob"])
-                | np.isnan(cal_data["actual_place"])
+                cal_data["raw_place_prob"].isna() | cal_data["actual_place"].isna()
             )
             place_probs = cal_data.loc[place_mask, "raw_place_prob"].values
             place_outcomes = cal_data.loc[place_mask, "actual_place"].values
@@ -324,7 +330,7 @@ class ProbabilityCalibrator:
                     f"✅ Place probability calibrator trained on {len(place_probs)} samples"
                 )
             else:
-                logger.warning("Insufficient data for place probability calibration")
+                logger.warning("Insufficient data for place probability calibration; skipping place calibrator")
                 self.place_calibrator = None
 
         # Evaluate calibration performance
@@ -410,9 +416,7 @@ class ProbabilityCalibrator:
                     prediction_date
                 FROM predictions 
                 WHERE raw_win_prob IS NOT NULL 
-                  AND raw_place_prob IS NOT NULL
                   AND actual_win IS NOT NULL
-                  AND actual_place IS NOT NULL
                 ORDER BY prediction_date DESC
                 LIMIT 10000
                 """

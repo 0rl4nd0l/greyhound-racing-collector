@@ -19,9 +19,18 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import requests
-from bs4 import BeautifulSoup
+try:
+    import bs4
+except Exception as _bs4_import_error:
+    bs4 = None
 
 from utils.http_client import get_shared_session
+
+# Prefer centralized venue normalization if available
+try:
+    from config.venue_mapping import normalize_venue as _normalize_venue
+except Exception:
+    _normalize_venue = None
 
 
 class UpcomingRaceBrowser:
@@ -29,6 +38,11 @@ class UpcomingRaceBrowser:
         self.base_url = "https://www.thedogs.com.au"
         # Honor configured UPCOMING_RACES_DIR if provided; default to ./upcoming_races
         self.upcoming_dir = os.getenv("UPCOMING_RACES_DIR", "./upcoming_races")
+        # Control how many per-race live time scrapes to perform (0 = skip enhancements)
+        try:
+            self.enhance_limit = max(0, int(os.getenv("LIVE_ENHANCE_LIMIT", "5")))
+        except Exception:
+            self.enhance_limit = 5
 
         # Create directories
         os.makedirs(self.upcoming_dir, exist_ok=True)
@@ -42,10 +56,12 @@ class UpcomingRaceBrowser:
         )
 
         # Venue mapping
+        # NOTE: Keep this minimal and always fall back to config.venue_mapping.normalize_venue
         self.venue_map = {
             "angle-park": "AP_K",
             "sandown": "SAN",
             "warrnambool": "WAR",
+            "warragul": "WRGL",  # VIC Warragul (missing previously)
             "bendigo": "BEN",
             "geelong": "GEE",
             "ballarat": "BAL",
@@ -73,6 +89,41 @@ class UpcomingRaceBrowser:
 
         print("🏁 Upcoming Race Browser initialized")
         print(f"📂 Upcoming races directory: {self.upcoming_dir}")
+
+    def _normalize_race_url(self, race_url: str):
+        """Return a tuple of (base_race_url, expert_form_url) with fragments/queries removed and expert-form deduped.
+
+        Examples:
+        - input: https://www.thedogs.com.au/racing/grafton/2025-09-02/5/expert-form?foo=1#frag
+          -> (
+                https://www.thedogs.com.au/racing/grafton/2025-09-02/5,
+                https://www.thedogs.com.au/racing/grafton/2025-09-02/5/expert-form
+             )
+        - input: https://www.thedogs.com.au/racing/angle-park/2025-09-02/1/expert-form/expert-form/
+          -> (
+                https://www.thedogs.com.au/racing/angle-park/2025-09-02/1,
+                https://www.thedogs.com.au/racing/angle-park/2025-09-02/1/expert-form
+             )
+        """
+        try:
+            url = (race_url or "").strip()
+            # Strip fragment and query
+            url = url.split("#", 1)[0]
+            url = url.split("?", 1)[0]
+            url = url.rstrip("/")
+
+            # Deduplicate trailing "/expert-form" segments
+            while url.lower().endswith("/expert-form"):
+                url = url[: -len("/expert-form")].rstrip("/")
+
+            base_race_url = url
+            expert_form_url = f"{base_race_url}/expert-form"
+
+            return base_race_url, expert_form_url
+        except Exception:
+            # Best-effort fallback
+            base_race_url = (race_url or "").split("?", 1)[0].split("#", 1)[0].rstrip("/")
+            return base_race_url, f"{base_race_url}/expert-form"
 
     def get_upcoming_races(self, days_ahead=0):
         """Get upcoming races for the next specified days"""
@@ -224,22 +275,23 @@ class UpcomingRaceBrowser:
 
                 # For cached races, try to enhance with live times from individual race pages
                 print(f"   🔄 Enhancing cached races with live times...")
-                for i, cached_race in enumerate(
-                    cached_races[:5]
-                ):  # Limit to first 5 for performance
-                    if not cached_race.get("race_time") or cached_race.get(
-                        "race_time"
-                    ) in ["1:00 PM", "1:25 PM", "1:50 PM"]:
-                        # These look like estimated times, try to get real times
-                        real_race_time = self._scrape_race_time_from_page(
-                            cached_race["url"]
-                        )
-                        if real_race_time:
-                            cached_race["race_time"] = real_race_time
-                            cached_race["time_source"] = "live_scraped"
-                            print(
-                                f"     ✅ Updated {cached_race['title']} with real time: {real_race_time}"
+                if self.enhance_limit > 0:
+                    for i, cached_race in enumerate(
+                        cached_races[: self.enhance_limit]
+                    ):  # Limit to first N for performance
+                        if not cached_race.get("race_time") or cached_race.get(
+                            "race_time"
+                        ) in ["1:00 PM", "1:25 PM", "1:50 PM"]:
+                            # These look like estimated times, try to get real times
+                            real_race_time = self._scrape_race_time_from_page(
+                                cached_race["url"]
                             )
+                            if real_race_time:
+                                cached_race["race_time"] = real_race_time
+                                cached_race["time_source"] = "live_scraped"
+                                print(
+                                    f"     ✅ Updated {cached_race['title']} with real time: {real_race_time}"
+                                )
 
             # Try to scrape live data from main racing page (add to cached races)
             live_races = self._scrape_live_races_for_date(date_str)
@@ -272,9 +324,9 @@ class UpcomingRaceBrowser:
 
             # If we have cached races but main page didn't find all venues,
             # try to get live times for cached races
-            if cached_races and len(live_races) < len(cached_races):
+            if self.enhance_limit > 0 and cached_races and len(live_races) < len(cached_races):
                 print(f"   🔄 Enhancing cached races with live times...")
-                for cached_race in cached_races:
+                for cached_race in cached_races[: self.enhance_limit]:
                     # Find if this race already has live data
                     found_live = False
                     for race in races:
@@ -361,6 +413,7 @@ class UpcomingRaceBrowser:
                 "AP_K": "Angle Park",
                 "SAN": "Sandown",
                 "WAR": "Warrnambool",
+                "WRGL": "Warragul",
                 "BEN": "Bendigo",
                 "GEE": "Geelong",
                 "BAL": "Ballarat",
@@ -646,8 +699,15 @@ class UpcomingRaceBrowser:
             if not race_number.isdigit():
                 return None
 
-            # Map venue slug to venue code
-            venue_code = self.venue_map.get(venue_slug, venue_slug.upper())
+            # Map venue slug to venue code using centralized normalization where possible
+            venue_code = self.venue_map.get(venue_slug)
+            if not venue_code:
+                try:
+                    venue_code = _normalize_venue(venue_slug) if _normalize_venue else None
+                except Exception:
+                    venue_code = None
+            if not venue_code:
+                venue_code = venue_slug.upper()
             venue_name = venue_slug.replace("-", " ").title()
 
             # Get link text and surrounding elements for additional information
@@ -821,7 +881,9 @@ class UpcomingRaceBrowser:
                         "error": f"Failed to access race page: {response.status_code}",
                     }
 
-                soup = BeautifulSoup(response.content, "html.parser")
+                if bs4 is None:
+                    raise RuntimeError("BeautifulSoup (bs4) is required. Install with 'pip install beautifulsoup4'.")
+                soup = bs4.BeautifulSoup(response.content, "html.parser")
             finally:
                 if response is not None:
                     try:
@@ -847,6 +909,34 @@ class UpcomingRaceBrowser:
             csv_info = self.find_csv_download_link(soup, race_url)
 
             if not csv_info:
+                # Fallback: try the dedicated expert-form scraper which knows how to submit
+                # the export form and save the CSV directly to UPCOMING_RACES_DIR.
+                try:
+                    print("   🔁 Fallback: attempting expert-form scraper path")
+                    from expert_form_csv_scraper import ExpertFormCsvScraper
+
+                    # Normalize first to avoid duplicated expert-form segments
+                    base_race_url, _ef_url = self._normalize_race_url(race_url)
+
+                    scraper = ExpertFormCsvScraper(max_workers=1, verbose=False)
+                    # Pass the base race URL; scraper will derive the expert-form URL
+                    ef_success = scraper.download_csv_from_expert_form(base_race_url, filename)
+                    if ef_success and os.path.exists(filepath):
+                        print(
+                            f"   ✅ Fallback saved CSV via expert-form scraper: {filename}"
+                        )
+                        return {
+                            "success": True,
+                            "filename": filename,
+                            "filepath": filepath,
+                        }
+                    else:
+                        print(
+                            "   ❌ Expert-form fallback did not produce a CSV; continuing to fail"
+                        )
+                except Exception as _ef_e:
+                    print(f"   ⚠️ Expert-form fallback failed: {_ef_e}")
+
                 return {"success": False, "error": "No CSV download link found"}
 
             # Download CSV content
@@ -1012,17 +1102,33 @@ class UpcomingRaceBrowser:
     def find_csv_download_link(self, soup, race_url):
         """Find CSV download link on the race page"""
         try:
-            # Try the expert-form page method first
-            base_race_url = race_url.split("?")[0].rstrip("/")
-            expert_form_url = f"{base_race_url}/expert-form"
+            # Try the expert-form page method first (normalized)
+            base_race_url, expert_form_url = self._normalize_race_url(race_url)
 
             print(f"   🔍 Trying expert-form URL: {expert_form_url}")
             response = None
             try:
-                response = self.session.get(expert_form_url, timeout=15)
+                # Include Referer and browser-like headers to avoid 403 blocks
+                response = self.session.get(
+                    expert_form_url,
+                    timeout=15,
+                    headers={
+                        "Referer": base_race_url,
+                        "Origin": self.base_url,
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                        "Accept-Language": "en-US,en;q=0.9",
+                        "Upgrade-Insecure-Requests": "1",
+                        "Sec-Fetch-Site": "same-origin",
+                        "Sec-Fetch-Mode": "navigate",
+                        "Sec-Fetch-Dest": "document",
+                        "DNT": "1",
+                    },
+                )
 
                 if response.status_code == 200:
-                    expert_soup = BeautifulSoup(response.content, "html.parser")
+                    if bs4 is None:
+                        raise RuntimeError("BeautifulSoup (bs4) is required. Install with 'pip install beautifulsoup4'.")
+                    expert_soup = bs4.BeautifulSoup(response.content, "html.parser")
                 else:
                     print(
                         f"   ❌ Expert-form page not accessible: {response.status_code}"
@@ -1159,13 +1265,20 @@ class UpcomingRaceBrowser:
                         # Submit form
                         form_response = None
                         try:
+                            common_headers = {
+                                "Referer": expert_form_url,
+                                "Origin": self.base_url,
+                                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                                "Accept-Language": "en-US,en;q=0.9",
+                                "Upgrade-Insecure-Requests": "1",
+                            }
                             if form_method == "POST":
                                 form_response = self.session.post(
-                                    target_url, data=form_data, timeout=15
+                                    target_url, data=form_data, timeout=15, headers=common_headers
                                 )
                             else:
                                 form_response = self.session.get(
-                                    target_url, params=form_data, timeout=15
+                                    target_url, params=form_data, timeout=15, headers=common_headers
                                 )
 
                             if form_response.status_code == 200:
@@ -1195,8 +1308,9 @@ class UpcomingRaceBrowser:
                                     
                                 # Check if HTML response contains a download link
                                 if "<" in response_text and ">" in response_text:
-                                    from bs4 import BeautifulSoup
-                                    response_soup = BeautifulSoup(response_text, "html.parser")
+                                    if bs4 is None:
+                                        raise RuntimeError("BeautifulSoup (bs4) is required. Install with 'pip install beautifulsoup4'.")
+                                    response_soup = bs4.BeautifulSoup(response_text, "html.parser")
                                     
                                     # Look for download links in the response
                                     csv_links = response_soup.find_all("a", href=True)
@@ -1486,7 +1600,9 @@ class UpcomingRaceBrowser:
                 return None
 
             try:
-                soup = BeautifulSoup(response.content, "html.parser")
+                if bs4 is None:
+                    raise RuntimeError("BeautifulSoup (bs4) is required. Install with 'pip install beautifulsoup4'.")
+                soup = bs4.BeautifulSoup(response.content, "html.parser")
             finally:
                 try:
                     response.close()
@@ -1657,7 +1773,9 @@ class UpcomingRaceBrowser:
                     print(f"   ⚠️ Failed to access racing page: {response.status_code}")
                     return races
 
-                soup = BeautifulSoup(response.content, "html.parser")
+                if bs4 is None:
+                    raise RuntimeError("BeautifulSoup (bs4) is required. Install with 'pip install beautifulsoup4'.")
+                soup = bs4.BeautifulSoup(response.content, "html.parser")
             finally:
                 if response is not None:
                     try:

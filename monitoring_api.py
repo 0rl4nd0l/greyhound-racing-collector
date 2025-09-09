@@ -736,6 +736,151 @@ class MonitoringAPI:
             return 24.0
 
 
+    def get_model_health(self) -> Dict[str, Any]:
+        """Return detailed model health including place-odds integration state and anomalies.
+        Looks at recent predictions in ./predictions and latest calibration artifacts.
+        """
+        try:
+            import json as _json
+            from utils.feature_flags import load_flags, persist_flags
+            flags, sources = load_flags()
+            enable_place_ev = bool(flags.get("ENABLE_PLACE_ODDS_INTEGRATION", False))
+            threshold = int(flags.get("AUTO_DISABLE_PLACE_THRESHOLD", 5) or 5)
+
+            # Collect recent predictions
+            preds_dir = self.predictions_dir
+            recent_files = []
+            if preds_dir.exists():
+                for p in preds_dir.glob("*.json"):
+                    if "summary" in p.name:
+                        continue
+                    recent_files.append(p)
+            recent_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+            recent_files = recent_files[:20]
+
+            total_races = 0
+            avg_place_probs = []
+            ev_place_values = []
+            for f in recent_files:
+                try:
+                    data = _json.loads(f.read_text())
+                    preds = data.get("predictions") or data.get("enhanced_predictions") or []
+                    if not preds:
+                        continue
+                    total_races += 1
+                    # avg place prob
+                    vals = [float(p.get("place_prob_norm", 0.0) or 0.0) for p in preds]
+                    s = sum(vals)
+                    if len(vals) > 0:
+                        avg_place_probs.append(s / len(vals))
+                    # ev_place distribution (only when enabled)
+                    if enable_place_ev:
+                        for p in preds:
+                            v = p.get("ev_place")
+                            if v is not None:
+                                try:
+                                    ev_place_values.append(float(v))
+                                except Exception:
+                                    pass
+                except Exception:
+                    continue
+
+            # Compute anomalies
+            anomalies = []
+            mean_place_prob = float(sum(avg_place_probs) / len(avg_place_probs)) if avg_place_probs else None
+            if mean_place_prob is not None and (mean_place_prob < 0.05 or mean_place_prob > 0.9):
+                anomalies.append("avg_place_prob_out_of_range")
+
+            if enable_place_ev:
+                if ev_place_values:
+                    if all(v <= 0 for v in ev_place_values):
+                        anomalies.append("ev_place_all_negative")
+                    mean_ev_place = float(sum(ev_place_values) / len(ev_place_values))
+                    if mean_ev_place > 1.0:
+                        anomalies.append("ev_place_mean_too_high")
+                else:
+                    anomalies.append("ev_place_missing")
+
+            # Calibration drift from latest artifacts if present
+            brier = None
+            try:
+                # Find latest calibration_results.json or audit_results calibration metrics
+                latest_audit = Path("audit_results")
+                latest_dirs = []
+                if latest_audit.exists():
+                    for d in latest_audit.iterdir():
+                        if d.is_dir():
+                            latest_dirs.append(d)
+                latest_dirs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+                if latest_dirs:
+                    cal_csv = latest_dirs[0] / "calibration" / "reliability_diagram.csv"
+                    if cal_csv.exists():
+                        import pandas as _pd
+                        df = _pd.read_csv(cal_csv)
+                        # Proxy: average hit_rate deviation ~ brier-ish
+                        if "hit_rate" in df.columns:
+                            hr = df["hit_rate"].dropna()
+                            if len(hr) > 0:
+                                brier = float(max(0.0, min(1.0, 1.0 - hr.mean())))
+            except Exception:
+                pass
+            if brier is not None and brier > 0.25:
+                anomalies.append("calibration_brier_high")
+
+            # Maintain consecutive anomaly counter
+            state_path = Path(".monitoring_state.json")
+            state = {"consecutive": 0, "last_disable_event": None}
+            if state_path.exists():
+                try:
+                    state = _json.loads(state_path.read_text())
+                except Exception:
+                    state = {"consecutive": 0, "last_disable_event": None}
+
+            if anomalies:
+                state["consecutive"] = int(state.get("consecutive", 0)) + 1
+            else:
+                state["consecutive"] = 0
+
+            # Auto-disable if needed
+            flipped = False
+            reason = None
+            if enable_place_ev and threshold and state["consecutive"] >= threshold:
+                flags["ENABLE_PLACE_ODDS_INTEGRATION"] = False
+                persist_flags(flags)
+                flipped = True
+                reason = ",".join(anomalies) if anomalies else "threshold_reached"
+                # Log event
+                logs_dir = Path("logs")
+                logs_dir.mkdir(exist_ok=True)
+                with open(logs_dir / "auto_disable_events.jsonl", "a", encoding="utf-8") as lf:
+                    lf.write(_json.dumps({
+                        "event": "auto_disable_place_odds",
+                        "reason": reason,
+                        "timestamp": datetime.now().isoformat(),
+                    }) + "\n")
+                state["last_disable_event"] = {"reason": reason, "timestamp": datetime.now().isoformat()}
+                state["consecutive"] = 0
+
+            state_path.write_text(_json.dumps(state))
+
+            return {
+                "success": True,
+                "place_odds_integration": "enabled" if enable_place_ev and not flipped else "disabled",
+                "consecutive_anomalies": state.get("consecutive", 0),
+                "last_disable_event": state.get("last_disable_event"),
+                "anomalies": anomalies,
+                "metrics": {
+                    "mean_place_prob": mean_place_prob,
+                    "ev_place_count": len(ev_place_values) if ev_place_values else 0,
+                    "approx_brier": brier,
+                },
+                "feature_flag_sources": sources,
+                "threshold": threshold,
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+
 # Global monitoring API instance
 monitoring_api = MonitoringAPI()
 
@@ -743,6 +888,152 @@ monitoring_api = MonitoringAPI()
 def get_monitoring_api() -> MonitoringAPI:
     """Get the global monitoring API instance"""
     return monitoring_api
+
+
+    def get_model_health(self) -> Dict[str, Any]:
+        """Return detailed model health including place-odds integration state and anomalies.
+        Looks at recent predictions in ./predictions and latest calibration artifacts.
+        """
+        try:
+            import json as _json
+            from utils.feature_flags import load_flags, persist_flags
+            flags, sources = load_flags()
+            enable_place_ev = bool(flags.get("ENABLE_PLACE_ODDS_INTEGRATION", False))
+            threshold = int(flags.get("AUTO_DISABLE_PLACE_THRESHOLD", 5) or 5)
+
+            # Collect recent predictions
+            preds_dir = self.predictions_dir
+            recent_files = []
+            if preds_dir.exists():
+                for p in preds_dir.glob("*.json"):
+                    if "summary" in p.name:
+                        continue
+                    recent_files.append(p)
+            recent_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+            recent_files = recent_files[:20]
+
+            total_races = 0
+            avg_place_probs = []
+            ev_place_values = []
+            for f in recent_files:
+                try:
+                    data = _json.loads(f.read_text())
+                    preds = data.get("predictions") or data.get("enhanced_predictions") or []
+                    if not preds:
+                        continue
+                    total_races += 1
+                    # avg place prob
+                    vals = [float(p.get("place_prob_norm", 0.0) or 0.0) for p in preds]
+                    s = sum(vals)
+                    if len(vals) > 0:
+                        avg_place_probs.append(s / len(vals))
+                    # ev_place distribution (only when enabled)
+                    if enable_place_ev:
+                        for p in preds:
+                            v = p.get("ev_place")
+                            if v is not None:
+                                try:
+                                    ev_place_values.append(float(v))
+                                except Exception:
+                                    pass
+                except Exception:
+                    continue
+
+            # Compute anomalies
+            anomalies = []
+            mean_place_prob = float(sum(avg_place_probs) / len(avg_place_probs)) if avg_place_probs else None
+            if mean_place_prob is not None and (mean_place_prob < 0.05 or mean_place_prob > 0.9):
+                anomalies.append("avg_place_prob_out_of_range")
+
+            if enable_place_ev:
+                if ev_place_values:
+                    if all(v <= 0 for v in ev_place_values):
+                        anomalies.append("ev_place_all_negative")
+                    mean_ev_place = float(sum(ev_place_values) / len(ev_place_values))
+                    if mean_ev_place > 1.0:
+                        anomalies.append("ev_place_mean_too_high")
+                else:
+                    anomalies.append("ev_place_missing")
+
+            # Calibration drift from latest artifacts if present
+            brier = None
+            slope = None
+            try:
+                # Find latest calibration_results.json or audit_results calibration metrics
+                latest_audit = Path("audit_results")
+                latest_dirs = []
+                if latest_audit.exists():
+                    for d in latest_audit.iterdir():
+                        if d.is_dir():
+                            latest_dirs.append(d)
+                latest_dirs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+                if latest_dirs:
+                    cal_csv = latest_dirs[0] / "calibration" / "reliability_diagram.csv"
+                    if cal_csv.exists():
+                        import pandas as _pd
+                        df = _pd.read_csv(cal_csv)
+                        # Proxy: average hit_rate deviation ~ brier-ish
+                        if "hit_rate" in df.columns:
+                            hr = df["hit_rate"].dropna()
+                            if len(hr) > 0:
+                                brier = float(max(0.0, min(1.0, 1.0 - hr.mean())))
+            except Exception:
+                pass
+            if brier is not None and brier > 0.25:
+                anomalies.append("calibration_brier_high")
+
+            # Maintain consecutive anomaly counter
+            state_path = Path(".monitoring_state.json")
+            state = {"consecutive": 0, "last_disable_event": None}
+            if state_path.exists():
+                try:
+                    state = _json.loads(state_path.read_text())
+                except Exception:
+                    state = {"consecutive": 0, "last_disable_event": None}
+
+            if anomalies:
+                state["consecutive"] = int(state.get("consecutive", 0)) + 1
+            else:
+                state["consecutive"] = 0
+
+            # Auto-disable if needed
+            flipped = False
+            reason = None
+            if enable_place_ev and threshold and state["consecutive"] >= threshold:
+                flags["ENABLE_PLACE_ODDS_INTEGRATION"] = False
+                persist_flags(flags)
+                flipped = True
+                reason = ",".join(anomalies) if anomalies else "threshold_reached"
+                # Log event
+                logs_dir = Path("logs")
+                logs_dir.mkdir(exist_ok=True)
+                with open(logs_dir / "auto_disable_events.jsonl", "a", encoding="utf-8") as lf:
+                    lf.write(_json.dumps({
+                        "event": "auto_disable_place_odds",
+                        "reason": reason,
+                        "timestamp": datetime.now().isoformat(),
+                    }) + "\n")
+                state["last_disable_event"] = {"reason": reason, "timestamp": datetime.now().isoformat()}
+                state["consecutive"] = 0
+
+            state_path.write_text(_json.dumps(state))
+
+            return {
+                "success": True,
+                "place_odds_integration": "enabled" if enable_place_ev and not flipped else "disabled",
+                "consecutive_anomalies": state.get("consecutive", 0),
+                "last_disable_event": state.get("last_disable_event"),
+                "anomalies": anomalies,
+                "metrics": {
+                    "mean_place_prob": mean_place_prob,
+                    "ev_place_count": len(ev_place_values) if ev_place_values else 0,
+                    "approx_brier": brier,
+                },
+                "feature_flag_sources": sources,
+                "threshold": threshold,
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
 
 if __name__ == "__main__":

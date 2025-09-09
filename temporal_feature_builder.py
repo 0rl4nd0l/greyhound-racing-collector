@@ -102,10 +102,10 @@ class TemporalFeatureBuilder:
                 "False",
             )
             tgr_flag = os.getenv("TGR_ENABLED", "0") not in ("0", "false", "False")
-            allow_tgr = tgr_flag or (
-                (mode != "prediction_only") and enable_results_scrapers
-            )
-            use_scraper = (mode != "prediction_only") and enable_results_scrapers
+            # Completely disable TGR by default. Only enable when TGR_ENABLED=1.
+            allow_tgr = tgr_flag
+            # Scraper is only considered when TGR is explicitly enabled.
+            use_scraper = tgr_flag and (mode != "prediction_only") and enable_results_scrapers
         except Exception:
             mode = "prediction_only"
             tgr_flag = False
@@ -236,6 +236,7 @@ class TemporalFeatureBuilder:
                 "%Y-%m-%d"
             )
 
+            # Case-insensitive match on dog name to tolerate casing differences between CSV and DB
             query = """
             SELECT 
                 d.*,
@@ -247,16 +248,17 @@ class TemporalFeatureBuilder:
             LEFT JOIN race_metadata r ON d.race_id = r.race_id
             LEFT JOIN enhanced_expert_data e ON d.race_id = e.race_id 
                 AND d.dog_clean_name = e.dog_clean_name
-                    WHERE d.dog_clean_name = ?
-                        AND r.race_date IS NOT NULL
-                        AND d.finish_position IS NOT NULL
-                        AND date(r.race_date) >= date(?)
-                    ORDER BY r.race_date DESC, r.race_time DESC
-                    LIMIT 100
-                    """
+            WHERE UPPER(d.dog_clean_name) = ?
+                AND r.race_date IS NOT NULL
+                AND d.finish_position IS NOT NULL
+                AND date(r.race_date) >= date(?)
+            ORDER BY r.race_date DESC, r.race_time DESC
+            LIMIT 100
+            """
 
+            dog_upper = str(dog_name).upper()
             historical_data = pd.read_sql_query(
-                query, conn, params=[dog_name, cutoff_date]
+                query, conn, params=[dog_upper, cutoff_date]
             )
             raw_count = len(historical_data)
             conn.close()
@@ -277,6 +279,8 @@ class TemporalFeatureBuilder:
                         .strip()
                         .upper()
                     )
+                    # Case-insensitive sanitized comparison for resilience to punctuation/case
+                    # Safer fallback: compare against a lightly-normalized DB expression and use LIKE with sanitized param
                     query_fallback = """
                     SELECT 
                         d.*,
@@ -288,7 +292,7 @@ class TemporalFeatureBuilder:
                     LEFT JOIN race_metadata r ON d.race_id = r.race_id
                     LEFT JOIN enhanced_expert_data e ON d.race_id = e.race_id 
                         AND d.dog_clean_name = e.dog_clean_name
-                    WHERE REPLACE(REPLACE(REPLACE(REPLACE(d.dog_clean_name,'"',''),"'",''),'`',''),''','') = ?
+                    WHERE REPLACE(REPLACE(REPLACE(REPLACE(UPPER(d.dog_clean_name), ' ', ''), '-', ''), '.', ''), ',', '') LIKE ?
                         AND r.race_date IS NOT NULL
                         AND d.finish_position IS NOT NULL
                         AND date(r.race_date) >= date(?)
@@ -297,7 +301,7 @@ class TemporalFeatureBuilder:
                     """
                     with sqlite3.connect(self.db_path) as conn2:
                         historical_data = pd.read_sql_query(
-                            query_fallback, conn2, params=[sanitized, cutoff_date]
+                            query_fallback, conn2, params=[f"%{sanitized}%", cutoff_date]
                         )
                     raw_count = len(historical_data)
                     logger.debug(
@@ -351,11 +355,18 @@ class TemporalFeatureBuilder:
         target_grade: str = None,
         target_distance: float = None,
     ) -> Dict[str, float]:
-        """Create features from historical races with exponential decay weighting and contextual adjustments."""
+        """Create features from historical races with exponential decay weighting and contextual adjustments.
+
+        Change: Initialize with default feature values to guarantee presence of all
+        contract-required fields, then overwrite with computed values when available.
+        This prevents missing columns at prediction time when historical_data is
+        non-empty but lacks certain signals (e.g., times).
+        """
         if historical_data.empty:
             return self._get_default_historical_features()
 
-        features = {}
+        # Start with defaults and overwrite with computed values
+        features = self._get_default_historical_features()
 
         # Convert finish positions to numeric
         historical_data["finish_position_numeric"] = pd.to_numeric(

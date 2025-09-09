@@ -579,6 +579,15 @@ from config import get_config
 
 config_class = get_config()
 app.config.from_object(config_class)
+# Explicitly honor TESTING from environment to avoid accidental test mode
+try:
+    _t_env = str(os.environ.get("TESTING", "0")).strip().lower()
+    if _t_env in ("1", "true", "yes", "on"):
+        app.config["TESTING"] = True
+    elif _t_env in ("0", "false", "no", "off", ""):
+        app.config["TESTING"] = False
+except Exception:
+    pass
 
 # Register blueprints (analytics API)
 try:
@@ -590,9 +599,45 @@ except Exception as e:
 
 
 # Feature flags and modes
-ENABLE_RESULTS_SCRAPERS = bool(app.config.get("ENABLE_RESULTS_SCRAPERS", False))
-ENABLE_LIVE_SCRAPING = bool(app.config.get("ENABLE_LIVE_SCRAPING", False))
+
+def _flag(val) -> bool:
+    try:
+        if isinstance(val, bool):
+            return val
+        s = str(val).strip().lower()
+        if s in ("1", "true", "yes", "on"):
+            return True
+        if s in ("0", "false", "no", "off", ""):
+            return False
+        return False
+    except Exception:
+        return False
+
+
+def _get_testing_flag() -> bool:
+    try:
+        return _flag(app.config.get("TESTING")) or _flag(os.environ.get("TESTING"))
+    except Exception:
+        return False
+
+
+ENABLE_RESULTS_SCRAPERS = _flag(app.config.get("ENABLE_RESULTS_SCRAPERS", False))
+ENABLE_LIVE_SCRAPING = _flag(app.config.get("ENABLE_LIVE_SCRAPING", False))
 PREDICTION_IMPORT_MODE = app.config.get("PREDICTION_IMPORT_MODE", "prediction_only")
+
+# Default to live discovery in non-testing when not explicitly disabled by env or config
+try:
+    if not _get_testing_flag():
+        env_live = str(os.environ.get("ENABLE_LIVE_SCRAPING", "")).strip().lower()
+        env_results = str(os.environ.get("ENABLE_RESULTS_SCRAPERS", "")).strip().lower()
+        # Only set defaults if user hasn't set env and config didn't explicitly enable
+        if env_live == "" and env_results == "" and not (ENABLE_LIVE_SCRAPING and ENABLE_RESULTS_SCRAPERS):
+            ENABLE_LIVE_SCRAPING = True
+            ENABLE_RESULTS_SCRAPERS = True
+            app.config["ENABLE_LIVE_SCRAPING"] = True
+            app.config["ENABLE_RESULTS_SCRAPERS"] = True
+except Exception:
+    pass
 
 # Define availability booleans derived from flags
 COMPREHENSIVE_COLLECTOR_ALLOWED = (
@@ -1140,6 +1185,23 @@ def after_request(response):
 
                 # Inject a small mode/flags banner (once per page)
                 try:
+                    # Ensure SSE bootstrap inline on interactive pages even if optional bundles fail
+                    try:
+                        if request.path in ("/interactive-races", "/interactive_races", "/upcoming") and "</body>" in html:
+                            _sse_inline = (
+                                "\n<script>(function(){try{"
+                                " if(window && !window.E2E_DISABLE_REALTIME){"
+                                "  var params=new URLSearchParams(window.location.search||'');"
+                                "  var days=params.get('days')||'1';"
+                                "  var es=new EventSource('/api/upcoming_races_stream?source=live&days='+encodeURIComponent(days)+'&strict_live=0');"
+                                "  window.__sseInline=es;"
+                                "  es.onerror=function(){try{es.close()}catch(e){}};"
+                                " }"
+                                "}catch(e){}})();</script>\n"
+                            )
+                            html = html.replace("</body>", _sse_inline + "</body>")
+                    except Exception:
+                        pass
 
                     def _truthy_flag(val) -> bool:
                         try:
@@ -5300,7 +5362,7 @@ def api_upcoming_races():
         # Default to non-strict so clients who forget strict_live don't get blocked; UI can still set strict when needed
         strict_live = (request.args.get("strict_live", "0") or "0").lower() in ("1", "true", "yes")
 
-        testing = bool(app.config.get("TESTING"))
+        testing = _get_testing_flag()
         can_live = ENABLE_LIVE_SCRAPING and ENABLE_RESULTS_SCRAPERS and not testing
 
         # Enforce strict live policy: disallow CSV and refuse when live is disabled
@@ -7420,6 +7482,7 @@ class DatabaseManager:
             "BEN": "bendigo",
             "GEE": "geelong",
             "WAR": "warrnambool",
+            "WRGL": "warragul",
             "NOR": "northam",
             "MAND": "mandurah",
             "MURR": "murray-bridge",
@@ -17758,7 +17821,7 @@ def api_upcoming_races_stream():
         "yes",
     )
 
-    testing = bool(app.config.get("TESTING"))
+    testing = _get_testing_flag()
     can_live = ENABLE_LIVE_SCRAPING and ENABLE_RESULTS_SCRAPERS and not testing
 
     # Decide chosen source with gating
@@ -17790,8 +17853,27 @@ def api_upcoming_races_stream():
     @copy_current_request_context
     def generate_live_stream():
         try:
-            # Emit an immediate status event before any heavy imports/initialization
-            yield f"data: {json.dumps({'type': 'status', 'message': 'Initializing live upcoming fetcher...', 'progress': 0, 'source': 'live', 'requested_source': requested_source, 'fallback_reason': fallback_reason})}\n\n"
+            # Emit an immediate status event before any heavy imports/initialization (with diagnostics)
+            diag = {
+                'type': 'status',
+                'message': 'Initializing live upcoming fetcher...',
+                'progress': 0,
+                'source': 'live',
+                'requested_source': requested_source,
+                'fallback_reason': fallback_reason,
+                'chosen_source': 'live',
+                'can_live': bool(can_live),
+                'testing': bool(testing),
+                'cfg_testing': bool(app.config.get('TESTING')),
+                'env_testing': str(os.environ.get('TESTING', '')).strip(),
+                'enable_live_scraping': bool(ENABLE_LIVE_SCRAPING),
+                'enable_results_scrapers': bool(ENABLE_RESULTS_SCRAPERS),
+            }
+            try:
+                logger.info(f"[SSE] upcoming_races_stream diagnostics (live): {diag}")
+            except Exception:
+                pass
+            yield f"data: {json.dumps(diag)}\n\n"
 
             from upcoming_race_browser import UpcomingRaceBrowser
 
@@ -17898,6 +17980,28 @@ def api_upcoming_races_stream():
     @copy_current_request_context
     def generate_csv_stream():
         try:
+            # Emit an immediate status event before any heavy work (with diagnostics)
+            diag = {
+                'type': 'status',
+                'message': f'Loading upcoming races from CSV for next {days_ahead} days...',
+                'progress': 0,
+                'source': 'csv',
+                'requested_source': requested_source,
+                'fallback_reason': fallback_reason,
+                'chosen_source': 'csv',
+                'can_live': bool(can_live),
+                'testing': bool(testing),
+                'cfg_testing': bool(app.config.get('TESTING')),
+                'env_testing': str(os.environ.get('TESTING', '')).strip(),
+                'enable_live_scraping': bool(ENABLE_LIVE_SCRAPING),
+                'enable_results_scrapers': bool(ENABLE_RESULTS_SCRAPERS),
+            }
+            try:
+                logger.info(f"[SSE] upcoming_races_stream diagnostics (csv): {diag}")
+            except Exception:
+                pass
+            yield f"data: {json.dumps(diag)}\n\n"
+
             # If running tests, emit a single completion payload to avoid keeping the connection open (prevents networkidle timeouts)
             if app.config.get("TESTING"):
                 try:
@@ -21042,7 +21146,7 @@ def api_today_races_basic():
             # Construct Sportsbet URL
             venue_slug = race.get("venue", "").lower().replace(" ", "-")
             sportsbet_url = (
-                f"https://www.sportsbet.com.au/betting/racing/greyhound/{venue_slug}"
+                f"https://www.sportsbet.com.au/betting/greyhound-racing/australia-nz/{venue_slug}"
                 if venue_slug
                 else None
             )
@@ -21159,7 +21263,7 @@ def api_sportsbet_seed_quick():
             if st.upper() in statuses:
                 venue_slug = (r.get("venue") or "").lower().replace(" ", "-")
                 sb_url = (
-                    f"https://www.sportsbet.com.au/betting/racing/greyhound/{venue_slug}"
+                    f"https://www.sportsbet.com.au/betting/greyhound-racing/australia-nz/{venue_slug}"
                     if venue_slug
                     else None
                 )
@@ -21312,7 +21416,8 @@ def api_fetch_race_odds_on_demand(race_id):
                 return jsonify(
                     {
                         "success": True,
-                        "race_id": race_id,
+                        "race_id": enhanced_race.get("race_id", race_id),
+                        "meeting_slug": enhanced_race.get("meeting_slug"),
                         "odds_data": odds_data,
                         "summary": summary,
                         "timestamp": datetime.now().isoformat(),
@@ -21659,54 +21764,131 @@ def api_enhanced_predictions_with_odds():
 
                     live_odds = { _norm_key(k): v for (k, v) in rows }
 
+                    # Build model probability vector and market implied for renormalization
+                    dogs_src = prediction_data.get("predictions", [])
+                    # Choose a probability-like field; fallback to prediction_score
+                    def _prob_from(d: dict) -> float:
+                        for k in ("win_prob_norm","win_probability","win_prob","final_score","prediction_score"):
+                            v = d.get(k)
+                            if v is None:
+                                continue
+                            try:
+                                x = float(v)
+                                return x/100.0 if x>1.0 else x
+                            except Exception:
+                                continue
+                        return 0.0
+                    probs_raw = [max(0.0, min(1.0, _prob_from(d))) for d in dogs_src]
+                    s_model = sum(probs_raw)
+                    p_model = [ (x/s_model) if s_model>1e-12 else (1.0/max(1,len(probs_raw))) for x in probs_raw ]
+                    # Market implied raw and normalized
+                    mkt_raw = []
+                    for d in dogs_src:
+                        mk = live_odds.get(_norm_key(d.get("dog_name","")))
+                        mkt_raw.append( (1.0/float(mk)) if (mk and mk>0) else 0.0 )
+                    s_mkt = sum(mkt_raw)
+                    p_mkt = [ (x/s_mkt) if s_mkt>1e-12 else 0.0 for x in mkt_raw ]
+                    # Optional logit-blend
+                    import math
+                    def _safe_logit(p: float) -> float:
+                        p = min(1-1e-9, max(1e-9, p))
+                        return math.log(p/(1-p))
+                    def _sigmoid(z: float) -> float:
+                        return 1.0/(1.0+math.exp(-z))
+                    alpha = None
+                    try:
+                        aenv = os.getenv("LOGIT_BLEND_ALPHA", None)
+                        if aenv is not None:
+                            alpha = float(aenv)
+                    except Exception:
+                        alpha = None
+                    if alpha is not None and 0.0<=alpha<=1.0 and p_model:
+                        p_blend = []
+                        for pm, mk in zip(p_model, p_mkt or [0.0]*len(p_model)):
+                            lb = alpha*_safe_logit(pm) + (1.0-alpha)*_safe_logit(mk if mk>0 else 1.0/len(p_model))
+                            p_blend.append(_sigmoid(lb))
+                        sb = sum(p_blend)
+                        if sb>1e-12:
+                            p_blend = [x/sb for x in p_blend]
+                    else:
+                        p_blend = p_model[:]
+                    # Kelly params
+                    try:
+                        k_frac = float(os.getenv("KELLY_FRACTION","0.25"))
+                    except Exception:
+                        k_frac = 0.25
+                    try:
+                        k_cap = float(os.getenv("KELLY_CAP","0.05"))
+                    except Exception:
+                        k_cap = 0.05
+                    try:
+                        ev_thresh = float(os.getenv("EV_THRESHOLD","0.0"))
+                    except Exception:
+                        ev_thresh = 0.0
+                    try:
+                        edge_thresh = float(os.getenv("EDGE_THRESHOLD","0.0"))
+                    except Exception:
+                        edge_thresh = 0.0
+
                     # Enhance predictions with odds and value analysis
                     enhanced_dogs = []
-                    for dog in prediction_data.get("predictions", []):
+                    for i, dog in enumerate(dogs_src):
                         dog_key = _norm_key(dog.get("dog_name", ""))
-                        predicted_prob = dog.get("prediction_score", 0)
-
                         enhanced_dog = dog.copy()
-
-                        if dog_key in live_odds:
-                            market_odds = live_odds[dog_key]
-                            implied_prob = 1.0 / market_odds if market_odds > 0 else 0
-
-                            # Calculate value
-                            if implied_prob > 0:
-                                value_percentage = (
-                                    (predicted_prob - implied_prob) / implied_prob
-                                ) * 100
-
-                                enhanced_dog.update(
-                                    {
-                                        "live_odds": market_odds,
-                                        "implied_probability": implied_prob,
-                                        "value_percentage": value_percentage,
-                                        "has_value": value_percentage > 10,
-                                        "betting_recommendation": (
-                                            sportsbet_integrator.generate_bet_recommendation(
-                                                value_percentage,
-                                                dog.get("confidence_level", "MEDIUM"),
-                                                market_odds,
-                                            )
-                                            if (
-                                                value_percentage > 10
-                                                and sportsbet_integrator is not None
-                                            )
-                                            else (
-                                                "BET"
-                                                if value_percentage > 15
-                                                else "PASS"
-                                            )
-                                        ),
-                                    }
-                                )
-
+                        mkodds = live_odds.get(dog_key)
+                        if mkodds and mkodds>0:
+                            implied_prob = 1.0/mkodds
+                            implied_norm = (implied_prob/s_mkt) if s_mkt>1e-12 else 0.0
+                            pm = p_model[i]
+                            pb = p_blend[i]
+                            edge = pb - implied_norm
+                            ev_win = pb*mkodds - 1.0
+                            # Kelly
+                            try:
+                                numer = mkodds*pb - (1.0-pb)
+                                denom = max(1e-9, (mkodds-1.0))
+                                k_full = numer/denom
+                                kelly = max(0.0, k_frac*k_full)
+                                if k_cap is not None:
+                                    kelly = min(kelly, k_cap)
+                            except Exception:
+                                kelly = 0.0
+                            # Backward-compatible value % (still provided)
+                            value_percentage = ((pm - implied_norm)/implied_norm)*100 if implied_norm>0 else None
+                            # Recommendation via integrator if available
+                            bet_reco = None
+                            try:
+                                if sportsbet_integrator is not None and value_percentage is not None:
+                                    bet_reco = sportsbet_integrator.generate_bet_recommendation(
+                                        value_percentage,
+                                        dog.get("confidence_level","MEDIUM"),
+                                        mkodds,
+                                    )
+                            except Exception:
+                                bet_reco = None
+                            enhanced_dog.update({
+                                "live_odds": mkodds,
+                                "implied_probability": implied_prob,
+                                "implied_probability_norm": implied_norm,
+                                "win_prob_norm": pm,
+                                "win_prob_blend": pb,
+                                "edge": edge,
+                                "ev_win": ev_win,
+                                "kelly_fraction": kelly,
+                                "value_percentage": value_percentage,
+                                "has_value": (ev_win is not None and ev_win>=ev_thresh) or (edge is not None and edge>=edge_thresh),
+                                "betting_recommendation": bet_reco or ("BET" if (ev_win is not None and ev_win>0.05) else "PASS"),
+                            })
                         enhanced_dogs.append(enhanced_dog)
 
-                    # Sort by value percentage (highest first)
+                    # Sort by blended probability or value if available
                     enhanced_dogs.sort(
-                        key=lambda x: x.get("value_percentage", -999), reverse=True
+                        key=lambda x: (
+                            x.get("win_prob_blend")
+                            if x.get("win_prob_blend") is not None
+                            else x.get("value_percentage", -999)
+                        ),
+                        reverse=True,
                     )
 
                     enhanced_predictions.append(

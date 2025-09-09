@@ -1,7 +1,7 @@
 # Makefile for the Greyhound Racing Collector project
 # Updated for unified environment structure
 
-.PHONY: help init deps lock test lint format e2e perf security schema-tests schema-baseline schema-monitor contract-validate contract-validate-api install-hooks clean check-preflight check-v4-sanity
+.PHONY: help init deps lock test lint format e2e perf security schema-tests schema-baseline schema-monitor contract-validate contract-validate-api install-hooks clean check-preflight check-v4-sanity train-win train-place calibrate-win calibrate-place backtest-win backtest-place simulate-anomalies
 
 VENV := .venv
 PYTHON := $(VENV)/bin/python
@@ -23,16 +23,26 @@ help:
 	@echo "  perf                 - Run performance tests"
 	@echo "  schema-*             - Schema monitoring commands"
 	@echo "  contract-validate    - Validate feature contract (python mode, strict)"
+	@echo "  contract-regenerate  - Regenerate V4 feature contract JSON"
 	@echo "  contract-validate-api- Validate feature contract via API at CONTRACT_API_URL (strict)"
+	@echo "  promote-gate         - Run V4 promotion gate (fails if metrics exceed thresholds)"
+	@echo "  run-api-gunicorn     - Run Flask app via Gunicorn (threaded workers; SSE-friendly)"
 	@echo "  install-hooks        - Install git hooks (pre-push contract validation)"
 	@echo "  clean                - Remove virtual environment"
+	@echo "  train-win            - Train win model"
+	@echo "  train-place          - Train place model (TopN=$${TOPN_PLACE:-3})"
+	@echo "  calibrate-win        - Verify calibration (win); retrain calibrators"
+	@echo "  calibrate-place      - Verify calibration (place); retrain calibrators"
+	@echo "  backtest-win         - Backtest win model(s) -> $${BACKTEST_OUT_DIR:-backtests}/win_report.json"
+	@echo "  backtest-place       - Backtest place model(s) (TopN=$${TOPN_PLACE:-3}) -> $${BACKTEST_OUT_DIR:-backtests}/place_report.json"
+	@echo "  simulate-anomalies   - Write synthetic place EV anomalies to predictions/"
 
 $(VENV)/bin/python:
 	python3.11 -m venv $(VENV)
 
 init: $(VENV)/bin/python
-	$(PIP) install --upgrade pip setuptools wheel
-	$(PIP) install -r $(REQUIREMENTS_DIR)/requirements.lock
+	$(PYTHON) -m pip install --upgrade pip setuptools wheel
+	$(PYTHON) -m pip install -r $(REQUIREMENTS_DIR)/requirements.lock
 	$(VENV)/bin/playwright install
 
 # Install and update dependencies (legacy compatibility)
@@ -42,8 +52,11 @@ deps:
 	$(PIP) install -r $(REQUIREMENTS_DIR)/requirements.lock
 
 lock:
-	cd $(REQUIREMENTS_DIR) && $(PIP) install pip-tools
-	cd $(REQUIREMENTS_DIR) && pip-compile --resolver=backtracking --strip-extras -q -o requirements.lock -c constraints-unified.txt all.in
+	$(PYTHON) -m pip install pip-tools
+	$(VENV)/bin/pip-compile --resolver=backtracking --strip-extras -q \
+		-o $(REQUIREMENTS_DIR)/requirements.lock \
+		-c $(REQUIREMENTS_DIR)/constraints-unified.txt \
+		$(REQUIREMENTS_DIR)/all.in
 
 # Linting and formatting
 lint:
@@ -114,6 +127,10 @@ contract-validate:
 	@echo "Validating feature contract (python mode, strict)..."
 	$(PYTHON) scripts/verify_feature_contract.py --refresh --strict --json
 
+contract-regenerate:
+	@echo "Regenerating V4 feature contract JSON..."
+	$(PYTHON) scripts/regenerate_feature_contract_v4.py
+
 # Contract validation via API (requires running server)
 # Use CONTRACT_API_URL to override base URL (default http://localhost:$(PORT))
 CONTRACT_API_URL ?= http://localhost:$(PORT)
@@ -128,6 +145,15 @@ install-hooks:
 	@cp scripts/git-hooks/pre-push .git/hooks/pre-push
 	@chmod +x .git/hooks/pre-push
 	@echo "Installed .git/hooks/pre-push"
+
+promote-gate:
+	@echo "Running V4 promotion gate (optimizer OFF, simple normalization)..."
+	V4_DISABLE_ACCURACY_OPTIMIZER=1 \
+	V4_NORMALIZATION_MODE=$${V4_NORMALIZATION_MODE:-simple} \
+	BRIER_MAX=$${BRIER_MAX:-0.125} \
+	LOGLOSS_MAX=$${LOGLOSS_MAX:-0.41} \
+	TOP1_MIN=$${TOP1_MIN:-0.30} \
+	$(PYTHON) scripts/ci_promote_gate_v4.py
 
 e2e-prepare:
 	docker-compose -f docker-compose.test.yml run --rm playwright npx playwright install-deps
@@ -154,6 +180,7 @@ run-docker-api: docker-build
 		-e ENABLE_ENDPOINT_DROPDOWNS=0 \
 		-e DISABLE_ASSET_MINIFY=$${DISABLE_ASSET_MINIFY:-1} \
 		-e TESTING=$${TESTING:-false} \
+		-e V4_DISABLE_ACCURACY_OPTIMIZER=$${V4_DISABLE_ACCURACY_OPTIMIZER:-1} \
 		-v "$(DOCKER_RACES_DIR):/app/upcoming_races_temp" \
 		$(DOCKER_IMAGE)
 
@@ -168,6 +195,7 @@ run-docker-api-dev-toolbar: docker-build
 		-e ENABLE_ENDPOINT_DROPDOWNS=1 \
 		-e DISABLE_ASSET_MINIFY=$${DISABLE_ASSET_MINIFY:-1} \
 		-e TESTING=true \
+		-e V4_DISABLE_ACCURACY_OPTIMIZER=$${V4_DISABLE_ACCURACY_OPTIMIZER:-1} \
 		-v "$(DOCKER_RACES_DIR):/app/upcoming_races_temp" \
 		$(DOCKER_IMAGE)
 
@@ -179,6 +207,7 @@ run-api:
 	ENABLE_ENDPOINT_DROPDOWNS=$${ENABLE_ENDPOINT_DROPDOWNS:-0} \
 	DISABLE_ASSET_MINIFY=$${DISABLE_ASSET_MINIFY:-1} \
 	TESTING=$${TESTING:-false} \
+	V4_DISABLE_ACCURACY_OPTIMIZER=$${V4_DISABLE_ACCURACY_OPTIMIZER:-1} \
 	$(PYTHON) app.py
 
 # Run the Flask API with the dev endpoints toolbar enabled (QA convenience)
@@ -189,7 +218,33 @@ run-api-dev-toolbar:
 	ENABLE_ENDPOINT_DROPDOWNS=1 \
 	TESTING=true \
 	DISABLE_ASSET_MINIFY=$${DISABLE_ASSET_MINIFY:-1} \
+	V4_DISABLE_ACCURACY_OPTIMIZER=$${V4_DISABLE_ACCURACY_OPTIMIZER:-1} \
 	$(PYTHON) app.py
+
+# Run the Flask API via Gunicorn (threaded workers; SSE-friendly)
+.PHONY: run-api-gunicorn
+run-api-gunicorn:
+	@echo "Starting Gunicorn on port $${PORT:-5002} ($${GUNICORN_WORKERS:-2} workers x $${GUNICORN_THREADS:-4} threads; class=$${GUNICORN_WORKER_CLASS:-gthread})"
+	PORT=$${PORT:-5002} \
+	ENABLE_ENDPOINT_DROPDOWNS=$${ENABLE_ENDPOINT_DROPDOWNS:-0} \
+	DISABLE_ASSET_MINIFY=$${DISABLE_ASSET_MINIFY:-1} \
+	TESTING=$${TESTING:-false} \
+	V4_DISABLE_ACCURACY_OPTIMIZER=$${V4_DISABLE_ACCURACY_OPTIMIZER:-1} \
+	$(VENV)/bin/gunicorn -c gunicorn.conf.py app:app
+
+# Run the Flask API via Gunicorn with live scraping enabled and testing disabled
+.PHONY: run-api-live-gunicorn
+run-api-live-gunicorn:
+	@echo "Starting Gunicorn (LIVE) on port $${PORT:-5002} ($${GUNICORN_WORKERS:-2} workers x $${GUNICORN_THREADS:-4} threads; class=$${GUNICORN_WORKER_CLASS:-gthread})"
+	PORT=$${PORT:-5002} \
+	FLASK_ENV=$${FLASK_ENV:-development} \
+	ENABLE_LIVE_SCRAPING=1 \
+	ENABLE_RESULTS_SCRAPERS=1 \
+	TESTING=0 \
+	ENABLE_ENDPOINT_DROPDOWNS=$${ENABLE_ENDPOINT_DROPDOWNS:-0} \
+	DISABLE_ASSET_MINIFY=$${DISABLE_ASSET_MINIFY:-1} \
+	V4_DISABLE_ACCURACY_OPTIMIZER=$${V4_DISABLE_ACCURACY_OPTIMIZER:-1} \
+	$(VENV)/bin/gunicorn -c gunicorn.conf.py app:app
 
 # Clean up environment
 clean:
@@ -213,7 +268,7 @@ db-verify:
 .PHONY: db-patch-schema
 db-patch-schema:
 	@echo "Verifying and patching DB schema..."
-	python3 scripts/verify_and_patch_schema.py
+	$(PYTHON) -m scripts.verify_and_patch_schema
 
 # App smoke test (safe, no scraping)
 .PHONY: smoke-test
@@ -252,3 +307,41 @@ check-preflight:
 check-v4-sanity:
 	@echo "Running V4 data preparation sanity check..."
 	$(PYTHON) scripts/dev/check_v4_sanity.py --max-races $${MAX_RACES:-200}
+
+# ------------------------------
+# Dual-model (win/place) helpers
+# ------------------------------
+MODEL_DIR ?= models
+WIN_MODEL_GLOB ?= $(MODEL_DIR)/win/*
+PLACE_MODEL_GLOB ?= $(MODEL_DIR)/place/*
+BACKTEST_OUT_DIR ?= backtests
+TOPN_PLACE ?= 3
+RACES ?= 6
+
+train-win:
+	@echo "Training win (Top1) model..."
+	$(PYTHON) run_training.py --mode win
+
+train-place:
+	@echo "Training place (Top$(TOPN_PLACE)) model..."
+	$(PYTHON) run_training.py --mode place --topN $(TOPN_PLACE)
+
+calibrate-win:
+	@echo "Calibrating/verifying win model(s) with isotonic calibrator (will retrain calibrators)..."
+	$(PYTHON) run_calibration.py --model "$(WIN_MODEL_GLOB)" --retrain-calibrators
+
+calibrate-place:
+	@echo "Calibrating/verifying place model(s) with isotonic calibrator (will retrain calibrators)..."
+	$(PYTHON) run_calibration.py --model "$(PLACE_MODEL_GLOB)" --retrain-calibrators
+
+backtest-win:
+	@echo "Backtesting win model(s) -> $(BACKTEST_OUT_DIR)/win_report.json"
+	$(PYTHON) run_backtesting.py --model "$(WIN_MODEL_GLOB)" --output "$(BACKTEST_OUT_DIR)/win_report.json"
+
+backtest-place:
+	@echo "Backtesting place model(s) (Top$(TOPN_PLACE)) -> $(BACKTEST_OUT_DIR)/place_report.json"
+	$(PYTHON) run_backtesting.py --model "$(PLACE_MODEL_GLOB)" --topN $(TOPN_PLACE) --output "$(BACKTEST_OUT_DIR)/place_report.json"
+
+simulate-anomalies:
+	@echo "Simulating anomalous place EV predictions (RACES=$(RACES)) into predictions/"
+	$(PYTHON) scripts/simulate_place_ev_anomalies.py --races $(RACES)

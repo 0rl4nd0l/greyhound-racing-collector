@@ -35,6 +35,15 @@
         initBacktestingLogsIntegration();
         // Bind Backtesting triggers so clicking the button starts streaming into the panel
         bindBacktestingTriggers();
+        // Render model/registry metadata summary (and refresh periodically)
+        try { renderModelMetadataSummary(); } catch(_) {}
+        try {
+            if (!window.__mlDashMetaInterval) {
+                window.__mlDashMetaInterval = setInterval(() => {
+                    try { renderModelMetadataSummary(); } catch(_) {}
+                }, 30000);
+            }
+        } catch(_) {}
     }
 
     // Setup all event listeners
@@ -189,6 +198,149 @@
         }
         if (elements.generateAdvisoryBtn) {
             elements.generateAdvisoryBtn.addEventListener('click', generateAdvisoryManually);
+        }
+    }
+
+    // Ensure a model metadata panel exists on the page
+    function ensureModelMetadataElements() {
+        try {
+            let container = document.getElementById('ml-model-metadata');
+            let body = null;
+            if (!container) {
+                const main = document.querySelector('main') || document.body;
+                const mountBefore = document.querySelector('#races-container') || document.querySelector('.container') || main.firstElementChild;
+                container = document.createElement('div');
+                container.id = 'ml-model-metadata';
+                container.className = 'mb-3';
+                container.innerHTML = `
+                    <div class="card border-info">
+                      <div class="card-header d-flex align-items-center justify-content-between">
+                        <span><i class="fas fa-brain"></i> Model & Registry Status</span>
+                        <button id="ml-model-meta-refresh" class="btn btn-sm btn-outline-info" title="Refresh now"><i class="fas fa-sync-alt"></i></button>
+                      </div>
+                      <div class="card-body" id="ml-model-metadata-body">
+                        <div class="text-muted small">Loading model metadata…</div>
+                      </div>
+                    </div>`;
+                if (mountBefore && mountBefore.parentNode) {
+                    mountBefore.parentNode.insertBefore(container, mountBefore);
+                } else {
+                    main.insertBefore(container, main.firstChild);
+                }
+                body = container.querySelector('#ml-model-metadata-body');
+                // Bind manual refresh
+                const btn = container.querySelector('#ml-model-meta-refresh');
+                if (btn && !btn._bound) {
+                    btn.addEventListener('click', () => {
+                        try { renderModelMetadataSummary(true); } catch(_) {}
+                    });
+                    btn._bound = true;
+                }
+            } else {
+                body = container.querySelector('#ml-model-metadata-body');
+            }
+            return { container, body };
+        } catch (e) {
+            return { container: null, body: null };
+        }
+    }
+
+    // Fetch optimizer/reg/health and render a concise summary header + policy footnote
+    async function renderModelMetadataSummary(force = false) {
+        const { container, body } = ensureModelMetadataElements();
+        if (!container || !body) return;
+        if (!force && body.getAttribute('data-loading') === '1') return;
+        try { body.setAttribute('data-loading', '1'); } catch(_) {}
+        try { body.innerHTML = '<div class="text-muted small">Loading model metadata…</div>'; } catch(_) {}
+
+        // Prefer registry status endpoint with underscore; fallback to alternate path used by some scripts
+        async function fetchRegistry() {
+            try {
+                const r = await fetch('/api/model_registry/status', { cache: 'no-store' });
+                if (r.ok) return r.json();
+            } catch(_) {}
+            try {
+                const r2 = await fetch('/api/model/registry/status', { cache: 'no-store' });
+                if (r2.ok) return r2.json();
+            } catch(_) {}
+            return {};
+        }
+
+        try {
+            const [optRes, regData, healthRes] = await Promise.all([
+                fetch('/api/optimizer/status', { cache: 'no-store' }).then(r => r.json()).catch(() => ({})),
+                fetchRegistry(),
+                fetch('/api/model_health', { cache: 'no-store' }).then(r => r.json()).catch(() => ({})),
+            ]);
+
+            // Extract current registry best id (win)
+            let registryBestId = null;
+            try {
+                const bm = regData && (regData.best_models || regData.best_model) ? (regData.best_models || { _single: regData.best_model }) : null;
+                if (bm) {
+                    const keys = Object.keys(bm || {});
+                    const winKey = keys.find(k => String(k).toLowerCase() === 'win');
+                    const entry = winKey ? bm[winKey] : bm[keys[0]];
+                    if (entry) {
+                        if (typeof entry === 'object') registryBestId = entry.model_id || entry.modelId || null;
+                        else if (typeof entry === 'string') {
+                            const m = entry.match(/model_id=['\"]([^'\"]+)['\"]/);
+                            registryBestId = (m && m[1]) || entry;
+                        }
+                    }
+                }
+            } catch(_) {}
+
+            // Inference for selection policy: try to infer which metric aligns with best
+            let inferredPolicy = 'unknown';
+            try {
+                const models = Array.isArray(regData && regData.all_models) ? regData.all_models : (Array.isArray(regData && regData.models) ? regData.models : []);
+                const candidates = ['top1_rate','correct_winners','auc','accuracy','performance_score'];
+                const getTopBy = (metric) => {
+                    try {
+                        let top = null; let max = -Infinity;
+                        (models || []).forEach(m => {
+                            const v = Number(m && m[metric]);
+                            if (Number.isFinite(v) && v > max) { max = v; top = (m && (m.model_id || m.modelId)); }
+                        });
+                        return top || '';
+                    } catch { return ''; }
+                };
+                for (const metric of candidates) {
+                    const topId = getTopBy(metric);
+                    if (topId && registryBestId && String(topId) === String(registryBestId)) { inferredPolicy = metric; break; }
+                }
+            } catch(_) {}
+
+            // Optimizer/last prediction metadata
+            const ensembleMode = (optRes && optRes.ensemble_mode) || 'unknown';
+            const last = (optRes && optRes.last_prediction) || {};
+            const used = Array.isArray(last.model_ids_used) ? last.model_ids_used : [];
+            const usedShort = used.slice(0, 3).join(', ') + (used.length > 3 ? '…' : '');
+            const calibrated = !!(healthRes && (healthRes.ready === true || String(healthRes.status||'').toLowerCase() === 'healthy'));
+
+            // Build HTML
+            const calibBadge = calibrated ? '<span class="badge bg-primary ms-1" title="Calibrated pipeline ready"><i class="fas fa-sliders-h"></i> Calibrated</span>' : '';
+            const bestTxt = registryBestId ? `Best: <code>${String(registryBestId)}</code>` : 'Best: —';
+            const policyTxt = inferredPolicy && inferredPolicy !== 'unknown' ? `Best-selection policy (inferred): ${inferredPolicy}` : 'Best-selection policy: unknown';
+            const primaryTxt = last && last.ensemble_models ? `Ensemble models: ${Array.isArray(last.ensemble_models) ? last.ensemble_models.length : String(last.ensemble_models)}` : (used.length ? `Models used: ${usedShort}` : 'Models used: —');
+
+            body.innerHTML = `
+              <div class="d-flex justify-content-between align-items-start flex-wrap">
+                <div class="me-3">
+                  <div class="mb-1"><strong>${bestTxt}</strong> ${calibBadge}</div>
+                  <div class="text-muted small">${policyTxt}</div>
+                </div>
+                <div class="text-end small">
+                  <div>Ensemble mode: <span class="badge bg-secondary">${String(ensembleMode)}</span></div>
+                  ${used.length ? `<div class="text-muted">${primaryTxt}</div>` : ''}
+                </div>
+              </div>
+            `;
+        } catch (e) {
+            try { body.innerHTML = `<div class="text-danger small">Failed to load model metadata: ${e.message}</div>`; } catch(_) {}
+        } finally {
+            try { body.removeAttribute('data-loading'); } catch(_) {}
         }
     }
 

@@ -15,6 +15,12 @@ MarkupSafe>=3.0.0
 itsdangerous>=2.2.0
 blinker>=1.9.0
 
+# Production WSGI server
+# Use threaded workers (default in our config) to preserve SSE behavior without monkey patching
+# If you want gevent workers, install gevent explicitly and set GUNICORN_WORKER_CLASS=gevent
+# (gevent not included by default to avoid optional C-extension overhead on dev machines)
+gunicorn>=22.0.0
+
 # Alternative framework (optional)
 # litestar>=2.16.0
 # uvicorn>=0.35.0

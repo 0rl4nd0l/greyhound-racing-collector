@@ -1,8 +1,92 @@
 // Enhanced Prediction Buttons Module
 // Handles all prediction-related button interactions with V3 endpoints
 
+// Ensure a prediction results container/body exists, reusing Interactive Races helper when available
+function ensurePredictionResultsContainerAndBody() {
+    try {
+        // Prefer the Interactive Races helper if present (keeps UI consistent)
+        if (typeof window !== 'undefined' && typeof window.ensurePredictionResultsElements === 'function') {
+            const res = window.ensurePredictionResultsElements() || {};
+            try { if (res.container) res.container.style.display = 'block'; } catch (_) {}
+            // Fallback to direct lookup if helper returned nothing
+            const fallback = {
+                container: document.getElementById('prediction-results-container') || null,
+                body: document.getElementById('prediction-results-body') || null
+            };
+            return { container: res.container || fallback.container, body: res.body || fallback.body };
+        }
+
+        // Local creation fallback (mirrors structure used by Interactive Races)
+        let container = document.getElementById('prediction-results-container');
+        let body = container && container.querySelector('#prediction-results-body');
+        if (!container || !body) {
+            const main = document.querySelector('main') || document.body;
+            const mountAfter = document.querySelector('#upcoming-races-table') || document.querySelector('table') || main.firstElementChild;
+            const wrapper = document.createElement('div');
+            wrapper.id = 'prediction-results-container';
+            wrapper.className = 'mt-3';
+            wrapper.innerHTML = `
+                <div class="card">
+                    <div class="card-header"><i class="fas fa-magic"></i> Prediction Results</div>
+                    <div class="card-body">
+                        <div id="prediction-results-body"></div>
+                    </div>
+                </div>`;
+            if (mountAfter && mountAfter.parentNode) {
+                mountAfter.parentNode.insertBefore(wrapper, mountAfter.nextSibling);
+            } else {
+                main.appendChild(wrapper);
+            }
+            container = wrapper;
+            body = wrapper.querySelector('#prediction-results-body');
+        }
+        try { container.style.display = 'block'; } catch (_) {}
+        return { container, body };
+    } catch (e) {
+        console.warn('PredictionButtonManager: could not ensure results container', e);
+        return { container: null, body: null };
+    }
+}
+
+// Ordering helpers (align with interactive-races.js semantics)
+function getStoredOrderingMode() {
+    try {
+        const v = (localStorage.getItem('pred_ordering_mode') || '').trim();
+        return (v === 'win_prob' || v === 'predicted_rank') ? v : null;
+    } catch (e) { return null; }
+}
+function setStoredOrderingMode(mode) {
+    try {
+        if (mode === 'win_prob' || mode === 'predicted_rank') {
+            localStorage.setItem('pred_ordering_mode', mode);
+        }
+    } catch (e) { /* ignore */ }
+}
+if (typeof window !== 'undefined') {
+    window.predOrderingMode = getStoredOrderingMode() || window.predOrderingMode || 'predicted_rank';
+}
+function predictionScoreWinProb(p) {
+    return Number(p?.win_prob ?? p?.normalized_win_probability ?? p?.win_probability ?? p?.final_score ?? p?.prediction_score ?? p?.confidence ?? 0);
+}
+function sortPreds(list, mode) {
+    const arr = Array.isArray(list) ? [...list] : [];
+    if ((mode || (typeof window !== 'undefined' && window.predOrderingMode)) === 'predicted_rank') {
+        return arr.sort((a, b) => {
+            const ra = Number(a?.predicted_rank ?? Number.POSITIVE_INFINITY);
+            const rb = Number(b?.predicted_rank ?? Number.POSITIVE_INFINITY);
+            return ra - rb;
+        });
+    }
+    return arr.sort((a, b) => predictionScoreWinProb(b) - predictionScoreWinProb(a));
+}
+
 class PredictionButtonManager {
     constructor() {
+        try {
+            if (typeof window !== 'undefined') {
+                window.predOrderingMode = getStoredOrderingMode() || window.predOrderingMode || 'predicted_rank';
+            }
+        } catch (e) { /* ignore */ }
         this.activeRequests = new Map();
         this.initializeButtons();
         this.setupTgrToggle();
@@ -444,47 +528,94 @@ class PredictionButtonManager {
         button.classList.add('btn-danger');
     }
 
+    _ensureOrderingToolbar(container, resultsBody) {
+        try {
+            if (!container || !resultsBody) return;
+            let toolbar = document.getElementById('ordering-toolbar');
+            if (!toolbar) {
+                toolbar = document.createElement('div');
+                toolbar.id = 'ordering-toolbar';
+                toolbar.className = 'd-flex justify-content-end mb-2';
+                toolbar.innerHTML = `
+                    <div class="input-group input-group-sm" style="max-width: 260px;">
+                        <label class="input-group-text" for="ordering-select">Order by</label>
+                        <select id="ordering-select" class="form-select form-select-sm">
+                            <option value="win_prob">Win Probability</option>
+                            <option value="predicted_rank">Predicted Rank</option>
+                        </select>
+                    </div>`;
+                // Insert before resultsBody
+                const parent = resultsBody.parentElement || container;
+                parent.insertBefore(toolbar, resultsBody);
+            }
+            const orderingSelect = document.getElementById('ordering-select');
+            if (orderingSelect) {
+                const stored = getStoredOrderingMode();
+                orderingSelect.value = stored || (typeof window !== 'undefined' ? (window.predOrderingMode || 'predicted_rank') : 'predicted_rank');
+                if (!orderingSelect._bound) {
+                    orderingSelect.addEventListener('change', () => {
+                        const mode = orderingSelect.value || 'predicted_rank';
+                        if (typeof window !== 'undefined') window.predOrderingMode = mode;
+                        try { setStoredOrderingMode(mode); } catch (e) {}
+                        this._reRenderCurrentResults();
+                    });
+                    orderingSelect._bound = true;
+                }
+            }
+        } catch (e) { /* non-fatal */ }
+    }
+
+    _reRenderCurrentResults() {
+        try {
+            if (!Array.isArray(this._lastResults)) return;
+            if (this._lastResults.length > 1) {
+                this.displayBatchResults(this._lastResults);
+            } else if (this._lastResults.length === 1) {
+                this.displayPredictionResult(this._lastResults[0]);
+            }
+        } catch (e) { /* ignore */ }
+    }
+
     displayPredictionResult(result) {
         this._lastResults = [result]; // keep a handle for details lookup
-        const container = document.getElementById('prediction-results-container') || 
-                         document.getElementById('predictionResultsContainer');
+        const ensured = ensurePredictionResultsContainerAndBody();
+        const container = (ensured && ensured.container) || document.getElementById('prediction-results-container') || document.getElementById('predictionResultsContainer');
+        const resultsBody = (ensured && ensured.body) || (container && container.querySelector('#prediction-results-body, .prediction-results-body')) || container;
+        // Ensure ordering toolbar is present and wired
+        this._ensureOrderingToolbar(container, resultsBody);
         
-        if (!container) {
-            console.warn('No prediction results container found');
+        if (!resultsBody) {
+            console.warn('No prediction results container available');
             return;
         }
 
-        container.style.display = 'block';
+        try { if (container) container.style.display = 'block'; } catch (_) {}
         
         const resultHTML = this.generateResultHTML(result);
         
-        const resultsBody = container.querySelector('#prediction-results-body, .prediction-results-body') ||
-                           container;
-        
-        if (resultsBody) {
-            resultsBody.innerHTML = resultHTML;
-            // Auto-expand details for the first (single) result if available
-            try {
-                const btn = resultsBody.querySelector('.pred-details-btn');
-                if (btn) {
-                    // Defer to allow DOM paint, then fetch details
-                    setTimeout(() => this.handleDetailsClick(btn), 50);
-                }
-            } catch (_) {}
-        }
+        resultsBody.innerHTML = resultHTML;
+        // Auto-expand details for the first (single) result if available
+        try {
+            const btn = resultsBody.querySelector('.pred-details-btn');
+            if (btn) {
+                // Defer to allow DOM paint, then fetch details
+                setTimeout(() => this.handleDetailsClick(btn), 50);
+            }
+        } catch (_) {}
     }
 
     displayBatchResults(results) {
         this._lastResults = Array.isArray(results) ? results : [];
-        const container = document.getElementById('prediction-results-container') || 
-                         document.getElementById('predictionResultsContainer');
+        const ensured = ensurePredictionResultsContainerAndBody();
+        const container = (ensured && ensured.container) || document.getElementById('prediction-results-container') || document.getElementById('predictionResultsContainer');
+        const resultsBody = (ensured && ensured.body) || (container && container.querySelector('#prediction-results-body, .prediction-results-body')) || container;
         
-        if (!container) {
-            console.warn('No prediction results container found');
+        if (!resultsBody) {
+            console.warn('No prediction results container available');
             return;
         }
 
-        container.style.display = 'block';
+        try { if (container) container.style.display = 'block'; } catch (_) {}
         
         let html = '<div class="batch-results">';
         results.forEach((result, index) => {
@@ -492,19 +623,14 @@ class PredictionButtonManager {
         });
         html += '</div>';
         
-        const resultsBody = container.querySelector('#prediction-results-body, .prediction-results-body') ||
-                           container;
-        
-        if (resultsBody) {
-            resultsBody.innerHTML = html;
-            // Auto-expand details for the first result if available
-            try {
-                const btn = resultsBody.querySelector('.pred-details-btn');
-                if (btn) {
-                    setTimeout(() => this.handleDetailsClick(btn), 50);
-                }
-            } catch (_) {}
-        }
+        resultsBody.innerHTML = html;
+        // Auto-expand details for the first result if available
+        try {
+            const btn = resultsBody.querySelector('.pred-details-btn');
+            if (btn) {
+                setTimeout(() => this.handleDetailsClick(btn), 50);
+            }
+        } catch (_) {}
     }
 
     // Compute a race name suitable for /api/prediction_detail
@@ -708,9 +834,11 @@ class PredictionButtonManager {
 
     generateResultHTML(result, index = 0) {
         // Normalize predictions (support nested shape from enhanced endpoint)
-        const predictions = Array.isArray(result.predictions)
+        const predictionsRaw = Array.isArray(result.predictions)
             ? result.predictions
             : (result.prediction && Array.isArray(result.prediction.predictions) ? result.prediction.predictions : []);
+        const mode = (typeof window !== 'undefined' ? (window.predOrderingMode || getStoredOrderingMode()) : getStoredOrderingMode()) || 'predicted_rank';
+        const predictions = sortPreds(predictionsRaw, mode);
         const msgTop = (result && (result.message || result.error)) || '';
         const msgNested = (result && result.prediction && (result.prediction.message || '')) || '';
         const rawMsg = `${String(msgTop)} ${String(msgNested)}`.trim();
@@ -723,7 +851,7 @@ class PredictionButtonManager {
         if (effectiveSuccess) {
             if (Array.isArray(predictions) && predictions.length > 0) {
                 const topPick = predictions[0];
-                const winProb = topPick.final_score || topPick.win_probability || topPick.confidence || 0;
+                const winProb = predictionScoreWinProb(topPick);
                 const dogName = topPick.dog_name || topPick.name || 'Unknown';
                 const total = predictions.length;
                 // Surface GPT rerank meta when available

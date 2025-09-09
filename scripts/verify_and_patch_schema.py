@@ -313,6 +313,8 @@ EXPECTED: Dict[str, Dict[str, str]] = {
         "source": T_TEXT,
         "timestamp": T_DT,
         "is_current": T_INT,
+        # Optional column used by place markets (Top N); added by patcher when missing
+        "topN": T_INT,
     },
     "odds_history": {
         "id": T_INT,
@@ -619,7 +621,8 @@ CREATE_TABLE_SQL: Dict[str, str] = {
             market_type TEXT,
             source TEXT,
             timestamp DATETIME,
-            is_current INTEGER
+            is_current INTEGER,
+            topN INTEGER
         )
         """
     ),

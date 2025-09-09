@@ -1,0 +1,205 @@
+2025-09-02 15:59:25,639 - __main__ - INFO - Starting prediction failure debug harness
+2025-09-02 15:59:25,639 - __main__ - INFO - Creating debug race data...
+2025-09-02 15:59:25,652 - __main__ - INFO - Saved input race data: 6 dogs
+2025-09-02 15:59:30,627 - matplotlib - DEBUG - matplotlib data path: /Users/test/Desktop/greyhound_racing_collector/.venv/lib/python3.11/site-packages/matplotlib/mpl-data
+2025-09-02 15:59:30,634 - matplotlib - DEBUG - CONFIGDIR=/Users/test/.matplotlib
+2025-09-02 15:59:30,636 - matplotlib - DEBUG - interactive is False
+2025-09-02 15:59:30,636 - matplotlib - DEBUG - platform is darwin
+2025-09-02 15:59:30,761 - __main__ - INFO - === DEBUGGING MODEL PIPELINE ===
+2025-09-02 15:59:30,762 - ml_system_v4 - INFO - 🗄️ MLSystemV4 using database: greyhound_racing_data.db
+2025-09-02 15:59:30,768 - ml_system_v4 - DEBUG - Database preflight OK for /Users/test/Desktop/greyhound_racing_collector/greyhound_racing_data.db
+2025-09-02 15:59:30,768 - temporal_feature_builder - INFO - ℹ️ TGR integration disabled (set TGR_ENABLED=1 to override)
+2025-09-02 15:59:30,775 - model_registry - INFO - 🗂️  Model Registry initialized: 12 models tracked
+2025-09-02 15:59:31,117 - ml_system_v4 - INFO - 📥 Loaded model from Model Registry (best model)
+2025-09-02 15:59:31,119 - enhanced_accuracy_optimizer - INFO - 🎯 Enhanced Accuracy Optimizer initialized
+2025-09-02 15:59:31,119 - enhanced_accuracy_optimizer - INFO - 🎯 Enhanced Accuracy Optimizer initialized
+2025-09-02 15:59:31,119 - enhanced_accuracy_optimizer - INFO - 🎯 Enhanced accuracy optimization integrated with ML System V4
+2025-09-02 15:59:31,119 - ml_system_v4 - INFO - 🎯 Enhanced accuracy optimizer integrated successfully
+2025-09-02 15:59:31,119 - ml_system_v4 - INFO - 🛡️ ML System V4 initialized with temporal leakage protection and enhanced accuracy
+2025-09-02 15:59:31,120 - __main__ - INFO - Model info: {'model_type': 'migrated_model', 'trained_at': '2025-08-30T20:26:00.086808', 'source': 'model_registry'}
+2025-09-02 15:59:31,120 - __main__ - INFO - Has calibrated pipeline: True
+2025-09-02 15:59:31,120 - __main__ - INFO - Feature columns: 66 cols
+2025-09-02 15:59:31,120 - __main__ - INFO - Model type: migrated_model
+2025-09-02 15:59:31,120 - __main__ - INFO - Pipeline type: ExtraTreesClassifier
+2025-09-02 15:59:31,120 - __main__ - INFO - Classes: [0 1]
+2025-09-02 15:59:31,120 - __main__ - INFO - === DEBUGGING FEATURE BUILDING ===
+2025-09-02 15:59:31,128 - temporal_feature_builder - INFO - Building leakage-safe features for race debug_race_sand
+2025-09-02 15:59:31,138 - temporal_feature_builder - DEBUG - DB query @ greyhound_racing_data.db for dog='Sky Chaser' as of 2025-08-25: raw_rows=0
+2025-09-02 15:59:31,138 - temporal_feature_builder - DEBUG - Fallback query failed: Execution failed on sql '
+                    SELECT 
+                        d.*,
+                        r.venue, r.grade, r.distance, r.track_condition, r.weather,
+                        NULL AS temperature, NULL AS humidity, NULL AS wind_speed, r.field_size,
+                        r.race_date, r.race_time, r.winner_name, r.winner_odds, r.winner_margin,
+                        e.pir_rating, e.first_sectional, e.win_time, e.bonus_time
+                    FROM dog_race_data d
+                    LEFT JOIN race_metadata r ON d.race_id = r.race_id
+                    LEFT JOIN enhanced_expert_data e ON d.race_id = e.race_id 
+                        AND d.dog_clean_name = e.dog_clean_name
+                    WHERE REPLACE(REPLACE(REPLACE(REPLACE(d.dog_clean_name,'"',''),"'",''),'`',''),''','') = ?
+                        AND r.race_date IS NOT NULL
+                        AND d.finish_position IS NOT NULL
+                        AND date(r.race_date) >= date(?)
+                    ORDER BY r.race_date DESC, r.race_time DESC
+                    LIMIT 100
+                    ': unrecognized token: "''','') = ?
+                        AND r.race_date IS NOT NULL
+                        AND d.finish_position IS NOT NULL
+                        AND date(r.race_date) >= date(?)
+                    ORDER BY r.race_date DESC, r.race_time DESC
+                    LIMIT 100
+                    "
+2025-09-02 15:59:31,138 - temporal_feature_builder - INFO - No historical rows found in DB for dog='Sky Chaser'
+2025-09-02 15:59:31,139 - temporal_feature_builder - DEBUG - Dog 'Sky Chaser' -> hist_rows=0 venue=SAND grade=M dist=500
+2025-09-02 15:59:31,147 - temporal_feature_builder - DEBUG - DB query @ greyhound_racing_data.db for dog='Taz Maniac' as of 2025-08-25: raw_rows=0
+2025-09-02 15:59:31,147 - temporal_feature_builder - DEBUG - Fallback query failed: Execution failed on sql '
+                    SELECT 
+                        d.*,
+                        r.venue, r.grade, r.distance, r.track_condition, r.weather,
+                        NULL AS temperature, NULL AS humidity, NULL AS wind_speed, r.field_size,
+                        r.race_date, r.race_time, r.winner_name, r.winner_odds, r.winner_margin,
+                        e.pir_rating, e.first_sectional, e.win_time, e.bonus_time
+                    FROM dog_race_data d
+                    LEFT JOIN race_metadata r ON d.race_id = r.race_id
+                    LEFT JOIN enhanced_expert_data e ON d.race_id = e.race_id 
+                        AND d.dog_clean_name = e.dog_clean_name
+                    WHERE REPLACE(REPLACE(REPLACE(REPLACE(d.dog_clean_name,'"',''),"'",''),'`',''),''','') = ?
+                        AND r.race_date IS NOT NULL
+                        AND d.finish_position IS NOT NULL
+                        AND date(r.race_date) >= date(?)
+                    ORDER BY r.race_date DESC, r.race_time DESC
+                    LIMIT 100
+                    ': unrecognized token: "''','') = ?
+                        AND r.race_date IS NOT NULL
+                        AND d.finish_position IS NOT NULL
+                        AND date(r.race_date) >= date(?)
+                    ORDER BY r.race_date DESC, r.race_time DESC
+                    LIMIT 100
+                    "
+2025-09-02 15:59:31,147 - temporal_feature_builder - INFO - No historical rows found in DB for dog='Taz Maniac'
+2025-09-02 15:59:31,148 - temporal_feature_builder - DEBUG - Dog 'Taz Maniac' -> hist_rows=0 venue=SAND grade=M dist=500
+2025-09-02 15:59:31,154 - temporal_feature_builder - DEBUG - DB query @ greyhound_racing_data.db for dog='Handover' as of 2025-08-25: raw_rows=0
+2025-09-02 15:59:31,155 - temporal_feature_builder - DEBUG - Fallback query failed: Execution failed on sql '
+                    SELECT 
+                        d.*,
+                        r.venue, r.grade, r.distance, r.track_condition, r.weather,
+                        NULL AS temperature, NULL AS humidity, NULL AS wind_speed, r.field_size,
+                        r.race_date, r.race_time, r.winner_name, r.winner_odds, r.winner_margin,
+                        e.pir_rating, e.first_sectional, e.win_time, e.bonus_time
+                    FROM dog_race_data d
+                    LEFT JOIN race_metadata r ON d.race_id = r.race_id
+                    LEFT JOIN enhanced_expert_data e ON d.race_id = e.race_id 
+                        AND d.dog_clean_name = e.dog_clean_name
+                    WHERE REPLACE(REPLACE(REPLACE(REPLACE(d.dog_clean_name,'"',''),"'",''),'`',''),''','') = ?
+                        AND r.race_date IS NOT NULL
+                        AND d.finish_position IS NOT NULL
+                        AND date(r.race_date) >= date(?)
+                    ORDER BY r.race_date DESC, r.race_time DESC
+                    LIMIT 100
+                    ': unrecognized token: "''','') = ?
+                        AND r.race_date IS NOT NULL
+                        AND d.finish_position IS NOT NULL
+                        AND date(r.race_date) >= date(?)
+                    ORDER BY r.race_date DESC, r.race_time DESC
+                    LIMIT 100
+                    "
+2025-09-02 15:59:31,155 - temporal_feature_builder - INFO - No historical rows found in DB for dog='Handover'
+2025-09-02 15:59:31,155 - temporal_feature_builder - DEBUG - Dog 'Handover' -> hist_rows=0 venue=SAND grade=Maiden dist=500
+2025-09-02 15:59:31,164 - temporal_feature_builder - DEBUG - DB query @ greyhound_racing_data.db for dog='Nordic Queen' as of 2025-08-25: raw_rows=0
+2025-09-02 15:59:31,164 - temporal_feature_builder - DEBUG - Fallback query failed: Execution failed on sql '
+                    SELECT 
+                        d.*,
+                        r.venue, r.grade, r.distance, r.track_condition, r.weather,
+                        NULL AS temperature, NULL AS humidity, NULL AS wind_speed, r.field_size,
+                        r.race_date, r.race_time, r.winner_name, r.winner_odds, r.winner_margin,
+                        e.pir_rating, e.first_sectional, e.win_time, e.bonus_time
+                    FROM dog_race_data d
+                    LEFT JOIN race_metadata r ON d.race_id = r.race_id
+                    LEFT JOIN enhanced_expert_data e ON d.race_id = e.race_id 
+                        AND d.dog_clean_name = e.dog_clean_name
+                    WHERE REPLACE(REPLACE(REPLACE(REPLACE(d.dog_clean_name,'"',''),"'",''),'`',''),''','') = ?
+                        AND r.race_date IS NOT NULL
+                        AND d.finish_position IS NOT NULL
+                        AND date(r.race_date) >= date(?)
+                    ORDER BY r.race_date DESC, r.race_time DESC
+                    LIMIT 100
+                    ': unrecognized token: "''','') = ?
+                        AND r.race_date IS NOT NULL
+                        AND d.finish_position IS NOT NULL
+                        AND date(r.race_date) >= date(?)
+                    ORDER BY r.race_date DESC, r.race_time DESC
+                    LIMIT 100
+                    "
+2025-09-02 15:59:31,164 - temporal_feature_builder - INFO - No historical rows found in DB for dog='Nordic Queen'
+2025-09-02 15:59:31,165 - temporal_feature_builder - DEBUG - Dog 'Nordic Queen' -> hist_rows=0 venue=SAND grade=M dist=500
+2025-09-02 15:59:31,172 - temporal_feature_builder - DEBUG - DB query @ greyhound_racing_data.db for dog='Hayride Ramps' as of 2025-08-25: raw_rows=0
+2025-09-02 15:59:31,173 - temporal_feature_builder - DEBUG - Fallback query failed: Execution failed on sql '
+                    SELECT 
+                        d.*,
+                        r.venue, r.grade, r.distance, r.track_condition, r.weather,
+                        NULL AS temperature, NULL AS humidity, NULL AS wind_speed, r.field_size,
+                        r.race_date, r.race_time, r.winner_name, r.winner_odds, r.winner_margin,
+                        e.pir_rating, e.first_sectional, e.win_time, e.bonus_time
+                    FROM dog_race_data d
+                    LEFT JOIN race_metadata r ON d.race_id = r.race_id
+                    LEFT JOIN enhanced_expert_data e ON d.race_id = e.race_id 
+                        AND d.dog_clean_name = e.dog_clean_name
+                    WHERE REPLACE(REPLACE(REPLACE(REPLACE(d.dog_clean_name,'"',''),"'",''),'`',''),''','') = ?
+                        AND r.race_date IS NOT NULL
+                        AND d.finish_position IS NOT NULL
+                        AND date(r.race_date) >= date(?)
+                    ORDER BY r.race_date DESC, r.race_time DESC
+                    LIMIT 100
+                    ': unrecognized token: "''','') = ?
+                        AND r.race_date IS NOT NULL
+                        AND d.finish_position IS NOT NULL
+                        AND date(r.race_date) >= date(?)
+                    ORDER BY r.race_date DESC, r.race_time DESC
+                    LIMIT 100
+                    "
+2025-09-02 15:59:31,173 - temporal_feature_builder - INFO - No historical rows found in DB for dog='Hayride Ramps'
+2025-09-02 15:59:31,173 - temporal_feature_builder - DEBUG - Dog 'Hayride Ramps' -> hist_rows=0 venue=SAND grade=M dist=500
+2025-09-02 15:59:31,180 - temporal_feature_builder - DEBUG - DB query @ greyhound_racing_data.db for dog='Lightning Strike' as of 2025-08-25: raw_rows=0
+2025-09-02 15:59:31,181 - temporal_feature_builder - DEBUG - Fallback query failed: Execution failed on sql '
+                    SELECT 
+                        d.*,
+                        r.venue, r.grade, r.distance, r.track_condition, r.weather,
+                        NULL AS temperature, NULL AS humidity, NULL AS wind_speed, r.field_size,
+                        r.race_date, r.race_time, r.winner_name, r.winner_odds, r.winner_margin,
+                        e.pir_rating, e.first_sectional, e.win_time, e.bonus_time
+                    FROM dog_race_data d
+                    LEFT JOIN race_metadata r ON d.race_id = r.race_id
+                    LEFT JOIN enhanced_expert_data e ON d.race_id = e.race_id 
+                        AND d.dog_clean_name = e.dog_clean_name
+                    WHERE REPLACE(REPLACE(REPLACE(REPLACE(d.dog_clean_name,'"',''),"'",''),'`',''),''','') = ?
+                        AND r.race_date IS NOT NULL
+                        AND d.finish_position IS NOT NULL
+                        AND date(r.race_date) >= date(?)
+                    ORDER BY r.race_date DESC, r.race_time DESC
+                    LIMIT 100
+                    ': unrecognized token: "''','') = ?
+                        AND r.race_date IS NOT NULL
+                        AND d.finish_position IS NOT NULL
+                        AND date(r.race_date) >= date(?)
+                    ORDER BY r.race_date DESC, r.race_time DESC
+                    LIMIT 100
+                    "
+2025-09-02 15:59:31,181 - temporal_feature_builder - INFO - No historical rows found in DB for dog='Lightning Strike'
+2025-09-02 15:59:31,181 - temporal_feature_builder - DEBUG - Dog 'Lightning Strike' -> hist_rows=0 venue=SAND grade=M dist=500
+2025-09-02 15:59:31,183 - temporal_feature_builder - INFO - Built features for 6 dogs in race debug_race_sand
+2025-09-02 15:59:31,186 - ml_system_v4 - INFO - 💾 Cached features for debug_race_sand -> debug_race_sand__19eb1abb_75734e3e3649da71b18724895c4f2f8e_TX.pkl
+2025-09-02 15:59:31,186 - __main__ - INFO - Built 6 feature vectors with 33 columns
+2025-09-02 15:59:31,193 - __main__ - INFO - Varying columns: 4
+2025-09-02 15:59:31,194 - __main__ - INFO - Constant columns: 26
+2025-09-02 15:59:31,194 - __main__ - INFO - Percent constant: 86.7%
+2025-09-02 15:59:31,194 - __main__ - INFO - Top 10 varying columns:
+2025-09-02 15:59:31,194 - __main__ - INFO -   trainer_name: 6 unique values
+2025-09-02 15:59:31,194 - __main__ - INFO -   box_number: 6 unique values
+2025-09-02 15:59:31,195 - __main__ - INFO -   weight: 5 unique values
+2025-09-02 15:59:31,195 - __main__ - INFO -   grade: 2 unique values
+2025-09-02 15:59:31,197 - __main__ - INFO - === DEBUGGING FULL PREDICTION PIPELINE ===
+2025-09-02 15:59:31,197 - __main__ - INFO - Starting debug prediction...
+2025-09-02 15:59:31,214 - ml_system_v4 - INFO - 🗄️ Loaded cached features for debug_race_sand (debug_race_sand__19eb1abb_75734e3e3649da71b18724895c4f2f8e_TX.pkl)
+2025-09-02 15:59:31,216 - __main__ - INFO - X_pred_before shape: (6, 30)
+2025-09-02 15:59:31,216 - __main__ - ERROR - No preprocessor found
+2025-09-02 15:59:31,217 - __main__ - ERROR - Prediction failed: No preprocessor found

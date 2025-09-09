@@ -9,6 +9,7 @@ import sqlite3
 import pandas as pd
 
 from temporal_feature_builder import TemporalFeatureBuilder
+import pytest
 
 # Set up logging to see warnings
 logging.basicConfig(level=logging.INFO)
@@ -37,7 +38,7 @@ def test_temporal_feature_builder():
 
     if race_data.empty:
         logger.error("Test race not found!")
-        return False
+        pytest.skip("Test race not found in DB; skipping")
 
     logger.info(f"Testing with race {test_race_id} containing {len(race_data)} dogs")
 
@@ -55,11 +56,9 @@ def test_temporal_feature_builder():
             if key.startswith("historical_"):
                 logger.info(f"  {key}: {value}")
 
-        return True
-
     except Exception as e:
         logger.error(f"❌ Error building features: {e}")
-        return False
+        pytest.fail(str(e))
 
 
 if __name__ == "__main__":

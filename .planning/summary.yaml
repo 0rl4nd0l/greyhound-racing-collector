@@ -1,0 +1,15 @@
+- task: Re-run CPU diagnostics and contain Warp-spawned git diff processes
+  context:
+    - repo: /Users/test/Desktop/greyhound_racing_collector
+    - os: MacOS
+    - shell: zsh
+    - docs:
+      - WARP.md (disable Agent Mode auto-indexing; renice +19)
+      - GIT_SWARM_PREVENTION.md
+  steps:
+    - snapshot: [uptime, top/vm_stat, ps for git]
+    - quarantine: [renice warp; kill only git children]
+    - mitigate: [disable Warp indexing; optional repo-local git status tweak]
+    - validate: [monitor_system_health.py; pytest]
+    - verify: [uptime; ensure 0 git swarm]
+

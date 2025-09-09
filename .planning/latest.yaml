@@ -1,0 +1,33 @@
+- task: Run CPU diagnostics again and remediate the recurring high-load 'git diff' swarm spawned under Warp, while preserving repository functionality and following project rules.
+  context:
+    - type: env
+      os: MacOS
+      shell: zsh
+      repo: /Users/test/Desktop/greyhound_racing_collector
+    - type: observation
+      summary: >-
+        Recent check showed extreme load averages (726.63 456.63 217.78) and many
+        'git diff --numstat 291c62…' processes with Warp (PID 477) as parent.
+    - type: doc
+      path: /Users/test/Desktop/greyhound_racing_collector/WARP.md
+      key_points:
+        - Disable Warp Agent Mode > Codebase context auto-indexing for this repo
+        - Optionally renice Warp to +19 during heavy operations
+        - Use Makefile/CI workflows as source-of-truth where possible
+    - type: scripts
+      available:
+        - scripts/prevent_git_swarm.sh
+        - scripts/cpu_check_again.sh
+      notes: >-
+        Both scripts are read-only helpers. prevent_git_swarm.sh validates .gitignore and file counts; cpu_check_again.sh snapshots CPU and lists git/warp processes.
+    - type: repo_state
+      files:
+        - .gitignore
+        - GIT_SWARM_PREVENTION.md
+      notes: >-
+        .gitignore contains 190+ patterns (venvs, archives, processed, DBs, logs). GIT_SWARM_PREVENTION.md documents emergency procedures and thresholds.
+  constraints:
+    - No destructive actions by default; only terminate runaway git children under Warp if necessary.
+    - Do not commit diagnostics or add repo files except documentation/scripts already present.
+    - Respect archive-first policy; no repo churn for CPU checks.
+

@@ -1,0 +1,24 @@
+- title: CPU diagnostics (re-run) and Git diff swarm remediation
+  goal: Reduce load back near or below 8 (logical cores), stop Warp-spawned git diff storms, keep repo functional
+  steps:
+    - cmd: uptime
+      note: Snapshot load averages
+    - cmd: ps auxww | grep -E "git (diff|status|ls-files|rev-parse)" | grep -v grep
+      note: Count and attribute runaway git processes
+    - cmd: for p in $(pgrep -if "(WarpTerminal|warp)" || true); do renice +19 -p "$p" || true; done
+      note: Lower Warp priority (per WARP.md)
+    - cmd: for p in $(pgrep -if "(WarpTerminal|warp)" || true); do pgrep -P "$p" -f "git (diff|status|ls-files|rev-parse)" | xargs -r kill -TERM; done
+      note: Terminate only children 'git' processes
+    - cmd: for p in $(pgrep -if "(WarpTerminal|warp)" || true); do pgrep -P "$p" -f "git (diff|status|ls-files|rev-parse)" | xargs -r kill -KILL; done
+      note: Force kill stubborn ones
+    - cmd: echo "Disable Warp Agent Mode > Codebase context auto-indexing for this repo, then restart Warp"
+      note: Manual UI action (WARP.md)
+    - cmd: git config --local status.showUntrackedFiles no
+      note: Optional; reduces prompt-induced git status load; reversible
+    - cmd: python scripts/monitor_system_health.py --detailed || true
+      note: Repo health check
+    - cmd: pytest -q || true
+      note: Fast test pass
+    - cmd: uptime
+      note: Verify load decreased and no new 'git diff' swarm
+

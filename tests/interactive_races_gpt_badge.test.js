@@ -17,7 +17,8 @@ describe('interactive-races GPT rerank UI (static)', () => {
   test('contains summary GPT Rerank badge markup', () => {
     expect(scriptText).toContain('badge bg-info ms-2');
     expect(scriptText).toMatch(/GPT\s+Rerank/);
-    expect(scriptText).toMatch(/title=\"GPT rerank applied/);
+    // Accept either single-escaped (\") or double-escaped (\\\") quotes in source
+    expect(scriptText).toMatch(/title=\\{1,2}\"GPT rerank applied/);
   });
 
   test('contains details view GPT rerank info card', () => {

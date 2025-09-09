@@ -30,6 +30,51 @@ from scripts.ingest_csv_history import (
     upsert_dogs,
     upsert_race_metadata,
 )
+from datetime import datetime
+
+# Reuse data-quality logging target
+from pathlib import Path as _Path
+DQ_DIR = _Path("logs") / "data_quality"
+DQ_DIR.mkdir(parents=True, exist_ok=True)
+DQ_FILE = DQ_DIR / "weight_completeness.csv"
+
+
+def _compute_and_log_weight_completeness_batch(dogs, meta, src_path, db_path):
+    try:
+        total = len(dogs) if dogs is not None else 0
+        non_null = 0
+        for d in (dogs or []):
+            w = d.get("weight")
+            if w is None:
+                continue
+            s = str(w).strip()
+            if s and s.lower() not in {"nan", "none", "null"}:
+                try:
+                    float(s)
+                    non_null += 1
+                except Exception:
+                    pass
+        frac = (non_null / total) if total > 0 else 0.0
+        threshold_env = os.getenv("WEIGHT_ALERT_THRESHOLD") if "os" in globals() else None
+        try:
+            threshold = float(threshold_env) if threshold_env else 0.50
+        except Exception:
+            threshold = 0.50
+        new_file = not DQ_FILE.exists()
+        with DQ_FILE.open("a", encoding="utf-8") as f:
+            if new_file:
+                f.write(
+                    "timestamp,file,race_id,total_dogs,weights_non_null,completeness,threshold,db\n"
+                )
+            f.write(
+                f"{datetime.utcnow().isoformat()}Z,{_Path(src_path).name},{meta.race_id},{total},{non_null},{frac:.4f},{threshold:.2f},{db_path}\n"
+            )
+        if frac < threshold:
+            print(
+                f"⚠️ Weight completeness low for {_Path(src_path).name} (race_id={meta.race_id}): {non_null}/{total} = {frac:.1%} (< {threshold:.0%})"
+            )
+    except Exception as _e:
+        print(f"⚠️ Weight completeness check failed: {_e}")
 
 
 def iter_csvs(root: Path) -> List[Path]:
@@ -89,6 +134,11 @@ def main() -> int:
         try:
             meta, dogs = parse_race_csv_for_staging(str(f))
             total_dogs += len(dogs)
+            # Data-quality alert per file
+            try:
+                _compute_and_log_weight_completeness_batch(dogs, meta, str(f), db_path)
+            except Exception:
+                pass
             conn = open_sqlite_writable(db_path)
             try:
                 upsert_race_metadata(conn, meta, field_size=len(dogs))

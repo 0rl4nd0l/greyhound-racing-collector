@@ -1,0 +1,24 @@
+- title: CPU diagnostics and mitigation handoff
+  files:
+    - path: docs/CPU_REMEDIATION_PLAN.md
+      purpose: Human-readable plan (documentation)
+    - path: scripts/cpu_check_again.sh
+      purpose: Read-only snapshot helper (no repo edits)
+    - path: scripts/prevent_git_swarm.sh
+      purpose: Existing helper to validate .gitignore and file counts
+    - path: .planning/runbook.yaml
+      purpose: Concrete step-by-step commands
+    - path: .planning/checklist.yaml
+      purpose: Operator checklist for success criteria
+    - path: .planning/cpu_task_request.yaml
+      purpose: Machine-readable task context for planning agent
+  references:
+    - path: WARP.md
+      highlights:
+        - Disable Warp Agent Mode > Codebase context auto-indexing for this repo; restart Warp
+        - Alternatively deprioritize Warp (renice +19)
+    - path: GIT_SWARM_PREVENTION.md
+      highlights:
+        - Emergency procedures to handle git swarms
+        - Thresholds for healthy/caution/warning/critical
+

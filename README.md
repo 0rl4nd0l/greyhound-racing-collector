@@ -204,11 +204,22 @@ For issues and questions:
 
 ### Running the Application
 
-- **Start the Flask server:**
+- **Start the Flask server (simple dev):**
   ```bash
   python app.py
   ```
-The application will be available at `http://127.0.0.1:5002` (or the port specified by the `PORT` environment variable).
+  The application will be available at `http://*********:5002` (or the port specified by the `PORT` environment variable).
+
+- **Run with Gunicorn (recommended for concurrency / SSE):**
+  ```bash
+  make lock
+  make deps
+  make run-api-gunicorn
+  ```
+  Tuning (optional): set env vars before the target, e.g.
+  ```bash
+  GUNICORN_WORKERS=3 GUNICORN_THREADS=4 make run-api-gunicorn
+  ```
 
 #### Port Configuration & Troubleshooting
 

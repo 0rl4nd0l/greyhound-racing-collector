@@ -17,9 +17,10 @@ def get_dir(name: str, default: str) -> Path:
 # Base data directory holding subfolders used by the app and pipelines
 DATA_DIR: Path = get_dir("DATA_DIR", "./data")
 
-# Canonical target for form guide CSVs used by predictions (historical data)
+# Canonical target for upcoming race CSVs used by the UI/API (race data)
+# Default aligns with repo docs and WARP.md
 UPCOMING_RACES_DIR: Path = get_dir(
-    "UPCOMING_RACES_DIR", str(DATA_DIR / "upcoming_races")
+    "UPCOMING_RACES_DIR", "./upcoming_races_temp"
 )
 
 # Race-day outcomes, weather, winners; separate from form guides (race data)

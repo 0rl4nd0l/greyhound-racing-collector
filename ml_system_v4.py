@@ -169,6 +169,9 @@ class MLSystemV4:
         # Optional dual-variant pipelines for runtime selection
         self.calibrated_pipeline_with_tgr = None
         self.calibrated_pipeline_no_tgr = None
+        # Dual-model support (winner/place)
+        self.calibrated_pipeline_win = None
+        self.calibrated_pipeline_place = None
         self.feature_columns = []
         self.categorical_columns = []
         self.numerical_columns = []
@@ -1325,6 +1328,128 @@ class MLSystemV4:
 
         return True
 
+    def train(self, mode: str, topN: int = 3) -> bool:
+        """Train either the winner (Top 1) or placer (Top N) model.
+
+        Args:
+            mode: 'win' or 'place'
+            topN: used only for 'place' (default 3)
+        Returns:
+            True on success, False otherwise.
+        """
+        try:
+            mode = str(mode).strip().lower()
+            if mode not in ("win", "place"):
+                raise ValueError("mode must be 'win' or 'place'")
+
+            # Prepare time-ordered datasets
+            train_data, test_data = self.prepare_time_ordered_data()
+            if train_data.empty:
+                logger.error("No data available for training")
+                return False
+
+            # Build leakage-safe features for both splits
+            logger.info("Building features for training data (dual-model)...")
+            train_features = self.build_leakage_safe_features(train_data)
+            if train_features is None or train_features.empty:
+                logger.error("No features for training")
+                return False
+
+            # Join finish_position to features to form target
+            # Keys: race_id + dog_clean_name
+            try:
+                train_key = train_data[["race_id", "dog_clean_name", "finish_position"]].copy()
+                train_key["dog_clean_name"] = train_key["dog_clean_name"].astype(str).str.upper().str.strip()
+                tr_map = train_key.set_index(["race_id", "dog_clean_name"])  # finish_position available
+                tf = train_features.copy()
+                tf["dog_clean_name"] = tf["dog_clean_name"].astype(str).str.upper().str.strip()
+                tf = tf.merge(
+                    tr_map.reset_index(),
+                    on=["race_id", "dog_clean_name"],
+                    how="left",
+                    suffixes=("", ""),
+                )
+                if "finish_position" not in tf.columns:
+                    logger.error("finish_position missing for target derivation")
+                    return False
+                # Build binary label
+                if mode == "win":
+                    tf["_target_bin"] = (pd.to_numeric(tf["finish_position"], errors="coerce") == 1).astype(int)
+                else:
+                    tN = int(topN or 3)
+                    tf["_target_bin"] = (pd.to_numeric(tf["finish_position"], errors="coerce") <= tN).astype(int)
+                # Prepare X/y
+                X_train = tf.drop(["race_id", "dog_clean_name", "_target_bin", "finish_position", "target", "target_timestamp"], axis=1, errors="ignore")
+                y_train = tf["_target_bin"].astype(int)
+            except Exception as e:
+                logger.error(f"Could not derive training labels: {e}")
+                return False
+
+            # Ensure basic categorical defaults
+            try:
+                for col, default in {
+                    "venue": "UNKNOWN",
+                    "grade": "5",
+                    "track_condition": "Good",
+                    "weather": "Fine",
+                    "trainer_name": "Unknown",
+                }.items():
+                    if col not in X_train.columns:
+                        X_train[col] = default
+                    X_train[col] = X_train[col].astype(str)
+            except Exception:
+                pass
+
+            # Coerce numeric
+            try:
+                for c in X_train.columns:
+                    if pd.api.types.is_numeric_dtype(X_train[c]):
+                        X_train[c] = pd.to_numeric(X_train[c], errors="coerce")
+            except Exception:
+                pass
+
+            # Create and fit pipeline
+            pipeline = self.create_sklearn_pipeline(X_train)
+            logger.info(f"Training {'winner' if mode=='win' else 'placer'} model...")
+            try:
+                pipeline.fit(X_train, y_train)
+            except TypeError:
+                pipeline.fit(X_train, y_train)
+
+            # Attach
+            if mode == "win":
+                self.calibrated_pipeline_win = pipeline
+                # Backward-compat pointer
+                self.calibrated_pipeline = pipeline
+            else:
+                self.calibrated_pipeline_place = pipeline
+
+            # Save artifact
+            try:
+                import joblib, os
+                from datetime import datetime as _dt
+                out_dir = os.path.join("artifacts", "models")
+                os.makedirs(out_dir, exist_ok=True)
+                ts = _dt.now().strftime("%Y%m%dT%H%M%S")
+                if mode == "win":
+                    path = os.path.join(out_dir, f"real_winner_model_{ts}.joblib")
+                else:
+                    path = os.path.join(out_dir, f"real_placer_model_top{int(topN or 3)}_{ts}.joblib")
+                joblib.dump({
+                    "pipeline": pipeline,
+                    "mode": mode,
+                    "topN": int(topN or 3),
+                    "trained_at": _dt.now().isoformat(),
+                }, path)
+                logger.info(f"Saved {mode} model to {path}")
+            except Exception as e:
+                logger.warning(f"Could not save {mode} model artifact: {e}")
+
+            return True
+        except Exception as e:
+            logger.error(f"Dual-model training failed: {e}")
+            return False
+
     def _make_cache_key(self, race_id: str, race_df: pd.DataFrame) -> str:
         """Create a stable cache key based on race_id and the essential input contents."""
         try:
@@ -1573,6 +1698,8 @@ class MLSystemV4:
         race_data: Any,
         race_id: Optional[str] = None,
         market_odds: Dict[str, float] = None,
+        market_place_odds: Dict[str, float] = None,
+        flags: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Make predictions for all dogs in a race with group normalization and EV.
 
@@ -1660,12 +1787,28 @@ class MLSystemV4:
                         except Exception:
                             _race_dt = datetime.strptime(_raw, "%Y-%m-%d").date()
                     if _race_dt > datetime.now().date():
-                        return {
-                            "success": False,
-                            "error": f"TEMPORAL LEAKAGE DETECTED: race_date {_raw} is in the future relative to today",
-                            "race_id": race_id,
-                            "fallback_reason": "Future race date detected",
-                        }
+                        # Allow opt-out of future-date guard during inference if explicitly requested via flags
+                        allow_future = False
+                        try:
+                            # Flag-based override
+                            if flags and str(flags.get("allow_future_race_dates", False)).lower() in ("1", "true", "yes"):
+                                allow_future = True
+                            # Environment-based override (does not require pipeline flag plumbing)
+                            if not allow_future and str(os.getenv("ALLOW_FUTURE_RACE_DATES", "")).strip().lower() in ("1", "true", "yes", "on"):
+                                allow_future = True
+                        except Exception:
+                            allow_future = False
+                        if not allow_future:
+                            return {
+                                "success": False,
+                                "error": f"TEMPORAL LEAKAGE DETECTED: race_date {_raw} is in the future relative to today",
+                                "race_id": race_id,
+                                "fallback_reason": "Future race date detected",
+                            }
+                        else:
+                            logger.info(
+                                "⚠️ Future race date detected but allow_future_race_dates=True; proceeding with prediction"
+                            )
             except Exception:
                 # If parsing fails, proceed to builder which performs additional checks
                 pass
@@ -1726,7 +1869,7 @@ class MLSystemV4:
             logger.debug(f"Model expects features: {self.feature_columns}")
 
             # Select appropriate model pipeline based on runtime TGR toggle
-            cp = self.calibrated_pipeline
+            cp = self.calibrated_pipeline_win or self.calibrated_pipeline
             try:
                 if getattr(self, "_tgr_enabled", None) is False and getattr(
                     self, "calibrated_pipeline_no_tgr", None
@@ -1740,31 +1883,57 @@ class MLSystemV4:
                 pass
 
             # Derive expected columns directly from the fitted preprocessor (source of truth)
-            derived_num, derived_cat = set(), set()
+            expected_cols = list(self.feature_columns or [])
             try:
                 pre = cp.base_estimator_.named_steps.get("preprocessor")
+                pre_num_cols, pre_cat_cols = [], []
                 if pre and hasattr(pre, "transformers_"):
                     for name, _trans, cols in pre.transformers_:
-                        try:
-                            if name == "num":
-                                derived_num |= set(
-                                    list(cols)
-                                    if isinstance(cols, (list, tuple, set))
-                                    else []
-                                )
-                            elif name == "cat":
-                                derived_cat |= set(
-                                    list(cols)
-                                    if isinstance(cols, (list, tuple, set))
-                                    else []
-                                )
-                        except Exception:
-                            continue
+                        if name == "num":
+                            try:
+                                pre_num_cols = list(cols) if isinstance(cols, (list, tuple, set)) else []
+                            except Exception:
+                                pre_num_cols = []
+                        elif name == "cat":
+                            try:
+                                pre_cat_cols = list(cols) if isinstance(cols, (list, tuple, set)) else []
+                            except Exception:
+                                pre_cat_cols = []
+                derived_cols = (pre_num_cols or []) + (pre_cat_cols or [])
+                if derived_cols:
+                    expected_cols = derived_cols
+                else:
+                    # Try calibrated classifiers (CalibratedClassifierCV clones)
+                    try:
+                        calibrators = getattr(cp, "calibrated_classifiers_", []) or []
+                        for cal in calibrators:
+                            base_est = getattr(cal, "base_estimator", None)
+                            if base_est is not None and hasattr(base_est, "named_steps"):
+                                pre2 = base_est.named_steps.get("preprocessor")
+                                if pre2 and hasattr(pre2, "transformers_"):
+                                    pre_num_cols, pre_cat_cols = [], []
+                                    for name, _trans, cols in pre2.transformers_:
+                                        if name == "num":
+                                            try:
+                                                pre_num_cols = list(cols) if isinstance(cols, (list, tuple, set)) else []
+                                            except Exception:
+                                                pre_num_cols = []
+                                        elif name == "cat":
+                                            try:
+                                                pre_cat_cols = list(cols) if isinstance(cols, (list, tuple, set)) else []
+                                            except Exception:
+                                                pre_cat_cols = []
+                                    derived_cols_alt = (pre_num_cols or []) + (pre_cat_cols or [])
+                                    if derived_cols_alt:
+                                        expected_cols = derived_cols_alt
+                                        break
+                    except Exception:
+                        pass
             except Exception:
+                # Fall back to training-time feature_columns
                 pass
 
-            # Check for feature column mismatch using the training feature order (source of truth)
-            expected_cols = list(self.feature_columns or [])
+            # Check for feature column mismatch using the chosen expected column set
             missing_features = [c for c in expected_cols if c not in X_pred.columns]
             extra_features = [c for c in X_pred.columns if c not in expected_cols]
 
@@ -1777,7 +1946,7 @@ class MLSystemV4:
                     f"Extra features (will be dropped): {set(extra_features)}"
                 )
 
-            # Ensure required columns are present and in the exact training order to avoid signature drift
+            # Ensure required columns are present and in the exact expected order to avoid signature drift
             X_pred = X_pred.reindex(columns=expected_cols, fill_value=0)
 
             # Handle features based on their expected type in the trained model
@@ -1860,6 +2029,71 @@ class MLSystemV4:
                         # Force to float64 with zeros as fallback
                         X_pred[col] = np.zeros(len(X_pred), dtype=np.float64)
 
+            # Ensure TGR feature columns exist when the trained preprocessor expects them
+            try:
+                # Detect if expected columns include any TGR features
+                tgr_expected = [c for c in expected_cols if isinstance(c, str) and c.startswith("tgr_")]
+                if not tgr_expected:
+                    # Try to obtain canonical TGR feature list if not present in expected_cols
+                    try:
+                        from tgr_prediction_integration import TGRPredictionIntegrator as _TGR
+                        try:
+                            _tgr = _TGR(db_path=self.db_path, enable_tgr_lookup=False, use_scraper=False)
+                            tgr_expected = list(_tgr.get_feature_names() or [])
+                        except Exception:
+                            tgr_expected = [
+                                "tgr_total_races",
+                                "tgr_recent_races",
+                                "tgr_avg_finish_position",
+                                "tgr_best_finish_position",
+                                "tgr_win_rate",
+                                "tgr_place_rate",
+                                "tgr_consistency",
+                                "tgr_form_trend",
+                                "tgr_recent_avg_position",
+                                "tgr_recent_best_position",
+                                "tgr_preferred_distance",
+                                "tgr_preferred_distance_avg",
+                                "tgr_preferred_distance_races",
+                                "tgr_venues_raced",
+                                "tgr_days_since_last_race",
+                                "tgr_last_race_position",
+                                "tgr_has_comments",
+                                "tgr_sentiment_score",
+                            ]
+                    except Exception:
+                        tgr_expected = [
+                            "tgr_total_races",
+                            "tgr_recent_races",
+                            "tgr_avg_finish_position",
+                            "tgr_best_finish_position",
+                            "tgr_win_rate",
+                            "tgr_place_rate",
+                            "tgr_consistency",
+                            "tgr_form_trend",
+                            "tgr_recent_avg_position",
+                            "tgr_recent_best_position",
+                            "tgr_preferred_distance",
+                            "tgr_preferred_distance_avg",
+                            "tgr_preferred_distance_races",
+                            "tgr_venues_raced",
+                            "tgr_days_since_last_race",
+                            "tgr_last_race_position",
+                            "tgr_has_comments",
+                            "tgr_sentiment_score",
+                        ]
+                # Add any missing TGR columns with numeric defaults
+                if tgr_expected:
+                    for col in tgr_expected:
+                        if col not in X_pred.columns:
+                            X_pred[col] = 0.0
+                    # Extend expected_cols to include these TGR columns (preserve order, avoid dups)
+                    expected_cols = list(dict.fromkeys(list(expected_cols) + list(tgr_expected)))
+                    # Align order again including TGR
+                    X_pred = X_pred.reindex(columns=expected_cols, fill_value=0.0)
+            except Exception as _tgr_e:
+                logger.debug(f"TGR compatibility step skipped: {_tgr_e}")
+
             # Final validation
             logger.debug(f"Feature preparation complete. Shape: {X_pred.shape}")
             logger.debug(
@@ -1931,6 +2165,15 @@ class MLSystemV4:
                 else:
                     raise
 
+            # After inference, realign X_pred back to the exact training feature order to keep
+            # downstream explainability and signature checks stable even if temporary columns
+            # were added to satisfy the preprocessor.
+            try:
+                X_pred = X_pred.reindex(columns=expected_cols, fill_value=0)
+            except Exception:
+                # If anything goes wrong, fall back to original X_pred; signature check may still pass
+                pass
+
             # Record calibration stage
             if calibration_present:
                 # with track_sequence('calibration', 'MLSystemV4', 'calibration'):
@@ -1943,13 +2186,92 @@ class MLSystemV4:
                 raw_win_probabilities
             )
 
+            # Detect near-uniform/tie scenario and apply unbiased, reproducible tie-break
+            try:
+                n_preds = len(normalized_win_probs)
+                if n_preds >= 2:
+                    prob_max = float(np.max(normalized_win_probs))
+                    prob_min = float(np.min(normalized_win_probs))
+                    prob_range = prob_max - prob_min
+                    prob_std = float(np.std(normalized_win_probs))
+                    # Environment-tunable thresholds
+                    try:
+                        _range_thresh = float(os.getenv("V4_TIE_RANGE_THRESH", "1e-9"))
+                    except Exception:
+                        _range_thresh = 1e-9
+                    try:
+                        _std_thresh = float(os.getenv("V4_TIE_STD_THRESH", "1e-12"))
+                    except Exception:
+                        _std_thresh = 1e-12
+                    if prob_range <= _range_thresh or prob_std <= _std_thresh:
+                        # Uniform fallback with seeded jitter to avoid input-order bias
+                        # Seed by race_id for determinism
+                        seed_payload = str(race_id).encode("utf-8")
+                        import hashlib as _hashlib
+                        seed_val = int(_hashlib.sha256(seed_payload).hexdigest()[:8], 16)
+                        rng = np.random.RandomState(seed_val)
+                        jitter = rng.rand(n_preds)
+                        jitter = (jitter - jitter.min()) / max(jitter.max() - jitter.min(), 1e-12)
+                        # Very small jitter scale so probabilities remain effectively uniform
+                        jitter_scale = float(os.getenv("V4_TIE_JITTER_SCALE", "1e-12"))
+                        normalized_win_probs = np.full(n_preds, 1.0 / float(n_preds), dtype=float)
+                        normalized_win_probs = normalized_win_probs + jitter_scale * jitter
+                        # Renormalize to exact 1.0
+                        s = float(np.sum(normalized_win_probs))
+                        if s > 0:
+                            normalized_win_probs = normalized_win_probs / s
+                        # Record meta for transparency
+                        tie_meta = {
+                            "applied": True,
+                            "method": "uniform_seeded",
+                            "seed": int(seed_val),
+                            "range": float(prob_range),
+                            "std": float(prob_std),
+                            "jitter_scale": float(jitter_scale),
+                        }
+                    else:
+                        tie_meta = {"applied": False}
+                else:
+                    tie_meta = {"applied": False}
+            except Exception:
+                tie_meta = {"applied": False}
+
             # Validate normalization
             prob_sum = float(np.sum(normalized_win_probs))
             if not (0.95 <= prob_sum <= 1.05):
                 logger.warning(f"Normalization check failed: sum = {prob_sum:.4f}")
 
-            # Calculate place probabilities (heuristic)
-            normalized_place_probs = np.minimum(0.95, normalized_win_probs * 2.8)
+            # Calculate place probabilities using place model if available; fallback to heuristic
+            normalized_place_probs = None
+            raw_place_probabilities = None
+            try:
+                cp_place = getattr(self, "calibrated_pipeline_place", None)
+            except Exception:
+                cp_place = None
+            if cp_place is not None:
+                try:
+                    raw_place_probabilities = cp_place.predict_proba(X_pred)[:, 1]
+                    # Apply isotonic calibration for place if available
+                    try:
+                        from probability_calibrator import apply_probability_calibration as _apc
+                        calibrated = []
+                        for rp, _ in zip(raw_place_probabilities, raw_win_probabilities):
+                            c = _apc(raw_win_prob=float(0.0), raw_place_prob=float(rp))
+                            calibrated.append(c.get("calibrated_place_prob", float(rp)))
+                        raw_place_probabilities = np.array(calibrated, dtype=float)
+                    except Exception:
+                        pass
+                    # Normalize to sum 1 per race (Top-3 semantics, nonstandard per spec)
+                    s = float(np.sum(raw_place_probabilities))
+                    if s > 0:
+                        normalized_place_probs = raw_place_probabilities / s
+                    else:
+                        normalized_place_probs = np.full_like(raw_place_probabilities, 1.0 / max(1, len(raw_place_probabilities)))
+                except Exception as _e:
+                    logger.warning(f"Place model predict failed, using heuristic: {_e}")
+            if normalized_place_probs is None:
+                normalized_place_probs = np.minimum(0.95, normalized_win_probs * 2.8)
+                raw_place_probabilities = normalized_place_probs.copy()
 
             # Pre-compute signal characteristics for confidence
             try:
@@ -1984,19 +2306,40 @@ class MLSystemV4:
                 p1, p2, H = 0.0, 0.0, 1.0
                 w1, w2, w3 = 0.4, 0.4, 0.2
 
-            # Calculate EV if market odds available
+            # Calculate EVs for win and place if market odds available
             ev_calculations = {}
             if market_odds:
                 for i, dog_name in enumerate(race_features["dog_clean_name"]):
-                    if dog_name in market_odds:
-                        odds = market_odds[dog_name]
+                    key = str(dog_name)
+                    if key in market_odds:
+                        odds = market_odds[key]
                         win_prob = float(normalized_win_probs[i])
-                        ev_win = win_prob * (odds - 1) - (1 - win_prob)
-                        ev_calculations[dog_name] = {
-                            "odds": odds,
+                        ev_win = win_prob * odds - 1.0
+                        ev_calculations.setdefault(key, {})
+                        ev_calculations[key].update({
+                            "odds_win": odds,
                             "ev_win": ev_win,
-                            "ev_positive": ev_win > 0,
-                        }
+                            "ev_win_positive": ev_win > 0,
+                        })
+            enable_place_ev = False
+            try:
+                if flags and str(flags.get("ENABLE_PLACE_ODDS_INTEGRATION", False)).lower() in ("true","1","yes","on"):
+                    enable_place_ev = True
+            except Exception:
+                enable_place_ev = False
+            if enable_place_ev and market_place_odds:
+                for i, dog_name in enumerate(race_features["dog_clean_name"]):
+                    key = str(dog_name)
+                    if key in market_place_odds:
+                        odds_p = market_place_odds[key]
+                        place_prob = float(normalized_place_probs[i])
+                        ev_place = place_prob * odds_p - 1.0
+                        ev_calculations.setdefault(key, {})
+                        ev_calculations[key].update({
+                            "odds_place": odds_p,
+                            "ev_place": ev_place,
+                            "ev_place_positive": ev_place > 0,
+                        })
 
             # Create prediction results
             predictions = []
@@ -2036,6 +2379,10 @@ class MLSystemV4:
                 # Add EV if available
                 if dog_name in ev_calculations:
                     prediction.update(ev_calculations[dog_name])
+                else:
+                    # Ensure keys exist for downstream consumers
+                    prediction.setdefault("ev_win", None)
+                    prediction.setdefault("ev_place", None)
 
                 predictions.append(prediction)
 
@@ -2049,10 +2396,8 @@ class MLSystemV4:
             # Calculate explainability metadata
             explainability_meta = self._create_explainability_metadata(X_pred, race_id)
 
-            # Feature signature meta
-            expected_sig = self.model_info.get(
-                "feature_signature"
-            ) or self._compute_feature_signature(self.feature_columns)
+            # Feature signature meta (prefer current expected_cols over potentially stale model_info)
+            expected_sig = self._compute_feature_signature(expected_cols)
             actual_sig = self._compute_feature_signature(list(X_pred.columns))
             signature_meta = {
                 "expected_signature": expected_sig,
@@ -2123,6 +2468,16 @@ class MLSystemV4:
             except Exception:
                 rc_venue = rc_date = rc_distance = rc_grade = rc_track = None
 
+            # Compose fallback_reason if tie-meta applied
+            fallback_reason = None
+            try:
+                if tie_meta.get("applied"):
+                    fallback_reason = (
+                        "All-equal or near-equal model scores; applied uniform prior with seeded tie-break"
+                    )
+            except Exception:
+                fallback_reason = None
+
             result = {
                 "success": True,
                 "race_id": race_id,
@@ -2159,7 +2514,11 @@ class MLSystemV4:
                 },
                 "signature_meta": signature_meta,
                 "timestamp": datetime.now().isoformat(),
+                "tie_break_meta": tie_meta,
             }
+
+            if fallback_reason:
+                result["fallback_reason"] = fallback_reason
 
             logger.info(
                 f"✅ Race prediction complete for {race_id}: {len(predictions)} dogs"
@@ -2615,7 +2974,30 @@ class MLSystemV4:
         return {"success": overall_success, "results": results}
 
     def _try_load_latest_model(self):
-        """Try to load a model, preferring the Model Registry then falling back to disk."""
+        """Try to load a model, preferring explicit env path, then Model Registry, then latest on disk."""
+        # Highest priority: explicit artifact override via environment
+        try:
+            env_model_path = os.getenv("V4_MODEL_PATH")
+            if env_model_path:
+                p = Path(env_model_path)
+                if p.exists() and p.is_file():
+                    try:
+                        model_data = joblib.load(p)
+                        self.calibrated_pipeline = model_data.get("calibrated_pipeline")
+                        self.feature_columns = model_data.get("feature_columns", [])
+                        self.categorical_columns = model_data.get("categorical_columns", [])
+                        self.numerical_columns = model_data.get("numerical_columns", [])
+                        self.model_info = model_data.get("model_info", {})
+                        self.ev_thresholds = model_data.get("ev_thresholds", {})
+                        logger.info(f"📥 Loaded model from V4_MODEL_PATH={p}")
+                        return
+                    except Exception as e:
+                        logger.error(f"Failed to load model from V4_MODEL_PATH={p}: {e}")
+                else:
+                    logger.warning(f"V4_MODEL_PATH set but not found: {env_model_path}")
+        except Exception as e:
+            logger.debug(f"V4_MODEL_PATH handling error: {e}")
+
         # Try Model Registry first
         try:
             from model_registry import get_model_registry

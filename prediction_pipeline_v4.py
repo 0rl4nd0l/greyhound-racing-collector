@@ -11,9 +11,72 @@ import os
 from datetime import datetime
 
 import pandas as pd
+import sqlite3
+from typing import Optional
 
 from ml_system_v4 import MLSystemV4
+from utils.feature_flags import load_flags
 from src.parsers.csv_ingestion import CsvIngestion
+
+# --- Helpers for participant detection and normalization ---
+import re as _re
+
+# Accept optional whitespace, 1-2 digits, optional '.', ')', ':', or '-' then optional whitespace
+_NUM_PREFIX_RE = _re.compile(r"^\s*(\d{1,2})\s*[\.\):-]\s*")
+
+def _has_numeric_prefix(name: str) -> bool:
+    try:
+        return bool(_NUM_PREFIX_RE.match(str(name) or ""))
+    except Exception:
+        return False
+
+def _normalize_dog_name_no_prefix(name: str) -> str:
+    """Normalize dog name for grouping, removing numeric header prefix and punctuation.
+    Returns Title Case string with collapsed whitespace.
+    """
+    try:
+        s = str(name or "")
+        # Strip various quotes/unicode punctuation and normalize spaces
+        for a, b in [
+            ("\u201c", ""), ("\u201d", ""), ("\u2018", ""), ("\u2019", ""),
+            ("\u2013", "-"), ("\u2014", "-"), ('"', ''), ("'", ''), ("`", ""),
+            ("\u00A0", " ")  # non-breaking space to normal space
+        ]:
+            s = s.replace(a, b)
+        s = s.strip()
+        # Remove numeric prefix like "2. ", "3) ", "4- ", "5: "
+        m = _NUM_PREFIX_RE.match(s)
+        if m:
+            s = s[m.end():]
+        # Collapse internal whitespace
+        s = _re.sub(r"\s+", " ", s).strip()
+        # Title-case to match DB format
+        return s.title()
+    except Exception:
+        return str(name or "").strip()
+
+def _extract_box_from_name_or_row(raw_name: str, row: dict) -> Optional[int]:
+    """Get box number from numeric prefix or BOX column.
+    Returns None if not determinable.
+    """
+    try:
+        m = _NUM_PREFIX_RE.match(str(raw_name or ""))
+        if m:
+            try:
+                return int(m.group(1))
+            except Exception:
+                pass
+        # Fallback to BOX-like columns
+        for key in ("BOX", "Box", "box", "box_number"):
+            if key in row and row.get(key) not in (None, ""):
+                try:
+                    val = int(pd.to_numeric(row.get(key), errors="coerce"))
+                    return val if pd.notna(val) else None
+                except Exception:
+                    continue
+    except Exception:
+        return None
+    return None
 
 logger = logging.getLogger(__name__)
 
@@ -70,12 +133,13 @@ class PredictionPipelineV4:
         # are imported during prediction. Module guard enforces prediction_only import policy.
         # Keep this import local and NEVER at module top-level to avoid false positives in tests.
         try:
-            from utils import module_guard
-
-            module_guard.pre_prediction_sanity_check(
-                context="PredictionPipelineV4.predict_race_file",
-                extra_info={"race_file_path": os.path.basename(race_file_path)},
-            )
+            if os.getenv("V4_SKIP_MODULE_GUARD", "0").strip().lower() not in ("1", "true", "yes"):
+                # Import from package path to avoid being shadowed by scripts/utils.py when running scripts/*
+                from utils.module_guard import pre_prediction_sanity_check as _mg_check
+                _mg_check(
+                    context="PredictionPipelineV4.predict_race_file",
+                    extra_info={"race_file_path": os.path.basename(race_file_path)},
+                )
         except Exception as e:
             logger.error(f"🛑 Module guard blocked prediction: {e}")
             # Provide clear, actionable error response
@@ -123,12 +187,95 @@ class PredictionPipelineV4:
             except Exception:
                 pass
 
-            # Perform prediction with V4 system
-            result = self.ml_system_v4.predict_race(race_data, race_id)
+            # Load feature flags (YAML + env overrides)
+            flags, flag_sources = load_flags()
+
+            # Fetch live odds for this race from DB (win + place)
+            win_odds: dict[str, float] = {}
+            place_odds: dict[str, float] = {}
+            try:
+                with sqlite3.connect(self.db_path) as conn:
+                    cur = conn.cursor()
+                    # Win odds
+                    cur.execute(
+                        """
+                        SELECT dog_clean_name, odds_decimal
+                        FROM live_odds
+                        WHERE race_id = ? AND market_type = 'win' AND (is_current = 1 OR is_current IS NULL)
+                        """,
+                        (race_id,),
+                    )
+                    for dog, odds in cur.fetchall():
+                        try:
+                            if dog:
+                                win_odds[str(dog).upper().strip()] = float(odds)
+                        except Exception:
+                            continue
+                    # Place odds (Top 3). Prefer topN-aware schema; if missing, fallback to schema without topN.
+                    try:
+                        cur.execute(
+                            """
+                            SELECT dog_clean_name, odds_decimal, topN
+                            FROM live_odds
+                            WHERE race_id = ? AND market_type IN ('place','top3') AND (topN = 3 OR topN IS NULL) AND (is_current = 1 OR is_current IS NULL)
+                            """,
+                            (race_id,),
+                        )
+                        rows = cur.fetchall()
+                        for dog, odds, topn in rows:
+                            try:
+                                if dog and (topn == 3 or topn is None):
+                                    place_odds[str(dog).upper().strip()] = float(odds)
+                            except Exception:
+                                continue
+                    except sqlite3.OperationalError:
+                        # Fallback: schema without topN column
+                        cur.execute(
+                            """
+                            SELECT dog_clean_name, odds_decimal
+                            FROM live_odds
+                            WHERE race_id = ? AND market_type IN ('place','top3') AND (is_current = 1 OR is_current IS NULL)
+                            """,
+                            (race_id,),
+                        )
+                        rows = cur.fetchall()
+                        for dog, odds in rows:
+                            try:
+                                if dog:
+                                    place_odds[str(dog).upper().strip()] = float(odds)
+                            except Exception:
+                                continue
+            except Exception as e:
+                logger.warning(f"Odds join failed for race {race_id}: {e}")
+
+            # Perform prediction with V4 system (pass odds and flags)
+            try:
+                result = self.ml_system_v4.predict_race(
+                    race_data,
+                    race_id,
+                    market_odds=win_odds if win_odds else None,
+                    market_place_odds=place_odds if place_odds else None,
+                    flags=flags,
+                )
+            except TypeError:
+                # Backward-compat: some enhance wrappers may not accept market_place_odds
+                try:
+                    result = self.ml_system_v4.predict_race(
+                        race_data,
+                        race_id,
+                        market_odds=win_odds if win_odds else None,
+                        flags=flags,
+                    )
+                except TypeError:
+                    # Last resort: minimal signature
+                    result = self.ml_system_v4.predict_race(race_data, race_id)
 
             # Enrich metadata and race context for UI/consumers
             try:
                 if isinstance(result, dict) and result.get("success"):
+                    # Ensure optimizer flag is present for UI clarity (default False)
+                    if result.get("optimizer_enabled") is None and result.get("optimization_applied") is None:
+                        result["optimizer_enabled"] = False
                     # Predictor/methods/version defaults
                     result.setdefault("predictor_used", "PredictionPipelineV4")
                     if not result.get("prediction_methods_used"):
@@ -233,9 +380,12 @@ class PredictionPipelineV4:
                                     key = _norm(str(dn))
                                     if key in lookup:
                                         for k, v in lookup[key].items():
-                                            # Do not overwrite if already present
-                                            if p.get(k) is None:
+                                            try:
+                                                # Unconditionally reflect enriched CSV stats into predictions
                                                 p[k] = v
+                                            except Exception:
+                                                # Never fail enrichment merge
+                                                pass
                                     # Ensure presence of csv_historical_races key for downstream UI logic
                                     if "csv_historical_races" not in p:
                                         p["csv_historical_races"] = 0
@@ -306,6 +456,17 @@ class PredictionPipelineV4:
                 pass
 
             if result.get("success"):
+                # Persist predictions for monitoring consumption
+                try:
+                    out_dir = os.path.join("predictions")
+                    os.makedirs(out_dir, exist_ok=True)
+                    ts = datetime.now().strftime("%Y%m%dT%H%M%S")
+                    out_path = os.path.join(out_dir, f"{race_id}_{ts}.json")
+                    with open(out_path, "w", encoding="utf-8") as f:
+                        import json as _json
+                        _json.dump(result, f, indent=2)
+                except Exception as _e:
+                    logger.debug(f"Could not persist prediction for monitoring: {_e}")
                 logger.info(f"✅ Prediction successful for {race_id}")
             else:
                 logger.warning(
@@ -347,133 +508,107 @@ class PredictionPipelineV4:
                     continue
             venue = parts[1] if len(parts) > 1 else "Unknown"
 
-        # Create mapped DataFrame with required columns
+        # Create mapped DataFrame with required columns (build once per unique dog)
         mapped_data = []
 
-        # Normalizers for consistent joins
-        def _normalize_dog_name(name: str) -> str:
-            if name is None:
-                return ""
-            s = str(name)
-            # Normalize common unicode punctuation and remove quotes/apostrophes/backticks
-            for a, b in [
-                ("\u201c", ""),
-                ("\u201d", ""),
-                ("\u2018", ""),
-                ("\u2019", ""),
-                ("\u2013", "-"),
-                ("\u2014", "-"),
-            ]:
-                s = s.replace(a, b)
-            s = s.replace('"', "").replace("'", "").replace("`", "")
-            return s.strip()
-
-        def _is_participant_row(dog_name: str) -> bool:
-            """Determine if this row represents a race participant (vs historical data).
-
-            Participants have actual dog names, often with box number prefixes.
-            Historical data rows have empty names or just quotes.
-            """
-            if not dog_name or dog_name.lower() in ["nan", "none", ""]:
-                return False
-
-            # Empty string after normalization (historical data)
-            if dog_name == '""' or dog_name == "":
-                return False
-
-            # If it starts with a number and dot, it's likely a participant (e.g., "2. Austrian Rose")
-            if "." in dog_name and dog_name.split(".")[0].strip().isdigit():
-                return True
-
-            # If it has substantial text content, treat as participant
-            clean_name = dog_name.replace('"', "").strip()
-            if len(clean_name) > 2 and not clean_name.isdigit():
-                return True
-
-            return False
-
-        participant_count = 0
-        for _, row in race_data.iterrows():
-            dog_name = _normalize_dog_name(row.get("Dog Name", ""))
-
-            # Only process rows that represent actual race participants
-            if not _is_participant_row(dog_name):
-                logger.debug(f"Skipping historical data row with dog_name='{dog_name}'")
-                continue  # Skip historical data rows
-
-            participant_count += 1
-            logger.debug(f"Processing participant row: '{dog_name}'")
-
-            # Extract box number from dog name if it starts with a number
+        # Helper for numeric conversion
+        def safe_float_convert(value, default=0.0):
+            """Safely convert value to float with fallback."""
             try:
-                if "." in dog_name and dog_name.split(".")[0].strip().isdigit():
-                    box_number = int(dog_name.split(".")[0].strip())
-                    clean_dog_name = (
-                        dog_name.split(".", 1)[1].strip()
-                        if "." in dog_name
-                        else dog_name
-                    )
-                else:
-                    # Try to get box number from BOX column
-                    box_val = row.get("BOX", participant_count)
-                    box_number = (
-                        int(pd.to_numeric(box_val, errors="coerce"))
-                        if pd.notna(box_val)
-                        else participant_count
-                    )
-                    clean_dog_name = dog_name
-            except (ValueError, TypeError):
-                box_number = participant_count
-                clean_dog_name = dog_name
-
-            # Final normalization to match DB dog_clean_name conventions
-            clean_dog_name = " ".join(clean_dog_name.split())  # collapse whitespace
-            # Keep proper case (Title Case) to match database format - don't convert to uppercase
-            clean_dog_name = clean_dog_name.title()
-
-            # Safely convert numeric values with proper error handling
-            def safe_float_convert(value, default=0.0):
-                """Safely convert value to float with fallback."""
-                try:
-                    if pd.isna(value) or value == "" or value is None:
-                        return default
-                    return float(pd.to_numeric(value, errors="coerce"))
-                except (ValueError, TypeError):
+                if pd.isna(value) or value == "" or value is None:
                     return default
+                return float(pd.to_numeric(value, errors="coerce"))
+            except (ValueError, TypeError):
+                return default
 
-            # Map the row to V4 expected format with safe conversions
-            mapped_row = {
-                "race_id": filename.replace(".csv", ""),
-                "dog_clean_name": clean_dog_name,
-                "box_number": int(box_number),
-                "weight": safe_float_convert(row.get("WGT"), 30.0),
-                "starting_price": safe_float_convert(row.get("SP"), 3.0),
-                "trainer_name": str(row.get("TRAINER", "Unknown")),
-                "venue": str(venue).upper().replace(" ", "_").replace("/", "_"),
-                "grade": str(row.get("G", "G5")).upper(),
-                "track_condition": "Good",  # Default value
-                "weather": "Fine",  # Default value
-                "temperature": 20.0,  # Default value
-                "humidity": 60.0,  # Default value
-                "wind_speed": 10.0,  # Default value
-                "field_size": participant_count,  # Use actual participant count, not total rows
-                "race_date": race_date,
-                "race_time": "14:30",  # Default race time
-                # Add additional fields that ML System V4 might expect
-                "distance": safe_float_convert(row.get("DIST"), 500.0),
-                "margin": None,  # Upcoming race - no margin yet
-                "individual_time": None,  # Upcoming race - no time yet
-                "finish_position": None,  # Upcoming race - no finish position
-                "performance_rating": safe_float_convert(row.get("PERF"), 0.0),
-                "speed_rating": safe_float_convert(row.get("SPEED"), 0.0),
-                "class_rating": safe_float_convert(row.get("CLASS"), 0.0),
-            }
+        seen = set()  # normalized dog names we've emitted participants for
+        order = []    # preserve first-seen order
+        current_dog_norm = None
+        box_by_dog: dict[str, int] = {}
 
-            mapped_data.append(mapped_row)
+        # First pass: determine unique participants and stable box numbers
+        for _, row in race_data.iterrows():
+            raw_name = str(row.get("Dog Name", "") or "").strip()
+            has_prefix = _has_numeric_prefix(raw_name)
+            norm_name = _normalize_dog_name_no_prefix(raw_name)
 
-        if not mapped_data:
+            if has_prefix:
+                # New participant header row
+                if norm_name in seen:
+                    logger.debug(f"Duplicate participant header encountered for '{norm_name}', skipping")
+                    current_dog_norm = norm_name  # still update context
+                    continue
+                # Extract box from prefix or BOX column
+                box_val = _extract_box_from_name_or_row(raw_name, row)
+                if box_val is None:
+                    # Fallback to sequence if completely missing
+                    box_val = len(seen) + 1
+                box_by_dog[norm_name] = int(box_val)
+                seen.add(norm_name)
+                order.append(norm_name)
+                current_dog_norm = norm_name
+            else:
+                # No numeric prefix; treat as continuation if it matches current dog or is blank
+                if norm_name and norm_name != current_dog_norm:
+                    # If name appears without prefix and differs from current, we only accept as new
+                    # participant if it hasn't been seen and there is a BOX column with a plausible value.
+                    if norm_name not in seen:
+                        box_fallback = _extract_box_from_name_or_row(raw_name, row)
+                        if box_fallback is not None:
+                            box_by_dog[norm_name] = int(box_fallback)
+                            seen.add(norm_name)
+                            order.append(norm_name)
+                            current_dog_norm = norm_name
+                        else:
+                            # Ambiguous unprefixed row; treat as historical for current context
+                            logger.debug(f"Unprefixed name '{norm_name}' without BOX treated as history for '{current_dog_norm}'")
+                    # else already seen -> history row
+                else:
+                    # Blank name or same as current -> history
+                    pass
+
+        if not order:
             logger.warning(f"No valid dog data found in {race_file_path}")
             return pd.DataFrame()
+
+        # Second pass: emit mapped participant rows once per unique dog in first-seen order
+        participant_count = len(order)
+        for norm_name in order:
+            # Find the first row corresponding to this dog to pull auxiliary columns
+            first_row = None
+            for _, row in race_data.iterrows():
+                rn = _normalize_dog_name_no_prefix(str(row.get("Dog Name", "") or "").strip())
+                if rn == norm_name:
+                    first_row = row
+                    break
+            row = first_row if first_row is not None else {}
+
+            mapped_row = {
+                "race_id": filename.replace(".csv", ""),
+                "dog_clean_name": norm_name,
+                "box_number": int(box_by_dog.get(norm_name, order.index(norm_name) + 1)),
+                "weight": safe_float_convert((row.get("WGT") if isinstance(row, dict) else (row.get("WGT") if hasattr(row, 'get') else None)), 30.0),
+                "starting_price": safe_float_convert((row.get("SP") if isinstance(row, dict) else (row.get("SP") if hasattr(row, 'get') else None)), 3.0),
+                "trainer_name": str((row.get("TRAINER") if isinstance(row, dict) else (row.get("TRAINER") if hasattr(row, 'get') else None)) or "Unknown"),
+                "venue": str(venue).upper().replace(" ", "_").replace("/", "_"),
+                "grade": str((row.get("G") if isinstance(row, dict) else (row.get("G") if hasattr(row, 'get') else None)) or "G5").upper(),
+                "track_condition": "Good",
+                "weather": "Fine",
+                "temperature": 20.0,
+                "humidity": 60.0,
+                "wind_speed": 10.0,
+                "field_size": participant_count,
+                "race_date": race_date,
+                "race_time": "14:30",
+                "distance": safe_float_convert((row.get("DIST") if isinstance(row, dict) else (row.get("DIST") if hasattr(row, 'get') else None)), 500.0),
+                "margin": None,
+                "individual_time": None,
+                "finish_position": None,
+                "performance_rating": safe_float_convert((row.get("PERF") if isinstance(row, dict) else (row.get("PERF") if hasattr(row, 'get') else None)), 0.0),
+                "speed_rating": safe_float_convert((row.get("SPEED") if isinstance(row, dict) else (row.get("SPEED") if hasattr(row, 'get') else None)), 0.0),
+                "class_rating": safe_float_convert((row.get("CLASS") if isinstance(row, dict) else (row.get("CLASS") if hasattr(row, 'get') else None)), 0.0),
+            }
+            mapped_data.append(mapped_row)
 
         # Create DataFrame and ensure proper data types
         result_df = pd.DataFrame(mapped_data)
@@ -516,35 +651,60 @@ class PredictionPipelineV4:
 
         # Parse embedded historical data structure
         csv_historical_data = {}
-        current_dog = None
+        current_dog = None  # normalized name without prefix
+        seen_header_for_dog: set[str] = set()
 
-        def _normalize_dog_name(name: str) -> str:
-            if name is None:
-                return ""
-            s = str(name).replace('"', "").strip()
-            return s
+        def _norm(name: str) -> str:
+            return _normalize_dog_name_no_prefix(name)
 
         for _, row in raw_csv_data.iterrows():
-            dog_name = _normalize_dog_name(row.get("Dog Name", ""))
+            raw_name = str(row.get("Dog Name", "") or "").strip()
+            has_prefix = _has_numeric_prefix(raw_name)
+            norm_name = _norm(raw_name)
 
-            if (
-                dog_name
-                and "." in dog_name
-                and dog_name.split(".")[0].strip().isdigit()
-            ):
-                # This is a participant row
-                clean_name = dog_name.split(".", 1)[1].strip().title()
-                current_dog = clean_name
-                csv_historical_data[current_dog] = []
-            elif current_dog and not dog_name:
-                # This is historical data for the current dog
+            is_history_row = False
+
+            if has_prefix:
+                # Two possibilities due to forward-fill:
+                # 1) First occurrence for this dog (true header)
+                # 2) Forward-filled continuation row for the current dog (should be treated as history)
+                if norm_name not in seen_header_for_dog:
+                    # First header occurrence for this dog
+                    current_dog = norm_name
+                    seen_header_for_dog.add(norm_name)
+                    if current_dog not in csv_historical_data:
+                        csv_historical_data[current_dog] = []
+                    # Skip adding as history on the header line
+                    continue
+                else:
+                    # Already saw a header for this dog. If we're still within the same dog's block,
+                    # treat this forward-filled prefixed row as a history row.
+                    if current_dog == norm_name:
+                        is_history_row = True
+                    else:
+                        # Switching context back to another dog we've seen; treat as header switch
+                        current_dog = norm_name
+                        # Ensure key exists
+                        if current_dog not in csv_historical_data:
+                            csv_historical_data[current_dog] = []
+                        continue
+            else:
+                # History rows: blank name OR same normalized name as current without prefix
+                is_blank = (raw_name == "" or raw_name == '""')
+                same_dog_unprefixed = (
+                    current_dog is not None and norm_name == current_dog and not has_prefix
+                )
+                if current_dog and (is_blank or same_dog_unprefixed):
+                    is_history_row = True
+
+            if is_history_row and current_dog:
                 try:
                     historical_race = {
                         "date": row.get("DATE", ""),
                         "track": row.get("TRACK", ""),
                         "finish_position": (
                             int(row.get("PLC", 0))
-                            if str(row.get("PLC", "")).isdigit()
+                            if str(row.get("PLC", "")).strip().split()[0].isdigit()
                             else None
                         ),
                         "time": (
@@ -572,10 +732,9 @@ class PredictionPipelineV4:
                         ),
                     }
 
-                    # Only add if we have essential data
+                    # Only add if we have minimal essential data (position)
                     if historical_race["finish_position"] is not None:
                         csv_historical_data[current_dog].append(historical_race)
-
                 except (ValueError, TypeError) as e:
                     logger.debug(
                         f"Skipping malformed historical row for {current_dog}: {e}"

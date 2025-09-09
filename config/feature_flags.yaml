@@ -1,0 +1,6 @@
+# Feature flags for prediction and monitoring
+# These values can be overridden at runtime by environment variables with the same names.
+# ENABLE_PLACE_ODDS_INTEGRATION: when true, compute ev_place from live place odds (Top 3)
+# AUTO_DISABLE_PLACE_THRESHOLD: when >=1, consecutive anomaly limit that will flip ENABLE_PLACE_ODDS_INTEGRATION to false
+ENABLE_PLACE_ODDS_INTEGRATION: false
+AUTO_DISABLE_PLACE_THRESHOLD: 5

@@ -7,6 +7,14 @@ Purpose
 - Define a clear, source-aware data contract for integrating The Greyhound Recorder (TGR) data with existing histories.
 - Document feature flags controlling TGR usage in predictions.
 
+Default behavior
+- TGR is disabled by default. To enable TGR features in TemporalFeatureBuilder and OptimizedTemporalFeatureBuilder, set TGR_ENABLED=1 explicitly.
+- Other flags (e.g., ENABLE_RESULTS_SCRAPERS, PREDICTION_IMPORT_MODE) do not enable TGR on their own.
+- Example:
+```bash path=null start=null
+export TGR_ENABLED=1
+```
+
 Current state (observed)
 - Canonical history tables: dog_race_data (per-dog, per-race), race_metadata (race-level).
 - TGR-specific schema lives in gr_* tables (see sql/create_greyhound_recorder_tables.sql):

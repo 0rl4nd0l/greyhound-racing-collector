@@ -298,6 +298,21 @@ jobs:
           TESTING: true
           OPENAI_USE_LIVE: 1
 
+  js-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Node dependencies
+        run: |
+          npm ci || npm install
+      - name: Run Jest unit tests (JS)
+        run: |
+          npm test --silent
+
   # Headless Browser Tests Job
   browser-tests:
     runs-on: ubuntu-latest
