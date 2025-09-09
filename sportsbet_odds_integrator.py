@@ -189,6 +189,12 @@ class SportsbetOddsIntegrator:
         except sqlite3.OperationalError:
             # Column already exists; ignore
             pass
+        # Add topN column to live_odds if missing (for place markets)
+        try:
+            cursor.execute("ALTER TABLE live_odds ADD COLUMN topN INTEGER")
+        except sqlite3.OperationalError:
+            # Column may already exist
+            pass
 
         conn.commit()
         conn.close()
@@ -728,6 +734,98 @@ class SportsbetOddsIntegrator:
             print(f"⚠️  Error extracting races from DOM: {e}")
             return []
 
+    def persist_odds(self, race_info: Dict, odds_data: List[Dict], market_type: str = "win", topN: Optional[int] = None) -> None:
+        """Persist extracted odds to live_odds table.
+        odds_data entries should include keys: dog_clean_name (or dog_name), odds_decimal, box_number (optional).
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cur = conn.cursor()
+            race_id = race_info.get("race_id")
+            venue = race_info.get("venue")
+            race_date = race_info.get("race_date")
+            race_time = race_info.get("race_time")
+            for r in odds_data or []:
+                dog = r.get("dog_clean_name") or r.get("dog_name")
+                if not dog:
+                    continue
+                dog = str(dog).upper().strip()
+                odds = r.get("odds_decimal")
+                try:
+                    odds = float(odds)
+                except Exception:
+                    continue
+                box = r.get("box_number")
+                try:
+                    box = int(box) if box is not None else None
+                except Exception:
+                    box = None
+                cur.execute(
+                    """
+                    INSERT INTO live_odds (race_id, venue, race_date, race_time, dog_clean_name, box_number, odds_decimal, market_type, source, is_current, topN)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sportsbet', 1, ?)
+                    """,
+                    (race_id, venue, race_date, race_time, dog, box, odds, market_type, topN),
+                )
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"⚠️  Persist odds failed: {e}")
+
+    def _select_place_market(self) -> Optional[int]:
+        """Try to switch UI to the Place/Top 3 market.
+        Returns detected topN (e.g., 3) if place market indicated, else None.
+        """
+        By, WebDriverWait, EC, TimeoutException = self._selenium_primitives()
+        try:
+            # Try obvious buttons first
+            candidates = []
+            # XPath searches for button/tab elements containing text
+            xpaths = [
+                "//button[contains(translate(., 'PLACE', 'place'), 'place')]",
+                "//button[contains(., 'Top 3')]",
+                "//button[contains(., 'Top3')]",
+                "//*[@role='tab' and contains(., 'Place')]",
+                "//*[@role='tab' and contains(., 'Top 3')]",
+            ]
+            for xp in xpaths:
+                elems = self.driver.find_elements(By.XPATH, xp)
+                for el in elems:
+                    txt = (el.text or "").strip()
+                    candidates.append((el, txt))
+            # Fallback: scan generic buttons and tabs
+            if not candidates:
+                all_buttons = self.driver.find_elements(By.CSS_SELECTOR, "button, [role='tab']")
+                for el in all_buttons:
+                    try:
+                        txt = (el.text or "").strip()
+                        if any(k in txt.lower() for k in ["place", "top 3", "top3"]):
+                            candidates.append((el, txt))
+                    except Exception:
+                        continue
+            # Click the best candidate
+            topN = None
+            for el, txt in candidates:
+                try:
+                    self.driver.execute_script("arguments[0].scrollIntoView(true);", el)
+                    el.click()
+                    # Small wait for content to update
+                    _ = WebDriverWait(self.driver, 5).until(
+                        lambda d: True
+                    )
+                    t = (txt or "").lower()
+                    if "top 3" in t or "top3" in t:
+                        topN = 3
+                    elif "place" in t:
+                        # Assume Top 3 for greyhounds unless otherwise indicated
+                        topN = 3
+                    return topN
+                except Exception:
+                    continue
+        except Exception as e:
+            print(f"  ⚠️  Could not switch to Place market: {e}")
+        return None
+
     def get_race_odds_from_page(self, race_info: Dict) -> Dict:
         """Navigate to individual race page and extract live odds"""
         By, WebDriverWait, EC, TimeoutException = self._selenium_primitives()
@@ -802,7 +900,7 @@ class SportsbetOddsIntegrator:
                 print(f"  ✅ Extracted {len(odds_data)} live odds")
                 race_info["odds_data"] = odds_data
 
-                # Try to extract race number for better identification
+                # Try to extract race number for better identification BEFORE persisting
                 race_number = self.extract_race_number_from_page(race_info["venue"])
                 if race_number:
                     race_info["race_number"] = race_number
@@ -810,8 +908,14 @@ class SportsbetOddsIntegrator:
                     venue_slug = race_info.get(
                         "venue_slug", race_info["venue"].lower().replace(" ", "-")
                     )
+                    try:
+                        race_date_str = (
+                            race_info.get("start_datetime") or datetime.now()
+                        ).strftime('%Y%m%d')
+                    except Exception:
+                        race_date_str = datetime.now().strftime('%Y%m%d')
                     race_info["race_id"] = (
-                        f"{venue_slug}_r{race_number}_{race_info['start_datetime'].strftime('%Y%m%d')}"
+                        f"{venue_slug}_r{race_number}_{race_date_str}"
                     )
                     print(f"  📍 Updated race ID to: {race_info['race_id']}")
             else:
@@ -821,6 +925,7 @@ class SportsbetOddsIntegrator:
                 if race_number:
                     race_info["race_number"] = race_number
 
+            # NOTE: Do not persist here. Callers must persist exactly once via save_odds_to_database(race_info)
             return race_info
 
         except Exception as e:
@@ -2936,6 +3041,15 @@ class SportsbetOddsIntegrator:
                         dog_odds["odds_fractional"],
                     ),
                 )
+                # Record odds movement for history
+                try:
+                    self.track_odds_movement(
+                        race_info["race_id"],
+                        dog_odds["dog_clean_name"],
+                        float(dog_odds["odds_decimal"]),
+                    )
+                except Exception:
+                    pass
 
             conn.commit()
             print(
@@ -3167,7 +3281,7 @@ class SportsbetOddsIntegrator:
                     lo.timestamp,
                     rm.race_time,
                     rm.race_date,
-                    rm.url as sportsbet_url
+                    COALESCE(rm.sportsbet_url, rm.url) as sportsbet_url
                 FROM live_odds lo
                 LEFT JOIN race_metadata rm ON lo.race_id = rm.race_id
                 WHERE lo.is_current = TRUE 

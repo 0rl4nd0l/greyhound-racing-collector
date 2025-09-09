@@ -2006,15 +2006,10 @@ except Exception:
 
 # Upload configuration and logical upcoming directory (CSV fallback/upload)
 ALLOWED_EXTENSIONS = {"csv"}
-# Prefer UNPROCESSED_DIR at runtime; keep legacy UPCOMING_DIR during tests for compatibility
-try:
-    effective_upcoming_dir = (
-        UNPROCESSED_DIR if not app.config.get("TESTING") else UPCOMING_DIR
-    )
-except Exception:
-    effective_upcoming_dir = UNPROCESSED_DIR
-app.config["UPCOMING_DIR"] = effective_upcoming_dir
-app.config["UPLOAD_FOLDER"] = effective_upcoming_dir
+# Use the canonical upcoming races directory for UI/API enumeration in all modes
+# (UNPROCESSED_DIR remains the lane for historical form guides)
+app.config["UPCOMING_DIR"] = UPCOMING_DIR
+app.config["UPLOAD_FOLDER"] = UPCOMING_DIR
 # Ensure environment variable for UpcomingRaceBrowser default directory
 try:
     os.environ.setdefault("UNPROCESSED_DIR", UNPROCESSED_DIR)
@@ -4040,23 +4035,14 @@ def ingest_csv_route():
                     200,
                 )
             except Exception as e:
-                # In test mode, ensure a clean error log to avoid legacy tracebacks breaking assertions
-                try:
-                    if app.config.get("TESTING"):
-                        Path("logs").mkdir(parents=True, exist_ok=True)
-                        with open("logs/errors.log", "w", encoding="utf-8") as lf:
-                            lf.write("")
-                except Exception:
-                    pass
-                # Log structured error without stack trace and emit UI event
+                # Log structured error via centralized logger to ensure sanitization
                 try:
                     logger.log_error(
                         "schema_mismatch: Could not parse file",
-                        error=None,
                         context={
                             "endpoint": "/api/ingest_csv",
                             "filename": filename,
-                            "reason": str(e),
+                            "error_code": "schema_mismatch",
                         },
                     )
                 except Exception:
@@ -5311,7 +5297,8 @@ def api_upcoming_races():
         per_page = min(request.args.get("per_page", 50, type=int), 100)  # Max 100 per page
         source = (request.args.get("source", "live") or "live").lower()  # 'live' or 'csv'
         refresh = (request.args.get("refresh", "false") or "false").lower() in ("1", "true", "yes")
-        strict_live = (request.args.get("strict_live", "1") or "1").lower() in ("1", "true", "yes")
+        # Default to non-strict so clients who forget strict_live don't get blocked; UI can still set strict when needed
+        strict_live = (request.args.get("strict_live", "0") or "0").lower() in ("1", "true", "yes")
 
         testing = bool(app.config.get("TESTING"))
         can_live = ENABLE_LIVE_SCRAPING and ENABLE_RESULTS_SCRAPERS and not testing
@@ -13641,6 +13628,14 @@ def api_predict_single_race_enhanced():
             except Exception:
                 include_synthetic = is_testing_mode()
             synthetic_payload = None
+            # Only allow synthetic fallbacks in explicit TESTING mode or when ALLOW_SYNTHETIC_FALLBACK=1 is set AND a temporal leakage error is detected
+            try:
+                _allow_env = str(os.environ.get("ALLOW_SYNTHETIC_FALLBACK", "0")).lower() in ("1", "true", "yes")
+            except Exception:
+                _allow_env = False
+            include_synthetic = bool(app.config.get("TESTING")) or (
+                _allow_env and is_temporal_leakage_error(prediction_result.get("error"))
+            )
             if include_synthetic:
                 try:
                     preds = synthetic_predictions_from_csv(race_file_path)
@@ -17795,17 +17790,22 @@ def api_upcoming_races_stream():
     @copy_current_request_context
     def generate_live_stream():
         try:
+            # Emit an immediate status event before any heavy imports/initialization
+            yield f"data: {json.dumps({'type': 'status', 'message': 'Initializing live upcoming fetcher...', 'progress': 0, 'source': 'live', 'requested_source': requested_source, 'fallback_reason': fallback_reason})}\n\n"
+
             from upcoming_race_browser import UpcomingRaceBrowser
 
             # Ensure browser uses the same directories as the Flask app
             try:
                 os.environ["UPCOMING_RACES_DIR"] = UPCOMING_DIR
                 os.environ.setdefault("UNPROCESSED_DIR", UNPROCESSED_DIR)
+                # For live SSE, default to fast non-blocking enhancements unless explicitly overridden
+                os.environ.setdefault("LIVE_ENHANCE_LIMIT", "0")
             except Exception:
                 pass
             browser = UpcomingRaceBrowser()
 
-            # Initial status
+            # Initial status after the browser is ready
             yield f"data: {json.dumps({'type': 'status', 'message': f'Starting to fetch races for next {days_ahead} days...', 'progress': 0, 'source': 'live', 'requested_source': requested_source, 'fallback_reason': fallback_reason})}\n\n"
 
             today = datetime.now().date()
@@ -18004,11 +18004,12 @@ def api_upcoming_races_stream():
     generator = generate_live_stream if chosen_source == "live" else generate_csv_stream
 
     return Response(
-        generator(),
+        stream_with_context(generator()),
         mimetype="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
             "Access-Control-Allow-Origin": "*",
         },
     )
@@ -21643,21 +21644,31 @@ def api_enhanced_predictions_with_odds():
                         (race_id,),
                     )
 
-                    live_odds = dict(cursor.fetchall())
+                    rows = cursor.fetchall()
                     conn.close()
+
+                    def _norm_key(name: str) -> str:
+                        try:
+                            import re as _re
+                            s = str(name or "").upper().strip()
+                            # Remove non-word, non-space characters; keep spaces to match DB convention
+                            s = _re.sub(r"[^\w\s]", "", s)
+                            return s
+                        except Exception:
+                            return str(name or "").upper().strip()
+
+                    live_odds = { _norm_key(k): v for (k, v) in rows }
 
                     # Enhance predictions with odds and value analysis
                     enhanced_dogs = []
                     for dog in prediction_data.get("predictions", []):
-                        dog_clean_name = (
-                            dog.get("dog_name", "").upper().replace(" ", "")
-                        )
+                        dog_key = _norm_key(dog.get("dog_name", ""))
                         predicted_prob = dog.get("prediction_score", 0)
 
                         enhanced_dog = dog.copy()
 
-                        if dog_clean_name in live_odds:
-                            market_odds = live_odds[dog_clean_name]
+                        if dog_key in live_odds:
+                            market_odds = live_odds[dog_key]
                             implied_prob = 1.0 / market_odds if market_odds > 0 else 0
 
                             # Calculate value
