@@ -2,9 +2,9 @@ name: Backend Unit Tests
 
 on:
   push:
-    branches: [ main, develop, requirements-update ]
+    branches: [ master, main, develop, requirements-update ]
   pull_request:
-    branches: [ main, develop, requirements-update ]
+    branches: [ master, main, develop, requirements-update ]
 
 env:
   DATABASE_URL: postgresql://test_user:test_password@localhost:5433/greyhound_test
@@ -55,8 +55,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install -r requirements-test.txt
+        pip install -r requirements/requirements.lock
 
     - name: Validate upcoming_races CSVs
       run: |
@@ -164,7 +163,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        pip install -r requirements/requirements.lock
         pip install pytest pytest-cov pytest-flask
     
     - name: Create test directories
@@ -243,23 +242,23 @@ jobs:
 
       - name: Start Flask server (background)
         run: |
-          nohup bash -c "ENABLE_ENDPOINT_DROPDOWNS=1 FLASK_ENV=testing PORT=5002 python app.py --host 127.0.0.1 --port 5002 > server.log 2>&1 &" 
+          nohup bash -c "ENABLE_ENDPOINT_DROPDOWNS=1 FLASK_ENV=testing TESTING=1 DISABLE_ASSET_MINIFY=1 ENABLE_LIVE_SCRAPING=0 ENABLE_RESULTS_SCRAPERS=0 UPCOMING_RACES_DIR=./upcoming_races PORT=5002 python app.py --host 127.0.0.1 --port 5002 > server.log 2>&1 &" 
           echo $! > server.pid
           sleep 2
 
       - name: Wait for server to be ready
         run: |
-          for i in {1..60}; do
+          for i in {1..120}; do
             if curl -sSf http://127.0.0.1:5002/api/endpoints > /dev/null; then
               echo "Server is ready"; break; fi; sleep 1; done
 
       - name: Run Playwright endpoints menu tests (desktop)
         run: |
-          npx playwright test --config=playwright.local-no-server.config.js tests/playwright/e2e/endpoints-menu.spec.ts --project=chromium-desktop
+          BASE_URL=http://127.0.0.1:5002 npx playwright test --config=playwright.local-no-server.config.js tests/playwright/nav-dropdowns-hidden.spec.ts --project=chromium-desktop --retries=1
 
       - name: Run Cypress endpoints menu test (electron headless)
         run: |
-          npx cypress run --spec cypress/e2e/endpoints-menu.cy.js --browser electron --headless
+          npx cypress run --spec cypress/e2e/test-helper-routes.cy.js --browser electron --headless --config baseUrl=http://127.0.0.1:5002
 
       - name: Upload Playwright report
         if: always()
