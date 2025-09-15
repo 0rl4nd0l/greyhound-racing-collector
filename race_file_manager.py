@@ -31,7 +31,7 @@ class RaceFileManager:
         self.processed_dir = self.base_dir / "form_guides" / "processed"
 
         # Create directories
-        for dir_path in [self.historical_dir, self.upcoming_dir, self.processed_dir]:
+        for dir_path in [self.unprocessed_dir, self.historical_dir, self.upcoming_dir, self.processed_dir]:
             dir_path.mkdir(parents=True, exist_ok=True)
 
     def extract_race_date(self, filename):

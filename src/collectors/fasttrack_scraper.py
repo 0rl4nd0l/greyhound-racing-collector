@@ -145,7 +145,7 @@ class FastTrackScraper:
             A BeautifulSoup object of the page content, or None on error.
         """
         # Generate cache filename based on URL hash
-        url_hash = hashlib.md5(url.encode()).hexdigest()
+        url_hash = hashlib.sha256(url.encode()).hexdigest()
         cache_file = self.cache_dir / f"{url_hash}.html"
 
         # Check cache first if enabled

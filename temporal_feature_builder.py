@@ -936,9 +936,34 @@ def create_temporal_assertion_hook():
                     except ValueError:
                         continue
 
+                # Determine whether to enforce future-date blocking
                 enforce_future_block = os.getenv(
                     "ENFORCE_FUTURE_BLOCK", "1"
                 ).lower() not in ("0", "false", "no")
+
+                # If feature flags or env explicitly allow future-dated inference, override enforcement
+                try:
+                    # Env override
+                    allow_future_env = os.getenv("ALLOW_FUTURE_RACE_DATES", "").strip().lower() in (
+                        "1",
+                        "true",
+                        "yes",
+                        "on",
+                    )
+                    # Feature flags override (lazy import to avoid hard dep during module import)
+                    allow_future_flag = False
+                    try:
+                        from utils.feature_flags import load_flags as _load_flags  # type: ignore
+
+                        _flags, _ = _load_flags()
+                        allow_future_flag = bool(_flags.get("allow_future_race_dates"))
+                    except Exception:
+                        allow_future_flag = False
+                    if allow_future_env or allow_future_flag:
+                        enforce_future_block = False
+                except Exception:
+                    pass
+
                 if race_date and race_date > current_date:
                     if enforce_future_block:
                         raise AssertionError(
@@ -946,7 +971,7 @@ def create_temporal_assertion_hook():
                         )
                     else:
                         logger.info(
-                            f"Skipping future-date temporal assertion for race {race_id} (ENFORCE_FUTURE_BLOCK=0)."
+                            f"Skipping future-date temporal assertion for race {race_id} (ALLOW_FUTURE_RACE_DATES enabled)."
                         )
             except AssertionError:
                 # Re-raise AssertionError (temporal leakage detection)

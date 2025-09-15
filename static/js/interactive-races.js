@@ -233,6 +233,89 @@ function updateTgrStatusBadge() {
         badge.className = 'badge ms-2 ' + (enabled ? 'bg-success' : 'bg-secondary');
     } catch (e) {}
 }
+
+// Optimizer helpers: similar to TGR, allow UI/localStorage/cookie control
+function getOptimizerEnabledFromToggle() {
+    try {
+        const el = document.getElementById('optimizer-toggle');
+        if (el) return !!el.checked;
+    } catch (e) {}
+    return null;
+}
+function getOptimizerEnabledFromLocalStorage() {
+    try {
+        const v = String(localStorage.getItem('optimizer_enabled') || '').trim();
+        if (!v) return null;
+        return v === '1' || v.toLowerCase() === 'true';
+    } catch (e) { return null; }
+}
+function getOptimizerEnabledFromCookie() {
+    try {
+        const m = document.cookie.match(/(?:^|; )optimizer_enabled=([^;]+)/);
+        if (m) {
+            const v = decodeURIComponent(m[1]);
+            return v === '1' || String(v).toLowerCase() === 'true';
+        }
+    } catch (e) {}
+    return null;
+}
+function getOptimizerEnabled() {
+    const a = getOptimizerEnabledFromToggle();
+    if (a !== null) return a;
+    const b = getOptimizerEnabledFromLocalStorage();
+    if (b !== null) return b;
+    const c = getOptimizerEnabledFromCookie();
+    if (c !== null) return c;
+    return false;
+}
+function setOptimizerCookie(enabled) {
+    try {
+        const val = enabled ? '1' : '0';
+        document.cookie = `optimizer_enabled=${val}; path=/; max-age=${60*60*24*365}; SameSite=Lax`;
+    } catch (e) {}
+}
+function syncOptimizerCookieFromState() {
+    try { setOptimizerCookie(getOptimizerEnabled()); } catch (e) {}
+}
+
+// Optimizer status badge (UI toggle state)
+function updateOptimizerStatusBadge() {
+    try {
+        const container = document.getElementById('prediction-results-container');
+        if (!container) return;
+        const header = container.querySelector('.card-header');
+        if (!header) return;
+        let badge = header.querySelector('#optimizer-badge');
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.id = 'optimizer-badge';
+            badge.className = 'badge ms-2';
+            badge.title = 'UI toggle overrides server defaults for next predictions';
+            header.appendChild(badge);
+        }
+        const enabled = !!getOptimizerEnabled();
+        badge.textContent = enabled ? 'Optimizer: ON' : 'Optimizer: OFF';
+        badge.className = 'badge ms-2 ' + (enabled ? 'bg-success' : 'bg-secondary');
+    } catch (e) {}
+}
+
+function updateCardChips() {
+    try {
+        const optEnabled = !!getOptimizerEnabled();
+        const tgrEnabled = !!getTgrEnabled();
+        document.querySelectorAll('.optimizer-chip').forEach(el => {
+            el.textContent = optEnabled ? 'Optimizer: ON' : 'Optimizer: OFF';
+            el.className = 'badge ms-2 optimizer-chip ' + (optEnabled ? 'bg-success' : 'bg-secondary');
+            el.title = 'UI toggle overrides server defaults for next predictions';
+        });
+        document.querySelectorAll('.tgr-chip').forEach(el => {
+            el.textContent = tgrEnabled ? 'TGR: Enabled' : 'TGR: Disabled';
+            el.className = 'badge ms-2 tgr-chip ' + (tgrEnabled ? 'bg-success' : 'bg-secondary');
+            el.title = 'UI toggle overrides server defaults for next predictions';
+        });
+    } catch (e) {}
+}
+
 // Model health badge (Place EV state)
 async function updateModelHealthBadge() {
     try {
@@ -324,12 +407,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const state = {
         races: [],
         currentPage: 1,
-        racesPerPage: 10,
+        // Default to showing more rows; allow override via ?per_page=
+        racesPerPage: Number(getQueryParam('per_page') || '25'),
         searchQuery: '',
         sortOrder: 'race_date|desc',
         filters: {},
         isLoading: false,
-        viewMode: 'upcoming', // 'regular' or 'upcoming'
+        // Default to Upcoming; allow ?mode=regular to switch
+        viewMode: (getQueryParam('mode') || 'upcoming'), // 'regular' or 'upcoming'
+        // Include predicted races in Upcoming by default (can be overridden with ?include_predicted=0)
+        includePredicted: (function () {
+            const p = (getQueryParam('include_predicted') || '1').toString().toLowerCase();
+            return p === '1' || p === 'true' || p === 'yes';
+        })(),
         predictedList: [],
         predictedVenues: [],
         predictedFilters: {
@@ -443,6 +533,33 @@ document.addEventListener('DOMContentLoaded', () => {
             syncTgrCookieFromState();
             try { await updateModelHealthBadge(); } catch (e) {}
             try { scheduleModelHealthAutoRefresh(60000); } catch (e) {}
+            ensureIncludePredictedToggle();
+            // Add a global optimizer/TGR toggle row near the include-predicted control for pre-run control
+            try {
+                const host = document.getElementById('include-predicted-toggle') || document.getElementById('view-toggle-button') || document.getElementById('search-races');
+                if (host) {
+                    const parent = host.parentNode || host;
+                    if (!document.getElementById('optimizer-toggle')) {
+                        const optWrap = document.createElement('label');
+                        optWrap.style.marginLeft = '12px';
+                        optWrap.className = 'form-check form-switch';
+                        optWrap.title = 'UI toggle overrides server defaults for next predictions';
+                        optWrap.innerHTML = `
+                            <input class="form-check-input" type="checkbox" id="optimizer-toggle"> <span class="ms-1">Optimizer</span>`;
+                        parent.insertBefore(optWrap, host.nextSibling);
+                    }
+                    if (!document.getElementById('tgr-features-toggle')) {
+                        const tgrWrap = document.createElement('label');
+                        tgrWrap.style.marginLeft = '12px';
+                        tgrWrap.className = 'form-check form-switch';
+                        tgrWrap.title = 'UI toggle overrides server defaults for next predictions';
+                        tgrWrap.innerHTML = `
+                            <input class="form-check-input" type="checkbox" id="tgr-features-toggle"> <span class="ms-1">TGR</span>`;
+                        const ref = document.getElementById('optimizer-toggle') || host;
+                        parent.insertBefore(tgrWrap, ref.nextSibling);
+                    }
+                }
+            } catch (e) { console.warn('Failed to insert global optimizer/TGR toggles', e); }
             await loadRaces();
             setupEventListeners();
             renderRaces();
@@ -947,7 +1064,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Predicting...';
                 const prResp = await fetchWithErrorHandling('/api/predict_single_race_enhanced', {
                     method: 'POST',
-                    body: JSON.stringify({ race_filename: dlData.filename, tgr_enabled: getTgrEnabled() })
+body: JSON.stringify({ race_filename: dlData.filename, tgr_enabled: getTgrEnabled(), optimizer_enabled: getOptimizerEnabled() })
                 });
                 const prData = await prResp.json();
                 if (!prData || prData.success !== true) {
@@ -970,7 +1087,7 @@ document.addEventListener('DOMContentLoaded', () => {
             button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Working...';
             const resp = await fetchWithErrorHandling('/api/download_and_predict_race', {
                 method: 'POST',
-                body: JSON.stringify({ venue, race_number: String(raceNumber).trim(), tgr_enabled: getTgrEnabled() })
+body: JSON.stringify({ venue, race_number: String(raceNumber).trim(), tgr_enabled: getTgrEnabled(), optimizer_enabled: getOptimizerEnabled() })
             });
             const data = await resp.json();
             if (!data || data.success !== true) {
@@ -1168,7 +1285,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         const fn = (r.filename || '').trim();
                         const rn = (r.race_name || '').trim();
                         // Only skip predicted races if we actually have a non-empty predicted set from disk
-                        const hasPredicted = (
+                        const hasPredicted = !state.includePredicted && (
                             (predictedFilenameSet && typeof predictedFilenameSet.size === 'number' && predictedFilenameSet.size > 0) ||
                             (predictedNameSet && typeof predictedNameSet.size === 'number' && predictedNameSet.size > 0)
                         );
@@ -1233,7 +1350,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 total = data.total_found || total;
                                 const fn = (r.filename || '').trim();
                                 const rn = (r.race_name || '').trim();
-                                const hasPredicted = (
+                                const hasPredicted = !state.includePredicted && (
                                     (predictedFilenameSet && typeof predictedFilenameSet.size === 'number' && predictedFilenameSet.size > 0) ||
                                     (predictedNameSet && typeof predictedNameSet.size === 'number' && predictedNameSet.size > 0)
                                 );
@@ -1282,6 +1399,48 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch {}
     }
 
+    // Ensure a toggle exists to include/exclude predicted races in Upcoming
+    function ensureIncludePredictedToggle() {
+        try {
+            let host = document.getElementById('view-toggle-button') || document.getElementById('search-races');
+            if (!host) return;
+            if (document.getElementById('include-predicted-toggle')) return;
+
+            const wrapper = document.createElement('label');
+            wrapper.id = 'include-predicted-toggle';
+            wrapper.style.marginLeft = '12px';
+            wrapper.style.fontSize = '0.9rem';
+            wrapper.title = 'Show races that have already been predicted';
+
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.checked = !!state.includePredicted;
+            cb.style.marginRight = '6px';
+
+            const text = document.createElement('span');
+            text.textContent = 'Show predicted';
+
+            wrapper.appendChild(cb);
+            wrapper.appendChild(text);
+
+            const parent = host.parentNode || host;
+            parent.insertBefore(wrapper, host.nextSibling);
+
+            cb.addEventListener('change', async () => {
+                try {
+                    state.includePredicted = !!cb.checked;
+                    closeUpcomingStream();
+                    await loadRaces();
+                    renderRaces();
+                } catch (e) {
+                    console.warn('includePredicted toggle failed', e);
+                }
+            });
+        } catch (e) {
+            console.warn('Failed to insert include-predicted toggle', e);
+        }
+    }
+
     // Null-safe venue helper
     const safeVenue = v => (v ?? '');
 
@@ -1299,7 +1458,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const query = state.searchQuery.toLowerCase();
             filtered = filtered.filter(race => 
                 (race.race_name || '').toLowerCase().includes(query) || 
-                safeVenue(race.venue).toLowerCase().includes(query)
+                safeVenue(race.venue).toLowerCase().includes(query) ||
+                String(race.venue_name || '').toLowerCase().includes(query)
             );
         }
 
@@ -1407,9 +1567,9 @@ document.addEventListener('DOMContentLoaded', () => {
             button.disabled = true;
             button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running All Predictions...';
             
-            const response = await fetchWithErrorHandling('/api/predict_all_upcoming_races_enhanced', { 
+const response = await fetchWithErrorHandling('/api/predict_all_upcoming_races_enhanced', { 
                 method: 'POST',
-                body: JSON.stringify({ tgr_enabled: getTgrEnabled() })
+                body: JSON.stringify({ tgr_enabled: getTgrEnabled(), optimizer_enabled: getOptimizerEnabled() })
             });
             
             if (!response.ok) {
@@ -1483,8 +1643,10 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 requestBody.race_id = raceId;
             }
-            // Include TGR toggle state
+// Include TGR toggle state
             requestBody.tgr_enabled = getTgrEnabled();
+            // Include optimizer toggle state
+            requestBody.optimizer_enabled = getOptimizerEnabled();
             
             const response = await fetchWithErrorHandling('/api/predict_single_race_enhanced', {
                 method: 'POST',
@@ -1586,8 +1748,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     } else {
                         requestBody.race_id = raceId;
                     }
-                    // Include TGR toggle state
+// Include TGR toggle state
                     requestBody.tgr_enabled = getTgrEnabled();
+                    // Include optimizer toggle state
+                    requestBody.optimizer_enabled = getOptimizerEnabled();
                     
                     const response = await fetchWithErrorHandling('/api/predict_single_race_enhanced', {
                         method: 'POST',
@@ -1651,6 +1815,11 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('predictionResultsBody element not found');
             return;
         }
+
+        // Update status badges (Optimizer, TGR, Model health)
+        try { updateOptimizerStatusBadge(); } catch {}
+        try { updateTgrStatusBadge(); } catch {}
+        try { updateModelHealthBadge(); } catch {}
         
         if (!Array.isArray(results) || results.length === 0) {
             elements.predictionResultsBody.innerHTML = `
@@ -1681,6 +1850,25 @@ document.addEventListener('DOMContentLoaded', () => {
                             <option value="predicted_rank">Predicted Rank</option>
                         </select>
                     </div>`;
+                // Append toggles only if they are not already present elsewhere on the page
+                if (!document.getElementById('optimizer-toggle')) {
+                    const optWrap = document.createElement('div');
+                    optWrap.className = 'form-check form-switch ms-2';
+                    optWrap.title = 'UI toggle overrides server defaults for next predictions';
+                    optWrap.innerHTML = `
+                        <input class="form-check-input" type="checkbox" id="optimizer-toggle">
+                        <label class="form-check-label" for="optimizer-toggle">Optimizer</label>`;
+                    toolbar.appendChild(optWrap);
+                }
+                if (!document.getElementById('tgr-features-toggle')) {
+                    const tgrWrap = document.createElement('div');
+                    tgrWrap.className = 'form-check form-switch ms-2';
+                    tgrWrap.title = 'UI toggle overrides server defaults for next predictions';
+                    tgrWrap.innerHTML = `
+                        <input class="form-check-input" type="checkbox" id="tgr-features-toggle">
+                        <label class="form-check-label" for="tgr-features-toggle">TGR</label>`;
+                    toolbar.appendChild(tgrWrap);
+                }
                 elements.predictionResultsBody.parentElement.insertBefore(toolbar, elements.predictionResultsBody);
                 const orderingSelect = document.getElementById('ordering-select');
                 if (orderingSelect) {
@@ -1711,9 +1899,45 @@ document.addEventListener('DOMContentLoaded', () => {
                         orderingSelect._bound = true;
                     }
                 }
+                // Initialize optimizer toggle from state and bind change handler
+                const optToggle = document.getElementById('optimizer-toggle');
+                if (optToggle) {
+                    try { optToggle.checked = !!getOptimizerEnabled(); } catch {}
+                    if (!optToggle._bound) {
+                        optToggle.addEventListener('change', () => {
+                            try {
+                                const en = !!optToggle.checked;
+                                localStorage.setItem('optimizer_enabled', en ? '1' : '0');
+                                syncOptimizerCookieFromState();
+                                try { updateOptimizerStatusBadge(); } catch {}
+                                try { updateCardChips(); } catch {}
+                                showToast(`Optimizer ${en ? 'enabled' : 'disabled'} (applies to next predictions)`, 'info');
+                            } catch (e) { /* ignore */ }
+                        });
+                        optToggle._bound = true;
+                    }
+                }
+                // Initialize TGR toggle from state and bind change handler
+                const tgrToggle = document.getElementById('tgr-features-toggle');
+                if (tgrToggle) {
+                    try { tgrToggle.checked = !!getTgrEnabled(); } catch {}
+                    if (!tgrToggle._bound) {
+                        tgrToggle.addEventListener('change', () => {
+                            try {
+                                const en = !!tgrToggle.checked;
+                                localStorage.setItem('tgr_enabled', en ? '1' : '0');
+                                syncTgrCookieFromState();
+                                try { updateTgrStatusBadge(); } catch {}
+                                try { updateCardChips(); } catch {}
+                                showToast(`TGR ${en ? 'enabled' : 'disabled'} (applies to next predictions)`, 'info');
+                            } catch (e) { /* ignore */ }
+                        });
+                        tgrToggle._bound = true;
+                    }
+                }
             } else if (toolbar) {
                 const orderingSelect = document.getElementById('ordering-select');
-                if (orderingSelect) orderingSelect.value = getStoredOrderingMode() || (window.predOrderingMode || 'predicted_rank');
+if (orderingSelect) orderingSelect.value = getStoredOrderingMode() || (window.predOrderingMode || 'win_prob');
             }
         } catch (e) { console.warn('Ordering toolbar init failed', e); }
         
@@ -1744,7 +1968,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (success && predictions && predictions.length > 0) {
                 const sortedPreds = Array.isArray(predictions)
-                    ? [...predictions].sort((a, b) => Number(b.win_prob || b.normalized_win_probability || b.final_score || b.prediction_score || b.win_probability || b.confidence || 0) - Number(a.win_prob || a.normalized_win_probability || a.final_score || a.prediction_score || a.win_probability || a.confidence || 0))
+? [...predictions].sort((a, b) => Number(b.win_prob || b.win_prob_norm || b.normalized_win_probability || b.final_score || b.prediction_score || b.win_probability || b.confidence || 0) - Number(a.win_prob || a.win_prob_norm || a.normalized_win_probability || a.final_score || a.prediction_score || a.win_probability || a.confidence || 0))
                     : [];
                 const topPick = result.top_pick || (sortedPreds.length ? sortedPreds[0] : (predictions ? predictions[0] : null));
                 const analyzedDogs = predictions.length;
@@ -2738,7 +2962,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let detailsHTML = '<div class="row">';
             const sortedPredsFallback2 = sortPreds(dedupePreds(detailResult.predictions), window.predOrderingMode || 'predicted_rank');
             Array.from(sortedPredsFallback2).forEach((prediction, idx) => {
-                const winProb = Number(prediction.win_prob || prediction.normalized_win_probability || prediction.final_score || prediction.prediction_score || prediction.win_probability || prediction.confidence || 0);
+const winProb = Number(prediction.win_prob || prediction.win_prob_norm || prediction.normalized_win_probability || prediction.final_score || prediction.prediction_score || prediction.win_probability || prediction.confidence || 0);
                 const dogName = prediction.dog_name || prediction.name || 'Unknown';
                 const boxNumber = prediction.box_number || prediction.box || 'N/A';
                 detailsHTML += `
@@ -3003,8 +3227,10 @@ document.addEventListener('DOMContentLoaded', function() {
             validRunners.sort((a,b) => (a.predicted_rank || 99) - (b.predicted_rank || 99));
 
             const runnersHtml = validRunners.map(r => {
-                const winProb = Math.max(0, Math.min(1, Number(r.win_probability || r.confidence || 0)));
-                const placeProb = Math.max(0, Math.min(1, Number(r.place_probability || (winProb * 1.8 > 1 ? 1 : winProb * 1.8))));
+                const winProb = Math.max(0, Math.min(1, Number(r.win_prob || r.win_probability || r.final_score || r.prediction_score || r.confidence || 0)));
+                const placeRaw = (r.place_prob != null ? r.place_prob : (r.place_prob_norm != null ? r.place_prob_norm : r.place_probability));
+                const placeComputed = (placeRaw != null ? Number(placeRaw) : (winProb + 0.5 * (1 - winProb)));
+                const placeProb = Math.max(0, Math.min(1, placeComputed));
                 const odds = r.odds || r.odds_decimal || '';
                 return `
                     <li class="runner-entry">
@@ -3019,11 +3245,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     </li>`;
             }).join('');
 
+            const optChip = getOptimizerEnabled() ? '<span class="badge ms-2 bg-success optimizer-chip">Optimizer: ON</span>' : '<span class="badge ms-2 bg-secondary optimizer-chip">Optimizer: OFF</span>';
+            const tgrChip = getTgrEnabled() ? '<span class="badge ms-2 bg-success tgr-chip">TGR: Enabled</span>' : '<span class="badge ms-2 bg-secondary tgr-chip">TGR: Disabled</span>';
             card.innerHTML = `
                 <div class="race-card-header">
                     <div>
                         <div class="race-title">${raceTitle}</div>
-                        <div class="race-meta">${meta}</div>
+                        <div class="race-meta">${meta} ${optChip} ${tgrChip}</div>
                     </div>
                     <button class="btn-expand" aria-label="Toggle details">Details</button>
                 </div>

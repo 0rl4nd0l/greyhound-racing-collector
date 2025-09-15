@@ -154,6 +154,8 @@ nav.navbar.navbar-dark.bg-primary {
 /* Improve outline button and status label contrast */
 .text-info { color: #055160 !important; }
 .text-warning { color: #664d03 !important; }
+/* Ensure success text meets contrast on light backgrounds */
+.text-success { color: #0f5132 !important; }
 .btn-outline-info, .btn-outline-info > strong { color: #055160 !important; border-color: #055160 !important; }
 .btn-outline-warning, .btn-outline-warning > strong { color: #664d03 !important; border-color: #664d03 !important; }
 /* Improve disabled outline secondary on white background (higher specificity) */
@@ -165,6 +167,83 @@ nav.navbar.navbar-dark.bg-primary {
 /* Improve badge bg-light text-* contrast on light background */
 .badge.bg-light.text-success { color: #0a684d !important; }
 .badge.bg-light.text-secondary { color: #495057 !important; }
+
+/* High-contrast adjustments for dark theme */
+[data-theme="dark"] .text-muted { color: #ced4da !important; }
+[data-theme="dark"] pre, [data-theme="dark"] code { color: #f1f3f5; background-color: #121212; }
+
+/* Dark surface readability (cards like "Last action", metric tiles) */
+.card.bg-dark, .bg-dark, .card.bg-secondary, .bg-secondary, .card.bg-black, .bg-black {
+  color: #f8f9fa !important;
+}
+.card.bg-dark .card-header, .bg-dark .card-header,
+.card.bg-dark .card-body, .bg-dark .card-body { color: #f8f9fa !important; }
+/* Elevate common subdued text colors to pass WCAG on dark surfaces */
+.card.bg-dark .text-muted, .bg-dark .text-muted,
+.card.bg-secondary .text-muted, .bg-secondary .text-muted { color: #e9ecef !important; opacity: 1 !important; }
+/* Ensure metric labels are readable on dark cards */
+.card.bg-dark .metric-label, .bg-dark .metric-label { color: #e9ecef !important; opacity: 1 !important; }
+.card.bg-dark a, .bg-dark a { color: #8ab4f8 !important; }
+.card.bg-dark .text-white-50, .bg-dark .text-white-50 { color: #f8f9fa !important; opacity: 1 !important; }
+.card.bg-dark small, .bg-dark small, .card.bg-dark .small, .bg-dark .small { color: #f1f3f5 !important; }
+.card.bg-dark a, .bg-dark a { color: #8ab4f8 !important; }
+.card.bg-dark pre, .bg-dark pre, .card.bg-dark code, .bg-dark code { color: #f8f9fa !important; background-color: transparent !important; }
+.card.bg-dark .badge, .bg-dark .badge { filter: brightness(1.05); }
+.card.bg-dark .border, .bg-dark .border { border-color: rgba(255,255,255,0.25) !important; }
+
+/* Odds dashboard floating controls */
+.sb-controls {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1030;
+  background: #ffffff;
+  color: #212529;
+  border: 1px solid rgba(0,0,0,0.12);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  border-radius: 12px;
+  padding: 12px;
+  max-width: 360px;
+}
+[data-theme="dark"] .sb-controls {
+  background: #2b2b2b;
+  color: #f1f3f5;
+  border-color: rgba(255,255,255,0.12);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+}
+.sb-controls .sb-header {
+  display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;
+}
+.sb-controls .sb-title { font-weight: 700; font-size: 14px; }
+.sb-controls .sb-badge.badge { font-size: 11px; padding: 4px 8px; }
+.sb-controls .sb-badge.success { background:#0f5132; color:#fff; }
+.sb-controls .sb-badge.warning { background:#ffc107; color:#212529; }
+.sb-controls .sb-badge.danger { background:#dc3545; color:#fff; }
+
+.sb-controls .sb-actions { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+.sb-controls .sb-metrics { display:grid; grid-template-columns: repeat(2,1fr); gap:8px; margin-bottom:8px; }
+.sb-controls .sb-metric-value { font-weight:800; font-size:18px; }
+.sb-controls .sb-metric-label { font-size:11px; color:#495057; opacity:1; }
+.sb-controls .sb-options { display:flex; gap:10px; align-items:center; justify-content:space-between; margin-bottom:6px; font-size:12px; }
+.sb-controls .sb-out { color:#495057; }
+[data-theme="dark"] .sb-controls .sb-out { color:#dee2e6; }
+.sb-controls a { color:#084298; text-decoration: underline; }
+.sb-controls a:hover { text-decoration: underline; filter: brightness(1.05); }
+/* Dark theme: higher-contrast link color inside controls panel */
+[data-theme="dark"] .sb-controls a { color:#8ab4f8; }
+
+/* Light mode: ensure action buttons are filled with white text for strong contrast */
+:root:not([data-theme="dark"]) .sb-controls .btn-primary { color:#fff !important; background-color:#0a3d8f; border-color:#0a3d8f; }
+:root:not([data-theme="dark"]) .sb-controls .btn-outline-secondary { background-color:#6c757d; color:#fff !important; border-color:#6c757d; }
+:root:not([data-theme="dark"]) .sb-controls .btn-outline-secondary:hover { background-color:#5c636a; border-color:#565e64; }
+:root:not([data-theme="dark"]) .sb-controls .btn-outline-dark { background-color:#212529; color:#fff !important; border-color:#212529; }
+:root:not([data-theme="dark"]) .sb-controls .btn-outline-dark:hover { background-color:#1c1f23; border-color:#1a1e21; }
+/* Keep disabled buttons fully opaque for contrast */
+.sb-controls .btn:disabled, .sb-controls .btn[disabled] { opacity: 1 !important; }
+
+/* Extra-strong contrast helper for injected buttons */
+.sb-controls .btn-contrast { color:#fff !important; text-shadow: 0 1px 0 rgba(0,0,0,0.25); }
+.sb-controls .btn-contrast:focus { outline: 2px solid #ffffff; outline-offset: 2px; }
 
 /* Endpoints menu accessibility improvements */
 .endpoints-menu label { color: #ffffff !important; }

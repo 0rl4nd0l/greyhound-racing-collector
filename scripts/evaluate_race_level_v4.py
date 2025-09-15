@@ -62,6 +62,8 @@ def parse_args():
         default=None,
         help="Optional path to write dog-level predictions CSV (race_id, venue, grade, distance, dog_clean_name, y, p)",
     )
+    p.add_argument("--optimizer", choices=["0", "1"], default=None, help="Enable (1) or disable (0) Accuracy Optimizer for this run")
+    p.add_argument("--tgr", choices=["0", "1"], default=None, help="Enable (1) or disable (0) TGR features for this run")
     return p.parse_args()
 
 
@@ -74,7 +76,18 @@ def main() -> int:
         or "greyhound_racing_data.db"
     )
 
+    # Per-run optimizer override via env before creating MLSystemV4
+    if args.optimizer is not None:
+        os.environ["V4_DISABLE_ACCURACY_OPTIMIZER"] = "0" if args.optimizer == "1" else "1"
+
     ml = MLSystemV4(db_path)
+
+    # Per-run TGR override
+    try:
+        if args.tgr is not None and hasattr(ml, "set_tgr_enabled"):
+            ml.set_tgr_enabled(args.tgr == "1")
+    except Exception:
+        pass
 
     conn = open_sqlite_readonly(db_path)
     cur = conn.cursor()
@@ -381,6 +394,8 @@ def main() -> int:
         "log_loss": ll,
         "place_brier": place_brier,
         "place_log_loss": place_ll,
+        "optimizer": (None if args.optimizer is None else (args.optimizer == "1")),
+        "tgr": (None if args.tgr is None else (args.tgr == "1")),
     }
     if args.compute_top3 and top3_rate is not None:
         metrics["top3_hit_rate"] = top3_rate

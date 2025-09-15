@@ -144,6 +144,7 @@ class AdvancedEnsemblePredictor:
         """Load and validate all available models.
 
         Respects registry active flags; only active models are considered.
+        Honors ENSEMBLE_TOPK to limit the number of models loaded for speed.
         """
         from model_registry import ModelRegistry
 
@@ -155,6 +156,25 @@ class AdvancedEnsemblePredictor:
             candidates = registry.list_models(active_only=True)
         except Exception:
             candidates = []
+
+        # Optional: limit to top-K by accuracy to balance quality and runtime
+        topk = None
+        try:
+            env_k = os.getenv("ENSEMBLE_TOPK", "").strip()
+            if env_k:
+                topk = max(1, int(env_k))
+        except Exception:
+            topk = None
+        if candidates and topk:
+            try:
+                candidates = sorted(
+                    candidates,
+                    key=lambda m: getattr(m, "accuracy", 0.0),
+                    reverse=True,
+                )[:topk]
+                logger.info(f"🔢 ENSEMBLE_TOPK active: loading top {topk} models by accuracy")
+            except Exception:
+                pass
 
         for meta in candidates:
             try:

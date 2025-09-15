@@ -44,6 +44,7 @@ from sklearn.metrics import accuracy_score, classification_report, roc_auc_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 import joblib
+import warnings
 
 warnings.filterwarnings("ignore")
 

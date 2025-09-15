@@ -161,7 +161,6 @@ class MLDataPipelineFixer:
 
         try:
             with open_sqlite_writable(self.current_db) as conn:
-onn:
                 cursor = conn.cursor()
                 for index_sql in indexes_to_create:
                     cursor.execute(index_sql)
@@ -307,7 +306,8 @@ onn:
 
         try:
             import os
-            import subprocess
+            import subprocess  # nosec B404: controlled local subprocess usage
+            import sys
 
             # Set up environment
             env = os.environ.copy()
@@ -316,12 +316,13 @@ onn:
 
             # Run training script
             result = subprocess.run(
-                ["python", "scripts/train_test_model.py"],
+                [sys.executable, "scripts/train_test_model.py"],
                 env=env,
                 capture_output=True,
                 text=True,
                 timeout=300,  # 5 minute timeout
-            )
+                shell=False,
+            )  # nosec B603 B607: absolute interpreter; no shell
 
             if result.returncode == 0:
                 self.log_action(

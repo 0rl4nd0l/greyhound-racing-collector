@@ -263,7 +263,6 @@ def start_guardian_service():
 
 def stop_guardian_service():
     """Stop the guardian service"""
-    global _guardian_service
     if _guardian_service:
         _guardian_service.stop()
 

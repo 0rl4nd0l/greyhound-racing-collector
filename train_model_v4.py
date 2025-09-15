@@ -600,9 +600,9 @@ class ConditionalRetrainingManager:
                 return False
 
             # Create training manifest
-            retraining_triggers, _, _ = self.should_retrain_model()
+            _, triggers, _ = self.should_retrain_model()
             manifest = self.create_training_manifest(
-                retraining_triggers, self.ml_system.model_info, dataset_checksum
+                triggers, self.ml_system.model_info, dataset_checksum
             )
 
             # Save artifacts

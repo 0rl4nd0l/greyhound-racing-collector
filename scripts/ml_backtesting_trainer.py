@@ -298,6 +298,16 @@ class MLBacktestingTrainer:
             else:
                 sel.append("NULL AS winning_time")
 
+            # Validate identifier fragments used in dynamic SQL (strict regex)
+            import re as _re
+            def _ok(name: str | None) -> bool:
+                return bool(name) and bool(_re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", str(name)))
+            for _id in [perf_actual, speed_actual, class_actual, time_actual, margin_actual,
+                        field_size_actual, distance_actual, venue_actual, track_cond_actual,
+                        weather_actual, temp_actual, grade_actual, date_actual, time_of_day_actual,
+                        finish_pos_actual]:
+                if _id and not _ok(_id):
+                    raise ValueError(f"Invalid identifier: {_id}")
             select_clause = ",\n                ".join(sel)
 
             # Always apply date filtering on the Python side because race_date formats are mixed
@@ -324,7 +334,7 @@ class MLBacktestingTrainer:
             JOIN race_metadata rm ON drd.race_id = rm.race_id
             WHERE {where_clause}
             ORDER BY rm.{date_actual} ASC, drd.race_id, drd.{finish_pos_actual}
-            """
+            """  # nosec B608: identifiers validated via strict regex above; values parameterized separately
 
             params = (
                 [start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")]
@@ -355,7 +365,7 @@ class MLBacktestingTrainer:
                     JOIN race_metadata rm ON drd.race_id = rm.race_id
                     WHERE {fallback_where}
                     ORDER BY rm.{date_actual} ASC, drd.race_id, drd.{finish_pos_actual}
-                    """
+                    """  # nosec B608: identifiers validated via strict regex above
                     df = pd.read_sql_query(fallback_query, conn_fb)
                     conn_fb.close()
                 except Exception:
@@ -473,11 +483,12 @@ class MLBacktestingTrainer:
 
             # Cold-start enabled: build features even if no prior races (defaults will be used)
             enhanced_features = self.calculate_dog_features(historical_data, row)
-            # Handle finish position parsing
+            # Handle finish position parsing (be permissive; default to a large number so we don't drop rows)
             try:
-                finish_position = int(str(row["finish_position"]).replace("=", ""))
+                finish_position = int(str(row["finish_position"]).replace("=", "").strip())
             except (ValueError, TypeError):
-                continue  # Skip records with invalid finish positions
+                # Keep the row but treat as non-winner/non-placer; helps preserve field sizes
+                finish_position = 99
 
             enhanced_features.update(
                 {
@@ -1245,9 +1256,15 @@ class MLBacktestingTrainer:
                 # If no valid folds, return a neutral score
                 return float(np.mean(aucs)) if len(aucs) > 0 else 0.5
 
-            # Optuna study
+            # Optuna study (n_trials can be pinned via env BACKTEST_OPTUNA_TRIALS)
+            n_trials_env = os.getenv("BACKTEST_OPTUNA_TRIALS")
+            try:
+                n_trials = int(n_trials_env) if n_trials_env else 30
+            except Exception:
+                n_trials = 30
             study = optuna.create_study(direction="maximize")
-            study.optimize(objective, n_trials=30)
+            print(f"   🔧 Optuna n_trials: {n_trials}")
+            study.optimize(objective, n_trials=n_trials)
 
             # Retrain with best params (with class weighting where supported)
             current_params = study.best_params
@@ -1625,6 +1642,12 @@ class MLBacktestingTrainer:
         all_dog_rows = []  # For prob-based metrics
         dog_level_rows = []  # For calibration export: per-dog rows with real outcomes
 
+        # Ensure warnings log directory exists
+        try:
+            os.makedirs("logs", exist_ok=True)
+        except Exception:
+            pass
+
         with open(preds_file, "w") as f_out:
             for _, grp in races_by_date.iterrows():
                 race_dt = pd.to_datetime(grp["race_date"])  # cutoff for training
@@ -1737,6 +1760,16 @@ class MLBacktestingTrainer:
                     )
 
                 # Save per-race JSONL entry
+                # Derive DB-reported field size if present in data
+                try:
+                    db_field_size = None
+                    if "field_size" in race_df.columns:
+                        _fs = pd.to_numeric(race_df["field_size"], errors="coerce").dropna()
+                        if len(_fs) > 0:
+                            db_field_size = int(_fs.max())
+                except Exception:
+                    db_field_size = None
+
                 record = {
                     "race_id": str(race_id),
                     "race_date": str(pd.to_datetime(grp["race_date"]).date()),
@@ -1758,7 +1791,12 @@ class MLBacktestingTrainer:
                         if actual_winner_name is not None
                         else False
                     ),
+                    # n_scored = number of dog rows scored by the model for this race
                     "field_size": int(len(race_df)),
+                    "db_field_size": db_field_size,
+                    "field_size_mismatch": (
+                        (db_field_size is not None) and (int(len(race_df)) != int(db_field_size))
+                    ),
                     "odds_top": (
                         float(odds_top)
                         if odds_top is not None and not np.isnan(odds_top)
@@ -1769,6 +1807,21 @@ class MLBacktestingTrainer:
                 }
                 f_out.write(json.dumps(record) + "\n")
 
+                # If we scored fewer dogs than DB field size, log a warning for audit
+                try:
+                    if (
+                        record.get("db_field_size") is not None
+                        and int(record["db_field_size"]) >= 6
+                        and int(record["field_size"]) < int(record["db_field_size"])
+                        and (int(record["db_field_size"]) - int(record["field_size"])) >= 3
+                    ):
+                        with open("logs/backtest_warnings.log", "a", encoding="utf-8") as wf:
+                            wf.write(
+                                f"{datetime.now().isoformat()} | race_id={record['race_id']} | n_scored={record['field_size']} | db_field_size={record['db_field_size']} | delta={int(record['db_field_size']) - int(record['field_size'])}\n"
+                            )
+                except Exception:
+                    pass
+
                 # Collect for summary metrics
                 race_level_rows.append(
                     {
@@ -1776,7 +1829,10 @@ class MLBacktestingTrainer:
                         "correct": record["correct"],
                         "top_k_hit": record["top_k_hit"],
                         "field_size": record["field_size"],
+                        "db_field_size": record.get("db_field_size"),
+                        "field_size_mismatch": record.get("field_size_mismatch"),
                         "predicted_prob": record["predicted_prob"],
+                        "scorable": record["scorable"],
                     }
                 )
                 # For probability metrics across dogs

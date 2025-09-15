@@ -63,10 +63,18 @@ function setStoredOrderingMode(mode) {
     } catch (e) { /* ignore */ }
 }
 if (typeof window !== 'undefined') {
-    window.predOrderingMode = getStoredOrderingMode() || window.predOrderingMode || 'predicted_rank';
+    window.predOrderingMode = getStoredOrderingMode() || window.predOrderingMode || 'win_prob';
 }
 function predictionScoreWinProb(p) {
-    return Number(p?.win_prob ?? p?.normalized_win_probability ?? p?.win_probability ?? p?.final_score ?? p?.prediction_score ?? p?.confidence ?? 0);
+    return Number(
+        p?.win_prob ??
+        p?.win_prob_norm ??
+        p?.normalized_win_probability ??
+        p?.win_probability ??
+        p?.final_score ??
+        p?.prediction_score ??
+        p?.confidence ?? 0
+    );
 }
 function sortPreds(list, mode) {
     const arr = Array.isArray(list) ? [...list] : [];
@@ -551,7 +559,7 @@ class PredictionButtonManager {
             const orderingSelect = document.getElementById('ordering-select');
             if (orderingSelect) {
                 const stored = getStoredOrderingMode();
-                orderingSelect.value = stored || (typeof window !== 'undefined' ? (window.predOrderingMode || 'predicted_rank') : 'predicted_rank');
+orderingSelect.value = stored || (typeof window !== 'undefined' ? (window.predOrderingMode || 'win_prob') : 'win_prob');
                 if (!orderingSelect._bound) {
                     orderingSelect.addEventListener('change', () => {
                         const mode = orderingSelect.value || 'predicted_rank';

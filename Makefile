@@ -27,6 +27,7 @@ help:
 	@echo "  contract-validate-api- Validate feature contract via API at CONTRACT_API_URL (strict)"
 	@echo "  promote-gate         - Run V4 promotion gate (fails if metrics exceed thresholds)"
 	@echo "  run-api-gunicorn     - Run Flask app via Gunicorn (threaded workers; SSE-friendly)"
+	@echo "  run-api-gunicorn-verbose - Run Gunicorn with DEBUG logs (access/error to stdout)"
 	@echo "  install-hooks        - Install git hooks (pre-push contract validation)"
 	@echo "  clean                - Remove virtual environment"
 	@echo "  train-win            - Train win model"
@@ -36,6 +37,9 @@ help:
 	@echo "  backtest-win         - Backtest win model(s) -> $${BACKTEST_OUT_DIR:-backtests}/win_report.json"
 	@echo "  backtest-place       - Backtest place model(s) (TopN=$${TOPN_PLACE:-3}) -> $${BACKTEST_OUT_DIR:-backtests}/place_report.json"
 	@echo "  simulate-anomalies   - Write synthetic place EV anomalies to predictions/"
+	@echo "  persist-predictions  - Import predictions/*.json into DB (maps to standardized race_id when possible)"
+	@echo "  predict-upcoming     - Predict all CSVs in UPCOMING_RACES_DIR -> predictions/*.json"
+	@echo "  predict-and-persist  - Run predict-upcoming, then persist-predictions (last 72h)"
 
 $(VENV)/bin/python:
 	python3.11 -m venv $(VENV)
@@ -118,9 +122,40 @@ perf:
 	locust --headless -u 10 -r 1 -f load_tests/locustfile.py --run-time 2m --csv=perf-test-report
 
 # Run security tests
-security:
-	bandit -r .
-	safety check
+# Default: focus on runtime surfaces (app, src, services, utils). Include scripts by setting BANDIT_INCLUDE_SCRIPTS=1
+security: security-app
+	@if [ "$$BANDIT_INCLUDE_SCRIPTS" = "1" ]; then $(MAKE) security-scripts; else echo "Skipping scripts/ scan (set BANDIT_INCLUDE_SCRIPTS=1 to include)"; fi
+	$(VENV)/bin/safety scan
+
+# Security (runtime surfaces only)
+security-app:
+	$(VENV)/bin/bandit -r app.py src services utils -x 'archive,archive_old_apps,archive_unused_scripts,feature_importance_backups' -q
+
+# Security (scripts only; noisy by design)
+security-scripts:
+	$(VENV)/bin/bandit -r scripts -x 'archive,archive_old_apps,archive_unused_scripts,feature_importance_backups' -q
+
+persist-predictions:
+	$(PYTHON) scripts/persist_predictions_from_json.py --hours $${HOURS:-72}
+
+predict-upcoming:
+	UPCOMING_RACES_DIR=$${UPCOMING_RACES_DIR:-./upcoming_races_temp} $(PYTHON) upcoming_race_predictor_wrapper.py
+
+predict-and-persist: predict-upcoming persist-predictions
+
+# Generate prediction coverage report (last HOURS, default 24)
+# Usage: make report-coverage HOURS=24 DATABASE_PATH=./greyhound_racing_data_writable.db
+report-coverage:
+	@echo "Generating prediction coverage report (last $${HOURS:-24}h)"
+	@mkdir -p docs/analysis
+	$(PYTHON) scripts/report_prediction_coverage.py --hours $${HOURS:-24} \
+		--db $${DATABASE_PATH:-$${STAGING_DB_PATH:-$${GREYHOUND_DB_PATH:-./greyhound_racing_data_writable.db}}} \
+		--save docs/analysis/prediction_coverage_report_$$(date +%Y%m%d_%H%M%S).json
+
+.PHONY: normalize-odds
+normalize-odds:
+	@echo "Normalizing live_odds race_id to canonical form..."
+	$(PYTHON) scripts/normalize_live_odds_race_ids.py --db $${DATABASE_PATH:-$${STAGING_DB_PATH:-$${GREYHOUND_DB_PATH:-./greyhound_racing_data_writable.db}}}
 
 # Contract validation (python mode, no server)
 contract-validate:
@@ -180,7 +215,11 @@ run-docker-api: docker-build
 		-e ENABLE_ENDPOINT_DROPDOWNS=0 \
 		-e DISABLE_ASSET_MINIFY=$${DISABLE_ASSET_MINIFY:-1} \
 		-e TESTING=$${TESTING:-false} \
-		-e V4_DISABLE_ACCURACY_OPTIMIZER=$${V4_DISABLE_ACCURACY_OPTIMIZER:-1} \
+		-e V4_DISABLE_ACCURACY_OPTIMIZER=$${V4_DISABLE_ACCURACY_OPTIMIZER:-0} \
+		-e GUNICORN_LOGLEVEL=$${GUNICORN_LOGLEVEL:-debug} \
+		-e GUNICORN_ACCESSLOG=$${GUNICORN_ACCESSLOG:--} \
+		-e GUNICORN_ERRORLOG=$${GUNICORN_ERRORLOG:--} \
+		-e LOG_LEVEL=$${LOG_LEVEL:-DEBUG} \
 		-v "$(DOCKER_RACES_DIR):/app/upcoming_races_temp" \
 		$(DOCKER_IMAGE)
 
@@ -195,11 +234,17 @@ run-docker-api-dev-toolbar: docker-build
 		-e ENABLE_ENDPOINT_DROPDOWNS=1 \
 		-e DISABLE_ASSET_MINIFY=$${DISABLE_ASSET_MINIFY:-1} \
 		-e TESTING=true \
-		-e V4_DISABLE_ACCURACY_OPTIMIZER=$${V4_DISABLE_ACCURACY_OPTIMIZER:-1} \
+		-e V4_DISABLE_ACCURACY_OPTIMIZER=$${V4_DISABLE_ACCURACY_OPTIMIZER:-0} \
+		-e GUNICORN_LOGLEVEL=$${GUNICORN_LOGLEVEL:-debug} \
+		-e GUNICORN_ACCESSLOG=$${GUNICORN_ACCESSLOG:--} \
+		-e GUNICORN_ERRORLOG=$${GUNICORN_ERRORLOG:--} \
+		-e LOG_LEVEL=$${LOG_LEVEL:-DEBUG} \
 		-v "$(DOCKER_RACES_DIR):/app/upcoming_races_temp" \
 		$(DOCKER_IMAGE)
 
 # Run the Flask API normally (toolbar off by default)
+# Note: Enhanced accuracy optimizer is DISABLED by default. To enable for dev runs:
+#   export V4_DISABLE_ACCURACY_OPTIMIZER=0 && make run-api
 .PHONY: run-api
 run-api:
 	@echo "Starting Flask app on port $${PORT:-5002} (toolbar off)"
@@ -207,10 +252,17 @@ run-api:
 	ENABLE_ENDPOINT_DROPDOWNS=$${ENABLE_ENDPOINT_DROPDOWNS:-0} \
 	DISABLE_ASSET_MINIFY=$${DISABLE_ASSET_MINIFY:-1} \
 	TESTING=$${TESTING:-false} \
-	V4_DISABLE_ACCURACY_OPTIMIZER=$${V4_DISABLE_ACCURACY_OPTIMIZER:-1} \
+	LOG_LEVEL=$${LOG_LEVEL:-DEBUG} \
+	# Default to writable DB for both analytics and staging paths unless explicitly overridden
+	ANALYTICS_DB_PATH=$${ANALYTICS_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
+	STAGING_DB_PATH=$${STAGING_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
+	GREYHOUND_DB_PATH=$${GREYHOUND_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
+	V4_DISABLE_ACCURACY_OPTIMIZER=$${V4_DISABLE_ACCURACY_OPTIMIZER:-0} \
 	$(PYTHON) app.py
 
 # Run the Flask API with the dev endpoints toolbar enabled (QA convenience)
+# Note: Enhanced accuracy optimizer is DISABLED by default. To enable for dev runs:
+#   export V4_DISABLE_ACCURACY_OPTIMIZER=0 && make run-api-dev-toolbar
 .PHONY: run-api-dev-toolbar
 run-api-dev-toolbar:
 	@echo "Starting Flask app with dev toolbar (ENABLE_ENDPOINT_DROPDOWNS=1, TESTING=true) on port $${PORT:-5002}"
@@ -218,18 +270,68 @@ run-api-dev-toolbar:
 	ENABLE_ENDPOINT_DROPDOWNS=1 \
 	TESTING=true \
 	DISABLE_ASSET_MINIFY=$${DISABLE_ASSET_MINIFY:-1} \
-	V4_DISABLE_ACCURACY_OPTIMIZER=$${V4_DISABLE_ACCURACY_OPTIMIZER:-1} \
+	LOG_LEVEL=$${LOG_LEVEL:-DEBUG} \
+	# Default to writable DB for both analytics and staging paths unless explicitly overridden
+	ANALYTICS_DB_PATH=$${ANALYTICS_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
+	STAGING_DB_PATH=$${STAGING_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
+	GREYHOUND_DB_PATH=$${GREYHOUND_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
+	V4_DISABLE_ACCURACY_OPTIMIZER=$${V4_DISABLE_ACCURACY_OPTIMIZER:-0} \
 	$(PYTHON) app.py
 
 # Run the Flask API via Gunicorn (threaded workers; SSE-friendly)
+# Note: By default, the enhanced accuracy optimizer is DISABLED here. To enable it for dev runs,
+# export V4_DISABLE_ACCURACY_OPTIMIZER=0 before invoking this target, or use run-api-gunicorn-opt.
 .PHONY: run-api-gunicorn
 run-api-gunicorn:
 	@echo "Starting Gunicorn on port $${PORT:-5002} ($${GUNICORN_WORKERS:-2} workers x $${GUNICORN_THREADS:-4} threads; class=$${GUNICORN_WORKER_CLASS:-gthread})"
 	PORT=$${PORT:-5002} \
 	ENABLE_ENDPOINT_DROPDOWNS=$${ENABLE_ENDPOINT_DROPDOWNS:-0} \
 	DISABLE_ASSET_MINIFY=$${DISABLE_ASSET_MINIFY:-1} \
+	TESTING=0 \
+	LOG_LEVEL=$${LOG_LEVEL:-DEBUG} \
+	GUNICORN_LOGLEVEL=$${GUNICORN_LOGLEVEL:-debug} \
+	GUNICORN_ACCESSLOG=$${GUNICORN_ACCESSLOG:--} \
+	GUNICORN_ERRORLOG=$${GUNICORN_ERRORLOG:--} \
+	# Default to writable DB for both analytics and staging paths unless explicitly overridden
+	ANALYTICS_DB_PATH=$${ANALYTICS_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
+	STAGING_DB_PATH=$${STAGING_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
+	GREYHOUND_DB_PATH=$${GREYHOUND_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
+	V4_DISABLE_ACCURACY_OPTIMIZER=$${V4_DISABLE_ACCURACY_OPTIMIZER:-0} \
+	$(VENV)/bin/gunicorn -c gunicorn.conf.py app:app
+
+# Convenience target: run API with optimizer ENABLED (V4_DISABLE_ACCURACY_OPTIMIZER=0)
+.PHONY: run-api-gunicorn-opt
+run-api-gunicorn-opt:
+	@echo "Starting Gunicorn (optimizer ON) on port $${PORT:-5002} ($${GUNICORN_WORKERS:-2} workers x $${GUNICORN_THREADS:-4} threads; class=$${GUNICORN_WORKER_CLASS:-gthread})"
+	PORT=$${PORT:-5002} \
+	ENABLE_ENDPOINT_DROPDOWNS=$${ENABLE_ENDPOINT_DROPDOWNS:-0} \
+	DISABLE_ASSET_MINIFY=$${DISABLE_ASSET_MINIFY:-1} \
 	TESTING=$${TESTING:-false} \
-	V4_DISABLE_ACCURACY_OPTIMIZER=$${V4_DISABLE_ACCURACY_OPTIMIZER:-1} \
+	# Default to writable DB for both analytics and staging paths unless explicitly overridden
+	ANALYTICS_DB_PATH=$${ANALYTICS_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
+	STAGING_DB_PATH=$${STAGING_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
+	GREYHOUND_DB_PATH=$${GREYHOUND_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
+	V4_DISABLE_ACCURACY_OPTIMIZER=0 \
+	$(VENV)/bin/gunicorn -c gunicorn.conf.py app:app
+
+# Convenience target: Gunicorn with DEBUG logs and unbuffered Python output
+.PHONY: run-api-gunicorn-verbose
+run-api-gunicorn-verbose:
+	@echo "Starting Gunicorn (VERBOSE) on port $${PORT:-5002} ($${GUNICORN_WORKERS:-2} workers x $${GUNICORN_THREADS:-4} threads; class=$${GUNICORN_WORKER_CLASS:-gthread})"
+	PORT=$${PORT:-5002} \
+	ENABLE_ENDPOINT_DROPDOWNS=$${ENABLE_ENDPOINT_DROPDOWNS:-0} \
+	DISABLE_ASSET_MINIFY=$${DISABLE_ASSET_MINIFY:-1} \
+	TESTING=$${TESTING:-false} \
+	LOG_LEVEL=$${LOG_LEVEL:-DEBUG} \
+	# Default to writable DB for both analytics and staging paths unless explicitly overridden
+	ANALYTICS_DB_PATH=$${ANALYTICS_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
+	STAGING_DB_PATH=$${STAGING_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
+	GREYHOUND_DB_PATH=$${GREYHOUND_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
+	V4_DISABLE_ACCURACY_OPTIMIZER=$${V4_DISABLE_ACCURACY_OPTIMIZER:-0} \
+	PYTHONUNBUFFERED=1 DEBUG=$${DEBUG:-1} \
+	GUNICORN_LOGLEVEL=$${GUNICORN_LOGLEVEL:-debug} \
+	GUNICORN_ACCESSLOG=$${GUNICORN_ACCESSLOG:--} \
+	GUNICORN_ERRORLOG=$${GUNICORN_ERRORLOG:--} \
 	$(VENV)/bin/gunicorn -c gunicorn.conf.py app:app
 
 # Run the Flask API via Gunicorn with live scraping enabled and testing disabled
@@ -243,7 +345,15 @@ run-api-live-gunicorn:
 	TESTING=0 \
 	ENABLE_ENDPOINT_DROPDOWNS=$${ENABLE_ENDPOINT_DROPDOWNS:-0} \
 	DISABLE_ASSET_MINIFY=$${DISABLE_ASSET_MINIFY:-1} \
-	V4_DISABLE_ACCURACY_OPTIMIZER=$${V4_DISABLE_ACCURACY_OPTIMIZER:-1} \
+	LOG_LEVEL=$${LOG_LEVEL:-DEBUG} \
+	GUNICORN_LOGLEVEL=$${GUNICORN_LOGLEVEL:-debug} \
+	GUNICORN_ACCESSLOG=$${GUNICORN_ACCESSLOG:--} \
+	GUNICORN_ERRORLOG=$${GUNICORN_ERRORLOG:--} \
+	# Default to writable DB for both analytics and staging paths unless explicitly overridden
+	ANALYTICS_DB_PATH=$${ANALYTICS_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
+	STAGING_DB_PATH=$${STAGING_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
+	GREYHOUND_DB_PATH=$${GREYHOUND_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
+	V4_DISABLE_ACCURACY_OPTIMIZER=$${V4_DISABLE_ACCURACY_OPTIMIZER:-0} \
 	$(VENV)/bin/gunicorn -c gunicorn.conf.py app:app
 
 # Clean up environment

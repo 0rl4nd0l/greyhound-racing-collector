@@ -120,7 +120,7 @@ class ModelRegistry:
                 self.config = {
                     "auto_select_best": True,
                     "max_models_to_keep": 50,
-                    # Selection policy: 'performance_score' (default composite), 'auc', 'accuracy', 'f1_score', 'correct_winners'
+                    # Selection policy: 'performance_score' (default composite), 'auc', 'accuracy', 'f1_score', 'correct_winners', 'top1_rate'
                     "best_selection_metric": "performance_score",
                     "performance_weight": {
                         "accuracy": 0.4,
@@ -128,8 +128,27 @@ class ModelRegistry:
                         "f1_score": 0.2,
                         "data_quality": 0.1,
                     },
+                    # Stability controls for promotion
+                    "min_races_for_promotion": 0,
+                    # Tie-breakers applied when primary scores are close/equal
+                    "tie_breaker_order": [
+                        "races_evaluated",
+                        "accuracy",
+                        "auc",
+                        "performance_score",
+                        "created_at"
+                    ],
                 }
                 self._save_config()
+
+            # Ensure new keys exist without overriding user preferences
+            self.config.setdefault("min_races_for_promotion", 0)
+            self.config.setdefault(
+                "tie_breaker_order",
+                ["races_evaluated", "accuracy", "auc", "performance_score", "created_at"],
+            )
+            if "best_selection_metric" not in self.config:
+                self.config["best_selection_metric"] = "performance_score"
 
         except Exception as e:
             logger.error(f"Error loading registry: {e}")
@@ -338,10 +357,11 @@ class ModelRegistry:
             if not self.model_index:
                 return
 
-            # Determine selection metric
+            # Determine selection metric and stability settings
             selection_metric = (self.config or {}).get(
                 "best_selection_metric", "performance_score"
             )
+            min_races = int((self.config or {}).get("min_races_for_promotion", 0) or 0)
 
             def _selection_score(md: ModelMetadata) -> float:
                 try:
@@ -360,22 +380,60 @@ class ModelRegistry:
                 except Exception:
                     return 0.0
 
-            # Calculate scores for all active models
-            model_scores = []
+            def _composite_score(md: ModelMetadata) -> float:
+                try:
+                    return float(self._calculate_model_score(md))
+                except Exception:
+                    return 0.0
+
+            def _created_ts(md: ModelMetadata) -> float:
+                ts = getattr(md, "created_at", None) or getattr(md, "training_timestamp", None)
+                if not ts:
+                    return 0.0
+                try:
+                    return datetime.fromisoformat(str(ts).replace("Z", "+00:00")).timestamp()
+                except Exception:
+                    return 0.0
+
+            # Build candidate list
+            candidates = []
             for model_id, model_data in self.model_index.items():
                 if isinstance(model_data, dict) and model_data.get("is_active", True):
                     try:
-                        metadata = ModelMetadata(**model_data)
-                        score = _selection_score(metadata)
-                        model_scores.append((model_id, score, metadata))
+                        md = ModelMetadata(**model_data)
+                        score = _selection_score(md)
+                        candidates.append((model_id, score, md))
                     except (TypeError, KeyError) as e:
                         logger.warning(f"Error loading metadata for {model_id}: {e}")
                         continue
-            if not model_scores:
+            if not candidates:
                 return
 
-            # Sort by score (highest first)
-            model_scores.sort(key=lambda x: x[1], reverse=True)
+            # Apply min_races constraint for top1_rate/correct_winners if configured
+            eligible = candidates
+            if selection_metric in {"top1_rate", "correct_winners"} and min_races > 0:
+                eligible = [
+                    (mid, sc, md)
+                    for (mid, sc, md) in candidates
+                    if int(getattr(md, "races_evaluated", 0) or 0) >= min_races
+                ]
+                if not eligible:
+                    # Fallback to all if nothing meets threshold
+                    eligible = candidates
+
+            # Tie-breaker sort tuple: primary score, then races_evaluated, accuracy, auc, composite performance, recency
+            def _sort_key(item):
+                _mid, _sc, _md = item
+                return (
+                    float(_sc or 0.0),
+                    int(getattr(_md, "races_evaluated", 0) or 0),
+                    float(getattr(_md, "accuracy", 0.0) or 0.0),
+                    float(getattr(_md, "auc", 0.0) or 0.0),
+                    float(_composite_score(_md)),
+                    float(_created_ts(_md)),
+                )
+
+            eligible.sort(key=_sort_key, reverse=True)
 
             # Clear previous best model flags
             for model_id in self.model_index:
@@ -383,7 +441,7 @@ class ModelRegistry:
                     self.model_index[model_id]["is_best"] = False
 
             # Set new best model
-            best_model_id, best_score, best_metadata = model_scores[0]
+            best_model_id, best_score, best_metadata = eligible[0]
             self.model_index[best_model_id]["is_best"] = True
 
             # Create/update symlinks to best model
@@ -714,6 +772,7 @@ class ModelRegistry:
         with self._lock:
             try:
                 metric = str(metric or "").strip().lower()
+                min_races = int((self.config or {}).get("min_races_for_promotion", 0) or 0)
                 # Build candidate list
                 candidates = []
                 for model_id, model_data in self.model_index.items():
@@ -735,7 +794,6 @@ class ModelRegistry:
                         elif metric == "f1_score":
                             score = float(md.f1_score or 0.0)
                         elif metric == "correct_winners":
-                            # Raw counts can bias toward larger eval sets; prefer top1_rate if available
                             score = float(
                                 md.top1_rate
                                 if (md.top1_rate and md.races_evaluated)
@@ -750,8 +808,47 @@ class ModelRegistry:
                         continue
                 if not candidates:
                     return None
-                candidates.sort(key=lambda x: x[1], reverse=True)
-                best_id, best_score, best_md = candidates[0]
+
+                # Apply min_races constraint for top1_rate/correct_winners if configured
+                eligible = candidates
+                if metric in {"top1_rate", "correct_winners"} and min_races > 0:
+                    eligible = [
+                        (mid, sc, md)
+                        for (mid, sc, md) in candidates
+                        if int(getattr(md, "races_evaluated", 0) or 0) >= min_races
+                    ]
+                    if not eligible:
+                        eligible = candidates
+
+                def _composite_score(md: ModelMetadata) -> float:
+                    try:
+                        return float(self._calculate_model_score(md))
+                    except Exception:
+                        return 0.0
+
+                def _created_ts(md: ModelMetadata) -> float:
+                    ts = getattr(md, "created_at", None) or getattr(md, "training_timestamp", None)
+                    if not ts:
+                        return 0.0
+                    try:
+                        return datetime.fromisoformat(str(ts).replace("Z", "+00:00")).timestamp()
+                    except Exception:
+                        return 0.0
+
+                def _sort_key(item):
+                    _mid, _sc, _md = item
+                    return (
+                        float(_sc or 0.0),
+                        int(getattr(_md, "races_evaluated", 0) or 0),
+                        float(getattr(_md, "accuracy", 0.0) or 0.0),
+                        float(getattr(_md, "auc", 0.0) or 0.0),
+                        float(_composite_score(_md)),
+                        float(_created_ts(_md)),
+                    )
+
+                eligible.sort(key=_sort_key, reverse=True)
+                best_id, best_score, best_md = eligible[0]
+
                 # Clear flags
                 for mid in self.model_index:
                     if isinstance(self.model_index[mid], dict):

@@ -50,6 +50,10 @@ def main():
         # Ensure GREYHOUND_DB_PATH is set to override any auto-detection
         os.environ["GREYHOUND_DB_PATH"] = db_path
 
+        # Inference mode: allow future-dated races while preserving leakage-safe features
+        # This environment flag is respected by MLSystemV4.predict_race via feature flags
+        os.environ.setdefault("ALLOW_FUTURE_RACE_DATES", "1")
+
         pipeline = PredictionPipelineV4(db_path)
 
         successful_predictions = 0

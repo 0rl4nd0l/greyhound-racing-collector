@@ -298,7 +298,7 @@ def main():
             print(f"   ❌ {name}: {error}")
 
     print(
-        f"\n🎯 All adapters return standardized format: {race_id, predictions[{dog, win_prob_norm, raw_prob}], metadata}"
+        "\n🎯 All adapters return standardized format: {race_id, predictions[{dog, win_prob_norm, raw_prob}], metadata}"
     )
     print("✅ Test suite completed!")
 

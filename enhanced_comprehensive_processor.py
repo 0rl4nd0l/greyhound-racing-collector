@@ -815,11 +815,9 @@ class EnhancedComprehensiveProcessor:
                 and not has_duplicates
             )
 
-            # Relaxed criteria (fallback): sufficient data quality + winner + no duplicates
+            # Relaxed criteria (fallback): sufficient data quality + no duplicates (winner may be pending)
             meets_relaxed_criteria = (
                 data_sufficient_without_scraping
-                and has_winner  # This could be scraped or inferred
-                and winner_in_data  # Winner must still be in our data
                 and not has_duplicates  # Still can't have position duplicates
             )
 
@@ -3800,12 +3798,20 @@ class EnhancedComprehensiveProcessor:
             print(f"   ⚠️ Error checking if processed: {e}")
             return False
 
-    def process_all_unprocessed(self) -> Dict[str, Any]:
-        """Process all unprocessed CSV files (skip already processed ones)"""
+    def process_all_unprocessed(self, limit: Optional[int] = None, status_cb: Optional[Any] = None) -> Dict[str, Any]:
+        """Process all unprocessed CSV files (skip already processed ones)
+
+        limit: when provided, process at most this many files (for fast feedback)
+        status_cb: optional callback(done:int, total:int, filename:str, phase:str) for live progress updates
+        """
         if not os.path.exists(self.unprocessed_dir):
             return {"status": "error", "message": "Unprocessed directory not found"}
 
         csv_files = [f for f in os.listdir(self.unprocessed_dir) if f.endswith(".csv")]
+        csv_files.sort()
+        total_files = len(csv_files)
+        if limit is not None and isinstance(limit, int) and limit > 0:
+            csv_files = csv_files[:limit]
 
         if not csv_files:
             return {
@@ -3824,6 +3830,7 @@ class EnhancedComprehensiveProcessor:
 
         print(f"\n📊 Found {len(csv_files)} CSV files to check...")
 
+        done = 0
         for filename in csv_files:
             # Check if we should stop processing
             with processing_lock:
@@ -3853,16 +3860,30 @@ class EnhancedComprehensiveProcessor:
                         "result": {"status": "skipped", "reason": "Already processed"},
                     }
                 )
+                done += 1
+                if callable(status_cb):
+                    try:
+                        status_cb(done, len(csv_files), filename, "skipped")
+                    except Exception:
+                        pass
                 continue
 
             print(f"   🔄 Processing: {filename}")
             result = self.process_csv_file(file_path)
             if result and result.get("status") == "success":
                 results["processed_count"] += 1
+                phase = "processed"
             else:
                 results["failed_count"] += 1
+                phase = "failed"
 
             results["results"].append({"filename": filename, "result": result})
+            done += 1
+            if callable(status_cb):
+                try:
+                    status_cb(done, len(csv_files), filename, phase)
+                except Exception:
+                    pass
 
         print(f"\n📈 Processing Summary:")
         print(f"   ✅ Processed: {results['processed_count']}")

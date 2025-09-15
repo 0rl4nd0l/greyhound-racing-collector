@@ -514,8 +514,20 @@ System: Greyhound Racing Data Monitor
 
     def _trigger_model_retrain(self, reason: str):
         """Trigger the model retraining process"""
-        self.logger.info(f"🔄 Triggering model retrain due to {reason}")
-        os.system("python train_model_v4.py")
+        self.logger.info(f"🔄 Retraining requested due to {reason}")
+        # Record retrain request
+        try:
+            Path("logs").mkdir(exist_ok=True)
+            with open("logs/retrain_requested.jsonl", "a") as f:
+                f.write(json.dumps({"timestamp": datetime.now().isoformat(), "reason": reason}) + "\n")
+        except Exception as e:
+            self.logger.warning(f"Failed to record retrain request: {e}")
+        # Only auto-run if explicitly allowed
+        try:
+            if os.getenv("ALLOW_AUTO_RETRAIN", "0").strip().lower() in ("1","true","yes","on"):
+                os.system("python train_model_v4.py")
+        except Exception as e:
+            self.logger.warning(f"Auto retrain failed: {e}")
 
 
 def main():

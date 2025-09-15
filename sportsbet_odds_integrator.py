@@ -25,6 +25,11 @@ from typing import Dict, List, Optional, Tuple
 import requests
 
 from utils.http_client import get_shared_session
+try:
+    from config.venue_mapping import normalize_venue
+except Exception:
+    def normalize_venue(v: str) -> str:
+        return (v or "").strip().upper()
 
 # IMPORTANT: Avoid importing Playwright at module import time to satisfy module_guard
 # We will lazily import it only within methods that need it.
@@ -46,6 +51,21 @@ try:
     import schedule  # noqa: F401
 except Exception:  # pragma: no cover
     schedule = None
+
+# Avoid importing Selenium at module import time to satisfy module_guard.
+# Provide minimal placeholders; real classes are imported lazily in _selenium_primitives().
+class _TimeoutException(Exception):
+    pass
+
+class _By:
+    CSS_SELECTOR = "css selector"
+    XPATH = "xpath"
+
+By = _By
+TimeoutException = _TimeoutException
+
+# Note: WebDriverWait and EC are intentionally not defined here; methods should call
+# self._selenium_primitives() to import real implementations lazily.
 
 
 class SportsbetOddsIntegrator:
@@ -849,8 +869,22 @@ class SportsbetOddsIntegrator:
 
             print(f"  📄 Navigating to race page: {full_url}")
 
+            # If we have a desired race number, try to resolve that specific race first
+            try:
+                desired_rn = int(race_info.get("race_number")) if race_info.get("race_number") is not None else None
+            except Exception:
+                desired_rn = None
+
+            if desired_rn is not None:
+                specific = self.find_specific_race_from_meeting(full_url, desired_rn, expected_venue=race_info.get("venue"))
+                if specific:
+                    full_url = specific
+                    print(f"  🎯 Found specific race URL R{desired_rn}: {full_url}")
+                else:
+                    print(f"  ⚠️  Could not resolve specific race; falling back to next race selection")
+
             # Check if this is a meeting page that needs further navigation
-            if "/meeting-" in full_url:
+            if "/meeting-" in full_url or "/greyhound-racing/" in full_url and "/race-" not in full_url:
                 # Navigate to meeting page first to find individual race
                 individual_race_url = self.find_next_race_from_meeting(full_url, expected_venue=race_info.get("venue"))
                 if individual_race_url:
@@ -912,9 +946,8 @@ class SportsbetOddsIntegrator:
             if not odds_data:
                 # Strategy 4: Look for any elements with odds-like patterns
                 odds_data = self.extract_odds_strategy_generic()
-
             if odds_data:
-                print(f"  ✅ Extracted {len(odds_data)} live odds")
+                print(f"  ✅ Extracted {len(odds_data)} live WIN odds")
                 race_info["odds_data"] = odds_data
 
                 # Try to extract race number for better identification BEFORE persisting
@@ -945,11 +978,28 @@ class SportsbetOddsIntegrator:
                     )
                     print(f"  📍 Updated race ID to: {race_info['race_id']}")
             else:
-                print(f"  ⚠️  No live odds found on race page")
+                print(f"  ⚠️  No live odds found on race page (WIN market)")
                 # Try to get race information from the page even without odds
                 race_number = self.extract_race_number_from_page(race_info["venue"])
                 if race_number:
                     race_info["race_number"] = race_number
+
+            # Attempt to capture PLACE (Top 3) market odds as well for EV Place computation
+            try:
+                topN = self._select_place_market()  # often 3 for greyhounds
+                place_odds = self.extract_odds_strategy_runner_cards()
+                if not place_odds:
+                    # fallback to broader approach if targeted extraction fails
+                    place_odds = self._extract_from_broader_containers()
+                if place_odds:
+                    print(f"  ✅ Extracted {len(place_odds)} PLACE (Top {topN or 3}) odds")
+                    race_info["odds_data_place"] = place_odds
+                    if topN:
+                        race_info["place_topN"] = int(topN)
+                else:
+                    print("  ℹ️  No PLACE market odds detected")
+            except Exception as _pe:
+                print(f"  ⚠️  PLACE market extraction failed: {_pe}")
 
             # NOTE: Do not persist here. Callers must persist exactly once via save_odds_to_database(race_info)
             return race_info
@@ -2413,6 +2463,98 @@ class SportsbetOddsIntegrator:
 
         return "", 0.0
 
+    def _coerce_betting_to_non_betting(self, url: str) -> str:
+        try:
+            from urllib.parse import urlparse, urlunparse
+            parsed = urlparse(url)
+            path = parsed.path or ""
+            if path.startswith("/betting/greyhound-racing/"):
+                new_path = path.replace("/betting/greyhound-racing/", "/greyhound-racing/", 1)
+                parsed = parsed._replace(path=new_path)
+                return urlunparse(parsed)
+        except Exception:
+            pass
+        return url
+
+    def find_specific_race_from_meeting(self, meeting_url: str, target_race_number: int, expected_venue: Optional[str] = None) -> Optional[str]:
+        """Navigate to the meeting page and find the URL for the specific race number.
+        Prefers links under the same region/meeting slug when resolvable.
+        """
+        By, WebDriverWait, EC, TimeoutException = self._selenium_primitives()
+        try:
+            from urllib.parse import urlparse, urljoin
+            coerced = self._coerce_betting_to_non_betting(meeting_url)
+            # Reuse logic from find_next_race_from_meeting to determine region/slug and collect links
+            parsed = urlparse(coerced)
+            path = parsed.path or ""
+            parts = [p for p in path.split('/') if p]
+            region = None
+            meeting_slug = None
+            if 'greyhound-racing' in parts:
+                try:
+                    gi = parts.index('greyhound-racing')
+                    if gi + 1 < len(parts):
+                        region = parts[gi + 1]
+                    if gi + 2 < len(parts):
+                        seg = parts[gi + 2]
+                        if seg and not seg.startswith('race-') and 'meeting-' not in seg:
+                            meeting_slug = seg
+                except ValueError:
+                    pass
+
+            # Always prefer non-betting meeting page if region/slug known
+            candidates: list[tuple[str, str]] = []
+            if region and meeting_slug:
+                candidates.append(("meeting", urljoin(self.base_url, f"/greyhound-racing/{region}/{meeting_slug}")))
+            # Region main and coerced original as fallbacks
+            if region:
+                candidates.append(("region", urljoin(self.base_url, f"/greyhound-racing/{region}")))
+            candidates.append(("original", coerced))
+
+            def _collect(url: str, constrain: bool):
+                self.driver.get(url)
+                try:
+                    WebDriverWait(self.driver, 8).until(
+                        lambda d: d.execute_script("return document.readyState") == "complete"
+                    )
+                except TimeoutException:
+                    pass
+                import time as _t
+                _t.sleep(1)
+                links = []
+                try:
+                    els = self.driver.find_elements(By.CSS_SELECTOR, "a[href*='/race-']")
+                except Exception:
+                    els = []
+                for el in els:
+                    try:
+                        href = el.get_attribute("href") or ""
+                    except Exception:
+                        continue
+                    if "/greyhound-racing/" not in href or f"/race-{int(target_race_number)}-" not in href:
+                        continue
+                    if constrain and region:
+                        if f"/greyhound-racing/{region}/" not in href:
+                            continue
+                        if meeting_slug and f"/greyhound-racing/{region}/{meeting_slug}/" not in href:
+                            continue
+                    links.append(href)
+                return links
+
+            for kind, url in candidates:
+                constrain = (kind in ("meeting",))
+                matches = _collect(url, constrain)
+                if matches:
+                    # Return first match
+                    print(f"  🎯 Found race {target_race_number} at: {matches[0]}")
+                    return matches[0]
+
+            print("  ⚠️  Could not resolve specific race number from meeting")
+            return None
+        except Exception as e:
+            print(f"  ⚠️  Error selecting specific race: {e}")
+            return None
+
     def find_next_race_from_meeting(self, meeting_url: str, expected_venue: Optional[str] = None) -> Optional[str]:
         """Navigate to meeting page and find the next available race URL.
         If expected_venue is provided, attempt to locate the meeting link on the region page
@@ -2455,6 +2597,10 @@ class SportsbetOddsIntegrator:
                     region = "australia-nz"
 
             candidates: list[tuple[str, str]] = []
+            # 0) Coerce betting URL to non-betting if applicable (placed first)
+            coerced = self._coerce_betting_to_non_betting(meeting_url)
+            if coerced != meeting_url:
+                candidates.append(("coerced", coerced))
             # 1) Non-betting meeting page (scoped)
             if region and meeting_slug:
                 non_betting_meeting = urljoin(self.base_url, f"/greyhound-racing/{region}/{meeting_slug}")
@@ -2588,7 +2734,7 @@ class SportsbetOddsIntegrator:
             race_links = []
             for kind, url in candidates:
                 # If we have a concrete meeting link (from slug or text), enforce meeting scoping
-                require_meeting = (kind in ("meeting", "original")) and bool(meeting_slug or resolved_meeting_from_text)
+                require_meeting = (kind in ("meeting", "original", "coerced")) and bool(meeting_slug or resolved_meeting_from_text or url.startswith(f"{self.base_url}/greyhound-racing/"))
                 race_links = _load_and_collect(url, require_meeting)
                 if race_links:
                     break
@@ -3178,6 +3324,37 @@ class SportsbetOddsIntegrator:
         except Exception as e:
             print(f"  ⚠️ Error in debug print: {e}")
 
+    def _to_iso_date(self, s: str) -> str:
+        try:
+            from datetime import datetime as _dt
+            ss = (s or "").strip()
+            # Already ISO
+            if len(ss) >= 10 and ss[4] == '-' and ss[7] == '-':
+                return ss[:10]
+            # Try common formats
+            for fmt in ("%d %B %Y", "%d %b %Y", "%Y/%m/%d", "%d/%m/%Y", "%m/%d/%Y"):
+                try:
+                    return _dt.strptime(ss, fmt).strftime("%Y-%m-%d")
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return (s or "").strip()
+
+    def _canonical_race_id(self, venue: str, race_date: str, race_number) -> str | None:
+        try:
+            code = normalize_venue(venue)
+            date_iso = self._to_iso_date(str(race_date)) if race_date else None
+            try:
+                rn = int(race_number) if race_number is not None else None
+            except Exception:
+                rn = None
+            if code and date_iso and rn:
+                return f"{code}_{date_iso}_{rn}"
+        except Exception:
+            return None
+        return None
+
     def save_odds_to_database(self, race_info: Dict):
         """Save odds data and race metadata to database"""
         conn = sqlite3.connect(self.db_path)
@@ -3192,7 +3369,12 @@ class SportsbetOddsIntegrator:
                 except:
                     pass
 
-            # Save or update race metadata
+            # Compute canonical race_id for consistency in joins
+            canonical_rid = self._canonical_race_id(
+                race_info.get("venue"), race_info.get("race_date"), race_info.get("race_number")
+            ) or race_info.get("race_id")
+
+            # Save or update race metadata (use canonical_rid)
             cursor.execute(
                 """
                 INSERT OR REPLACE INTO race_metadata 
@@ -3201,11 +3383,11 @@ class SportsbetOddsIntegrator:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
-                    race_info["race_id"],
-                    race_info["venue"],
+                    canonical_rid,
+                    race_info.get("venue"),
                     race_info.get("race_number", 0),
-                    race_info["race_date"],
-                    race_info["race_time"],
+                    race_info.get("race_date"),
+                    race_info.get("race_time"),
                     race_info.get("venue_url", ""),
                     race_info.get("venue_slug", ""),
                     race_datetime_str,
@@ -3221,17 +3403,17 @@ class SportsbetOddsIntegrator:
                 conn.commit()
                 return
 
-            # Mark previous odds as not current
+            # Mark previous odds as not current (canonical id)
             cursor.execute(
                 """
                 UPDATE live_odds 
                 SET is_current = FALSE 
                 WHERE race_id = ? AND is_current = TRUE
             """,
-                (race_info["race_id"],),
+                (canonical_rid,),
             )
 
-            # Insert new odds
+            # Insert new odds (canonical id) for WIN market (default)
             for dog_odds in odds_data:
                 cursor.execute(
                     """
@@ -3241,34 +3423,53 @@ class SportsbetOddsIntegrator:
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                     (
-                        race_info["race_id"],
-                        race_info["venue"],
+                        canonical_rid,
+                        race_info.get("venue"),
                         race_info.get("race_number", 0),
-                        race_info["race_date"],
-                        race_info["race_time"],
-                        dog_odds["dog_name"],
-                        dog_odds["dog_clean_name"],
-                        dog_odds["box_number"],
-                        dog_odds["odds_decimal"],
-                        dog_odds["odds_fractional"],
+                        race_info.get("race_date"),
+                        race_info.get("race_time"),
+                        dog_odds.get("dog_name"),
+                        dog_odds.get("dog_clean_name"),
+                        dog_odds.get("box_number"),
+                        float(dog_odds.get("odds_decimal", 0.0)),
+                        dog_odds.get("odds_fractional", ""),
                     ),
                 )
 
             conn.commit()
             print(
-                f"✅ Saved race metadata and odds for {race_info['race_id']} ({len(odds_data)} dogs)"
+                f"✅ Saved race metadata and WIN odds for {race_info['race_id']} ({len(odds_data)} dogs)"
             )
 
-            # Record odds movement for history after commit to avoid lock contention
+            # Record odds movement for history after commit to avoid lock contention (WIN)
             try:
                 for dog_odds in odds_data:
                     self.track_odds_movement(
-                        race_info["race_id"],
-                        dog_odds["dog_clean_name"],
-                        float(dog_odds["odds_decimal"]),
+                        canonical_rid,
+                        dog_odds.get("dog_clean_name", ""),
+                        float(dog_odds.get("odds_decimal", 0.0)),
                     )
             except Exception:
                 pass
+
+            # Persist PLACE (Top 3) market odds if present in race_info
+            try:
+                place_list = race_info.get("odds_data_place") or []
+                if place_list:
+                    # Use helper that records market_type='place' and optional topN
+                    cinfo = dict(race_info)
+                    cinfo["race_id"] = canonical_rid
+                    topN = None
+                    try:
+                        topN = int(race_info.get("place_topN") or 3)
+                    except Exception:
+                        topN = 3
+                    self.persist_odds(cinfo, place_list, market_type="place", topN=topN)
+                    print(
+                        f"✅ Saved PLACE (Top {topN}) odds for {race_info['race_id']} ({len(place_list)} dogs)"
+                    )
+            except Exception as _se:
+                print(f"⚠️  Saving PLACE odds failed: {_se}")
 
         except Exception as e:
             print(f"⚠️  Error saving race data: {e}")
@@ -3531,7 +3732,15 @@ class SportsbetOddsIntegrator:
                             date_str = str(race_date)
 
                         datetime_str = f"{date_str} {race_time}"
-                        race_dt = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M")
+                        rt_upper = str(race_time).upper().strip()
+                        try:
+                            # Try 24-hour first
+                            race_dt = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M")
+                        except ValueError:
+                            # Fallback: 12-hour with AM/PM (with or without space)
+                            rt_norm = rt_upper.replace("AM", " AM").replace("PM", " PM").replace("  ", " ")
+                            datetime_str_12 = f"{date_str} {rt_norm}"
+                            race_dt = datetime.strptime(datetime_str_12, "%Y-%m-%d %I:%M %p")
                         now = datetime.now()
 
                         time_diff = race_dt - now
@@ -3584,28 +3793,64 @@ class SportsbetOddsIntegrator:
         finally:
             conn.close()
 
-    def get_value_bets_summary(self) -> List[Dict]:
-        """Get current value betting opportunities"""
+    def get_value_bets_summary(
+        self,
+        limit: int = 20,
+        min_value: float | None = None,
+        venue: str | None = None,
+        from_hours: int = 6,
+    ) -> List[Dict]:
+        """Get current value betting opportunities (deduplicated by race_id+dog, latest timestamp).
+        Optional filters:
+        - limit: max rows (default 20)
+        - min_value: minimum value_percentage (e.g., 50.0)
+        - venue: case-insensitive substring match on race_metadata.venue
+        - from_hours: lookback window for value_bets timestamp (default 6)
+        """
         conn = sqlite3.connect(self.db_path)
 
         try:
-            query = """
-                SELECT 
-                    race_id,
-                    dog_clean_name,
-                    predicted_probability,
-                    market_odds,
-                    value_percentage,
-                    confidence_level,
-                    bet_recommendation,
-                    timestamp
-                FROM value_bets 
-                WHERE timestamp > datetime('now', '-6 hours')
-                ORDER BY value_percentage DESC
-                LIMIT 20
+            limit = max(1, min(int(limit or 20), 200))
+            params = {"hours": int(from_hours or 6), "lim": limit}
+
+            where_clauses = []
+            if min_value is not None:
+                where_clauses.append("vb.value_percentage >= :minv")
+                params["minv"] = float(min_value)
+            if venue:
+                # Add venue filter; join race_metadata below
+                where_clauses.append("LOWER(COALESCE(rm.venue, '')) LIKE :vpat")
+                params["vpat"] = f"%{venue.lower()}%"
+
+            where_sql = (" AND " + " AND ".join(where_clauses)) if where_clauses else ""
+
+            query = f"""
+                SELECT vb.race_id,
+                       vb.dog_clean_name,
+                       vb.predicted_probability,
+                       vb.market_odds,
+                       vb.value_percentage,
+                       vb.confidence_level,
+                       vb.bet_recommendation,
+                       vb.timestamp,
+                       rm.venue
+                FROM value_bets vb
+                JOIN (
+                    SELECT race_id, dog_clean_name, MAX(timestamp) AS max_ts
+                    FROM value_bets
+                    WHERE timestamp > datetime('now', '-' || :hours || ' hours')
+                    GROUP BY race_id, dog_clean_name
+                ) latest
+                ON latest.race_id = vb.race_id
+                AND latest.dog_clean_name = vb.dog_clean_name
+                AND latest.max_ts = vb.timestamp
+                LEFT JOIN race_metadata rm ON rm.race_id = vb.race_id
+                {('WHERE ' + ' AND '.join(where_clauses)) if where_clauses else ''}
+                ORDER BY vb.value_percentage DESC
+                LIMIT :lim
             """
 
-            df = pd.read_sql_query(query, conn)
+            df = pd.read_sql_query(query, conn, params=params)
             return df.to_dict("records")
 
         except Exception as e:

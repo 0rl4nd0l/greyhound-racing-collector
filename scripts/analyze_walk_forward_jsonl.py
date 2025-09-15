@@ -72,7 +72,14 @@ def load_race_metadata_map(db_path: str) -> Dict[str, Dict[str, str]]:
             sel.append(venue_col)
         if date_col:
             sel.append(date_col)
-        query = f"SELECT {', '.join(sel)} FROM race_metadata"
+        # Validate and quote identifiers for safety
+        import re as _re
+        sel_safe = []
+        for c in sel:
+            if c not in cols or not _re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", c):
+                continue
+            sel_safe.append(f'"{c}"')
+        query = f"SELECT {', '.join(sel_safe)} FROM race_metadata"  # nosec B608: identifiers validated/quoted from table_info
         for row in cursor.execute(query):
             rid = str(row[0])
             venue = (

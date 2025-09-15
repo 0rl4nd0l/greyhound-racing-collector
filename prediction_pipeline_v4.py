@@ -116,7 +116,7 @@ class PredictionPipelineV4:
         logger.info("🚀 Prediction Pipeline V4 - Advanced System Initialized")
 
     def predict_race_file(
-        self, race_file_path: str, tgr_enabled: bool | None = None
+        self, race_file_path: str, tgr_enabled: bool | None = None, optimizer_enabled: bool | None = None
     ) -> dict:
         """Main prediction method using ML System V4.
 
@@ -175,6 +175,35 @@ class PredictionPipelineV4:
                 ".csv", ""
             )  # Use full filename without extension as race_id
 
+            # Optionally persist embedded history into DB so DB-backed features can use it
+            try:
+                ingest_on_predict = os.getenv("INGEST_EMBEDDED_HISTORY_ON_PREDICT", "1").strip().lower() in ("1", "true", "yes")
+            except Exception:
+                ingest_on_predict = True
+
+            # Default TGR toggle from env if not provided
+            try:
+                if tgr_enabled is None:
+                    _tgr_env = os.getenv("TGR_FEATURES_ENABLED")
+                    if _tgr_env is not None:
+                        tgr_enabled = str(_tgr_env).strip().lower() in ("1", "true", "yes", "on")
+            except Exception:
+                pass
+            if ingest_on_predict:
+                try:
+                    # Import lazily to avoid overhead when disabled
+                    from scripts.ingest_embedded_form_history import upsert_embedded_history_and_meta as _ingest_hist
+
+                    stats = _ingest_hist(self.db_path, race_file_path)
+                    try:
+                        logger.info(
+                            f"🗄️ Embedded history ingested: inserted={stats.get('inserted')} skipped={stats.get('skipped')} into DB={self.db_path}"
+                        )
+                    except Exception:
+                        pass
+                except Exception as _ie:
+                    logger.debug(f"Embedded history ingestion skipped/failed: {_ie}")
+
             # Map CSV columns to expected ML System V4 format
             race_data = self._map_csv_to_v4_format(race_data, race_file_path)
 
@@ -184,6 +213,46 @@ class PredictionPipelineV4:
                     self.ml_system_v4, "set_tgr_enabled"
                 ):
                     self.ml_system_v4.set_tgr_enabled(bool(tgr_enabled))
+            except Exception:
+                pass
+
+            # Prepare ML system for this call with per-request overrides
+            ml_for_call = self.ml_system_v4
+
+            # If optimizer toggle requested, ensure optimizer is integrated for this instance
+            try:
+                if optimizer_enabled is True and getattr(ml_for_call, "accuracy_optimizer", None) is None:
+                    os.environ["V4_DISABLE_ACCURACY_OPTIMIZER"] = "0"
+                    try:
+                        ml_for_call._initialize_accuracy_optimizer()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            # If optimizer explicitly disabled, create a fresh MLSystemV4 instantiated with optimizer off
+            try:
+                if optimizer_enabled is False:
+                    prev = os.environ.get("V4_DISABLE_ACCURACY_OPTIMIZER")
+                    os.environ["V4_DISABLE_ACCURACY_OPTIMIZER"] = "1"
+                    try:
+                        ml_for_call = MLSystemV4(self.db_path)
+                    finally:
+                        # restore previous env setting
+                        if prev is None:
+                            try:
+                                del os.environ["V4_DISABLE_ACCURACY_OPTIMIZER"]
+                            except Exception:
+                                pass
+                        else:
+                            os.environ["V4_DISABLE_ACCURACY_OPTIMIZER"] = prev
+            except Exception:
+                pass
+
+            # Apply runtime TGR toggle on the chosen ML system
+            try:
+                if tgr_enabled is not None and hasattr(ml_for_call, "set_tgr_enabled"):
+                    ml_for_call.set_tgr_enabled(bool(tgr_enabled))
             except Exception:
                 pass
 
@@ -248,9 +317,140 @@ class PredictionPipelineV4:
             except Exception as e:
                 logger.warning(f"Odds join failed for race {race_id}: {e}")
 
+            # Fallback: if odds were not found under the filename race_id, try resolving a canonical race_id
+            try:
+                def _parse_from_filename(rid: str):
+                    import re as _re
+                    m = _re.match(r"^\s*Race\s+(\d+)\s*-\s*(.+?)\s*-\s*(\d{4}-\d{2}-\d{2})\s*$", str(rid) or "", _re.IGNORECASE)
+                    if m:
+                        try:
+                            return int(m.group(1)), str(m.group(2)).strip(), str(m.group(3)).strip()
+                        except Exception:
+                            return None, None, None
+                    return None, None, None
+
+                def _resolve_alt_race_id(conn, rid: str, df):
+                    # Try parse from filename first
+                    rnum, vlabel, ymd = _parse_from_filename(rid)
+                    if (not rnum or not ymd) and hasattr(df, "__class__"):
+                        try:
+                            # Attempt from DataFrame columns when available
+                            import pandas as _pd  # noqa: F401
+                            if isinstance(df, _pd.DataFrame) and len(df) > 0:
+                                if rnum is None and "race_number" in df.columns and not df["race_number"].isna().all():
+                                    try:
+                                        rnum = int(_pd.to_numeric(df["race_number"], errors="coerce").dropna().mode().iloc[0])
+                                    except Exception:
+                                        rnum = None
+                                if not ymd and "race_date" in df.columns and not df["race_date"].isna().all():
+                                    try:
+                                        ymd = str(df["race_date"].dropna().astype(str).iloc[0])[:10]
+                                    except Exception:
+                                        ymd = None
+                                if not vlabel and "venue" in df.columns and not df["venue"].isna().all():
+                                    try:
+                                        vlabel = str(df["venue"].dropna().astype(str).iloc[0])
+                                    except Exception:
+                                        vlabel = None
+                        except Exception:
+                            pass
+                    if not (rnum and ymd):
+                        return None
+                    # Query race_metadata to find a race_id by date + race_number, prefer venue match when possible
+                    try:
+                        cur = conn.cursor()
+                        cur.execute(
+                            """
+                            SELECT race_id, venue FROM race_metadata
+                            WHERE race_date = ? AND CAST(race_number AS INTEGER) = ?
+                            """,
+                            (str(ymd), int(rnum)),
+                        )
+                        rows = cur.fetchall() or []
+                        if not rows:
+                            return None
+                        if vlabel:
+                            # choose the first whose venue string loosely matches label
+                            lbl = str(vlabel).upper().replace(" ", "")
+                            def _score(ven):
+                                vv = str(ven or "").upper().replace(" ", "")
+                                # direct contains either way has higher score
+                                if lbl and (lbl in vv or vv in lbl):
+                                    return 2
+                                # first 3 chars match (e.g., BAL ~ BALLARAT)
+                                if len(lbl) >= 3 and vv.startswith(lbl[:3]):
+                                    return 1
+                                return 0
+                            rows.sort(key=lambda r: _score(r[1]), reverse=True)
+                        # return best candidate race_id
+                        return rows[0][0] if rows else None
+                    except Exception:
+                        return None
+
+                if (not win_odds) or (not place_odds):
+                    alt_id = _resolve_alt_race_id(conn, race_id, race_data)
+                    if alt_id and alt_id != race_id:
+                        try:
+                            # Re-query with the resolved id
+                            win_odds = {}
+                            place_odds = {}
+                            cur = conn.cursor()
+                            cur.execute(
+                                """
+                                SELECT dog_clean_name, odds_decimal
+                                FROM live_odds
+                                WHERE race_id = ? AND market_type = 'win' AND (is_current = 1 OR is_current IS NULL)
+                                """,
+                                (alt_id,),
+                            )
+                            for dog, odds in cur.fetchall() or []:
+                                try:
+                                    if dog:
+                                        win_odds[str(dog).upper().strip()] = float(odds)
+                                except Exception:
+                                    continue
+                            # place/top3 odds
+                            try:
+                                cur.execute(
+                                    """
+                                    SELECT dog_clean_name, odds_decimal, topN
+                                    FROM live_odds
+                                    WHERE race_id = ? AND market_type IN ('place','top3') AND (topN = 3 OR topN IS NULL) AND (is_current = 1 OR is_current IS NULL)
+                                    """,
+                                    (alt_id,),
+                                )
+                                for dog, odds, _topn in cur.fetchall() or []:
+                                    try:
+                                        if dog:
+                                            place_odds[str(dog).upper().strip()] = float(odds)
+                                    except Exception:
+                                        continue
+                            except sqlite3.OperationalError:
+                                cur.execute(
+                                    """
+                                    SELECT dog_clean_name, odds_decimal
+                                    FROM live_odds
+                                    WHERE race_id = ? AND market_type IN ('place','top3') AND (is_current = 1 OR is_current IS NULL)
+                                    """,
+                                    (alt_id,),
+                                )
+                                for dog, odds in cur.fetchall() or []:
+                                    try:
+                                        if dog:
+                                            place_odds[str(dog).upper().strip()] = float(odds)
+                                    except Exception:
+                                        continue
+                            # use alt_id for downstream odds-based EV
+                            if (win_odds or place_odds):
+                                logger.info(f"Resolved alt race_id for odds join: {race_id} -> {alt_id}")
+                        except Exception as _fe:
+                            logger.debug(f"alt race_id fallback failed: {_fe}")
+            except Exception:
+                pass
+
             # Perform prediction with V4 system (pass odds and flags)
             try:
-                result = self.ml_system_v4.predict_race(
+                result = ml_for_call.predict_race(
                     race_data,
                     race_id,
                     market_odds=win_odds if win_odds else None,
@@ -657,6 +857,42 @@ class PredictionPipelineV4:
         def _norm(name: str) -> str:
             return _normalize_dog_name_no_prefix(name)
 
+        # Helpers for tolerant, case-insensitive extraction and numeric parsing
+        import re as __re
+        def _row_get_ci(_row, keys):
+            try:
+                if not isinstance(_row, dict):
+                    _row = dict(_row)
+                # Build case-insensitive map once per row
+                ci_map = {str(k).strip().lower(): k for k in _row.keys()}
+                for k in keys:
+                    lk = str(k).strip().lower()
+                    if lk in ci_map:
+                        val = _row.get(ci_map[lk])
+                        if val is not None and str(val).strip() != "":
+                            return val
+                return None
+            except Exception:
+                return None
+        def _to_int_like(v):
+            try:
+                if v is None:
+                    return None
+                s = str(v)
+                m = __re.search(r"(\d+)", s)
+                return int(m.group(1)) if m else None
+            except Exception:
+                return None
+        def _to_float_like(v):
+            try:
+                if v is None:
+                    return None
+                s = str(v)
+                m = __re.search(r"(\d+(?:\.\d+)?)", s)
+                return float(m.group(1)) if m else None
+            except Exception:
+                return None
+
         for _, row in raw_csv_data.iterrows():
             raw_name = str(row.get("Dog Name", "") or "").strip()
             has_prefix = _has_numeric_prefix(raw_name)
@@ -699,37 +935,23 @@ class PredictionPipelineV4:
 
             if is_history_row and current_dog:
                 try:
+                    # Case-insensitive header support with tolerant numeric parsing
+                    plc = _row_get_ci(row, ["PLC", "Plc", "Place", "Placing", "Position", "Finish"])
+                    tim = _row_get_ci(row, ["TIME", "Time", "Race Time", "RaceTime"])  # may include 's'
+                    dist = _row_get_ci(row, ["DIST", "Distance"])  # may include 'm'
+                    mgn = _row_get_ci(row, ["MGN", "Margin", "Beaten Margin"])
+                    wgt = _row_get_ci(row, ["WGT", "Weight"]) 
+                    date_val = _row_get_ci(row, ["DATE", "Date", "race_date", "Race Date"])
+                    track_val = _row_get_ci(row, ["TRACK", "Track", "Venue", "venue"]) 
+
                     historical_race = {
-                        "date": row.get("DATE", ""),
-                        "track": row.get("TRACK", ""),
-                        "finish_position": (
-                            int(row.get("PLC", 0))
-                            if str(row.get("PLC", "")).strip().split()[0].isdigit()
-                            else None
-                        ),
-                        "time": (
-                            float(row.get("TIME", 0))
-                            if row.get("TIME")
-                            and str(row.get("TIME")).replace(".", "").isdigit()
-                            else None
-                        ),
-                        "distance": (
-                            int(row.get("DIST", 0))
-                            if str(row.get("DIST", "")).isdigit()
-                            else None
-                        ),
-                        "margin": (
-                            float(row.get("MGN", 0))
-                            if row.get("MGN")
-                            and str(row.get("MGN")).replace(".", "").isdigit()
-                            else None
-                        ),
-                        "weight": (
-                            float(row.get("WGT", 0))
-                            if row.get("WGT")
-                            and str(row.get("WGT")).replace(".", "").isdigit()
-                            else None
-                        ),
+                        "date": date_val or "",
+                        "track": track_val or "",
+                        "finish_position": _to_int_like(plc),
+                        "time": _to_float_like(tim),
+                        "distance": _to_int_like(dist),
+                        "margin": _to_float_like(mgn),
+                        "weight": _to_float_like(wgt),
                     }
 
                     # Only add if we have minimal essential data (position)

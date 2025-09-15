@@ -28,6 +28,7 @@ import os
 import re
 import sqlite3
 import sys
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from scripts.db_utils import open_sqlite_writable

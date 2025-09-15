@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
+import os as _os  # for env checks in persistence
 
 logger = logging.getLogger(__name__)
 
@@ -214,7 +215,12 @@ class EnhancedPredictionService:
                 pass
 
     def __init__(self, db_path: str = "greyhound_racing_data.db"):
-        self.db_path = db_path
+        # Resolve DB path from environment first, then fallback to provided argument
+        try:
+            resolved = os.getenv("GREYHOUND_DB_PATH") or os.getenv("ANALYTICS_DB_PATH") or db_path
+        except Exception:
+            resolved = db_path
+        self.db_path = resolved
         self.ml_system = None
         self.accuracy_optimizer = None
         self._initialize_systems()
@@ -258,6 +264,7 @@ class EnhancedPredictionService:
         race_id: str,
         market_odds: Optional[Dict[str, float]] = None,
         tgr_enabled: Optional[bool] = None,
+        optimizer_enabled: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """Generate enhanced predictions with accuracy optimization.
         tgr_enabled: when provided, toggles runtime inclusion of TGR features.
@@ -274,17 +281,71 @@ class EnhancedPredictionService:
         try:
             logger.info(f"🎯 Generating enhanced predictions for race: {race_id}")
 
-            # Respect runtime TGR toggle if provided
+            # Respect runtime TGR toggle if provided, else read TGR_FEATURES_ENABLED from env
             try:
-                if tgr_enabled is not None and hasattr(
-                    self.ml_system, "set_tgr_enabled"
-                ):
+                if tgr_enabled is None:
+                    env_val = os.getenv("TGR_FEATURES_ENABLED")
+                    if env_val is not None:
+                        tgr_enabled = str(env_val).strip().lower() in ("1", "true", "yes", "on")
+                if tgr_enabled is not None and hasattr(self.ml_system, "set_tgr_enabled"):
                     self.ml_system.set_tgr_enabled(bool(tgr_enabled))
             except Exception:
                 pass
 
-            # Use the ML System V4 with integrated accuracy optimizer
-            result = self.ml_system.predict_race(race_data, race_id, market_odds)
+            # Prepare ML system per-request
+            ml_for_call = self.ml_system
+
+            # Ensure optimizer integration if requested
+            try:
+                if optimizer_enabled is True and hasattr(ml_for_call, "accuracy_optimizer") and getattr(ml_for_call, "accuracy_optimizer", None) is None:
+                    # Force-enable for this runtime
+                    os.environ["V4_DISABLE_ACCURACY_OPTIMIZER"] = "0"
+                    try:
+                        ml_for_call._initialize_accuracy_optimizer()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            # If optimizer explicitly disabled, spawn a fresh MLSystemV4 with optimizer off
+            try:
+                if optimizer_enabled is False:
+                    prev = os.environ.get("V4_DISABLE_ACCURACY_OPTIMIZER")
+                    os.environ["V4_DISABLE_ACCURACY_OPTIMIZER"] = "1"
+                    try:
+                        from ml_system_v4 import MLSystemV4 as _ML
+                        ml_for_call = _ML(self.db_path)
+                    finally:
+                        if prev is None:
+                            try:
+                                del os.environ["V4_DISABLE_ACCURACY_OPTIMIZER"]
+                            except Exception:
+                                pass
+                        else:
+                            os.environ["V4_DISABLE_ACCURACY_OPTIMIZER"] = prev
+            except Exception:
+                pass
+
+            # Apply TGR per-request
+            try:
+                if tgr_enabled is not None and hasattr(ml_for_call, "set_tgr_enabled"):
+                    ml_for_call.set_tgr_enabled(bool(tgr_enabled))
+            except Exception:
+                pass
+
+            # Use the ML System V4 (configured above)
+            # Load feature flags so inference can honor ALLOW_FUTURE_RACE_DATES and others
+            try:
+                from utils.feature_flags import load_flags as _load_flags
+                _flags, _ = _load_flags()
+            except Exception:
+                _flags = None
+            result = ml_for_call.predict_race(
+                race_data,
+                race_id,
+                market_odds=market_odds,
+                flags=_flags,
+            )
 
             if result.get("success"):
                 # Optional: apply near-tie SP-based tie-breaker before downstream metrics
@@ -372,6 +433,12 @@ class EnhancedPredictionService:
                     )
                     result["recommendations"] = recommendations
 
+                # Optionally persist predictions to DB if enabled via env
+                try:
+                    self._persist_predictions_if_enabled(result, race_id)
+                except Exception:
+                    pass
+
                 logger.info(f"✅ Enhanced predictions generated for {race_id}")
             else:
                 logger.warning(
@@ -390,7 +457,7 @@ class EnhancedPredictionService:
             }
 
     def predict_race_file_enhanced(
-        self, race_file_path: str, tgr_enabled: Optional[bool] = None
+        self, race_file_path: str, tgr_enabled: Optional[bool] = None, optimizer_enabled: Optional[bool] = None
     ) -> Dict[str, Any]:
         """Generate enhanced predictions from race file.
         tgr_enabled: when provided, toggles runtime inclusion of TGR features.
@@ -402,10 +469,30 @@ class EnhancedPredictionService:
 
             pipeline = PredictionPipelineV4(self.db_path)
 
+            # Default tgr_enabled from env if not explicitly provided
+            try:
+                if tgr_enabled is None:
+                    _tgr_env = os.getenv("TGR_FEATURES_ENABLED")
+                    if _tgr_env is not None:
+                        tgr_enabled = str(_tgr_env).strip().lower() in ("1", "true", "yes", "on")
+            except Exception:
+                pass
+
+            # Ensure optimizer integration if requested
+            try:
+                if optimizer_enabled is True and hasattr(self.ml_system, "accuracy_optimizer") and getattr(self.ml_system, "accuracy_optimizer", None) is None:
+                    os.environ["V4_DISABLE_ACCURACY_OPTIMIZER"] = "0"
+                    try:
+                        self.ml_system._initialize_accuracy_optimizer()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
             # Generate predictions using the pipeline
             try:
                 result = pipeline.predict_race_file(
-                    race_file_path, tgr_enabled=tgr_enabled
+                    race_file_path, tgr_enabled=tgr_enabled, optimizer_enabled=optimizer_enabled
                 )
             except TypeError:
                 # Backward-compat if pipeline signature not updated
@@ -423,6 +510,12 @@ class EnhancedPredictionService:
                 if "predictions" in result:
                     predictions = result["predictions"]
                     race_id = result.get("race_id", "unknown")
+
+                    # Optionally persist predictions to DB if enabled via env
+                    try:
+                        self._persist_predictions_if_enabled(result, race_id)
+                    except Exception:
+                        pass
 
                     # Add enhanced service metadata
                     result["enhanced_service"] = {
@@ -607,7 +700,20 @@ class EnhancedPredictionService:
             for p in blended:
                 # Ensure commonly used keys exist for downstream consumers
                 p.setdefault("win_prob_norm", p.get("win_prob", 0.0))
-                p.setdefault("place_prob", min(1.0, p.get("win_prob", 0.0) * 1.6))
+                # Prefer model-derived place probability when available; avoid constant multipliers
+                if p.get("place_prob") is None:
+                    if p.get("place_prob_norm") is not None:
+                        try:
+                            p["place_prob"] = float(p.get("place_prob_norm"))
+                        except Exception:
+                            pass
+                    else:
+                        try:
+                            wp = float(p.get("win_prob") or 0.0)
+                        except Exception:
+                            wp = 0.0
+                        # Conservative monotonic uplift: ensure place_prob >= win_prob and <= 1.0
+                        p["place_prob"] = max(wp, min(1.0, wp + 0.5 * (1.0 - wp)))
             prediction_result["predictions"] = blended
             meta = prediction_result.setdefault("gpt_rerank", {})
             meta.update(
@@ -979,6 +1085,139 @@ class EnhancedPredictionService:
                 prediction_result.setdefault("overlay_error", str(_e))
             except Exception:
                 pass
+
+    def _persist_predictions_if_enabled(self, prediction_result: Dict[str, Any], race_id: str) -> None:
+        """Persist predictions to the SQLite DB if PERSIST_PREDICTIONS is enabled.
+        Table schema: predictions(race_id TEXT, dog_clean_name TEXT, predicted_probability REAL, confidence_level TEXT, timestamp TEXT)
+        """
+        try:
+            # Check env gate
+            flag = str(_os.getenv("PERSIST_PREDICTIONS", "0")).strip().lower()
+            if flag not in ("1", "true", "yes", "on"):
+                return
+            preds = prediction_result.get("predictions") or []
+            if not preds:
+                return
+            # Choose race_id to write (map to standardized race_id when possible)
+            rid = prediction_result.get("race_id") or race_id
+
+            # Attempt to map filename-style race_id to standardized race_id using race_metadata
+            try:
+                import re as _re
+                import sqlite3 as _sqlite
+
+                def _norm_name(x: str) -> str:
+                    try:
+                        return _re.sub(r"[^\w]", "", (x or "").upper().strip())
+                    except Exception:
+                        return (x or "").upper().replace(" ", "")
+
+                # Extract metadata from prediction_result
+                rc = prediction_result.get("race_context") or {}
+                ri = prediction_result.get("race_info") or {}
+                venue_raw = rc.get("venue") or ri.get("venue")
+                date_raw = rc.get("race_date") or ri.get("race_date") or ri.get("date")
+                race_num = ri.get("race_number")
+
+                # Parse race number from filename if missing
+                if race_num is None:
+                    try:
+                        fn = ri.get("filename") or prediction_result.get("race_id") or ""
+                        m = _re.match(r"^Race\s+(\d+)\s*-\s*", str(fn))
+                        if m:
+                            race_num = int(m.group(1))
+                    except Exception:
+                        race_num = None
+
+                std_rid = None
+                if date_raw and race_num is not None:
+                    try:
+                        conn_lookup = _sqlite.connect(self.db_path)
+                        cur_lookup = conn_lookup.cursor()
+                        cur_lookup.execute(
+                            """
+                            SELECT race_id, venue, COALESCE(venue_slug, venue) AS venue_slug
+                            FROM race_metadata
+                            WHERE race_date = ? AND race_number = ?
+                            """,
+                            (str(date_raw), int(race_num)),
+                        )
+                        rows = cur_lookup.fetchall() or []
+                        conn_lookup.close()
+                        if rows:
+                            vn_norm = _norm_name(venue_raw) if venue_raw else None
+                            # Prefer exact venue/slug match if we have a venue label; else fallback to first row
+                            chosen = None
+                            if vn_norm:
+                                for r_row in rows:
+                                    rm_rid, rm_venue, rm_slug = r_row
+                                    if _norm_name(rm_venue) == vn_norm or _norm_name(rm_slug) == vn_norm:
+                                        chosen = rm_rid
+                                        break
+                            if not chosen:
+                                # Fallback: use the first candidate for given date+race_number
+                                chosen = rows[0][0]
+                            std_rid = chosen
+                    except Exception:
+                        std_rid = None
+                if std_rid:
+                    rid = std_rid
+            except Exception:
+                pass
+
+            import sqlite3, re as _re
+            conn = sqlite3.connect(self.db_path)
+            try:
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS predictions (
+                        race_id TEXT,
+                        dog_clean_name TEXT,
+                        predicted_probability REAL,
+                        confidence_level TEXT,
+                        timestamp TEXT DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+                cur = conn.cursor()
+                def _norm_name(x: str) -> str:
+                    return _re.sub(r"[^\w\s]", "", (x or "").upper().strip())
+                def _prob(p: Dict[str, Any]) -> Optional[float]:
+                    for k in ("win_prob_norm", "win_probability", "win_prob", "final_score", "prediction_score"):
+                        v = p.get(k)
+                        if v is None:
+                            continue
+                        try:
+                            x = float(v)
+                            return x/100.0 if x>1.0 else x
+                        except Exception:
+                            continue
+                    return None
+                ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                for p in preds:
+                    nm = _norm_name(p.get("dog_clean_name") or p.get("dog_name") or p.get("name"))
+                    if not nm:
+                        continue
+                    prob = _prob(p)
+                    if prob is None:
+                        continue
+                    conf = p.get("confidence_label") or p.get("confidence_level") or "MEDIUM"
+                    try:
+                        cur.execute(
+                            """
+                            INSERT INTO predictions (race_id, dog_clean_name, predicted_probability, confidence_level, timestamp)
+                            VALUES (?, ?, ?, ?, ?)
+                            """,
+                            (rid, nm, float(prob), str(conf), ts),
+                        )
+                    except Exception:
+                        continue
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception:
+            # Never fail predictions due to persistence
+            pass
 
     def get_service_status(self) -> Dict[str, Any]:
         """Get current service status and capabilities."""

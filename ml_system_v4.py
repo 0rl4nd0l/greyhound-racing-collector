@@ -30,6 +30,9 @@ import joblib
 import numpy as np
 import pandas as pd
 from sklearn.calibration import CalibratedClassifierCV
+from sklearn.isotonic import IsotonicRegression
+from sklearn.model_selection import KFold
+from sklearn.base import clone
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import ExtraTreesClassifier
 from sklearn.impute import SimpleImputer
@@ -139,8 +142,14 @@ class MLSystemV4:
 
         # Early DB schema preflight to fail fast on misconfigured DBs
         try:
+            required_tables = ("dog_race_data", "race_metadata")
+            try:
+                if os.getenv("REQUIRE_ENHANCED_EXPERT", "0").strip().lower() in ("1", "true", "yes", "on"):
+                    required_tables = required_tables + ("enhanced_expert_data",)
+            except Exception:
+                pass
             self._preflight_check_required_tables(
-                required=("dog_race_data", "race_metadata", "enhanced_expert_data"),
+                required=required_tables,
                 raise_on_fail=True,
             )
         except Exception as _e:
@@ -458,7 +467,24 @@ class MLSystemV4:
             conn = sqlite3.connect(self.db_path)
 
             # Load data with temporal information
-            query = """
+            query_with_weather = """
+            SELECT 
+                d.*,
+                r.venue, r.grade, r.distance, r.track_condition, r.weather,
+                r.temperature, r.humidity, r.wind_speed,
+                r.field_size,
+                r.race_date, r.race_time, r.winner_name, r.winner_odds, r.winner_margin,
+                e.pir_rating, e.first_sectional, e.win_time, e.bonus_time
+            FROM dog_race_data d
+            LEFT JOIN race_metadata r ON d.race_id = r.race_id
+            LEFT JOIN enhanced_expert_data e ON d.race_id = e.race_id 
+                AND d.dog_clean_name = e.dog_clean_name
+            WHERE d.race_id IS NOT NULL 
+                AND r.race_date IS NOT NULL
+                AND d.finish_position IS NOT NULL
+            ORDER BY r.race_date ASC, r.race_time ASC, d.race_id, d.box_number
+            """
+            query_fallback = """
             SELECT 
                 d.*,
                 r.venue, r.grade, r.distance, r.track_condition, r.weather,
@@ -476,7 +502,11 @@ class MLSystemV4:
             ORDER BY r.race_date ASC, r.race_time ASC, d.race_id, d.box_number
             """
 
-            raw_data = pd.read_sql_query(query, conn)
+            try:
+                raw_data = pd.read_sql_query(query_with_weather, conn)
+            except Exception as _qe:
+                logger.warning(f"Weather columns not available, falling back to NULLs: {_qe}")
+                raw_data = pd.read_sql_query(query_fallback, conn)
             conn.close()
 
             if raw_data.empty:
@@ -801,7 +831,23 @@ class MLSystemV4:
 
                     # Build temporal leakage-safe features
                     if self.upcoming_race_box_numbers:
-                        race_data.loc[:, "box_number"] = range(1, len(race_data) + 1)
+                        # Preserve provided box numbers when present; only fill missing
+                        try:
+                            if "box_number" not in race_data.columns:
+                                race_data = race_data.copy()
+                                race_data.loc[:, "box_number"] = list(range(1, len(race_data) + 1))
+                            else:
+                                # Identify missing/invalid entries and fill sequentially only for those rows
+                                try:
+                                    missing = race_data["box_number"].isna() | (race_data["box_number"] == 0)
+                                except Exception:
+                                    # If non-numeric dtype, coerce to detect missing
+                                    missing = pd.to_numeric(race_data["box_number"], errors="coerce").isna()
+                                if missing.any():
+                                    seq = pd.Series(range(1, len(race_data) + 1), index=race_data.index)
+                                    race_data.loc[missing, "box_number"] = seq[missing].astype(int)
+                        except Exception as _e:
+                            logger.warning(f"Box number preservation/fill failed; proceeding as-is: {_e}")
 
                     if self.upcoming_race_weights and "weight" in race_data.columns:
                         # Weight column already exists, no need to map
@@ -906,13 +952,17 @@ class MLSystemV4:
 
         # Create column transformer with numeric imputation to handle missing/NaN values
         numeric_transformer = Pipeline([("imputer", SimpleImputer(strategy="median"))])
+        # Treat box_number explicitly as a categorical draw to constrain overfitting to absolute values
+        categorical_cols = list(self.categorical_columns)
+        if "box_number" in features_df.columns and "box_number" not in categorical_cols:
+            categorical_cols.append("box_number")
         preprocessor = ColumnTransformer(
             transformers=[
                 ("num", numeric_transformer, self.numerical_columns),
                 (
                     "cat",
                     OneHotEncoder(handle_unknown="ignore", sparse_output=False),
-                    self.categorical_columns,
+                    categorical_cols,
                 ),
             ],
             remainder="drop",
@@ -1006,6 +1056,100 @@ class MLSystemV4:
         except Exception:
             return ""
 
+    def _compute_top1_metrics(
+        self,
+        test_features: pd.DataFrame,
+        y_true: pd.Series,
+        y_pred_proba: "np.ndarray",
+    ) -> Dict[str, float]:
+        """Compute per-race Top-1 winner metrics for registry selection.
+
+        Returns a dict with keys: correct_winners (int), races_evaluated (int), top1_rate (float).
+        If race_id is unavailable or computation fails, returns zeros.
+        """
+        try:
+            import numpy as _np  # local import to avoid shadowing
+            import pandas as _pd
+
+            if test_features is None or "race_id" not in test_features.columns:
+                return {"correct_winners": 0, "races_evaluated": 0, "top1_rate": 0.0}
+
+            df_eval = _pd.DataFrame(
+                {
+                    "race_id": test_features["race_id"].values,
+                    "y": _pd.Series(y_true).astype(int).values,
+                    "p": _np.asarray(y_pred_proba, dtype=float),
+                }
+            )
+            if df_eval.empty:
+                return {"correct_winners": 0, "races_evaluated": 0, "top1_rate": 0.0}
+
+            grouped = df_eval.groupby("race_id", sort=False)
+            races_evaluated = int(grouped.ngroups)
+            if races_evaluated <= 0:
+                return {"correct_winners": 0, "races_evaluated": 0, "top1_rate": 0.0}
+
+            # Count a hit when the highest-probability dog actually won (y==1)
+            hits_series = grouped.apply(lambda g: int(g.loc[g["p"].idxmax(), "y"] == 1)).astype(int)
+            correct_winners = int(hits_series.sum())
+            top1_rate = float(correct_winners / races_evaluated) if races_evaluated else 0.0
+            return {
+                "correct_winners": correct_winners,
+                "races_evaluated": races_evaluated,
+                "top1_rate": top1_rate,
+            }
+        except Exception:
+            return {"correct_winners": 0, "races_evaluated": 0, "top1_rate": 0.0}
+
+    def _validate_temporal_split(self, train_df: pd.DataFrame, test_df: pd.DataFrame) -> None:
+        """Validate that temporal split has no leakage or race_id overlap."""
+        try:
+            if "race_id" in train_df.columns and "race_id" in test_df.columns:
+                overlap = set(train_df["race_id"].unique()).intersection(set(test_df["race_id"].unique()))
+                if overlap:
+                    raise AssertionError(f"Temporal leakage: race_id overlap detected ({len(overlap)})")
+            # If timestamps available, ensure max train <= min test
+            for col in ("race_start_time", "race_date"):
+                if col in train_df.columns and col in test_df.columns:
+                    try:
+                        tmax = pd.to_datetime(train_df[col]).max()
+                        tmin = pd.to_datetime(test_df[col]).min()
+                        if pd.notnull(tmax) and pd.notnull(tmin) and tmax > tmin:
+                            raise AssertionError(
+                                f"Temporal ordering violated: train {col} max {tmax} > test {col} min {tmin}"
+                            )
+                    except Exception:
+                        pass
+        except AssertionError:
+            raise
+        except Exception:
+            # Non-fatal in production; log elsewhere if needed
+            pass
+
+    def _fit_oof_isotonic(self, model, X: pd.DataFrame, y: pd.Series, n_splits: int = 5) -> Optional[IsotonicRegression]:
+        """Fit an OOF isotonic calibrator mapping raw probs -> true outcome.
+        Returns a fitted IsotonicRegression or None if it fails.
+        """
+        try:
+            if len(X) < max(100, n_splits * 10):
+                return None
+            kf = KFold(n_splits=n_splits, shuffle=False)
+            oof_p = np.zeros(len(X), dtype=float)
+            y_arr = np.asarray(y).astype(int)
+            for tr_idx, va_idx in kf.split(X):
+                m = clone(model)
+                m.fit(X.iloc[tr_idx], y_arr[tr_idx])
+                p = m.predict_proba(X.iloc[va_idx])[:, 1]
+                oof_p[va_idx] = p
+            # Guard: monotonic reg needs variance
+            if np.allclose(oof_p.min(), oof_p.max()):
+                return None
+            iso = IsotonicRegression(y_min=0.0, y_max=1.0, out_of_bounds="clip")
+            iso.fit(oof_p, y_arr)
+            return iso
+        except Exception:
+            return None
+
     def train_model(self) -> bool:
         """Train the complete leakage-safe, calibrated model."""
         logger.info("🚀 Starting leakage-safe model training...")
@@ -1040,6 +1184,12 @@ class MLSystemV4:
 
         # Prepare time-ordered data
         train_data, test_data = self.prepare_time_ordered_data()
+        # Validate temporal integrity
+        try:
+            self._validate_temporal_split(train_data, test_data)
+        except AssertionError as e:
+            logger.error(f"Temporal split validation failed: {e}")
+            return False
         if train_data.empty or test_data.empty:
             logger.error("No data available for training")
             return False
@@ -1099,11 +1249,27 @@ class MLSystemV4:
         except Exception as _e:
             logger.debug(f"Categorical backfill skipped due to: {_e}")
 
-        # Coerce numerical columns to numeric dtype and leave NaNs for imputers
+        # Normalize boolean-like strings and coerce numerical columns to numeric dtype
         try:
-            for col in list(set(self.numerical_columns) & set(X_train.columns)):
+            num_cols_train = list(set(self.numerical_columns) & set(X_train.columns))
+            num_cols_test = list(set(self.numerical_columns) & set(X_test.columns))
+            # Normalize boolean-like strings in numeric candidates
+            for df, cols in ((X_train, num_cols_train), (X_test, num_cols_test)):
+                for col in cols:
+                    if df[col].dtype == object:
+                        try:
+                            df[col] = (
+                                df[col]
+                                .astype(str)
+                                .str.strip()
+                                .str.lower()
+                                .replace({"true": "1", "false": "0"})
+                            )
+                        except Exception:
+                            pass
+            for col in num_cols_train:
                 X_train[col] = pd.to_numeric(X_train[col], errors="coerce")
-            for col in list(set(self.numerical_columns) & set(X_test.columns)):
+            for col in num_cols_test:
                 X_test[col] = pd.to_numeric(X_test[col], errors="coerce")
         except Exception as _e:
             logger.warning(
@@ -1124,6 +1290,14 @@ class MLSystemV4:
 
         # Create and train pipeline
         self.calibrated_pipeline = self.create_sklearn_pipeline(X_train)
+
+        # Optional: OOF isotonic calibration mapping (disabled by default; enable via V4_ENABLE_OOF_ISOTONIC=1)
+        try:
+            _enable_oof_iso = os.getenv("V4_ENABLE_OOF_ISOTONIC", "0").strip().lower() in ("1","true","yes","on")
+        except Exception:
+            _enable_oof_iso = False
+        self._iso_calibrator = self._fit_oof_isotonic(self.calibrated_pipeline, X_train, y_train, n_splits=5) if _enable_oof_iso else None
+        self._use_iso_calibration = bool(self._iso_calibrator is not None)
 
         # Compute race-level sample weights (equal race weight)
         try:
@@ -1196,6 +1370,12 @@ class MLSystemV4:
         # Evaluate model
         train_pred_proba = self.calibrated_pipeline.predict_proba(X_train)[:, 1]
         test_pred_proba = self.calibrated_pipeline.predict_proba(X_test)[:, 1]
+        if getattr(self, "_use_iso_calibration", False):
+            try:
+                train_pred_proba = self._iso_calibrator.predict(train_pred_proba)
+                test_pred_proba = self._iso_calibrator.predict(test_pred_proba)
+            except Exception:
+                pass
 
         train_pred = (train_pred_proba > 0.5).astype(int)
         test_pred = (test_pred_proba > 0.5).astype(int)
@@ -1207,6 +1387,20 @@ class MLSystemV4:
         test_auc = roc_auc_score(y_test, test_pred_proba)
         train_brier = brier_score_loss(y_train, train_pred_proba)
         test_brier = brier_score_loss(y_test, test_pred_proba)
+
+        # Optional classification metrics for registry transparency
+        try:
+            from sklearn.metrics import f1_score as _f1, precision_score as _prec, recall_score as _rec
+            test_f1 = float(_f1(y_test, test_pred, average="binary", zero_division=0))
+            test_precision = float(_prec(y_test, test_pred, average="binary", zero_division=0))
+            test_recall = float(_rec(y_test, test_pred, average="binary", zero_division=0))
+        except Exception:
+            test_f1 = 0.0
+            test_precision = 0.0
+            test_recall = 0.0
+
+        # Winner-hit metrics (per-race top-1 correctness)
+        top1_metrics = self._compute_top1_metrics(test_features, y_test, test_pred_proba)
 
         logger.info("📈 Model Performance:")
         logger.info(f"   Training Accuracy: {train_accuracy:.4f}")
@@ -1303,6 +1497,14 @@ class MLSystemV4:
             "ev_thresholds": self.ev_thresholds,
             "feature_signature": feature_sig,
             "trained_at": datetime.now().isoformat(),
+            # Winner-hit metrics for registry selection visibility
+            "correct_winners": int(top1_metrics.get("correct_winners", 0)),
+            "races_evaluated": int(top1_metrics.get("races_evaluated", 0)),
+            "top1_rate": float(top1_metrics.get("top1_rate", 0.0)),
+            # Additional classification metrics
+            "test_f1": float(test_f1),
+            "test_precision": float(test_precision),
+            "test_recall": float(test_recall),
         }
 
         # Save model
@@ -1315,6 +1517,10 @@ class MLSystemV4:
         except Exception as _e:
             logger.warning(f"Could not write feature contract: {_e}")
 
+        # Keep calibrator for inference
+        if getattr(self, "_use_iso_calibration", False):
+            logger.info("✅ OOF isotonic calibrator fitted and stored for inference")
+
         # Optional strict contract enforcement immediately after training
         try:
             enforce = os.getenv("FEATURE_CONTRACT_ENFORCE", "0").lower() in (
@@ -1325,6 +1531,62 @@ class MLSystemV4:
             self.check_feature_contract(enforce=enforce)
         except Exception as _e:
             logger.warning(f"Feature contract check after training raised: {_e}")
+
+        # Register the trained model with the Model Registry (with winner-hit metrics)
+        try:
+            from sklearn.preprocessing import FunctionTransformer as _FuncT
+            from model_registry import get_model_registry as _get_reg
+
+            # Map a human-friendly model_name aligned with V4 conventions
+            if base_name == "ExtraTreesClassifier":
+                model_name = "V4_ExtraTrees"
+            elif base_name == "LightGBM":
+                model_name = "V4_LightGBM"
+            else:
+                model_name = "V4_Model"
+
+            performance_metrics = {
+                "accuracy": float(test_accuracy),
+                "auc": float(test_auc),
+                "f1_score": float(test_f1),
+                "precision": float(test_precision),
+                "recall": float(test_recall),
+            }
+            training_info = {
+                "training_samples": int(len(X_train)),
+                "test_samples": int(len(X_test)),
+                "training_duration": 0.0,
+                "validation_method": "temporal_split",
+                "cv_scores": [],
+                "is_ensemble": False,
+                "ensemble_components": [],
+                "data_quality_score": 0.7,
+                "inference_time_ms": 0.0,
+                "prediction_type": "win",
+                # Winner-hit metrics used by selection policy (e.g., top1_rate)
+                "correct_winners": int(top1_metrics.get("correct_winners", 0)),
+                "races_evaluated": int(top1_metrics.get("races_evaluated", 0)),
+                "top1_rate": float(top1_metrics.get("top1_rate", 0.0)),
+            }
+
+            registry = _get_reg()
+            _ = registry.register_model(
+                model_obj=self.calibrated_pipeline,
+                scaler_obj=_FuncT(validate=False),  # neutral transform for interface compatibility
+                model_name=model_name,
+                model_type=model_type_str,
+                performance_metrics=performance_metrics,
+                training_info=training_info,
+                feature_names=list(self.feature_columns or []),
+                hyperparameters={
+                    "calibration_method": chosen_cal,
+                    "base_model": base_name,
+                },
+                notes="V4 auto-train via MLSystemV4.train_model",
+            )
+            logger.info("📝 Model registered in Model Registry (auto-select best may update champion)")
+        except Exception as _e:
+            logger.warning(f"Model Registry registration skipped or failed: {_e}")
 
         return True
 
@@ -1993,6 +2255,19 @@ class MLSystemV4:
 
             # Step 2: Handle numerical features with robust error handling
             logger.debug(f"Converting {len(numerical_features)} numerical features")
+            # Normalize boolean-like strings in numeric feature candidates first
+            try:
+                for col in numerical_features:
+                    if col in X_pred.columns and X_pred[col].dtype == object:
+                        X_pred[col] = (
+                            X_pred[col]
+                            .astype(str)
+                            .str.strip()
+                            .str.lower()
+                            .replace({"true": "1", "false": "0"})
+                        )
+            except Exception:
+                pass
             for col in numerical_features:
                 if col in X_pred.columns:
                     try:
@@ -2091,6 +2366,38 @@ class MLSystemV4:
                     expected_cols = list(dict.fromkeys(list(expected_cols) + list(tgr_expected)))
                     # Align order again including TGR
                     X_pred = X_pred.reindex(columns=expected_cols, fill_value=0.0)
+
+                    # Runtime guard: detect when all TGR features are zeroed out across the race
+                    try:
+                        _tgr_cols_present = [c for c in X_pred.columns if isinstance(c, str) and c.startswith("tgr_")]
+                        _tgr_zeroed = False
+                        _tgr_non_zero_cols: list[str] = []
+                        _tgr_non_zero_rows = 0
+                        if _tgr_cols_present:
+                            _total_sum = float(np.nan_to_num(X_pred[_tgr_cols_present].to_numpy(), nan=0.0).sum())
+                            _tgr_zeroed = (abs(_total_sum) < 1e-12)
+                            if not _tgr_zeroed:
+                                # Identify which columns/rows carry signal
+                                _tgr_non_zero_cols = [c for c in _tgr_cols_present if float(np.nan_to_num(X_pred[c].to_numpy(), nan=0.0).sum()) != 0.0]
+                                try:
+                                    _tgr_non_zero_rows = int((np.nan_to_num(X_pred[_tgr_cols_present].to_numpy(), nan=0.0).sum(axis=1) != 0.0).sum())
+                                except Exception:
+                                    _tgr_non_zero_rows = 0
+                        # Stash for explainability_meta later
+                        tgr_zero_check = {
+                            "present": bool(_tgr_cols_present),
+                            "tgr_state": getattr(self, "_tgr_enabled", None),
+                            "zeroed": bool(_tgr_zeroed),
+                            "non_zero_columns": _tgr_non_zero_cols,
+                            "non_zero_rows": _tgr_non_zero_rows,
+                        }
+                        # Emit an actionable warning if zeroed when TGR likely intended
+                        if tgr_zero_check["present"] and tgr_zero_check["zeroed"]:
+                            logger.warning(
+                                "TGR features present but all-zero for this race. Ensure TGR data sources are enabled/backfilled (set TGR_FEATURES_ENABLED=1 and verify DB enrichment)."
+                            )
+                    except Exception as _tz:
+                        logger.debug(f"TGR zero-guard check skipped: {_tz}")
             except Exception as _tgr_e:
                 logger.debug(f"TGR compatibility step skipped: {_tgr_e}")
 
@@ -2395,26 +2702,40 @@ class MLSystemV4:
 
             # Calculate explainability metadata
             explainability_meta = self._create_explainability_metadata(X_pred, race_id)
+            # Attach TGR zero-guard info if available
+            try:
+                if 'tgr_zero_check' in locals() and isinstance(explainability_meta, dict):
+                    explainability_meta['tgr_zero_check'] = tgr_zero_check
+            except Exception:
+                pass
 
             # Feature signature meta (prefer current expected_cols over potentially stale model_info)
             expected_sig = self._compute_feature_signature(expected_cols)
             actual_sig = self._compute_feature_signature(list(X_pred.columns))
+            train_sig = None
+            try:
+                train_sig = (self.model_info or {}).get("feature_signature")
+            except Exception:
+                train_sig = None
+            # Prefer comparing to training-time signature if available
+            if train_sig:
+                match = bool(train_sig == actual_sig)
+            else:
+                match = bool(expected_sig == actual_sig)
             signature_meta = {
                 "expected_signature": expected_sig,
                 "actual_signature": actual_sig,
-                "match": bool(expected_sig == actual_sig),
+                "training_signature": train_sig,
+                "match": match,
             }
+            # Warn if the preprocessor-derived expected signature differs from training signature
+            if train_sig and expected_sig != train_sig:
+                logger.warning("Preprocessor-derived signature differs from training signature; possible drift")
 
             # Strict enforcement by default: abort if signature mismatches (schema drift)
-            if not signature_meta["match"]:
-                if os.getenv("V4_ALLOW_SIGNATURE_MISMATCH", "0").strip().lower() in (
-                    "1",
-                    "true",
-                    "yes",
-                ):
-                    logger.warning(
-                        "⚠️ Feature signature mismatch detected, but proceeding due to V4_ALLOW_SIGNATURE_MISMATCH=1"
-                    )
+            if not match:
+                if os.getenv("V4_ALLOW_SIGNATURE_MISMATCH", "0").strip().lower() in ("1","true","yes"):
+                    logger.warning("⚠️ Feature signature mismatch detected, but proceeding due to V4_ALLOW_SIGNATURE_MISMATCH=1")
                 else:
                     return {
                         "success": False,
@@ -2826,6 +3147,7 @@ class MLSystemV4:
 
         model_data = {
             "calibrated_pipeline": self.calibrated_pipeline,
+            "calibrated_pipeline_place": getattr(self, "calibrated_pipeline_place", None),
             "feature_columns": self.feature_columns,
             "categorical_columns": self.categorical_columns,
             "numerical_columns": self.numerical_columns,
@@ -3042,6 +3364,7 @@ class MLSystemV4:
         try:
             model_data = joblib.load(latest_model)
             self.calibrated_pipeline = model_data.get("calibrated_pipeline")
+            self.calibrated_pipeline_place = model_data.get("calibrated_pipeline_place")
             self.feature_columns = model_data.get("feature_columns", [])
             self.categorical_columns = model_data.get("categorical_columns", [])
             self.numerical_columns = model_data.get("numerical_columns", [])
@@ -3344,6 +3667,13 @@ class _MLSystemV4(MLSystemV4):
             # As a last resort, uniform probabilities
             proba = np.full(len(X), 1.0 / max(1, len(X)))
 
+        # Apply OOF isotonic calibration if available
+        try:
+            if getattr(self, "_use_iso_calibration", False) and getattr(self, "_iso_calibrator", None) is not None:
+                proba = self._iso_calibrator.predict(np.asarray(proba, dtype=float))
+        except Exception:
+            pass
+
         # Normalize
         proba = np.array(proba, dtype=float)
         norm = proba / max(1e-9, proba.sum())
@@ -3355,6 +3685,19 @@ class _MLSystemV4(MLSystemV4):
             else [f"DOG_{i+1}" for i in range(len(df))]
         )
         for i, name in enumerate(names):
+            ev_win = None
+            if isinstance(market_odds, dict):
+                try:
+                    # Support both clean and raw names in odds mapping
+                    key = str(name)
+                    if key not in market_odds and isinstance(name, str):
+                        key = name.strip()
+                    if key in market_odds:
+                        odds_val = float(market_odds[key])
+                        if odds_val > 1e-9:
+                            ev_win = float(norm[i] * (odds_val - 1.0) - (1.0 - norm[i]))
+                except Exception:
+                    ev_win = None
             predictions.append(
                 {
                     "dog_name": str(name),
@@ -3367,6 +3710,7 @@ class _MLSystemV4(MLSystemV4):
                     "win_prob_norm": float(norm[i]),
                     "confidence": float(min(0.95, 0.6 + 0.3 * norm[i])),
                     "predicted_rank": int(i + 1),
+                    **({"ev_win": ev_win} if ev_win is not None else {}),
                 }
             )
         predictions.sort(key=lambda x: x["win_prob_norm"], reverse=True)

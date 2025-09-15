@@ -23,6 +23,7 @@ from __future__ import annotations
 import contextlib
 import os
 import sqlite3
+import shutil
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -54,11 +55,12 @@ def backup_db(db_path: Path, label: str) -> Path:
 
     # Use sqlite online backup if available
     try:
-        import subprocess
-
-        subprocess.run(
-            ["sqlite3", str(db_path), ".backup", str(backup_file)], check=False
-        )
+        import subprocess  # nosec B404: controlled local subprocess usage
+        open_bin = shutil.which("sqlite3")
+        if open_bin:
+            subprocess.run(
+                [open_bin, str(db_path), ".backup", str(backup_file)], check=False, shell=False
+            )  # nosec B603 B607: absolute binary path; no shell; controlled args
     except Exception:
         pass
 
@@ -84,7 +86,12 @@ def row_counts(db_path: Path, tables: list[str]) -> Dict[str, int]:
         cur = conn.cursor()
         for t in tables:
             try:
-                cur.execute(f"SELECT COUNT(*) FROM {t}")
+                # Validate identifier (guard-provided allowlist) and strict pattern
+                import re
+                if t not in tables or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", t):
+                    counts[t] = -1
+                    continue
+                cur.execute(f'SELECT COUNT(*) FROM "{t}"')  # nosec B608: identifier validated against allowlist and strict regex
                 counts[t] = int(cur.fetchone()[0])
             except Exception:
                 counts[t] = -1

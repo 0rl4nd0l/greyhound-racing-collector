@@ -26,7 +26,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import subprocess
+import subprocess  # nosec B404: controlled local subprocess usage
 import sys
 from pathlib import Path
 
@@ -142,7 +142,8 @@ def main() -> int:
             capture_output=True,
             text=True,
             env=env2,
-        )
+            shell=False,
+        )  # nosec B603: using interpreter path; no shell
         calib_ok = calib_proc.returncode == 0
         calib_stdout_tail = calib_proc.stdout[-400:] if calib_proc.stdout else None
         calib_stderr_tail = calib_proc.stderr[-400:] if calib_proc.stderr else None
@@ -195,8 +196,8 @@ def main() -> int:
     env = os.environ.copy()
     env.setdefault("PYTHONPATH", str(Path.cwd()))
     proc = subprocess.run(
-        [sys.executable, str(reg_script)], capture_output=True, text=True, env=env
-    )
+        [sys.executable, str(reg_script)], capture_output=True, text=True, env=env, shell=False
+    )  # nosec B603: using interpreter path; no shell
 
     model_id = None
     success = proc.returncode == 0

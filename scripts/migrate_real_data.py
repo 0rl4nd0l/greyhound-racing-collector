@@ -95,7 +95,10 @@ def migrate_race_data(
         print("🧹 Cleaning existing training data...")
         for table in ["dog_race_data", "race_metadata", "enhanced_expert_data"]:
             try:
-                cursor.execute(f"DELETE FROM {table}")
+                import re as _re
+                if not _re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", table):
+                    raise sqlite3.OperationalError("invalid table name")
+                cursor.execute(f'DELETE FROM "{table}"')  # nosec B608: identifier validated against strict regex/allowlist
                 print(f"   Cleaned {table}")
             except sqlite3.OperationalError as e:
                 print(f"   Note: {table} - {e}")
@@ -103,7 +106,7 @@ def migrate_race_data(
     print("📊 Loading staging data...")
 
     # Load dog history data with limit if specified
-    limit_clause = f"LIMIT {limit}" if limit else ""
+    limit_clause = f"LIMIT {int(limit)}" if limit else ""  # nosec B608: integer from argparse; constant keyword
     dog_history_query = f"""
     SELECT * FROM csv_dog_history_staging 
     WHERE race_id IS NOT NULL 
@@ -259,9 +262,12 @@ def validate_migration(db_path: str) -> None:
     tables_to_check = ["dog_race_data", "race_metadata", "enhanced_expert_data"]
     for table in tables_to_check:
         try:
+            import re as _re
+            if table not in tables_to_check or not _re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", table):
+                raise ValueError("invalid table")
             count = pd.read_sql_query(
-                f"SELECT COUNT(*) as count FROM {table}", conn
-            ).iloc[0]["count"]
+                f'SELECT COUNT(*) as count FROM "{table}"', conn
+            ).iloc[0]["count"]  # nosec B608: identifier validated and quoted
             print(f"   {table}: {count} records")
         except Exception as e:
             print(f"   {table}: Error - {e}")

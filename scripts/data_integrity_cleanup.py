@@ -186,7 +186,7 @@ class DataIntegrityCleanup:
             
             if remove_ids:
                 cursor.execute(
-                    f"DELETE FROM dog_race_data WHERE id IN ({','.join(['?' for _ in remove_ids])})",
+                    f"DELETE FROM dog_race_data WHERE id IN ({','.join(['?' for _ in remove_ids])})",  # nosec B608: placeholders built from constant '?'; values parameterized; no untrusted SQL fragments
                     remove_ids
                 )
                 fixed_count += len(remove_ids)
@@ -233,7 +233,7 @@ class DataIntegrityCleanup:
             
             if remove_ids:
                 cursor.execute(
-                    f"DELETE FROM dog_race_data WHERE id IN ({','.join(['?' for _ in remove_ids])})",
+                    f"DELETE FROM dog_race_data WHERE id IN ({','.join(['?' for _ in remove_ids])})",  # nosec B608: placeholders built from constant '?'; values parameterized; no untrusted SQL fragments
                     remove_ids
                 )
                 fixed_count += len(remove_ids)

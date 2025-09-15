@@ -55,6 +55,7 @@ try:
     )
     from sklearn.model_selection import (
         TimeSeriesSplit,
+        GridSearchCV,
         cross_val_score,
         train_test_split,
     )

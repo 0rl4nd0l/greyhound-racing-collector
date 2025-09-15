@@ -16,6 +16,7 @@ import logging
 import os
 import re
 import time
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
@@ -60,7 +61,7 @@ class TheGreyhoundRecorderScraper:
 
     def _get(self, url: str) -> BeautifulSoup | None:
         """Internal helper for making rate-limited GET requests with caching."""
-        url_hash = hashlib.md5(url.encode()).hexdigest()
+        url_hash = hashlib.sha256(url.encode()).hexdigest()
         cache_file = self.cache_dir / f"{url_hash}.html"
 
         if self.use_cache and cache_file.exists():

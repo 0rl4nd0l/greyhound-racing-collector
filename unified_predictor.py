@@ -1092,6 +1092,18 @@ class UnifiedPredictor:
                 pred.setdefault("place_prob_norm", None)
                 pred.setdefault("ev_win", None)
                 pred.setdefault("ev_place", None)
+                # UI compatibility: provide common probability aliases
+                try:
+                    wp = float(
+                        pred.get("win_prob_norm")
+                        if pred.get("win_prob_norm") is not None
+                        else pred.get("prediction_score", 0.0)
+                    )
+                except Exception:
+                    wp = float(pred.get("prediction_score", 0.0) or 0.0)
+                pred.setdefault("win_prob", wp)
+                pred.setdefault("normalized_win_probability", wp)
+                pred.setdefault("win_probability", wp)
 
             return {
                 "success": True,
@@ -1784,17 +1796,23 @@ class UnifiedPredictor:
 
             # Box position influence
             box_number = features.get("box_number", 4.5)
-            box_adjustments = {
-                1: 0.08,
-                2: 0.06,
-                3: 0.04,
-                4: 0.02,
-                5: -0.01,
-                6: -0.03,
-                7: -0.05,
-                8: -0.07,
-            }
-            base_score += box_adjustments.get(int(box_number), 0)
+            # Disable heuristic box bias by default; enable only if explicitly requested via env
+            enable_box_bias = os.getenv("UNIFIED_ENABLE_BOX_BIAS", "0").strip().lower() in ("1", "true", "yes", "on")
+            if enable_box_bias:
+                box_adjustments = {
+                    1: 0.08,
+                    2: 0.06,
+                    3: 0.04,
+                    4: 0.02,
+                    5: -0.01,
+                    6: -0.03,
+                    7: -0.05,
+                    8: -0.07,
+                }
+                try:
+                    base_score += box_adjustments.get(int(box_number), 0)
+                except Exception:
+                    pass
 
             # Recent form influence
             recent_form = features.get("weighted_recent_form", 4.5)

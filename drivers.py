@@ -11,16 +11,11 @@ _SELENIUM_DISABLED = str(os.environ.get("DISABLE_SELENIUM", "0")).strip().lower(
     "on",
 )
 
-if not _SELENIUM_DISABLED:
-    from selenium import webdriver
-    from selenium.webdriver.chrome.options import Options
-    from selenium.webdriver.chrome.service import Service
-    from webdriver_manager.chrome import ChromeDriverManager
-else:
-    webdriver = None
-    Service = None
-    ChromeDriverManager = None
-    Options = None
+# Do not import selenium/webdriver-manager at module import time to satisfy module_guard.
+webdriver = None
+Service = None
+ChromeDriverManager = None
+Options = None
 
 
 def get_chrome_driver(headless=True):
@@ -42,6 +37,21 @@ def get_chrome_driver(headless=True):
         except Exception:
             # Fallback if pytest not available: raise a clear runtime error
             raise RuntimeError("Selenium disabled via DISABLE_SELENIUM=1")
+
+    # Lazy-import selenium and webdriver-manager to avoid module_guard violations at startup
+    from selenium import webdriver as _webdriver
+    from selenium.webdriver.chrome.options import Options as _Options
+    from selenium.webdriver.chrome.service import Service as _Service
+    from webdriver_manager.chrome import ChromeDriverManager as _ChromeDriverManager
+
+    # Bind to module-level names for downstream compatibility
+    global webdriver, Options, Service, ChromeDriverManager
+    webdriver, Options, Service, ChromeDriverManager = (
+        _webdriver,
+        _Options,
+        _Service,
+        _ChromeDriverManager,
+    )
 
     options = Options()
 
@@ -109,6 +119,9 @@ def setup_selenium_driver_path():
     if _SELENIUM_DISABLED:
         os.environ["SELENIUM_DRIVER_PATH"] = ""
         return ""
-    driver_path = ChromeDriverManager().install()
+    # Lazy import to avoid module_guard violations at startup
+    from webdriver_manager.chrome import ChromeDriverManager as _ChromeDriverManager
+
+    driver_path = _ChromeDriverManager().install()
     os.environ["SELENIUM_DRIVER_PATH"] = driver_path
     return driver_path

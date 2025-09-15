@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
+import numpy as np
 
 # Import existing components
 from selenium import webdriver

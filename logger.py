@@ -111,8 +111,15 @@ class EnhancedLogger:
 
     def setup_python_logging(self):
         """Setup Python logging with file handlers"""
-        # Set debug level if debug mode is enabled
-        log_level = logging.DEBUG if self.debug_mode else logging.INFO
+        # Compute desired log level from LOG_LEVEL env if provided; fallback to DEBUG when debug mode is on
+        level_name = os.getenv("LOG_LEVEL", "")
+        if level_name:
+            try:
+                log_level = getattr(logging, str(level_name).upper())
+            except Exception:
+                log_level = logging.DEBUG if self.debug_mode else logging.INFO
+        else:
+            log_level = logging.DEBUG if self.debug_mode else logging.INFO
 
         # Configure root logger
         logging.basicConfig(
@@ -130,12 +137,11 @@ class EnhancedLogger:
         self.system_logger = logging.getLogger("system")
         self.debug_logger = logging.getLogger("debug")
 
-        # Set debug level for all loggers if debug mode is enabled
-        if self.debug_mode:
-            self.process_logger.setLevel(logging.DEBUG)
-            self.error_logger.setLevel(logging.DEBUG)
-            self.system_logger.setLevel(logging.DEBUG)
-            self.debug_logger.setLevel(logging.DEBUG)
+        # Set level for specialized loggers based on computed log_level
+        self.process_logger.setLevel(log_level)
+        self.error_logger.setLevel(log_level)
+        self.system_logger.setLevel(log_level)
+        self.debug_logger.setLevel(log_level)
 
         # Add file handlers
         process_handler = logging.FileHandler(self.process_log_file)

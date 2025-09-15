@@ -437,3 +437,27 @@ class DatabaseMeta(Base):
         Index("idx_db_meta_key", "meta_key"),
         UniqueConstraint("meta_key", name="uq_db_meta_key"),
     )
+
+
+class EnhancedExpertData(Base):
+    """Enhanced expert features table used by MLSystemV4 joins.
+
+    This model aligns with the minimal schema enforced by scripts/verify_and_patch_schema.py
+    and used across feature builders and training code. Keeping it in SQLAlchemy metadata
+    allows Alembic autogenerate to detect drift and helps schema consistency tests.
+    """
+
+    __tablename__ = "enhanced_expert_data"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    race_id = Column(String)
+    dog_clean_name = Column(String)
+    pir_rating = Column(Float)
+    first_sectional = Column(String)
+    win_time = Column(String)
+    bonus_time = Column(String)
+
+    __table_args__ = (
+        Index("idx_enhanced_expert_data_race_id", "race_id"),
+        Index("idx_enhanced_expert_data_dog_clean_name", "dog_clean_name"),
+    )

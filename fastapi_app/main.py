@@ -63,12 +63,22 @@ except ImportError:
     UNIFIED_PREDICTOR_AVAILABLE = False
     UnifiedPredictor = None
 
+# Optional V4 pipeline for direct predictions
+try:
+    from prediction_pipeline_v4 import PredictionPipelineV4
+
+    ML_SYSTEM_V4_AVAILABLE = True
+except Exception as e:
+    logger.warning(f"ML System V4 pipeline not available: {e}")
+    ML_SYSTEM_V4_AVAILABLE = False
+    PredictionPipelineV4 = None
+
 # Configuration
 # Prefer routed analytics DB when available; fall back to legacy envs, then default file
 DATABASE_PATH = get_analytics_db_path() or os.getenv("GREYHOUND_DB_PATH") or os.getenv(
     "DATABASE_PATH", "greyhound_racing_data.db"
 )
-UPCOMING_DIR = os.getenv("UPCOMING_RACES_DIR", "./upcoming_races")
+UPCOMING_DIR = os.getenv("UPCOMING_RACES_DIR", "./upcoming_races_temp")
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -108,20 +118,22 @@ def _list_upcoming_csvs() -> List[str]:
             for e in entries
             if e not in files and not e.startswith(".")
         }
-        logger.info(
-            "Upcoming discovery",
-            extra={
-                "details": {
-                    "directory": UPCOMING_DIR,
-                    "found_count": len(files),
-                    "found_names": files,
-                    "skipped_count": len(skipped),
-                    "skipped": skipped,
-                },
-                "action": "discover_upcoming",
-                "outcome": "observed",
-            },
-        )
+        # Avoid passing 'extra' kwargs to EnhancedLogger; include key details inline
+        try:
+            logger.info(
+                "Upcoming discovery | directory=%s found_count=%d skipped_count=%d",
+                UPCOMING_DIR,
+                len(files),
+                len(skipped),
+            )
+        except Exception:
+            # Fallback plain log
+            try:
+                logger.info(
+                    f"Upcoming discovery | directory={UPCOMING_DIR} found_count={len(files)} skipped_count={len(skipped)}"
+                )
+            except Exception:
+                pass
         return files
     except Exception as e:
         logger.warning(f"Error listing upcoming CSVs: {e}")
@@ -177,6 +189,12 @@ class PredictionResponse(BaseModel):
     confidence_level: str
 
 
+class V4PredictRequest(BaseModel):
+    race_filename: str
+    tgr_enabled: Optional[bool] = None
+    optimizer: Optional[bool] = None
+
+
 class HealthResponse(BaseModel):
     status: str
     timestamp: str
@@ -201,15 +219,37 @@ async def health_check():
     try:
         # Check database connectivity
         database_status = "connected"
+        # Database connectivity and table probe (graceful degradation)
         try:
+            # Choose a safe probe table; allow limited override via FASTAPI_HEALTH_TABLE
+            allowed = {"race_metadata", "dog_race_data", "dogs"}
+            probe_env = os.getenv("FASTAPI_HEALTH_TABLE", "race_metadata")
+            probe_table = probe_env if probe_env in allowed else "race_metadata"
+
             # Open read-only against analytics DB to respect routing and safety
             conn = open_sqlite_readonly(DATABASE_PATH)
             cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM dogs LIMIT 1")
+
+            # Verify table exists to avoid OperationalError
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=? LIMIT 1",
+                (probe_table,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                database_status = f"degraded: table '{probe_table}' missing"
+            else:
+                # Lightweight probe against the selected table
+                cursor.execute(f"SELECT COUNT(*) FROM {probe_table} LIMIT 1")
+                _ = cursor.fetchone()
+                database_status = "connected"
             conn.close()
         except Exception as e:
             database_status = f"error: {str(e)}"
-            logger.warning(f"Database health check failed: {e}")
+            try:
+                logger.warning(f"Database health check failed: {e}")
+            except Exception:
+                pass
 
         # Upcoming files discovery with alerting
         files = _list_upcoming_csvs()
@@ -229,12 +269,21 @@ async def health_check():
                 },
             )
 
+        # Report which table was probed for DB health
+        try:
+            allowed = {"race_metadata", "dog_race_data", "dogs"}
+            probe_env = os.getenv("FASTAPI_HEALTH_TABLE", "race_metadata")
+            probe_table = probe_env if probe_env in allowed else "race_metadata"
+        except Exception:
+            probe_table = "race_metadata"
+
         return HealthResponse(
             status="healthy",
             timestamp=now.isoformat(),
             version="1.0.0",
             components={
                 "database": database_status,
+                "db_probe_table": probe_table,
                 "ml_system_v3": (
                     "available" if ML_SYSTEM_V3_AVAILABLE else "unavailable"
                 ),
@@ -411,6 +460,33 @@ async def system_info():
         "upcoming_races_exist": os.path.exists(UPCOMING_DIR),
         "timestamp": datetime.now().isoformat(),
     }
+
+
+@app.post("/api/predict_v4")
+async def predict_v4(req: V4PredictRequest):
+    """Direct V4 prediction using a CSV in UPCOMING_DIR.
+
+    Honors env defaults: if req.tgr_enabled is None, PredictionPipelineV4 will read TGR_FEATURES_ENABLED.
+    To enable optimizer for this call, set req.optimizer=true (or export V4_DISABLE_ACCURACY_OPTIMIZER=0).
+    """
+    try:
+        if not ML_SYSTEM_V4_AVAILABLE or not PredictionPipelineV4:
+            raise HTTPException(status_code=503, detail="V4 pipeline unavailable")
+        race_path = os.path.join(UPCOMING_DIR, os.path.basename(req.race_filename))
+        if not os.path.exists(race_path):
+            raise HTTPException(status_code=404, detail=f"Race file not found: {race_path}")
+        predictor = PredictionPipelineV4()
+        result = predictor.predict_race_file(
+            race_path, tgr_enabled=req.tgr_enabled, optimizer_enabled=req.optimizer
+        )
+        if not result or not result.get("success"):
+            raise HTTPException(status_code=500, detail=result or {"error": "unknown"})
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"V4 prediction error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.exception_handler(Exception)

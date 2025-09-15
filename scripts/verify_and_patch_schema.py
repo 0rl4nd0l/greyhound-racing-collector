@@ -405,6 +405,10 @@ INDEXES: List[Tuple[str, str, List[str], bool]] = [
     ("dogs_ft_extra", "idx_dogs_ft_extra_dog_id", ["dog_id"], False),
     ("expert_form_analysis", "idx_expert_form_analysis_race_id", ["race_id"], False),
     ("races_ft_extra", "idx_races_ft_extra_race_id", ["race_id"], False),
+    # New coverage/perf indexes for analytics
+    ("predictions", "idx_predictions_race_id", ["race_id"], False),
+    ("predictions", "idx_predictions_timestamp", ["timestamp"], False),
+    ("live_odds", "idx_live_odds_race_id_current", ["race_id", "is_current"], False),
 ]
 
 
@@ -618,10 +622,10 @@ CREATE_TABLE_SQL: Dict[str, str] = {
             box_number INTEGER,
             odds_decimal REAL,
             odds_fractional TEXT,
-            market_type TEXT,
-            source TEXT,
-            timestamp DATETIME,
-            is_current INTEGER,
+            market_type TEXT DEFAULT 'win',
+            source TEXT DEFAULT 'sportsbet',
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            is_current INTEGER DEFAULT 1,
             topN INTEGER
         )
         """
@@ -792,6 +796,25 @@ def main() -> int:
                         f"[warn] failed to add column {table}.{col}: {e}"
                     )
 
+    # Backfill defaults for live_odds where NULL (non-destructive)
+    try:
+        if table_exists(conn, "live_odds"):
+            try:
+                conn.execute(
+                    "UPDATE live_odds SET timestamp = COALESCE(timestamp, CURRENT_TIMESTAMP) WHERE timestamp IS NULL"
+                )
+            except Exception:
+                pass
+            try:
+                conn.execute(
+                    "UPDATE live_odds SET is_current = 1 WHERE is_current IS NULL"
+                )
+            except Exception:
+                pass
+            report_lines.append("[backfill] live_odds defaults for timestamp/is_current")
+    except Exception as e:
+        report_lines.append(f"[warn] live_odds backfill failed: {e}")
+
     # Ensure indexes
     for table, idx_name, cols, unique in INDEXES:
         if not table_exists(conn, table):
@@ -828,6 +851,28 @@ def main() -> int:
         report_lines.append(
             f"[warn] failed to ensure composite unique index on dog_race_data: {e}"
         )
+
+    # Ensure views
+    try:
+        # predictions_latest: latest row per (race_id, dog_clean_name) by timestamp
+        if table_exists(conn, "predictions"):
+            conn.execute(
+                """
+                CREATE VIEW IF NOT EXISTS predictions_latest AS
+                SELECT p.*
+                FROM predictions p
+                JOIN (
+                  SELECT race_id, dog_clean_name, MAX(timestamp) AS max_ts
+                  FROM predictions
+                  GROUP BY race_id, dog_clean_name
+                ) x ON x.race_id = p.race_id
+                   AND x.dog_clean_name = p.dog_clean_name
+                   AND x.max_ts = p.timestamp
+                """
+            )
+            report_lines.append("[view] predictions_latest")
+    except Exception as e:
+        report_lines.append(f"[warn] failed to ensure view predictions_latest: {e}")
 
     conn.commit()
 

@@ -23,7 +23,6 @@ _upcoming_races_cache = {
 
 def load_upcoming_races(refresh=False):
     """Helper function to load upcoming races from CSV and JSON files."""
-    global _upcoming_races_cache
     now = datetime.now()
 
     # Check if we should use cache
@@ -164,7 +163,6 @@ def api_upcoming_races_csv():
 @app.route("/api/clear_cache")
 def clear_cache():
     """API endpoint to clear in-memory cache"""
-    global _upcoming_races_cache
     # Clear the cache
     _upcoming_races_cache["data"] = None
     _upcoming_races_cache["timestamp"] = None

@@ -18,7 +18,7 @@ VENUE_MAPPING = {
     # New South Wales
     "DAPTO": "DAPT",
     "DAPT": "DAPT",
-    "BULLI": "RICH",  # Richmond (Bulli track)
+    "BULLI": "BULLI",  # Bulli has its own meeting; do not alias to Richmond
     "RICHMOND": "RICH",
     "RICH": "RICH",
     "RICHMOND-STRAIGHT": "RICH",
@@ -159,6 +159,7 @@ VENUE_MAPPING = {
 VENUE_CODE_TO_NAME = {
     "DAPT": "Dapto",
     "RICH": "Richmond",
+    "BULLI": "Bulli",
     "WPK": "Wentworth Park",
     "DUBBO": "Dubbo",
     "GOUL": "Goulburn",
@@ -216,6 +217,7 @@ VENUE_CODE_TO_NAME = {
 VENUE_STATE_MAPPING = {
     "DAPT": "NSW",
     "RICH": "NSW",
+    "BULLI": "NSW",
     "WPK": "NSW",
     "DUBBO": "NSW",
     "GOUL": "NSW",

@@ -161,9 +161,43 @@ def backtest(hours, ev_grid, edge_grid, alpha=None):
                             or None
                         )
                         ts = data.get("timestamp") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                # Try to extract metadata for mapping to standardized race_id
+                        venue_code = None
+                        race_num = None
+                        race_date = None
+                        # race_info format
+                        ri = data.get("race_info") or {}
+                        rc = data.get("race_context") or {}
+                        fn = None
+                        try:
+                            fn = ri.get("filename") or rc.get("filename") or data.get("race_id")
+                        except Exception:
+                            fn = data.get("race_id")
+                        venue_code = ri.get("venue") or rc.get("venue")
+                        race_num = ri.get("race_number") or rc.get("race_number")
+                        race_date = ri.get("race_date") or rc.get("race_date")
+                        # Parse from filename if missing: 'Race N - CODE - YYYY-MM-DD.csv'
+                        try:
+                            import re
+                            base = (fn or "").replace(".csv","")
+                            m = re.match(r".*?Race\s+(\d+)\s+-\s+([A-Z0-9_\-]+)\s+-\s+(\d{4}-\d{2}-\d{2}).*", base)
+                            if m:
+                                race_num = race_num or m.group(1)
+                                venue_code = venue_code or m.group(2)
+                                race_date = race_date or m.group(3)
+                        except Exception:
+                            pass
+                        # Normalize types
+                        try:
+                            race_num = int(race_num) if race_num is not None else None
+                        except Exception:
+                            race_num = None
+                        venue_code = (venue_code or "").strip().upper() or None
+                        race_date = (race_date or "").strip() or None
+
                         for d in data.get("predictions", []):
                             name = d.get("dog_clean_name") or d.get("dog_name")
-                            if not race_id or not name:
+                            if not (race_id or (venue_code and race_num and race_date)) or not name:
                                 continue
                             preds.append({
                                 "race_id": race_id,
@@ -171,6 +205,9 @@ def backtest(hours, ev_grid, edge_grid, alpha=None):
                                 "predicted_probability": d.get("win_prob_norm") or d.get("win_probability") or d.get("final_score") or d.get("prediction_score"),
                                 "confidence_level": d.get("confidence_label") or d.get("confidence_level") or "MEDIUM",
                                 "timestamp": ts,
+                                "venue_code": venue_code,
+                                "race_number": race_num,
+                                "race_date": race_date,
                             })
                     except Exception:
                         continue
@@ -222,13 +259,34 @@ def backtest(hours, ev_grid, edge_grid, alpha=None):
         else:
             odds_list = list(by_key.values())
         implied_probs_from_odds(odds_list)
-        # Join preds and odds
-        pred_map = {(p["race_id"], _norm_name(p["dog_clean_name"])): p for p in preds}
+        # Map predictions with non-standard race_id to standardized id using race_metadata (venue_code, date, race_number)
+        # Build helper index from race_metadata
+        rm = _q(conn, """
+            SELECT race_id, venue, race_date, race_number FROM race_metadata
+        """)
+        by_meta = {}
+        for rmx in rm:
+            k = (str(rmx.get("venue") or "").upper(), str(rmx.get("race_date") or ""), int(rmx.get("race_number") or 0))
+            by_meta[k] = rmx.get("race_id")
+        # Build prediction map using standardized race_id when possible
+        pred_map = {}
+        for p in preds:
+            rid = p.get("race_id")
+            std_id = rid
+            vcode = (p.get("venue_code") or "").upper()
+            rdate = p.get("race_date")
+            rnum = p.get("race_number")
+            if (not rid or rid not in set(x.get("race_id") for x in rm)) and vcode and rdate and rnum:
+                std_id = by_meta.get((vcode, rdate, int(rnum))) or rid
+            key = (std_id, _norm_name(p["dog_clean_name"]))
+            pred_map[key] = p
         joined = []
         for o in odds_list:
             key = (o["race_id"], _norm_name(o["dog_clean_name"]))
             if key in pred_map:
                 r = {**pred_map[key], **o}
+                # ensure we use standardized race_id in downstream
+                r["race_id"] = o["race_id"]
                 joined.append(r)
         if not joined:
             print("No joined prediction/odds records")

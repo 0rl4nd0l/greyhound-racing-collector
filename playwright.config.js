@@ -39,7 +39,7 @@ module.exports = defineConfig({
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: `http://127.0.0.1:${process.env.PORT || '5002'}`,
+    baseURL: `http://localhost:${process.env.PORT || '5002'}`,
     
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
@@ -120,8 +120,8 @@ module.exports = defineConfig({
 
   /* Run your local dev server before starting the tests */
   webServer: {
-command: 'PORT=5002 ./.venv/bin/python app.py --host 127.0.0.1 --port 5002',
-    url: 'http://*********:5002',
+command: 'PORT=5002 ./.venv/bin/python app.py --host localhost --port 5002',
+    url: 'http://localhost:5002',
     reuseExistingServer: !process.env.CI,
     timeout: 180000,
     env: {

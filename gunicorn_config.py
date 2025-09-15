@@ -14,7 +14,9 @@ import multiprocessing
 import os
 
 # Server socket
-bind = f"127.0.0.1:{os.environ.get('DEFAULT_PORT', os.environ.get('PORT', '5002'))}"
+_port = os.environ.get('DEFAULT_PORT', os.environ.get('PORT', '5002'))
+_bind_env = os.environ.get('GUNICORN_BIND')
+bind = _bind_env if _bind_env else f"127.0.0.1:{_port}"
 backlog = 2048
 
 # Worker processes
@@ -69,12 +71,13 @@ def pre_fork(server, worker):
 
 def post_fork(server, worker):
     """Called just after a worker has been forked."""
-    server.log.info("✅ Worker %s forked (pid: %s)", worker.id, worker.pid)
+    # worker objects under gevent do not have 'id'; use 'pid' for identification
+    server.log.info("✅ Worker %s forked (pid: %s)", worker.pid, worker.pid)
 
 
 def worker_abort(worker):
     """Called when a worker receives the SIGABRT signal."""
-    worker.log.info("❌ Worker %s aborted", worker.id)
+    worker.log.info("❌ Worker aborted (pid: %s)", worker.pid)
 
 
 # Memory optimization

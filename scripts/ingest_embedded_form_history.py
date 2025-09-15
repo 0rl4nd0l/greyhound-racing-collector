@@ -7,8 +7,10 @@ Context
   encode that dog's historical runs (DATE, TRACK, DIST, PLC, TIME, etc.).
 - The UI derives historical stats from dog_race_data (see app.py _derive_stats_from_db),
   not from dog_performances, so we write into dog_race_data.
-- We intentionally DO NOT write to race_metadata here to avoid polluting training joins.
-  Synthetic race_ids are generated per (venue_code, date, distance, grade) to group rows.
+- Synthetic race_ids are generated per (venue_code, date, distance, grade) to group rows.
+- Optional: also upsert minimal race_metadata rows for these synthetic race_ids so that
+  DB-backed historical feature builders can join successfully.
+  Control via env INGEST_EMBEDDED_ADD_RACE_META (default: 1/True).
 
 Usage
   python scripts/ingest_embedded_form_history.py --csv "processed/excluded/Race 7 - DARW - 2025-08-24.csv" \
@@ -22,7 +24,7 @@ Notes
 
 Limitations
 - race_id is synthetic as form guides typically omit race numbers for historical rows.
-  This is OK for UI history (no race_metadata joins). We avoid using this for training.
+  Use for UI/analytics; avoid using these synthetic rows for model training unless vetted.
 """
 
 from __future__ import annotations
@@ -222,16 +224,73 @@ def ensure_tables(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    # Minimal race_metadata to enable joins; aligns with repo schema
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS race_metadata (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            race_id TEXT UNIQUE,
+            venue TEXT,
+            race_number INTEGER,
+            race_date TEXT,
+            race_name TEXT,
+            grade TEXT,
+            distance TEXT,
+            track_condition TEXT,
+            weather TEXT,
+            temperature REAL,
+            humidity REAL,
+            wind_speed REAL,
+            url TEXT,
+            extraction_timestamp TEXT,
+            data_source TEXT
+        )
+        """
+    )
     conn.commit()
 
 
-def upsert_embedded_history(db_path: str, csv_path: str) -> Dict[str, int]:
+def _upsert_race_metadata_min(cur: sqlite3.Cursor, hr: HistoryRow) -> None:
+    race_id = make_synthetic_race_id(hr)
+    # Minimal fields to satisfy joins; prefer not to overwrite non-null existing values
+    cur.execute(
+        """
+        INSERT INTO race_metadata (
+            race_id, venue, race_number, race_date, race_name, grade, distance, track_condition, weather,
+            temperature, humidity, wind_speed, url, extraction_timestamp, data_source
+        ) VALUES (?, ?, NULL, ?, NULL, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, datetime('now'), 'embedded_form_guide')
+        ON CONFLICT(race_id) DO UPDATE SET
+            venue = COALESCE(excluded.venue, race_metadata.venue),
+            race_date = COALESCE(excluded.race_date, race_metadata.race_date),
+            grade = COALESCE(excluded.grade, race_metadata.grade),
+            distance = COALESCE(excluded.distance, race_metadata.distance),
+            extraction_timestamp = excluded.extraction_timestamp,
+            data_source = COALESCE(race_metadata.data_source, excluded.data_source)
+        """,
+        (
+            race_id,
+            hr.venue,
+            hr.race_date,
+            (hr.grade or None),
+            (str(hr.distance) if hr.distance is not None else None),
+        ),
+    )
+
+
+def upsert_embedded_history(db_path: str, csv_path: str, add_race_meta: Optional[bool] = None) -> Dict[str, int]:
     rows = parse_embedded_history(csv_path)
     inserted = 0
     skipped = 0
 
     if not rows:
         return {"inserted": 0, "skipped": 0}
+
+    # Default behavior: add minimal race_metadata unless explicitly disabled
+    if add_race_meta is None:
+        try:
+            add_race_meta = os.getenv("INGEST_EMBEDDED_ADD_RACE_META", "1").lower() in ("1", "true", "yes")
+        except Exception:
+            add_race_meta = True
 
     conn = open_sqlite_writable(db_path)
     try:
@@ -244,8 +303,11 @@ def upsert_embedded_history(db_path: str, csv_path: str) -> Dict[str, int]:
 
             race_id = make_synthetic_race_id(hr)
 
+            # Optionally ensure minimal race_metadata exists for join compatibility
+            if add_race_meta:
+                _upsert_race_metadata_min(cur, hr)
+
             # Existence check: avoid duplicates on (race_id, dog_clean_name or dog_name)
-            # Keep the check simple to avoid SQLite string-normalization pitfalls.
             cur.execute(
                 "SELECT 1 FROM dog_race_data WHERE race_id=? AND (dog_clean_name=? OR dog_name=?) LIMIT 1",
                 (race_id, dog_title, dog_title),
@@ -285,9 +347,14 @@ def upsert_embedded_history(db_path: str, csv_path: str) -> Dict[str, int]:
     return {"inserted": inserted, "skipped": skipped}
 
 
+def upsert_embedded_history_and_meta(db_path: str, csv_path: str) -> Dict[str, int]:
+    """Convenience wrapper: always upsert with minimal race_metadata."""
+    return upsert_embedded_history(db_path, csv_path, add_race_meta=True)
+
+
 def main():
     ap = argparse.ArgumentParser(
-        description="Ingest embedded historical rows into dog_race_data"
+        description="Ingest embedded historical rows into dog_race_data (and optional minimal race_metadata)"
     )
     ap.add_argument(
         "--csv",

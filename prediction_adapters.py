@@ -188,6 +188,18 @@ class V3Adapter:
                 key=lambda x: x["win_prob_norm"], reverse=True
             )
 
+            # Ensure rank and UI-compatible probability aliases
+            try:
+                for i, p in enumerate(standardized_predictions, 1):
+                    p["predicted_rank"] = i
+                    # Provide common aliases recognized by the UI
+                    wp = float(p.get("win_prob_norm", 0.0))
+                    p.setdefault("win_prob", wp)
+                    p.setdefault("normalized_win_probability", wp)
+                    p.setdefault("win_probability", wp)
+            except Exception:
+                pass
+
             metadata = {
                 "adapter": "V3Adapter",
                 "method": pipeline_result.get("prediction_method", "unknown"),
@@ -457,6 +469,17 @@ class V4Adapter:
             standardized_predictions.sort(
                 key=lambda x: x["win_prob_norm"], reverse=True
             )
+
+            # Ensure rank and UI-compatible probability aliases
+            try:
+                for i, p in enumerate(standardized_predictions, 1):
+                    p["predicted_rank"] = i
+                    wp = float(p.get("win_prob_norm", 0.0))
+                    p.setdefault("win_prob", wp)
+                    p.setdefault("normalized_win_probability", wp)
+                    p.setdefault("win_probability", wp)
+            except Exception:
+                pass
 
             metadata = {
                 "adapter": "V4Adapter",
