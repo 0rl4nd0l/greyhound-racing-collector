@@ -36,8 +36,9 @@ jobs:
         options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 3s --health-retries 3
     
     strategy:
+      fail-fast: false
       matrix:
-        python-version: [3.9, 3.10, 3.11]
+        python-version: ["3.9", "3.10", "3.11"]
 
     steps:
     - uses: actions/checkout@v4
