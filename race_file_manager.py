@@ -21,6 +21,14 @@ from pathlib import Path
 
 import pandas as pd
 
+from utils.race_lifecycle import (
+    JUMPED_PENDING_RESULTS,
+    RESULTED,
+    STALE_FORM_GUIDE,
+    UPCOMING_NOT_JUMPED,
+    classify_race_file,
+)
+
 
 class RaceFileManager:
     def __init__(self):
@@ -33,6 +41,18 @@ class RaceFileManager:
         # Create directories
         for dir_path in [self.unprocessed_dir, self.historical_dir, self.upcoming_dir, self.processed_dir]:
             dir_path.mkdir(parents=True, exist_ok=True)
+
+    def _current_db_path(self):
+        """Return a local DB path for read-only official-result lifecycle checks."""
+        for candidate in (
+            os.environ.get("GREYHOUND_DB_PATH"),
+            os.environ.get("DATABASE_PATH"),
+            "greyhound_racing_data_writable.db",
+            "greyhound_racing_data.db",
+        ):
+            if candidate and Path(candidate).exists():
+                return str(candidate)
+        return None
 
     def extract_race_date(self, filename):
         """Extract race date from filename"""
@@ -135,35 +155,29 @@ class RaceFileManager:
                 filename = file_path.name
                 print(f"\n🔍 Analyzing: {filename}")
 
-                # Extract race date
-                race_date = self.extract_race_date(filename)
+                lifecycle = classify_race_file(
+                    file_path, db_path=self._current_db_path()
+                )
+                print(
+                    f"   📅 Lifecycle: {lifecycle.status} ({lifecycle.status_reason})"
+                )
 
-                if race_date:
-                    print(f"   📅 Race date: {race_date.strftime('%Y-%m-%d')}")
-
-                    # Check if race is in the past or future
-                    if race_date < current_date:
-                        # Past race - check if it has results
-                        if self.has_race_results(file_path):
-                            # Move to historical_races
-                            dest_path = self.historical_dir / filename
-                            shutil.move(str(file_path), str(dest_path))
-                            print(f"   ✅ Moved to historical_races (has results)")
-                            historical_count += 1
-                        else:
-                            # Past race but no results - might be incomplete data
-                            dest_path = self.upcoming_dir / filename
-                            shutil.move(str(file_path), str(dest_path))
-                            print(f"   ⚠️  Moved to upcoming_races (no results found)")
-                            upcoming_count += 1
-                    else:
-                        # Future race - move to upcoming_races
-                        dest_path = self.upcoming_dir / filename
-                        shutil.move(str(file_path), str(dest_path))
-                        print(f"   📅 Moved to upcoming_races (future race)")
-                        upcoming_count += 1
+                if lifecycle.status == RESULTED:
+                    dest_path = self.historical_dir / filename
+                    shutil.move(str(file_path), str(dest_path))
+                    print("   ✅ Moved to historical_races (official result)")
+                    historical_count += 1
+                elif lifecycle.status == UPCOMING_NOT_JUMPED:
+                    dest_path = self.upcoming_dir / filename
+                    shutil.move(str(file_path), str(dest_path))
+                    print("   📅 Moved to upcoming_races (pre-jump target)")
+                    upcoming_count += 1
+                elif lifecycle.status == JUMPED_PENDING_RESULTS:
+                    print("   ⏸️  Left in unprocessed (jumped, awaiting official result)")
+                elif lifecycle.status == STALE_FORM_GUIDE:
+                    print("   🧪 Left in unprocessed (stale form-guide mechanics only)")
                 else:
-                    print(f"   ❌ Could not extract race date")
+                    print("   ❌ Unknown lifecycle status; left in unprocessed")
                     error_count += 1
 
             except Exception as e:

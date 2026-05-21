@@ -76,22 +76,31 @@ class OptimizedTemporalFeatureBuilder:
 
         self.post_race_features = {
             "finish_position",
+            "plc",
+            "position",
             "individual_time",
+            "time",
             "sectional_1st",
             "sectional_2nd",
             "sectional_3rd",
             "margin",
+            "mgn",
             "beaten_margin",
             "winning_time",
             "scraped_finish_position",
             "scraped_raw_result",
             "winner_name",
+            "winner",
             "winner_odds",
             "winner_margin",
             "pir_rating",
             "first_sectional",
             "win_time",
             "bonus_time",
+            "bon",
+            "sp",
+            "starting_price",
+            "payout",
         }
 
         # Exponential decay factor for historical race weighting

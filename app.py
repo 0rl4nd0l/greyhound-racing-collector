@@ -301,6 +301,17 @@ from features import (
 )
 from sportsbet_odds_integrator import SportsbetOddsIntegrator
 from utils.csv_metadata import parse_race_csv_meta
+from utils.race_lifecycle import (
+    RaceLifecycle,
+    STALE_FORM_GUIDE,
+    UPCOMING_NOT_JUMPED,
+    classify_race_file,
+    classify_race_record,
+    extract_target_metadata_from_filename,
+    lifecycle_response_fields,
+    melbourne_now,
+    summarize_lifecycles,
+)
 from utils.file_naming import (
     build_prediction_filename,
     extract_race_id_from_csv_filename,
@@ -3708,12 +3719,14 @@ def run_prediction_for_race_file(race_file_path: str, tgr_enabled=None) -> dict:
         flags, _src = _load_flags()
         if _auto_scrape_odds_enabled(flags):
             try:
-                from utils.csv_metadata import parse_race_csv_meta as _parse_meta
                 from odds_auto_integrator import ensure_odds_for_target_race as _ensure_odds
-                meta = _parse_meta(race_file_path) or {}
-                venue = meta.get("venue") or ""
-                race_date = meta.get("race_date") or None
-                race_number = meta.get("race_number") if isinstance(meta.get("race_number"), int) else None
+
+                lifecycle = _classify_file_lifecycle(
+                    race_file_path, source_context="csv_file"
+                )
+                venue = lifecycle.venue or ""
+                race_date = lifecycle.race_date
+                race_number = lifecycle.race_number
                 # Prefer staging/writable DB for odds writes
                 write_db_path = (
                     os.environ.get("STAGING_DB_PATH")
@@ -3855,16 +3868,22 @@ def enhance_prediction_with_csv_meta(
         race_info = summary.get("race_info")
         if race_info is None:
             return prediction_result
-        from utils.csv_metadata import parse_race_csv_meta
+
+        lifecycle = _classify_file_lifecycle(race_file_path, source_context="csv_file")
+        if lifecycle.race_number:
+            race_info["race_number"] = str(lifecycle.race_number)
+        if lifecycle.venue:
+            race_info["venue"] = lifecycle.venue
+        if lifecycle.race_date:
+            race_info["race_date"] = lifecycle.race_date
+        prediction_result["lifecycle"] = lifecycle.to_dict()
 
         csv_meta = parse_race_csv_meta(race_file_path)
         if csv_meta and csv_meta.get("status") == "success":
-            if csv_meta.get("race_number") and csv_meta["race_number"] > 0:
-                race_info["race_number"] = str(csv_meta["race_number"])
-            if csv_meta.get("venue") and csv_meta["venue"] != "Unknown":
-                race_info["venue"] = csv_meta["venue"]
-            if csv_meta.get("race_date") and csv_meta["race_date"] != "Unknown":
-                race_info["race_date"] = csv_meta["race_date"]
+            if csv_meta.get("distance") and csv_meta["distance"] != "Unknown":
+                race_info["distance"] = str(csv_meta["distance"])
+            if csv_meta.get("grade") and csv_meta["grade"] != "Unknown":
+                race_info["grade"] = csv_meta["grade"]
             try:
                 logger.log_process(f"Enhanced race info: {race_info}")
             except Exception as e:
@@ -4077,6 +4096,18 @@ def predict_page():
                 flash(f"Race file not found: {race_file}", "error")
                 return redirect(url_for("predict_page"))
 
+            lifecycle = _classify_file_lifecycle_for_live_filter(race_file_path)
+            if not _is_live_lifecycle(lifecycle):
+                flash(
+                    (
+                        "Race is not a live upcoming target "
+                        f"({lifecycle.status}: {lifecycle.status_reason}). "
+                        "Use /api/predict_file for form-guide mechanics tests."
+                    ),
+                    "error",
+                )
+                return redirect(url_for("predict_page"))
+
             logger.log_process(f"Starting prediction for race: {race_file}")
 
             # Resolve TGR toggle from form or cookie
@@ -4132,13 +4163,7 @@ def predict_page():
                     # Avoid external HTTP during tests; load directly from filesystem
                     upcoming_dir = app.config.get("UPCOMING_DIR", UPCOMING_DIR)
                     if os.path.exists(upcoming_dir):
-                        races = [
-                            f
-                            for f in os.listdir(upcoming_dir)
-                            if f.endswith(".csv")
-                            and not f.startswith(".")
-                            and f != "README.md"
-                        ]
+                        races = list(_iter_live_upcoming_filenames(upcoming_dir))
                 else:
                     # Fallback to local HTTP when not testing
                     from utils.http_client import get_shared_session
@@ -4190,13 +4215,7 @@ def predict_page():
         race_filenames = []
         # Primary configured upcoming directory
         if os.path.exists(UPCOMING_DIR):
-            for filename in os.listdir(UPCOMING_DIR):
-                if (
-                    filename.endswith(".csv")
-                    and not filename.startswith(".")
-                    and filename != "README.md"
-                ):
-                    race_filenames.append(filename)
+            race_filenames.extend(_iter_live_upcoming_filenames(UPCOMING_DIR))
         # Also include legacy top-level ./upcoming_races for compatibility
         legacy_upcoming_dir = os.path.abspath(
             os.path.join(os.getcwd(), "upcoming_races")
@@ -4204,13 +4223,7 @@ def predict_page():
         if os.path.abspath(legacy_upcoming_dir) != os.path.abspath(
             UPCOMING_DIR
         ) and os.path.exists(legacy_upcoming_dir):
-            for filename in os.listdir(legacy_upcoming_dir):
-                if (
-                    filename.endswith(".csv")
-                    and not filename.startswith(".")
-                    and filename != "README.md"
-                ):
-                    race_filenames.append(filename)
+            race_filenames.extend(_iter_live_upcoming_filenames(legacy_upcoming_dir))
 
         # De-duplicate and sort filenames for better user experience
         race_filenames = sorted(list(dict.fromkeys(race_filenames)))
@@ -4297,6 +4310,8 @@ def api_predict_file():
                 ),
                 404,
             )
+        lifecycle = _classify_file_lifecycle(race_file_path, source_context="csv_file")
+        lifecycle_fields = lifecycle_response_fields(lifecycle)
         # Run predictions via unified helper
         tgr_enabled_flag = None
         try:
@@ -4329,6 +4344,8 @@ def api_predict_file():
                         "resolved_path": race_file_path,
                         "synthetic": True,
                     }
+                    resp.update(lifecycle_fields)
+                    degraded_result["lifecycle"] = lifecycle.to_dict()
                     if computed:
                         resp["computed"] = computed
                     return jsonify(resp), 200
@@ -4341,7 +4358,12 @@ def api_predict_file():
             )
             return (
                 jsonify(
-                    {"success": False, "error": err, "resolved_path": race_file_path}
+                    {
+                        "success": False,
+                        "error": err,
+                        "resolved_path": race_file_path,
+                        **lifecycle_fields,
+                    }
                 ),
                 500,
             )
@@ -4359,6 +4381,9 @@ def api_predict_file():
             "prediction_result": prediction_result,
             "resolved_path": race_file_path,
         }
+        resp.update(lifecycle_fields)
+        if isinstance(prediction_result, dict):
+            prediction_result["lifecycle"] = lifecycle.to_dict()
         # Surface model metadata and metrics at top-level for convenience
         try:
             if isinstance(prediction_result, dict):
@@ -5861,15 +5886,12 @@ def api_upcoming_races():
                     403,
                 )
 
-        # In non-strict test mode, validate CSV loader path early (unit tests patch this) and force CSV source
+        scanned_lifecycles = []
+
+        # In non-strict test mode, force CSV source. Keep this path bounded:
+        # the endpoint should not parse full form guides just to prove that no
+        # local files are currently live prediction targets.
         if testing and not strict_live:
-            try:
-                # This call is intentionally made so patched exceptions surface in tests
-                _ = load_upcoming_races(refresh=False)
-            except Exception:
-                # Re-raise to be handled by the outer except -> 500 as tests expect
-                raise
-            # Force csv source during tests to avoid slow network scraping and enable mocking
             source = "csv"
 
         # Try cache first (only if not forcing refresh)
@@ -5978,24 +6000,31 @@ def api_upcoming_races():
                     if not filename.endswith((".csv", ".json")):
                         continue
                     file_path = os.path.join(UPCOMING_DIR, filename)
+                    lifecycle = _classify_file_lifecycle_for_live_filter(file_path)
+                    scanned_lifecycles.append(lifecycle)
+                    if not _is_live_lifecycle(lifecycle):
+                        continue
                     meta = _extract_csv_metadata(file_path)
                     race_number = meta.get("race_number")
                     race = {
-                        "date": meta.get("date") or "",
-                        "race_date": meta.get("date") or "",
-                        "venue": meta.get("venue") or "Unknown Venue",
-                        "venue_name": meta.get("venue") or "Unknown Venue",
-                        "race_number": race_number or "",
-                        "race_time": "",
+                        "date": lifecycle.race_date or meta.get("date") or "",
+                        "race_date": lifecycle.race_date or meta.get("date") or "",
+                        "venue": lifecycle.venue or meta.get("venue") or "Unknown Venue",
+                        "venue_name": lifecycle.venue or meta.get("venue") or "Unknown Venue",
+                        "race_number": lifecycle.race_number or race_number or "",
+                        "race_time": lifecycle.jump_time or "",
                         "distance": "",
                         "grade": "",
                         "race_name": (
-                            f"Race {race_number}" if race_number else "Unknown Race"
+                            f"Race {lifecycle.race_number or race_number}"
+                            if (lifecycle.race_number or race_number)
+                            else "Unknown Race"
                         ),
                         "url": "",
                         "filename": filename,
                         "race_id": filename.replace(".csv", "").replace(".json", ""),
                     }
+                    _attach_lifecycle_fields(race, lifecycle)
                     races.append(_ensure_guaranteed_fields(race))
             except Exception:
                 races = load_upcoming_races_with_guaranteed_fields(refresh=False)
@@ -6003,6 +6032,7 @@ def api_upcoming_races():
 
         # Convert races to consistent format for frontend
         formatted_races = []
+        lifecycles_for_summary = list(scanned_lifecycles)
         for race in races:
             # Handle both live scraping format and CSV format
             formatted_race = {
@@ -6025,7 +6055,38 @@ def api_upcoming_races():
                 "filename": race.get("filename", ""),  # For CSV files
                 "source": source,
             }
-            formatted_races.append(formatted_race)
+            try:
+                if race.get("lifecycle"):
+                    lifecycle_data = race.get("lifecycle") or {}
+                    lifecycle_status = lifecycle_data.get("status")
+                    formatted_race.update(
+                        {
+                            "lifecycle_status": lifecycle_status,
+                            "lifecycle_status_reason": lifecycle_data.get(
+                                "status_reason"
+                            ),
+                            "is_live_prediction_target": lifecycle_data.get(
+                                "is_live_target"
+                            ),
+                            "lifecycle": lifecycle_data,
+                        }
+                    )
+                    if lifecycle_status == UPCOMING_NOT_JUMPED:
+                        formatted_races.append(formatted_race)
+                    continue
+
+                lifecycle = classify_race_record(
+                    formatted_race,
+                    source_context=(
+                        "live_record" if source == "live" else "csv_record"
+                    ),
+                )
+                lifecycles_for_summary.append(lifecycle)
+                _attach_lifecycle_fields(formatted_race, lifecycle)
+                if _is_live_lifecycle(lifecycle):
+                    formatted_races.append(formatted_race)
+            except Exception:
+                continue
 
         # Enrich with Melbourne-normalized datetime and timestamp for true next-to-jump ordering
         for r in formatted_races:
@@ -6080,6 +6141,7 @@ def api_upcoming_races():
                 "has_prev": has_prev,
             },
             "source": source,
+            "lifecycle_summary": summarize_lifecycles(lifecycles_for_summary),
             "message": f"Found {total_count} upcoming races ({'live from thedogs.com.au' if source == 'live' else 'from CSV files' if source == 'csv' else 'from CSV fallback'})",
             "from_cache": False,
             "cache_expires_in_minutes": UPCOMING_API_CACHE.get("ttl_minutes", 5),
@@ -6195,6 +6257,11 @@ def api_upcoming_races_csv():
         sort_by = request.args.get("sort_by", "race_date")
         order = request.args.get("order", "desc")
         search = request.args.get("search", "").strip()
+        live_only = (request.args.get("live_only", "0") or "0").lower() in (
+            "1",
+            "true",
+            "yes",
+        )
 
         # Resolve upcoming directory; prefer Flask app config (tests patch this), fallback to module-level default
         upcoming_dir = app.config.get("UPCOMING_DIR", UPCOMING_DIR)
@@ -6266,6 +6333,7 @@ def api_upcoming_races_csv():
 
         # Parse CSV files and extract race metadata
         races_data = []
+        lifecycle_records = []
         seen_races = set()  # Track unique races to prevent duplicates
 
         for filename in csv_files:
@@ -6281,6 +6349,18 @@ def api_upcoming_races_csv():
                 formatted_mtime = datetime.fromtimestamp(file_mtime).strftime(
                     "%Y-%m-%d %H:%M"
                 )
+                lifecycle = (
+                    _classify_file_lifecycle_for_live_filter(file_path)
+                    if live_only
+                    else _classify_file_lifecycle(
+                        file_path,
+                        source_context="csv_file",
+                        include_result_evidence=True,
+                    )
+                )
+                lifecycle_records.append(lifecycle)
+                if live_only and not _is_live_lifecycle(lifecycle):
+                    continue
 
                 # Extract race information using robust filename parsing
                 import re, hashlib
@@ -6515,6 +6595,7 @@ def api_upcoming_races_csv():
                     "file_mtime": file_mtime,
                 }
 
+                _attach_lifecycle_fields(race_data, lifecycle)
 
                 races_data.append(race_data)
 
@@ -6586,6 +6667,8 @@ def api_upcoming_races_csv():
                 "sort_by": sort_by,
                 "order": order,
                 "search": search,
+                "live_only": live_only,
+                "lifecycle_summary": summarize_lifecycles(lifecycle_records),
             }
         )
 
@@ -8024,11 +8107,11 @@ def api_predict_all_upcoming():
 
         # If no files from helper, fallback to direct directory scan for CSV only
         if not upcoming_files:
-            upcoming_files = [
-                f
-                for f in os.listdir(app.config.get("UPCOMING_DIR", UPCOMING_DIR))
-                if f.endswith(".csv") and f != "README.md"
-            ]
+            upcoming_files = list(
+                _iter_live_upcoming_filenames(
+                    app.config.get("UPCOMING_DIR", UPCOMING_DIR)
+                )
+            )
 
         if not upcoming_files:
             return jsonify(
@@ -11791,11 +11874,7 @@ def api_predict_upcoming():
 
         # If no files from helper, fallback to direct directory scan for CSV only
         if not upcoming_files:
-            upcoming_files = [
-                f
-                for f in os.listdir(UPCOMING_DIR)
-                if f.endswith(".csv") and f != "README.md"
-            ]
+            upcoming_files = list(_iter_live_upcoming_filenames(UPCOMING_DIR))
         if not upcoming_files:
             return (
                 jsonify(
@@ -13342,9 +13421,7 @@ def api_predict_stream():
         elif not race_filenames:
             # If no files specified, get all upcoming races
             if os.path.exists(UPCOMING_DIR):
-                race_filenames = [
-                    f for f in os.listdir(UPCOMING_DIR) if f.endswith(".csv")
-                ]
+                race_filenames = list(_iter_live_upcoming_filenames(UPCOMING_DIR))
             else:
                 race_filenames = []
 
@@ -13364,6 +13441,19 @@ def api_predict_stream():
                         {"success": False, "error": f"Race file not found: {filename}"}
                     ),
                     404,
+                )
+            lifecycle = _classify_file_lifecycle_for_live_filter(race_file_path)
+            if not _is_live_lifecycle(lifecycle):
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": "Race is not a live upcoming prediction target",
+                            "filename": filename,
+                            **lifecycle_response_fields(lifecycle),
+                        }
+                    ),
+                    400,
                 )
             race_file_paths.append(race_file_path)
 
@@ -14775,7 +14865,7 @@ def api_predict_all_upcoming_races_enhanced():
 
         # If no files from helper, fallback to direct directory scan for CSV only
         if not upcoming_files:
-            upcoming_files = [f for f in os.listdir(UPCOMING_DIR) if f.endswith(".csv")]
+            upcoming_files = list(_iter_live_upcoming_filenames(UPCOMING_DIR))
 
         total_races = len(upcoming_files)
         logger.info(f"📊 Found {total_races} CSV files to process")
@@ -17905,22 +17995,30 @@ def upcoming_races():
             if not filename.endswith((".csv", ".json")):
                 continue
             file_path = os.path.join(UPCOMING_DIR, filename)
+            lifecycle = _classify_file_lifecycle_for_live_filter(file_path)
+            if not _is_live_lifecycle(lifecycle):
+                continue
             meta = _extract_csv_metadata(file_path)
             race_number = meta.get("race_number")
             race = {
-                "date": meta.get("date") or "",
-                "race_date": meta.get("date") or "",
-                "venue": meta.get("venue") or "Unknown Venue",
-                "venue_name": meta.get("venue") or "Unknown Venue",
-                "race_number": race_number or "",
-                "race_time": "",
+                "date": lifecycle.race_date or meta.get("date") or "",
+                "race_date": lifecycle.race_date or meta.get("date") or "",
+                "venue": lifecycle.venue or meta.get("venue") or "Unknown Venue",
+                "venue_name": lifecycle.venue or meta.get("venue") or "Unknown Venue",
+                "race_number": lifecycle.race_number or race_number or "",
+                "race_time": lifecycle.jump_time or "",
                 "distance": "",
                 "grade": "",
-                "race_name": f"Race {race_number}" if race_number else "Unknown Race",
+                "race_name": (
+                    f"Race {lifecycle.race_number or race_number}"
+                    if (lifecycle.race_number or race_number)
+                    else "Unknown Race"
+                ),
                 "url": "",
                 "filename": filename,
                 "race_id": filename.replace(".csv", "").replace(".json", ""),
             }
+            _attach_lifecycle_fields(race, lifecycle)
             initial_races.append(_ensure_guaranteed_fields(race))
             if len(initial_races) >= 20:
                 break
@@ -18017,6 +18115,193 @@ def _extract_csv_metadata(file_path):
     return {"race_number": race_number, "venue": venue, "date": date}
 
 
+def _current_lifecycle_db_path():
+    """Return the read-only DB path used for lifecycle result checks."""
+    try:
+        candidates = [
+            os.environ.get("GREYHOUND_DB_PATH"),
+            os.environ.get("STAGING_DB_PATH"),
+            globals().get("DATABASE_PATH"),
+            "greyhound_racing_data_writable.db",
+            "greyhound_racing_data.db",
+        ]
+        for candidate in candidates:
+            if candidate and os.path.exists(str(candidate)):
+                return str(candidate)
+    except Exception:
+        pass
+    return None
+
+
+def _classify_file_lifecycle(
+    file_path, source_context="csv_file", include_result_evidence=True
+):
+    try:
+        return classify_race_file(
+            file_path,
+            db_path=_current_lifecycle_db_path() if include_result_evidence else None,
+            source_context=source_context,
+        )
+    except Exception as e:
+        logger.debug(f"Lifecycle classification failed for {file_path}: {e}")
+        from utils.race_lifecycle import RaceLifecycle, STALE_FORM_GUIDE
+
+        return RaceLifecycle(
+            status=STALE_FORM_GUIDE,
+            status_reason=f"classification_error:{e}",
+            source_path=str(file_path),
+        )
+
+
+def _classify_file_lifecycle_for_live_filter(file_path):
+    """Fast lifecycle classification for live-target filtering.
+
+    Filename dates are enough to reject past files and accept future no-result
+    files without opening large form guides. Today-dated files still need CSV
+    inspection because a jump time can make the difference between live and
+    jumped-pending.
+    """
+    try:
+        meta = extract_target_metadata_from_filename(file_path)
+        race_date = meta.get("race_date")
+        if race_date:
+            race_day = datetime.strptime(str(race_date), "%Y-%m-%d").date()
+            today = melbourne_now().date()
+            if race_day < today:
+                return RaceLifecycle(
+                    status=STALE_FORM_GUIDE,
+                    status_reason="past_race_date_no_official_result",
+                    race_date=str(race_date),
+                    venue=meta.get("venue"),
+                    race_number=meta.get("race_number"),
+                    source_path=str(file_path),
+                )
+            if race_day > today:
+                return RaceLifecycle(
+                    status=UPCOMING_NOT_JUMPED,
+                    status_reason="future_race_date_no_result",
+                    race_date=str(race_date),
+                    venue=meta.get("venue"),
+                    race_number=meta.get("race_number"),
+                    source_path=str(file_path),
+                )
+            race_time = _fast_target_jump_time_from_csv(file_path)
+            lifecycle = classify_race_record(
+                {
+                    "race_date": race_date,
+                    "venue": meta.get("venue"),
+                    "race_number": meta.get("race_number"),
+                    "race_time": race_time,
+                },
+                source_context="csv_record",
+            )
+            return RaceLifecycle(
+                status=lifecycle.status,
+                status_reason=lifecycle.status_reason,
+                race_date=lifecycle.race_date,
+                venue=lifecycle.venue,
+                race_number=lifecycle.race_number,
+                jump_time=lifecycle.jump_time,
+                jump_datetime=lifecycle.jump_datetime,
+                has_official_result=lifecycle.has_official_result,
+                result_evidence=lifecycle.result_evidence,
+                source_path=str(file_path),
+            )
+    except Exception:
+        pass
+    return _classify_file_lifecycle(
+        file_path,
+        source_context="csv_file",
+        include_result_evidence=False,
+    )
+
+
+def _fast_target_jump_time_from_csv(file_path):
+    """Read only the first CSV row for target-race jump time metadata."""
+    import csv
+    import re
+
+    target_keys = {
+        "race_time",
+        "jump_time",
+        "start_time",
+        "scheduled_time",
+        "race time",
+        "jump time",
+        "start time",
+        "scheduled time",
+    }
+
+    def norm(value):
+        return re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
+
+    try:
+        with open(file_path, "r", encoding="utf-8-sig", errors="replace", newline="") as handle:
+            sample = handle.read(4096)
+            handle.seek(0)
+            first_line = sample.splitlines()[0] if sample.splitlines() else ""
+            delimiters = [",", "|", "\t", ";"]
+            delimiter = max(delimiters, key=lambda d: first_line.count(d))
+            reader = csv.DictReader(handle, delimiter=delimiter)
+            row = next(reader, None)
+            if not row:
+                return None
+            key_map = {norm(k): k for k in row.keys()}
+            for key in target_keys:
+                original = key_map.get(norm(key))
+                if original is None:
+                    continue
+                value = row.get(original)
+                if value is not None and str(value).strip():
+                    return str(value).strip()
+    except Exception:
+        return None
+    return None
+
+
+def _attach_lifecycle_fields(race, lifecycle):
+    try:
+        race.update(lifecycle_response_fields(lifecycle))
+    except Exception:
+        pass
+    return race
+
+
+def _is_live_lifecycle(lifecycle):
+    return bool(lifecycle and getattr(lifecycle, "status", None) == UPCOMING_NOT_JUMPED)
+
+
+def _csv_file_is_live_upcoming(file_path):
+    lifecycle = _classify_file_lifecycle_for_live_filter(file_path)
+    return _is_live_lifecycle(lifecycle), lifecycle
+
+
+def _iter_live_upcoming_filenames(*directories):
+    """Yield unique CSV filenames whose lifecycle is live-upcoming."""
+    seen = set()
+    for directory in directories:
+        if not directory or not os.path.exists(directory):
+            continue
+        try:
+            names = sorted(os.listdir(directory))
+        except Exception:
+            continue
+        for filename in names:
+            if (
+                not filename.endswith(".csv")
+                or filename.startswith(".")
+                or filename == "README.md"
+                or filename in seen
+            ):
+                continue
+            file_path = os.path.join(directory, filename)
+            is_live, _ = _csv_file_is_live_upcoming(file_path)
+            if not is_live:
+                continue
+            seen.add(filename)
+            yield filename
+
+
 def load_upcoming_races_with_guaranteed_fields(refresh=False):
     """Refactored helper function to load upcoming races with guaranteed API contract fields.
 
@@ -18086,6 +18371,9 @@ def load_upcoming_races_with_guaranteed_fields(refresh=False):
                     if filename.endswith(".csv"):
                         # Extract metadata from filename using helper function
                         filename_metadata = _extract_csv_metadata(file_path)
+                        lifecycle = _classify_file_lifecycle_for_live_filter(file_path)
+                        if not _is_live_lifecycle(lifecycle):
+                            continue
 
                         # Read only header row (or first data row) to get grade/distance
                         try:
@@ -18123,12 +18411,12 @@ def load_upcoming_races_with_guaranteed_fields(refresh=False):
 
                         # Build race dict with guaranteed fields
                         race_data = {
-                            "date": filename_metadata["date"] or "",
-                            "venue": filename_metadata["venue"] or "Unknown Venue",
-                            "venue_name": filename_metadata["venue"]
+                            "date": lifecycle.race_date or filename_metadata["date"] or "",
+                            "venue": lifecycle.venue or filename_metadata["venue"] or "Unknown Venue",
+                            "venue_name": lifecycle.venue or filename_metadata["venue"]
                             or "Unknown Venue",  # Same as venue for now
-                            "race_number": filename_metadata["race_number"] or "",
-                            "race_time": "",  # Time not available in filename pattern
+                            "race_number": lifecycle.race_number or filename_metadata["race_number"] or "",
+                            "race_time": lifecycle.jump_time or "",
                             "distance": (
                                 str(header_distance)
                                 if header_distance is not None
@@ -18138,14 +18426,15 @@ def load_upcoming_races_with_guaranteed_fields(refresh=False):
                                 str(header_grade) if header_grade is not None else ""
                             ),
                             "race_name": (
-                                f"Race {filename_metadata['race_number']}"
-                                if filename_metadata["race_number"]
+                                f"Race {lifecycle.race_number or filename_metadata['race_number']}"
+                                if (lifecycle.race_number or filename_metadata["race_number"])
                                 else "Unknown Race"
                             ),
                             "url": "",  # URL not available from CSV files
                             "filename": filename,
                             "race_id": hashlib.sha256(filename.encode()).hexdigest()[:12],
                         }
+                        _attach_lifecycle_fields(race_data, lifecycle)
 
                         # Ensure all guaranteed fields are present
                         race_data = _ensure_guaranteed_fields(race_data)
@@ -18201,6 +18490,12 @@ def load_upcoming_races_with_guaranteed_fields(refresh=False):
                                     f"{filename}_{item.get('race_number', item.get('Race Number', 0))}".encode()
                                 ).hexdigest()[:12],
                                 }
+                                lifecycle = classify_race_record(
+                                    race_data, source_context="csv_record"
+                                )
+                                if not _is_live_lifecycle(lifecycle):
+                                    continue
+                                _attach_lifecycle_fields(race_data, lifecycle)
 
                                 # Ensure all guaranteed fields are present
                                 race_data = _ensure_guaranteed_fields(race_data)
@@ -18628,6 +18923,13 @@ def load_upcoming_races_unified(refresh=False, fast=True):
                                 )
                         except Exception:
                             pass
+                    lifecycle = classify_race_record(race, source_context="csv_record")
+                    if not _is_live_lifecycle(lifecycle):
+                        f_warnings.append(
+                            f"not_live_upcoming:{lifecycle.status}:{lifecycle.status_reason}"
+                        )
+                        continue
+                    _attach_lifecycle_fields(race, lifecycle)
                     races.append(_ensure_guaranteed_fields(race))
             except Exception as e:
                 f_errors.append(f"Failed to parse JSON: {e}")
@@ -18639,6 +18941,16 @@ def load_upcoming_races_unified(refresh=False, fast=True):
 
         # CSV path
         try:
+            lifecycle = _classify_file_lifecycle_for_live_filter(file_path)
+            if not _is_live_lifecycle(lifecycle):
+                f_warnings.append(
+                    f"not_live_upcoming:{lifecycle.status}:{lifecycle.status_reason}"
+                )
+                report["files"].append(
+                    {**f_info, "errors": f_errors, "warnings": f_warnings}
+                )
+                continue
+
             enc, delim = _sniff_encoding_and_delimiter(file_path)
             f_info.update({"encoding": enc, "delimiter": delim})
             # Read minimal rows to infer columns and runners
@@ -18663,11 +18975,11 @@ def load_upcoming_races_unified(refresh=False, fast=True):
                     header_distance = str(df[c].iloc[0]) if len(df) > 0 else ""
 
             race = {
-                "date": meta.get("date") or "",
-                "venue": meta.get("venue") or "Unknown Venue",
-                "venue_name": meta.get("venue") or "Unknown Venue",
-                "race_number": str(meta.get("race_number") or ""),
-                "race_time": "",
+                "date": lifecycle.race_date or meta.get("date") or "",
+                "venue": lifecycle.venue or meta.get("venue") or "Unknown Venue",
+                "venue_name": lifecycle.venue or meta.get("venue") or "Unknown Venue",
+                "race_number": str(lifecycle.race_number or meta.get("race_number") or ""),
+                "race_time": lifecycle.jump_time or "",
                 "distance": header_distance or "",
                 "grade": header_grade or "",
                 "race_name": (
@@ -18679,6 +18991,7 @@ def load_upcoming_races_unified(refresh=False, fast=True):
                 "filename": filename,
                 "race_id": hashlib.sha256(filename.encode()).hexdigest()[:12],
             }
+            _attach_lifecycle_fields(race, lifecycle)
 
             # Minimal per-race runner validation from CSV
             runners = _minimal_form_guide_runner_view(df)

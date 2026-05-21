@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Dict, Iterable, Optional, Tuple
 
 from config.paths import ARCHIVE_DIR, DATA_DIR, UPCOMING_RACES_DIR
+from utils.race_lifecycle import UPCOMING_NOT_JUMPED, classify_race_file
 
 LOGS_DIR = Path("logs")
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
@@ -375,6 +376,21 @@ def ingest_form_guide_csv(file_path: str) -> Path:
         if not meta:
             raise ValueError(
                 "Unable to extract race metadata (race_date, track, race_number) from CSV or filename."
+            )
+
+        lifecycle = classify_race_file(src)
+        allow_non_live = os.getenv("ALLOW_NON_LIVE_FORM_GUIDE_PUBLISH", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
+        if lifecycle.status != UPCOMING_NOT_JUMPED and not allow_non_live:
+            raise ValueError(
+                "Refusing to publish non-live form guide into upcoming races: "
+                f"{src.name} classified as {lifecycle.status} "
+                f"({lifecycle.status_reason}). Use /api/predict_file for mechanics "
+                "tests or reconcile official results before historical/evaluation ingestion."
             )
 
         canonical_name = build_canonical_name(meta)

@@ -44,6 +44,8 @@ from sklearn.model_selection import TimeSeriesSplit
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
+from utils.leakage_guard import strip_target_leakage_columns
+
 # Optional model backends
 try:
     from lightgbm import LGBMClassifier  # type: ignore
@@ -1229,6 +1231,21 @@ class MLSystemV4:
         )
         y_test = test_features["target"]
 
+        X_train, dropped_train_leakage = strip_target_leakage_columns(
+            X_train, allow_labels=False
+        )
+        X_test, dropped_test_leakage = strip_target_leakage_columns(
+            X_test, allow_labels=False
+        )
+        self.leakage_audit_ = {
+            "status": "passed",
+            "dropped_leakage_fields": sorted(
+                set(dropped_train_leakage + dropped_test_leakage)
+            ),
+            "labels_source": "target column derived after temporal feature freeze",
+            "temporal_split": True,
+        }
+
         # Ensure expected categorical columns exist in both splits (fill sensible defaults)
         try:
             cat_defaults = {
@@ -2058,28 +2075,26 @@ class MLSystemV4:
                         except Exception:
                             _race_dt = datetime.strptime(_raw, "%Y-%m-%d").date()
                     if _race_dt > datetime.now().date():
-                        # Allow opt-out of future-date guard during inference if explicitly requested via flags
-                        allow_future = False
+                        # Future pre-jump races are valid prediction targets.  Keep
+                        # an explicit legacy block switch for tests/ops that need it.
+                        block_future = False
                         try:
-                            # Flag-based override
-                            if flags and str(flags.get("allow_future_race_dates", False)).lower() in ("1", "true", "yes"):
-                                allow_future = True
-                            # Environment-based override (does not require pipeline flag plumbing)
-                            if not allow_future and str(os.getenv("ALLOW_FUTURE_RACE_DATES", "")).strip().lower() in ("1", "true", "yes", "on"):
-                                allow_future = True
+                            if flags and str(flags.get("block_future_race_dates", False)).lower() in ("1", "true", "yes"):
+                                block_future = True
+                            if str(os.getenv("BLOCK_FUTURE_RACE_DATES", "")).strip().lower() in ("1", "true", "yes", "on"):
+                                block_future = True
                         except Exception:
-                            allow_future = False
-                        if not allow_future:
+                            block_future = False
+                        if block_future:
                             return {
                                 "success": False,
                                 "error": f"TEMPORAL LEAKAGE DETECTED: race_date {_raw} is in the future relative to today",
                                 "race_id": race_id,
                                 "fallback_reason": "Future race date detected",
                             }
-                        else:
-                            logger.info(
-                                "⚠️ Future race date detected but allow_future_race_dates=True; proceeding with prediction"
-                            )
+                        logger.info(
+                            "Future race date detected; proceeding because pre-jump inference is lifecycle-gated"
+                        )
             except Exception:
                 # If parsing fails, proceed to builder which performs additional checks
                 pass
@@ -3697,7 +3712,9 @@ class _MLSystemV4(MLSystemV4):
                         race_dt = datetime.strptime(raw, "%d %B %Y").date()
                     except Exception:
                         race_dt = datetime.strptime(raw, "%Y-%m-%d").date()
-                if race_dt > date.today():
+                if race_dt > date.today() and str(
+                    os.getenv("BLOCK_FUTURE_RACE_DATES", "")
+                ).strip().lower() in ("1", "true", "yes", "on"):
                     return {
                         "success": False,
                         "error": f"TEMPORAL LEAKAGE DETECTED: race_date {raw} is in the future relative to today",

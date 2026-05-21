@@ -17,6 +17,7 @@ from typing import Optional
 
 from ml_system_v4 import MLSystemV4
 from utils.feature_flags import load_flags
+from utils.leakage_guard import strip_target_leakage_columns
 from src.parsers.csv_ingestion import CsvIngestion
 
 # --- Helpers for participant detection and normalization ---
@@ -328,6 +329,9 @@ class PredictionPipelineV4:
 
             # Map CSV columns to expected ML System V4 format
             race_data = self._map_csv_to_v4_format(race_data, race_file_path)
+            race_data, dropped_leakage_fields = strip_target_leakage_columns(
+                race_data, allow_labels=False
+            )
 
             # Apply runtime TGR toggle if provided
             try:
@@ -595,6 +599,10 @@ class PredictionPipelineV4:
             # Enrich metadata and race context for UI/consumers
             try:
                 if isinstance(result, dict) and result.get("success"):
+                    result["leakage_audit"] = {
+                        "status": "passed",
+                        "dropped_target_fields": dropped_leakage_fields,
+                    }
                     # Ensure optimizer flag is present for UI clarity (default False)
                     if result.get("optimizer_enabled") is None and result.get("optimization_applied") is None:
                         result["optimizer_enabled"] = False

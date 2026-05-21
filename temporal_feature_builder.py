@@ -65,22 +65,31 @@ class TemporalFeatureBuilder:
 
         self.post_race_features = {
             "finish_position",
+            "plc",
+            "position",
             "individual_time",
+            "time",
             "sectional_1st",
             "sectional_2nd",
             "sectional_3rd",
             "margin",
+            "mgn",
             "beaten_margin",
             "winning_time",
             "scraped_finish_position",
             "scraped_raw_result",
             "winner_name",
+            "winner",
             "winner_odds",
             "winner_margin",
             "pir_rating",
             "first_sectional",
             "win_time",
             "bonus_time",
+            "bon",
+            "sp",
+            "starting_price",
+            "payout",
         }
 
         # Exponential decay factor for historical race weighting
@@ -874,28 +883,36 @@ def create_temporal_assertion_hook():
         """Assert that no post-race features from target race are present."""
         post_race_features = {
             "finish_position",
+            "plc",
+            "position",
             "individual_time",
+            "time",
             "sectional_1st",
             "sectional_2nd",
             "sectional_3rd",
             "margin",
+            "mgn",
             "beaten_margin",
             "winning_time",
             "scraped_finish_position",
             "scraped_raw_result",
             "winner_name",
+            "winner",
             "winner_odds",
             "winner_margin",
             "pir_rating",
             "first_sectional",
             "win_time",
             "bonus_time",
+            "bon",
+            "payout",
         }
 
         # Disabled features (odds-related)
         disabled_features = {
             "odds",
             "SP",
+            "sp",
             "starting_price",
             "odds_decimal",
             "market_odds",
@@ -938,7 +955,7 @@ def create_temporal_assertion_hook():
 
                 # Determine whether to enforce future-date blocking
                 enforce_future_block = os.getenv(
-                    "ENFORCE_FUTURE_BLOCK", "1"
+                    "ENFORCE_FUTURE_BLOCK", "0"
                 ).lower() not in ("0", "false", "no")
 
                 # If feature flags or env explicitly allow future-dated inference, override enforcement
