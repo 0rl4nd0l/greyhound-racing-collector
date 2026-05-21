@@ -105,7 +105,7 @@ def parse_race_csv_meta(file_path: str) -> Dict[str, Any]:
                 # but keeping filename data for race identification
                 for key, value in csv_meta.items():
                     if (
-                        value and value != "Unknown"
+                        value is not None and value != "" and value != "Unknown"
                     ):  # Only override with valid CSV data
                         response[key] = value
                 data_sources.append("csv_data")
@@ -255,6 +255,30 @@ def _parse_human_date(day: str, month_name: str, year: str) -> Optional[str]:
     return None
 
 
+def _looks_like_embedded_form_history(df: "pd.DataFrame") -> bool:
+    """Detect form-guide CSVs where row values are historical starts, not target race fields."""
+    try:
+        columns = {str(c).strip().upper() for c in df.columns}
+        historical_columns = {
+            "PLC",
+            "TIME",
+            "WIN",
+            "BON",
+            "MGN",
+            "W/2G",
+            "PIR",
+            "SP",
+            "DATE",
+            "TRACK",
+        }
+        if "DOG NAME" not in columns or len(columns.intersection(historical_columns)) < 4:
+            return False
+        names = df["Dog Name"].dropna().astype(str)
+        return bool(names.str.match(r"^\s*\d{1,2}\s*[\.\):-]").any())
+    except Exception:
+        return False
+
+
 def _extract_from_csv_data(file_path: str) -> Optional[Dict[str, Any]]:
     """
     Extract metadata from CSV file contents.
@@ -280,9 +304,13 @@ def _extract_from_csv_data(file_path: str) -> Optional[Dict[str, Any]]:
         df = df.replace("", pd.NA)  # Convert empty strings to NaN
 
         result = {}
+        embedded_form_history = _looks_like_embedded_form_history(df)
+        if embedded_form_history:
+            result["csv_row_context"] = "embedded_form_history"
+            result["target_metadata_from_csv"] = False
 
         # Extract venue from TRACK column (most reliable source)
-        if "TRACK" in df.columns:
+        if "TRACK" in df.columns and not embedded_form_history:
             venues = df["TRACK"].dropna().unique()
             # Get the most common venue (in case of mixed data)
             if len(venues) > 0:
@@ -291,7 +319,7 @@ def _extract_from_csv_data(file_path: str) -> Optional[Dict[str, Any]]:
                 result["venue"] = standardize_venue_name(raw_venue)
 
         # Extract distance from DIST column
-        if "DIST" in df.columns:
+        if "DIST" in df.columns and not embedded_form_history:
             distances = df["DIST"].dropna().unique()
             if len(distances) > 0:
                 # Get most common distance
@@ -299,7 +327,7 @@ def _extract_from_csv_data(file_path: str) -> Optional[Dict[str, Any]]:
                 result["distance"] = str(distance_counts.index[0])
 
         # Extract grade from G column
-        if "G" in df.columns:
+        if "G" in df.columns and not embedded_form_history:
             grades = df["G"].dropna().unique()
             if len(grades) > 0:
                 # Get most common grade
@@ -307,19 +335,23 @@ def _extract_from_csv_data(file_path: str) -> Optional[Dict[str, Any]]:
                 result["grade"] = str(grade_counts.index[0])
 
         # Calculate field size (number of unique dogs/boxes)
-        if "BOX" in df.columns:
-            boxes = df["BOX"].dropna().unique()
-            result["field_size"] = len(boxes)
-        elif "Dog Name" in df.columns:
+        if "Dog Name" in df.columns and embedded_form_history:
             # Count unique dogs (excluding empty quotes and NaN)
             dogs = df["Dog Name"].dropna()
             dogs = dogs[dogs != '""']  # Remove empty quotes
             # Only count dogs that don't start with a number followed by period (these are the primary entries)
-            primary_dogs = dogs[dogs.str.match(r"^\d+\.\s")]
+            primary_dogs = dogs[dogs.astype(str).str.match(r"^\s*\d{1,2}\s*[\.\):-]")]
             result["field_size"] = len(primary_dogs)
+        elif "BOX" in df.columns and not embedded_form_history:
+            boxes = df["BOX"].dropna().unique()
+            result["field_size"] = len(boxes)
+        elif "Dog Name" in df.columns:
+            dogs = df["Dog Name"].dropna()
+            dogs = dogs[dogs != '""']
+            result["field_size"] = len(dogs)
 
         # Try to extract race date from DATE column
-        if "DATE" in df.columns:
+        if "DATE" in df.columns and not embedded_form_history:
             dates = df["DATE"].dropna().unique()
             if len(dates) > 0:
                 # Get most common date and try to parse it

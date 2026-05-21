@@ -13,7 +13,7 @@ from datetime import datetime
 
 import pandas as pd
 import sqlite3
-from typing import Optional
+from typing import Any, Optional
 
 from ml_system_v4 import MLSystemV4
 from utils.feature_flags import load_flags
@@ -56,6 +56,137 @@ def _normalize_dog_name_no_prefix(name: str) -> str:
         return s.title()
     except Exception:
         return str(name or "").strip()
+
+
+def _normalize_odds_name_key(name: str) -> str:
+    """Normalize dog names for market-odds joins across punctuation/case variants."""
+    try:
+        return _re.sub(r"[^A-Z0-9]", "", str(name or "").upper())
+    except Exception:
+        return str(name or "").upper().replace(" ", "")
+
+
+def _store_market_odds(odds_map: dict[str, float], dog_name, odds) -> None:
+    """Store odds under exact, uppercase, and punctuation-free dog-name aliases."""
+    try:
+        odds_value = float(odds)
+    except Exception:
+        return
+
+    base = str(dog_name or "").strip()
+    keys = {base, base.upper(), _normalize_odds_name_key(base)}
+    for key in keys:
+        if key:
+            odds_map[key] = odds_value
+
+
+def _safe_float(value: Any, default: float | None = None) -> float | None:
+    try:
+        if value is None:
+            return default
+        parsed = float(value)
+        if pd.isna(parsed):
+            return default
+        return parsed
+    except Exception:
+        return default
+
+
+def _prediction_name_aliases(prediction: dict[str, Any]) -> tuple[str, ...]:
+    dog_name = (
+        prediction.get("dog_clean_name")
+        or prediction.get("dog_name")
+        or prediction.get("name")
+        or ""
+    )
+    dog_text = str(dog_name).strip()
+    return (dog_text, dog_text.upper(), _normalize_odds_name_key(dog_text))
+
+
+def _lookup_market_odds(odds_map: dict[str, float], prediction: dict[str, Any]) -> float | None:
+    for key in _prediction_name_aliases(prediction):
+        if key in odds_map:
+            return _safe_float(odds_map[key])
+    return None
+
+
+def _append_quality_flag(prediction: dict[str, Any], flag: str) -> None:
+    flags = prediction.get("quality_flags")
+    if not isinstance(flags, list):
+        flags = []
+    if flag not in flags:
+        flags.append(flag)
+    prediction["quality_flags"] = flags
+
+
+def _market_disagreement_threshold() -> float:
+    try:
+        return max(0.0, float(os.getenv("V4_MARKET_DISAGREEMENT_DELTA", "0.08")))
+    except Exception:
+        return 0.08
+
+
+def _annotate_market_context(
+    predictions: list[dict[str, Any]], win_odds: dict[str, float]
+) -> dict[str, Any]:
+    """Attach market-implied probabilities and disagreement flags without reranking."""
+    if not predictions or not win_odds:
+        return {
+            "market_odds_count": 0,
+            "market_implied_overround": None,
+            "large_disagreement_count": 0,
+            "large_disagreement_threshold": _market_disagreement_threshold(),
+        }
+
+    implied_by_index: dict[int, float] = {}
+    odds_count = 0
+    for idx, prediction in enumerate(predictions):
+        if not isinstance(prediction, dict):
+            continue
+        odds_value = _lookup_market_odds(win_odds, prediction)
+        if odds_value is None or odds_value <= 0:
+            continue
+        odds_count += 1
+        implied = 1.0 / float(odds_value)
+        implied_by_index[idx] = implied
+        prediction["market_odds_win"] = float(odds_value)
+        prediction.setdefault("odds_win", float(odds_value))
+        prediction["odds_implied_prob"] = float(implied)
+
+    implied_total = sum(implied_by_index.values())
+    threshold = _market_disagreement_threshold()
+    large_count = 0
+
+    for idx, implied in implied_by_index.items():
+        prediction = predictions[idx]
+        implied_norm = implied / implied_total if implied_total > 0 else None
+        prediction["odds_implied_prob_norm"] = (
+            float(implied_norm) if implied_norm is not None else None
+        )
+
+        model_prob = _safe_float(
+            prediction.get("win_prob_norm", prediction.get("win_probability"))
+        )
+        if model_prob is None or implied_norm is None:
+            continue
+
+        delta = float(model_prob) - float(implied_norm)
+        prediction["model_market_prob_delta"] = delta
+        prediction["model_market_prob_delta_abs"] = abs(delta)
+        if abs(delta) >= threshold:
+            large_count += 1
+            _append_quality_flag(prediction, "large_model_market_disagreement")
+            prediction["market_disagreement_warning"] = (
+                "model probability differs materially from normalized market probability"
+            )
+
+    return {
+        "market_odds_count": odds_count,
+        "market_implied_overround": float(implied_total) if odds_count else None,
+        "large_disagreement_count": large_count,
+        "large_disagreement_threshold": threshold,
+    }
+
 
 def _extract_box_from_name_or_row(raw_name: str, row: dict) -> Optional[int]:
     """Get box number from numeric prefix or BOX column.
@@ -403,7 +534,7 @@ class PredictionPipelineV4:
                     for dog, odds in cur.fetchall():
                         try:
                             if dog:
-                                win_odds[str(dog).upper().strip()] = float(odds)
+                                _store_market_odds(win_odds, dog, odds)
                         except Exception:
                             continue
                     # Place odds (Top 3). Prefer topN-aware schema; if missing, fallback to schema without topN.
@@ -420,7 +551,7 @@ class PredictionPipelineV4:
                         for dog, odds, topn in rows:
                             try:
                                 if dog and (topn == 3 or topn is None):
-                                    place_odds[str(dog).upper().strip()] = float(odds)
+                                    _store_market_odds(place_odds, dog, odds)
                             except Exception:
                                 continue
                     except sqlite3.OperationalError:
@@ -437,7 +568,7 @@ class PredictionPipelineV4:
                         for dog, odds in rows:
                             try:
                                 if dog:
-                                    place_odds[str(dog).upper().strip()] = float(odds)
+                                    _store_market_odds(place_odds, dog, odds)
                             except Exception:
                                 continue
             except Exception as e:
@@ -532,7 +663,7 @@ class PredictionPipelineV4:
                             for dog, odds in cur.fetchall() or []:
                                 try:
                                     if dog:
-                                        win_odds[str(dog).upper().strip()] = float(odds)
+                                        _store_market_odds(win_odds, dog, odds)
                                 except Exception:
                                     continue
                             # place/top3 odds
@@ -548,7 +679,7 @@ class PredictionPipelineV4:
                                 for dog, odds, _topn in cur.fetchall() or []:
                                     try:
                                         if dog:
-                                            place_odds[str(dog).upper().strip()] = float(odds)
+                                            _store_market_odds(place_odds, dog, odds)
                                     except Exception:
                                         continue
                             except sqlite3.OperationalError:
@@ -563,7 +694,7 @@ class PredictionPipelineV4:
                                 for dog, odds in cur.fetchall() or []:
                                     try:
                                         if dog:
-                                            place_odds[str(dog).upper().strip()] = float(odds)
+                                            _store_market_odds(place_odds, dog, odds)
                                     except Exception:
                                         continue
                             # use alt_id for downstream odds-based EV
@@ -695,15 +826,14 @@ class PredictionPipelineV4:
                                             p["confidence_score"] = None
                                     if p.get("ev_win") is None:
                                         try:
-                                            dog_key = str(
-                                                p.get("dog_clean_name")
-                                                or p.get("dog_name")
-                                                or p.get("name")
-                                                or ""
-                                            ).upper().strip()
-                                            if dog_key in win_odds and p.get("win_prob_norm") is not None:
+                                            odds_value = _lookup_market_odds(win_odds, p)
+                                            if (
+                                                odds_value is not None
+                                                and p.get("win_prob_norm") is not None
+                                            ):
                                                 p["ev_win"] = float(
-                                                    float(p["win_prob_norm"]) * float(win_odds[dog_key])
+                                                    float(p["win_prob_norm"])
+                                                    * float(odds_value)
                                                     - 1.0
                                                 )
                                             else:
@@ -711,16 +841,82 @@ class PredictionPipelineV4:
                                         except Exception:
                                             p.setdefault("ev_win", None)
                                     p.setdefault("model_version", model_version)
-                            try:
-                                preds.sort(
-                                    key=lambda item: float(
-                                        item.get(
-                                            "win_prob_norm",
-                                            item.get("win_probability", item.get("win_prob", 0.0)),
-                                        )
-                                        or 0.0
+                            market_summary = _annotate_market_context(preds, win_odds)
+                            if market_summary.get("market_odds_count"):
+                                result["market_context"] = market_summary
+                            if market_summary.get("large_disagreement_count", 0) > 0:
+                                quality_warnings = result.setdefault("quality_warnings", [])
+                                warning = {
+                                    "code": "large_model_market_disagreement",
+                                    "message": "One or more runners have large model-vs-market probability disagreement; ranking was not changed.",
+                                    "count": market_summary.get("large_disagreement_count"),
+                                    "threshold": market_summary.get(
+                                        "large_disagreement_threshold"
                                     ),
-                                    reverse=True,
+                                }
+                                if warning not in quality_warnings:
+                                    quality_warnings.append(warning)
+
+                            try:
+                                ensemble_count = int(
+                                    result.get("ensemble_models_used")
+                                    or result.get("ensemble_models")
+                                    or 0
+                                )
+                            except Exception:
+                                ensemble_count = 0
+                            if ensemble_count <= 1:
+                                quality_warnings = result.setdefault("quality_warnings", [])
+                                warning = {
+                                    "code": "single_model_no_ensemble_agreement",
+                                    "message": "Only one model contributed, so model_agreement is not ensemble evidence.",
+                                }
+                                if warning not in quality_warnings:
+                                    quality_warnings.append(warning)
+                                for p in preds:
+                                    if isinstance(p, dict):
+                                        p.setdefault(
+                                            "model_agreement_basis",
+                                            "not_applicable_single_model",
+                                        )
+                                        _append_quality_flag(
+                                            p, "single_model_no_ensemble_agreement"
+                                        )
+                            try:
+                                def _prediction_sort_probability(item) -> float:
+                                    if not isinstance(item, dict):
+                                        return 0.0
+                                    for key in (
+                                        "rank_sort_probability",
+                                        "win_prob_norm_unrounded",
+                                        "win_probability_unrounded_norm",
+                                        "win_prob_norm",
+                                        "win_probability",
+                                        "win_prob",
+                                    ):
+                                        try:
+                                            value = item.get(key)
+                                            if value is not None:
+                                                return float(value)
+                                        except Exception:
+                                            continue
+                                    return 0.0
+
+                                def _prediction_sort_name(item) -> str:
+                                    if not isinstance(item, dict):
+                                        return ""
+                                    return _normalize_odds_name_key(
+                                        item.get("dog_clean_name")
+                                        or item.get("dog_name")
+                                        or item.get("name")
+                                        or ""
+                                    )
+
+                                preds.sort(
+                                    key=lambda item: (
+                                        -_prediction_sort_probability(item),
+                                        _prediction_sort_name(item),
+                                    )
                                 )
                                 for rank, p in enumerate(preds, start=1):
                                     if isinstance(p, dict):
@@ -760,6 +956,15 @@ class PredictionPipelineV4:
                                     "csv_place_rate",
                                     "csv_avg_time",
                                     "csv_best_time",
+                                    "csv_prefixed_history_rows",
+                                    "csv_blank_history_rows",
+                                    "csv_historical_sources",
+                                    "parser_context",
+                                    "target_field_warning",
+                                    "distance_source",
+                                    "grade_source",
+                                    "weight_source",
+                                    "starting_price_source",
                                 ]
                                 lookup = {}
                                 if (
@@ -838,6 +1043,43 @@ class PredictionPipelineV4:
                         rc_grade = None
                         if "grade" in cols and len(race_data) > 0:
                             rc_grade = str(race_data["grade"].iloc[0])
+                        target_field_sources = {}
+                        for source_col, field_name in (
+                            ("distance_source", "distance"),
+                            ("grade_source", "grade"),
+                            ("weight_source", "weight"),
+                            ("starting_price_source", "starting_price"),
+                        ):
+                            try:
+                                if source_col in cols and len(race_data) > 0:
+                                    values = (
+                                        race_data[source_col]
+                                        .dropna()
+                                        .astype(str)
+                                        .loc[lambda s: s.str.strip() != ""]
+                                        .unique()
+                                        .tolist()
+                                    )
+                                    if values:
+                                        target_field_sources[field_name] = values[0]
+                            except Exception:
+                                continue
+                        target_field_warnings = []
+                        try:
+                            if "target_field_warning" in cols and len(race_data) > 0:
+                                for value in race_data["target_field_warning"].dropna():
+                                    for part in str(value).split(";"):
+                                        part = part.strip()
+                                        if part and part not in target_field_warnings:
+                                            target_field_warnings.append(part)
+                        except Exception:
+                            target_field_warnings = []
+                        parser_context = None
+                        try:
+                            if "parser_context" in cols and len(race_data) > 0:
+                                parser_context = str(race_data["parser_context"].iloc[0])
+                        except Exception:
+                            parser_context = None
                         total_dogs = (
                             int(race_data["dog_clean_name"].nunique())
                             if "dog_clean_name" in cols
@@ -857,8 +1099,21 @@ class PredictionPipelineV4:
                                 ),
                                 "grade": rc_grade,
                                 "total_dogs": total_dogs,
+                                "parser_context": parser_context,
+                                "target_field_sources": target_field_sources,
+                                "target_field_warnings": target_field_warnings,
                             },
                         )
+                        if target_field_warnings:
+                            quality_warnings = result.setdefault("quality_warnings", [])
+                            warning = {
+                                "code": "target_fields_not_from_race_card",
+                                "message": "Some target race fields were defaulted or inferred because the CSV rows are embedded form history.",
+                                "fields": target_field_sources,
+                                "details": target_field_warnings,
+                            }
+                            if warning not in quality_warnings:
+                                quality_warnings.append(warning)
                     except Exception:
                         # Soft-fail race_context enrichment
                         pass
@@ -931,6 +1186,107 @@ class PredictionPipelineV4:
             except (ValueError, TypeError):
                 return default
 
+        def _row_value(row, key, default=None):
+            try:
+                if isinstance(row, dict):
+                    value = row.get(key, default)
+                elif hasattr(row, "get"):
+                    value = row.get(key, default)
+                else:
+                    value = default
+                if value is None or pd.isna(value) or str(value).strip() == "":
+                    return default
+                return value
+            except Exception:
+                return default
+
+        def _first_non_empty(columns: tuple[str, ...]):
+            for column in columns:
+                if column not in race_data.columns:
+                    continue
+                try:
+                    values = race_data[column].dropna()
+                    for value in values:
+                        if str(value).strip() != "":
+                            return value, column
+                except Exception:
+                    continue
+            return None, None
+
+        def _mode_numeric(column: str) -> float | None:
+            try:
+                if column not in race_data.columns:
+                    return None
+                values = pd.to_numeric(race_data[column], errors="coerce").dropna()
+                if values.empty:
+                    return None
+                counts = values.value_counts()
+                return float(counts.index[0])
+            except Exception:
+                return None
+
+        def _looks_like_embedded_form_history() -> bool:
+            columns = {str(c).strip().upper() for c in race_data.columns}
+            historical_columns = {
+                "PLC",
+                "TIME",
+                "WIN",
+                "BON",
+                "MGN",
+                "W/2G",
+                "PIR",
+                "SP",
+                "DATE",
+                "TRACK",
+            }
+            try:
+                dog_names = race_data.get("Dog Name")
+                has_prefixed_names = bool(
+                    dog_names.astype(str).str.match(r"^\s*\d{1,2}\s*[\.\):-]").any()
+                )
+            except Exception:
+                has_prefixed_names = False
+            return has_prefixed_names and len(columns.intersection(historical_columns)) >= 4
+
+        embedded_form_history = _looks_like_embedded_form_history()
+        target_field_warnings: list[str] = []
+        if embedded_form_history:
+            target_field_warnings.append("embedded_form_history_detected")
+
+        explicit_distance, explicit_distance_column = _first_non_empty(
+            (
+                "Race Distance",
+                "race_distance",
+                "target_distance",
+                "current_race_distance",
+                "Distance",
+            )
+        )
+        race_level_distance = None
+        race_level_distance_source = None
+        if explicit_distance is not None:
+            race_level_distance = safe_float_convert(explicit_distance, 500.0)
+            race_level_distance_source = f"target_column:{explicit_distance_column}"
+        elif embedded_form_history:
+            inferred_distance = _mode_numeric("DIST")
+            if inferred_distance is not None:
+                race_level_distance = inferred_distance
+                race_level_distance_source = "historical_form_mode_inferred"
+                target_field_warnings.append("distance_inferred_from_historical_form_mode")
+
+        explicit_grade, explicit_grade_column = _first_non_empty(
+            ("Race Grade", "race_grade", "target_grade", "current_race_grade", "Grade")
+        )
+        race_level_grade = None
+        race_level_grade_source = None
+        if explicit_grade is not None:
+            race_level_grade = str(explicit_grade).upper()
+            race_level_grade_source = f"target_column:{explicit_grade_column}"
+        elif embedded_form_history:
+            race_level_grade = "G5"
+            race_level_grade_source = "default_missing_target"
+            target_field_warnings.append("grade_defaulted_no_target_column")
+
         seen = set()  # normalized dog names we've emitted participants for
         order = []    # preserve first-seen order
         current_dog_norm = None
@@ -993,15 +1349,47 @@ class PredictionPipelineV4:
                     break
             row = first_row if first_row is not None else {}
 
+            if embedded_form_history:
+                weight_value = 30.0
+                weight_source = "default_missing_target"
+                starting_price_value = 3.0
+                starting_price_source = "default_missing_target"
+                distance_value = (
+                    race_level_distance if race_level_distance is not None else 500.0
+                )
+                distance_source = race_level_distance_source or "default_missing_target"
+                grade_value = race_level_grade or "G5"
+                grade_source = race_level_grade_source or "default_missing_target"
+            else:
+                weight_value = safe_float_convert(_row_value(row, "WGT"), 30.0)
+                weight_source = "csv_row:WGT"
+                starting_price_value = safe_float_convert(_row_value(row, "SP"), 3.0)
+                starting_price_source = "csv_row:SP"
+                distance_value = (
+                    race_level_distance
+                    if race_level_distance is not None
+                    else safe_float_convert(_row_value(row, "DIST"), 500.0)
+                )
+                distance_source = race_level_distance_source or "csv_row:DIST"
+                if race_level_grade is not None:
+                    grade_value = race_level_grade
+                    grade_source = race_level_grade_source or "target_column"
+                else:
+                    grade_value = str(_row_value(row, "G", "G5") or "G5").upper()
+                    grade_source = "csv_row:G"
+
             mapped_row = {
                 "race_id": filename.replace(".csv", ""),
                 "dog_clean_name": norm_name,
                 "box_number": int(box_by_dog.get(norm_name, order.index(norm_name) + 1)),
-                "weight": safe_float_convert((row.get("WGT") if isinstance(row, dict) else (row.get("WGT") if hasattr(row, 'get') else None)), 30.0),
-                "starting_price": safe_float_convert((row.get("SP") if isinstance(row, dict) else (row.get("SP") if hasattr(row, 'get') else None)), 3.0),
-                "trainer_name": str((row.get("TRAINER") if isinstance(row, dict) else (row.get("TRAINER") if hasattr(row, 'get') else None)) or "Unknown"),
+                "weight": weight_value,
+                "weight_source": weight_source,
+                "starting_price": starting_price_value,
+                "starting_price_source": starting_price_source,
+                "trainer_name": str(_row_value(row, "TRAINER", "Unknown") or "Unknown"),
                 "venue": str(venue).upper().replace(" ", "_").replace("/", "_"),
-                "grade": str((row.get("G") if isinstance(row, dict) else (row.get("G") if hasattr(row, 'get') else None)) or "G5").upper(),
+                "grade": grade_value,
+                "grade_source": grade_source,
                 "track_condition": "Good",
                 "weather": "Fine",
                 "temperature": 20.0,
@@ -1010,13 +1398,18 @@ class PredictionPipelineV4:
                 "field_size": participant_count,
                 "race_date": race_date,
                 "race_time": "14:30",
-                "distance": safe_float_convert((row.get("DIST") if isinstance(row, dict) else (row.get("DIST") if hasattr(row, 'get') else None)), 500.0),
+                "distance": distance_value,
+                "distance_source": distance_source,
                 "margin": None,
                 "individual_time": None,
                 "finish_position": None,
-                "performance_rating": safe_float_convert((row.get("PERF") if isinstance(row, dict) else (row.get("PERF") if hasattr(row, 'get') else None)), 0.0),
-                "speed_rating": safe_float_convert((row.get("SPEED") if isinstance(row, dict) else (row.get("SPEED") if hasattr(row, 'get') else None)), 0.0),
-                "class_rating": safe_float_convert((row.get("CLASS") if isinstance(row, dict) else (row.get("CLASS") if hasattr(row, 'get') else None)), 0.0),
+                "performance_rating": safe_float_convert(_row_value(row, "PERF"), 0.0),
+                "speed_rating": safe_float_convert(_row_value(row, "SPEED"), 0.0),
+                "class_rating": safe_float_convert(_row_value(row, "CLASS"), 0.0),
+                "parser_context": (
+                    "embedded_form_history" if embedded_form_history else "target_card"
+                ),
+                "target_field_warning": ";".join(target_field_warnings),
             }
             mapped_data.append(mapped_row)
 
@@ -1061,6 +1454,7 @@ class PredictionPipelineV4:
 
         # Parse embedded historical data structure
         csv_historical_data = {}
+        csv_historical_source_counts: dict[str, dict[str, int]] = {}
         current_dog = None  # normalized name without prefix
         seen_header_for_dog: set[str] = set()
 
@@ -1103,12 +1497,46 @@ class PredictionPipelineV4:
             except Exception:
                 return None
 
+        def _append_historical_race(dog_name: str, row, source: str) -> bool:
+            try:
+                # Case-insensitive header support with tolerant numeric parsing
+                plc = _row_get_ci(
+                    row,
+                    ["PLC", "Plc", "Place", "Placing", "Position", "Finish"],
+                )
+                tim = _row_get_ci(row, ["TIME", "Time", "Race Time", "RaceTime"])  # may include 's'
+                dist = _row_get_ci(row, ["DIST", "Distance"])  # may include 'm'
+                mgn = _row_get_ci(row, ["MGN", "Margin", "Beaten Margin"])
+                wgt = _row_get_ci(row, ["WGT", "Weight"])
+                date_val = _row_get_ci(row, ["DATE", "Date", "race_date", "Race Date"])
+                track_val = _row_get_ci(row, ["TRACK", "Track", "Venue", "venue"])
+
+                historical_race = {
+                    "date": date_val or "",
+                    "track": track_val or "",
+                    "finish_position": _to_int_like(plc),
+                    "time": _to_float_like(tim),
+                    "distance": _to_int_like(dist),
+                    "margin": _to_float_like(mgn),
+                    "weight": _to_float_like(wgt),
+                }
+
+                if historical_race["finish_position"] is not None:
+                    csv_historical_data.setdefault(dog_name, []).append(historical_race)
+                    source_counts = csv_historical_source_counts.setdefault(dog_name, {})
+                    source_counts[source] = source_counts.get(source, 0) + 1
+                    return True
+            except (ValueError, TypeError) as e:
+                logger.debug(f"Skipping malformed historical row for {dog_name}: {e}")
+            return False
+
         for _, row in raw_csv_data.iterrows():
             raw_name = str(row.get("Dog Name", "") or "").strip()
             has_prefix = _has_numeric_prefix(raw_name)
             norm_name = _norm(raw_name)
 
             is_history_row = False
+            history_source = "history_row"
 
             if has_prefix:
                 # Two possibilities due to forward-fill:
@@ -1120,12 +1548,16 @@ class PredictionPipelineV4:
                     seen_header_for_dog.add(norm_name)
                     if current_dog not in csv_historical_data:
                         csv_historical_data[current_dog] = []
-                    # Skip adding as history on the header line
+                    # Expert-form CSVs use the first prefixed row as both runner
+                    # header and latest visible form row. Record that source
+                    # explicitly so it cannot be mistaken for target-race data.
+                    _append_historical_race(current_dog, row, "prefixed_form_row")
                     continue
                 else:
                     # Already saw a header for this dog. If we're still within the same dog's block,
                     # treat this forward-filled prefixed row as a history row.
                     if current_dog == norm_name:
+                        history_source = "forward_filled_prefixed_row"
                         is_history_row = True
                     else:
                         # Switching context back to another dog we've seen; treat as header switch
@@ -1141,37 +1573,19 @@ class PredictionPipelineV4:
                     current_dog is not None and norm_name == current_dog and not has_prefix
                 )
                 if current_dog and (is_blank or same_dog_unprefixed):
+                    history_source = (
+                        "blank_continuation_row"
+                        if is_blank
+                        else "same_name_continuation_row"
+                    )
                     is_history_row = True
 
             if is_history_row and current_dog:
-                try:
-                    # Case-insensitive header support with tolerant numeric parsing
-                    plc = _row_get_ci(row, ["PLC", "Plc", "Place", "Placing", "Position", "Finish"])
-                    tim = _row_get_ci(row, ["TIME", "Time", "Race Time", "RaceTime"])  # may include 's'
-                    dist = _row_get_ci(row, ["DIST", "Distance"])  # may include 'm'
-                    mgn = _row_get_ci(row, ["MGN", "Margin", "Beaten Margin"])
-                    wgt = _row_get_ci(row, ["WGT", "Weight"]) 
-                    date_val = _row_get_ci(row, ["DATE", "Date", "race_date", "Race Date"])
-                    track_val = _row_get_ci(row, ["TRACK", "Track", "Venue", "venue"]) 
-
-                    historical_race = {
-                        "date": date_val or "",
-                        "track": track_val or "",
-                        "finish_position": _to_int_like(plc),
-                        "time": _to_float_like(tim),
-                        "distance": _to_int_like(dist),
-                        "margin": _to_float_like(mgn),
-                        "weight": _to_float_like(wgt),
-                    }
-
-                    # Only add if we have minimal essential data (position)
-                    if historical_race["finish_position"] is not None:
-                        csv_historical_data[current_dog].append(historical_race)
-                except (ValueError, TypeError) as e:
-                    logger.debug(
-                        f"Skipping malformed historical row for {current_dog}: {e}"
-                    )
-                    continue
+                _append_historical_race(
+                    current_dog,
+                    row,
+                    history_source,
+                )
 
         # Calculate CSV-based historical features for each participant
         enriched_participants = []
@@ -1192,7 +1606,17 @@ class PredictionPipelineV4:
                 times = [h["time"] for h in history if h["time"] is not None]
 
                 if positions:
+                    source_counts = csv_historical_source_counts.get(dog_name, {})
                     participant_dict["csv_historical_races"] = len(positions)
+                    participant_dict["csv_prefixed_history_rows"] = int(
+                        source_counts.get("prefixed_form_row", 0)
+                    )
+                    participant_dict["csv_blank_history_rows"] = int(
+                        source_counts.get("blank_continuation_row", 0)
+                    )
+                    participant_dict["csv_historical_sources"] = ",".join(
+                        sorted(source_counts)
+                    )
                     participant_dict["csv_avg_finish_position"] = sum(positions) / len(
                         positions
                     )
@@ -1221,6 +1645,9 @@ class PredictionPipelineV4:
             else:
                 # No CSV historical data for this dog
                 participant_dict["csv_historical_races"] = 0
+                participant_dict["csv_prefixed_history_rows"] = 0
+                participant_dict["csv_blank_history_rows"] = 0
+                participant_dict["csv_historical_sources"] = ""
                 logger.debug(f"{dog_name}: No CSV historical data found")
 
             enriched_participants.append(participant_dict)

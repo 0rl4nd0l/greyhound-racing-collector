@@ -33,6 +33,53 @@ from sklearn.model_selection import cross_val_score
 logger = logging.getLogger(__name__)
 
 
+def _safe_probability_float(value: Any, default: float = 0.0) -> float:
+    try:
+        if value is None:
+            return default
+        parsed = float(value)
+        if np.isnan(parsed) or np.isinf(parsed):
+            return default
+        return parsed
+    except Exception:
+        return default
+
+
+def _near_tie_epsilon() -> float:
+    try:
+        return max(0.0, float(os.getenv("V4_NEAR_TIE_EPS", "0.0005")))
+    except Exception:
+        return 0.0005
+
+
+def _rank_tie_name(prediction: Dict[str, Any]) -> str:
+    try:
+        return str(
+            prediction.get("dog_clean_name")
+            or prediction.get("dog_name")
+            or prediction.get("name")
+            or ""
+        ).upper()
+    except Exception:
+        return ""
+
+
+def _single_model_confidence_cap() -> float:
+    try:
+        return min(1.0, max(0.0, float(os.getenv("V4_SINGLE_MODEL_CONFIDENCE_CAP", "0.55"))))
+    except Exception:
+        return 0.55
+
+
+def _append_quality_flag(prediction: Dict[str, Any], flag: str) -> None:
+    flags = prediction.get("quality_flags")
+    if not isinstance(flags, list):
+        flags = []
+    if flag not in flags:
+        flags.append(flag)
+    prediction["quality_flags"] = flags
+
+
 class PredictionUniquenessValidator:
     """Ensures predictions are unique and not repetitive patterns."""
 
@@ -626,6 +673,7 @@ class AdvancedEnsemblePredictor:
                     calibrated_win_prob, model_predictions, i
                 )
 
+                model_count = len(model_predictions)
                 prediction = {
                     "dog_clean_name": (
                         names[i]
@@ -633,12 +681,24 @@ class AdvancedEnsemblePredictor:
                         else row.get("dog_clean_name", f"Dog_{i}")
                     ),
                     "box_number": int(row.get("box_number", i + 1)),
+                    "win_probability_unrounded": float(calibrated_win_prob),
                     "win_probability": round(float(calibrated_win_prob), 4),
+                    "place_probability_unrounded": float(place_prob),
                     "place_probability": round(float(place_prob), 4),
                     "confidence": round(float(confidence), 4),
-                    "ensemble_models": len(model_predictions),
+                    "ensemble_models": model_count,
                     "model_agreement": self._calculate_model_agreement(
                         model_predictions, i
+                    ),
+                    "model_agreement_basis": (
+                        "ensemble_model_agreement"
+                        if model_count > 1
+                        else "not_applicable_single_model"
+                    ),
+                    "confidence_basis": (
+                        "ensemble_agreement_and_probability_extremeness"
+                        if model_count > 1
+                        else "single_model_probability_extremeness_capped"
                     ),
                     "race_id": race_id,
                     "prediction_timestamp": datetime.now().isoformat(),
@@ -746,12 +806,17 @@ class AdvancedEnsemblePredictor:
                     model_agreement = self._calculate_model_agreement(
                         model_predictions, i
                     )
+                    model_agreement_basis = "ensemble_model_agreement"
+                    confidence_basis = "ensemble_agreement_and_probability_extremeness"
                 else:
-                    model_agreement = 1.0
+                    model_agreement = None
+                    model_agreement_basis = "not_applicable_single_model"
                     extremeness = 2 * abs(calibrated_win_prob - 0.5)
                     confidence = min(
-                        1.0, max(0.1, 0.7 * model_agreement + 0.3 * extremeness)
+                        _single_model_confidence_cap(),
+                        max(0.1, 0.25 + 0.25 * extremeness),
                     )
+                    confidence_basis = "single_model_probability_extremeness_capped"
                 predictions.append(
                     {
                         "dog_clean_name": (
@@ -760,11 +825,15 @@ class AdvancedEnsemblePredictor:
                             else row.get("dog_clean_name", f"Dog_{i}")
                         ),
                         "box_number": int(row.get("box_number", i + 1)),
+                        "win_probability_unrounded": float(calibrated_win_prob),
                         "win_probability": round(float(calibrated_win_prob), 4),
+                        "place_probability_unrounded": float(place_prob),
                         "place_probability": round(float(place_prob), 4),
                         "confidence": round(float(confidence), 4),
                         "ensemble_models": ensemble_count,
                         "model_agreement": model_agreement,
+                        "model_agreement_basis": model_agreement_basis,
+                        "confidence_basis": confidence_basis,
                         "race_id": race_id,
                         "prediction_timestamp": datetime.now().isoformat(),
                     }
@@ -840,6 +909,13 @@ class AdvancedEnsemblePredictor:
         if not dog_predictions:
             return 0.5
 
+        if len(dog_predictions) < 2:
+            extremeness = 2 * abs(win_prob - 0.5)
+            return min(
+                _single_model_confidence_cap(),
+                max(0.1, 0.25 + 0.25 * extremeness),
+            )
+
         # Calculate agreement (inverse of variance)
         pred_std = np.std(dog_predictions)
         agreement = 1.0 / (1.0 + pred_std)
@@ -862,7 +938,7 @@ class AdvancedEnsemblePredictor:
                 dog_predictions.append(probs[dog_index])
 
         if len(dog_predictions) < 2:
-            return 1.0
+            return None
 
         # Calculate coefficient of variation (std/mean)
         mean_pred = np.mean(dog_predictions)
@@ -878,47 +954,122 @@ class AdvancedEnsemblePredictor:
         return round(agreement, 4)
 
     def _normalize_race_probabilities(self, predictions: List[Dict]) -> List[Dict]:
-        """Normalize win probabilities to sum to 1.0 within each race."""
+        """Normalize win probabilities to sum to 1.0 and rank on unrounded scores."""
 
-        total_win_prob = sum(p["win_probability"] for p in predictions)
+        if not predictions:
+            return predictions
 
-        if total_win_prob > 0:
-            normalization_factor = 1.0 / total_win_prob
-
-            for prediction in predictions:
-                prediction.setdefault(
-                    "win_prob_raw", float(prediction.get("win_probability", 0.0))
-                )
-                prediction["win_probability"] = round(
-                    prediction["win_probability"] * normalization_factor, 4
-                )
-                prediction["win_prob_norm"] = float(prediction["win_probability"])
-                # Update place probability proportionally
-                prediction["place_probability"] = round(
-                    min(0.9, prediction["win_probability"] * 2.5 + 0.1), 4
-                )
-                prediction.setdefault("confidence_score", prediction.get("confidence"))
-                prediction.setdefault("ev_win", None)
-
+        raw_values = []
         for prediction in predictions:
-            prediction.setdefault(
-                "win_prob_raw", float(prediction.get("win_probability", 0.0))
+            raw_source = prediction.get(
+                "win_probability_unrounded",
+                prediction.get("win_prob_raw", prediction.get("win_probability", 0.0)),
             )
-            prediction.setdefault(
-                "win_prob_norm", float(prediction.get("win_probability", 0.0))
-            )
+            raw_win = _safe_probability_float(raw_source)
+            raw_win = max(0.0, raw_win)
+            raw_values.append(raw_win)
+            prediction["win_probability_unrounded"] = raw_win
+            prediction["win_prob_raw"] = raw_win
             prediction.setdefault("confidence_score", prediction.get("confidence"))
             prediction.setdefault("ev_win", None)
 
+        total_win_prob = sum(raw_values)
+
+        for prediction, raw_win in zip(predictions, raw_values):
+            if total_win_prob > 0:
+                normalized_win = raw_win / total_win_prob
+                place_probability = min(0.9, normalized_win * 2.5 + 0.1)
+            else:
+                normalized_win = raw_win
+                place_probability = _safe_probability_float(
+                    prediction.get(
+                        "place_probability_unrounded",
+                        prediction.get("place_probability", 0.0),
+                    )
+                )
+
+            prediction["win_prob_norm_unrounded"] = float(normalized_win)
+            prediction["win_probability_unrounded_norm"] = float(normalized_win)
+            prediction["rank_sort_probability"] = float(normalized_win)
+            prediction["win_probability"] = round(float(normalized_win), 4)
+            prediction["win_prob_norm"] = float(prediction["win_probability"])
+            prediction["place_probability_unrounded"] = float(place_probability)
+            prediction["place_probability"] = round(float(place_probability), 4)
+            try:
+                ensemble_models = int(prediction.get("ensemble_models") or 0)
+            except Exception:
+                ensemble_models = 0
+            if ensemble_models <= 1:
+                capped_confidence = min(
+                    _single_model_confidence_cap(),
+                    _safe_probability_float(prediction.get("confidence"), 0.0),
+                )
+                prediction["confidence"] = round(float(capped_confidence), 4)
+                prediction["confidence_score"] = float(prediction["confidence"])
+                prediction["model_agreement"] = None
+                prediction["model_agreement_basis"] = "not_applicable_single_model"
+                prediction["confidence_basis"] = (
+                    "single_model_probability_extremeness_capped"
+                )
+                _append_quality_flag(prediction, "single_model_no_ensemble_agreement")
+
         ranked = sorted(
             predictions,
-            key=lambda p: float(p.get("win_prob_norm", p.get("win_probability", 0.0))),
-            reverse=True,
+            key=lambda p: (
+                -_safe_probability_float(p.get("rank_sort_probability", 0.0)),
+                _rank_tie_name(p),
+                int(_safe_probability_float(p.get("box_number"), 999)),
+            ),
         )
         for rank, prediction in enumerate(ranked, start=1):
             prediction["predicted_rank"] = rank
 
-        return predictions
+        tie_eps = _near_tie_epsilon()
+        tie_groups: List[List[Dict[str, Any]]] = []
+        current_group: List[Dict[str, Any]] = []
+        current_group_ref = None
+
+        for prediction in ranked:
+            rank_probability = _safe_probability_float(
+                prediction.get("rank_sort_probability", 0.0)
+            )
+            if not current_group:
+                current_group = [prediction]
+                current_group_ref = rank_probability
+                continue
+
+            if (
+                current_group_ref is not None
+                and abs(rank_probability - current_group_ref) <= tie_eps
+            ):
+                current_group.append(prediction)
+            else:
+                tie_groups.append(current_group)
+                current_group = [prediction]
+                current_group_ref = rank_probability
+
+        if current_group:
+            tie_groups.append(current_group)
+
+        near_tie_group_id = 0
+        for group in tie_groups:
+            group_size = len(group)
+            group_id = None
+            if group_size > 1:
+                near_tie_group_id += 1
+                group_id = near_tie_group_id
+            for prediction in group:
+                prediction["is_near_tie"] = group_size > 1
+                prediction["near_tie_group"] = group_id
+                prediction["near_tie_group_size"] = group_size
+                prediction["near_tie_epsilon"] = tie_eps
+                prediction["rank_tie_breaker"] = "dog_name"
+                if group_size > 1:
+                    prediction["rank_note"] = "near_tie_probability_group"
+                else:
+                    prediction.setdefault("rank_note", None)
+
+        return ranked
 
 
 class AccuracyOptimizer:
@@ -1026,6 +1177,12 @@ class AccuracyOptimizer:
                     and len(result["model_ids_used"]) == 1
                 ):
                     result["primary_model_id"] = result["model_ids_used"][0]
+                    result.setdefault("quality_warnings", []).append(
+                        {
+                            "code": "single_model_no_ensemble_agreement",
+                            "message": "Only one model contributed, so model_agreement is not ensemble evidence.",
+                        }
+                    )
             except Exception:
                 pass
             try:
@@ -1095,8 +1252,13 @@ class AccuracyOptimizer:
 
         # Model agreement check
         agreement = prediction.get("model_agreement", 0)
-        if agreement < 0.3:  # Models disagree too much
-            return False
+        try:
+            ensemble_models = int(prediction.get("ensemble_models") or 0)
+        except Exception:
+            ensemble_models = 0
+        if agreement is not None and ensemble_models > 1:
+            if float(agreement) < 0.3:  # Models disagree too much
+                return False
 
         # Confidence check
         confidence = prediction.get("confidence", 0)
@@ -1113,12 +1275,18 @@ class AccuracyOptimizer:
 
         win_probs = [p["win_probability"] for p in predictions]
         confidences = [p["confidence"] for p in predictions]
-        agreements = [p.get("model_agreement", 0) for p in predictions]
+        agreements = [
+            float(p.get("model_agreement"))
+            for p in predictions
+            if p.get("model_agreement") is not None
+        ]
 
         metrics = {
             "total_predictions": len(predictions),
             "avg_confidence": round(np.mean(confidences), 4),
-            "avg_model_agreement": round(np.mean(agreements), 4),
+            "avg_model_agreement": (
+                round(np.mean(agreements), 4) if agreements else None
+            ),
             "probability_distribution": {
                 "mean": round(np.mean(win_probs), 4),
                 "std": round(np.std(win_probs), 4),
@@ -1138,15 +1306,23 @@ class AccuracyOptimizer:
 
         # Weighted combination of quality factors
         avg_confidence = np.mean([p["confidence"] for p in predictions])
-        avg_agreement = np.mean([p.get("model_agreement", 0) for p in predictions])
+        agreements = [
+            float(p.get("model_agreement"))
+            for p in predictions
+            if p.get("model_agreement") is not None
+        ]
         prob_diversity = np.std([p["win_probability"] for p in predictions])
 
-        # Quality score (0-1)
-        quality_score = (
-            avg_confidence * 0.4
-            + avg_agreement * 0.3
-            + min(1.0, prob_diversity * 5) * 0.3  # Reward diversity but cap it
-        )
+        # Quality score (0-1). Do not reward agreement when only one model ran.
+        if agreements:
+            avg_agreement = np.mean(agreements)
+            quality_score = (
+                avg_confidence * 0.4
+                + avg_agreement * 0.3
+                + min(1.0, prob_diversity * 5) * 0.3
+            )
+        else:
+            quality_score = avg_confidence * 0.6 + min(1.0, prob_diversity * 5) * 0.4
 
         return round(quality_score, 4)
 

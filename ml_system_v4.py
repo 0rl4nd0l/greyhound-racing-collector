@@ -2639,11 +2639,12 @@ class MLSystemV4:
 
             # Calculate EVs for win and place if market odds available
             ev_calculations = {}
+            market_implied_probs = {}
             if market_odds:
                 for i, dog_name in enumerate(race_features["dog_clean_name"]):
                     key = str(dog_name)
                     if key in market_odds:
-                        odds = market_odds[key]
+                        odds = float(market_odds[key])
                         win_prob = float(normalized_win_probs[i])
                         ev_win = win_prob * odds - 1.0
                         ev_calculations.setdefault(key, {})
@@ -2652,6 +2653,10 @@ class MLSystemV4:
                             "ev_win": ev_win,
                             "ev_win_positive": ev_win > 0,
                         })
+                        if odds > 0:
+                            implied = 1.0 / odds
+                            ev_calculations[key]["odds_implied_prob"] = implied
+                            market_implied_probs[key] = implied
             enable_place_ev = False
             try:
                 if flags and str(flags.get("ENABLE_PLACE_ODDS_INTEGRATION", False)).lower() in ("true","1","yes","on"):
@@ -2725,6 +2730,49 @@ class MLSystemV4:
                     prediction.setdefault("ev_place", None)
 
                 predictions.append(prediction)
+
+            market_context = None
+            if market_implied_probs:
+                implied_total = float(sum(market_implied_probs.values()))
+                try:
+                    market_delta_threshold = max(
+                        0.0,
+                        float(os.getenv("V4_MARKET_DISAGREEMENT_DELTA", "0.08")),
+                    )
+                except Exception:
+                    market_delta_threshold = 0.08
+                large_disagreement_count = 0
+                for prediction in predictions:
+                    dog_name = str(
+                        prediction.get("dog_clean_name")
+                        or prediction.get("dog_name")
+                        or ""
+                    )
+                    implied = market_implied_probs.get(dog_name)
+                    if implied is None or implied_total <= 0:
+                        continue
+                    implied_norm = implied / implied_total
+                    delta = float(prediction.get("win_prob_norm", 0.0)) - implied_norm
+                    prediction["odds_implied_prob_norm"] = float(implied_norm)
+                    prediction["model_market_prob_delta"] = float(delta)
+                    prediction["model_market_prob_delta_abs"] = abs(float(delta))
+                    if abs(delta) >= market_delta_threshold:
+                        large_disagreement_count += 1
+                        flags = prediction.get("quality_flags")
+                        if not isinstance(flags, list):
+                            flags = []
+                        if "large_model_market_disagreement" not in flags:
+                            flags.append("large_model_market_disagreement")
+                        prediction["quality_flags"] = flags
+                        prediction["market_disagreement_warning"] = (
+                            "model probability differs materially from normalized market probability"
+                        )
+                market_context = {
+                    "market_odds_count": len(market_implied_probs),
+                    "market_implied_overround": implied_total,
+                    "large_disagreement_count": large_disagreement_count,
+                    "large_disagreement_threshold": market_delta_threshold,
+                }
 
             # Sort by normalized win probability
             predictions.sort(key=lambda x: x["win_prob_norm"], reverse=True)
@@ -2874,6 +2922,20 @@ class MLSystemV4:
 
             if fallback_reason:
                 result["fallback_reason"] = fallback_reason
+
+            if market_context:
+                result["market_context"] = market_context
+                if market_context.get("large_disagreement_count", 0) > 0:
+                    result.setdefault("quality_warnings", []).append(
+                        {
+                            "code": "large_model_market_disagreement",
+                            "message": "One or more runners have large model-vs-market probability disagreement; ranking was not changed.",
+                            "count": market_context.get("large_disagreement_count"),
+                            "threshold": market_context.get(
+                                "large_disagreement_threshold"
+                            ),
+                        }
+                    )
 
             logger.info(
                 f"✅ Race prediction complete for {race_id}: {len(predictions)} dogs"
