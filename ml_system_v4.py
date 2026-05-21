@@ -1570,7 +1570,7 @@ class MLSystemV4:
             }
 
             registry = _get_reg()
-            _ = registry.register_model(
+            model_id = registry.register_model(
                 model_obj=self.calibrated_pipeline,
                 scaler_obj=_FuncT(validate=False),  # neutral transform for interface compatibility
                 model_name=model_name,
@@ -1584,6 +1584,9 @@ class MLSystemV4:
                 },
                 notes="V4 auto-train via MLSystemV4.train_model",
             )
+            if model_id:
+                self.model_info["model_id"] = model_id
+                self.model_info["model_version"] = model_id
             logger.info("📝 Model registered in Model Registry (auto-select best may update champion)")
         except Exception as _e:
             logger.warning(f"Model Registry registration skipped or failed: {_e}")
@@ -1750,10 +1753,16 @@ class MLSystemV4:
             payload = df.to_csv(index=False).encode("utf-8")
             payload_hash = hashlib.md5(payload).hexdigest()
             race_hash = hashlib.md5(str(race_id).encode("utf-8")).hexdigest()[:8]
+            try:
+                db_stat = os.stat(self.db_path)
+                db_sig = f"{int(db_stat.st_mtime_ns)}:{int(db_stat.st_size)}"
+            except Exception:
+                db_sig = str(self.db_path)
+            db_hash = hashlib.md5(db_sig.encode("utf-8")).hexdigest()[:8]
             # Include TGR toggle state to avoid cross-contamination of cached features
             tgr_state = getattr(self, "_tgr_enabled", None)
             tgr_suffix = "TX" if tgr_state is None else ("T1" if tgr_state else "T0")
-            return f"{race_hash}_{payload_hash}_{tgr_suffix}"
+            return f"{race_hash}_{payload_hash}_{db_hash}_{tgr_suffix}"
         except Exception as e:
             logger.debug(f"Cache key generation failed: {e}")
             return hashlib.md5(
@@ -2650,6 +2659,13 @@ class MLSystemV4:
 
             # Create prediction results
             predictions = []
+            model_version = (
+                self.model_info.get("model_version")
+                or self.model_info.get("model_id")
+                or self.model_info.get("artifact_path")
+                or self.model_info.get("model_type")
+                or "unknown"
+            )
             for i, row in race_features.iterrows():
                 dog_name = row["dog_clean_name"]
 
@@ -2672,6 +2688,7 @@ class MLSystemV4:
                     "place_prob_norm": float(normalized_place_probs[i]),
                     "win_probability": p_i,  # Stable UI-facing key
                     "confidence": confidence_value,
+                    "confidence_score": confidence_value,
                     # Validator expects numeric confidence_level; keep label separately for UI
                     "confidence_level": confidence_value,
                     "confidence_label": self._get_confidence_description(
@@ -2681,6 +2698,7 @@ class MLSystemV4:
                     "final_score": p_i,
                     "reasoning": "",
                     "calibration_applied": True,
+                    "model_version": model_version,
                 }
 
                 # Add EV if available
@@ -2812,6 +2830,7 @@ class MLSystemV4:
                 },
                 "predictions": predictions,
                 "model_info": self.model_info.get("model_type", "unknown"),
+                "model_version": model_version,
                 "calibration_meta": {
                     "method": self.model_info.get(
                         "calibration_method",
@@ -3297,6 +3316,25 @@ class MLSystemV4:
 
     def _try_load_latest_model(self):
         """Try to load a model, preferring explicit env path, then Model Registry, then latest on disk."""
+        def _allow_mock_fallback() -> bool:
+            try:
+                return (
+                    os.getenv("TESTING", "0").strip().lower()
+                    in ("1", "true", "yes", "on")
+                    or os.getenv("ML_V4_ALLOW_MOCK_MODEL", "0").strip().lower()
+                    in ("1", "true", "yes", "on")
+                )
+            except Exception:
+                return False
+
+        def _maybe_create_mock_or_leave_unloaded(reason: str) -> None:
+            if _allow_mock_fallback():
+                logger.info("%s; creating explicit test/dev mock model", reason)
+                self._create_lightweight_mock_model()
+                return
+            logger.warning("%s; leaving MLSystemV4 without a loaded model", reason)
+            self.calibrated_pipeline = None
+
         # Highest priority: explicit artifact override via environment
         try:
             env_model_path = os.getenv("V4_MODEL_PATH")
@@ -3310,6 +3348,13 @@ class MLSystemV4:
                         self.categorical_columns = model_data.get("categorical_columns", [])
                         self.numerical_columns = model_data.get("numerical_columns", [])
                         self.model_info = model_data.get("model_info", {})
+                        self.model_info.setdefault("artifact_path", str(p))
+                        self.model_info.setdefault(
+                            "model_version",
+                            self.model_info.get("model_id")
+                            or self.model_info.get("artifact_path")
+                            or self.model_info.get("model_type", "unknown"),
+                        )
                         self.ev_thresholds = model_data.get("ev_thresholds", {})
                         logger.info(f"📥 Loaded model from V4_MODEL_PATH={p}")
                         return
@@ -3335,10 +3380,17 @@ class MLSystemV4:
                 except Exception:
                     self.feature_columns = []
                 self.model_info = {
+                    "model_id": getattr(metadata, "model_id", None),
+                    "model_name": getattr(metadata, "model_name", None),
+                    "model_version": getattr(metadata, "model_id", None)
+                    or getattr(metadata, "model_name", None),
                     "model_type": getattr(metadata, "model_type", "registry_model"),
                     "trained_at": getattr(
                         metadata, "training_timestamp", datetime.now().isoformat()
                     ),
+                    "test_accuracy": getattr(metadata, "accuracy", None),
+                    "test_auc": getattr(metadata, "auc", None),
+                    "n_features": len(self.feature_columns or []),
                     "source": "model_registry",
                 }
                 logger.info("📥 Loaded model from Model Registry (best model)")
@@ -3349,14 +3401,12 @@ class MLSystemV4:
         # Fallback: load latest artifact from ml_models_v4 directory
         model_dir = Path("./ml_models_v4")
         if not model_dir.exists():
-            logger.info("No model directory found")
-            self._create_lightweight_mock_model()
+            _maybe_create_mock_or_leave_unloaded("No model directory found")
             return
 
         model_files = list(model_dir.glob("ml_model_v4_*.joblib"))
         if not model_files:
-            logger.info("No trained models found")
-            self._create_lightweight_mock_model()
+            _maybe_create_mock_or_leave_unloaded("No trained models found")
             return
 
         latest_model = max(model_files, key=lambda x: x.stat().st_mtime)
@@ -3369,6 +3419,13 @@ class MLSystemV4:
             self.categorical_columns = model_data.get("categorical_columns", [])
             self.numerical_columns = model_data.get("numerical_columns", [])
             self.model_info = model_data.get("model_info", {})
+            self.model_info.setdefault("artifact_path", str(latest_model))
+            self.model_info.setdefault(
+                "model_version",
+                self.model_info.get("model_id")
+                or self.model_info.get("artifact_path")
+                or self.model_info.get("model_type", "unknown"),
+            )
             self.ev_thresholds = model_data.get("ev_thresholds", {})
 
             logger.info(f"📥 Loaded model from {latest_model}")
@@ -3378,8 +3435,9 @@ class MLSystemV4:
 
         except Exception as e:
             logger.error(f"Error loading model: {e}")
-            self.calibrated_pipeline = None
-            self._create_lightweight_mock_model()
+            _maybe_create_mock_or_leave_unloaded(
+                f"Could not load latest V4 artifact {latest_model}"
+            )
 
     def _build_feature_contract(self) -> dict:
         """Build a JSON-serializable feature contract for the current model/pipeline."""

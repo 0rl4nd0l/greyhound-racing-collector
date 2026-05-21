@@ -8,6 +8,7 @@ and EV calculations for enhanced predictions.
 
 import logging
 import os
+import threading
 from datetime import datetime
 
 import pandas as pd
@@ -80,6 +81,109 @@ def _extract_box_from_name_or_row(raw_name: str, row: dict) -> Optional[int]:
 
 logger = logging.getLogger(__name__)
 
+_ML_SYSTEM_V4_CACHE_LOCK = threading.Lock()
+_ML_SYSTEM_V4_CACHE = {}
+_EMBEDDED_HISTORY_INGEST_LOCK = threading.Lock()
+_EMBEDDED_HISTORY_INGESTED_KEYS = set()
+
+
+def _truthy_env(name: str, default: str = "0") -> bool:
+    try:
+        return str(os.getenv(name, default)).strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
+    except Exception:
+        return False
+
+
+def _resolved_path_for_cache(path: str) -> str:
+    try:
+        return os.path.realpath(os.path.abspath(path))
+    except Exception:
+        return str(path)
+
+
+def _ml_system_cache_key(db_path: str) -> tuple:
+    return (
+        _resolved_path_for_cache(db_path),
+        os.getenv("V4_MODEL_PATH") or "",
+        os.getenv("PINNED_MODEL_ID") or "",
+        os.getenv("V4_DISABLE_ACCURACY_OPTIMIZER") or "",
+        os.getenv("TGR_ENABLED") or "",
+        os.getenv("PREDICTION_IMPORT_MODE") or "",
+        os.getenv("ENABLE_RESULTS_SCRAPERS") or "",
+        os.getenv("GREYHOUND_LOOKBACK_DAYS") or "",
+    )
+
+
+def _get_cached_ml_system_v4(db_path: str) -> MLSystemV4:
+    if _truthy_env("V4_DISABLE_ML_SYSTEM_CACHE"):
+        return MLSystemV4(db_path)
+
+    key = _ml_system_cache_key(db_path)
+    with _ML_SYSTEM_V4_CACHE_LOCK:
+        cached = _ML_SYSTEM_V4_CACHE.get(key)
+        if cached is not None:
+            logger.info("♻️ Reusing cached MLSystemV4 for %s", key[0])
+            return cached
+        system = MLSystemV4(db_path)
+        _ML_SYSTEM_V4_CACHE[key] = system
+        return system
+
+
+def register_cached_ml_system_v4(db_path: str, system: MLSystemV4) -> None:
+    """Seed the shared V4 cache with an ML system loaded by another owner."""
+    if system is None or _truthy_env("V4_DISABLE_ML_SYSTEM_CACHE"):
+        return
+    key = _ml_system_cache_key(db_path)
+    with _ML_SYSTEM_V4_CACHE_LOCK:
+        _ML_SYSTEM_V4_CACHE.setdefault(key, system)
+
+
+def get_cached_ml_system_status() -> dict:
+    """Lightweight process-local model load status for health endpoints."""
+    with _ML_SYSTEM_V4_CACHE_LOCK:
+        items = list(_ML_SYSTEM_V4_CACHE.items())
+
+    systems = []
+    for key, system in items:
+        try:
+            info = getattr(system, "model_info", {}) or {}
+            systems.append(
+                {
+                    "db_path": key[0],
+                    "loaded": bool(getattr(system, "calibrated_pipeline", None)),
+                    "model_id": info.get("model_id"),
+                    "model_version": info.get("model_version"),
+                    "source": info.get("source"),
+                    "feature_count": len(getattr(system, "feature_columns", []) or []),
+                }
+            )
+        except Exception:
+            systems.append({"db_path": key[0], "loaded": False})
+
+    return {
+        "cache_enabled": not _truthy_env("V4_DISABLE_ML_SYSTEM_CACHE"),
+        "cached_systems": len(systems),
+        "systems": systems,
+    }
+
+
+def _embedded_history_ingest_key(db_path: str, race_file_path: str) -> tuple:
+    try:
+        st = os.stat(race_file_path)
+        file_sig = (int(st.st_mtime_ns), int(st.st_size))
+    except Exception:
+        file_sig = (0, 0)
+    return (
+        _resolved_path_for_cache(db_path),
+        _resolved_path_for_cache(race_file_path),
+        file_sig,
+    )
+
 
 class PredictionPipelineV4:
     def __init__(self, db_path="greyhound_racing_data.db"):
@@ -112,7 +216,7 @@ class PredictionPipelineV4:
         else:
             logger.info(f"🗄️ Using database: {self.db_path}")
 
-        self.ml_system_v4 = MLSystemV4(self.db_path)
+        self.ml_system_v4 = _get_cached_ml_system_v4(self.db_path)
         logger.info("🚀 Prediction Pipeline V4 - Advanced System Initialized")
 
     def predict_race_file(
@@ -175,11 +279,15 @@ class PredictionPipelineV4:
                 ".csv", ""
             )  # Use full filename without extension as race_id
 
-            # Optionally persist embedded history into DB so DB-backed features can use it
+            # Optionally persist embedded history into DB so DB-backed features can use it.
+            # Keep this opt-in: prediction should not mutate restored/canonical DBs by default.
             try:
-                ingest_on_predict = os.getenv("INGEST_EMBEDDED_HISTORY_ON_PREDICT", "1").strip().lower() in ("1", "true", "yes")
+                ingest_mode = os.getenv("INGEST_EMBEDDED_HISTORY_ON_PREDICT", "0").strip().lower()
+                ingest_on_predict = ingest_mode in ("1", "true", "yes", "on", "always", "force")
+                force_ingest = ingest_mode in ("always", "force")
             except Exception:
-                ingest_on_predict = True
+                ingest_on_predict = False
+                force_ingest = False
 
             # Default TGR toggle from env if not provided
             try:
@@ -191,16 +299,30 @@ class PredictionPipelineV4:
                 pass
             if ingest_on_predict:
                 try:
-                    # Import lazily to avoid overhead when disabled
-                    from scripts.ingest_embedded_form_history import upsert_embedded_history_and_meta as _ingest_hist
+                    ingest_key = _embedded_history_ingest_key(self.db_path, race_file_path)
+                    do_ingest = True
+                    if not force_ingest:
+                        with _EMBEDDED_HISTORY_INGEST_LOCK:
+                            already_ingested = ingest_key in _EMBEDDED_HISTORY_INGESTED_KEYS
+                        if already_ingested:
+                            logger.debug(
+                                "Embedded history ingestion skipped: already ingested for this process/file signature"
+                            )
+                            do_ingest = False
 
-                    stats = _ingest_hist(self.db_path, race_file_path)
-                    try:
-                        logger.info(
-                            f"🗄️ Embedded history ingested: inserted={stats.get('inserted')} skipped={stats.get('skipped')} into DB={self.db_path}"
-                        )
-                    except Exception:
-                        pass
+                    if do_ingest:
+                        # Import lazily to avoid overhead when disabled
+                        from scripts.ingest_embedded_form_history import upsert_embedded_history_and_meta as _ingest_hist
+
+                        stats = _ingest_hist(self.db_path, race_file_path)
+                        with _EMBEDDED_HISTORY_INGEST_LOCK:
+                            _EMBEDDED_HISTORY_INGESTED_KEYS.add(ingest_key)
+                        try:
+                            logger.info(
+                                f"🗄️ Embedded history ingested: inserted={stats.get('inserted')} skipped={stats.get('skipped')} into DB={self.db_path}"
+                            )
+                        except Exception:
+                            pass
                 except Exception as _ie:
                     logger.debug(f"Embedded history ingestion skipped/failed: {_ie}")
 
@@ -490,6 +612,28 @@ class PredictionPipelineV4:
                             or []
                         )
                         if isinstance(preds, list):
+                            model_version = (
+                                result.get("model_version")
+                                or result.get("primary_model_id")
+                                or (
+                                    ",".join(str(m) for m in result.get("model_ids_used", []))
+                                    if result.get("model_ids_used")
+                                    else None
+                                )
+                            )
+                            if not model_version:
+                                try:
+                                    model_info = getattr(ml_for_call, "model_info", {}) or {}
+                                    model_version = (
+                                        model_info.get("model_version")
+                                        or model_info.get("model_id")
+                                        or model_info.get("model_type")
+                                    )
+                                except Exception:
+                                    model_version = None
+                            model_version = model_version or "unknown"
+                            result.setdefault("model_version", model_version)
+
                             for p in preds:
                                 if isinstance(p, dict):
                                     if "dog_name" not in p and "dog_clean_name" in p:
@@ -517,6 +661,64 @@ class PredictionPipelineV4:
                                             )
                                         except Exception:
                                             pass
+                                    if (
+                                        p.get("win_prob_norm") is None
+                                        and p.get("win_probability") is not None
+                                    ):
+                                        try:
+                                            p["win_prob_norm"] = max(
+                                                0.0, min(1.0, float(p.get("win_probability")))
+                                            )
+                                        except Exception:
+                                            pass
+                                    if p.get("win_prob_raw") is None:
+                                        try:
+                                            p["win_prob_raw"] = float(
+                                                p.get("win_prob_norm", p.get("win_probability", 0.0))
+                                            )
+                                        except Exception:
+                                            p["win_prob_raw"] = None
+                                    if p.get("confidence_score") is None:
+                                        try:
+                                            p["confidence_score"] = float(
+                                                p.get("confidence", p.get("confidence_level", 0.0))
+                                            )
+                                        except Exception:
+                                            p["confidence_score"] = None
+                                    if p.get("ev_win") is None:
+                                        try:
+                                            dog_key = str(
+                                                p.get("dog_clean_name")
+                                                or p.get("dog_name")
+                                                or p.get("name")
+                                                or ""
+                                            ).upper().strip()
+                                            if dog_key in win_odds and p.get("win_prob_norm") is not None:
+                                                p["ev_win"] = float(
+                                                    float(p["win_prob_norm"]) * float(win_odds[dog_key])
+                                                    - 1.0
+                                                )
+                                            else:
+                                                p.setdefault("ev_win", None)
+                                        except Exception:
+                                            p.setdefault("ev_win", None)
+                                    p.setdefault("model_version", model_version)
+                            try:
+                                preds.sort(
+                                    key=lambda item: float(
+                                        item.get(
+                                            "win_prob_norm",
+                                            item.get("win_probability", item.get("win_prob", 0.0)),
+                                        )
+                                        or 0.0
+                                    ),
+                                    reverse=True,
+                                )
+                                for rank, p in enumerate(preds, start=1):
+                                    if isinstance(p, dict):
+                                        p["predicted_rank"] = rank
+                            except Exception:
+                                pass
                     except Exception:
                         pass
 

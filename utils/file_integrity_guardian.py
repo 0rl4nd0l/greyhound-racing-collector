@@ -436,8 +436,14 @@ class FileIntegrityGuardian:
 
             filename = os.path.basename(file_path)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            quarantine_filename = f"{timestamp}_{filename}"
+            source_hash = hashlib.sha256(str(Path(file_path).resolve()).encode()).hexdigest()[:8]
+            quarantine_filename = f"{timestamp}_{source_hash}_{filename}"
             quarantine_path = os.path.join(self.quarantine_dir, quarantine_filename)
+            counter = 1
+            while os.path.exists(quarantine_path):
+                quarantine_filename = f"{timestamp}_{source_hash}_{counter}_{filename}"
+                quarantine_path = os.path.join(self.quarantine_dir, quarantine_filename)
+                counter += 1
 
             # Move file to quarantine
             os.rename(file_path, quarantine_path)

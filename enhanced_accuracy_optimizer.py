@@ -19,6 +19,7 @@ import sqlite3
 import warnings
 from datetime import datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Tuple
 
 import joblib
@@ -140,6 +141,60 @@ class AdvancedEnsemblePredictor:
         self.calibrators = {}
         self._primary: Optional[Tuple[str, Dict[str, Any]]] = None
 
+    def seed_primary_model(
+        self,
+        model: Any,
+        model_id: Optional[str] = None,
+        metadata: Any = None,
+        scaler: Any = None,
+        weight: Optional[float] = None,
+        feature_names: Optional[List[str]] = None,
+    ) -> bool:
+        """Use an already-loaded model as the primary optimizer model."""
+        if model is None:
+            return False
+        try:
+            if metadata is None or isinstance(metadata, dict):
+                md = dict(metadata or {})
+                md.setdefault("model_id", model_id or "loaded_primary_model")
+                md.setdefault("model_name", md.get("model_id"))
+                md.setdefault("accuracy", weight if weight is not None else 0.5)
+                md.setdefault("model_file_path", md.get("artifact_path"))
+                md.setdefault("feature_names", feature_names or [])
+                metadata = SimpleNamespace(**md)
+            elif feature_names and not getattr(metadata, "feature_names", None):
+                try:
+                    setattr(metadata, "feature_names", feature_names)
+                except Exception:
+                    pass
+
+            primary_id = (
+                model_id
+                or getattr(metadata, "model_id", None)
+                or getattr(metadata, "model_name", None)
+                or "loaded_primary_model"
+            )
+            primary_weight = float(
+                weight
+                if weight is not None
+                else getattr(metadata, "accuracy", 0.5) or 0.5
+            )
+            self.models = {
+                primary_id: {
+                    "model": model,
+                    "scaler": scaler,
+                    "metadata": metadata,
+                    "weight": primary_weight,
+                }
+            }
+            self.model_weights = {primary_id: primary_weight}
+            self._primary = (primary_id, self.models[primary_id])
+            logger.info("♻️ Seeded primary optimizer model from loaded MLSystemV4: %s", primary_id)
+            return True
+        except Exception as e:
+            logger.debug(f"Could not seed primary optimizer model: {e}")
+            return False
+
     def load_models(self):
         """Load and validate all available models.
 
@@ -206,6 +261,9 @@ class AdvancedEnsemblePredictor:
     def load_primary_model(self) -> bool:
         """Load only the primary (best) model from the registry."""
         try:
+            if self._primary:
+                return True
+
             from model_registry import ModelRegistry
 
             reg = ModelRegistry()
@@ -828,13 +886,37 @@ class AdvancedEnsemblePredictor:
             normalization_factor = 1.0 / total_win_prob
 
             for prediction in predictions:
+                prediction.setdefault(
+                    "win_prob_raw", float(prediction.get("win_probability", 0.0))
+                )
                 prediction["win_probability"] = round(
                     prediction["win_probability"] * normalization_factor, 4
                 )
+                prediction["win_prob_norm"] = float(prediction["win_probability"])
                 # Update place probability proportionally
                 prediction["place_probability"] = round(
                     min(0.9, prediction["win_probability"] * 2.5 + 0.1), 4
                 )
+                prediction.setdefault("confidence_score", prediction.get("confidence"))
+                prediction.setdefault("ev_win", None)
+
+        for prediction in predictions:
+            prediction.setdefault(
+                "win_prob_raw", float(prediction.get("win_probability", 0.0))
+            )
+            prediction.setdefault(
+                "win_prob_norm", float(prediction.get("win_probability", 0.0))
+            )
+            prediction.setdefault("confidence_score", prediction.get("confidence"))
+            prediction.setdefault("ev_win", None)
+
+        ranked = sorted(
+            predictions,
+            key=lambda p: float(p.get("win_prob_norm", p.get("win_probability", 0.0))),
+            reverse=True,
+        )
+        for rank, prediction in enumerate(ranked, start=1):
+            prediction["predicted_rank"] = rank
 
         return predictions
 
@@ -944,6 +1026,22 @@ class AccuracyOptimizer:
                     and len(result["model_ids_used"]) == 1
                 ):
                     result["primary_model_id"] = result["model_ids_used"][0]
+            except Exception:
+                pass
+            try:
+                model_ids = result.get("model_ids_used") or []
+                model_version = (
+                    result.get("primary_model_id")
+                    or (",".join(str(m) for m in model_ids) if model_ids else None)
+                    or "optimizer_model"
+                )
+                result["model_version"] = model_version
+                for prediction in filtered_predictions:
+                    prediction.setdefault("model_version", model_version)
+                    prediction.setdefault(
+                        "confidence_score", prediction.get("confidence")
+                    )
+                    prediction.setdefault("ev_win", None)
             except Exception:
                 pass
 
@@ -1086,6 +1184,36 @@ def integrate_enhanced_accuracy(ml_system_v4):
     """Integrate enhanced accuracy optimizer with existing ML System V4."""
 
     accuracy_optimizer = AccuracyOptimizer(ml_system_v4.db_path)
+    try:
+        model_info = getattr(ml_system_v4, "model_info", {}) or {}
+        loaded_model = (
+            getattr(ml_system_v4, "calibrated_pipeline_win", None)
+            or getattr(ml_system_v4, "calibrated_pipeline", None)
+        )
+        accuracy_optimizer.ensemble_predictor.seed_primary_model(
+            loaded_model,
+            model_id=(
+                model_info.get("model_id")
+                or model_info.get("model_version")
+                or model_info.get("model_name")
+            ),
+            metadata={
+                "model_id": model_info.get("model_id")
+                or model_info.get("model_version")
+                or model_info.get("model_name")
+                or "loaded_primary_model",
+                "model_name": model_info.get("model_name")
+                or model_info.get("model_type")
+                or "loaded_primary_model",
+                "accuracy": model_info.get("test_accuracy") or 0.5,
+                "artifact_path": model_info.get("artifact_path"),
+                "feature_names": list(getattr(ml_system_v4, "feature_columns", []) or []),
+            },
+            feature_names=list(getattr(ml_system_v4, "feature_columns", []) or []),
+            weight=model_info.get("test_accuracy"),
+        )
+    except Exception as e:
+        logger.debug(f"Primary optimizer seed skipped: {e}")
 
     # Monkey patch the predict_race method
     original_predict_race = (
@@ -1093,7 +1221,11 @@ def integrate_enhanced_accuracy(ml_system_v4):
     )
 
     def enhanced_predict_race(
-        race_data: pd.DataFrame, race_id: str, market_odds: Dict[str, float] = None
+        race_data: pd.DataFrame,
+        race_id: str,
+        market_odds: Dict[str, float] = None,
+        market_place_odds: Dict[str, float] = None,
+        flags: Dict[str, Any] = None,
     ) -> Dict[str, Any]:
         """Enhanced predict_race with accuracy optimization.
 
@@ -1182,13 +1314,31 @@ def integrate_enhanced_accuracy(ml_system_v4):
                 # Fallback to original if available
                 if original_predict_race:
                     logger.warning("Using fallback prediction method")
-                    return original_predict_race(race_data, race_id, market_odds)
+                    try:
+                        return original_predict_race(
+                            race_data,
+                            race_id,
+                            market_odds=market_odds,
+                            market_place_odds=market_place_odds,
+                            flags=flags,
+                        )
+                    except TypeError:
+                        return original_predict_race(race_data, race_id, market_odds)
                 else:
                     return result
         except Exception as e:
             logger.error(f"Enhanced prediction failed: {e}")
             if original_predict_race:
-                return original_predict_race(race_data, race_id, market_odds)
+                try:
+                    return original_predict_race(
+                        race_data,
+                        race_id,
+                        market_odds=market_odds,
+                        market_place_odds=market_place_odds,
+                        flags=flags,
+                    )
+                except TypeError:
+                    return original_predict_race(race_data, race_id, market_odds)
             else:
                 return {"success": False, "error": str(e), "race_id": race_id}
 

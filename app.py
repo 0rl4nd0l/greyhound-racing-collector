@@ -418,6 +418,15 @@ try:
     )
     if not _skip_eps:
         enhanced_prediction_service = EnhancedPredictionService()
+        try:
+            from prediction_pipeline_v4 import register_cached_ml_system_v4
+
+            register_cached_ml_system_v4(
+                getattr(enhanced_prediction_service, "db_path", "greyhound_racing_data.db"),
+                getattr(enhanced_prediction_service, "ml_system", None),
+            )
+        except Exception as _e:
+            _debug_silent_failure("Seed PredictionPipelineV4 cache from EPS", _e)
         # Optional: allow configuring ensemble behavior via environment variable to diversify predictions
         try:
             _eps_mode = os.environ.get("EPS_ENSEMBLE_MODE")
@@ -644,23 +653,34 @@ def _get_testing_flag() -> bool:
         return False
 
 
+def _auto_scrape_odds_enabled(flags: dict | None = None) -> bool:
+    """Require explicit opt-in before prediction requests scrape/write odds."""
+    try:
+        if isinstance(flags, dict) and "ENABLE_AUTO_SCRAPE_ODDS" in flags:
+            return _flag(flags.get("ENABLE_AUTO_SCRAPE_ODDS"))
+        if os.environ.get("ENABLE_AUTO_SCRAPE_ODDS") is not None:
+            return _flag(os.environ.get("ENABLE_AUTO_SCRAPE_ODDS"))
+    except Exception:
+        return False
+    return False
+
+
 ENABLE_RESULTS_SCRAPERS = _flag(app.config.get("ENABLE_RESULTS_SCRAPERS", False))
 ENABLE_LIVE_SCRAPING = _flag(app.config.get("ENABLE_LIVE_SCRAPING", False))
 PREDICTION_IMPORT_MODE = app.config.get("PREDICTION_IMPORT_MODE", "prediction_only")
 
-# Default to live discovery in non-testing when not explicitly disabled by env or config
+# Default to local CSV discovery. Live discovery requires explicit env/config opt-in.
 try:
     if not _get_testing_flag():
         env_live = str(os.environ.get("ENABLE_LIVE_SCRAPING", "")).strip().lower()
         env_results = str(os.environ.get("ENABLE_RESULTS_SCRAPERS", "")).strip().lower()
-        # Only set defaults if user hasn't set env and config didn't explicitly enable
-        if env_live == "" and env_results == "" and not (ENABLE_LIVE_SCRAPING and ENABLE_RESULTS_SCRAPERS):
-            ENABLE_LIVE_SCRAPING = True
-            ENABLE_RESULTS_SCRAPERS = True
-            app.config["ENABLE_LIVE_SCRAPING"] = True
-            app.config["ENABLE_RESULTS_SCRAPERS"] = True
+        if env_live == "" and env_results == "":
+            ENABLE_LIVE_SCRAPING = False
+            ENABLE_RESULTS_SCRAPERS = False
+            app.config["ENABLE_LIVE_SCRAPING"] = False
+            app.config["ENABLE_RESULTS_SCRAPERS"] = False
 except Exception as e:
-    _debug_silent_failure("Set ENABLE_RESULTS_SCRAPERS=True", e)
+    _debug_silent_failure("Set ENABLE_RESULTS_SCRAPERS=False", e)
 
 # Define availability booleans derived from flags
 COMPREHENSIVE_COLLECTOR_ALLOWED = (
@@ -1858,6 +1878,174 @@ def api_diagnostics_last_promotion_status():
 
 
 # Model health endpoint
+_MODEL_HEALTH_CACHE_LOCK = threading.Lock()
+_MODEL_HEALTH_CACHE = {"created_at": 0.0, "payload": None}
+_MODEL_HEALTH_CACHE_TTL_SECONDS = 15.0
+
+
+def _metadata_value(metadata, key, default=None):
+    try:
+        if isinstance(metadata, dict):
+            return metadata.get(key, default)
+        return getattr(metadata, key, default)
+    except Exception:
+        return default
+
+
+def _metadata_only_model_health_snapshot() -> dict:
+    """Fast model readiness from registry metadata and artifact stats only."""
+    try:
+        now = time.time()
+        with _MODEL_HEALTH_CACHE_LOCK:
+            cached = _MODEL_HEALTH_CACHE.get("payload")
+            created = float(_MODEL_HEALTH_CACHE.get("created_at") or 0.0)
+            if cached and (now - created) <= _MODEL_HEALTH_CACHE_TTL_SECONDS:
+                return dict(cached)
+
+        from model_registry import get_model_registry
+
+        reg = get_model_registry()
+        model_index = getattr(reg, "model_index", {}) or {}
+
+        metadata = None
+        source = "registry_best_symlink"
+        best_metadata_file = Path("model_registry/best_metadata.json")
+        best_model_file = Path("model_registry/best_model.joblib")
+        best_scaler_file = Path("model_registry/best_scaler.joblib")
+        if (
+            best_metadata_file.exists()
+            and best_model_file.exists()
+            and best_scaler_file.exists()
+        ):
+            try:
+                metadata = json.loads(best_metadata_file.read_text())
+            except Exception:
+                metadata = None
+
+        if metadata is None:
+            pinned_id = os.getenv("PINNED_MODEL_ID")
+            if not pinned_id:
+                pin_path = Path("model_registry/pinned_override.json")
+                if pin_path.exists():
+                    try:
+                        pin_data = json.loads(pin_path.read_text())
+                        pinned_id = pin_data.get("model_id")
+                    except Exception:
+                        pinned_id = None
+            source = "pinned_override" if pinned_id else "registry_best"
+            if pinned_id and pinned_id in model_index:
+                metadata = model_index.get(pinned_id)
+
+        if metadata is None:
+            source = "registry_best"
+            metadata = reg.get_best_model_metadata()
+
+        active_models = [
+            m
+            for m in model_index.values()
+            if isinstance(m, dict) and m.get("is_active", True)
+        ]
+        model_path = _metadata_value(metadata, "model_file_path")
+        scaler_path = _metadata_value(metadata, "scaler_file_path")
+
+        def _artifact_status(path_value):
+            if not path_value:
+                return {"path": None, "exists": False, "size_bytes": None}
+            try:
+                p = Path(str(path_value))
+                return {
+                    "path": str(p),
+                    "exists": p.exists(),
+                    "size_bytes": p.stat().st_size if p.exists() else None,
+                }
+            except Exception:
+                return {"path": str(path_value), "exists": False, "size_bytes": None}
+
+        model_artifact = _artifact_status(model_path)
+        scaler_artifact = _artifact_status(scaler_path)
+        feature_count = _metadata_value(metadata, "features_count")
+        if feature_count is None:
+            feature_names = _metadata_value(metadata, "feature_names", []) or []
+            try:
+                feature_count = len(feature_names)
+            except Exception:
+                feature_count = 0
+
+        ready = bool(metadata and model_artifact["exists"] and scaler_artifact["exists"])
+        payload = {
+            "ready": ready,
+            "source": source if metadata else "registry_unavailable",
+            "model_id": _metadata_value(metadata, "model_id"),
+            "model_version": _metadata_value(metadata, "model_id"),
+            "model_name": _metadata_value(metadata, "model_name"),
+            "model_type": _metadata_value(metadata, "model_type", "unknown"),
+            "trained_at": _metadata_value(metadata, "training_timestamp")
+            or _metadata_value(metadata, "created_at"),
+            "feature_count": feature_count,
+            "accuracy": _metadata_value(metadata, "accuracy"),
+            "auc": _metadata_value(metadata, "auc"),
+            "model_artifact": model_artifact,
+            "scaler_artifact": scaler_artifact,
+            "registry": {
+                "total_models": len(model_index),
+                "active_models": len(active_models),
+                "best_model_id": _metadata_value(metadata, "model_id"),
+            },
+        }
+        with _MODEL_HEALTH_CACHE_LOCK:
+            _MODEL_HEALTH_CACHE["created_at"] = now
+            _MODEL_HEALTH_CACHE["payload"] = dict(payload)
+        return payload
+    except Exception as e:
+        return {
+            "ready": False,
+            "source": "registry_error",
+            "error": str(e),
+        }
+
+
+def _lazy_loaded_model_snapshot() -> dict:
+    """Report loaded in-process models without creating/loading any model."""
+    systems = []
+    try:
+        svc = enhanced_prediction_service
+        ml_system = getattr(svc, "ml_system", None) if svc is not None else None
+        if ml_system is not None:
+            info = getattr(ml_system, "model_info", {}) or {}
+            systems.append(
+                {
+                    "owner": "enhanced_prediction_service",
+                    "loaded": bool(getattr(ml_system, "calibrated_pipeline", None)),
+                    "model_id": info.get("model_id"),
+                    "model_version": info.get("model_version"),
+                    "source": info.get("source"),
+                    "feature_count": len(getattr(ml_system, "feature_columns", []) or []),
+                }
+            )
+    except Exception as e:
+        _debug_silent_failure("Model health: enhanced service lazy snapshot", e)
+
+    cache_status = None
+    try:
+        ppv4_mod = sys.modules.get("prediction_pipeline_v4")
+        status_fn = getattr(ppv4_mod, "get_cached_ml_system_status", None)
+        if callable(status_fn):
+            cache_status = status_fn()
+            for item in cache_status.get("systems", []) or []:
+                if isinstance(item, dict):
+                    enriched = dict(item)
+                    enriched["owner"] = "prediction_pipeline_v4_cache"
+                    systems.append(enriched)
+    except Exception as e:
+        _debug_silent_failure("Model health: pipeline cache lazy snapshot", e)
+
+    return {
+        "loaded": any(bool(s.get("loaded")) for s in systems if isinstance(s, dict)),
+        "systems": systems,
+        "pipeline_cache": cache_status,
+    }
+
+
 @app.route("/api/model_health", methods=["GET"])
 def api_model_health():
     try:
@@ -1872,75 +2060,33 @@ def api_model_health():
         except Exception:
             sklearn_version = None
 
-        # Instantiate ML system with a strict timeout to avoid hanging the endpoint
-        try:
-            from ml_system_v4 import MLSystemV4
-        except Exception:
-            MLSystemV4 = None  # type: ignore
-        system = None
-        if MLSystemV4 is not None:
-            ok, sys_obj, err = call_with_timeout(MLSystemV4, timeout=1.5, default=None)
-            if ok:
-                system = sys_obj
-        # If system couldn't be created quickly, return a degraded status instead of hanging
-        if system is None:
-            return (
-                jsonify(
-                    {
-                        "ready": False,
-                        "status": "degraded",
-                        "degraded": True,
-                        "error": "timeout or unavailable",
-                        "sklearn_version": sklearn_version,
-                        "python_version": _sys.version.split("\n")[0],
-                    }
-                ),
-                200,
-            )
-
-        info = system.model_info or {}
-        source = info.get(
-            "source",
-            (
-                "disk"
-                if getattr(system, "calibrated_pipeline", None) is not None
-                else "mock"
-            ),
-        )
-        feature_count = len(getattr(system, "feature_columns", []) or [])
-        model_type = info.get("model_type", "unknown")
-        trained_at = info.get("trained_at")
-        artifact_path = info.get("artifact_path") or info.get("model_path")
-        model_id = info.get("model_id")
-
-        registry_best_id = None
-        try:
-            from model_registry import get_model_registry
-
-            reg = get_model_registry()
-            ok, best, _ = call_with_timeout(
-                reg.get_best_model, timeout=1.0, default=None
-            )
-            if ok and best is not None:
-                _, _, md = best
-                registry_best_id = getattr(md, "model_id", None)
-        except Exception as e:
-            _debug_silent_failure("Model health: registry_best_id", e)
-
-        ready_flag = bool(getattr(system, "calibrated_pipeline", None) is not None)
+        registry_snapshot = _metadata_only_model_health_snapshot()
+        lazy_snapshot = _lazy_loaded_model_snapshot()
+        ready_flag = bool(registry_snapshot.get("ready"))
         payload = {
             "ready": ready_flag,
             "status": "healthy" if ready_flag else "degraded",
-            "source": source,
-            "model_type": model_type,
-            "trained_at": trained_at,
-            "feature_count": feature_count,
-            "registry_best_id": registry_best_id,
-            "artifact_path": artifact_path,
+            "degraded": not ready_flag,
+            "source": registry_snapshot.get("source"),
+            "model_type": registry_snapshot.get("model_type", "unknown"),
+            "trained_at": registry_snapshot.get("trained_at"),
+            "feature_count": registry_snapshot.get("feature_count", 0),
+            "registry_best_id": registry_snapshot.get("model_id"),
+            "artifact_path": (registry_snapshot.get("model_artifact") or {}).get("path"),
             "sklearn_version": sklearn_version,
             "python_version": _sys.version.split("\n")[0],
-            "model_id": model_id,
+            "model_id": registry_snapshot.get("model_id"),
+            "model_version": registry_snapshot.get("model_version"),
+            "model_name": registry_snapshot.get("model_name"),
+            "accuracy": registry_snapshot.get("accuracy"),
+            "auc": registry_snapshot.get("auc"),
+            "model_artifact": registry_snapshot.get("model_artifact"),
+            "scaler_artifact": registry_snapshot.get("scaler_artifact"),
+            "registry": registry_snapshot.get("registry"),
+            "lazy_load": lazy_snapshot,
         }
+        if registry_snapshot.get("error"):
+            payload["error"] = registry_snapshot.get("error")
         # Augment with monitoring (place odds/EV health) if available
         try:
             from monitoring_api import get_monitoring_api
@@ -3560,7 +3706,7 @@ def run_prediction_for_race_file(race_file_path: str, tgr_enabled=None) -> dict:
     try:
         from utils.feature_flags import load_flags as _load_flags
         flags, _src = _load_flags()
-        if bool(flags.get("ENABLE_AUTO_SCRAPE_ODDS", True)):
+        if _auto_scrape_odds_enabled(flags):
             try:
                 from utils.csv_metadata import parse_race_csv_meta as _parse_meta
                 from odds_auto_integrator import ensure_odds_for_target_race as _ensure_odds
@@ -3837,6 +3983,62 @@ def _compute_top_by_win_prob(prediction_result: dict) -> dict | None:
         return None
 
 
+def _predict_page_fallback_html(
+    races: list[str],
+    message: str | None = None,
+    prediction_result: dict | None = None,
+    selected_race: str | None = None,
+) -> str:
+    import html
+    import json as _json
+
+    options = "\n".join(
+        f'<option value="{html.escape(str(r))}">{html.escape(str(r))}</option>'
+        for r in races[:300]
+    )
+    msg = (
+        f'<p class="message">{html.escape(str(message))}</p>'
+        if message
+        else ""
+    )
+    result_html = ""
+    if prediction_result:
+        top = (prediction_result.get("predictions") or [{}])[0]
+        result_html = (
+            "<section><h2>Latest Prediction</h2>"
+            f"<p>Race: {html.escape(str(prediction_result.get('race_id') or selected_race or ''))}</p>"
+            f"<p>Model: {html.escape(str(prediction_result.get('model_version') or prediction_result.get('primary_model_id') or 'unknown'))}</p>"
+            f"<pre>{html.escape(_json.dumps(top, indent=2, default=str))}</pre>"
+            "</section>"
+        )
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Greyhound Race Prediction</title>
+  <style>
+    body {{ font-family: system-ui, sans-serif; margin: 2rem; line-height: 1.4; }}
+    form, section {{ max-width: 920px; margin-bottom: 1.5rem; }}
+    select, button {{ font: inherit; padding: .5rem; }}
+    select {{ min-width: min(720px, 100%); }}
+    pre {{ white-space: pre-wrap; background: #f6f8fa; padding: 1rem; overflow: auto; }}
+    .message {{ color: #9a3412; }}
+  </style>
+</head>
+<body>
+  <h1>Greyhound Race Prediction</h1>
+  {msg}
+  <form method="post" action="/predict_page">
+    <label for="race_files">Race file</label><br>
+    <select id="race_files" name="race_files">{options}</select>
+    <button type="submit">Predict</button>
+  </form>
+  {result_html}
+</body>
+</html>"""
+
+
 @app.route("/predict_page", methods=["GET", "POST"])
 def predict_page():
     """Predict page - Select upcoming races for prediction"""
@@ -3963,12 +4165,19 @@ def predict_page():
             except Exception:
                 races = []
 
-            return render_template(
-                "predict.html",
-                races=races,
-                prediction_result=prediction_result,
-                selected_race=race_file,
-            )
+            try:
+                return render_template(
+                    "predict.html",
+                    races=races,
+                    prediction_result=prediction_result,
+                    selected_race=race_file,
+                )
+            except Exception:
+                return _predict_page_fallback_html(
+                    races,
+                    prediction_result=prediction_result,
+                    selected_race=race_file,
+                )
 
         except Exception as e:
             logger.log_error(f"Error during prediction for {race_file}", error=e)
@@ -4013,9 +4222,12 @@ def predict_page():
         incoming_message = request.args.get("message")
         page_message = incoming_message or (flashed[0] if flashed else None)
 
-        return render_template(
-            "predict.html", races=race_filenames, message=page_message
-        )
+        try:
+            return render_template(
+                "predict.html", races=race_filenames, message=page_message
+            )
+        except Exception:
+            return _predict_page_fallback_html(race_filenames, message=page_message)
 
     except Exception as e:
         logging.error(f"Error loading predict page: {str(e)}")
@@ -5613,10 +5825,13 @@ def api_upcoming_races():
         days_ahead = request.args.get("days", 1, type=int)  # today + days_ahead
         page = request.args.get("page", 1, type=int)
         per_page = min(request.args.get("per_page", 50, type=int), 100)  # Max 100 per page
-        source = (request.args.get("source", "live") or "live").lower()  # 'live' or 'csv'
         refresh = (request.args.get("refresh", "false") or "false").lower() in ("1", "true", "yes")
         # Default to non-strict so clients who forget strict_live don't get blocked; UI can still set strict when needed
         strict_live = (request.args.get("strict_live", "0") or "0").lower() in ("1", "true", "yes")
+        requested_source = request.args.get("source")
+        source = (
+            requested_source or ("live" if strict_live else "csv")
+        ).lower()  # 'live' or 'csv'
 
         testing = _get_testing_flag()
         can_live = ENABLE_LIVE_SCRAPING and ENABLE_RESULTS_SCRAPERS and not testing
@@ -5688,11 +5903,10 @@ def api_upcoming_races():
             # Ignore cache errors and continue
             pass
 
-        # PRIMARY: Use live scraping by default
-        # If source=live but gating says can_live is False and strict_live is not set,
-        # opportunistically attempt live anyway before falling back to CSV. This avoids
-        # confusion when env flags are not exported in the running shell.
-        if (source == "live" and (can_live or not strict_live)):
+        # PRIMARY: Use live scraping only when explicitly enabled. When live scraping
+        # is disabled, non-strict requests use the local CSV loader so health/API
+        # validation stays bounded and does not wait on external collection.
+        if source == "live" and can_live:
             try:
                 # Use UpcomingRaceBrowser for comprehensive live data
                 from upcoming_race_browser import UpcomingRaceBrowser
@@ -5755,15 +5969,36 @@ def api_upcoming_races():
                     ),
                     400,
                 )
-            # Opportunistic live attempt even when can_live is False and source was not 'live'
-            # if the caller adds ?source=live but flags are missing, we already handled above.
-            # Here we proceed with CSV loaders.
+            # Lightweight local filename index. This endpoint is used by the UI and
+            # health checks; when live collection is disabled it must stay bounded and
+            # should not parse full form guides.
+            races = []
             try:
-                # Prefer the unified loader (allows tests to patch load_upcoming_races)
-                races = load_upcoming_races(refresh=False)
+                for filename in sorted(os.listdir(UPCOMING_DIR)):
+                    if not filename.endswith((".csv", ".json")):
+                        continue
+                    file_path = os.path.join(UPCOMING_DIR, filename)
+                    meta = _extract_csv_metadata(file_path)
+                    race_number = meta.get("race_number")
+                    race = {
+                        "date": meta.get("date") or "",
+                        "race_date": meta.get("date") or "",
+                        "venue": meta.get("venue") or "Unknown Venue",
+                        "venue_name": meta.get("venue") or "Unknown Venue",
+                        "race_number": race_number or "",
+                        "race_time": "",
+                        "distance": "",
+                        "grade": "",
+                        "race_name": (
+                            f"Race {race_number}" if race_number else "Unknown Race"
+                        ),
+                        "url": "",
+                        "filename": filename,
+                        "race_id": filename.replace(".csv", "").replace(".json", ""),
+                    }
+                    races.append(_ensure_guaranteed_fields(race))
             except Exception:
-                # Fallback to guaranteed fields loader if unified fails
-                races = load_upcoming_races_with_guaranteed_fields(refresh=True)
+                races = load_upcoming_races_with_guaranteed_fields(refresh=False)
             source = "csv" if not app.config.get("TESTING") else "csv_test"
 
         # Convert races to consistent format for frontend
@@ -5771,13 +6006,9 @@ def api_upcoming_races():
         for race in races:
             # Handle both live scraping format and CSV format
             formatted_race = {
-                "race_id": race.get(
-                    "url",
-                    race.get(
-                        "race_id",
-                        f"{race.get('venue', 'unknown')}_{race.get('race_number', 0)}",
-                    ),
-                ),
+                "race_id": race.get("url")
+                or race.get("race_id")
+                or f"{race.get('venue', 'unknown')}_{race.get('race_number', 0)}",
                 "venue": race.get("venue", "Unknown"),
                 "venue_name": race.get("venue_name", race.get("venue", "Unknown")),
                 "race_number": race.get("race_number", 0),
@@ -7373,7 +7604,7 @@ def api_predict_single_race():
         try:
             from utils.feature_flags import load_flags as _load_flags
             flags, _src = _load_flags()
-            if bool(flags.get("ENABLE_AUTO_SCRAPE_ODDS", True)):
+            if _auto_scrape_odds_enabled(flags):
                 from utils.csv_metadata import parse_race_csv_meta as _parse_meta
                 from odds_auto_integrator import ensure_odds_for_target_race as _ensure_odds
                 meta = _parse_meta(race_file_path) or {}
@@ -13500,7 +13731,7 @@ def api_predict_single_race_enhanced():
             try:
                 from utils.feature_flags import load_flags as _load_flags
                 flags, _src = _load_flags()
-                if bool(flags.get("ENABLE_AUTO_SCRAPE_ODDS", True)):
+                if _auto_scrape_odds_enabled(flags):
                     from utils.csv_metadata import parse_race_csv_meta as _parse_meta
                     from odds_auto_integrator import ensure_odds_for_target_race as _ensure_odds
                     meta = _parse_meta(race_file_path) or {}
@@ -14345,8 +14576,10 @@ def api_predict_single_race_enhanced():
                     }
                 except Exception:
                     synthetic_payload = None
-            # Fallback: if we still don't have a synthetic payload, derive a minimal one directly from the CSV
-            if synthetic_payload is None:
+            # If synthetic fallback is explicitly enabled but the richer degraded
+            # payload failed, derive a minimal one directly from the CSV. Do not
+            # silently synthesize predictions in normal prediction mode.
+            if include_synthetic and synthetic_payload is None:
                 try:
                     _fallback_names = synthetic_predictions_from_csv(race_file_path)
                     _fallback_preds = []
@@ -17665,13 +17898,68 @@ def ml_dashboard():
 def upcoming_races():
     """Browse upcoming races page with initial server-rendered data for fast paint"""
     try:
-        # Preload first page of upcoming races (CSV-based) to improve initial render and assist tests
-        races = load_upcoming_races(refresh=False)
-        # Keep only a small slice for initial render
-        initial_races = races[:20] if isinstance(races, list) else []
+        # Preload a bounded local filename index; the page hydrates detailed data via
+        # /api/upcoming_races, so server render should not parse full form guides.
+        initial_races = []
+        for filename in sorted(os.listdir(UPCOMING_DIR)):
+            if not filename.endswith((".csv", ".json")):
+                continue
+            file_path = os.path.join(UPCOMING_DIR, filename)
+            meta = _extract_csv_metadata(file_path)
+            race_number = meta.get("race_number")
+            race = {
+                "date": meta.get("date") or "",
+                "race_date": meta.get("date") or "",
+                "venue": meta.get("venue") or "Unknown Venue",
+                "venue_name": meta.get("venue") or "Unknown Venue",
+                "race_number": race_number or "",
+                "race_time": "",
+                "distance": "",
+                "grade": "",
+                "race_name": f"Race {race_number}" if race_number else "Unknown Race",
+                "url": "",
+                "filename": filename,
+                "race_id": filename.replace(".csv", "").replace(".json", ""),
+            }
+            initial_races.append(_ensure_guaranteed_fields(race))
+            if len(initial_races) >= 20:
+                break
     except Exception:
         initial_races = []
-    return render_template("upcoming_races.html", initial_races=initial_races)
+    try:
+        return render_template("upcoming_races.html", initial_races=initial_races)
+    except Exception:
+        import html
+
+        rows = "\n".join(
+            "<tr>"
+            f"<td>{html.escape(str(r.get('race_date') or r.get('date') or ''))}</td>"
+            f"<td>{html.escape(str(r.get('venue') or ''))}</td>"
+            f"<td>{html.escape(str(r.get('race_number') or ''))}</td>"
+            f"<td>{html.escape(str(r.get('filename') or ''))}</td>"
+            "</tr>"
+            for r in initial_races
+        )
+        return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Upcoming Greyhound Races</title>
+  <style>
+    body {{ font-family: system-ui, sans-serif; margin: 2rem; line-height: 1.4; }}
+    table {{ border-collapse: collapse; width: 100%; max-width: 1100px; }}
+    th, td {{ border-bottom: 1px solid #ddd; padding: .5rem; text-align: left; }}
+  </style>
+</head>
+<body>
+  <h1>Upcoming Greyhound Races</h1>
+  <table>
+    <thead><tr><th>Date</th><th>Venue</th><th>Race</th><th>File</th></tr></thead>
+    <tbody>{rows}</tbody>
+  </table>
+</body>
+</html>"""
 
 
 # Cache for upcoming races API
@@ -18527,9 +18815,8 @@ def api_upcoming_races_stream():
                     ),
                     403,
                 )
-            # Non-strict: opportunistically use live even if flags are missing
-            chosen_source = "live"
-            fallback_reason = "live_disabled_override"
+            chosen_source = "csv"
+            fallback_reason = "live_disabled_fallback"
     else:
         chosen_source = "live" if can_live else "csv"
         fallback_reason = None if chosen_source == "live" else "live_disabled_fallback"
