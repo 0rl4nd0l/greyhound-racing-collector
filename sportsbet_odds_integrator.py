@@ -20,7 +20,7 @@ import re
 import sqlite3
 import time
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
@@ -30,6 +30,90 @@ try:
 except Exception:
     def normalize_venue(v: str) -> str:
         return (v or "").strip().upper()
+
+
+RACE_METADATA_SAFE_UPSERT_FIELDS = {
+    "venue",
+    "race_number",
+    "race_date",
+    "race_time",
+    "race_datetime",
+    "sportsbet_url",
+    "url",
+    "venue_slug",
+    "start_datetime",
+    "extraction_timestamp",
+    "last_scraped_at",
+    "data_source",
+    "race_status",
+    "data_quality_note",
+}
+
+
+def _race_metadata_columns(cursor: sqlite3.Cursor) -> set[str]:
+    cursor.execute("PRAGMA table_info(race_metadata)")
+    return {str(row[1]) for row in cursor.fetchall()}
+
+
+def _metadata_value_is_present(column: str, value: Any) -> bool:
+    if value is None:
+        return False
+    if column == "race_number":
+        try:
+            return int(value) > 0
+        except Exception:
+            return False
+    if isinstance(value, str):
+        text = value.strip()
+        return text != "" and text.lower() not in {"unknown", "none", "null"}
+    return True
+
+
+def safe_upsert_race_metadata(
+    cursor: sqlite3.Cursor,
+    race_id: str,
+    metadata: Dict[str, Any],
+) -> str:
+    """Update or insert race_metadata without deleting an existing row."""
+    if not race_id:
+        raise ValueError("race_id is required for race_metadata upsert")
+
+    columns = _race_metadata_columns(cursor)
+    if "race_id" not in columns:
+        raise sqlite3.OperationalError("race_metadata.race_id column is missing")
+
+    safe_values = {
+        column: value
+        for column, value in (metadata or {}).items()
+        if column in RACE_METADATA_SAFE_UPSERT_FIELDS
+        and column in columns
+        and _metadata_value_is_present(column, value)
+    }
+
+    cursor.execute(
+        "SELECT 1 FROM race_metadata WHERE race_id = ? LIMIT 1",
+        (race_id,),
+    )
+    existing = cursor.fetchone() is not None
+
+    if existing:
+        if not safe_values:
+            return "unchanged"
+        assignments = ", ".join(f"{column} = ?" for column in safe_values)
+        cursor.execute(
+            f"UPDATE race_metadata SET {assignments} WHERE race_id = ?",
+            (*safe_values.values(), race_id),
+        )
+        return "updated"
+
+    insert_values = {"race_id": race_id, **safe_values}
+    insert_columns = list(insert_values.keys())
+    placeholders = ", ".join("?" for _ in insert_columns)
+    cursor.execute(
+        f"INSERT INTO race_metadata ({', '.join(insert_columns)}) VALUES ({placeholders})",
+        tuple(insert_values[column] for column in insert_columns),
+    )
+    return "inserted"
 
 # IMPORTANT: Avoid importing Playwright at module import time to satisfy module_guard
 # We will lazily import it only within methods that need it.
@@ -71,8 +155,15 @@ TimeoutException = _TimeoutException
 class SportsbetOddsIntegrator:
     """Comprehensive Sportsbet odds integration system"""
 
-    def __init__(self, db_path="greyhound_racing_data.db"):
+    def __init__(
+        self,
+        db_path="greyhound_racing_data.db",
+        allow_auto_scrape_odds: Optional[bool] = None,
+        dom_fallback_card_limit: Optional[int] = None,
+    ):
         self.db_path = db_path
+        self.allow_auto_scrape_odds = allow_auto_scrape_odds
+        self.dom_fallback_card_limit = dom_fallback_card_limit
         self.base_url = "https://www.sportsbet.com.au"
         # Default greyhound landing URL; can be overridden if needed
         self.greyhound_url = f"{self.base_url}/betting/greyhound-racing"
@@ -87,6 +178,77 @@ class SportsbetOddsIntegrator:
         self.update_interval = 30  # seconds
         self.setup_session()
         self.setup_database()
+
+    def _dom_fallback_odds_allowed(self) -> Tuple[bool, str]:
+        if self.allow_auto_scrape_odds is not None:
+            return bool(self.allow_auto_scrape_odds), "constructor allow_auto_scrape_odds"
+
+        dom_env = os.getenv("SPORTSBET_DOM_FALLBACK_ODDS")
+        if dom_env is not None:
+            enabled = str(dom_env).strip().lower() in ("1", "true", "yes", "on")
+            return enabled, "env SPORTSBET_DOM_FALLBACK_ODDS"
+
+        try:
+            from utils.feature_flags import auto_scrape_odds_enabled, load_flags
+
+            flags, sources = load_flags()
+            enabled = auto_scrape_odds_enabled()
+            source = sources.get("ENABLE_AUTO_SCRAPE_ODDS", "default")
+            return enabled, f"ENABLE_AUTO_SCRAPE_ODDS from {source}"
+        except Exception as exc:
+            return False, f"feature flag unavailable: {exc}"
+
+    def _dom_fallback_page_limit(self) -> int:
+        if self.dom_fallback_card_limit is not None:
+            raw_limit = self.dom_fallback_card_limit
+        else:
+            try:
+                from utils.feature_flags import auto_scrape_dom_fallback_limit
+
+                raw_limit = auto_scrape_dom_fallback_limit()
+            except Exception:
+                raw_limit = 3
+        try:
+            limit = int(raw_limit)
+        except Exception:
+            limit = 3
+        return max(0, min(10, limit))
+
+    def _enhance_dom_fallback_races(self, race_infos: List[Dict], reason: str) -> List[Dict]:
+        page_limit = self._dom_fallback_page_limit()
+        selected_races = list(race_infos or [])[:page_limit]
+        allowed, source = self._dom_fallback_odds_allowed()
+
+        if not selected_races:
+            return []
+
+        if not allowed:
+            print(
+                "🔒 DOM fallback discovery only; odds page scraping skipped "
+                f"because {source}. reason={reason}; discovered={len(race_infos or [])}; "
+                f"page_limit={page_limit}"
+            )
+            return selected_races
+
+        print(
+            "🔄 DOM fallback odds scraping enabled "
+            f"because {source}. reason={reason}; discovered={len(race_infos or [])}; "
+            f"page_limit={page_limit}"
+        )
+        races_with_odds = []
+        for index, race_info in enumerate(selected_races, start=1):
+            try:
+                if race_info.get("venue_url"):
+                    print(
+                        f"  🔎 DOM fallback page {index}/{len(selected_races)}: "
+                        f"{race_info.get('venue')} R{race_info.get('race_number')}"
+                    )
+                    race_info = self.get_race_odds_from_page(race_info)
+                races_with_odds.append(race_info)
+            except Exception as exc:
+                print(f"⚠️  Error extracting DOM fallback odds for {race_info.get('race_id')}: {exc}")
+                races_with_odds.append(race_info)
+        return races_with_odds
 
     def setup_session(self):
         """Setup requests session with proper headers"""
@@ -474,6 +636,10 @@ class SportsbetOddsIntegrator:
         try:
             # Try to extract basic info from the element
             text = element.text.strip()
+            try:
+                href = element.get_attribute("href") or ""
+            except Exception:
+                href = ""
 
             # Parse race info from element text (fallback method)
             # Example: "R7 Townsville\n1m 16s"
@@ -494,10 +660,11 @@ class SportsbetOddsIntegrator:
 
                     # Parse time info (e.g., "1m 16s" means 1 minute 16 seconds from now)
                     race_time = "Unknown"
+                    race_datetime = None
                     try:
                         if "m" in second_line and "s" in second_line:
                             # Calculate actual race time from countdown
-                            time_match = re.match(r"(\d+)m\s*(\d+)s?", second_line)
+                            time_match = re.match(r"(\d+)m\s*(\d+)?s?", second_line)
                             if time_match:
                                 minutes = int(time_match.group(1))
                                 seconds = (
@@ -510,15 +677,26 @@ class SportsbetOddsIntegrator:
                                     minutes=minutes, seconds=seconds
                                 )
                                 race_time = race_datetime.strftime("%H:%M")
+                        elif re.match(r"^\d+m$", second_line):
+                            minutes = int(second_line.replace("m", ""))
+                            race_datetime = datetime.now() + timedelta(minutes=minutes)
+                            race_time = race_datetime.strftime("%H:%M")
+                        elif re.match(r"^\d+s$", second_line):
+                            seconds = int(second_line.replace("s", ""))
+                            race_datetime = datetime.now() + timedelta(seconds=seconds)
+                            race_time = race_datetime.strftime("%H:%M")
                     except:
                         pass
 
                     return {
                         "race_id": race_id,
                         "venue": venue_name,
+                        "venue_slug": venue_slug,
                         "race_number": race_number,
                         "race_date": datetime.now().date(),
                         "race_time": race_time,
+                        "start_datetime": race_datetime,
+                        "venue_url": href,
                         "odds_data": [],  # No odds available from this method
                     }
 
@@ -758,6 +936,7 @@ class SportsbetOddsIntegrator:
         """Persist extracted odds to live_odds table.
         odds_data entries should include keys: dog_clean_name (or dog_name), odds_decimal, box_number (optional).
         """
+        conn = None
         try:
             conn = sqlite3.connect(self.db_path)
             try:
@@ -765,6 +944,7 @@ class SportsbetOddsIntegrator:
             except Exception:
                 pass
             cur = conn.cursor()
+            conn.execute("BEGIN")
             race_id = race_info.get("race_id")
             venue = race_info.get("venue")
             race_date = race_info.get("race_date")
@@ -792,9 +972,19 @@ class SportsbetOddsIntegrator:
                     (race_id, venue, race_date, race_time, dog, box, odds, market_type, topN),
                 )
             conn.commit()
-            conn.close()
         except Exception as e:
+            try:
+                if conn is not None:
+                    conn.rollback()
+            except Exception:
+                pass
             print(f"⚠️  Persist odds failed: {e}")
+        finally:
+            try:
+                if conn is not None:
+                    conn.close()
+            except Exception:
+                pass
 
     def _select_place_market(self) -> Optional[int]:
         """Try to switch UI to the Place/Top 3 market.
@@ -876,12 +1066,15 @@ class SportsbetOddsIntegrator:
                 desired_rn = None
 
             if desired_rn is not None:
-                specific = self.find_specific_race_from_meeting(full_url, desired_rn, expected_venue=race_info.get("venue"))
-                if specific:
-                    full_url = specific
-                    print(f"  🎯 Found specific race URL R{desired_rn}: {full_url}")
+                if re.search(rf"/race-{int(desired_rn)}(?:-|$)", full_url):
+                    print(f"  🎯 Using supplied direct race URL R{desired_rn}: {full_url}")
                 else:
-                    print(f"  ⚠️  Could not resolve specific race; falling back to next race selection")
+                    specific = self.find_specific_race_from_meeting(full_url, desired_rn, expected_venue=race_info.get("venue"))
+                    if specific:
+                        full_url = specific
+                        print(f"  🎯 Found specific race URL R{desired_rn}: {full_url}")
+                    else:
+                        print(f"  ⚠️  Could not resolve specific race; falling back to next race selection")
 
             # Check if this is a meeting page that needs further navigation
             if "/meeting-" in full_url or "/greyhound-racing/" in full_url and "/race-" not in full_url:
@@ -3039,79 +3232,15 @@ class SportsbetOddsIntegrator:
                     if dom_races:
                         print(f"✅ Found {len(dom_races)} upcoming races from DOM")
 
-                        # ENHANCED: Process multiple races with better scheduling
-                        print(
-                            f"🎯 Fetching live odds for {len(dom_races)} upcoming races..."
-                        )
-                        races_with_odds = []
-
                         # Sort races by countdown time (soonest first)
                         sorted_races = sorted(
                             dom_races, key=lambda x: x.get("countdown_minutes", 999)
                         )
-
-                        # Process up to 8 races with priority for soonest ones
-                        max_races = min(8, len(sorted_races))
-
-                        # Group races: immediate (< 10min), soon (10-30min), later (30min+)
-                        immediate_races = [
-                            r
-                            for r in sorted_races
-                            if r.get("countdown_minutes", 999) < 10
-                        ]
-                        soon_races = [
-                            r
-                            for r in sorted_races
-                            if 10 <= r.get("countdown_minutes", 999) < 30
-                        ]
-                        later_races = [
-                            r
-                            for r in sorted_races
-                            if r.get("countdown_minutes", 999) >= 30
-                        ]
-
-                        print(
-                            f"  📋 Race scheduling: {len(immediate_races)} immediate, {len(soon_races)} soon, {len(later_races)} later"
+                        races_with_odds = self._enhance_dom_fallback_races(
+                            sorted_races,
+                            reason="JSON-LD returned races but none were upcoming",
                         )
 
-                        # Process immediate races first with minimal delay
-                        for i, race in enumerate(
-                            immediate_races[:3]
-                        ):  # Max 3 immediate
-                            print(
-                                f"🚨 URGENT - Processing race {i+1}: {race['venue']} in {race.get('countdown_minutes', '?')}min"
-                            )
-                            enhanced_race = self.get_race_odds_from_page(race)
-                            races_with_odds.append(enhanced_race)
-
-                            self._debug_print_odds(enhanced_race, "URGENT")
-                            time.sleep(1)  # Minimal delay for urgent races
-
-                        # Process soon races with moderate delay
-                        remaining_slots = max_races - len(races_with_odds)
-                        for i, race in enumerate(soon_races[:remaining_slots]):
-                            print(
-                                f"⏰ SOON - Processing race {i+1}: {race['venue']} in {race.get('countdown_minutes', '?')}min"
-                            )
-                            enhanced_race = self.get_race_odds_from_page(race)
-                            races_with_odds.append(enhanced_race)
-
-                            self._debug_print_odds(enhanced_race, "SOON")
-                            time.sleep(2)  # Moderate delay
-
-                        # Process later races with normal delay if slots remain
-                        remaining_slots = max_races - len(races_with_odds)
-                        for i, race in enumerate(later_races[:remaining_slots]):
-                            print(
-                                f"📅 LATER - Processing race {i+1}: {race['venue']} in {race.get('countdown_minutes', '?')}min"
-                            )
-                            enhanced_race = self.get_race_odds_from_page(race)
-                            races_with_odds.append(enhanced_race)
-
-                            self._debug_print_odds(enhanced_race, "LATER")
-                            time.sleep(3)  # Normal delay
-
-                        # Summary
                         total_dogs_with_odds = sum(
                             len(r.get("odds_data", [])) for r in races_with_odds
                         )
@@ -3166,16 +3295,21 @@ class SportsbetOddsIntegrator:
                 return []
 
             # Process DOM elements as fallback
-            for i, card in enumerate(race_cards[:10]):
+            race_infos = []
+            page_limit = self._dom_fallback_page_limit()
+            for i, card in enumerate(race_cards[:page_limit]):
                 try:
                     race_info = self.extract_race_info_flexible(card, i)
                     if race_info:  # Remove the odds_data requirement for fallback
-                        races.append(race_info)
+                        race_infos.append(race_info)
                 except Exception as e:
                     print(f"⚠️  Error extracting race info from card {i}: {e}")
                     continue
 
-            return races
+            return self._enhance_dom_fallback_races(
+                race_infos,
+                reason="structured Sportsbet race extraction returned no races",
+            )
 
         except Exception as e:
             print(f"⚠️  Error getting races: {e}")
@@ -3358,9 +3492,14 @@ class SportsbetOddsIntegrator:
     def save_odds_to_database(self, race_info: Dict):
         """Save odds data and race metadata to database"""
         conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
         try:
+            try:
+                conn.execute("PRAGMA busy_timeout=2000")
+            except Exception:
+                pass
+            cursor = conn.cursor()
+            conn.execute("BEGIN")
+
             # Always save race metadata even if no odds data available
             race_datetime_str = None
             if race_info.get("start_datetime"):
@@ -3374,24 +3513,25 @@ class SportsbetOddsIntegrator:
                 race_info.get("venue"), race_info.get("race_date"), race_info.get("race_number")
             ) or race_info.get("race_id")
 
-            # Save or update race metadata (use canonical_rid)
-            cursor.execute(
-                """
-                INSERT OR REPLACE INTO race_metadata 
-                (race_id, venue, race_number, race_date, race_time, 
-                 sportsbet_url, venue_slug, start_datetime)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-                (
-                    canonical_rid,
-                    race_info.get("venue"),
-                    race_info.get("race_number", 0),
-                    race_info.get("race_date"),
-                    race_info.get("race_time"),
-                    race_info.get("venue_url", ""),
-                    race_info.get("venue_slug", ""),
-                    race_datetime_str,
-                ),
+            sportsbet_url = (
+                race_info.get("venue_url")
+                or race_info.get("sportsbet_url")
+                or race_info.get("url")
+            )
+            safe_upsert_race_metadata(
+                cursor,
+                canonical_rid,
+                {
+                    "venue": race_info.get("venue"),
+                    "race_number": race_info.get("race_number", 0),
+                    "race_date": race_info.get("race_date"),
+                    "race_time": race_info.get("race_time"),
+                    "sportsbet_url": sportsbet_url,
+                    "url": sportsbet_url,
+                    "venue_slug": race_info.get("venue_slug", ""),
+                    "start_datetime": race_datetime_str,
+                    "race_datetime": race_datetime_str,
+                },
             )
 
             # Skip saving odds if no odds data available
@@ -3472,6 +3612,10 @@ class SportsbetOddsIntegrator:
                 print(f"⚠️  Saving PLACE odds failed: {_se}")
 
         except Exception as e:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
             print(f"⚠️  Error saving race data: {e}")
         finally:
             conn.close()

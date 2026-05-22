@@ -2,15 +2,16 @@
 set -euo pipefail
 
 # Launch Gunicorn for the Greyhound app
-ROOT="/Users/test/Desktop/greyhound_racing_collector"
-export GREYHOUND_DB_PATH="${GREYHOUND_DB_PATH:-/Users/test/Desktop/greyhound_racing_collector/databases/canonical_greyhound_data.db}"
+ROOT="${GREYHOUND_REPO_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+export GREYHOUND_DB_PATH="${GREYHOUND_DB_PATH:-$ROOT/greyhound_racing_data.db}"
+export ANALYTICS_DB_PATH="${ANALYTICS_DB_PATH:-$GREYHOUND_DB_PATH}"
+export STAGING_DB_PATH="${STAGING_DB_PATH:-$ROOT/greyhound_racing_data_stage.db}"
 export PORT="${PORT:-5002}"
 
 # Auto-tune workers/threads if not provided
 # Prefer physical cores for workers and 2 threads per worker by default
-_phys=$(sysctl -n hw.physicalcpu 2>/dev/null || true)
-_logi=$(sysctl -n hw.logicalcpu 2>/dev/null || true)
-if [ -z "${_phys}" ]; then _phys=$(sysctl -n hw.ncpu 2>/dev/null || echo 2); fi
+_phys=$(sysctl -n hw.physicalcpu 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo 2)
+_logi=$(sysctl -n hw.logicalcpu 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo "$_phys")
 if [ -z "${_logi}" ]; then _logi=${_phys}; fi
 if [ "${_phys}" -lt 1 ]; then _phys=1; fi
 _threads_per_worker=$(( _logi / _phys ))
@@ -39,4 +40,3 @@ exec python3 -m gunicorn \
   --keep-alive "$GUNI_KEEPALIVE" \
   --bind "0.0.0.0:$PORT" \
   app:app
-

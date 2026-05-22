@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 # Add project root to path
-sys.path.insert(0, "/Users/test/Desktop/greyhound_racing_collector")
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 
 def test_feature_contract_enforcement():

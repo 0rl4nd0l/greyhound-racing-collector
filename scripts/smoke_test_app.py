@@ -13,6 +13,11 @@ import sys
 os.environ.setdefault("TESTING", "1")
 os.environ.setdefault("ENABLE_LIVE_SCRAPING", "0")
 os.environ.setdefault("ENABLE_RESULTS_SCRAPERS", "0")
+os.environ.setdefault("WATCH_DOWNLOADS", "0")
+os.environ.setdefault("WATCH_UPCOMING", "0")
+os.environ.setdefault("DISABLE_SPORTSBET_INTEGRATOR", "1")
+os.environ.setdefault("ENABLE_AUTO_SCRAPE_ODDS", "0")
+os.environ.setdefault("INGEST_EMBEDDED_HISTORY_ON_PREDICT", "0")
 # Ensure consistent DB path resolution if custom envs exist
 os.environ.setdefault("DATABASE_PATH", "greyhound_racing_data.db")
 

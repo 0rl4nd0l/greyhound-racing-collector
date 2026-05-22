@@ -325,7 +325,7 @@ def generate_inventory_report():
 
 if __name__ == "__main__":
     # Ensure we're in the right directory
-    os.chdir("/Users/test/Desktop/greyhound_racing_collector")
+    os.chdir(Path(__file__).resolve().parents[1])
 
     # Generate inventory
     inventory = generate_inventory_report()

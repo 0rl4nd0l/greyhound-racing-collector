@@ -138,7 +138,12 @@ def parse_race_csv_correct(csv_path):
 
 def main():
     """Test the fix on the problematic CAPALABA race"""
-    csv_path = "/Users/test/Desktop/greyhound_racing_collector/processed/excluded/Race 1 - CAPALABA - 2025-08-24.csv"
+    csv_path = str(
+        Path(__file__).resolve().parent
+        / "processed"
+        / "excluded"
+        / "Race 1 - CAPALABA - 2025-08-24.csv"
+    )
 
     print("DEMONSTRATING THE FIX:")
     print("=" * 60)

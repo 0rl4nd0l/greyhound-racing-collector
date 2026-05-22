@@ -144,18 +144,18 @@ predict-upcoming:
 predict-and-persist: predict-upcoming persist-predictions
 
 # Generate prediction coverage report (last HOURS, default 24)
-# Usage: make report-coverage HOURS=24 DATABASE_PATH=./greyhound_racing_data_writable.db
+# Usage: make report-coverage HOURS=24 DATABASE_PATH=./greyhound_racing_data.db
 report-coverage:
 	@echo "Generating prediction coverage report (last $${HOURS:-24}h)"
 	@mkdir -p docs/analysis
 	$(PYTHON) scripts/report_prediction_coverage.py --hours $${HOURS:-24} \
-		--db $${DATABASE_PATH:-$${STAGING_DB_PATH:-$${GREYHOUND_DB_PATH:-./greyhound_racing_data_writable.db}}} \
+		--db $${DATABASE_PATH:-$${STAGING_DB_PATH:-$${GREYHOUND_DB_PATH:-./greyhound_racing_data.db}}} \
 		--save docs/analysis/prediction_coverage_report_$$(date +%Y%m%d_%H%M%S).json
 
 .PHONY: normalize-odds
 normalize-odds:
 	@echo "Normalizing live_odds race_id to canonical form..."
-	$(PYTHON) scripts/normalize_live_odds_race_ids.py --db $${DATABASE_PATH:-$${STAGING_DB_PATH:-$${GREYHOUND_DB_PATH:-./greyhound_racing_data_writable.db}}}
+	$(PYTHON) scripts/normalize_live_odds_race_ids.py --db $${DATABASE_PATH:-$${STAGING_DB_PATH:-$${GREYHOUND_DB_PATH:-./greyhound_racing_data.db}}}
 
 # Contract validation (python mode, no server)
 contract-validate:
@@ -253,10 +253,9 @@ run-api:
 	DISABLE_ASSET_MINIFY=$${DISABLE_ASSET_MINIFY:-1} \
 	TESTING=$${TESTING:-false} \
 	LOG_LEVEL=$${LOG_LEVEL:-DEBUG} \
-	# Default to writable DB for both analytics and staging paths unless explicitly overridden
-	ANALYTICS_DB_PATH=$${ANALYTICS_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
-	STAGING_DB_PATH=$${STAGING_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
-	GREYHOUND_DB_PATH=$${GREYHOUND_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
+	ANALYTICS_DB_PATH=$${ANALYTICS_DB_PATH:-$(shell pwd)/greyhound_racing_data.db} \
+	STAGING_DB_PATH=$${STAGING_DB_PATH:-$(shell pwd)/greyhound_racing_data_stage.db} \
+	GREYHOUND_DB_PATH=$${GREYHOUND_DB_PATH:-$(shell pwd)/greyhound_racing_data.db} \
 	V4_DISABLE_ACCURACY_OPTIMIZER=$${V4_DISABLE_ACCURACY_OPTIMIZER:-0} \
 	$(PYTHON) app.py
 
@@ -271,10 +270,9 @@ run-api-dev-toolbar:
 	TESTING=true \
 	DISABLE_ASSET_MINIFY=$${DISABLE_ASSET_MINIFY:-1} \
 	LOG_LEVEL=$${LOG_LEVEL:-DEBUG} \
-	# Default to writable DB for both analytics and staging paths unless explicitly overridden
-	ANALYTICS_DB_PATH=$${ANALYTICS_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
-	STAGING_DB_PATH=$${STAGING_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
-	GREYHOUND_DB_PATH=$${GREYHOUND_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
+	ANALYTICS_DB_PATH=$${ANALYTICS_DB_PATH:-$(shell pwd)/greyhound_racing_data.db} \
+	STAGING_DB_PATH=$${STAGING_DB_PATH:-$(shell pwd)/greyhound_racing_data_stage.db} \
+	GREYHOUND_DB_PATH=$${GREYHOUND_DB_PATH:-$(shell pwd)/greyhound_racing_data.db} \
 	V4_DISABLE_ACCURACY_OPTIMIZER=$${V4_DISABLE_ACCURACY_OPTIMIZER:-0} \
 	$(PYTHON) app.py
 
@@ -292,10 +290,9 @@ run-api-gunicorn:
 	GUNICORN_LOGLEVEL=$${GUNICORN_LOGLEVEL:-debug} \
 	GUNICORN_ACCESSLOG=$${GUNICORN_ACCESSLOG:--} \
 	GUNICORN_ERRORLOG=$${GUNICORN_ERRORLOG:--} \
-	# Default to writable DB for both analytics and staging paths unless explicitly overridden
-	ANALYTICS_DB_PATH=$${ANALYTICS_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
-	STAGING_DB_PATH=$${STAGING_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
-	GREYHOUND_DB_PATH=$${GREYHOUND_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
+	ANALYTICS_DB_PATH=$${ANALYTICS_DB_PATH:-$(shell pwd)/greyhound_racing_data.db} \
+	STAGING_DB_PATH=$${STAGING_DB_PATH:-$(shell pwd)/greyhound_racing_data_stage.db} \
+	GREYHOUND_DB_PATH=$${GREYHOUND_DB_PATH:-$(shell pwd)/greyhound_racing_data.db} \
 	V4_DISABLE_ACCURACY_OPTIMIZER=$${V4_DISABLE_ACCURACY_OPTIMIZER:-0} \
 	$(VENV)/bin/gunicorn -c gunicorn.conf.py app:app
 
@@ -307,10 +304,9 @@ run-api-gunicorn-opt:
 	ENABLE_ENDPOINT_DROPDOWNS=$${ENABLE_ENDPOINT_DROPDOWNS:-0} \
 	DISABLE_ASSET_MINIFY=$${DISABLE_ASSET_MINIFY:-1} \
 	TESTING=$${TESTING:-false} \
-	# Default to writable DB for both analytics and staging paths unless explicitly overridden
-	ANALYTICS_DB_PATH=$${ANALYTICS_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
-	STAGING_DB_PATH=$${STAGING_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
-	GREYHOUND_DB_PATH=$${GREYHOUND_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
+	ANALYTICS_DB_PATH=$${ANALYTICS_DB_PATH:-$(shell pwd)/greyhound_racing_data.db} \
+	STAGING_DB_PATH=$${STAGING_DB_PATH:-$(shell pwd)/greyhound_racing_data_stage.db} \
+	GREYHOUND_DB_PATH=$${GREYHOUND_DB_PATH:-$(shell pwd)/greyhound_racing_data.db} \
 	V4_DISABLE_ACCURACY_OPTIMIZER=0 \
 	$(VENV)/bin/gunicorn -c gunicorn.conf.py app:app
 
@@ -323,10 +319,9 @@ run-api-gunicorn-verbose:
 	DISABLE_ASSET_MINIFY=$${DISABLE_ASSET_MINIFY:-1} \
 	TESTING=$${TESTING:-false} \
 	LOG_LEVEL=$${LOG_LEVEL:-DEBUG} \
-	# Default to writable DB for both analytics and staging paths unless explicitly overridden
-	ANALYTICS_DB_PATH=$${ANALYTICS_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
-	STAGING_DB_PATH=$${STAGING_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
-	GREYHOUND_DB_PATH=$${GREYHOUND_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
+	ANALYTICS_DB_PATH=$${ANALYTICS_DB_PATH:-$(shell pwd)/greyhound_racing_data.db} \
+	STAGING_DB_PATH=$${STAGING_DB_PATH:-$(shell pwd)/greyhound_racing_data_stage.db} \
+	GREYHOUND_DB_PATH=$${GREYHOUND_DB_PATH:-$(shell pwd)/greyhound_racing_data.db} \
 	V4_DISABLE_ACCURACY_OPTIMIZER=$${V4_DISABLE_ACCURACY_OPTIMIZER:-0} \
 	PYTHONUNBUFFERED=1 DEBUG=$${DEBUG:-1} \
 	GUNICORN_LOGLEVEL=$${GUNICORN_LOGLEVEL:-debug} \
@@ -349,10 +344,9 @@ run-api-live-gunicorn:
 	GUNICORN_LOGLEVEL=$${GUNICORN_LOGLEVEL:-debug} \
 	GUNICORN_ACCESSLOG=$${GUNICORN_ACCESSLOG:--} \
 	GUNICORN_ERRORLOG=$${GUNICORN_ERRORLOG:--} \
-	# Default to writable DB for both analytics and staging paths unless explicitly overridden
-	ANALYTICS_DB_PATH=$${ANALYTICS_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
-	STAGING_DB_PATH=$${STAGING_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
-	GREYHOUND_DB_PATH=$${GREYHOUND_DB_PATH:-$(shell pwd)/greyhound_racing_data_writable.db} \
+	ANALYTICS_DB_PATH=$${ANALYTICS_DB_PATH:-$(shell pwd)/greyhound_racing_data.db} \
+	STAGING_DB_PATH=$${STAGING_DB_PATH:-$(shell pwd)/greyhound_racing_data_stage.db} \
+	GREYHOUND_DB_PATH=$${GREYHOUND_DB_PATH:-$(shell pwd)/greyhound_racing_data.db} \
 	V4_DISABLE_ACCURACY_OPTIMIZER=$${V4_DISABLE_ACCURACY_OPTIMIZER:-0} \
 	$(VENV)/bin/gunicorn -c gunicorn.conf.py app:app
 
