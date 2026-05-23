@@ -5337,6 +5337,22 @@ def api_top_performers():
         conn = (db_manager.get_connection() if "db_manager" in globals() and db_manager else sqlite3.connect(DATABASE_PATH))
         cursor = conn.cursor()
 
+        cursor.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1",
+            ("dogs",),
+        )
+        if cursor.fetchone() is None:
+            conn.close()
+            return jsonify(
+                {
+                    "success": True,
+                    "top_performers": [],
+                    "metric": metric,
+                    "min_races": min_races,
+                    "count": 0,
+                }
+            )
+
         if metric == "win_rate":
             order_by = "CAST(total_wins AS FLOAT) / total_races DESC"
         elif metric == "place_rate":
@@ -5415,6 +5431,29 @@ def api_all_dogs():
         # Use test-configured database connection when available
         conn = (db_manager.get_connection() if "db_manager" in globals() and db_manager else sqlite3.connect(DATABASE_PATH))
         cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1",
+            ("dogs",),
+        )
+        if cursor.fetchone() is None:
+            conn.close()
+            return jsonify(
+                {
+                    "success": True,
+                    "dogs": [],
+                    "pagination": {
+                        "page": page,
+                        "per_page": per_page,
+                        "total_count": 0,
+                        "total_pages": 0,
+                        "has_next": False,
+                        "has_prev": False,
+                    },
+                    "sort_by": sort_by,
+                    "order": order,
+                }
+            )
 
         # Define sort options
         sort_options = {
