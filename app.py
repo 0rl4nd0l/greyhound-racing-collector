@@ -300,6 +300,8 @@ from features import (
     V3WeatherTrackFeatures,
 )
 from sportsbet_odds_integrator import SportsbetOddsIntegrator
+from accuracy_program.bet_readiness import apply_bet_readiness_gates
+from accuracy_program.snapshots import build_prediction_snapshot
 from utils.csv_metadata import parse_race_csv_meta
 from utils.race_lifecycle import (
     RaceLifecycle,
@@ -4385,6 +4387,66 @@ def api_predict_file():
         resp.update(lifecycle_fields)
         if isinstance(prediction_result, dict):
             prediction_result["lifecycle"] = lifecycle.to_dict()
+            try:
+                readiness = apply_bet_readiness_gates(
+                    prediction_result,
+                    lifecycle=lifecycle.to_dict(),
+                )
+                resp["bet_readiness"] = readiness
+                resp["abstain"] = readiness.get("abstain")
+                resp["abstain_reasons"] = readiness.get("abstain_reasons", [])
+            except Exception as readiness_error:
+                logger.warning(
+                    f"Prediction readiness enrichment failed: {readiness_error}"
+                )
+                readiness = {
+                    "schema_version": "bet_readiness_v1",
+                    "status": "prediction_available_not_bet_qualified",
+                    "ready": False,
+                    "abstain": True,
+                    "abstain_reasons": ["readiness_unavailable"],
+                    "bet_qualified": False,
+                    "abstain_flags": ["readiness_unavailable"],
+                    "reasons": {
+                        "readiness_unavailable": "readiness enrichment failed"
+                    },
+                }
+                prediction_result["bet_readiness"] = readiness
+                resp["bet_readiness"] = readiness
+                resp["abstain"] = True
+                resp["abstain_reasons"] = ["readiness_unavailable"]
+            try:
+                prediction_result["prediction_snapshot"] = build_prediction_snapshot(
+                    prediction_result,
+                    source_file_path=race_file_path,
+                    lifecycle=lifecycle,
+                )
+                resp["prediction_snapshot_status"] = "created"
+            except ValueError as snapshot_error:
+                logger.warning(
+                    f"Prediction snapshot rejected for {race_file_path}: {snapshot_error}"
+                )
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": "prediction snapshot rejected",
+                            "reason": str(snapshot_error),
+                            "resolved_path": race_file_path,
+                            **lifecycle_fields,
+                        }
+                    ),
+                    500,
+                )
+            except Exception as snapshot_error:
+                logger.warning(
+                    f"Prediction snapshot enrichment failed: {snapshot_error}"
+                )
+                prediction_result["prediction_snapshot_status"] = {
+                    "status": "unavailable",
+                    "reason": str(snapshot_error),
+                }
+                resp["prediction_snapshot_status"] = "unavailable"
         # Surface model metadata and metrics at top-level for convenience
         try:
             if isinstance(prediction_result, dict):
