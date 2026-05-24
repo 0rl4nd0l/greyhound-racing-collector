@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from datetime import datetime
 
@@ -259,3 +260,96 @@ def test_snapshot_evaluation_reports_missing_frozen_corpus(tmp_path):
     assert readiness["status"] == "DATA_MISSING"
     assert readiness["reason"] == "no_frozen_pre_jump_snapshot_files_found"
     assert "result_free" in readiness["durable_pre_jump_snapshot_requirements"]
+
+
+def test_snapshot_evaluation_links_results_and_scores_valid_pre_jump_odds_only(tmp_path):
+    db_path = tmp_path / "labels.db"
+    conn = sqlite3.connect(db_path)
+    conn.executescript(
+        """
+        CREATE TABLE race_metadata (
+            race_id TEXT PRIMARY KEY,
+            venue TEXT,
+            race_number INTEGER,
+            race_date TEXT,
+            distance TEXT,
+            results_status TEXT,
+            winner_source TEXT,
+            data_quality_note TEXT,
+            winner_name TEXT
+        );
+        CREATE TABLE dog_race_data (
+            race_id TEXT,
+            dog_name TEXT,
+            dog_clean_name TEXT,
+            box_number INTEGER,
+            finish_position INTEGER,
+            data_source TEXT
+        );
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO race_metadata
+            (race_id, venue, race_number, race_date, results_status, winner_name)
+        VALUES
+            ('Race 1 - WPK - 2026-05-24', 'WPK', 1, '2026-05-24', 'complete', 'Alpha')
+        """
+    )
+    conn.executemany(
+        """
+        INSERT INTO dog_race_data
+            (race_id, dog_name, dog_clean_name, box_number, finish_position, data_source)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        [
+            ("Race 1 - WPK - 2026-05-24", "Alpha", "Alpha", 1, 1, "official"),
+            ("Race 1 - WPK - 2026-05-24", "Bravo", "Bravo", 2, 2, "official"),
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+    snapshot = build_prediction_snapshot(
+        {
+            "race_id": "Race 1 - WPK - 2026-05-24",
+            "model_version": "model-v1",
+            "predictions": [
+                {
+                    "dog_clean_name": "Alpha",
+                    "box_number": 1,
+                    "win_prob_norm": 0.6,
+                    "predicted_rank": 1,
+                    "odds_win": 2.0,
+                    "odds_timestamp": "2026-05-24T09:55:00",
+                    "odds_source": "sportsbet",
+                },
+                {
+                    "dog_clean_name": "Bravo",
+                    "box_number": 2,
+                    "win_prob_norm": 0.4,
+                    "predicted_rank": 2,
+                },
+            ],
+        },
+        source_file_path="Race 1 - WPK - 2026-05-24.csv",
+        lifecycle={
+            "status": "upcoming_not_jumped",
+            "race_date": "2026-05-24",
+            "venue": "WPK",
+            "race_number": 1,
+            "jump_datetime": "2026-05-24T10:30:00",
+        },
+        prediction_timestamp="2026-05-24T10:00:00",
+    )
+    snapshot_path = tmp_path / "snapshot.json"
+    snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
+
+    report = evaluate_snapshots(str(db_path), [str(snapshot_path)])
+
+    assert report["status"] == "SUCCESS"
+    assert report["runner_rows_scored"] == 2
+    assert report["metrics_by_arm"]["model_only"]["top1"] == pytest.approx(1.0)
+    assert report["ev_roi_coverage"]["status"] == "SUCCESS"
+    assert report["ev_roi_coverage"]["valid_pre_jump_dog_odds_rows"] == 1
+    assert report["ev_roi_coverage"]["missing_or_invalid_odds_rows"] == 1

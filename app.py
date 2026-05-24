@@ -301,7 +301,10 @@ from features import (
 )
 from sportsbet_odds_integrator import SportsbetOddsIntegrator
 from accuracy_program.bet_readiness import apply_bet_readiness_gates
-from accuracy_program.snapshots import build_prediction_snapshot
+from accuracy_program.snapshots import (
+    build_prediction_snapshot,
+    persist_prediction_snapshot,
+)
 from utils.csv_metadata import parse_race_csv_meta
 from utils.race_lifecycle import (
     RaceLifecycle,
@@ -4416,12 +4419,49 @@ def api_predict_file():
                 resp["abstain"] = True
                 resp["abstain_reasons"] = ["readiness_unavailable"]
             try:
-                prediction_result["prediction_snapshot"] = build_prediction_snapshot(
+                prediction_snapshot = build_prediction_snapshot(
                     prediction_result,
                     source_file_path=race_file_path,
                     lifecycle=lifecycle,
                 )
+                prediction_result["prediction_snapshot"] = prediction_snapshot
                 resp["prediction_snapshot_status"] = "created"
+                persist_requested = bool(
+                    data.get("persist_prediction_snapshot")
+                    or data.get("write_prediction_snapshot")
+                    or data.get("snapshot_output_dir")
+                )
+                if persist_requested:
+                    snapshot_dir = (
+                        data.get("snapshot_output_dir")
+                        or os.environ.get(
+                            "PREDICTION_SNAPSHOT_DIR",
+                            "artifacts/prediction_snapshots",
+                        )
+                    )
+                    snapshot_dir_path = Path(str(snapshot_dir))
+                    if snapshot_dir_path.is_absolute() or ".." in snapshot_dir_path.parts:
+                        raise ValueError(
+                            "snapshot_output_dir must be a repo-relative local path"
+                        )
+                    dry_run_snapshot = bool(data.get("snapshot_dry_run"))
+                    if (
+                        prediction_snapshot.get("lifecycle_status")
+                        != "upcoming_not_jumped"
+                    ):
+                        persistence = persist_prediction_snapshot(
+                            prediction_snapshot,
+                            snapshot_dir,
+                            dry_run=True,
+                        )
+                        persistence["status"] = "skipped_non_live_lifecycle"
+                    else:
+                        persistence = persist_prediction_snapshot(
+                            prediction_snapshot,
+                            snapshot_dir,
+                            dry_run=dry_run_snapshot,
+                        )
+                    resp["prediction_snapshot_persistence"] = persistence
             except ValueError as snapshot_error:
                 logger.warning(
                     f"Prediction snapshot rejected for {race_file_path}: {snapshot_error}"

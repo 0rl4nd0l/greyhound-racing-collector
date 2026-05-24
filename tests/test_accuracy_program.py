@@ -10,7 +10,10 @@ from accuracy_program.evaluation import (
     validate_feature_columns,
     validate_temporal_holdout,
 )
-from accuracy_program.snapshots import build_prediction_snapshot
+from accuracy_program.snapshots import (
+    build_prediction_snapshot,
+    persist_prediction_snapshot,
+)
 
 
 def test_snapshot_excludes_result_labels_and_preserves_ev_contract():
@@ -44,6 +47,10 @@ def test_snapshot_excludes_result_labels_and_preserves_ev_contract():
     )
 
     assert snapshot["is_pre_jump_snapshot"] is True
+    assert snapshot["schema_version"] == "prediction_snapshot_v1"
+    assert snapshot["predictions"][0]["predicted_rank"] == 1
+    assert snapshot["predictions"][0]["confidence_score"] == pytest.approx(0.62)
+    assert snapshot["predictions"][0]["odds"] == pytest.approx(3.0)
     assert snapshot["predictions"][0]["ev_win"] == pytest.approx(0.2)
     assert (
         snapshot["predictions"][0]["odds_snapshot"]["odds_timestamp"]
@@ -51,6 +58,63 @@ def test_snapshot_excludes_result_labels_and_preserves_ev_contract():
     )
     assert "actual_results" not in snapshot
     assert "actual_results" not in snapshot["predictions"][0]
+
+
+def test_snapshot_ev_stays_null_without_valid_pre_jump_odds():
+    snapshot = build_prediction_snapshot(
+        {
+            "race_id": "Race 4 - WRGL - 2026-05-21",
+            "model_version": "model-v1",
+            "predictions": [
+                {
+                    "dog_clean_name": "Alpha Runner",
+                    "box_number": 1,
+                    "win_prob_norm": 0.4,
+                    "predicted_rank": 1,
+                    "odds_win": 3.0,
+                    "ev_win": 0.2,
+                }
+            ],
+        },
+        lifecycle={
+            "status": "upcoming_not_jumped",
+            "jump_datetime": "2026-05-21T16:00:00",
+        },
+        prediction_timestamp="2026-05-21T15:45:00",
+    )
+
+    runner = snapshot["predictions"][0]
+    assert runner["ev_win"] is None
+    assert "missing_odds_timestamp" in runner["data_quality_flags"]
+    assert "invalid_pre_jump_odds" in runner["data_quality_flags"]
+
+
+def test_snapshot_persistence_is_explicit_result_free_and_dry_runnable(tmp_path):
+    snapshot = build_prediction_snapshot(
+        {
+            "race_id": "Race 4 - WRGL - 2026-05-21",
+            "model_version": "model-v1",
+            "predictions": [
+                {
+                    "dog_clean_name": "Alpha Runner",
+                    "box_number": 1,
+                    "win_prob_norm": 1.0,
+                    "predicted_rank": 1,
+                }
+            ],
+        },
+        lifecycle={"status": "upcoming_not_jumped"},
+        prediction_timestamp="2026-05-21T15:45:00",
+    )
+
+    dry_run = persist_prediction_snapshot(snapshot, tmp_path, dry_run=True)
+    assert dry_run["status"] == "dry_run"
+    assert not list(tmp_path.glob("**/*.json"))
+
+    persisted = persist_prediction_snapshot(snapshot, tmp_path)
+    assert persisted["status"] == "persisted"
+    assert "manifest_path" in persisted
+    assert list(tmp_path.glob("**/*.json"))
 
 
 def test_snapshot_rejects_result_fields_inside_runner_rows():

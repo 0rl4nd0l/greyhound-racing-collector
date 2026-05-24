@@ -1,7 +1,10 @@
-"""Prediction-before-result snapshot construction."""
+"""Prediction-before-result snapshot construction and safe persistence."""
 
 from __future__ import annotations
 
+import hashlib
+import json
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Mapping
@@ -66,6 +69,20 @@ def _safe_int(value: Any) -> int | None:
         return int(value)
     except Exception:
         return None
+
+
+def _quality_flags(row: Mapping[str, Any]) -> list[str]:
+    raw = row.get("quality_flags") or row.get("data_quality_flags") or []
+    if isinstance(raw, str):
+        return [raw]
+    if isinstance(raw, list):
+        return [str(value) for value in raw if value not in (None, "")]
+    return []
+
+
+def _add_quality_flag(flags: list[str], flag: str) -> None:
+    if flag not in flags:
+        flags.append(flag)
 
 
 def _parse_timestamp(value: Any) -> datetime | None:
@@ -174,11 +191,62 @@ def _build_odds_snapshot(
         "odds_race_id": _first_value(row, ("odds_race_id", "market_odds_race_id")),
         "match_type": _first_value(row, ("odds_match_type", "market_odds_match_type")),
         "match_key": _first_value(row, ("odds_match_key", "market_odds_match_key")),
+        "match_confidence": _first_value(
+            row, ("odds_match_confidence", "market_odds_match_confidence")
+        ),
     }
     provenance = {k: v for k, v in provenance.items() if v not in (None, "")}
     if provenance:
         odds_snapshot["odds_provenance"] = provenance
     return odds_snapshot
+
+
+def _odds_valid_for_ev(odds_snapshot: Mapping[str, Any]) -> bool:
+    odds = _safe_float(odds_snapshot.get("market_odds_win"))
+    if odds is None or odds <= 1.0:
+        return False
+    if not odds_snapshot.get("odds_timestamp"):
+        return False
+    if odds_snapshot.get("odds_captured_before_prediction") is not True:
+        return False
+    if (
+        "odds_captured_before_jump" in odds_snapshot
+        and odds_snapshot.get("odds_captured_before_jump") is not True
+    ):
+        return False
+    return True
+
+
+def _ev_win(win_prob_norm: Any, odds_snapshot: Mapping[str, Any]) -> float | None:
+    if not _odds_valid_for_ev(odds_snapshot):
+        return None
+    probability = _safe_float(win_prob_norm)
+    odds = _safe_float(odds_snapshot.get("market_odds_win"))
+    if probability is None or odds is None:
+        return None
+    return probability * odds - 1.0
+
+
+def _runner_odds_quality_flags(
+    row: Mapping[str, Any], odds_snapshot: Mapping[str, Any]
+) -> list[str]:
+    flags = _quality_flags(row)
+    odds = _safe_float(odds_snapshot.get("market_odds_win"))
+    if odds is None:
+        _add_quality_flag(flags, "missing_live_odds")
+        return flags
+    if not odds_snapshot.get("odds_timestamp"):
+        _add_quality_flag(flags, "missing_odds_timestamp")
+    if odds_snapshot.get("odds_captured_before_prediction") is not True:
+        _add_quality_flag(flags, "odds_not_captured_before_prediction")
+    if (
+        "odds_captured_before_jump" in odds_snapshot
+        and odds_snapshot.get("odds_captured_before_jump") is not True
+    ):
+        _add_quality_flag(flags, "odds_not_captured_before_jump")
+    if not _odds_valid_for_ev(odds_snapshot):
+        _add_quality_flag(flags, "invalid_pre_jump_odds")
+    return flags
 
 
 def _snapshot_readiness(
@@ -283,6 +351,21 @@ def _prediction_rows(
             jump_datetime=jump_datetime,
             stale_odds_after_minutes=stale_odds_after_minutes,
         )
+        win_prob_norm = _safe_float(
+            row.get("win_prob_norm", row.get("win_probability"))
+        )
+        flags = _runner_odds_quality_flags(row, odds_snapshot)
+        odds_provenance = odds_snapshot.get("odds_provenance")
+        odds_source = (
+            odds_provenance.get("source")
+            if isinstance(odds_provenance, Mapping)
+            else None
+        )
+        odds_match_confidence = (
+            odds_provenance.get("match_confidence")
+            if isinstance(odds_provenance, Mapping)
+            else None
+        )
         snapshot_rows.append(
             {
                 "dog_name": row.get("dog_clean_name") or row.get("dog_name") or row.get("name"),
@@ -290,19 +373,54 @@ def _prediction_rows(
                 "win_prob_raw": _safe_float(
                     row.get("win_prob_raw", row.get("win_probability_raw"))
                 ),
-                "win_prob_norm": _safe_float(
-                    row.get("win_prob_norm", row.get("win_probability"))
-                ),
-                "rank": _safe_int(row.get("predicted_rank", row.get("rank"))),
-                "confidence": _safe_float(
+                "win_prob_norm": win_prob_norm,
+                "predicted_rank": _safe_int(row.get("predicted_rank", row.get("rank"))),
+                "confidence_score": _safe_float(
                     row.get("confidence_score", row.get("confidence"))
                 ),
+                "odds": _safe_float(odds_snapshot.get("market_odds_win")),
+                "odds_timestamp": odds_snapshot.get("odds_timestamp"),
+                "odds_source": odds_source,
+                "odds_match_confidence": _safe_float(odds_match_confidence),
                 "odds_snapshot": odds_snapshot,
-                "ev_win": _safe_float(row.get("ev_win")),
-                "data_quality_flags": list(row.get("quality_flags") or []),
+                "ev_win": _ev_win(win_prob_norm, odds_snapshot),
+                "data_quality_flags": flags,
             }
         )
     return snapshot_rows
+
+
+def _race_identity(prediction_result: Mapping[str, Any], lifecycle_data: Mapping[str, Any]) -> dict[str, Any]:
+    race_context = _as_dict(prediction_result.get("race_context"))
+    race_date = (
+        lifecycle_data.get("race_date")
+        or race_context.get("race_date")
+        or prediction_result.get("race_date")
+    )
+    venue = (
+        lifecycle_data.get("venue")
+        or race_context.get("venue")
+        or prediction_result.get("venue")
+    )
+    race_number = (
+        lifecycle_data.get("race_number")
+        or race_context.get("race_number")
+        or prediction_result.get("race_number")
+    )
+    stable_parts = [
+        str(part)
+        for part in (race_date, venue, race_number)
+        if part not in (None, "")
+    ]
+    return {
+        "race_date": race_date,
+        "venue": venue,
+        "race_number": _safe_int(race_number),
+        "jump_time": lifecycle_data.get("jump_time")
+        or race_context.get("jump_time")
+        or prediction_result.get("race_time"),
+        "stable_race_key": "|".join(stable_parts) if stable_parts else None,
+    }
 
 
 def build_prediction_snapshot(
@@ -346,9 +464,17 @@ def build_prediction_snapshot(
         or prediction_result.get("model_info")
         or "unknown"
     )
+    identity = _race_identity(prediction_result, lifecycle_data)
 
     snapshot = {
+        "schema_version": "prediction_snapshot_v1",
         "race_id": race_id,
+        "stable_race_key": identity["stable_race_key"],
+        "race_date": identity["race_date"],
+        "venue": identity["venue"],
+        "race_number": identity["race_number"],
+        "jump_time": identity["jump_time"],
+        "jump_datetime": jump_datetime,
         "source_file_path": source_file_path,
         "lifecycle_status": lifecycle_status,
         "lifecycle_status_reason": lifecycle_data.get("status_reason")
@@ -399,3 +525,75 @@ def assert_no_result_fields(value: Any) -> None:
                 visit(child, f"{path}[{idx}]")
 
     visit(value, "snapshot")
+
+
+def _slug(value: Any, *, fallback: str = "unknown") -> str:
+    raw = str(value or fallback).strip()
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", raw).strip("-._")
+    return slug[:120] or fallback
+
+
+def snapshot_output_path(snapshot: Mapping[str, Any], output_dir: str | Path) -> Path:
+    """Return the non-overwriting JSON path for a frozen snapshot."""
+
+    race_date = _slug(snapshot.get("race_date"))
+    venue = _slug(snapshot.get("venue"))
+    race_number = _slug(snapshot.get("race_number"), fallback="race")
+    race_id = _slug(snapshot.get("race_id"))
+    timestamp = _slug(str(snapshot.get("prediction_timestamp") or _iso_now()).replace(":", ""))
+    digest = hashlib.sha256(
+        json.dumps(snapshot, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()[:12]
+    directory = Path(output_dir) / race_date / venue
+    return directory / f"race-{race_number}_{race_id}_{timestamp}_{digest}.json"
+
+
+def persist_prediction_snapshot(
+    snapshot: Mapping[str, Any],
+    output_dir: str | Path,
+    *,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Persist a result-free snapshot JSON and append an audit manifest line.
+
+    The function writes only under the caller-provided output directory and
+    never overwrites an existing snapshot file.
+    """
+
+    assert_no_result_fields(snapshot)
+    path = snapshot_output_path(snapshot, output_dir)
+    manifest_path = Path(output_dir) / "manifest.jsonl"
+    report = {
+        "status": "dry_run" if dry_run else "persisted",
+        "path": str(path),
+        "manifest_path": str(manifest_path),
+        "race_id": snapshot.get("race_id"),
+        "stable_race_key": snapshot.get("stable_race_key"),
+        "prediction_timestamp": snapshot.get("prediction_timestamp"),
+        "lifecycle_status": snapshot.get("lifecycle_status"),
+    }
+    if dry_run:
+        return report
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(snapshot, indent=2, sort_keys=True, default=str) + "\n"
+    with path.open("x", encoding="utf-8") as handle:
+        handle.write(text)
+
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest = {
+        "schema_version": "prediction_snapshot_manifest_v1",
+        "created_at": _iso_now(),
+        "snapshot_path": str(path),
+        "race_id": snapshot.get("race_id"),
+        "stable_race_key": snapshot.get("stable_race_key"),
+        "prediction_timestamp": snapshot.get("prediction_timestamp"),
+        "feature_freeze_timestamp": snapshot.get("feature_freeze_timestamp"),
+        "lifecycle_status": snapshot.get("lifecycle_status"),
+        "runner_count": len(snapshot.get("predictions") or []),
+    }
+    with manifest_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(manifest, sort_keys=True, default=str) + "\n")
+
+    report["bytes"] = len(text.encode("utf-8"))
+    return report

@@ -79,6 +79,18 @@ def _safe_float(value: Any) -> float | None:
         return None
 
 
+def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    try:
+        return {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})")}
+    except Exception:
+        return set()
+
+
+def _select_existing(conn: sqlite3.Connection, table: str, columns: list[str]) -> list[str]:
+    present = _table_columns(conn, table)
+    return [column for column in columns if column in present]
+
+
 def _snapshot_readiness(snapshot: Mapping[str, Any]) -> dict[str, Any]:
     predictions = [
         row
@@ -193,28 +205,79 @@ def _corpus_readiness_report(
     }
 
 
-def _race_metadata(conn: sqlite3.Connection, race_id: str) -> dict[str, Any]:
-    row = conn.execute(
-        """
-        SELECT race_id, venue, race_date, distance, results_status, winner_source,
-               data_quality_note, winner_name
-        FROM race_metadata
-        WHERE race_id = ?
-        LIMIT 1
-        """,
-        (race_id,),
-    ).fetchone()
+def _race_metadata(conn: sqlite3.Connection, snapshot: Mapping[str, Any]) -> dict[str, Any]:
+    columns = _select_existing(
+        conn,
+        "race_metadata",
+        [
+            "race_id",
+            "venue",
+            "race_number",
+            "race_date",
+            "distance",
+            "results_status",
+            "winner_source",
+            "data_quality_note",
+            "winner_name",
+        ],
+    )
+    if not columns or "race_id" not in columns:
+        return {}
+
+    race_id = str(snapshot.get("race_id") or "")
+    select_clause = ", ".join(columns)
+    if race_id:
+        row = conn.execute(
+            f"SELECT {select_clause} FROM race_metadata WHERE race_id = ? LIMIT 1",
+            (race_id,),
+        ).fetchone()
+        if row:
+            return dict(row)
+
+    race_date = snapshot.get("race_date")
+    race_number = snapshot.get("race_number")
+    if not race_date or race_number is None or "race_date" not in columns or "race_number" not in columns:
+        return {}
+
+    query = (
+        f"SELECT {select_clause} FROM race_metadata "
+        "WHERE race_date = ? AND CAST(race_number AS INTEGER) = ?"
+    )
+    params: list[Any] = [race_date, int(race_number)]
+    venue = snapshot.get("venue")
+    if venue and "venue" in columns:
+        query += (
+            " ORDER BY CASE "
+            "WHEN upper(replace(replace(venue, ' ', ''), '_', '')) = ? THEN 0 "
+            "WHEN upper(replace(replace(race_id, ' ', ''), '_', '')) LIKE ? THEN 1 "
+            "ELSE 2 END"
+        )
+        venue_norm = _norm_name(venue)
+        params.extend([venue_norm, f"%{venue_norm}%"])
+    query += " LIMIT 1"
+    row = conn.execute(query, params).fetchone()
     return dict(row) if row else {}
 
 
 def _labels_by_runner(conn: sqlite3.Connection, race_id: str) -> dict[str, dict[str, Any]]:
+    columns = _select_existing(
+        conn,
+        "dog_race_data",
+        [
+            "dog_clean_name",
+            "dog_name",
+            "box_number",
+            "finish_position",
+            "placing",
+            "scraped_finish_position",
+            "data_source",
+        ],
+    )
+    if not columns:
+        return {}
+    select_clause = ", ".join(columns)
     rows = conn.execute(
-        """
-        SELECT dog_clean_name, dog_name, box_number, finish_position,
-               placing, scraped_finish_position, data_source
-        FROM dog_race_data
-        WHERE race_id = ?
-        """,
+        f"SELECT {select_clause} FROM dog_race_data WHERE race_id = ?",
         (race_id,),
     ).fetchall()
     labels: dict[str, dict[str, Any]] = {}
@@ -240,9 +303,10 @@ def _labels_by_runner(conn: sqlite3.Connection, race_id: str) -> dict[str, dict[
 
 
 def _runner_rows(snapshot: Mapping[str, Any], conn: sqlite3.Connection) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    race_id = str(snapshot.get("race_id") or "")
-    metadata = _race_metadata(conn, race_id)
-    labels = _labels_by_runner(conn, race_id)
+    snapshot_race_id = str(snapshot.get("race_id") or "")
+    metadata = _race_metadata(conn, snapshot)
+    label_race_id = str(metadata.get("race_id") or snapshot_race_id)
+    labels = _labels_by_runner(conn, label_race_id)
     rows: list[dict[str, Any]] = []
     label_status = str(metadata.get("results_status") or "").strip().lower()
     source_note = str(metadata.get("winner_source") or metadata.get("data_quality_note") or "")
@@ -262,14 +326,11 @@ def _runner_rows(snapshot: Mapping[str, Any], conn: sqlite3.Connection) -> tuple
         if "actual_win" not in label:
             continue
         odds_snapshot = runner.get("odds_snapshot") if isinstance(runner.get("odds_snapshot"), Mapping) else {}
-        odds_win = _safe_float(
-            odds_snapshot.get("market_odds_win")
-            or runner.get("odds_win")
-            or runner.get("market_odds_win")
-        )
+        odds_win = _valid_pre_jump_odds(runner, odds_snapshot)
         rows.append(
             {
-                "race_id": race_id,
+                "race_id": snapshot_race_id or label_race_id,
+                "label_race_id": label_race_id,
                 "dog_name": str(name or ""),
                 "box_number": box,
                 "race_date": metadata.get("race_date") or snapshot.get("race_date"),
@@ -278,10 +339,62 @@ def _runner_rows(snapshot: Mapping[str, Any], conn: sqlite3.Connection) -> tuple
                 "win_prob_norm": _safe_float(runner.get("win_prob_norm")),
                 "actual_win": int(label["actual_win"]),
                 "odds_win": odds_win,
+                "ev_win": (
+                    _safe_float(runner.get("win_prob_norm")) * odds_win - 1.0
+                    if odds_win is not None
+                    and _safe_float(runner.get("win_prob_norm")) is not None
+                    else None
+                ),
                 "label_quality": label_quality,
             }
         )
-    return rows, {"race_id": race_id, "label_quality": label_quality}
+    return rows, {"race_id": snapshot_race_id, "label_race_id": label_race_id, "label_quality": label_quality}
+
+
+def _valid_pre_jump_odds(
+    runner: Mapping[str, Any], odds_snapshot: Mapping[str, Any]
+) -> float | None:
+    odds = _safe_float(
+        odds_snapshot.get("market_odds_win")
+        or runner.get("odds")
+        or runner.get("odds_win")
+        or runner.get("market_odds_win")
+    )
+    if odds is None or odds <= 1.0:
+        return None
+    odds_timestamp = odds_snapshot.get("odds_timestamp") or runner.get("odds_timestamp")
+    if not odds_timestamp:
+        return None
+    before_prediction = odds_snapshot.get("odds_captured_before_prediction")
+    if before_prediction is not True:
+        return None
+    before_jump = odds_snapshot.get("odds_captured_before_jump")
+    if before_jump is False:
+        return None
+    return odds
+
+
+def _ev_roi_coverage(rows: list[Mapping[str, Any]]) -> dict[str, Any]:
+    valid_rows = [
+        row
+        for row in rows
+        if row.get("odds_win") is not None and row.get("ev_win") is not None
+    ]
+    valid_races = {str(row.get("race_id")) for row in valid_rows if row.get("race_id")}
+    if not valid_rows:
+        return {
+            "status": "DATA_MISSING",
+            "reason": "no_valid_pre_jump_dog_level_odds",
+            "valid_pre_jump_dog_odds_rows": 0,
+            "missing_or_invalid_odds_rows": len(rows),
+            "races_with_valid_pre_jump_odds": 0,
+        }
+    return {
+        "status": "SUCCESS",
+        "valid_pre_jump_dog_odds_rows": len(valid_rows),
+        "missing_or_invalid_odds_rows": len(rows) - len(valid_rows),
+        "races_with_valid_pre_jump_odds": len(valid_races),
+    }
 
 
 def _arm_rows_from_market(rows: list[Mapping[str, Any]], arm: str) -> list[dict[str, Any]]:
@@ -400,6 +513,7 @@ def evaluate_snapshots(db_path: str, snapshot_paths: list[str]) -> dict[str, Any
         "runner_rows_scored": len(scorable_rows),
         "lifecycle_counts": dict(lifecycle_counts),
         "label_quality_counts": dict(label_quality_counts),
+        "ev_roi_coverage": _ev_roi_coverage(scorable_rows),
         "metrics_by_arm": metrics_by_arm,
         "calibration_blending_decision": (
             "report_only: no calibration/blending deployment is made by this script"
