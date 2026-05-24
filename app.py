@@ -1298,16 +1298,17 @@ def after_request(response):
 
                 # Cache-bust key static assets by appending ?v=ASSET_VERSION when missing
                 try:
-                    assets_to_bust = [
-                        "/static/js/interactive-races.js",
-                        "/static/js/prediction-buttons.js",
-                        "/static/js/main.js",
-                        "/static/css/style.css",
-                        "/static/css/main.css",
-                    ]
-                    for path in assets_to_bust:
-                        if path in html and (path + "?v=") not in html:
-                            html = html.replace(path, f"{path}?v={ASSET_VERSION}")
+                    if not (request.path or "").startswith("/test-"):
+                        assets_to_bust = [
+                            "/static/js/interactive-races.js",
+                            "/static/js/prediction-buttons.js",
+                            "/static/js/main.js",
+                            "/static/css/style.css",
+                            "/static/css/main.css",
+                        ]
+                        for path in assets_to_bust:
+                            if path in html and (path + "?v=") not in html:
+                                html = html.replace(path, f"{path}?v={ASSET_VERSION}")
                 except Exception as e:
                     _debug_silent_failure("Cache-bust assets injection", e)
 
@@ -26918,11 +26919,11 @@ if app.config.get("TESTING") or os.environ.get("TESTING", "").lower() in (
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Test Predictions Page</title>
             <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+            <link rel="stylesheet" href="/static/css/fontawesome-core.css">
         </head>
         <body>
             <div class="container mt-4">
-                <div id="predictions-results-container" style="display: none;">
+                <div id="predictions-results-container" style="display: none; min-height: 1px;">
                     <div id="prediction-results-body"></div>
                 </div>
                 <div class="toast-container position-fixed top-0 end-0 p-3"></div>
@@ -26944,17 +26945,17 @@ if app.config.get("TESTING") or os.environ.get("TESTING", "").lower() in (
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Test Sidebar Page</title>
             <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+            <link rel="stylesheet" href="/static/css/fontawesome-core.css">
         </head>
         <body>
             <div class="container-fluid">
                 <div class="row">
-                    <div class="col-md-3">
+                    <div id="sidebar-col" class="col-md-3">
                         <div id="sidebar-logs" class="p-3 bg-light" style="height: 300px; overflow-y: auto;"></div>
                         <div id="sidebar-model-metrics" class="p-3 mt-3 bg-light"></div>
                         <div id="sidebar-system-health" class="p-3 mt-3 bg-light"></div>
                     </div>
-                    <div class="col-md-9">
+                    <div id="main-content-col" class="col-md-9">
                         <div id="main-content" class="p-3">Test content</div>
                     </div>
                 </div>
