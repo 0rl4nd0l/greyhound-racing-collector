@@ -7,8 +7,8 @@ import sys
 from pathlib import Path
 
 from config.paths import DATA_DIR
-from utils.manifest import IngestionManifest
 from utils.checksum import file_sha256
+from utils.manifest import IngestionManifest
 
 
 def load_manifest(path: Path | None = None) -> IngestionManifest:
@@ -41,7 +41,11 @@ def cmd_show(args: argparse.Namespace) -> int:
         print(f"Key not found: {args.key}", file=sys.stderr)
         return 1
     payload = {"file_path": entry.file_path, "checksum": entry.checksum}
-    print(json.dumps(payload, indent=2, sort_keys=True) if args.json else f"{args.key} -> {entry.file_path} | {entry.checksum}")
+    print(
+        json.dumps(payload, indent=2, sort_keys=True)
+        if args.json
+        else f"{args.key} -> {entry.file_path} | {entry.checksum}"
+    )
     return 0
 
 
@@ -68,7 +72,11 @@ def cmd_verify(args: argparse.Namespace) -> int:
             failures += 1
             continue
         ok, status = verify_entry(k, entry.file_path, entry.checksum)
-        results[k] = {"status": status, "file_path": entry.file_path, "expected_checksum": entry.checksum}
+        results[k] = {
+            "status": status,
+            "file_path": entry.file_path,
+            "expected_checksum": entry.checksum,
+        }
         if not ok:
             failures += 1
             if args.autofix and status == "checksum_mismatch":
@@ -104,7 +112,13 @@ def cmd_set(args: argparse.Namespace) -> int:
     manifest.update_entry(args.key, str(p), checksum)
     manifest.save(args.manifest)
     if args.json:
-        print(json.dumps({"key": args.key, "file_path": str(p), "checksum": checksum}, indent=2, sort_keys=True))
+        print(
+            json.dumps(
+                {"key": args.key, "file_path": str(p), "checksum": checksum},
+                indent=2,
+                sort_keys=True,
+            )
+        )
     else:
         print(f"Updated {args.key} -> {p} | {checksum}")
     return 0
@@ -112,7 +126,11 @@ def cmd_set(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Ingestion manifest CLI")
-    parser.add_argument("--manifest", type=Path, help="Path to manifest JSON (default: DATA_DIR/ingestion_manifest.json)")
+    parser.add_argument(
+        "--manifest",
+        type=Path,
+        help="Path to manifest JSON (default: DATA_DIR/ingestion_manifest.json)",
+    )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_list = sub.add_parser("list", help="List all manifest entries")
@@ -126,11 +144,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_verify = sub.add_parser("verify", help="Verify checksum(s) against files")
     p_verify.add_argument("--key", help="Canonical key to verify (omit to verify all)")
-    p_verify.add_argument("--autofix", action="store_true", help="Update manifest with recomputed checksums on mismatch")
+    p_verify.add_argument(
+        "--autofix",
+        action="store_true",
+        help="Update manifest with recomputed checksums on mismatch",
+    )
     p_verify.add_argument("--json", action="store_true", help="Output JSON")
     p_verify.set_defaults(func=cmd_verify)
 
-    p_set = sub.add_parser("set", help="Set or update an entry from a file (recomputes checksum)")
+    p_set = sub.add_parser(
+        "set", help="Set or update an entry from a file (recomputes checksum)"
+    )
     p_set.add_argument("key", help="Canonical key to set/update")
     p_set.add_argument("file", help="Path to file for this key")
     p_set.add_argument("--json", action="store_true", help="Output JSON")
@@ -147,4 +171,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -1,7 +1,6 @@
 from tkinter import Button, Frame, Label
 
-from .constants import (DISCLAIMER_BUTTON_TEXT, DISCLAIMER_TEXT,
-                        DISCLAIMER_TITLE)
+from .constants import DISCLAIMER_BUTTON_TEXT, DISCLAIMER_TEXT, DISCLAIMER_TITLE
 from .styles import large_text_style, primary_button_style, small_text_style
 
 

@@ -7,9 +7,9 @@ This script scans ./upcoming_races (and known archives), extracts metadata, and 
 in ./upcoming_races to that exact pattern, preserving originals. Writes a migration note.
 """
 
+import json
 import os
 import re
-import json
 from datetime import datetime
 from pathlib import Path
 
@@ -22,7 +22,10 @@ ARCHIVE_DIRS = [
     REPO_ROOT / "archive" / "corrupt_historical_race_data",
 ]
 
-API_PATTERN = re.compile(r"^Race\s+(\d{1,2})\s*[–-]\s*([A-Z_]+)\s*[–-]\s*(\d{4}-\d{2}-\d{2})\.csv$", re.IGNORECASE)
+API_PATTERN = re.compile(
+    r"^Race\s+(\d{1,2})\s*[–-]\s*([A-Z_]+)\s*[–-]\s*(\d{4}-\d{2}-\d{2})\.csv$",
+    re.IGNORECASE,
+)
 
 # General extractors
 RE_NUM = re.compile(r"(?:^|[ _-])(?P<num>\d{1,2})(?:[ _-]|\.)")
@@ -43,7 +46,11 @@ def extract_meta(name: str):
     # Try API pattern first
     m = API_PATTERN.match(name)
     if m:
-        return {"race": int(m.group(1)), "venue": m.group(2).upper(), "date": m.group(3)}
+        return {
+            "race": int(m.group(1)),
+            "venue": m.group(2).upper(),
+            "date": m.group(3),
+        }
     # Fallback: flexible extraction
     num = None
     m_num = RE_NUM.search(name)
@@ -129,7 +136,11 @@ def main():
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     note_json = MIGRATIONS_DIR / f"{ts}_upcoming_api_name_aliases.json"
     with open(note_json, "w") as f:
-        json.dump({"generated_at": ts, "mappings": plan, "policy": "symlink_only"}, f, indent=2)
+        json.dump(
+            {"generated_at": ts, "mappings": plan, "policy": "symlink_only"},
+            f,
+            indent=2,
+        )
     note_md = MIGRATIONS_DIR / f"{ts}_upcoming_api_name_aliases.md"
     with open(note_md, "w") as f:
         f.write("# Upcoming Race API Filename Aliases\n\n")
@@ -140,7 +151,12 @@ def main():
         else:
             f.write("No aliases created (files already matched API pattern).\n")
 
-    print(json.dumps({"created_aliases": len(plan), "notes": [str(note_json), str(note_md)]}, indent=2))
+    print(
+        json.dumps(
+            {"created_aliases": len(plan), "notes": [str(note_json), str(note_md)]},
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":

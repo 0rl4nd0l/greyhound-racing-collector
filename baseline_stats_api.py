@@ -23,15 +23,16 @@ Author: AI Assistant
 Date: August 3, 2025
 """
 
-import os
 import json
-import sqlite3
-import pandas as pd
 import logging
+import os
+import sqlite3
+import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Any
-import subprocess
+from typing import Any, Dict, List, Optional
+
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -43,27 +44,29 @@ def get_current_model_version() -> str:
     """
     try:
         result = subprocess.run(
-            ['git', 'rev-parse', '--short', 'HEAD'],
+            ["git", "rev-parse", "--short", "HEAD"],
             capture_output=True,
             text=True,
-            check=True
+            check=True,
         )
         git_sha = result.stdout.strip()
     except (subprocess.CalledProcessError, FileNotFoundError):
         logger.warning("Could not get git SHA, using timestamp")
-        git_sha = datetime.now().strftime('%H%M%S')
-    
-    date = datetime.now().strftime('%Y%m%d')
+        git_sha = datetime.now().strftime("%H%M%S")
+
+    date = datetime.now().strftime("%Y%m%d")
     return f"{git_sha}_{date}"
 
 
-def load_reference_data(database_path: str = "./databases/race_data.db") -> pd.DataFrame:
+def load_reference_data(
+    database_path: str = "./databases/race_data.db",
+) -> pd.DataFrame:
     """
     Load reference data from the database for baseline statistics calculation
     """
     try:
         conn = sqlite3.connect(database_path)
-        
+
         # Query to get monitored features from reference data
         query = """
         SELECT 
@@ -79,24 +82,26 @@ def load_reference_data(database_path: str = "./databases/race_data.db") -> pd.D
         FROM dog_performances dp
         JOIN races r ON dp.race_id = r.race_id
         """
-        
+
         df = pd.read_sql_query(query, conn)
         conn.close()
-        
+
         logger.info(f"📈 Loaded {len(df)} records from reference data")
         return df
-        
+
     except Exception as e:
         logger.error(f"❌ Error loading reference data: {e}")
         raise
 
 
-def calculate_feature_statistics(df: pd.DataFrame, features: List[str], model_version: str) -> Dict[str, Any]:
+def calculate_feature_statistics(
+    df: pd.DataFrame, features: List[str], model_version: str
+) -> Dict[str, Any]:
     """
     Calculate comprehensive statistics (mean, std, quantiles) for monitored features
     """
-    git_sha, date = model_version.split('_', 1)
-    
+    git_sha, date = model_version.split("_", 1)
+
     stats = {
         "metadata": {
             "model_version": model_version,
@@ -104,15 +109,15 @@ def calculate_feature_statistics(df: pd.DataFrame, features: List[str], model_ve
             "date": date,
             "timestamp": datetime.now().isoformat(),
             "total_samples": len(df),
-            "features_count": len(features)
+            "features_count": len(features),
         },
-        "features": {}
+        "features": {},
     }
-    
+
     for feature in features:
         if feature in df.columns:
             series = df[feature].dropna()
-            
+
             if len(series) > 0:
                 # Calculate required statistics: mean, std, quantiles
                 feature_stats = {
@@ -126,23 +131,27 @@ def calculate_feature_statistics(df: pd.DataFrame, features: List[str], model_ve
                         "q50": float(series.quantile(0.50)),  # median
                         "q75": float(series.quantile(0.75)),
                         "q90": float(series.quantile(0.90)),
-                        "q95": float(series.quantile(0.95))
-                    }
+                        "q95": float(series.quantile(0.95)),
+                    },
                 }
-                
+
                 # Additional monitoring statistics
                 feature_stats["skewness"] = float(series.skew())
                 feature_stats["kurtosis"] = float(series.kurtosis())
-                feature_stats["null_percentage"] = float((len(df[feature]) - len(series)) / len(df[feature]) * 100)
-                
+                feature_stats["null_percentage"] = float(
+                    (len(df[feature]) - len(series)) / len(df[feature]) * 100
+                )
+
                 stats["features"][feature] = feature_stats
-                
-                logger.info(f"  📊 {feature}: mean={feature_stats['mean']:.3f}, std={feature_stats['std']:.3f}")
+
+                logger.info(
+                    f"  📊 {feature}: mean={feature_stats['mean']:.3f}, std={feature_stats['std']:.3f}"
+                )
             else:
                 logger.warning(f"⚠️  No valid data for feature: {feature}")
         else:
             logger.warning(f"⚠️  Feature not found in data: {feature}")
-    
+
     return stats
 
 
@@ -165,64 +174,64 @@ def load_or_create_baseline_stats(
     model_version: Optional[str] = None,
     baseline_dir: str = "./baseline_stats",
     reference_db_path: str = "./databases/race_data.db",
-    force_recreate: bool = False
+    force_recreate: bool = False,
 ) -> Dict[str, Any]:
     """
     Load `baseline_stats/{model_version}.json`; if missing create from reference_data and save.
     Include mean, std, quantiles for monitored features.
     Version directory with model sha/date to guarantee traceability.
-    
+
     Args:
         model_version: Model version string (git_sha_date). If None, uses current version.
         baseline_dir: Directory to store baseline statistics
         reference_db_path: Path to reference database
         force_recreate: Force recreation even if stats file exists
-        
+
     Returns:
         Dictionary containing baseline statistics with metadata and feature statistics
     """
-    
+
     # Get model version for traceability
     if model_version is None:
         model_version = get_current_model_version()
-    
+
     # Create versioned directory path for traceability
     baseline_path = Path(baseline_dir)
     versioned_dir = baseline_path / model_version
     stats_file = versioned_dir / f"{model_version}.json"
-    
+
     logger.info(f"📊 Processing baseline stats for model version: {model_version}")
-    
+
     # Load existing stats if they exist and not forcing recreation
     if stats_file.exists() and not force_recreate:
         try:
-            with open(stats_file, 'r') as f:
+            with open(stats_file, "r") as f:
                 stats = json.load(f)
             logger.info(f"✅ Loaded existing baseline stats: {stats_file}")
             return stats
         except Exception as e:
             logger.error(f"❌ Error loading existing stats, recreating: {e}")
-    
+
     # Create baseline statistics from reference data
     logger.info("🔄 Creating baseline statistics from reference data...")
-    
+
     # Ensure versioned directory exists
     versioned_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Load reference data
     df = load_reference_data(reference_db_path)
-    
+
     # Get monitored features
     features = get_monitored_features()
-    
+
     # Calculate statistics
     logger.info(f"🔢 Calculating statistics for {len(features)} features...")
     stats = calculate_feature_statistics(df, features, model_version)
-    
+
     # Save statistics to versioned directory
-    with open(stats_file, 'w') as f:
+    with open(stats_file, "w") as f:
         json.dump(stats, f, indent=2, default=str)
-    
+
     # Create convenience symlink to latest stats
     latest_link = baseline_path / "latest"
     try:
@@ -233,10 +242,12 @@ def load_or_create_baseline_stats(
     except OSError:
         # Fallback for systems that don't support symlinks
         logger.warning("Could not create symlink, skipping...")
-    
+
     logger.info(f"✅ Baseline statistics created: {stats_file}")
-    logger.info(f"📊 Features: {len(stats['features'])}, Samples: {stats['metadata']['total_samples']:,}")
-    
+    logger.info(
+        f"📊 Features: {len(stats['features'])}, Samples: {stats['metadata']['total_samples']:,}"
+    )
+
     return stats
 
 
@@ -246,10 +257,10 @@ def get_baseline_stats_summary(stats: Dict[str, Any]) -> str:
     """
     if not stats:
         return "No statistics available"
-    
+
     metadata = stats.get("metadata", {})
     features = stats.get("features", {})
-    
+
     summary = []
     summary.append(f"Baseline Statistics Summary")
     summary.append(f"=" * 50)
@@ -259,17 +270,21 @@ def get_baseline_stats_summary(stats: Dict[str, Any]) -> str:
     summary.append(f"Total Samples: {metadata.get('total_samples', 0):,}")
     summary.append(f"Features Count: {len(features)}")
     summary.append("")
-    
+
     for feature_name, feature_stats in features.items():
         summary.append(f"{feature_name}:")
         summary.append(f"  Mean: {feature_stats['mean']:.3f}")
         summary.append(f"  Std: {feature_stats['std']:.3f}")
-        summary.append(f"  Range: [{feature_stats['min']:.3f}, {feature_stats['max']:.3f}]")
-        summary.append(f"  Quantiles: Q25={feature_stats['quantiles']['q25']:.3f}, "
-                      f"Q50={feature_stats['quantiles']['q50']:.3f}, Q75={feature_stats['quantiles']['q75']:.3f}")
+        summary.append(
+            f"  Range: [{feature_stats['min']:.3f}, {feature_stats['max']:.3f}]"
+        )
+        summary.append(
+            f"  Quantiles: Q25={feature_stats['quantiles']['q25']:.3f}, "
+            f"Q50={feature_stats['quantiles']['q50']:.3f}, Q75={feature_stats['quantiles']['q75']:.3f}"
+        )
         summary.append(f"  Samples: {feature_stats['count']:,}")
         summary.append("")
-    
+
     return "\n".join(summary)
 
 
@@ -277,28 +292,33 @@ def main():
     """
     Example usage demonstrating the baseline statistics management
     """
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+
     print("🚀 Baseline Statistics Management - Step 9 Implementation")
     print("=" * 60)
-    
+
     # Load or create baseline statistics for current model version
     print("\n1. Loading/Creating baseline statistics for current model version...")
     stats = load_or_create_baseline_stats()
-    
+
     if stats:
         print("\n2. Statistics Summary:")
         print(get_baseline_stats_summary(stats))
-        
+
         # Demonstrate loading specific version
-        model_version = stats['metadata']['model_version']
+        model_version = stats["metadata"]["model_version"]
         print(f"3. Loading specific model version: {model_version}")
         specific_stats = load_or_create_baseline_stats(model_version=model_version)
-        
+
         if specific_stats:
             print(f"✅ Successfully loaded stats for version: {model_version}")
-            print(f"📁 File location: baseline_stats/{model_version}/{model_version}.json")
-        
+            print(
+                f"📁 File location: baseline_stats/{model_version}/{model_version}.json"
+            )
+
         # Show directory structure
         print(f"\n4. Directory structure:")
         baseline_dir = Path("./baseline_stats")

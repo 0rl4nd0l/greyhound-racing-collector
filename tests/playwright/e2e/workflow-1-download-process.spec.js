@@ -87,7 +87,12 @@ test.describe('Workflow 1: Download → Process → Verify DB', () => {
 
     // Step 3: Trigger file processing via API
     const taskId = await test.step('Trigger background processing', async () => {
-      const response = await page.request.post('/api/process_file/' + testRaceData.fileName, {
+      const response = await page.request.post('/api/background/process-race-file', {
+        data: {
+          file_path: testRaceData.filePath,
+          race_type: 'greyhound',
+          track: 'test_track'
+        },
         headers: {
           'Content-Type': 'application/json',
         }
@@ -95,48 +100,38 @@ test.describe('Workflow 1: Download → Process → Verify DB', () => {
 
       expect(response.status()).toBe(200);
       const result = await response.json();
-      expect(result.success).toBe(true);
+      expect(result).toHaveProperty('task_id');
       
-      console.log('✅ File processing triggered:', result.message);
-      return result.task_id || 'sync_task';
+      console.log('✅ File processing task started:', result.task_id);
+      return result.task_id;
     });
 
     // Step 4: Monitor processing status
     await test.step('Wait for processing completion', async () => {
       let processingComplete = false;
       let attempts = 0;
-      const maxAttempts = 30; // 30 seconds timeout
+      const maxAttempts = 30; // ~60 seconds total (2s interval)
       
       while (!processingComplete && attempts < maxAttempts) {
-        // Check processing status via API
-        const statusResponse = await page.request.get('/api/processing_status');
-        expect(statusResponse.status()).toBe(200);
+        await page.waitForTimeout(2000);
+        
+        const statusResponse = await page.request.get(`/api/background/status/${taskId}`);
+        expect(statusResponse.ok()).toBeTruthy();
         
         const status = await statusResponse.json();
-        console.log(`⏳ Processing status: ${status.progress}% - ${status.current_task}`);
+        console.log(`⏳ Processing task status: ${status.status}`);
         
-        if (status.progress >= 100 && !status.running) {
+        if (status.status === 'completed') {
           processingComplete = true;
           console.log('✅ Processing completed successfully');
-        } else if (status.error_count > 0) {
-          // Check for errors in processing logs
-          const logs = status.log || [];
-          const errorLogs = logs.filter(log => log.level === 'ERROR');
-          if (errorLogs.length > 0) {
-            console.error('❌ Processing errors detected:', errorLogs);
-            throw new Error(`Processing failed with errors: ${errorLogs.map(l => l.message).join(', ')}`);
-          }
+        } else if (status.status === 'failed') {
+          throw new Error(`Processing failed: ${status.error || 'unknown error'}`);
         }
         
-        if (!processingComplete) {
-          await page.waitForTimeout(1000); // Wait 1 second
-          attempts++;
-        }
+        attempts++;
       }
       
-      if (!processingComplete) {
-        throw new Error('Processing timeout - task did not complete within 30 seconds');
-      }
+      expect(processingComplete).toBeTruthy();
     });
 
     // Step 5: Verify database rows were added

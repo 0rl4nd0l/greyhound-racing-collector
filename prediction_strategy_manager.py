@@ -42,8 +42,7 @@ except ImportError:
     UNIFIED_AVAILABLE = False
 
 try:
-    from comprehensive_prediction_pipeline import \
-        ComprehensivePredictionPipeline
+    from comprehensive_prediction_pipeline import ComprehensivePredictionPipeline
 
     COMPREHENSIVE_AVAILABLE = True
 except ImportError:

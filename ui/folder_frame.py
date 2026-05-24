@@ -1,9 +1,12 @@
 from tkinter import Button, Frame, Label, StringVar, filedialog
 
-from .constants import (FOLDER_BUTTON_TEXT, FOLDER_FRAME_TITLE,
-                        FOLDER_SUBMIT_BUTTON_TEXT)
-from .styles import (medium_text_style, primary_button_style, small_text_style,
-                     ternary_button_style)
+from .constants import FOLDER_BUTTON_TEXT, FOLDER_FRAME_TITLE, FOLDER_SUBMIT_BUTTON_TEXT
+from .styles import (
+    medium_text_style,
+    primary_button_style,
+    small_text_style,
+    ternary_button_style,
+)
 
 
 class FolderFrame(Frame):

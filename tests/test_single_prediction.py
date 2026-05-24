@@ -3,7 +3,6 @@
 Test script for single race prediction API endpoint
 """
 
-import json
 import time
 
 import requests

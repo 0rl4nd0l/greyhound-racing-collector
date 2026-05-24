@@ -1,5 +1,3 @@
-import os
-import json
 import time
 from pathlib import Path
 
@@ -10,6 +8,7 @@ import pytest
 FORM_GUIDE_CSV_CONTENT = """Race Date,Venue,Race Number,Dog Name,Box,Trainer
 2025-08-20,SAND,7,Dog Z,5,Trainer Z
 """
+
 
 @pytest.fixture()
 def temp_env_dirs(tmp_path, monkeypatch):
@@ -29,13 +28,20 @@ def temp_env_dirs(tmp_path, monkeypatch):
 
     # Reload config.paths for env changes
     import importlib
+
     if "config.paths" in list(importlib.sys.modules.keys()):
         importlib.reload(importlib.import_module("config.paths"))
-    yield {"DATA_DIR": data_dir, "UPCOMING": upcoming_dir, "DL": downloads_dir, "ARCHIVE": archive_dir}
+    yield {
+        "DATA_DIR": data_dir,
+        "UPCOMING": upcoming_dir,
+        "DL": downloads_dir,
+        "ARCHIVE": archive_dir,
+    }
 
 
 def _fresh_ingestor_and_watchers():
     import importlib
+
     if "ingestion.ingest_race_csv" in list(importlib.sys.modules.keys()):
         importlib.reload(importlib.import_module("ingestion.ingest_race_csv"))
     if "utils.download_watcher" in list(importlib.sys.modules.keys()):
@@ -45,7 +51,13 @@ def _fresh_ingestor_and_watchers():
     from ingestion.ingest_race_csv import ingest_form_guide_csv
     from utils.download_watcher import start_download_watcher, wait_for_stable
     from utils.upcoming_watcher import start_upcoming_watcher
-    return ingest_form_guide_csv, start_download_watcher, start_upcoming_watcher, wait_for_stable
+
+    return (
+        ingest_form_guide_csv,
+        start_download_watcher,
+        start_upcoming_watcher,
+        wait_for_stable,
+    )
 
 
 def test_programmatic_manual_flow_updates_upcoming_and_index(temp_env_dirs):
@@ -68,28 +80,41 @@ def test_programmatic_manual_flow_updates_upcoming_and_index(temp_env_dirs):
 
 
 try:
-    import watchdog  # type: ignore
     _HAS_WATCHDOG = True
 except Exception:
     _HAS_WATCHDOG = False
 
 
 @pytest.mark.skipif(not _HAS_WATCHDOG, reason="watchdog not installed")
-def test_watcher_flow_ingests_from_downloads_and_triggers_callback(monkeypatch, temp_env_dirs):
+def test_watcher_flow_ingests_from_downloads_and_triggers_callback(
+    monkeypatch, temp_env_dirs
+):
     # Provide a UI refresh callback spy
     callback_calls = []
 
     def ui_refresh(paths):
         callback_calls.append([Path(p).name for p in paths])
 
-    ingest_form_guide_csv, start_download_watcher, start_upcoming_watcher, wait_for_stable = _fresh_ingestor_and_watchers()
+    (
+        ingest_form_guide_csv,
+        start_download_watcher,
+        start_upcoming_watcher,
+        wait_for_stable,
+    ) = _fresh_ingestor_and_watchers()
 
     # Start upcoming watcher to observe UPCOMING for new CSVs
-    obs1 = start_upcoming_watcher(upcoming_dir=temp_env_dirs["UPCOMING"], on_change=ui_refresh, debounce_seconds=0.2)
+    obs1 = start_upcoming_watcher(
+        upcoming_dir=temp_env_dirs["UPCOMING"],
+        on_change=ui_refresh,
+        debounce_seconds=0.2,
+    )
 
     # Start downloads watcher to auto-ingest
     from utils.download_watcher import start_download_watcher as _sdw
-    obs2 = _sdw(downloads_dir=temp_env_dirs["DL"])  # use default callback that invokes ingestor
+
+    obs2 = _sdw(
+        downloads_dir=temp_env_dirs["DL"]
+    )  # use default callback that invokes ingestor
 
     try:
         # Simulate browser download: write a .tmp then rename to .csv
@@ -112,7 +137,7 @@ def test_watcher_flow_ingests_from_downloads_and_triggers_callback(monkeypatch, 
         for obs in (locals().get("obs1"), locals().get("obs2")):
             try:
                 if obs is not None:
-                    obs.stop(); obs.join(timeout=2)
+                    obs.stop()
+                    obs.join(timeout=2)
             except Exception:
                 pass
-

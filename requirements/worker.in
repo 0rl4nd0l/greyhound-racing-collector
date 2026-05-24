@@ -1,0 +1,12 @@
+# Background worker and queue dependencies
+# Redis, Celery, RQ for async task processing
+
+# Redis for caching and pub/sub
+redis>=6.2.0,<7.0
+
+# Background task processing (choose one or both)
+# celery>=5.3.0,<6.0  # Full-featured distributed task queue
+# rq>=1.15.0  # Simple Redis-based queue
+
+# Optional: In-memory Redis for development/testing
+# fakeredis>=2.30.0

@@ -1,13 +1,15 @@
 import logging
-import pandas as pd
-from step5_probability_converter import ProbabilityConverter
-from ml_system_v4 import MLSystemV4
-from sklearn.metrics import log_loss, brier_score_loss
-from sklearn.calibration import calibration_curve, CalibratedClassifierCV
+
 import matplotlib.pyplot as plt
+from sklearn.calibration import CalibratedClassifierCV, calibration_curve
+from sklearn.metrics import brier_score_loss, log_loss
+
+from ml_system_v4 import MLSystemV4
+from step5_probability_converter import ProbabilityConverter
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 class BackTestBallarat:
     def __init__(self, db_path: str):
@@ -23,8 +25,12 @@ class BackTestBallarat:
         # Build features
         logger.info("Building features for test data...")
         test_features = self.ml_system.build_leakage_safe_features(test_data)
-        X_test = test_features.drop(['race_id', 'dog_clean_name', 'target', 'target_timestamp'], axis=1, errors='ignore')
-        y_test = test_features['target']
+        X_test = test_features.drop(
+            ["race_id", "dog_clean_name", "target", "target_timestamp"],
+            axis=1,
+            errors="ignore",
+        )
+        y_test = test_features["target"]
 
         # Predict probabilities
         logger.info("Predicting probabilities...")
@@ -51,15 +57,20 @@ class BackTestBallarat:
 
         # Optionally apply isotonic regression
         logger.info("Applying isotonic regression...")
-        self.ml_system.calibrated_pipeline = CalibratedClassifierCV(self.ml_system.calibrated_pipeline, method='isotonic', cv=5)
+        self.ml_system.calibrated_pipeline = CalibratedClassifierCV(
+            self.ml_system.calibrated_pipeline, method="isotonic", cv=5
+        )
         self.ml_system.calibrated_pipeline.fit(X_test, y_test)
 
         # Re-evaluate after isotonic regression
-        predicted_proba_adjusted = self.ml_system.calibrated_pipeline.predict_proba(X_test)[:, 1]
+        predicted_proba_adjusted = self.ml_system.calibrated_pipeline.predict_proba(
+            X_test
+        )[:, 1]
         log_loss_adj = log_loss(y_test, predicted_proba_adjusted)
         brier_score_adj = brier_score_loss(y_test, predicted_proba_adjusted)
         logger.info(f"Adjusted Log Loss: {log_loss_adj:.4f}")
         logger.info(f"Adjusted Brier Score: {brier_score_adj:.4f}")
+
 
 if __name__ == "__main__":
     db_path = "greyhound_racing_data.db"

@@ -34,6 +34,7 @@ from typing import Dict, List, Optional, Tuple
 # Structured logging
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config.logging_config import get_component_logger  # type: ignore
+
 log = get_component_logger()
 
 API_PATTERN = re.compile(
@@ -115,7 +116,9 @@ def iter_csv_rows(path: Path):
         return header_problems
 
 
-def validate_filename(path: Path) -> Tuple[Optional[int], Optional[str], Optional[date], List[str]]:
+def validate_filename(
+    path: Path,
+) -> Tuple[Optional[int], Optional[str], Optional[date], List[str]]:
     problems: List[str] = []
 
     if path.suffix.lower() != ".csv":
@@ -144,7 +147,9 @@ def validate_filename(path: Path) -> Tuple[Optional[int], Optional[str], Optiona
     return race_no, venue, race_date, problems
 
 
-def validate_future_date(race_date: Optional[date], path: Path, strict_future: bool) -> List[str]:
+def validate_future_date(
+    race_date: Optional[date], path: Path, strict_future: bool
+) -> List[str]:
     problems: List[str] = []
     if race_date is None:
         return problems
@@ -178,7 +183,9 @@ def validate_file(path: Path, strict_future: bool) -> List[str]:
         actual = path
 
     # Filename checks
-    race_no, venue, race_date, fn_problems = validate_filename(path,)
+    race_no, venue, race_date, fn_problems = validate_filename(
+        path,
+    )
     problems.extend(fn_problems)
 
     # Date sanity
@@ -196,8 +203,17 @@ def validate_file(path: Path, strict_future: bool) -> List[str]:
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Validate upcoming race CSV files")
-    parser.add_argument("--dir", dest="directory", default=None, help="Directory to scan (defaults to env UPCOMING_RACES_DIR or ./upcoming_races)")
-    parser.add_argument("--strict-future", action="store_true", help="Require dates strictly greater than today")
+    parser.add_argument(
+        "--dir",
+        dest="directory",
+        default=None,
+        help="Directory to scan (defaults to env UPCOMING_RACES_DIR or ./upcoming_races)",
+    )
+    parser.add_argument(
+        "--strict-future",
+        action="store_true",
+        help="Require dates strictly greater than today",
+    )
     args = parser.parse_args(argv)
 
     strict_env = os.environ.get("VALIDATE_STRICT_FUTURE", "0") == "1"
@@ -205,9 +221,16 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     upcoming_dir = find_upcoming_dir(args.directory)
     if not upcoming_dir.exists():
-        msg = f"No upcoming races directory found at {upcoming_dir}. Skipping validation."
+        msg = (
+            f"No upcoming races directory found at {upcoming_dir}. Skipping validation."
+        )
         print(f"INFO: {msg}")
-        log.info(msg, action="validate_upcoming_scan", details={"directory": str(upcoming_dir)}, component="qa")
+        log.info(
+            msg,
+            action="validate_upcoming_scan",
+            details={"directory": str(upcoming_dir)},
+            component="qa",
+        )
         return 0
 
     entries = sorted([p for p in upcoming_dir.iterdir() if not p.name.startswith(".")])
@@ -269,10 +292,14 @@ def main(argv: Optional[List[str]] = None) -> int:
             details={**summary, "problems": all_problems},
             component="qa",
         )
-        print(f"SUMMARY: {summary['files_with_issues']} files with issues; {summary['total_problems']} total problems.")
+        print(
+            f"SUMMARY: {summary['files_with_issues']} files with issues; {summary['total_problems']} total problems."
+        )
         return 1
 
-    print(f"SUCCESS: Validated {len(csv_paths)} files in {upcoming_dir}. All checks passed.")
+    print(
+        f"SUCCESS: Validated {len(csv_paths)} files in {upcoming_dir}. All checks passed."
+    )
     log.info(
         "Upcoming CSV validation passed",
         action="validate_upcoming",
@@ -285,4 +312,3 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

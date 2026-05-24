@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: hardening-guard
+        name: Hardening guard (no mock/placeholder in production)
+        entry: python scripts/ci/check_hardening_guards.py
+        language: system
+        pass_filenames: false
+

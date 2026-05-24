@@ -5,7 +5,7 @@ Database adapter for The Greyhound Recorder data.
 
 import logging
 import sqlite3
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
 

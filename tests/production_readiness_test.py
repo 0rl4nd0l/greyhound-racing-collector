@@ -6,11 +6,8 @@ Production Readiness Test
 Final verification that the ML greyhound prediction system is ready for production use.
 """
 
-import json
 import os
 import sys
-import time
-from datetime import datetime
 
 # Add current directory to path
 sys.path.insert(0, os.getcwd())
@@ -34,8 +31,9 @@ def test_production_readiness():
 
     # Test 2: ML Components
     try:
-        from ml_system_v3 import MLSystemV3
         from prediction_pipeline_v3 import PredictionPipelineV3
+
+        from ml_system_v3 import MLSystemV3
 
         ml_system = MLSystemV3()
         pipeline = PredictionPipelineV3()
@@ -95,7 +93,7 @@ def test_production_readiness():
         results.append(("API Endpoints", False, f"Failed: {str(e)}"))
 
     # Print Results
-    print(f"\n📊 Test Results:")
+    print("\n📊 Test Results:")
     passed = 0
     total = len(results)
 
@@ -109,11 +107,11 @@ def test_production_readiness():
     print(f"\n🎯 Success Rate: {passed}/{total} ({success_rate:.1f}%)")
 
     # Final Assessment
-    print(f"\n🏥 Production Readiness Assessment:")
+    print("\n🏥 Production Readiness Assessment:")
     if passed == total:
         print("  🟢 READY FOR PRODUCTION")
         print("  All critical systems are functioning correctly")
-        print(f"\n🚀 Next Steps:")
+        print("\n🚀 Next Steps:")
         print("  1. Start the application: python3 app.py")
         print("  2. Access the ML Dashboard: http://localhost:5000/ml_dashboard")
         print("  3. Begin making race predictions!")

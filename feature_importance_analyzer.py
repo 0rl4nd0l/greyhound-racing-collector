@@ -33,8 +33,7 @@ warnings.filterwarnings("ignore")
 try:
     import matplotlib.pyplot as plt
     import seaborn as sns
-    from sklearn.ensemble import (GradientBoostingClassifier,
-                                  RandomForestClassifier)
+    from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
     from sklearn.impute import SimpleImputer
     from sklearn.inspection import permutation_importance
     from sklearn.linear_model import LogisticRegression

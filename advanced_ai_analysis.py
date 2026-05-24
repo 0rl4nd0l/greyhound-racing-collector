@@ -33,12 +33,10 @@ warnings.filterwarnings("ignore")
 
 # ML Libraries
 try:
-    from sklearn.ensemble import (GradientBoostingClassifier,
-                                  RandomForestClassifier)
+    from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
     from sklearn.impute import SimpleImputer
     from sklearn.linear_model import LogisticRegression
-    from sklearn.metrics import (accuracy_score, classification_report,
-                                 confusion_matrix)
+    from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
     from sklearn.model_selection import cross_val_score, train_test_split
     from sklearn.preprocessing import LabelEncoder, StandardScaler
 

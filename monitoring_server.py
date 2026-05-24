@@ -18,8 +18,10 @@ from pathlib import Path
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from prometheus_client import CollectorRegistry, Gauge, generate_latest
+
 try:
     from monitoring.prometheus_exporter import get_prometheus_exporter
+
     PROMETHEUS_ENHANCED = True
 except ImportError:
     PROMETHEUS_ENHANCED = False
@@ -114,6 +116,16 @@ def get_health():
             ),
             500,
         )
+
+
+@app.route("/api/model_health")
+def get_model_health_endpoint():
+    try:
+        data = monitoring.get_model_health()
+        return jsonify(data)
+    except Exception as e:
+        logger.log_error(f"Model health endpoint error: {str(e)}", context={"component": "web_api"})
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route("/api/metrics")
@@ -309,12 +321,15 @@ def log_response(response):
     return response
 
 
-def run_server(host="localhost", port=int(os.environ.get('DEFAULT_PORT', '5002')), debug=False):
+def run_server(
+    host="localhost", port=int(os.environ.get("DEFAULT_PORT", "5002")), debug=False
+):
     """Run the monitoring web server"""
     # Allow PORT to be overridden by environment variable
     import os
-    port = int(os.environ.get('PORT', port))
-    
+
+    port = int(os.environ.get("PORT", port))
+
     logger.log_system(
         f"Starting monitoring web server on http://{host}:{port}", "INFO", "WEB_SERVER"
     )

@@ -27,7 +27,12 @@ function refreshMonitoring() {
     fetch('/api/model/performance')
         .then(response => response.json())
         .then(data => {
-            if (data.success) {
+            if (data && data.success) {
+                // Persist last seen champion model id and payload for cross-panel actions
+                try { 
+                    window.__LAST_PERF_MODEL_ID = (data.model_info && data.model_info.model_id) || data.model_id || window.__LAST_PERF_MODEL_ID; 
+                    window.__LAST_PERF = data;
+                } catch (e) {}
                 updatePerformanceMetrics(data);
                 updatePerformanceTrendChart(data.performance_metrics);
                 updateMonitoringEvents(data.monitoring_events);
@@ -35,6 +40,16 @@ function refreshMonitoring() {
         })
         .catch(error => {
             console.error('Error fetching performance data:', error);
+        })
+        .finally(() => {
+            // Fetch auxiliary model status to show temporal baseline comparison
+            fetch('/api/model_status')
+                .then(r => r.json())
+                .then(status => {
+                    try { window.__TEMPORAL_BASELINE = status && status.real_temporal ? status.real_temporal : null; } catch (e) { window.__TEMPORAL_BASELINE = null; }
+                    try { updatePerformanceComparison(status); } catch (e) {}
+                })
+                .catch(() => {});
         });
     
     // Trigger drift detection
@@ -59,9 +74,39 @@ function refreshMonitoring() {
 
 function updatePerformanceMetrics(data) {
     const container = document.getElementById('performance-metrics');
-    const metrics = data.performance_metrics;
-    
+    const metrics = data.performance_metrics || {};
+    const mi = data.model_info || {};
+    const source = data.source || mi.source || 'registry_best';
+
+    // Helper to truncate IDs
+    const trunc = (s) => {
+        if (!s) return 'N/A';
+        s = String(s);
+        return s.length > 12 ? (s.slice(0, 6) + '…' + s.slice(-4)) : s;
+    };
+
+const policy = (mi.selection_policy || data.selection_policy || '').toString();
+    const policyLabel = policy ? policy.replace(/_/g,' ').toUpperCase() : '';
+
+    const headerHtml = `
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <div>
+                <span class="badge ${source === 'registry_best' ? 'bg-success' : 'bg-secondary'} me-2">
+                    ${source === 'registry_best' ? 'Registry Champion' : 'Model Source'}
+                </span>
+                ${policyLabel ? `<span class="badge bg-dark me-2" title="Selection policy">${policyLabel}</span>` : ''}
+                <strong>${mi.model_name || 'Unknown'}</strong>
+                <small class="text-muted ms-1">(${mi.model_type || 'N/A'})</small>
+            </div>
+            <div class="text-end small">
+                <div><small class="text-muted">Model ID:</small> <code>${trunc(mi.model_id)}</code></div>
+                <div><small class="text-muted">Last Trained:</small> ${mi.created_at ? formatDate(mi.created_at) : 'N/A'}</div>
+            </div>
+        </div>
+    `;
+
     let html = `
+        ${headerHtml}
         <div class="row g-2 mb-3">
             <div class="col-6">
                 <div class="border rounded p-2 text-center">
@@ -88,12 +133,65 @@ function updatePerformanceMetrics(data) {
                 </div>
             </div>
         </div>
+        <div class="row g-2 mb-2">
+            <div class="col-6">
+                <div class="border rounded p-2 text-center">
+                    <small class="text-muted d-block">AUC</small>
+                    <strong>${typeof metrics.auc === 'number' ? metrics.auc.toFixed(3) : (typeof mi.auc === 'number' ? mi.auc.toFixed(3) : 'N/A')}</strong>
+                </div>
+            </div>
+            <div class="col-6">
+                <div class="border rounded p-2 text-center">
+                    <small class="text-muted d-block">Top-1 Rate</small>
+                    <strong>${typeof metrics.top1_rate === 'number' ? formatPercentage(metrics.top1_rate) : (typeof mi.top1_rate === 'number' ? formatPercentage(mi.top1_rate) : 'N/A')}</strong>
+                </div>
+            </div>
+        </div>
+        <div id="performance-comparison"></div>
         <div class="text-center">
             <small class="text-muted">Last Updated: ${formatDate(data.timestamp)}</small>
         </div>
     `;
-    
-    container.innerHTML = html;
+
+container.innerHTML = html;
+}
+
+function updatePerformanceComparison(statusData) {
+    try {
+        const el = document.getElementById('performance-comparison');
+        if (!el) return;
+        const perf = window.__LAST_PERF || {};
+        const championAcc = (perf.performance_metrics && typeof perf.performance_metrics.accuracy === 'number') ? perf.performance_metrics.accuracy : null;
+        const championAuc = (perf.performance_metrics && typeof perf.performance_metrics.auc === 'number') ? perf.performance_metrics.auc : ((perf.model_info && typeof perf.model_info.auc === 'number') ? perf.model_info.auc : null);
+        const base = (statusData && statusData.real_temporal) || (window.__TEMPORAL_BASELINE || {});
+        const baseAcc = (typeof base.accuracy === 'number') ? base.accuracy : null;
+        const baseAuc = (typeof base.auc_score === 'number') ? base.auc_score : ((typeof base.auc === 'number') ? base.auc : null);
+        if (championAcc == null && championAuc == null) { el.innerHTML = ''; return; }
+        const diffAcc = (championAcc != null && baseAcc != null) ? (championAcc - baseAcc) : null;
+        const diffAuc = (championAuc != null && baseAuc != null) ? (championAuc - baseAuc) : null;
+        const fmt = (v) => (typeof v === 'number' ? (v >= 0 ? `+${(v*100).toFixed(1)}%` : `${(v*100).toFixed(1)}%`) : 'N/A');
+        const pct = (v) => (typeof v === 'number' ? (v*100).toFixed(1)+'%' : 'N/A');
+        el.innerHTML = `
+            <div class="row g-2 mb-2">
+                <div class="col-6">
+                    <div class="border rounded p-2 text-center">
+                        <small class="text-muted d-block">Baseline Accuracy</small>
+                        <strong>${pct(baseAcc)}</strong>
+                        <div class="small ${diffAcc!=null ? (diffAcc>=0?'text-success':'text-danger') : 'text-muted'}">Δ ${fmt(diffAcc)}</div>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="border rounded p-2 text-center">
+                        <small class="text-muted d-block">Baseline AUC</small>
+                        <strong>${typeof baseAuc === 'number' ? baseAuc.toFixed(3) : 'N/A'}</strong>
+                        <div class="small ${diffAuc!=null ? (diffAuc>=0?'text-success':'text-danger') : 'text-muted'}">Δ ${typeof diffAuc === 'number' ? diffAuc.toFixed(3) : 'N/A'}</div>
+                    </div>
+                </div>
+            </div>
+        `;
+    } catch (e) {
+        // No-op on error
+    }
 }
 
 function updateDriftMetrics(data) {
@@ -103,6 +201,7 @@ function updateDriftMetrics(data) {
     const driftStatus = drift.drift_detected ? 'Detected' : 'None';
     const statusClass = drift.drift_detected ? 'danger' : 'success';
     const driftScore = drift.drift_score || 0;
+    const mid = data.model_id || (window.__LAST_PERF_MODEL_ID || '');
     
     let html = `
         <div class="mb-3">
@@ -125,7 +224,7 @@ function updateDriftMetrics(data) {
             </div>
         </div>
         <div class="text-center">
-            <button class="btn btn-sm btn-outline-primary" onclick="showDriftAnalysis('${data.model_id}')">
+            <button class="btn btn-sm btn-outline-primary" onclick="showDriftAnalysis('${mid}')" ${mid ? '' : 'disabled'}>
                 View Details
             </button>
         </div>

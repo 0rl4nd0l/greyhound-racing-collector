@@ -6,7 +6,7 @@ with proper fallback mechanisms as required by the system.
 Also provides utilities for historical race filtering.
 """
 
-from datetime import datetime, date, timedelta
+from datetime import date, datetime, timedelta
 
 
 def parse_date_flexible(date_str):
@@ -55,16 +55,16 @@ def parse_date_flexible(date_str):
 def is_historical(race_date):
     """
     Check if a race date is historical (before today).
-    
+
     When --historical mode is set, this function determines if a race date
     should be considered for processing. Any date < today is considered historical.
-    
+
     Args:
         race_date (str|datetime|date): The race date to check
-    
+
     Returns:
         bool: True if the date is before today, False otherwise
-        
+
     Examples:
         >>> is_historical("2024-01-01")
         True
@@ -74,7 +74,7 @@ def is_historical(race_date):
         False
     """
     today = date.today()
-    
+
     # Handle different input types
     if isinstance(race_date, str):
         try:
@@ -91,6 +91,6 @@ def is_historical(race_date):
     else:
         # Unknown type, assume not historical
         return False
-    
+
     # Return True if race date is before today
     return race_date_obj < today

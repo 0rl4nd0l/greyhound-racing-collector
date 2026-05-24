@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 import pytest
+
 from form_guide_csv_scraper import FormGuideCsvScraper
 
 

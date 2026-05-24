@@ -30,6 +30,7 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
+
 from utils.profiling_utils import ProfilingRecorder
 
 warnings.filterwarnings("ignore")
@@ -517,8 +518,9 @@ class UnifiedPredictor:
         # 1. Comprehensive Pipeline (Second Priority)
         if self.config.components_available["comprehensive_pipeline"]:
             try:
-                from comprehensive_prediction_pipeline import \
-                    ComprehensivePredictionPipeline
+                from comprehensive_prediction_pipeline import (
+                    ComprehensivePredictionPipeline,
+                )
 
                 self.predictors["comprehensive_pipeline"] = (
                     ComprehensivePredictionPipeline()
@@ -540,8 +542,9 @@ class UnifiedPredictor:
         # 3. Comprehensive ML System
         if self.config.components_available["comprehensive_ml"]:
             try:
-                from comprehensive_enhanced_ml_system import \
-                    ComprehensiveEnhancedMLSystem
+                from comprehensive_enhanced_ml_system import (
+                    ComprehensiveEnhancedMLSystem,
+                )
 
                 self.predictors["comprehensive_ml"] = ComprehensiveEnhancedMLSystem()
                 logger.info("✅ Comprehensive ML System initialized")
@@ -553,7 +556,9 @@ class UnifiedPredictor:
             try:
                 # DEPRECATED: GPTPredictionEnhancer has been archived. Prefer using
                 # utils/openai_wrapper.OpenAIWrapper for any new OpenAI interactions.
-                from archive.outdated_openai.gpt_prediction_enhancer import GPTPredictionEnhancer
+                from archive.outdated_openai.gpt_prediction_enhancer import (
+                    GPTPredictionEnhancer,
+                )
 
                 self.gpt_enhancer = GPTPredictionEnhancer()
                 logger.info("✅ GPT Enhancement available")
@@ -805,7 +810,23 @@ class UnifiedPredictor:
         return result
 
     def _basic_fallback_prediction(self, race_file_path: str) -> Dict[str, Any]:
-        """Basic fallback prediction when all other methods fail"""
+        """Basic fallback prediction when all other methods fail.
+
+        Default: disabled to avoid fabricated outputs in production. Enable only for
+        local development by setting UNIFIED_ALLOW_BASIC_FALLBACK=1.
+        """
+        import os
+
+        if os.getenv("UNIFIED_ALLOW_BASIC_FALLBACK", "0").lower() not in (
+            "1",
+            "true",
+            "yes",
+        ):
+            return {
+                "success": False,
+                "error": "basic_fallback_disabled",
+                "predictions": [],
+            }
         try:
             import random
 
@@ -1066,6 +1087,23 @@ class UnifiedPredictor:
             for i, pred in enumerate(predictions, 1):
                 pred["rank"] = i
                 pred["predicted_rank"] = i
+                # Ensure standard fields for downstream consumers
+                pred.setdefault("win_prob_norm", pred.get("ml_score"))
+                pred.setdefault("place_prob_norm", None)
+                pred.setdefault("ev_win", None)
+                pred.setdefault("ev_place", None)
+                # UI compatibility: provide common probability aliases
+                try:
+                    wp = float(
+                        pred.get("win_prob_norm")
+                        if pred.get("win_prob_norm") is not None
+                        else pred.get("prediction_score", 0.0)
+                    )
+                except Exception:
+                    wp = float(pred.get("prediction_score", 0.0) or 0.0)
+                pred.setdefault("win_prob", wp)
+                pred.setdefault("normalized_win_probability", wp)
+                pred.setdefault("win_probability", wp)
 
             return {
                 "success": True,
@@ -1758,17 +1796,23 @@ class UnifiedPredictor:
 
             # Box position influence
             box_number = features.get("box_number", 4.5)
-            box_adjustments = {
-                1: 0.08,
-                2: 0.06,
-                3: 0.04,
-                4: 0.02,
-                5: -0.01,
-                6: -0.03,
-                7: -0.05,
-                8: -0.07,
-            }
-            base_score += box_adjustments.get(int(box_number), 0)
+            # Disable heuristic box bias by default; enable only if explicitly requested via env
+            enable_box_bias = os.getenv("UNIFIED_ENABLE_BOX_BIAS", "0").strip().lower() in ("1", "true", "yes", "on")
+            if enable_box_bias:
+                box_adjustments = {
+                    1: 0.08,
+                    2: 0.06,
+                    3: 0.04,
+                    4: 0.02,
+                    5: -0.01,
+                    6: -0.03,
+                    7: -0.05,
+                    8: -0.07,
+                }
+                try:
+                    base_score += box_adjustments.get(int(box_number), 0)
+                except Exception:
+                    pass
 
             # Recent form influence
             recent_form = features.get("weighted_recent_form", 4.5)

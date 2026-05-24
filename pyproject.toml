@@ -1,0 +1,43 @@
+[tool.black]
+target-version = ["py311"]
+line-length = 100
+extend-exclude = '''
+/(
+  \.venv
+| node_modules
+| dist
+| build
+| archive
+| archive_old_apps
+| archive_unused_scripts
+| feature_importance_backups
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 100
+skip = [
+  ".venv",
+  "node_modules",
+  "dist",
+  "build",
+  "archive",
+  "archive_old_apps",
+  "archive_unused_scripts",
+  "feature_importance_backups",
+]
+
+[tool.flake8]
+# Mirror CI selection used in WARP.md
+select = ["E9", "F63", "F7", "F82"]
+extend-exclude = ".venv,**/.venv,**/node_modules,**/dist,**/build,archive,archive_old_apps,archive_unused_scripts,feature_importance_backups"
+per-file-ignores = [
+  "corrected_tgr_scraper.py: E999,F821",
+  "data_quality_improver.py: F821",
+  "data_validation_remediation.py: E999",
+  "migrations/add_dogs_index_safety.py: E999",
+  "scripts/fix_ml_data_pipeline.py: E999",
+  "tests/test_flask_app.py: F824",
+]
+

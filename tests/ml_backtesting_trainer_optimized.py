@@ -18,7 +18,6 @@ Date: July 24, 2025
 """
 
 import json
-import os
 import sqlite3
 import sys
 import time
@@ -39,15 +38,27 @@ try:
     import seaborn as sns
     from imblearn.over_sampling import SMOTENC
     from sklearn.calibration import CalibratedClassifierCV
-    from sklearn.ensemble import (GradientBoostingClassifier,
-                                  RandomForestClassifier, VotingClassifier)
+    from sklearn.ensemble import (
+        GradientBoostingClassifier,
+        RandomForestClassifier,
+        VotingClassifier,
+    )
     from sklearn.impute import SimpleImputer
     from sklearn.linear_model import LogisticRegression
-    from sklearn.metrics import (accuracy_score, classification_report,
-                                 confusion_matrix, f1_score, log_loss,
-                                 roc_auc_score)
-    from sklearn.model_selection import (TimeSeriesSplit, cross_val_score,
-                                         train_test_split)
+    from sklearn.metrics import (
+        accuracy_score,
+        classification_report,
+        confusion_matrix,
+        f1_score,
+        log_loss,
+        roc_auc_score,
+    )
+    from sklearn.model_selection import (
+        TimeSeriesSplit,
+        GridSearchCV,
+        cross_val_score,
+        train_test_split,
+    )
     from sklearn.preprocessing import LabelEncoder, StandardScaler
     from sklearn.svm import SVC
 
@@ -248,7 +259,7 @@ class MLBacktestingTrainer:
 
         enhanced_df = pd.DataFrame(enhanced_records)
         total_time = time.time() - start_time
-        print(f"\n\n✅ Feature creation completed!")
+        print("\n\n✅ Feature creation completed!")
         print(f"   📊 Records processed: {total_records:,}")
         print(f"   📈 Enhanced records created: {len(enhanced_df):,}")
         print(f"   ⏱️  Total time: {total_time:.1f}s")
@@ -763,7 +774,7 @@ class MLBacktestingTrainer:
                 best_params = best_params
                 best_model_name = model_name
 
-        print(f"\n🏆 OPTIMIZATION COMPLETE!")
+        print("\n🏆 OPTIMIZATION COMPLETE!")
         print(f"   🥇 Best Model: {best_model_name.replace('_', ' ').title()}")
         print(f"   📊 Test Accuracy: {best_score:.3f}")
         print(f"   🎯 Parameters: {best_params}")
@@ -779,7 +790,7 @@ class MLBacktestingTrainer:
 
     def analyze_predictions_vs_results(self, best_model_info, test_df):
         """Analyze model predictions against actual results"""
-        print(f"\n📊 Prediction Analysis")
+        print("\n📊 Prediction Analysis")
         print("═" * 70)
         print(f"   🔍 Analyzing {len(test_df):,} test predictions...")
 
@@ -845,7 +856,7 @@ class MLBacktestingTrainer:
         ].mean()
 
         # Detailed analysis output
-        print(f"\n   📈 PREDICTION PERFORMANCE:")
+        print("\n   📈 PREDICTION PERFORMANCE:")
         print(f"      🎯 Race Accuracy: {race_accuracy:.1%}")
         print(f"      ✅ Correct Pred Confidence: {avg_prob_correct:.3f}")
         print(f"      ❌ Incorrect Pred Confidence: {avg_prob_incorrect:.3f}")
@@ -860,7 +871,7 @@ class MLBacktestingTrainer:
 
     def generate_correlation_analysis(self, df, feature_columns):
         """Generate correlation analysis between features and winning"""
-        print(f"\n🔗 Feature Correlation Analysis")
+        print("\n🔗 Feature Correlation Analysis")
         print("═" * 70)
 
         # Calculate correlations with winning
@@ -1055,8 +1066,9 @@ class MLBacktestingTrainer:
         # AUTO-UPDATE: Run automated feature importance updater
         print("   🔄 Running automated feature importance update...")
         try:
-            from automated_feature_importance_updater import \
-                AutomatedFeatureImportanceUpdater
+            from automated_feature_importance_updater import (
+                AutomatedFeatureImportanceUpdater,
+            )
 
             updater = AutomatedFeatureImportanceUpdater()
             update_success = updater.run_automated_update()
@@ -1072,7 +1084,7 @@ class MLBacktestingTrainer:
 
         # Final summary
         total_time = time.time() - overall_start_time
-        print(f"\n🎉 BACKTESTING COMPLETE!")
+        print("\n🎉 BACKTESTING COMPLETE!")
         print("═" * 70)
         print(f"   ⏱️  Total Runtime: {total_time:.1f}s ({total_time/60:.1f} minutes)")
         print(f"   🕐 Finished: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -1108,11 +1120,11 @@ def main():
             f"🎯 Race-level accuracy: {results['prediction_analysis']['race_accuracy']:.3f}"
         )
 
-        print(f"\n🏆 Best Models:")
+        print("\n🏆 Best Models:")
         print(f"   Win: {results['best_models']['win_model']['name']}")
         print(f"   Place: {results['best_models']['place_model']['name']}")
 
-        print(f"\n🔗 Top 5 Winning Correlations:")
+        print("\n🔗 Top 5 Winning Correlations:")
         for i, corr in enumerate(results["feature_correlations"][:5]):
             print(f"   {i+1}. {corr['feature']}: {corr['correlation']:.3f}")
 

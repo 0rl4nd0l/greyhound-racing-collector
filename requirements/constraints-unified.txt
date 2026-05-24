@@ -1,0 +1,42 @@
+# Unified constraints to lock fragile/heavy dependencies
+# These versions are proven to work together in the existing environments
+
+# Core ML stack - fragile compiled dependencies
+numpy==1.26.4  # Compatible with all ML libs: pandas, scipy, numba, sklearn, xgboost
+scipy==1.16.1
+pandas==2.3.1
+scikit-learn==1.7.1
+xgboost==3.0.3
+lightgbm==4.6.0
+shap==0.48.0
+numba==0.61.2
+llvmlite==0.44.0
+statsmodels==0.14.5
+pyarrow==21.0.0
+
+# Web and HTTP stack - stability pins
+Flask==3.1.1
+httpx==0.28.1
+requests==2.32.4
+urllib3==2.5.0
+selenium==4.34.2
+playwright==1.54.0
+
+# Database and migrations
+SQLAlchemy==2.0.42
+alembic==1.16.4
+
+# Redis and workers
+redis==6.2.0
+
+# API clients - avoid breaking changes
+openai==1.13.3
+
+# Performance testing
+locust==2.38.0
+
+# Development tools
+pytest==8.4.1
+black==24.2.0
+bandit==1.8.6
+safety==3.6.0

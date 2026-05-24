@@ -432,8 +432,10 @@ class TraditionalRaceAnalyzer:
                 # Recent form (last 6 races) with decay
                 recent_positions = positions[:6] if len(positions) >= 6 else positions
                 if len(recent_positions) >= 3:
-                    recent_decay = decay_factor[:len(recent_positions)]
-                    derived["recent_avg_position"] = np.average(recent_positions, weights=recent_decay)
+                    recent_decay = decay_factor[: len(recent_positions)]
+                    derived["recent_avg_position"] = np.average(
+                        recent_positions, weights=recent_decay
+                    )
                     derived["form_trend"] = self._calculate_form_trend(recent_positions)
                 else:
                     derived["recent_avg_position"] = derived["avg_position"]

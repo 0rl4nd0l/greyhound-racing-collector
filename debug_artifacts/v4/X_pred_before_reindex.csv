@@ -1,0 +1,7 @@
+venue,race_date,weight,distance,trainer_name,box_number,track_condition,weather,grade,historical_avg_position,historical_best_position,historical_win_rate,historical_place_rate,historical_form_trend,historical_avg_time,historical_best_time,historical_time_consistency,venue_specific_avg_position,venue_specific_win_rate,venue_experience,venue_best_position,grade_specific_avg_position,grade_specific_win_rate,grade_experience,days_since_last_race,race_frequency,best_distance_avg_position,best_distance_win_rate,distance_adjusted_time,target_distance
+SAND,2025-08-25,28.8,500,John Smith,1,Good,Fine,M,4.5,4.0,0.125,0.375,0.0,30.0,29.0,2.0,4.5,0.125,0,4.0,4.5,0.125,0,30.0,2.0,4.5,0.125,False,0.0
+SAND,2025-08-25,27.6,500,Jane Doe,2,Good,Fine,M,4.5,4.0,0.125,0.375,0.0,30.0,29.0,2.0,4.5,0.125,0,4.0,4.5,0.125,0,30.0,2.0,4.5,0.125,False,0.0
+SAND,2025-08-25,26.3,500,Bob Johnson,3,Good,Fine,Maiden,4.5,4.0,0.125,0.375,0.0,30.0,29.0,2.0,4.5,0.125,0,4.0,4.5,0.125,0,30.0,2.0,4.5,0.125,False,0.0
+SAND,2025-08-25,25.0,500,Alice Brown,4,Good,Fine,M,4.5,4.0,0.125,0.375,0.0,30.0,29.0,2.0,4.5,0.125,0,4.0,4.5,0.125,0,30.0,2.0,4.5,0.125,False,0.0
+SAND,2025-08-25,27.6,500,Mike Wilson,5,Good,Fine,M,4.5,4.0,0.125,0.375,0.0,30.0,29.0,2.0,4.5,0.125,0,4.0,4.5,0.125,0,30.0,2.0,4.5,0.125,False,0.0
+SAND,2025-08-25,29.0,500,Sarah Davis,6,Good,Fine,M,4.5,4.0,0.125,0.375,0.0,30.0,29.0,2.0,4.5,0.125,0,4.0,4.5,0.125,0,30.0,2.0,4.5,0.125,False,0.0

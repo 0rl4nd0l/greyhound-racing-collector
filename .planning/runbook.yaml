@@ -1,0 +1,29 @@
+- title: Re-run CPU diagnostics, contain 'git diff' swarm, and harden workstation settings
+  summary: |
+    The system shows extreme CPU load with many 'git diff --numstat' processes under the Warp parent.
+    This runbook re-samples CPU state, isolates and terminates only the offending git processes,
+    applies WARP.md-recommended mitigations (disable Agent Mode indexing for this repo; optional renice),
+    reduces prompt-induced VCS cost for this repo only, and validates that repository functionality remains intact.
+  steps:
+    - name: Baseline snapshot (read-only)
+      commands:
+        - uptime
+        - if macOS: top -l 1 -o cpu; vm_stat
+        - ps auxww | grep -E "git (diff|status|ls-files|rev-parse)" | grep -v grep
+    - name: Attribute and quarantine
+      commands:
+        - Trace PPID chains for 'git diff' to confirm Warp parent
+        - renice +19 -p <warp_pid>
+        - kill TERM then KILL only the 'git diff' children of Warp
+    - name: Mitigations from WARP.md
+      commands:
+        - Disable Warp Agent Mode > Codebase context auto-indexing for this repo and restart Warp
+        - Optional repo-local: git config --local status.showUntrackedFiles no
+    - name: Repo health validation
+      commands:
+        - python scripts/monitor_system_health.py --detailed
+        - pytest -q
+    - name: Post-mitigation snapshot
+      commands:
+        - uptime; ps auxww | grep -E "git (diff|status|ls-files|rev-parse)" | grep -v grep
+

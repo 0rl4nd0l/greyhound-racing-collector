@@ -19,19 +19,36 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import requests
-from bs4 import BeautifulSoup
+try:
+    import bs4
+except Exception as _bs4_import_error:
+    bs4 = None
+
+from utils.http_client import get_shared_session
+
+# Prefer centralized venue normalization if available
+try:
+    from config.venue_mapping import normalize_venue as _normalize_venue
+except Exception:
+    _normalize_venue = None
 
 
 class UpcomingRaceBrowser:
     def __init__(self):
         self.base_url = "https://www.thedogs.com.au"
-        self.upcoming_dir = "./upcoming_races"
+        # Honor configured UPCOMING_RACES_DIR if provided; default to ./upcoming_races
+        self.upcoming_dir = os.getenv("UPCOMING_RACES_DIR", "./upcoming_races")
+        # Control how many per-race live time scrapes to perform (0 = skip enhancements)
+        try:
+            self.enhance_limit = max(0, int(os.getenv("LIVE_ENHANCE_LIMIT", "5")))
+        except Exception:
+            self.enhance_limit = 5
 
         # Create directories
         os.makedirs(self.upcoming_dir, exist_ok=True)
 
         # Setup session
-        self.session = requests.Session()
+        self.session = get_shared_session()
         self.session.headers.update(
             {
                 "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
@@ -39,10 +56,12 @@ class UpcomingRaceBrowser:
         )
 
         # Venue mapping
+        # NOTE: Keep this minimal and always fall back to config.venue_mapping.normalize_venue
         self.venue_map = {
             "angle-park": "AP_K",
             "sandown": "SAN",
             "warrnambool": "WAR",
+            "warragul": "WRGL",  # VIC Warragul (missing previously)
             "bendigo": "BEN",
             "geelong": "GEE",
             "ballarat": "BAL",
@@ -56,6 +75,7 @@ class UpcomingRaceBrowser:
             "healesville": "HEA",
             "sale": "SAL",
             "richmond": "RICH",
+            "bulli": "BULLI",
             "murray-bridge": "MURR",
             "gawler": "GAWL",
             "mount-gambier": "MOUNT",
@@ -70,6 +90,41 @@ class UpcomingRaceBrowser:
 
         print("🏁 Upcoming Race Browser initialized")
         print(f"📂 Upcoming races directory: {self.upcoming_dir}")
+
+    def _normalize_race_url(self, race_url: str):
+        """Return a tuple of (base_race_url, expert_form_url) with fragments/queries removed and expert-form deduped.
+
+        Examples:
+        - input: https://www.thedogs.com.au/racing/grafton/2025-09-02/5/expert-form?foo=1#frag
+          -> (
+                https://www.thedogs.com.au/racing/grafton/2025-09-02/5,
+                https://www.thedogs.com.au/racing/grafton/2025-09-02/5/expert-form
+             )
+        - input: https://www.thedogs.com.au/racing/angle-park/2025-09-02/1/expert-form/expert-form/
+          -> (
+                https://www.thedogs.com.au/racing/angle-park/2025-09-02/1,
+                https://www.thedogs.com.au/racing/angle-park/2025-09-02/1/expert-form
+             )
+        """
+        try:
+            url = (race_url or "").strip()
+            # Strip fragment and query
+            url = url.split("#", 1)[0]
+            url = url.split("?", 1)[0]
+            url = url.rstrip("/")
+
+            # Deduplicate trailing "/expert-form" segments
+            while url.lower().endswith("/expert-form"):
+                url = url[: -len("/expert-form")].rstrip("/")
+
+            base_race_url = url
+            expert_form_url = f"{base_race_url}/expert-form"
+
+            return base_race_url, expert_form_url
+        except Exception:
+            # Best-effort fallback
+            base_race_url = (race_url or "").split("?", 1)[0].split("#", 1)[0].rstrip("/")
+            return base_race_url, f"{base_race_url}/expert-form"
 
     def get_upcoming_races(self, days_ahead=0):
         """Get upcoming races for the next specified days"""
@@ -119,64 +174,36 @@ class UpcomingRaceBrowser:
                     races.extend(cached_races)
                 continue
 
-        # Sort races chronologically by date and time
-        def parse_race_time(race):
-            """Parse race time for sorting"""
-            date_str = race.get(
-                "date", "9999-12-31"
-            )  # Default to far future for missing dates
-            time_str = race.get("race_time", "11:59 PM")  # Default to late time
-            race_num = int(
-                race.get("race_number", 999)
-            )  # Use race number as tiebreaker
-
-            # Convert time to 24-hour format for proper sorting
+        # Sort races chronologically by date and time (robust to AM/PM or 24h times)
+        def _minutes_from_time(time_str: str, race_num: int) -> int:
+            """Return minutes since midnight. If missing/unparseable, estimate from race number."""
             try:
-                # Clean up time string
-                clean_time = time_str.strip().upper()
+                if not time_str:
+                    raise ValueError("no time")
+                t = str(time_str).strip().upper()
+                # 12-hour format with AM/PM
+                if re.match(r"^\d{1,2}:\d{2}\s*[AP]M$", t):
+                    dt = datetime.strptime(t.replace(" ", ""), "%I:%M%p")
+                    return dt.hour * 60 + dt.minute
+                # 24-hour HH:MM
+                if re.match(r"^\d{1,2}:\d{2}$", t):
+                    h, m = t.split(":")
+                    return int(h) * 60 + int(m)
+                # Fallback to estimate
+                raise ValueError("unsupported format")
+            except Exception:
+                base_minutes = 13 * 60  # 1 PM baseline
+                total = base_minutes + max(0, int(race_num) - 1) * 25
+                return total
 
-                if "PM" in clean_time:
-                    time_part = clean_time.replace(" PM", "").replace("PM", "")
-                    hour, minute = time_part.split(":")
-                    hour = int(hour)
-                    minute = int(minute)
-                    # Convert PM to 24-hour format
-                    if hour != 12:
-                        hour += 12
-                elif "AM" in clean_time:
-                    time_part = clean_time.replace(" AM", "").replace("AM", "")
-                    hour, minute = time_part.split(":")
-                    hour = int(hour)
-                    minute = int(minute)
-                    # Convert 12 AM to 0 (midnight)
-                    if hour == 12:
-                        hour = 0
-                else:
-                    # Fallback: estimate based on race number (races typically start at 1 PM, 25 min apart)
-                    base_minutes = 13 * 60  # 1 PM in minutes from midnight
-                    total_minutes_from_midnight = base_minutes + ((race_num - 1) * 25)
-                    hour = total_minutes_from_midnight // 60
-                    minute = total_minutes_from_midnight % 60
+        def _sort_key(race: dict):
+            date_str = race.get("date", "9999-12-31")
+            rn = int(race.get("race_number", 999))
+            mins = _minutes_from_time(race.get("race_time", ""), rn)
+            # Sort by date asc, time (mins) asc, race_number asc
+            return (date_str, mins, rn)
 
-                # Create sortable time string: YYYY-MM-DD HH:MM:RR (RR = race number for tiebreaker)
-                return f"{date_str} {hour:02d}:{minute:02d}:{race_num:03d}"
-            except Exception as e:
-                # Fallback for unparseable times - use race number estimate
-                base_minutes = 13 * 60  # 1 PM in minutes from midnight
-                total_minutes_from_midnight = base_minutes + ((race_num - 1) * 25)
-                hour = total_minutes_from_midnight // 60
-                minute = total_minutes_from_midnight % 60
-                return f"{date_str} {hour:02d}:{minute:02d}:{race_num:03d}"
-
-        # Sort races by date and correctly parsed race time
-        def parse_race_time_full(race):
-            try:
-                race_datetime_str = f"{race.get('date', '9999-12-31')} {race.get('race_time', '23:59')}:00"
-                return datetime.strptime(race_datetime_str, "%Y-%m-%d %H:%M:%S")
-            except:
-                return datetime.max
-
-        races.sort(key=parse_race_time_full)
+        races.sort(key=_sort_key)
 
         # Filter out past races (races that have already started)
         now = datetime.now()
@@ -249,22 +276,23 @@ class UpcomingRaceBrowser:
 
                 # For cached races, try to enhance with live times from individual race pages
                 print(f"   🔄 Enhancing cached races with live times...")
-                for i, cached_race in enumerate(
-                    cached_races[:5]
-                ):  # Limit to first 5 for performance
-                    if not cached_race.get("race_time") or cached_race.get(
-                        "race_time"
-                    ) in ["1:00 PM", "1:25 PM", "1:50 PM"]:
-                        # These look like estimated times, try to get real times
-                        real_race_time = self._scrape_race_time_from_page(
-                            cached_race["url"]
-                        )
-                        if real_race_time:
-                            cached_race["race_time"] = real_race_time
-                            cached_race["time_source"] = "live_scraped"
-                            print(
-                                f"     ✅ Updated {cached_race['title']} with real time: {real_race_time}"
+                if self.enhance_limit > 0:
+                    for i, cached_race in enumerate(
+                        cached_races[: self.enhance_limit]
+                    ):  # Limit to first N for performance
+                        if not cached_race.get("race_time") or cached_race.get(
+                            "race_time"
+                        ) in ["1:00 PM", "1:25 PM", "1:50 PM"]:
+                            # These look like estimated times, try to get real times
+                            real_race_time = self._scrape_race_time_from_page(
+                                cached_race["url"]
                             )
+                            if real_race_time:
+                                cached_race["race_time"] = real_race_time
+                                cached_race["time_source"] = "live_scraped"
+                                print(
+                                    f"     ✅ Updated {cached_race['title']} with real time: {real_race_time}"
+                                )
 
             # Try to scrape live data from main racing page (add to cached races)
             live_races = self._scrape_live_races_for_date(date_str)
@@ -297,9 +325,9 @@ class UpcomingRaceBrowser:
 
             # If we have cached races but main page didn't find all venues,
             # try to get live times for cached races
-            if cached_races and len(live_races) < len(cached_races):
+            if self.enhance_limit > 0 and cached_races and len(live_races) < len(cached_races):
                 print(f"   🔄 Enhancing cached races with live times...")
-                for cached_race in cached_races:
+                for cached_race in cached_races[: self.enhance_limit]:
                     # Find if this race already has live data
                     found_live = False
                     for race in races:
@@ -335,8 +363,31 @@ class UpcomingRaceBrowser:
             if not races:
                 print(f"   ⚪ No races found for {date_str}")
 
-            # Sort by race number within each venue
-            races.sort(key=lambda x: (x.get("venue", ""), int(x.get("race_number", 0))))
+            # Sort by time within the date (earliest first); tie-breaker by race number
+            def _minutes_from_time(time_str: str, race_num: int) -> int:
+                try:
+                    if not time_str:
+                        raise ValueError("no time")
+                    t = str(time_str).strip().upper()
+                    if re.match(r"^\d{1,2}:\d{2}\s*[AP]M$", t):
+                        dt = datetime.strptime(t.replace(" ", ""), "%I:%M%p")
+                        return dt.hour * 60 + dt.minute
+                    if re.match(r"^\d{1,2}:\d{2}$", t):
+                        h, m = t.split(":")
+                        return int(h) * 60 + int(m)
+                    raise ValueError("unsupported format")
+                except Exception:
+                    base_minutes = 13 * 60
+                    return base_minutes + (max(0, race_num - 1) * 25)
+
+            races.sort(
+                key=lambda x: (
+                    _minutes_from_time(
+                        x.get("race_time", ""), int(x.get("race_number", 999))
+                    ),
+                    int(x.get("race_number", 999)),
+                )
+            )
 
             return races
 
@@ -363,6 +414,7 @@ class UpcomingRaceBrowser:
                 "AP_K": "Angle Park",
                 "SAN": "Sandown",
                 "WAR": "Warrnambool",
+                "WRGL": "Warragul",
                 "BEN": "Bendigo",
                 "GEE": "Geelong",
                 "BAL": "Ballarat",
@@ -376,6 +428,7 @@ class UpcomingRaceBrowser:
                 "HEA": "Healesville",
                 "SAL": "Sale",
                 "RICH": "Richmond",
+                "BULLI": "Bulli",
                 "MURR": "Murray Bridge",
                 "GAWL": "Gawler",
                 "MOUNT": "Mount Gambier",
@@ -648,8 +701,15 @@ class UpcomingRaceBrowser:
             if not race_number.isdigit():
                 return None
 
-            # Map venue slug to venue code
-            venue_code = self.venue_map.get(venue_slug, venue_slug.upper())
+            # Map venue slug to venue code using centralized normalization where possible
+            venue_code = self.venue_map.get(venue_slug)
+            if not venue_code:
+                try:
+                    venue_code = _normalize_venue(venue_slug) if _normalize_venue else None
+                except Exception:
+                    venue_code = None
+            if not venue_code:
+                venue_code = venue_slug.upper()
             venue_name = venue_slug.replace("-", " ").title()
 
             # Get link text and surrounding elements for additional information
@@ -675,18 +735,57 @@ class UpcomingRaceBrowser:
             else:
                 combined_text = link_text
 
-            # Extract time (format like "7:45 PM" or "19:45")
+            # Extract time (format like "7:45 PM" or "19:45" or valid 4-digit HHMM)
             time_patterns = [
-                r"(\d{1,2}:\d{2}\s*(?:AM|PM))",
-                r"(\d{1,2}:\d{2})",
-                r"(\d{4})",  # 24-hour format like "1945"
+                r"(\d{1,2}:\d{2}\s*(?:AM|PM))",  # 12-hour with AM/PM
+                r"(\d{1,2}:\d{2})",  # 24-hour with colon
+                r"(\d{4})",  # 24-hour HHMM (validate)
             ]
 
             for pattern in time_patterns:
                 time_match = re.search(pattern, combined_text, re.I)
-                if time_match:
-                    race_time = time_match.group(1)
-                    break
+                if not time_match:
+                    continue
+                raw_t = time_match.group(1).strip()
+                # Normalize the captured time
+                try:
+                    if re.match(r"^\d{1,2}:\d{2}\s*(?:AM|PM)$", raw_t, re.I):
+                        # Already in 12-hour format
+                        race_time = raw_t.upper().replace(" ", " ")
+                        break
+                    elif re.match(r"^\d{1,2}:\d{2}$", raw_t):
+                        # 24-hour with colon; keep as HH:MM
+                        # Optionally convert to 12-hour for display consistency
+                        h, m = map(int, raw_t.split(":"))
+                        if 0 <= h <= 23 and 0 <= m <= 59:
+                            from datetime import datetime as _dt
+
+                            race_time = (
+                                _dt.strptime(f"{h:02d}:{m:02d}", "%H:%M")
+                                .strftime("%I:%M %p")
+                                .lstrip("0")
+                            )
+                            break
+                        else:
+                            continue
+                    elif re.match(r"^\d{4}$", raw_t):
+                        # Raw HHMM digits; validate bounds
+                        h = int(raw_t[:2])
+                        m = int(raw_t[2:])
+                        if 0 <= h <= 23 and 0 <= m <= 59:
+                            from datetime import datetime as _dt
+
+                            race_time = (
+                                _dt.strptime(f"{h:02d}:{m:02d}", "%H:%M")
+                                .strftime("%I:%M %p")
+                                .lstrip("0")
+                            )
+                            break
+                        else:
+                            # Ignore invalid 4-digit times like 7215
+                            continue
+                except Exception:
+                    continue
 
             # Extract distance (format like "520m", "715m")
             distance_patterns = [
@@ -769,20 +868,30 @@ class UpcomingRaceBrowser:
             print(f"🔄 Downloading CSV for: {race_url}")
 
             # Get race page
-            response = self.session.get(race_url, timeout=30)
+            response = None
+            try:
+                response = self.session.get(race_url, timeout=30)
 
-            if response.status_code == 404:
-                return {
-                    "success": False,
-                    "error": "Race page not found (404). Please check the race URL or try again later.",
-                }
-            elif response.status_code != 200:
-                return {
-                    "success": False,
-                    "error": f"Failed to access race page: {response.status_code}",
-                }
+                if response.status_code == 404:
+                    return {
+                        "success": False,
+                        "error": "Race page not found (404). Please check the race URL or try again later.",
+                    }
+                elif response.status_code != 200:
+                    return {
+                        "success": False,
+                        "error": f"Failed to access race page: {response.status_code}",
+                    }
 
-            soup = BeautifulSoup(response.content, "html.parser")
+                if bs4 is None:
+                    raise RuntimeError("BeautifulSoup (bs4) is required. Install with 'pip install beautifulsoup4'.")
+                soup = bs4.BeautifulSoup(response.content, "html.parser")
+            finally:
+                if response is not None:
+                    try:
+                        response.close()
+                    except Exception:
+                        pass
 
             # Extract race information for filename
             race_info = self.extract_detailed_race_info(soup, race_url)
@@ -802,37 +911,85 @@ class UpcomingRaceBrowser:
             csv_info = self.find_csv_download_link(soup, race_url)
 
             if not csv_info:
+                # Fallback: try the dedicated expert-form scraper which knows how to submit
+                # the export form and save the CSV directly to UPCOMING_RACES_DIR.
+                try:
+                    print("   🔁 Fallback: attempting expert-form scraper path")
+                    from expert_form_csv_scraper import ExpertFormCsvScraper
+
+                    # Normalize first to avoid duplicated expert-form segments
+                    base_race_url, _ef_url = self._normalize_race_url(race_url)
+
+                    scraper = ExpertFormCsvScraper(max_workers=1, verbose=False)
+                    # Pass the base race URL; scraper will derive the expert-form URL
+                    ef_success = scraper.download_csv_from_expert_form(base_race_url, filename)
+                    if ef_success and os.path.exists(filepath):
+                        print(
+                            f"   ✅ Fallback saved CSV via expert-form scraper: {filename}"
+                        )
+                        return {
+                            "success": True,
+                            "filename": filename,
+                            "filepath": filepath,
+                        }
+                    else:
+                        print(
+                            "   ❌ Expert-form fallback did not produce a CSV; continuing to fail"
+                        )
+                except Exception as _ef_e:
+                    print(f"   ⚠️ Expert-form fallback failed: {_ef_e}")
+
                 return {"success": False, "error": "No CSV download link found"}
 
-            # Download CSV
-            if isinstance(csv_info, dict) and csv_info.get("type") == "form_post":
-                # Handle form POST request
-                csv_response = self.session.post(
-                    csv_info["url"], data=csv_info["data"], timeout=30
-                )
-            else:
-                # Handle direct URL request
-                if isinstance(csv_info, str):
-                    csv_url = csv_info
-                elif isinstance(csv_info, dict):
-                    csv_url = csv_info.get("url")
+            # Download CSV content
+            content = None
+            csv_response = None
+            try:
+                if isinstance(csv_info, dict) and csv_info.get("type") == "direct_csv":
+                    # We already have the CSV data
+                    content = csv_info.get("data")
+                    print(f"   ✅ Using CSV data returned from form submission")
+                elif isinstance(csv_info, dict) and csv_info.get("type") == "form_post":
+                    # Handle form POST request
+                    csv_response = self.session.post(
+                        csv_info["url"], data=csv_info["data"], timeout=30
+                    )
                 else:
-                    # csv_info is None or unexpected type
-                    return {"success": False, "error": "Invalid CSV info returned from link finder"}
-                
-                if not csv_url:
-                    return {"success": False, "error": "No valid CSV URL found"}
-                
-                csv_response = self.session.get(csv_url, timeout=30)
+                    # Handle direct URL request
+                    if isinstance(csv_info, str):
+                        csv_url = csv_info
+                    elif isinstance(csv_info, dict):
+                        csv_url = csv_info.get("url")
+                    else:
+                        # csv_info is None or unexpected type
+                        return {
+                            "success": False,
+                            "error": "Invalid CSV info returned from link finder",
+                        }
 
-            if csv_response.status_code != 200:
-                return {
-                    "success": False,
-                    "error": f"Failed to download CSV: {csv_response.status_code}",
-                }
+                    if not csv_url:
+                        return {"success": False, "error": "No valid CSV URL found"}
 
-            # Validate CSV content
-            content = csv_response.text
+                    csv_response = self.session.get(csv_url, timeout=30)
+
+                # Get content from response if we made a request
+                if content is None:
+                    if csv_response and csv_response.status_code != 200:
+                        return {
+                            "success": False,
+                            "error": f"Failed to download CSV: {csv_response.status_code}",
+                        }
+                    
+                    if csv_response:
+                        content = csv_response.text
+                    else:
+                        return {"success": False, "error": "No CSV content received"}
+            finally:
+                if csv_response is not None:
+                    try:
+                        csv_response.close()
+                    except Exception:
+                        pass
             if not content.strip():
                 return {"success": False, "error": "Empty CSV content"}
 
@@ -947,16 +1104,46 @@ class UpcomingRaceBrowser:
     def find_csv_download_link(self, soup, race_url):
         """Find CSV download link on the race page"""
         try:
-            # Try the expert-form page method first
-            base_race_url = race_url.split("?")[0].rstrip("/")
-            expert_form_url = f"{base_race_url}/expert-form"
+            # Try the expert-form page method first (normalized)
+            base_race_url, expert_form_url = self._normalize_race_url(race_url)
 
             print(f"   🔍 Trying expert-form URL: {expert_form_url}")
-            response = self.session.get(expert_form_url, timeout=15)
+            response = None
+            try:
+                # Include Referer and browser-like headers to avoid 403 blocks
+                response = self.session.get(
+                    expert_form_url,
+                    timeout=15,
+                    headers={
+                        "Referer": base_race_url,
+                        "Origin": self.base_url,
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                        "Accept-Language": "en-US,en;q=0.9",
+                        "Upgrade-Insecure-Requests": "1",
+                        "Sec-Fetch-Site": "same-origin",
+                        "Sec-Fetch-Mode": "navigate",
+                        "Sec-Fetch-Dest": "document",
+                        "DNT": "1",
+                    },
+                )
 
-            if response.status_code == 200:
-                expert_soup = BeautifulSoup(response.content, "html.parser")
+                if response.status_code == 200:
+                    if bs4 is None:
+                        raise RuntimeError("BeautifulSoup (bs4) is required. Install with 'pip install beautifulsoup4'.")
+                    expert_soup = bs4.BeautifulSoup(response.content, "html.parser")
+                else:
+                    print(
+                        f"   ❌ Expert-form page not accessible: {response.status_code}"
+                    )
+                    expert_soup = None
+            finally:
+                if response is not None:
+                    try:
+                        response.close()
+                    except Exception:
+                        pass
 
+            if expert_soup:
                 # Method 1: Look for direct CSV download links
                 csv_links = expert_soup.find_all("a", href=True)
                 for link in csv_links:
@@ -1078,32 +1265,73 @@ class UpcomingRaceBrowser:
                         print(f"   📝 Form data: {form_data}")
 
                         # Submit form
+                        form_response = None
                         try:
+                            common_headers = {
+                                "Referer": expert_form_url,
+                                "Origin": self.base_url,
+                                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                                "Accept-Language": "en-US,en;q=0.9",
+                                "Upgrade-Insecure-Requests": "1",
+                            }
                             if form_method == "POST":
                                 form_response = self.session.post(
-                                    target_url, data=form_data, timeout=15
+                                    target_url, data=form_data, timeout=15, headers=common_headers
                                 )
                             else:
                                 form_response = self.session.get(
-                                    target_url, params=form_data, timeout=15
+                                    target_url, params=form_data, timeout=15, headers=common_headers
                                 )
 
                             if form_response.status_code == 200:
-                                # The response should contain the actual download URL (like the working scraper)
-                                download_url = form_response.text.strip()
-
+                                content_type = form_response.headers.get("content-type", "").lower()
+                                response_text = form_response.text.strip()
+                                
                                 print(
                                     f"   📄 Response length: {len(form_response.content)} bytes"
                                 )
-                                print(f"   📄 Response content: {download_url[:200]}")
+                                print(f"   📄 Content-Type: {content_type}")
+                                print(f"   📄 Response preview: {response_text[:200]}")
 
-                                if download_url.startswith("http"):
-                                    print(f"   ✅ Got CSV download URL: {download_url}")
-                                    return download_url
-                                else:
-                                    print(
-                                        f"   ⚠️ Unexpected response format: {download_url[:100]}"
-                                    )
+                                # Check if we got CSV data directly
+                                if "csv" in content_type or "text/plain" in content_type:
+                                    if response_text and len(response_text.split("\n")) > 1:
+                                        lines = response_text.split("\n")
+                                        first_line = lines[0].lower()
+                                        if any(header in first_line for header in ["dog", "name", "runner", "placing", "box"]):
+                                            print(f"   ✅ Got CSV data directly from form submission")
+                                            # Return form info structure for CSV data
+                                            return {"type": "direct_csv", "data": response_text}
+                                
+                                # Check if response contains a direct download URL (original behavior)
+                                if response_text.startswith("http"):
+                                    print(f"   ✅ Got CSV download URL: {response_text}")
+                                    return response_text
+                                    
+                                # Check if HTML response contains a download link
+                                if "<" in response_text and ">" in response_text:
+                                    if bs4 is None:
+                                        raise RuntimeError("BeautifulSoup (bs4) is required. Install with 'pip install beautifulsoup4'.")
+                                    response_soup = bs4.BeautifulSoup(response_text, "html.parser")
+                                    
+                                    # Look for download links in the response
+                                    csv_links = response_soup.find_all("a", href=True)
+                                    for link in csv_links:
+                                        href = link.get("href")
+                                        link_text = link.get_text().strip().lower()
+                                        if href and ("csv" in href.lower() or "csv" in link_text or "export" in link_text):
+                                            if href.startswith("/"):
+                                                csv_url = f"{self.base_url}{href}"
+                                            elif href.startswith("http"):
+                                                csv_url = href
+                                            else:
+                                                csv_url = f"{self.base_url}/{href}"
+                                            print(f"   ✅ Found CSV link in form response: {csv_url}")
+                                            return csv_url
+                                
+                                print(
+                                    f"   ⚠️ Form returned HTML instead of CSV data - this suggests the form submission failed"
+                                )
                             else:
                                 print(
                                     f"   ❌ Form submission failed with status: {form_response.status_code}"
@@ -1112,6 +1340,12 @@ class UpcomingRaceBrowser:
                         except Exception as e:
                             print(f"   ⚠️ Error submitting form: {e}")
                             continue
+                        finally:
+                            if form_response is not None:
+                                try:
+                                    form_response.close()
+                                except Exception:
+                                    pass
 
                 # Method 4: Look for JavaScript-generated CSV URLs
                 script_tags = expert_soup.find_all("script")
@@ -1147,27 +1381,37 @@ class UpcomingRaceBrowser:
             for csv_url in direct_csv_urls:
                 try:
                     print(f"   🔍 Trying direct CSV URL: {csv_url}")
-                    response = self.session.get(csv_url, timeout=10)
-                    if response.status_code == 200:
-                        content_type = response.headers.get("content-type", "").lower()
-                        if "csv" in content_type or (
-                            "text" in content_type and len(response.content) > 100
-                        ):
-                            # Validate it looks like CSV content
-                            content_sample = response.text[:300].lower()
-                            if any(
-                                indicator in content_sample
-                                for indicator in [
-                                    "dog name",
-                                    "runner",
-                                    "barrier",
-                                    "trainer",
-                                    "box",
-                                    "form",
-                                ]
-                            ) or ("," in content_sample and "\n" in content_sample):
-                                print(f"   ✅ Direct CSV URL worked: {csv_url}")
-                                return csv_url
+                    response = None
+                    try:
+                        response = self.session.get(csv_url, timeout=10)
+                        if response.status_code == 200:
+                            content_type = response.headers.get(
+                                "content-type", ""
+                            ).lower()
+                            if "csv" in content_type or (
+                                "text" in content_type and len(response.content) > 100
+                            ):
+                                # Validate it looks like CSV content
+                                content_sample = response.text[:300].lower()
+                                if any(
+                                    indicator in content_sample
+                                    for indicator in [
+                                        "dog name",
+                                        "runner",
+                                        "barrier",
+                                        "trainer",
+                                        "box",
+                                        "form",
+                                    ]
+                                ) or ("," in content_sample and "\n" in content_sample):
+                                    print(f"   ✅ Direct CSV URL worked: {csv_url}")
+                                    return csv_url
+                    finally:
+                        if response is not None:
+                            try:
+                                response.close()
+                            except Exception:
+                                pass
                 except Exception as e:
                     print(f"   ⚠️ Error with direct CSV URL {csv_url}: {e}")
                     continue
@@ -1213,27 +1457,37 @@ class UpcomingRaceBrowser:
         for csv_url in direct_main_urls:
             try:
                 print(f"   🔍 Trying direct main page CSV URL: {csv_url}")
-                response = self.session.get(csv_url, timeout=10)
-                if response.status_code == 200:
-                    content_type = response.headers.get("content-type", "").lower()
-                    if "csv" in content_type or (
-                        "text" in content_type and len(response.content) > 100
-                    ):
-                        # Validate it looks like CSV content
-                        content_sample = response.text[:300].lower()
-                        if any(
-                            indicator in content_sample
-                            for indicator in [
-                                "dog name",
-                                "runner",
-                                "barrier",
-                                "trainer",
-                                "box",
-                                "form",
-                            ]
-                        ) or ("," in content_sample and "\n" in content_sample):
-                            print(f"   ✅ Direct main page CSV URL worked: {csv_url}")
-                            return csv_url
+                response = None
+                try:
+                    response = self.session.get(csv_url, timeout=10)
+                    if response.status_code == 200:
+                        content_type = response.headers.get("content-type", "").lower()
+                        if "csv" in content_type or (
+                            "text" in content_type and len(response.content) > 100
+                        ):
+                            # Validate it looks like CSV content
+                            content_sample = response.text[:300].lower()
+                            if any(
+                                indicator in content_sample
+                                for indicator in [
+                                    "dog name",
+                                    "runner",
+                                    "barrier",
+                                    "trainer",
+                                    "box",
+                                    "form",
+                                ]
+                            ) or ("," in content_sample and "\n" in content_sample):
+                                print(
+                                    f"   ✅ Direct main page CSV URL worked: {csv_url}"
+                                )
+                                return csv_url
+                finally:
+                    if response is not None:
+                        try:
+                            response.close()
+                        except Exception:
+                            pass
             except Exception as e:
                 continue
 
@@ -1248,11 +1502,19 @@ class UpcomingRaceBrowser:
 
         for pattern in common_patterns:
             try:
-                response = self.session.head(pattern, timeout=10)
-                if response.status_code == 200:
-                    content_type = response.headers.get("content-type", "").lower()
-                    if "csv" in content_type or "text" in content_type:
-                        return pattern
+                response = None
+                try:
+                    response = self.session.head(pattern, timeout=10)
+                    if response.status_code == 200:
+                        content_type = response.headers.get("content-type", "").lower()
+                        if "csv" in content_type or "text" in content_type:
+                            return pattern
+                finally:
+                    if response is not None:
+                        try:
+                            response.close()
+                        except Exception:
+                            pass
             except:
                 continue
 
@@ -1290,18 +1552,32 @@ class UpcomingRaceBrowser:
                     if response.status_code == 429:  # Too Many Requests
                         retry_delay = int(response.headers.get("Retry-After", 30))
                         print(f"     ⏳ Rate limited, waiting {retry_delay} seconds...")
+                        try:
+                            response.close()
+                        except Exception:
+                            pass
+                        response = None
                         time.sleep(retry_delay)
                         retry_count += 1
                         continue
 
                     if response.status_code == 404:
                         print(f"     ⚠️ Race page not found (404)")
+                        try:
+                            response.close()
+                        except Exception:
+                            pass
                         return None
 
                     if response.status_code != 200:
                         print(
                             f"     ⚠️ Failed to access race page: {response.status_code}"
                         )
+                        try:
+                            response.close()
+                        except Exception:
+                            pass
+                        response = None
                         retry_count += 1
                         time.sleep(5)  # Wait 5 seconds before retry
                         continue
@@ -1319,11 +1595,21 @@ class UpcomingRaceBrowser:
                     time.sleep(5)  # Wait 5 seconds before retry
                     continue
 
-            if response.status_code != 200:
-                print(f"     ⚠️ Failed to access race page: {response.status_code}")
+            if response is None or response.status_code != 200:
+                print(
+                    f"     ⚠️ Failed to access race page: {getattr(response, 'status_code', 'no response')}"
+                )
                 return None
 
-            soup = BeautifulSoup(response.content, "html.parser")
+            try:
+                if bs4 is None:
+                    raise RuntimeError("BeautifulSoup (bs4) is required. Install with 'pip install beautifulsoup4'.")
+                soup = bs4.BeautifulSoup(response.content, "html.parser")
+            finally:
+                try:
+                    response.close()
+                except Exception:
+                    pass
 
             # Multiple strategies to find race time
             race_time = None
@@ -1481,13 +1767,23 @@ class UpcomingRaceBrowser:
 
             print(f"   🌐 Fetching: {date_url}")
             # Reduced timeout for faster failure
-            response = self.session.get(date_url, timeout=10)
+            response = None
+            try:
+                response = self.session.get(date_url, timeout=10)
 
-            if response.status_code != 200:
-                print(f"   ⚠️ Failed to access racing page: {response.status_code}")
-                return races
+                if response.status_code != 200:
+                    print(f"   ⚠️ Failed to access racing page: {response.status_code}")
+                    return races
 
-            soup = BeautifulSoup(response.content, "html.parser")
+                if bs4 is None:
+                    raise RuntimeError("BeautifulSoup (bs4) is required. Install with 'pip install beautifulsoup4'.")
+                soup = bs4.BeautifulSoup(response.content, "html.parser")
+            finally:
+                if response is not None:
+                    try:
+                        response.close()
+                    except Exception:
+                        pass
 
             # Find race links using optimized strategy
             race_links = self._find_race_links_fast(soup, date_str)

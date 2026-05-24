@@ -21,15 +21,17 @@ import argparse
 import os
 import re
 import shutil
+
+# Structured logging
+import sys
 from datetime import date, datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-# Structured logging
-import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config.logging_config import get_component_logger  # type: ignore
-from config.paths import UPCOMING_RACES_DIR, ARCHIVE_DIR
+from config.paths import ARCHIVE_DIR, UPCOMING_RACES_DIR
+
 log = get_component_logger()
 
 API_PATTERN = re.compile(
@@ -89,21 +91,32 @@ def move_file(src: Path, dest_dir: Path, dry_run: bool) -> None:
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Archive past-date upcoming CSVs")
-    parser.add_argument("--dir", dest="directory", default=None, help="Directory to scan (defaults to UPCOMING_RACES_DIR)")
+    parser.add_argument(
+        "--dir",
+        dest="directory",
+        default=None,
+        help="Directory to scan (defaults to UPCOMING_RACES_DIR)",
+    )
     parser.add_argument(
         "--archive",
         dest="archive",
         default=None,
         help="Archive directory (defaults to PAST_RACES_ARCHIVE_DIR or ./archive/past_races)",
     )
-    parser.add_argument("--dry-run", action="store_true", help="Do not move files; just log actions")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Do not move files; just log actions"
+    )
     args = parser.parse_args(argv)
 
     upcoming_dir = Path(
-        args.directory or os.environ.get("UPCOMING_RACES_DIR") or str(UPCOMING_RACES_DIR)
+        args.directory
+        or os.environ.get("UPCOMING_RACES_DIR")
+        or str(UPCOMING_RACES_DIR)
     ).resolve()
     archive_dir = Path(
-        args.archive or os.environ.get("PAST_RACES_ARCHIVE_DIR") or str(ARCHIVE_DIR / "past_races")
+        args.archive
+        or os.environ.get("PAST_RACES_ARCHIVE_DIR")
+        or str(ARCHIVE_DIR / "past_races")
     ).resolve()
     dry_run = args.dry_run or (os.environ.get("DRY_RUN", "0") == "1")
 
@@ -115,7 +128,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             details={"directory": str(upcoming_dir)},
             component="qa",
         )
-        print(f"INFO: Upcoming directory not found at {upcoming_dir}. Nothing to archive.")
+        print(
+            f"INFO: Upcoming directory not found at {upcoming_dir}. Nothing to archive."
+        )
         return 0
 
     entries = sorted([p for p in upcoming_dir.iterdir() if not p.name.startswith(".")])
@@ -168,13 +183,18 @@ def main(argv: Optional[List[str]] = None) -> int:
         "Upcoming housekeeping completed",
         action="archive_upcoming",
         outcome=outcome,
-        details={"total_candidates": len(candidates), "moved": moved, "archive_dir": str(archive_dir)},
+        details={
+            "total_candidates": len(candidates),
+            "moved": moved,
+            "archive_dir": str(archive_dir),
+        },
         component="qa",
     )
-    print(f"INFO: Housekeeping completed: {moved}/{len(candidates)} files {'would be moved' if dry_run else 'moved'} to {archive_dir}.")
+    print(
+        f"INFO: Housekeeping completed: {moved}/{len(candidates)} files {'would be moved' if dry_run else 'moved'} to {archive_dir}."
+    )
     return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

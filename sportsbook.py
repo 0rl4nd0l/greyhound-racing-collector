@@ -1,6 +1,5 @@
 import pandas as pd
-from odds_dataclasses import (convert_market_list_to_df,
-                              convert_selection_list_to_df)
+from odds_dataclasses import convert_market_list_to_df, convert_selection_list_to_df
 
 
 class Sportsbook:

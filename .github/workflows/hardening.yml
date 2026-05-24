@@ -1,0 +1,49 @@
+name: hardening-guard
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  hardening:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install minimal dependencies
+        run: |
+          python -m pip install --upgrade pip
+
+      - name: Compile runtime surfaces only (syntax check)
+        run: |
+          python - <<'PY'
+          import compileall, sys, os
+          targets = [
+              'app.py',
+              'fastapi_app',
+              'services',
+              'src',
+              'utils',
+          ]
+          ok = True
+          for t in targets:
+              if not os.path.exists(t):
+                  continue
+              if os.path.isdir(t):
+                  res = compileall.compile_dir(t, force=False, quiet=1)
+              else:
+                  res = compileall.compile_file(t, quiet=1)
+              ok = bool(res) and ok
+          sys.exit(0 if ok else 1)
+          PY
+
+      - name: Run hardening guard
+        run: |
+          python scripts/ci/check_hardening_guards.py
+

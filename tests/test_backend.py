@@ -1,7 +1,8 @@
+import os
+
 import pytest
 from flask import Flask
 from flask.testing import FlaskClient
-import os
 
 # Assuming the Flask app is in app.py and correctly configured
 from app import app as flask_app
@@ -9,10 +10,12 @@ from app import app as flask_app
 
 @pytest.fixture
 def app() -> Flask:
-    flask_app.config.update({
-        "TESTING": True,
-        "UPCOMING_DIR": "./upcoming_races",
-    })
+    flask_app.config.update(
+        {
+            "TESTING": True,
+            "UPCOMING_DIR": "./upcoming_races",
+        }
+    )
     os.makedirs(flask_app.config["UPLOAD_FOLDER"], exist_ok=True)
     yield flask_app
 
@@ -40,7 +43,9 @@ def test_predict_single_race(client: FlaskClient):
         f.write("2. Test Dog 2,2,31.0,Trainer B\n")
 
     # API request to the correct JSON API endpoint
-    response = client.post("/api/predict_single_race_enhanced", json={"race_filename": race_filename})
+    response = client.post(
+        "/api/predict_single_race_enhanced", json={"race_filename": race_filename}
+    )
     assert response.status_code in [200, 400, 500]
     json_data = response.get_json()
     assert "success" in json_data

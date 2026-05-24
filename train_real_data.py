@@ -2,7 +2,6 @@ import sqlite3
 
 import numpy as np
 import pandas as pd
-
 from advanced_ml_system_v2 import AdvancedMLSystemV2
 
 

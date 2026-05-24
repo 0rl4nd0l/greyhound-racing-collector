@@ -40,8 +40,7 @@ warnings.filterwarnings("ignore")
 # ML Libraries
 try:
     import joblib
-    from sklearn.ensemble import (GradientBoostingClassifier,
-                                  RandomForestClassifier)
+    from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
     from sklearn.impute import SimpleImputer
     from sklearn.linear_model import LogisticRegression
     from sklearn.metrics import accuracy_score, log_loss, roc_auc_score
@@ -499,7 +498,7 @@ class AutomatedBacktestingSystem:
 
     def send_performance_alerts(self, alerts):
         """Send performance alerts (placeholder for notification system)"""
-        print(f"📧 Performance alerts generated:")
+        print("📧 Performance alerts generated:")
         for alert in alerts:
             print(f"   {alert['level']}: {alert['message']}")
             print(f"   Recommendation: {alert['recommendation']}")

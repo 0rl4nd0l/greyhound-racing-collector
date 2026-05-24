@@ -1,0 +1,14 @@
+# Database dependencies
+# SQLAlchemy, migrations, and database utilities
+
+# Core database stack
+SQLAlchemy>=2.0.40,<3.0
+SQLAlchemy-Utils>=0.41.0
+
+# Database migrations
+alembic>=1.16.0
+
+# Optional: Database drivers (uncomment as needed)
+# psycopg2-binary>=2.9.0  # PostgreSQL
+# mysqlclient>=2.2.0      # MySQL
+# pymongo>=4.8.0          # MongoDB

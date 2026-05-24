@@ -66,6 +66,10 @@ jobs:
         pip install -r requirements.txt
         pip install -r requirements-test.txt
 
+    - name: Validate ML environment versions
+      run: |
+        python scripts/validate_env.py
+
     - name: Validate upcoming_races CSVs
       run: |
         echo "🔎 Validating upcoming_races CSVs..."
@@ -294,6 +298,21 @@ jobs:
           TESTING: true
           OPENAI_USE_LIVE: 1
 
+  js-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Node dependencies
+        run: |
+          npm ci || npm install
+      - name: Run Jest unit tests (JS)
+        run: |
+          npm test --silent
+
   # Headless Browser Tests Job
   browser-tests:
     runs-on: ubuntu-latest
@@ -385,11 +404,17 @@ jobs:
         echo "Running Playwright test for upcoming races endpoint..."
         npx playwright test --config=playwright.config.js --project=chromium-desktop \
           tests/ci/test-upcoming-races-console.spec.js
-        echo "Playwright test completed successfully!"
+        echo "Playwright console test completed successfully!"
       env:
         DATABASE_URL: postgresql://test_user:test_password@localhost:5433/greyhound_test
         REDIS_URL: redis://localhost:6380/0
         TESTING: true
+
+    - name: Run API-only Playwright E2E for upcoming ingestion
+      run: |
+        echo "Running API-only Playwright E2E (no UI navigation)..."
+        npx playwright test tests/playwright/e2e/upcoming-ingestion-api-flow.spec.ts -c playwright.config.ts --reporter=line
+        echo "API-only Playwright E2E completed successfully!"
     
     - name: Stop Flask app
       if: always()

@@ -342,7 +342,8 @@ const baseURL = process.env.FLASK_BASE_URL || `http://localhost:${process.env.DE
     
     if (metricsResponse.ok()) {
       const metrics = await metricsResponse.json();
-      expect(metrics).toHaveProperty('total_tasks');
+      const totalTasks = (metrics && (metrics.total_tasks ?? (metrics.metrics && metrics.metrics.total_tasks)));
+      expect(totalTasks).not.toBeUndefined();
       console.log('✅ Worker metrics available:', metrics);
     } else {
       console.log('ℹ️ Worker metrics endpoint not available');

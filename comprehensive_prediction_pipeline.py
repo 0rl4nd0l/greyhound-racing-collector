@@ -80,14 +80,17 @@ try:
     # DEPRECATED: GPTPredictionEnhancer has been archived. Prefer using
     # utils/openai_wrapper.OpenAIWrapper for any new OpenAI interactions.
     from archive.outdated_openai.gpt_prediction_enhancer import GPTPredictionEnhancer
+
     GPT_ENHANCER_AVAILABLE = True
 except ImportError as e:
     print(f"⚠️ GPT Enhancer not available: {e}")
     GPT_ENHANCER_AVAILABLE = False
 
 # Import filename utilities
-from utils.file_naming import (build_prediction_filename,
-                               extract_race_id_from_csv_filename)
+from utils.file_naming import (
+    build_prediction_filename,
+    extract_race_id_from_csv_filename,
+)
 
 
 class ComprehensivePredictionPipeline:
@@ -213,11 +216,11 @@ class ComprehensivePredictionPipeline:
 
     def validate_race_file(self, race_file_path, min_file_size=100):
         """Validate race file and check data quality
-        
+
         Args:
             race_file_path: Path to the race file to validate
             min_file_size: Minimum file size in bytes (default: 100)
-            
+
         Returns:
             Tuple of (is_valid: bool, message: str)
         """
@@ -229,37 +232,59 @@ class ComprehensivePredictionPipeline:
             file_size = os.path.getsize(race_file_path)
             if file_size < min_file_size:
                 filename = os.path.basename(race_file_path)
-                print(f"⚠️  Skipping file '{filename}': Too small ({file_size} bytes < {min_file_size} bytes minimum)")
-                return False, f"File too small: {file_size} bytes (minimum: {min_file_size} bytes)"
+                print(
+                    f"⚠️  Skipping file '{filename}': Too small ({file_size} bytes < {min_file_size} bytes minimum)"
+                )
+                return (
+                    False,
+                    f"File too small: {file_size} bytes (minimum: {min_file_size} bytes)",
+                )
 
             # Check if file is actually HTML (common issue with failed downloads)
             with open(race_file_path, "r", encoding="utf-8") as f:
-                content_sample = f.read(1024)  # Read first 1KB to check for HTML patterns
-                
+                content_sample = f.read(
+                    1024
+                )  # Read first 1KB to check for HTML patterns
+
                 # Check for various HTML indicators
                 html_indicators = [
                     "<!DOCTYPE",
-                    "<html", 
+                    "<html",
                     "<HTML",
                     "<head>",
                     "<HEAD>",
                     "<body>",
                     "<BODY>",
                     "<title>",
-                    "<TITLE>"
+                    "<TITLE>",
                 ]
-                
+
                 if any(indicator in content_sample for indicator in html_indicators):
                     filename = os.path.basename(race_file_path)
-                    print(f"⚠️  Skipping file '{filename}': Contains HTML content, not CSV data")
+                    print(
+                        f"⚠️  Skipping file '{filename}': Contains HTML content, not CSV data"
+                    )
                     return (
                         False,
                         "File appears to be HTML, not CSV. Possibly a failed download.",
                     )
 
-            # Load race file with better error handling
+            # Load race file with better error handling and delimiter detection
             try:
-                df = pd.read_csv(race_file_path)
+                detected_sep = None
+                try:
+                    with open(
+                        race_file_path, "r", encoding="utf-8", errors="ignore"
+                    ) as _f:
+                        header_line = _f.readline()
+                        if "|" in header_line:
+                            detected_sep = "|"
+                except Exception:
+                    detected_sep = None
+                if detected_sep:
+                    df = pd.read_csv(race_file_path, sep=detected_sep, engine="python")
+                else:
+                    df = pd.read_csv(race_file_path)
             except pd.errors.ParserError as e:
                 return (
                     False,
@@ -270,6 +295,26 @@ class ComprehensivePredictionPipeline:
 
             if df.empty:
                 return False, "Race file is empty"
+
+            # Normalize columns to improve compatibility with form guides
+            def _norm(name: str) -> str:
+                name = str(name or "").strip()
+                name = re.sub(r"[\(\)\[\]\-]+", " ", name)
+                name = name.replace("#", "").replace("|", " ")
+                name = re.sub(r"\s+", " ", name).strip()
+                snake = re.sub(r"[^0-9a-zA-Z]+", "_", name).strip("_").lower()
+                if snake in ("dog", "dogname", "name", "dog_name"):
+                    return "dog_name"
+                if snake in ("box", "box_no", "box_number"):
+                    return "box"
+                if snake in ("wgt", "weight"):
+                    return "weight"
+                return snake
+
+            try:
+                df.columns = [_norm(c) for c in df.columns]
+            except Exception:
+                pass
 
             # Check required columns
             required_columns = ["dog_name", "box"]
@@ -371,6 +416,17 @@ class ComprehensivePredictionPipeline:
                 try:
                     form_data = self.ml_system.load_form_guide_data()
 
+                    # Normalize keys of loaded form data for robust matching
+                    norm_index = {}
+                    try:
+                        for k, v in form_data.items():
+                            nk = self._clean_dog_name_for_db(str(k))
+                            # prefer first occurrence; don't overwrite existing
+                            if nk and nk not in norm_index:
+                                norm_index[nk] = v
+                    except Exception:
+                        norm_index = {}
+
                     # Try multiple name variations for form guide lookup (case variations only)
                     clean_name = self._clean_dog_name_for_db(dog_name)
                     form_guide_matches = []
@@ -382,11 +438,22 @@ class ComprehensivePredictionPipeline:
                         clean_name.lower(),
                         clean_name.title(),
                     ]
+                    found_key = None
                     for test_name in test_names:
                         if test_name in form_data:
+                            found_key = test_name
                             form_guide_matches = form_data[test_name]
                             print(
                                 f"✅ External form guide data found for '{test_name}': {len(form_guide_matches)} races"
+                            )
+                            break
+                        # Also try normalized index
+                        norm_test = self._clean_dog_name_for_db(test_name)
+                        if norm_test and norm_test in norm_index:
+                            found_key = norm_test
+                            form_guide_matches = norm_index[norm_test]
+                            print(
+                                f"✅ External form guide data found via normalized key '{norm_test}': {len(form_guide_matches)} races"
                             )
                             break
 
@@ -544,7 +611,10 @@ class ComprehensivePredictionPipeline:
         return cleaned
 
     def _extract_race_file_form_data(self, dog_name, race_file_data):
-        """Extract historical form data for a specific dog from the race file itself"""
+        """Extract historical form data for a specific dog from the race file itself
+        Uses normalized column names produced earlier (snake_case).
+        The form guide contains 10 dog sections; blank rows below a dog belong to that dog.
+        """
         try:
             # Clean the target dog name for matching
             clean_target_name = self._clean_dog_name_for_db(dog_name)
@@ -553,15 +623,25 @@ class ComprehensivePredictionPipeline:
             current_dog_name = None
             found_target_dog = False
 
+            def _val(row, *cands):
+                for c in cands:
+                    if c in row and pd.notna(row[c]):
+                        return str(row[c]).strip()
+                return ""
+
             for idx, row in race_file_data.iterrows():
-                dog_name_raw = str(row["Dog Name"]).strip().replace('"', "")
+                # New dog row if dog_name present; otherwise continuation of previous dog
+                dog_name_raw = _val(row, "dog_name")
+                if dog_name_raw:
+                    # Some sources prefix with "N. Name"; strip numeric prefix for comparison
+                    if ". " in dog_name_raw and len(dog_name_raw.split(". ")) == 2:
+                        try:
+                            int(dog_name_raw.split(". ", 1)[0])
+                            dog_name_raw = dog_name_raw.split(". ", 1)[1]
+                        except Exception:
+                            pass
 
-                # Check if this is a new dog entry or continuation of previous
-                if dog_name_raw != "" and dog_name_raw != "nan":
-                    # This is a new dog - check if it's our target
                     current_dog_name = dog_name_raw
-
-                    # Remove box number prefix for comparison
                     clean_current_name = self._clean_dog_name_for_db(current_dog_name)
 
                     if clean_current_name == clean_target_name:
@@ -572,36 +652,33 @@ class ComprehensivePredictionPipeline:
                             break
                         found_target_dog = False
 
-                # If we're processing our target dog, collect the historical race data
+                # If we're processing our target dog, collect the historical race data (from continuation rows)
                 if found_target_dog and current_dog_name:
-                    # Parse this row as historical race data
                     historical_race = {
-                        "sex": str(row.get("Sex", "")).strip(),
-                        "place": str(row.get("PLC", "")).strip(),
-                        "box": str(row.get("BOX", "")).strip(),
-                        "weight": str(row.get("WGT", "")).strip(),
-                        "distance": str(row.get("DIST", "")).strip(),
-                        "date": str(row.get("DATE", "")).strip(),
-                        "track": str(row.get("TRACK", "")).strip(),
-                        "grade": str(row.get("G", "")).strip(),
-                        "time": str(row.get("TIME", "")).strip(),
-                        "win_time": str(row.get("WIN", "")).strip(),
-                        "bonus": str(row.get("BON", "")).strip(),
-                        "first_sectional": str(row.get("1 SEC", "")).strip(),
-                        "margin": str(row.get("MGN", "")).strip(),
-                        "runner_up": str(row.get("W/2G", "")).strip(),
-                        "pir": str(row.get("PIR", "")).strip(),
-                        "starting_price": str(row.get("SP", "")).strip(),
+                        "sex": _val(row, "sex"),
+                        "place": _val(row, "plc", "place"),
+                        "box": _val(row, "box", "box_number"),
+                        "weight": _val(row, "wgt", "weight"),
+                        "distance": _val(row, "dist", "distance"),
+                        "date": _val(row, "date"),
+                        "track": _val(row, "track"),
+                        "grade": _val(row, "g", "grade"),
+                        "time": _val(row, "time"),
+                        "win_time": _val(row, "win", "win_time"),
+                        "bonus": _val(row, "bon", "bonus"),
+                        "first_sectional": _val(
+                            row, "1_sec", "sec_1", "first_sectional"
+                        ),
+                        "margin": _val(row, "mgn", "margin"),
+                        "runner_up": _val(row, "w_2g", "runner_up"),
+                        "pir": _val(row, "pir"),
+                        "starting_price": _val(row, "sp", "starting_price"),
                         "source_race": "race_file_embedded",
                         "source_file": "race_file",
                     }
 
                     # Only add if we have meaningful data (at least place and date)
-                    if (
-                        historical_race["place"]
-                        and historical_race["date"]
-                        and historical_race["place"] != ""
-                    ):
+                    if historical_race["place"] and historical_race["date"]:
                         form_data.append(historical_race)
 
             return form_data
@@ -768,22 +845,89 @@ class ComprehensivePredictionPipeline:
 
         print(f"✅ {validation_message}")
 
-        # Load race file
+        # Load race file (support pipe-delimited form guides and normalize headers)
         try:
-            race_df = pd.read_csv(race_file_path)
+            # Detect delimiter: prefer '|' if present in file header
+            detected_sep = None
+            try:
+                with open(race_file_path, "r", encoding="utf-8", errors="ignore") as f:
+                    header_sample = f.readline()
+                    if "|" in header_sample:
+                        detected_sep = "|"
+            except Exception:
+                detected_sep = None
 
-            # Standardize column names
+            if detected_sep:
+                race_df = pd.read_csv(race_file_path, sep=detected_sep, engine="python")
+            else:
+                race_df = pd.read_csv(race_file_path)
+
+            # Normalize column names -> snake_case and map known aliases
+            def _normalize_col(name: str) -> str:
+                name = str(name or "").strip()
+                name = re.sub(r"[\(\)\[\]\-]+", " ", name)
+                name = name.replace("#", "").replace("|", " ")
+                name = re.sub(r"\s+", " ", name).strip()
+                snake = re.sub(r"[^0-9a-zA-Z]+", "_", name).strip("_").lower()
+                # Map aliases
+                if snake in ("dog", "dogname", "name", "dog_name"):
+                    return "dog_name"
+                if snake in ("box", "box_no", "box_number"):
+                    return "box"
+                if snake in ("wgt", "weight"):
+                    return "weight"
+                return snake
+
+            race_df.columns = [_normalize_col(c) for c in race_df.columns]
+
+            # Backward-compatible explicit mapping for common headers
             column_mapping = {
-                "Dog Name": "dog_name",
-                "BOX": "box",
-                "Box": "box",
-                "WGT": "weight",
-                "Weight": "weight",
+                "dog name": "dog_name",
+                "dog": "dog_name",
+                "box": "box",
+                "wgt": "weight",
+                "weight": "weight",
             }
-
             for old_col, new_col in column_mapping.items():
-                if old_col in race_df.columns:
-                    race_df[new_col] = race_df[old_col]
+                if old_col in race_df.columns and new_col not in race_df.columns:
+                    race_df.rename(columns={old_col: new_col}, inplace=True)
+
+            # Derive box from dog_name prefix like "1. Name" when box is missing or empty
+            if "dog_name" in race_df.columns:
+                if "box" not in race_df.columns:
+                    race_df["box"] = None
+
+                def _extract_box_and_name(val):
+                    try:
+                        s = str(val).strip()
+                        m = re.match(r"^(\d+)\.\s*(.+)$", s)
+                        if m:
+                            return int(m.group(1)), m.group(2)
+                        return None, s
+                    except Exception:
+                        return None, val
+
+                boxes = []
+                cleaned_names = []
+                for v in race_df["dog_name"].tolist():
+                    b, nm = _extract_box_and_name(v)
+                    boxes.append(b)
+                    cleaned_names.append(nm)
+                # Only set box if missing/NaN
+                if "box" in race_df.columns:
+                    race_df["box"] = race_df["box"].where(race_df["box"].notna(), boxes)
+                race_df["dog_name"] = cleaned_names
+
+            # Validate required columns exist
+            required_cols = ["dog_name", "box"]
+            missing = [c for c in required_cols if c not in race_df.columns]
+            if missing:
+                available = list(race_df.columns)
+                return {
+                    "success": False,
+                    "error": f"Missing required columns: {missing}. Available columns: {available}",
+                    "predictions": [],
+                }
 
         except Exception as e:
             return {
@@ -1874,10 +2018,13 @@ class ComprehensivePredictionPipeline:
             # Persist per-race predictions to predictions/ for API consumption
             try:
                 from utils.file_naming import build_prediction_filename
+
                 # Build a standardized per-race filename
                 current_timestamp = datetime.now()
-                race_id = os.path.basename(race_file_path).replace('.csv', '')
-                filename = build_prediction_filename(race_id, current_timestamp, "comprehensive")
+                race_id = os.path.basename(race_file_path).replace(".csv", "")
+                filename = build_prediction_filename(
+                    race_id, current_timestamp, "comprehensive"
+                )
                 filepath = self.predictions_dir / filename
                 with open(filepath, "w") as f:
                     json.dump(results, f, indent=2, default=self._json_safe_serializer)

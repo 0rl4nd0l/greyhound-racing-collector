@@ -1,0 +1,4 @@
+  File "/Users/test/Desktop/greyhound_racing_collector/app.py", line 16386
+    global CURRENT_SERVER_PORT
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+SyntaxError: name 'CURRENT_SERVER_PORT' is assigned to before global declaration

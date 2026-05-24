@@ -1,0 +1,29 @@
+# Testing dependencies
+# pytest family, e2e utilities, mocking, coverage
+
+# Core testing framework
+pytest>=8.0.0
+pytest-cov>=6.0.0
+pytest-flask>=1.3.0
+pytest-xdist>=3.8.0  # Parallel test execution
+pytest-asyncio>=1.1.0  # Async test support
+
+# End-to-end testing
+playwright>=1.54.0   # Browser automation
+
+# HTTP mocking
+responses>=0.25.0    # Mock requests library
+# respx>=0.22.0        # Mock httpx library (if using httpx)
+
+# Test data generation
+factory-boy>=3.3.0   # Test data factories
+faker>=37.5.0        # Fake data generation
+
+# Time mocking and fixtures
+freezegun>=1.5.0     # Time travel for tests
+
+# In-memory services for testing
+fakeredis>=2.30.0    # In-memory Redis
+
+# Coverage and reporting
+coverage>=7.10.0

@@ -1,0 +1,3 @@
+AUTO_DISABLE_PLACE_THRESHOLD: 5
+ENABLE_PLACE_ODDS_INTEGRATION: false
+allow_future_race_dates: false

@@ -1,0 +1,11 @@
+=== Step 5: Probability Normalization and Formatting Validation ===
+
+
+=== VALIDATION SUMMARY ===
+✓ VALIDATION PASSED: Probabilities are properly normalized and formatted
+✓ Validated 9 dog predictions
+✓ Probability sum: 0.999700 (tolerance: ±0.001)
+✓ Required columns present: dog_clean_name, win_probability
+✓ First three rows logged for manual inspection
+
+=== Step 5 Validation Complete ===

@@ -1,0 +1,18 @@
+- task: CPU diagnostics (again) + Git swarm containment
+  why_now: Latest snapshot showed extreme load (726.63 456.63 217.78) with many `git diff --numstat` processes owned by Warp (PID 477)
+  done_when:
+    - load_1min <= 8 for 5 consecutive minutes
+    - 0 runaway `git diff|status|ls-files` processes under Warp
+    - repo tests and health script pass
+  exact_commands:
+    - uptime
+    - ps auxww | grep -E "git (diff|status|ls-files|rev-parse)" | grep -v grep || true
+    - for p in $(pgrep -if "(WarpTerminal|warp)" || true); do renice +19 -p "$p" || true; done
+    - for p in $(pgrep -if "(WarpTerminal|warp)" || true); do pgrep -P "$p" -f "git (diff|status|ls-files|rev-parse)" | xargs -r kill -TERM; done
+    - for p in $(pgrep -if "(WarpTerminal|warp)" || true); do pgrep -P "$p" -f "git (diff|status|ls-files|rev-parse)" | xargs -r kill -KILL; done
+    - echo "Disable Warp Agent Mode > Codebase context auto-indexing (WARP.md) and restart Warp"
+    - git config --local status.showUntrackedFiles no || true
+    - python scripts/monitor_system_health.py --detailed || true
+    - pytest -q || true
+    - uptime
+

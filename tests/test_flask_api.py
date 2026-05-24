@@ -1,5 +1,6 @@
 import json
 import os
+import sqlite3
 import sys
 
 import pytest
@@ -173,7 +174,7 @@ def test_api_races_paginated_json_structure(client):
 
             for field in expected_runner_fields:
                 assert field in runner, f"Missing field '{field}' in runner object"
-            assert type(runner["box_number"]) is int, f"box_number should be an integer"
+            assert type(runner["box_number"]) is int, "box_number should be an integer"
 
 
 def save_snapshot(name, data):
@@ -510,6 +511,32 @@ def test_api_dogs_all_with_pagination(client):
     save_snapshot("api_dogs_all_paginated", json_data)
 
 
+def test_api_dogs_all_missing_table_degrades_empty(monkeypatch, tmp_path):
+    """The dogs list endpoint should tolerate an empty CI/test database."""
+    import app as app_module
+
+    db_path = tmp_path / "empty_api.db"
+    sqlite3.connect(db_path).close()
+    monkeypatch.setattr(app_module, "DATABASE_PATH", str(db_path), raising=False)
+    monkeypatch.setattr(app_module, "db_manager", None, raising=False)
+    monkeypatch.setitem(app_module.app.config, "DATABASE_PATH", str(db_path))
+
+    response = app_module.app.test_client().get("/api/dogs/all?page=1&per_page=5")
+
+    assert response.status_code == 200
+    json_data = response.get_json()
+    assert json_data["success"] is True
+    assert json_data["dogs"] == []
+    assert json_data["pagination"] == {
+        "page": 1,
+        "per_page": 5,
+        "total_count": 0,
+        "total_pages": 0,
+        "has_next": False,
+        "has_prev": False,
+    }
+
+
 def test_api_dogs_top_performers(client):
     """Test the /api/dogs/top_performers endpoint."""
     response = client.get("/api/dogs/top_performers")
@@ -532,6 +559,28 @@ def test_api_dogs_top_performers_by_total_wins(client):
     assert len(json_data["top_performers"]) <= 3
     assert json_data["metric"] == "total_wins"
     save_snapshot("api_dogs_top_performers_total_wins", json_data)
+
+
+def test_api_dogs_top_performers_missing_table_degrades_empty(monkeypatch, tmp_path):
+    """The top-performers endpoint should tolerate an empty CI/test database."""
+    import app as app_module
+
+    db_path = tmp_path / "empty_top_performers.db"
+    sqlite3.connect(db_path).close()
+    monkeypatch.setattr(app_module, "DATABASE_PATH", str(db_path), raising=False)
+    monkeypatch.setattr(app_module, "db_manager", None, raising=False)
+    monkeypatch.setitem(app_module.app.config, "DATABASE_PATH", str(db_path))
+
+    response = app_module.app.test_client().get(
+        "/api/dogs/top_performers?metric=total_wins&limit=3"
+    )
+
+    assert response.status_code == 200
+    json_data = response.get_json()
+    assert json_data["success"] is True
+    assert json_data["top_performers"] == []
+    assert json_data["metric"] == "total_wins"
+    assert json_data["count"] == 0
 
 
 def test_api_stats(client):

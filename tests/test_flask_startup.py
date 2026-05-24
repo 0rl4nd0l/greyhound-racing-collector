@@ -9,9 +9,7 @@ Test basic Flask app functionality to ensure it can start and respond to request
 import os
 import subprocess
 import sys
-import threading
 import time
-from datetime import datetime
 
 import requests
 

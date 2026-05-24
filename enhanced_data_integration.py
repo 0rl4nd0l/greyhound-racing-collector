@@ -30,6 +30,20 @@ import pandas as pd
 
 warnings.filterwarnings("ignore")
 
+# TGR (The Greyhound Recorder) Integration
+try:
+    from enhanced_tgr_collector import EnhancedTGRCollector
+    from src.collectors.the_greyhound_recorder_scraper import (
+        TheGreyhoundRecorderScraper,
+    )
+    from tgr_prediction_integration import TGRPredictionIntegrator
+
+    TGR_AVAILABLE = True
+    print("✅ TGR components imported successfully in Enhanced Data Integrator")
+except ImportError as e:
+    print(f"⚠️ TGR components not available in Enhanced Data Integrator: {e}")
+    TGR_AVAILABLE = False
+
 
 class EnhancedDataIntegrator:
     """Integrates enhanced expert form data into the prediction pipeline"""
@@ -43,8 +57,25 @@ class EnhancedDataIntegrator:
         # Validate enhanced data availability
         self.enhanced_data_available = self._check_enhanced_data_availability()
 
+        # Initialize TGR components if available
+        self.tgr_available = TGR_AVAILABLE
+        self.tgr_scraper = None
+        self.tgr_prediction_integrator = None
+        self.tgr_collector = None
+
+        if self.tgr_available:
+            try:
+                self.tgr_scraper = TheGreyhoundRecorderScraper()
+                self.tgr_prediction_integrator = TGRPredictionIntegrator()
+                self.tgr_collector = EnhancedTGRCollector()
+                print("✅ TGR components initialized in Enhanced Data Integrator")
+            except Exception as e:
+                print(f"⚠️ TGR component initialization failed: {e}")
+                self.tgr_available = False
+
         print(f"🔗 Enhanced Data Integrator Initialized")
         print(f"📊 Enhanced data available: {self.enhanced_data_available}")
+        print(f"🌐 TGR integration available: {self.tgr_available}")
         if self.enhanced_data_available:
             print(
                 f"📁 Enhanced CSV files: {len(list(self.enhanced_csv_dir.glob('*.csv')))}"
@@ -377,6 +408,151 @@ class EnhancedDataIntegrator:
             print(f"⚠️ Error integrating enhanced features: {e}")
 
         return dog_stats
+
+    def fetch_live_tgr_data_for_dogs(self, dogs_list, race_context=None):
+        """Fetch live TGR data for a list of dogs to enhance predictions"""
+        if not self.tgr_available:
+            print("⚠️ TGR integration not available - skipping live data fetch")
+            return dogs_list
+
+        print(f"🌐 Fetching live TGR data for {len(dogs_list)} dogs...")
+
+        try:
+            tgr_enhanced_dogs = []
+
+            for dog_data in dogs_list:
+                dog_name = dog_data.get("dog_name") or dog_data.get("clean_name", "")
+
+                if not dog_name:
+                    tgr_enhanced_dogs.append(dog_data)
+                    continue
+
+                # Fetch TGR data using the collector
+                try:
+                    # Use the correct method for collecting dog data
+                    dog_list = [dog_name]
+                    collection_result = (
+                        self.tgr_collector.collect_comprehensive_dog_data(dog_list)
+                    )
+                    tgr_data = collection_result.get("dogs_data", {}).get(dog_name)
+
+                    if tgr_data:
+                        # Integrate TGR predictions using the integrator
+                        prediction_data = (
+                            self.tgr_prediction_integrator.integrate_tgr_predictions(
+                                dog_data, tgr_data, race_context
+                            )
+                        )
+
+                        if prediction_data:
+                            dog_data.update(
+                                {
+                                    "tgr_data": tgr_data,
+                                    "tgr_predictions": prediction_data,
+                                    "has_tgr_data": True,
+                                    "tgr_fetch_timestamp": datetime.now().isoformat(),
+                                }
+                            )
+
+                            print(f"✅ TGR data integrated for {dog_name}")
+                        else:
+                            print(f"⚠️ TGR integration failed for {dog_name}")
+                            dog_data["has_tgr_data"] = False
+                    else:
+                        print(f"ℹ️ No TGR data found for {dog_name}")
+                        dog_data["has_tgr_data"] = False
+
+                except Exception as e:
+                    print(f"❌ Error fetching TGR data for {dog_name}: {e}")
+                    dog_data["has_tgr_data"] = False
+
+                tgr_enhanced_dogs.append(dog_data)
+
+            print(
+                f"🌐 TGR data fetch completed: {sum(1 for d in tgr_enhanced_dogs if d.get('has_tgr_data'))} dogs enhanced"
+            )
+            return tgr_enhanced_dogs
+
+        except Exception as e:
+            print(f"❌ Error in live TGR data fetch: {e}")
+            return dogs_list
+
+    def get_tgr_race_insights(self, venue, race_date, race_number):
+        """Get TGR-specific insights for a race"""
+        if not self.tgr_available:
+            return None
+
+        try:
+            # Use TGR scraper to get race-level insights
+            race_insights = self.tgr_scraper.get_race_insights(
+                venue, race_date, race_number
+            )
+
+            if race_insights:
+                print(f"✅ TGR race insights collected for {venue} Race {race_number}")
+                return {
+                    "tgr_race_insights": race_insights,
+                    "insights_timestamp": datetime.now().isoformat(),
+                    "source": "tgr_scraper",
+                }
+            else:
+                print(
+                    f"ℹ️ No TGR race insights available for {venue} Race {race_number}"
+                )
+                return None
+
+        except Exception as e:
+            print(f"❌ Error getting TGR race insights: {e}")
+            return None
+
+    def enhance_prediction_with_tgr(self, prediction_data, race_context=None):
+        """Enhance existing prediction with TGR data and insights"""
+        if not self.tgr_available or not prediction_data:
+            return prediction_data
+
+        try:
+            # Get race-level TGR insights if race context is available
+            if race_context:
+                venue = race_context.get("venue")
+                race_date = race_context.get("race_date")
+                race_number = race_context.get("race_number")
+
+                if venue and race_date and race_number:
+                    tgr_insights = self.get_tgr_race_insights(
+                        venue, race_date, race_number
+                    )
+                    if tgr_insights:
+                        prediction_data["tgr_race_insights"] = tgr_insights
+
+            # Enhance individual dog predictions with TGR data
+            if "dogs" in prediction_data:
+                enhanced_dogs = self.fetch_live_tgr_data_for_dogs(
+                    prediction_data["dogs"], race_context
+                )
+                prediction_data["dogs"] = enhanced_dogs
+
+                # Calculate TGR-enhanced confidence scores
+                tgr_enhanced_count = sum(
+                    1 for dog in enhanced_dogs if dog.get("has_tgr_data")
+                )
+                prediction_data["tgr_enhancement_ratio"] = (
+                    tgr_enhanced_count / len(enhanced_dogs) if enhanced_dogs else 0
+                )
+
+                if tgr_enhanced_count > 0:
+                    prediction_data["prediction_confidence"] = prediction_data.get(
+                        "prediction_confidence", 0.5
+                    ) * (1 + 0.2 * prediction_data["tgr_enhancement_ratio"])
+                    print(
+                        f"🎯 Prediction confidence boosted by TGR data: {tgr_enhanced_count}/{len(enhanced_dogs)} dogs enhanced"
+                    )
+
+            print(f"✅ Prediction enhanced with TGR data")
+            return prediction_data
+
+        except Exception as e:
+            print(f"❌ Error enhancing prediction with TGR: {e}")
+            return prediction_data
 
     def create_enhanced_database_table(self):
         """Create database table to store enhanced expert form data"""

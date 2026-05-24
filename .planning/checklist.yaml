@@ -1,0 +1,28 @@
+- task: Re-run CPU diagnostics and remediate the high-load git diff swarm (Warp parent)
+  when_done: CPU load back near core count (~8 on this host), 0 runaway git processes for 5+ min, repo functionality validated
+  commands:
+    - name: Snapshot
+      run: |
+        uptime
+        top -l 1 -o cpu | head -50
+        ps auxww | grep -E "git (diff|status|ls-files|rev-parse)" | grep -v grep
+    - name: Quarantine
+      run: |
+        # renice Warp and kill only git children
+        for p in $(pgrep -if "(WarpTerminal|warp)" || true); do renice +19 -p "$p" || true; done
+        for p in $(pgrep -if "(WarpTerminal|warp)" || true); do pgrep -P "$p" -f "git (diff|status|ls-files|rev-parse)" | xargs -r kill -TERM; done
+        sleep 1
+        for p in $(pgrep -if "(WarpTerminal|warp)" || true); do pgrep -P "$p" -f "git (diff|status|ls-files|rev-parse)" | xargs -r kill -KILL; done
+    - name: Apply WARP.md mitigations
+      run: |
+        echo "Disable Warp Agent Mode > Codebase context auto-indexing for this repo, then restart Warp."
+        echo "Optional: repo-local: git config --local status.showUntrackedFiles no"
+    - name: Validate
+      run: |
+        python scripts/monitor_system_health.py --detailed || true
+        pytest -q || true
+    - name: Verify
+      run: |
+        uptime
+        ps auxww | grep -E "git (diff|status|ls-files|rev-parse)" | grep -v grep || true
+

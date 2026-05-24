@@ -69,6 +69,10 @@ class ModelMetadata:
     prediction_type: str = "win"  # Type of prediction (win, place, show, etc.)
     performance_score: float = 0.0  # Composite performance score
     created_at: str = ""  # ISO timestamp when model was created
+    # Winner-hit metrics (per-race top-1 correctness)
+    correct_winners: int = 0  # Count of races where the model's top pick won
+    races_evaluated: int = 0  # Number of races evaluated for the top-1 calculation
+    top1_rate: float = 0.0  # correct_winners / races_evaluated (if available)
 
 
 class ModelRegistry:
@@ -116,14 +120,35 @@ class ModelRegistry:
                 self.config = {
                     "auto_select_best": True,
                     "max_models_to_keep": 50,
+                    # Selection policy: 'performance_score' (default composite), 'auc', 'accuracy', 'f1_score', 'correct_winners', 'top1_rate'
+                    "best_selection_metric": "performance_score",
                     "performance_weight": {
                         "accuracy": 0.4,
                         "auc": 0.3,
                         "f1_score": 0.2,
                         "data_quality": 0.1,
                     },
+                    # Stability controls for promotion
+                    "min_races_for_promotion": 0,
+                    # Tie-breakers applied when primary scores are close/equal
+                    "tie_breaker_order": [
+                        "races_evaluated",
+                        "accuracy",
+                        "auc",
+                        "performance_score",
+                        "created_at"
+                    ],
                 }
                 self._save_config()
+
+            # Ensure new keys exist without overriding user preferences
+            self.config.setdefault("min_races_for_promotion", 0)
+            self.config.setdefault(
+                "tie_breaker_order",
+                ["races_evaluated", "accuracy", "auc", "performance_score", "created_at"],
+            )
+            if "best_selection_metric" not in self.config:
+                self.config["best_selection_metric"] = "performance_score"
 
         except Exception as e:
             logger.error(f"Error loading registry: {e}")
@@ -230,7 +255,7 @@ class ModelRegistry:
 
                 # Get the created_at timestamp
                 created_at = datetime.now().isoformat()
-                
+
                 # Create metadata (without performance_score initially)
                 metadata = ModelMetadata(
                     model_id=model_id,
@@ -264,9 +289,40 @@ class ModelRegistry:
                     notes=notes,
                     prediction_type=training_info.get("prediction_type", "win"),
                     created_at=created_at,
-                    performance_score=0.0  # Will be calculated below
+                    # Winner-hit metrics from training_info or performance_metrics (fallback)
+                    correct_winners=int(
+                        training_info.get(
+                            "correct_winners",
+                            (
+                                performance_metrics.get("correct_winners", 0)
+                                if isinstance(performance_metrics, dict)
+                                else 0
+                            ),
+                        )
+                    ),
+                    races_evaluated=int(
+                        training_info.get(
+                            "races_evaluated",
+                            (
+                                performance_metrics.get("races_evaluated", 0)
+                                if isinstance(performance_metrics, dict)
+                                else 0
+                            ),
+                        )
+                    ),
+                    top1_rate=float(
+                        training_info.get(
+                            "top1_rate",
+                            (
+                                performance_metrics.get("top1_rate", 0.0)
+                                if isinstance(performance_metrics, dict)
+                                else 0.0
+                            ),
+                        )
+                    ),
+                    performance_score=0.0,  # Will be calculated below
                 )
-                
+
                 # Calculate and set performance_score using the same logic as _calculate_model_score
                 metadata.performance_score = self._calculate_model_score(metadata)
 
@@ -301,24 +357,83 @@ class ModelRegistry:
             if not self.model_index:
                 return
 
-            # Calculate scores for all active models
-            model_scores = []
-            best_score = -1
-            best_model_id = None
+            # Determine selection metric and stability settings
+            selection_metric = (self.config or {}).get(
+                "best_selection_metric", "performance_score"
+            )
+            min_races = int((self.config or {}).get("min_races_for_promotion", 0) or 0)
+
+            def _selection_score(md: ModelMetadata) -> float:
+                try:
+                    if selection_metric == "auc":
+                        return float(getattr(md, "auc", 0.0) or 0.0)
+                    if selection_metric == "accuracy":
+                        return float(getattr(md, "accuracy", 0.0) or 0.0)
+                    if selection_metric == "f1_score":
+                        return float(getattr(md, "f1_score", 0.0) or 0.0)
+                    if selection_metric == "correct_winners":
+                        return float(getattr(md, "correct_winners", 0.0) or 0.0)
+                    if selection_metric == "top1_rate":
+                        return float(getattr(md, "top1_rate", 0.0) or 0.0)
+                    # Default: composite performance score
+                    return float(self._calculate_model_score(md))
+                except Exception:
+                    return 0.0
+
+            def _composite_score(md: ModelMetadata) -> float:
+                try:
+                    return float(self._calculate_model_score(md))
+                except Exception:
+                    return 0.0
+
+            def _created_ts(md: ModelMetadata) -> float:
+                ts = getattr(md, "created_at", None) or getattr(md, "training_timestamp", None)
+                if not ts:
+                    return 0.0
+                try:
+                    return datetime.fromisoformat(str(ts).replace("Z", "+00:00")).timestamp()
+                except Exception:
+                    return 0.0
+
+            # Build candidate list
+            candidates = []
             for model_id, model_data in self.model_index.items():
                 if isinstance(model_data, dict) and model_data.get("is_active", True):
                     try:
-                        metadata = ModelMetadata(**model_data)
-                        score = self._calculate_model_score(metadata)
-                        model_scores.append((model_id, score, metadata))
+                        md = ModelMetadata(**model_data)
+                        score = _selection_score(md)
+                        candidates.append((model_id, score, md))
                     except (TypeError, KeyError) as e:
                         logger.warning(f"Error loading metadata for {model_id}: {e}")
                         continue
-            if not model_scores:
+            if not candidates:
                 return
 
-            # Sort by score (highest first)
-            model_scores.sort(key=lambda x: x[1], reverse=True)
+            # Apply min_races constraint for top1_rate/correct_winners if configured
+            eligible = candidates
+            if selection_metric in {"top1_rate", "correct_winners"} and min_races > 0:
+                eligible = [
+                    (mid, sc, md)
+                    for (mid, sc, md) in candidates
+                    if int(getattr(md, "races_evaluated", 0) or 0) >= min_races
+                ]
+                if not eligible:
+                    # Fallback to all if nothing meets threshold
+                    eligible = candidates
+
+            # Tie-breaker sort tuple: primary score, then races_evaluated, accuracy, auc, composite performance, recency
+            def _sort_key(item):
+                _mid, _sc, _md = item
+                return (
+                    float(_sc or 0.0),
+                    int(getattr(_md, "races_evaluated", 0) or 0),
+                    float(getattr(_md, "accuracy", 0.0) or 0.0),
+                    float(getattr(_md, "auc", 0.0) or 0.0),
+                    float(_composite_score(_md)),
+                    float(_created_ts(_md)),
+                )
+
+            eligible.sort(key=_sort_key, reverse=True)
 
             # Clear previous best model flags
             for model_id in self.model_index:
@@ -326,14 +441,14 @@ class ModelRegistry:
                     self.model_index[model_id]["is_best"] = False
 
             # Set new best model
-            best_model_id, best_score, best_metadata = model_scores[0]
+            best_model_id, best_score, best_metadata = eligible[0]
             self.model_index[best_model_id]["is_best"] = True
 
             # Create/update symlinks to best model
             self._create_best_model_symlinks(best_metadata)
 
             logger.info(
-                f"🏆 Best model updated: {best_model_id} (score: {best_score:.3f})"
+                f"🏆 Best model updated: {best_model_id} ({selection_metric}: {best_score:.3f})"
             )
 
         except Exception as e:
@@ -420,38 +535,53 @@ class ModelRegistry:
                 except Exception as e:
                     logger.warning(f"Error loading from symlinks: {e}")
 
-            # Fallback: find best model from index
-            best_model_id = None
-            best_score = -1
+            # Fallback: find candidate best models from index, preferring explicit is_best
+            candidates: List[Tuple[str, float, ModelMetadata]] = []
 
             for model_id, model_data in self.model_index.items():
-                if model_data.get("is_best", False) and model_data.get(
-                    "is_active", True
-                ):
-                    best_model_id = model_id
-                    break
-                elif model_data.get("is_active", True):
-                    try:
-                        metadata = ModelMetadata(**model_data)
-                        score = self._calculate_model_score(metadata)
-                        if score > best_score:
-                            best_score = score
-                            best_model_id = model_id
-                    except Exception:
-                        continue
+                if not isinstance(model_data, dict):
+                    continue
+                if not model_data.get("is_active", True):
+                    continue
+                try:
+                    metadata = ModelMetadata(**model_data)
+                    score = self._calculate_model_score(metadata)
+                    # Boost explicitly marked best to the top by adding a large epsilon
+                    if model_data.get("is_best", False):
+                        score += 1e6
+                    candidates.append((model_id, score, metadata))
+                except Exception:
+                    continue
 
-            if not best_model_id:
+            if not candidates:
                 logger.warning("No active models found in registry")
                 return None
 
-            # Load the best model
-            model_data = self.model_index[best_model_id]
-            metadata = ModelMetadata(**model_data)
+            # Sort by score descending (explicit best first)
+            candidates.sort(key=lambda x: x[1], reverse=True)
 
-            model = joblib.load(metadata.model_file_path)
-            scaler = joblib.load(metadata.scaler_file_path)
+            # Iterate candidates until we find one with existing files
+            for model_id, _score, metadata in candidates:
+                model_path = Path(metadata.model_file_path)
+                scaler_path = Path(metadata.scaler_file_path)
+                if not (model_path.exists() and scaler_path.exists()):
+                    logger.warning(
+                        f"Skipping registry model '{model_id}' due to missing files: "
+                        f"model_exists={model_path.exists()}, scaler_exists={scaler_path.exists()}"
+                    )
+                    continue
+                try:
+                    model = joblib.load(model_path)
+                    scaler = joblib.load(scaler_path)
+                    return model, scaler, metadata
+                except Exception as e:
+                    logger.warning(f"Failed loading registry model '{model_id}': {e}")
+                    continue
 
-            return model, scaler, metadata
+            logger.error(
+                "Error loading best model: no valid artifacts found among candidates"
+            )
+            return None
 
         except Exception as e:
             logger.error(f"Error loading best model: {e}")
@@ -477,19 +607,48 @@ class ModelRegistry:
             logger.error(f"Error loading model {model_id}: {e}")
             return None
 
+    def get_best_model_metadata(self) -> Optional[ModelMetadata]:
+        """Get metadata for the best model without loading the actual model."""
+        try:
+            # Find the best model from index
+            for model_id, model_data in self.model_index.items():
+                if isinstance(model_data, dict) and model_data.get("is_best", False):
+                    return ModelMetadata(**model_data)
+
+            # Fallback: calculate best model
+            candidates = []
+            for model_id, model_data in self.model_index.items():
+                if isinstance(model_data, dict) and model_data.get("is_active", True):
+                    try:
+                        metadata = ModelMetadata(**model_data)
+                        score = self._calculate_model_score(metadata)
+                        candidates.append((model_id, score, metadata))
+                    except Exception:
+                        continue
+
+            if candidates:
+                candidates.sort(key=lambda x: x[1], reverse=True)
+                return candidates[0][2]
+
+            return None
+        except Exception as e:
+            logger.error(f"Error getting best model metadata: {e}")
+            return None
+
     def get_most_recent(self, prediction_type: str) -> Optional[ModelMetadata]:
         """Get the most recent model for a given prediction type."""
         models = []
         for model_data in self.model_index.values():
-            if (model_data.get("prediction_type") == prediction_type and 
-                model_data.get("is_active", True)):
+            if model_data.get("prediction_type") == prediction_type and model_data.get(
+                "is_active", True
+            ):
                 try:
                     metadata = ModelMetadata(**model_data)
                     models.append(metadata)
                 except (TypeError, KeyError) as e:
                     logger.warning(f"Error loading metadata: {e}")
                     continue
-        
+
         if not models:
             return None
         return max(models, key=lambda x: x.created_at)
@@ -498,15 +657,16 @@ class ModelRegistry:
         """Get the best model for a given prediction type based on performance score."""
         models = []
         for model_data in self.model_index.values():
-            if (model_data.get("prediction_type") == prediction_type and 
-                model_data.get("is_active", True)):
+            if model_data.get("prediction_type") == prediction_type and model_data.get(
+                "is_active", True
+            ):
                 try:
                     metadata = ModelMetadata(**model_data)
                     models.append(metadata)
                 except (TypeError, KeyError) as e:
                     logger.warning(f"Error loading metadata: {e}")
                     continue
-        
+
         if not models:
             return None
         return max(models, key=lambda x: x.performance_score)
@@ -517,28 +677,37 @@ class ModelRegistry:
         running_jobs = set()
         try:
             from model_training_api import training_jobs
-            running_jobs = {job["model_id"] for job in training_jobs.values() if job["status"] == "running"}
+
+            running_jobs = {
+                job["model_id"]
+                for job in training_jobs.values()
+                if job["status"] == "running"
+            }
         except ImportError:
             # If we can't import training_jobs, just return all models
             pass
-        
+
         models = []
         for model_data in self.model_index.values():
-            if (model_data.get("model_id") not in running_jobs and 
-                model_data.get("is_active", True)):
+            if model_data.get("model_id") not in running_jobs and model_data.get(
+                "is_active", True
+            ):
                 try:
                     metadata = ModelMetadata(**model_data)
                     models.append(metadata)
                 except (TypeError, KeyError) as e:
                     logger.warning(f"Error loading metadata: {e}")
                     continue
-        
+
         # Sort by performance score (descending) then by created_at (recent first)
         models.sort(key=lambda x: (x.performance_score, x.created_at), reverse=True)
         return models[:limit]
 
     def list_models(self, active_only: bool = True) -> List[ModelMetadata]:
-        """List all registered models"""
+        """List all registered models.
+
+        Skips entries whose artifacts are missing on disk to avoid downstream load errors.
+        """
         models = []
         for model_id, model_data in self.model_index.items():
             if not isinstance(model_data, dict):
@@ -549,13 +718,152 @@ class ModelRegistry:
                 continue
             try:
                 metadata = ModelMetadata(**model_data)
+                # Skip models whose artifacts are missing to reduce noisy load errors
+                model_exists = os.path.exists(metadata.model_file_path)
+                scaler_exists = os.path.exists(metadata.scaler_file_path)
+                if not (model_exists and scaler_exists):
+                    logger.warning(
+                        f"Skipping registry model '{model_id}' due to missing artifacts: "
+                        f"model_exists={model_exists}, scaler_exists={scaler_exists}"
+                    )
+                    continue
                 models.append(metadata)
             except (TypeError, KeyError) as e:
                 logger.warning(f"Error loading metadata for {model_id}: {e}")
 
-        # Sort by composite score
+        # Sort by composite score by default
         models.sort(key=self._calculate_model_score, reverse=True)
         return models
+
+    def set_best_selection_policy(self, metric: str = "auc") -> bool:
+        """Set the policy used to auto-select the best model.
+        Supported metrics: 'performance_score' (default composite), 'auc', 'accuracy', 'f1_score', 'correct_winners', 'top1_rate'.
+        Returns True if updated.
+        """
+        with self._lock:
+            try:
+                metric = str(metric or "").strip().lower()
+                if metric not in {
+                    "performance_score",
+                    "auc",
+                    "accuracy",
+                    "f1_score",
+                    "correct_winners",
+                    "top1_rate",
+                }:
+                    raise ValueError(f"Unsupported metric: {metric}")
+                self.config["best_selection_metric"] = metric
+                self._save_config()
+                # Recompute best based on new policy
+                if self.config.get("auto_select_best", True):
+                    self._update_best_model()
+                return True
+            except Exception as e:
+                logger.error(f"Failed to set best selection policy: {e}")
+                return False
+
+    def auto_promote_best_by_metric(
+        self, metric: str = "auc", prediction_type: Optional[str] = None
+    ) -> Optional[str]:
+        """Explicitly promote the best model by a specific metric.
+        If prediction_type is provided, restrict to that type.
+        Returns the promoted model_id or None.
+        """
+        with self._lock:
+            try:
+                metric = str(metric or "").strip().lower()
+                min_races = int((self.config or {}).get("min_races_for_promotion", 0) or 0)
+                # Build candidate list
+                candidates = []
+                for model_id, model_data in self.model_index.items():
+                    if not isinstance(model_data, dict):
+                        continue
+                    if not model_data.get("is_active", True):
+                        continue
+                    if (
+                        prediction_type
+                        and model_data.get("prediction_type") != prediction_type
+                    ):
+                        continue
+                    try:
+                        md = ModelMetadata(**model_data)
+                        if metric == "auc":
+                            score = float(md.auc or 0.0)
+                        elif metric == "accuracy":
+                            score = float(md.accuracy or 0.0)
+                        elif metric == "f1_score":
+                            score = float(md.f1_score or 0.0)
+                        elif metric == "correct_winners":
+                            score = float(
+                                md.top1_rate
+                                if (md.top1_rate and md.races_evaluated)
+                                else (md.correct_winners or 0.0)
+                            )
+                        elif metric == "top1_rate":
+                            score = float(md.top1_rate or 0.0)
+                        else:
+                            score = float(self._calculate_model_score(md))
+                        candidates.append((model_id, score, md))
+                    except Exception:
+                        continue
+                if not candidates:
+                    return None
+
+                # Apply min_races constraint for top1_rate/correct_winners if configured
+                eligible = candidates
+                if metric in {"top1_rate", "correct_winners"} and min_races > 0:
+                    eligible = [
+                        (mid, sc, md)
+                        for (mid, sc, md) in candidates
+                        if int(getattr(md, "races_evaluated", 0) or 0) >= min_races
+                    ]
+                    if not eligible:
+                        eligible = candidates
+
+                def _composite_score(md: ModelMetadata) -> float:
+                    try:
+                        return float(self._calculate_model_score(md))
+                    except Exception:
+                        return 0.0
+
+                def _created_ts(md: ModelMetadata) -> float:
+                    ts = getattr(md, "created_at", None) or getattr(md, "training_timestamp", None)
+                    if not ts:
+                        return 0.0
+                    try:
+                        return datetime.fromisoformat(str(ts).replace("Z", "+00:00")).timestamp()
+                    except Exception:
+                        return 0.0
+
+                def _sort_key(item):
+                    _mid, _sc, _md = item
+                    return (
+                        float(_sc or 0.0),
+                        int(getattr(_md, "races_evaluated", 0) or 0),
+                        float(getattr(_md, "accuracy", 0.0) or 0.0),
+                        float(getattr(_md, "auc", 0.0) or 0.0),
+                        float(_composite_score(_md)),
+                        float(_created_ts(_md)),
+                    )
+
+                eligible.sort(key=_sort_key, reverse=True)
+                best_id, best_score, best_md = eligible[0]
+
+                # Clear flags
+                for mid in self.model_index:
+                    if isinstance(self.model_index[mid], dict):
+                        self.model_index[mid]["is_best"] = False
+                # Set new best
+                self.model_index[best_id]["is_best"] = True
+                self._create_best_model_symlinks(best_md)
+                self._save_registry()
+                logger.info(
+                    f"🏅 Auto-promoted best model by {metric}: {best_id} ({best_score:.3f})"
+                )
+                return best_id
+            except Exception as e:
+                logger.error(f"Auto-promote by metric failed: {e}")
+                return None
 
     def deactivate_model(self, model_id: str) -> bool:
         """Deactivate a model (soft delete)"""

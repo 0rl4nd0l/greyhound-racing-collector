@@ -1,0 +1,38 @@
+name: v4-promotion-gate
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements/requirements.lock
+
+      - name: Run V4 promotion gate (optimizer OFF, simple normalization)
+        env:
+          V4_DISABLE_ACCURACY_OPTIMIZER: '1'
+          V4_NORMALIZATION_MODE: simple
+          BRIER_MAX: '0.125'
+          LOGLOSS_MAX: '0.41'
+          TOP1_MIN: '0.30'
+        run: |
+          . .venv/bin/activate
+          python scripts/ci_promote_gate_v4.py
+

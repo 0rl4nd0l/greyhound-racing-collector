@@ -1,4 +1,3 @@
-
 import argparse
 import os
 import shutil
@@ -15,8 +14,9 @@ LEGACY_SCRIPTS = [
     "archive/scripts_2025_07_23/advanced_scraper.py",
     "archive/scripts_2025_07_23/greyhound_results_scraper_navigator.py",
     "archive/test_scraper.py",
-    "archive_unused_scripts/data_processing/enhanced_expert_form_scraper.py"
+    "archive_unused_scripts/data_processing/enhanced_expert_form_scraper.py",
 ]
+
 
 def archive_legacy_scripts(execute=False):
     """
@@ -25,17 +25,21 @@ def archive_legacy_scripts(execute=False):
     if execute and not os.path.exists(LEGACY_INGESTION_DIR):
         print(f"Creating archive directory: {LEGACY_INGESTION_DIR}")
         os.makedirs(LEGACY_INGESTION_DIR)
-        
+
     archived_files = []
     for script_path in LEGACY_SCRIPTS:
         if os.path.exists(script_path):
-            destination_path = os.path.join(LEGACY_INGESTION_DIR, os.path.basename(script_path))
-            
+            destination_path = os.path.join(
+                LEGACY_INGESTION_DIR, os.path.basename(script_path)
+            )
+
             # To ensure reversibility, we'll rename if a file with the same name exists
             if os.path.exists(destination_path):
                 timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
                 base, ext = os.path.splitext(os.path.basename(script_path))
-                destination_path = os.path.join(LEGACY_INGESTION_DIR, f"{base}_{timestamp}{ext}")
+                destination_path = os.path.join(
+                    LEGACY_INGESTION_DIR, f"{base}_{timestamp}{ext}"
+                )
 
             print(f"Found legacy script: {script_path}")
             if execute:
@@ -44,7 +48,7 @@ def archive_legacy_scripts(execute=False):
                 archived_files.append((script_path, destination_path))
             else:
                 print(f"  -> (Dry Run) Would archive to: {destination_path}")
-    
+
     if execute:
         print(f"\nSuccessfully archived {len(archived_files)} scripts.")
         # Create a manifest for reversibility
@@ -74,14 +78,16 @@ def reverse_archiving(manifest_path):
                 # Ensure parent directory of original path exists
                 os.makedirs(os.path.dirname(original_path), exist_ok=True)
                 shutil.move(new_path, original_path)
-    
+
     # Clean up the manifest after reversal
     os.remove(manifest_path)
     print("Reversal complete.")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Archive legacy data ingestion scripts.")
+    parser = argparse.ArgumentParser(
+        description="Archive legacy data ingestion scripts."
+    )
     parser.add_argument(
         "--execute",
         action="store_true",
@@ -99,4 +105,3 @@ if __name__ == "__main__":
         reverse_archiving(manifest_file)
     else:
         archive_legacy_scripts(execute=args.execute)
-

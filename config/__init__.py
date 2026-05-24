@@ -11,39 +11,65 @@ continue to work even though there's now a config package for openai_config.
 import os
 from pathlib import Path
 
+
 # Reproduce the configuration classes and helper from top-level config.py
 class Config:
     """Base configuration class"""
 
     # Flask settings
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'greyhound_racing_secret_key_2025'
+    SECRET_KEY = os.environ.get("SECRET_KEY") or "greyhound_racing_secret_key_2025"
 
     # Database settings
-    DATABASE_PATH = os.environ.get('DATABASE_PATH') or 'greyhound_racing_data.db'
+    # Prefer GREYHOUND_DB_PATH when provided; fall back to DATABASE_PATH for backward compatibility
+    DATABASE_PATH = (
+        os.environ.get("GREYHOUND_DB_PATH")
+        or os.environ.get("DATABASE_PATH")
+        or "greyhound_racing_data.db"
+    )
+
+    # Feature flags and modes (defaults aligned with live UI usage; CI/tests override via env)
+    ENABLE_RESULTS_SCRAPERS = str(
+        os.environ.get("ENABLE_RESULTS_SCRAPERS", "1")
+    ).lower() not in ("0", "false", "no", "off")
+    ENABLE_LIVE_SCRAPING = str(
+        os.environ.get("ENABLE_LIVE_SCRAPING", "1")
+    ).lower() not in ("0", "false", "no", "off")
+    PREDICTION_IMPORT_MODE = os.environ.get("PREDICTION_IMPORT_MODE", "historical")
 
     # Directory paths
     BASE_DIR = Path(__file__).resolve().parents[1]
-    UNPROCESSED_DIR = str(BASE_DIR / 'unprocessed')
-    PROCESSED_DIR = str(BASE_DIR / 'processed')
-    HISTORICAL_DIR = str(BASE_DIR / 'historical_races')
-    UPCOMING_DIR = os.environ.get('UPCOMING_RACES_DIR') or str(BASE_DIR / 'upcoming_races')
+    UNPROCESSED_DIR = str(BASE_DIR / "unprocessed")
+    PROCESSED_DIR = str(BASE_DIR / "processed")
+    HISTORICAL_DIR = str(BASE_DIR / "historical_races")
+    UPCOMING_DIR = os.environ.get("UPCOMING_RACES_DIR") or str(
+        BASE_DIR / "upcoming_races_temp"
+    )
 
     # Upload settings
     UPLOAD_FOLDER = UPCOMING_DIR
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
-    ALLOWED_EXTENSIONS = {'csv'}
+    ALLOWED_EXTENSIONS = {"csv"}
 
     # Cache settings
     SEND_FILE_MAX_AGE_DEFAULT = 300  # 5 minutes for development
 
     # Flask-Compress base settings
     COMPRESS_MIMETYPES = [
-        'text/html', 'text/css', 'text/xml', 'text/plain',
-        'application/json', 'application/javascript', 'application/xml+rss',
-        'application/atom+xml', 'image/svg+xml'
+        "text/html",
+        "text/css",
+        "text/xml",
+        "text/plain",
+        "application/json",
+        "application/javascript",
+        "application/xml+rss",
+        "application/atom+xml",
+        "image/svg+xml",
     ]
     COMPRESS_LEVEL = 6  # Default compression level
     COMPRESS_MIN_SIZE = 500  # Don't compress responses smaller than 500 bytes
+    # Prefer gzip across all environments; disable Brotli by default for test compatibility
+    COMPRESS_ALGORITHM = "gzip"
+    COMPRESS_BR = False
 
 
 class DevelopmentConfig(Config):
@@ -70,7 +96,7 @@ class ProductionConfig(Config):
     COMPRESS_CACHE_KEY = None  # Use default cache key
     COMPRESS_CACHE_BACKEND = None  # Disable caching to avoid callable issues
     COMPRESS_REGISTER = True  # Auto-register compression
-    COMPRESS_ALGORITHM = 'gzip'  # Use gzip compression
+    COMPRESS_ALGORITHM = "gzip"  # Use gzip compression
 
     # Additional production optimizations
     COMPRESS_BR = False  # Disable Brotli for compatibility
@@ -93,17 +119,16 @@ class TestingConfig(Config):
 
 # Configuration mapping
 config = {
-    'development': DevelopmentConfig,
-    'production': ProductionConfig,
-    'testing': TestingConfig,
-    'default': DevelopmentConfig
+    "development": DevelopmentConfig,
+    "production": ProductionConfig,
+    "testing": TestingConfig,
+    "default": DevelopmentConfig,
 }
 
 
 def get_config(config_name=None):
     """Get configuration class based on environment or name"""
     if config_name is None:
-        config_name = os.environ.get('FLASK_ENV', 'default')
+        config_name = os.environ.get("FLASK_ENV", "default")
 
     return config.get(config_name, DevelopmentConfig)
-
