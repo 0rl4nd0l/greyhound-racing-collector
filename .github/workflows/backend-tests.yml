@@ -142,7 +142,8 @@ jobs:
         file: ./coverage.xml
         flags: backend
         name: backend-coverage
-        fail_ci_if_error: true
+        token: ${{ secrets.CODECOV_TOKEN }}
+        fail_ci_if_error: false
     
     - name: Archive coverage reports
       uses: actions/upload-artifact@v4
@@ -194,6 +195,8 @@ jobs:
         file: ./comprehensive-coverage.xml
         flags: comprehensive
         name: comprehensive-coverage
+        token: ${{ secrets.CODECOV_TOKEN }}
+        fail_ci_if_error: false
       if: success()
 
   ui-e2e:
