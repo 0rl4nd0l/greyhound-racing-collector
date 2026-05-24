@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+import odds_auto_integrator
 from odds_auto_integrator import _copy_current_odds_to_alias
 from sportsbet_odds_integrator import SportsbetOddsIntegrator
 from utils import feature_flags
@@ -238,6 +239,125 @@ def test_alias_metadata_update_preserves_unrelated_columns(tmp_path):
     assert old_alias_current == 0
 
 
+def test_alias_odds_copy_rolls_back_when_metadata_upsert_fails(tmp_path, monkeypatch):
+    import sportsbet_odds_integrator as odds_module
+
+    db_path = tmp_path / "alias_rollback.db"
+    SportsbetOddsIntegrator(db_path=str(db_path))
+    source_race_id = "SAND_2026-05-21_4"
+    alias_race_id = "Race 4 - Sandown - 2026-05-21"
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO race_metadata (
+                race_id, venue, race_number, race_date, race_time
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (source_race_id, "Sandown", 4, "2026-05-21", "13:00"),
+        )
+        conn.execute(
+            """
+            INSERT INTO race_metadata (
+                race_id, venue, race_number, race_date, race_time
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (alias_race_id, "Sandown", 4, "2026-05-21", "12:00"),
+        )
+        conn.execute(
+            """
+            INSERT INTO live_odds (
+                race_id, venue, race_number, race_date, race_time, dog_name,
+                dog_clean_name, box_number, odds_decimal, odds_fractional,
+                market_type, source, is_current, topN
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                source_race_id,
+                "Sandown",
+                4,
+                "2026-05-21",
+                "13:00",
+                "Fast Dog",
+                "FAST DOG",
+                1,
+                2.5,
+                "2.50",
+                "win",
+                "sportsbet",
+                1,
+                None,
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO live_odds (
+                race_id, venue, race_number, race_date, race_time, dog_name,
+                dog_clean_name, box_number, odds_decimal, odds_fractional,
+                market_type, source, is_current, topN
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                alias_race_id,
+                "Sandown",
+                4,
+                "2026-05-21",
+                "12:00",
+                "Old Dog",
+                "OLD DOG",
+                2,
+                7.5,
+                "7.50",
+                "win",
+                "sportsbet",
+                1,
+                None,
+            ),
+        )
+        conn.commit()
+
+    def fail_metadata_upsert(*_args, **_kwargs):
+        raise RuntimeError("metadata failure")
+
+    monkeypatch.setattr(
+        odds_module,
+        "safe_upsert_race_metadata",
+        fail_metadata_upsert,
+    )
+
+    with pytest.raises(RuntimeError, match="metadata failure"):
+        _copy_current_odds_to_alias(
+            str(db_path),
+            source_race_id,
+            alias_race_id,
+            "Sandown",
+            4,
+            "2026-05-21",
+        )
+
+    with sqlite3.connect(db_path) as conn:
+        current_alias_odds = conn.execute(
+            """
+            SELECT dog_clean_name, is_current
+            FROM live_odds
+            WHERE race_id = ?
+            ORDER BY id
+            """,
+            (alias_race_id,),
+        ).fetchall()
+        race_time = conn.execute(
+            "SELECT race_time FROM race_metadata WHERE race_id = ?",
+            (alias_race_id,),
+        ).fetchone()[0]
+
+    assert current_alias_odds == [("OLD DOG", 1)]
+    assert race_time == "12:00"
+
+
 def test_auto_scrape_odds_is_disabled_by_default(monkeypatch, tmp_path):
     monkeypatch.delenv("ENABLE_AUTO_SCRAPE_ODDS", raising=False)
     monkeypatch.delenv("AUTO_SCRAPE_ODDS_DOM_FALLBACK_MAX_CARDS", raising=False)
@@ -257,6 +377,28 @@ def test_auto_scrape_odds_is_disabled_by_default(monkeypatch, tmp_path):
     assert yaml_flags["ENABLE_AUTO_SCRAPE_ODDS"] is False
     assert yaml_sources["ENABLE_AUTO_SCRAPE_ODDS"] == "yaml"
     assert feature_flags.auto_scrape_odds_enabled() is False
+
+
+def test_auto_odds_ensure_requires_internal_opt_in(monkeypatch, tmp_path):
+    monkeypatch.delenv("ENABLE_AUTO_SCRAPE_ODDS", raising=False)
+    monkeypatch.setattr(feature_flags, "_FEATURE_FLAGS_PATH", tmp_path / "missing.yaml")
+
+    db_path = tmp_path / "no_auto_scrape.db"
+    summary = odds_auto_integrator.ensure_odds_for_target_race(
+        str(db_path),
+        "Sandown",
+        4,
+        "2026-05-21",
+    )
+
+    assert summary["success"] is False
+    assert summary["win_count"] == 0
+    assert summary["place_count"] == 0
+    assert summary["opt_in_source"] == "ENABLE_AUTO_SCRAPE_ODDS from default"
+    assert summary["warnings"] == [
+        "auto odds scraping disabled; ENABLE_AUTO_SCRAPE_ODDS from default"
+    ]
+    assert not db_path.exists()
 
 
 def test_dom_fallback_page_scraping_requires_opt_in_and_is_limited(tmp_path, monkeypatch):
