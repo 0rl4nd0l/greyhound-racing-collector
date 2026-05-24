@@ -9,9 +9,18 @@ from typing import Any, Mapping
 
 RESULT_FIELD_NAMES = {
     "actual_results",
+    "actual_finish_position",
+    "actual_margin",
+    "actual_place",
+    "actual_position",
+    "actual_win",
     "actual_winner",
     "beaten_margin",
     "finish_position",
+    "label",
+    "label_quality",
+    "label_source",
+    "labels",
     "placing",
     "result",
     "result_status",
@@ -59,7 +68,200 @@ def _safe_int(value: Any) -> int | None:
         return None
 
 
-def _prediction_rows(prediction_result: Mapping[str, Any]) -> list[dict[str, Any]]:
+def _parse_timestamp(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    for candidate in (raw, raw.replace("Z", "+00:00")):
+        try:
+            return datetime.fromisoformat(candidate)
+        except ValueError:
+            continue
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.strptime(raw[:19], fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _seconds_between(later: datetime, earlier: datetime) -> float:
+    compare_later = later
+    compare_earlier = earlier
+    if compare_earlier.tzinfo is not None and compare_later.tzinfo is None:
+        compare_later = compare_later.replace(tzinfo=compare_earlier.tzinfo)
+    elif compare_earlier.tzinfo is None and compare_later.tzinfo is not None:
+        compare_later = compare_later.replace(tzinfo=None)
+    return (compare_later - compare_earlier).total_seconds()
+
+
+def _first_value(row: Mapping[str, Any], keys: tuple[str, ...]) -> Any:
+    for key in keys:
+        value = row.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _build_odds_snapshot(
+    row: Mapping[str, Any],
+    *,
+    prediction_timestamp: str,
+    jump_datetime: str | None,
+    stale_odds_after_minutes: float,
+) -> dict[str, Any]:
+    odds_snapshot = {
+        "market_odds_win": _safe_float(
+            row.get("market_odds_win", row.get("odds_win", row.get("live_odds")))
+        ),
+        "odds_implied_prob": _safe_float(row.get("odds_implied_prob")),
+        "odds_implied_prob_norm": _safe_float(row.get("odds_implied_prob_norm")),
+    }
+    odds_snapshot = {k: v for k, v in odds_snapshot.items() if v is not None}
+    odds_timestamp = _first_value(
+        row,
+        (
+            "odds_timestamp",
+            "market_odds_timestamp",
+            "live_odds_timestamp",
+            "odds_updated_at",
+            "odds_last_updated",
+        ),
+    )
+    if odds_timestamp:
+        odds_snapshot["odds_timestamp"] = str(odds_timestamp)
+
+    odds_dt = _parse_timestamp(odds_timestamp)
+    prediction_dt = _parse_timestamp(prediction_timestamp)
+    if odds_dt is not None and prediction_dt is not None:
+        age_seconds = _seconds_between(prediction_dt, odds_dt)
+        odds_snapshot["odds_age_seconds_at_prediction"] = age_seconds
+        odds_snapshot["odds_age_minutes_at_prediction"] = age_seconds / 60.0
+        odds_snapshot["odds_captured_before_prediction"] = age_seconds >= 0
+        odds_snapshot["odds_stale_at_prediction"] = (
+            age_seconds > stale_odds_after_minutes * 60.0
+        )
+        odds_snapshot["stale_odds_after_minutes"] = stale_odds_after_minutes
+
+    jump_dt = _parse_timestamp(jump_datetime)
+    if odds_dt is not None and jump_dt is not None:
+        odds_snapshot["odds_captured_before_jump"] = (
+            _seconds_between(jump_dt, odds_dt) >= 0
+        )
+
+    provenance = {
+        "source": _first_value(
+            row,
+            (
+                "odds_source",
+                "market_odds_source",
+                "live_odds_source",
+                "odds_provider",
+                "market_source",
+            ),
+        ),
+        "source_table": _first_value(
+            row,
+            (
+                "odds_source_table",
+                "market_odds_source_table",
+                "live_odds_source_table",
+            ),
+        ),
+        "odds_id": _first_value(row, ("odds_id", "live_odds_id", "market_odds_id")),
+        "odds_race_id": _first_value(row, ("odds_race_id", "market_odds_race_id")),
+        "match_type": _first_value(row, ("odds_match_type", "market_odds_match_type")),
+        "match_key": _first_value(row, ("odds_match_key", "market_odds_match_key")),
+    }
+    provenance = {k: v for k, v in provenance.items() if v not in (None, "")}
+    if provenance:
+        odds_snapshot["odds_provenance"] = provenance
+    return odds_snapshot
+
+
+def _snapshot_readiness(
+    predictions: list[dict[str, Any]],
+    *,
+    lifecycle_status: Any,
+    prediction_timestamp: str,
+    feature_freeze_timestamp: str,
+) -> dict[str, Any]:
+    priced_rows = [
+        row
+        for row in predictions
+        if isinstance(row.get("odds_snapshot"), Mapping)
+        and row["odds_snapshot"].get("market_odds_win") is not None
+    ]
+    missing_live_odds_count = len(predictions) - len(priced_rows)
+    stale_count = sum(
+        1
+        for row in priced_rows
+        if row["odds_snapshot"].get("odds_stale_at_prediction") is True
+    )
+    missing_timestamp_count = sum(
+        1
+        for row in priced_rows
+        if not row["odds_snapshot"].get("odds_timestamp")
+    )
+    not_before_prediction_count = sum(
+        1
+        for row in priced_rows
+        if row["odds_snapshot"].get("odds_captured_before_prediction") is not True
+    )
+    not_before_jump_count = sum(
+        1
+        for row in priced_rows
+        if row["odds_snapshot"].get("odds_captured_before_jump") is not True
+    )
+    missing_odds_explicit = all(
+        "missing_live_odds" in (row.get("data_quality_flags") or [])
+        for row in predictions
+        if not (
+            isinstance(row.get("odds_snapshot"), Mapping)
+            and row["odds_snapshot"].get("market_odds_win") is not None
+        )
+    )
+    requirements = {
+        "result_free": True,
+        "pre_jump_lifecycle": lifecycle_status == "upcoming_not_jumped",
+        "prediction_timestamp_present": bool(prediction_timestamp),
+        "feature_freeze_timestamp_present": bool(feature_freeze_timestamp),
+        "runner_rows_present": bool(predictions),
+        "runner_rows_have_probabilities": all(
+            row.get("win_prob_norm") is not None for row in predictions
+        )
+        if predictions
+        else False,
+        "priced_runners_have_odds_timestamps": missing_timestamp_count == 0,
+        "priced_runners_captured_before_prediction": not_before_prediction_count == 0,
+        "priced_runners_captured_before_jump": not_before_jump_count == 0,
+        "missing_live_odds_explicit": missing_odds_explicit,
+    }
+    return {
+        "schema_version": "snapshot_readiness_v1",
+        "status": "READY" if all(requirements.values()) else "NOT_READY",
+        "requirements": requirements,
+        "counts": {
+            "runner_count": len(predictions),
+            "priced_runner_count": len(priced_rows),
+            "missing_live_odds_count": missing_live_odds_count,
+            "stale_live_odds_count": stale_count,
+            "missing_odds_timestamp_count": missing_timestamp_count,
+            "odds_not_captured_before_prediction_count": not_before_prediction_count,
+            "odds_not_captured_before_jump_count": not_before_jump_count,
+        },
+    }
+
+
+def _prediction_rows(
+    prediction_result: Mapping[str, Any],
+    *,
+    prediction_timestamp: str,
+    jump_datetime: str | None,
+    stale_odds_after_minutes: float,
+) -> list[dict[str, Any]]:
     rows = prediction_result.get("predictions")
     if not isinstance(rows, list):
         rows = prediction_result.get("enhanced_predictions")
@@ -75,23 +277,12 @@ def _prediction_rows(prediction_result: Mapping[str, Any]) -> list[dict[str, Any
             raise ValueError(
                 "result field leaked into runner prediction: " + ", ".join(leaked)
             )
-        odds_snapshot = {
-            "market_odds_win": _safe_float(
-                row.get("market_odds_win", row.get("odds_win", row.get("live_odds")))
-            ),
-            "odds_implied_prob": _safe_float(row.get("odds_implied_prob")),
-            "odds_implied_prob_norm": _safe_float(row.get("odds_implied_prob_norm")),
-        }
-        odds_snapshot = {k: v for k, v in odds_snapshot.items() if v is not None}
-        odds_timestamp = (
-            row.get("odds_timestamp")
-            or row.get("market_odds_timestamp")
-            or row.get("live_odds_timestamp")
-            or row.get("odds_updated_at")
-            or row.get("odds_last_updated")
+        odds_snapshot = _build_odds_snapshot(
+            row,
+            prediction_timestamp=prediction_timestamp,
+            jump_datetime=jump_datetime,
+            stale_odds_after_minutes=stale_odds_after_minutes,
         )
-        if odds_timestamp:
-            odds_snapshot["odds_timestamp"] = str(odds_timestamp)
         snapshot_rows.append(
             {
                 "dog_name": row.get("dog_clean_name") or row.get("dog_name") or row.get("name"),
@@ -121,6 +312,7 @@ def build_prediction_snapshot(
     lifecycle: Any = None,
     prediction_timestamp: str | None = None,
     feature_freeze_timestamp: str | None = None,
+    stale_odds_after_minutes: float = 30.0,
 ) -> dict[str, Any]:
     """Build a result-free snapshot record from an already computed prediction.
 
@@ -136,6 +328,13 @@ def build_prediction_snapshot(
     )
     timestamp = prediction_timestamp or _iso_now()
     feature_freeze = feature_freeze_timestamp or timestamp
+    jump_datetime = (
+        lifecycle_data.get("jump_datetime")
+        or lifecycle_data.get("start_datetime")
+        or prediction_result.get("jump_datetime")
+        or prediction_result.get("start_datetime")
+        or prediction_result.get("race_start_time")
+    )
     race_id = (
         prediction_result.get("race_id")
         or prediction_result.get("raceId")
@@ -163,9 +362,24 @@ def build_prediction_snapshot(
             if lifecycle_status == "upcoming_not_jumped"
             else "not_bet_qualified_lifecycle"
         ),
-        "predictions": _prediction_rows(prediction_result),
+        "predictions": _prediction_rows(
+            prediction_result,
+            prediction_timestamp=timestamp,
+            jump_datetime=str(jump_datetime) if jump_datetime else None,
+            stale_odds_after_minutes=stale_odds_after_minutes,
+        ),
         "data_quality_flags": list(prediction_result.get("quality_flags") or []),
+        "snapshot_provenance": {
+            "builder": "accuracy_program.snapshots.build_prediction_snapshot",
+            "source_file_path": source_file_path,
+        },
     }
+    snapshot["snapshot_readiness"] = _snapshot_readiness(
+        snapshot["predictions"],
+        lifecycle_status=lifecycle_status,
+        prediction_timestamp=timestamp,
+        feature_freeze_timestamp=feature_freeze,
+    )
     assert_no_result_fields(snapshot)
     return snapshot
 
@@ -177,7 +391,7 @@ def assert_no_result_fields(value: Any) -> None:
         if isinstance(node, Mapping):
             for key, child in node.items():
                 key_text = str(key)
-                if key_text in RESULT_FIELD_NAMES:
+                if key_text.lower() in RESULT_FIELD_NAMES:
                     raise ValueError(f"result field leaked into snapshot: {path}.{key_text}")
                 visit(child, f"{path}.{key_text}")
         elif isinstance(node, list):

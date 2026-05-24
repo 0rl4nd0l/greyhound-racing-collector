@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,10 +28,26 @@ def main() -> int:
         action="store_true",
         help="Include non-current live_odds rows in dog-level win coverage",
     )
+    parser.add_argument(
+        "--stale-after-hours",
+        type=float,
+        default=6.0,
+        help="TTL used to flag stale odds timestamps",
+    )
+    parser.add_argument(
+        "--now",
+        help="Optional ISO timestamp to use as the report reference time",
+    )
     parser.add_argument("--output", help="Optional JSON output path")
     args = parser.parse_args()
 
-    metrics = analyze_odds_coverage(args.db, current_only=not args.all_odds)
+    report_now = datetime.fromisoformat(args.now) if args.now else None
+    metrics = analyze_odds_coverage(
+        args.db,
+        current_only=not args.all_odds,
+        stale_after_hours=args.stale_after_hours,
+        now=report_now,
+    )
     text = json.dumps(metrics, indent=2, sort_keys=True)
     print(text)
     if args.output:

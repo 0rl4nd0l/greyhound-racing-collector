@@ -27,6 +27,23 @@ from accuracy_program.evaluation import (
 )
 from accuracy_program.snapshots import assert_no_result_fields
 
+DURABLE_SNAPSHOT_REQUIREMENTS = {
+    "result_free",
+    "pre_jump_lifecycle",
+    "pre_jump_snapshot_state",
+    "prediction_timestamp_present",
+    "feature_freeze_timestamp_present",
+    "source_file_path_present",
+    "model_version_present",
+    "runner_rows_present",
+    "runner_rows_have_identity",
+    "runner_rows_have_probabilities",
+    "priced_runners_have_odds_timestamps",
+    "priced_runners_captured_before_prediction",
+    "priced_runners_captured_before_jump",
+    "missing_live_odds_explicit",
+}
+
 
 def _open_readonly(db_path: str | Path) -> sqlite3.Connection:
     uri = f"file:{Path(db_path).resolve()}?mode=ro"
@@ -60,6 +77,120 @@ def _safe_float(value: Any) -> float | None:
         return float(value)
     except Exception:
         return None
+
+
+def _snapshot_readiness(snapshot: Mapping[str, Any]) -> dict[str, Any]:
+    predictions = [
+        row
+        for row in snapshot.get("predictions") or []
+        if isinstance(row, Mapping)
+    ]
+    priced_rows = [
+        row
+        for row in predictions
+        if isinstance(row.get("odds_snapshot"), Mapping)
+        and row["odds_snapshot"].get("market_odds_win") is not None
+    ]
+    missing_odds_rows = [
+        row
+        for row in predictions
+        if not (
+            isinstance(row.get("odds_snapshot"), Mapping)
+            and row["odds_snapshot"].get("market_odds_win") is not None
+        )
+    ]
+    missing_live_odds_explicit = all(
+        "missing_live_odds" in (row.get("data_quality_flags") or [])
+        for row in missing_odds_rows
+    )
+    if predictions and not missing_odds_rows:
+        missing_live_odds_explicit = True
+
+    requirements = {
+        "result_free": True,
+        "pre_jump_lifecycle": snapshot.get("lifecycle_status") == "upcoming_not_jumped",
+        "pre_jump_snapshot_state": snapshot.get("snapshot_state")
+        == "pre_jump_feature_freeze",
+        "prediction_timestamp_present": bool(snapshot.get("prediction_timestamp")),
+        "feature_freeze_timestamp_present": bool(snapshot.get("feature_freeze_timestamp")),
+        "source_file_path_present": bool(snapshot.get("source_file_path")),
+        "model_version_present": bool(snapshot.get("model_version")),
+        "runner_rows_present": bool(predictions),
+        "runner_rows_have_identity": all(
+            row.get("dog_name") and row.get("box_number") is not None
+            for row in predictions
+        )
+        if predictions
+        else False,
+        "runner_rows_have_probabilities": all(
+            row.get("win_prob_norm") is not None for row in predictions
+        )
+        if predictions
+        else False,
+        "priced_runners_have_odds_timestamps": all(
+            row["odds_snapshot"].get("odds_timestamp") for row in priced_rows
+        ),
+        "priced_runners_captured_before_prediction": all(
+            row["odds_snapshot"].get("odds_captured_before_prediction") is True
+            for row in priced_rows
+        ),
+        "priced_runners_captured_before_jump": all(
+            row["odds_snapshot"].get("odds_captured_before_jump") is True
+            for row in priced_rows
+        ),
+        "missing_live_odds_explicit": missing_live_odds_explicit,
+    }
+    failed = [
+        requirement
+        for requirement, passed in requirements.items()
+        if not passed
+    ]
+    return {
+        "status": "READY" if not failed else "NOT_READY",
+        "requirements": requirements,
+        "failed_requirements": failed,
+        "counts": {
+            "runner_count": len(predictions),
+            "priced_runner_count": len(priced_rows),
+            "missing_live_odds_count": len(missing_odds_rows),
+        },
+    }
+
+
+def _corpus_readiness_report(
+    *,
+    files_found: int,
+    rejected_snapshots: list[dict[str, str]],
+    readiness_status_counts: Counter[str],
+    readiness_failures: list[dict[str, Any]],
+) -> dict[str, Any]:
+    if files_found == 0:
+        return {
+            "status": "DATA_MISSING",
+            "reason": "no_frozen_pre_jump_snapshot_files_found",
+            "durable_pre_jump_snapshot_requirements": sorted(
+                DURABLE_SNAPSHOT_REQUIREMENTS
+            ),
+        }
+    if rejected_snapshots or readiness_status_counts.get("NOT_READY", 0):
+        return {
+            "status": "NOT_READY",
+            "snapshot_files": files_found,
+            "readiness_status_counts": dict(readiness_status_counts),
+            "rejected_snapshots": rejected_snapshots,
+            "readiness_failures": readiness_failures[:25],
+            "durable_pre_jump_snapshot_requirements": sorted(
+                DURABLE_SNAPSHOT_REQUIREMENTS
+            ),
+        }
+    return {
+        "status": "READY",
+        "snapshot_files": files_found,
+        "readiness_status_counts": dict(readiness_status_counts),
+        "durable_pre_jump_snapshot_requirements": sorted(
+            DURABLE_SNAPSHOT_REQUIREMENTS
+        ),
+    }
 
 
 def _race_metadata(conn: sqlite3.Connection, race_id: str) -> dict[str, Any]:
@@ -193,13 +324,21 @@ def evaluate_snapshots(db_path: str, snapshot_paths: list[str]) -> dict[str, Any
         return {
             "status": "DATA_MISSING",
             "reason": "no_snapshot_files_found",
+            "snapshot_corpus_readiness": _corpus_readiness_report(
+                files_found=0,
+                rejected_snapshots=[],
+                readiness_status_counts=Counter(),
+                readiness_failures=[],
+            ),
             "metrics_by_arm": {},
         }
 
     rows: list[dict[str, Any]] = []
     lifecycle_counts: Counter[str] = Counter()
     label_quality_counts: Counter[str] = Counter()
+    readiness_status_counts: Counter[str] = Counter()
     rejected_snapshots: list[dict[str, str]] = []
+    readiness_failures: list[dict[str, Any]] = []
 
     with _open_readonly(db_path) as conn:
         for path in files:
@@ -209,10 +348,27 @@ def evaluate_snapshots(db_path: str, snapshot_paths: list[str]) -> dict[str, Any
             except Exception as exc:
                 rejected_snapshots.append({"path": str(path), "reason": str(exc)})
                 continue
+            readiness = _snapshot_readiness(snapshot)
+            readiness_status_counts[str(readiness.get("status") or "unknown")] += 1
+            if readiness.get("status") != "READY":
+                readiness_failures.append(
+                    {
+                        "path": str(path),
+                        "failed_requirements": readiness.get("failed_requirements", []),
+                        "counts": readiness.get("counts", {}),
+                    }
+                )
             lifecycle_counts[str(snapshot.get("lifecycle_status") or "unknown")] += 1
             race_rows, summary = _runner_rows(snapshot, conn)
             rows.extend(race_rows)
             label_quality_counts[str(summary.get("label_quality") or "unknown")] += 1
+
+    corpus_readiness = _corpus_readiness_report(
+        files_found=len(files),
+        rejected_snapshots=rejected_snapshots,
+        readiness_status_counts=readiness_status_counts,
+        readiness_failures=readiness_failures,
+    )
 
     scorable_rows = [row for row in rows if row.get("win_prob_norm") is not None]
     if not scorable_rows:
@@ -221,6 +377,7 @@ def evaluate_snapshots(db_path: str, snapshot_paths: list[str]) -> dict[str, Any
             "reason": "no_scorable_snapshot_rows_with_labels",
             "snapshot_files": len(files),
             "rejected_snapshots": rejected_snapshots,
+            "snapshot_corpus_readiness": corpus_readiness,
             "lifecycle_counts": dict(lifecycle_counts),
             "label_quality_counts": dict(label_quality_counts),
             "metrics_by_arm": {},
@@ -239,6 +396,7 @@ def evaluate_snapshots(db_path: str, snapshot_paths: list[str]) -> dict[str, Any
         "snapshot_files": len(files),
         "snapshots_rejected": len(rejected_snapshots),
         "rejected_snapshots": rejected_snapshots,
+        "snapshot_corpus_readiness": corpus_readiness,
         "runner_rows_scored": len(scorable_rows),
         "lifecycle_counts": dict(lifecycle_counts),
         "label_quality_counts": dict(label_quality_counts),
