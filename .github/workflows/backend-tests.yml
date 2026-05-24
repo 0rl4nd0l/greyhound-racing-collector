@@ -220,7 +220,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements/requirements.lock
 
       - name: Create test directories
         run: |
@@ -255,7 +255,14 @@ jobs:
         run: |
           for i in {1..120}; do
             if curl -sSf http://127.0.0.1:5002/api/endpoints > /dev/null; then
-              echo "Server is ready"; break; fi; sleep 1; done
+              echo "Server is ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Server did not become ready"
+          tail -n +1 server.log || true
+          exit 1
 
       - name: Run Playwright endpoints menu tests (desktop)
         run: |
