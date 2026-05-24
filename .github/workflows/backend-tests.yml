@@ -206,6 +206,7 @@ jobs:
     env:
       PORT: 5002
       ENABLE_ENDPOINT_DROPDOWNS: 1
+      DISABLE_NAV_DROPDOWNS: 1
       FLASK_ENV: testing
       MODULE_GUARD_STRICT: 0
       PREDICTION_IMPORT_MODE: relaxed
