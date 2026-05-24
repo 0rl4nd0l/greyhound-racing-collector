@@ -117,8 +117,17 @@ def test_app_client():
         pass
     cur.execute(
         """
-        INSERT OR REPLACE INTO race_metadata (race_id, venue, race_number, race_date, race_time, sportsbet_url, url)
+        INSERT INTO race_metadata (
+            race_id, venue, race_number, race_date, race_time, sportsbet_url, url
+        )
         VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(race_id) DO UPDATE SET
+            venue = excluded.venue,
+            race_number = excluded.race_number,
+            race_date = excluded.race_date,
+            race_time = excluded.race_time,
+            sportsbet_url = excluded.sportsbet_url,
+            url = excluded.url
         """,
         (
             race_id,

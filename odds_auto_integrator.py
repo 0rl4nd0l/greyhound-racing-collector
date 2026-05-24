@@ -203,14 +203,32 @@ def _copy_current_odds_to_alias(
         conn.close()
 
 
+def _auto_scrape_odds_allowed(
+    allow_auto_scrape_odds: bool | None = None,
+) -> tuple[bool, str]:
+    if allow_auto_scrape_odds is not None:
+        return bool(allow_auto_scrape_odds), "explicit argument allow_auto_scrape_odds"
+    try:
+        from utils.feature_flags import auto_scrape_odds_enabled, load_flags
+
+        _flags, sources = load_flags()
+        enabled = auto_scrape_odds_enabled()
+        source = sources.get("ENABLE_AUTO_SCRAPE_ODDS", "default")
+        return enabled, f"ENABLE_AUTO_SCRAPE_ODDS from {source}"
+    except Exception as exc:
+        return False, f"feature flag unavailable: {exc}"
+
+
 def ensure_odds_for_target_race(
     db_path: str,
     venue: Any,
     race_number: int | None,
     race_date: Any = None,
+    allow_auto_scrape_odds: bool | None = None,
 ) -> dict[str, Any]:
     """Fetch and persist current Sportsbet odds for a target race if visible."""
 
+    allowed, opt_in_source = _auto_scrape_odds_allowed(allow_auto_scrape_odds)
     summary: dict[str, Any] = {
         "success": False,
         "win_count": 0,
@@ -218,7 +236,11 @@ def ensure_odds_for_target_race(
         "warnings": [],
         "race_id": None,
         "alias_race_id": None,
+        "opt_in_source": opt_in_source,
     }
+    if not allowed:
+        summary["warnings"].append(f"auto odds scraping disabled; {opt_in_source}")
+        return summary
     if not race_number:
         summary["warnings"].append("race_number missing")
         return summary
@@ -228,7 +250,14 @@ def ensure_odds_for_target_race(
 
     from sportsbet_odds_integrator import SportsbetOddsIntegrator
 
-    integrator = SportsbetOddsIntegrator(db_path)
+    print(
+        "🔄 Auto odds scraping enabled "
+        f"because {opt_in_source}; target={venue} R{race_number} {target_date}"
+    )
+    integrator = SportsbetOddsIntegrator(
+        db_path,
+        allow_auto_scrape_odds=True,
+    )
     try:
         if not integrator.setup_driver():
             summary["warnings"].append("selenium driver unavailable")
