@@ -17,6 +17,7 @@ Version: 1.0.0 - Expert form approach implementation
 """
 
 import json
+import hashlib
 import os
 import random
 import re
@@ -37,6 +38,10 @@ except Exception as _bs4_import_error:
 from utils.date_parsing import parse_date_flexible
 from utils.http_client import get_shared_session
 from utils.race_file_utils import RaceFileManager
+from utils.runner_completeness import (
+    analyze_csv_text_runner_completeness,
+    quarantine_csv_content,
+)
 
 
 class ExpertFormCsvScraper:
@@ -494,6 +499,23 @@ class ExpertFormCsvScraper:
             else:
                 self.safe_log("CSV appears to be valid form guide data")
 
+            completeness = analyze_csv_text_runner_completeness(
+                content,
+                source=filename,
+            )
+            if not completeness.is_complete:
+                quarantine_path = quarantine_csv_content(
+                    content,
+                    self.output_dir,
+                    filename,
+                    reason="incomplete_runner_set",
+                )
+                self.safe_log(
+                    f"Incomplete runner set quarantined: {quarantine_path} {completeness.reasons}",
+                    "ERROR",
+                )
+                return False
+
             # Save to download directory first (for backup/tracking)
             download_filepath = os.path.join(self.download_dir, filename)
             with open(download_filepath, "w", encoding="utf-8", newline="") as f:
@@ -508,6 +530,23 @@ class ExpertFormCsvScraper:
             upcoming_filepath = os.path.join(self.output_dir, filename)
             with open(upcoming_filepath, "w", encoding="utf-8", newline="") as f:
                 f.write(content)
+            with open(f"{upcoming_filepath}.metadata.json", "w", encoding="utf-8") as f:
+                json.dump(
+                    {
+                        "schema_version": "form_guide_download_provenance_v1",
+                        "created_at": datetime.now().isoformat(timespec="seconds"),
+                        "source": "expert_form_csv_scraper",
+                        "filename": filename,
+                        "content_length": len(content.encode("utf-8")),
+                        "content_sha256": hashlib.sha256(
+                            content.encode("utf-8")
+                        ).hexdigest(),
+                        "runner_completeness": completeness.as_dict(),
+                    },
+                    f,
+                    indent=2,
+                    sort_keys=True,
+                )
 
             # Add to existing files list to prevent future duplicates
             self.existing_files.add(filename)

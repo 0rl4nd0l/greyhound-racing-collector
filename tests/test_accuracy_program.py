@@ -11,6 +11,7 @@ from accuracy_program.evaluation import (
     validate_temporal_holdout,
 )
 from accuracy_program.snapshots import (
+    assert_no_result_fields,
     build_prediction_snapshot,
     persist_prediction_snapshot,
 )
@@ -126,6 +127,55 @@ def test_snapshot_rejects_result_fields_inside_runner_rows():
             },
             lifecycle={"status": "upcoming_not_jumped"},
         )
+
+
+@pytest.mark.parametrize("field", ["official_result", "winner", "race_result"])
+def test_snapshot_rejects_broader_result_aliases(field):
+    with pytest.raises(ValueError):
+        assert_no_result_fields({"predictions": [{"dog_name": "Alpha", field: "won"}]})
+
+
+def test_snapshot_readiness_marks_incomplete_source_runner_set_not_ready():
+    snapshot = build_prediction_snapshot(
+        {
+            "race_id": "Race 1 - SHEP - 2026-05-25",
+            "model_version": "model-v1",
+            "predictions": [
+                {"dog_clean_name": "Shima Lexie", "box_number": 2, "win_prob_norm": 0.6},
+                {"dog_clean_name": "Sekiro", "box_number": 4, "win_prob_norm": 0.4},
+            ],
+        },
+        lifecycle={
+            "status": "upcoming_not_jumped",
+            "race_date": "2026-05-25",
+            "venue": "SHEP",
+            "race_number": 1,
+        },
+        source_runner_completeness={
+            "schema_version": "runner_completeness_v1",
+            "status": "INCOMPLETE",
+            "runner_count": 2,
+            "min_complete_runners": 4,
+            "boxes": [2, 4],
+            "dog_names": ["Shima Lexie", "Sekiro"],
+            "participants": [
+                {"box_number": 2, "dog_name": "Shima Lexie"},
+                {"box_number": 4, "dog_name": "Sekiro"},
+            ],
+            "duplicate_boxes": [],
+            "duplicate_dog_names": [],
+            "invalid_runner_rows": 0,
+            "reasons": ["runner_count_below_min:2<4"],
+        },
+        prediction_timestamp="2026-05-24T21:38:53",
+    )
+
+    assert snapshot["runner_set_complete"] is False
+    assert snapshot["snapshot_readiness"]["status"] == "NOT_READY"
+    assert (
+        snapshot["snapshot_readiness"]["requirements"]["source_runner_set_complete"]
+        is False
+    )
 
 
 def test_bet_readiness_marks_abstain_without_reranking_or_ev_changes():

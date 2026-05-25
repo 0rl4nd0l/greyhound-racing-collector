@@ -27,13 +27,19 @@ Notes
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sqlite3
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional, Tuple
 import re
+from typing import Any, Dict, Optional, Tuple
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 # Routing helpers
 try:
@@ -65,15 +71,26 @@ except Exception:
     def _std_venue(v: str) -> str:
         return (v or "").strip().upper()
 
+try:
+    from accuracy_program.snapshots import assert_no_result_fields
+    from utils.runner_completeness import RunnerRow, analyze_runner_rows
+except Exception:
+    assert_no_result_fields = None
+    RunnerRow = None
+    analyze_runner_rows = None
+
 
 @dataclass
 class ParsedMeta:
     race_date: str   # YYYY-MM-DD
     venue_code: str  # e.g., BAL, AP_K (uppercase code form)
     race_number: int
+    race_id_override: Optional[str] = None
 
     @property
     def race_id(self) -> str:
+        if self.race_id_override:
+            return self.race_id_override
         return f"{self.venue_code}_{self.race_date}_{self.race_number}"
 
 
@@ -171,6 +188,105 @@ def _extract_meta(path: Path) -> Optional[ParsedMeta]:
         return None
 
 
+def _snapshot_files(snapshot_dir: Path, target_date: str | None) -> list[Path]:
+    if target_date:
+        date_dir = snapshot_dir / target_date
+        if not date_dir.exists():
+            return []
+        return sorted(path for path in date_dir.glob("*/*.json") if path.is_file())
+    return sorted(path for path in snapshot_dir.glob("*/*/*.json") if path.is_file())
+
+
+def _snapshot_participants(snapshot: Dict[str, Any]) -> list[dict[str, Any]]:
+    participants = []
+    for participant in snapshot.get("frozen_participants") or []:
+        if not isinstance(participant, dict):
+            continue
+        try:
+            box_number = int(participant.get("box_number"))
+        except (TypeError, ValueError):
+            continue
+        dog_name = str(participant.get("dog_name") or "").strip()
+        if dog_name:
+            participants.append({"box_number": box_number, "dog_name": dog_name})
+    if participants:
+        return participants
+    for row in snapshot.get("predictions") or []:
+        if not isinstance(row, dict):
+            continue
+        try:
+            box_number = int(row.get("box_number"))
+        except (TypeError, ValueError):
+            continue
+        dog_name = str(row.get("dog_name") or row.get("dog_clean_name") or "").strip()
+        if dog_name:
+            participants.append({"box_number": box_number, "dog_name": dog_name})
+    return participants
+
+
+def _meta_from_snapshot(path: Path) -> tuple[Optional[ParsedMeta], Dict[str, object], Optional[str]]:
+    if assert_no_result_fields is None or analyze_runner_rows is None or RunnerRow is None:
+        return None, {}, "snapshot_result_guard_unavailable"
+    try:
+        snapshot = json.loads(path.read_text(encoding="utf-8"))
+        assert_no_result_fields(snapshot)
+    except Exception as exc:
+        return None, {}, f"snapshot_unreadable_or_not_result_free:{type(exc).__name__}"
+
+    if snapshot.get("is_pre_jump_snapshot") is not True:
+        return None, {}, "not_pre_jump_snapshot"
+    if snapshot.get("snapshot_state") != "pre_jump_feature_freeze":
+        return None, {}, "not_pre_jump_feature_freeze"
+
+    race_id = str(snapshot.get("race_id") or "").strip()
+    race_date = str(snapshot.get("race_date") or "").strip()
+    venue = str(snapshot.get("venue") or "").strip().upper()
+    race_number = snapshot.get("race_number")
+    if not race_id or not race_date or not venue or race_number in (None, ""):
+        return None, {}, "missing_snapshot_identity"
+    try:
+        race_number_int = int(race_number)
+    except (TypeError, ValueError):
+        return None, {}, "invalid_snapshot_race_number"
+
+    participants = _snapshot_participants(snapshot)
+    completeness = analyze_runner_rows(
+        [
+            RunnerRow(
+                box_number=int(participant["box_number"]),
+                dog_name=str(participant["dog_name"]),
+            )
+            for participant in participants
+        ],
+        source=f"snapshot:{race_id}",
+    ).as_dict()
+    if completeness.get("status") != "COMPLETE":
+        return None, {"runner_completeness": completeness}, "snapshot_incomplete_runner_set"
+
+    enrich: Dict[str, object] = {
+        "field_size": int(completeness.get("runner_count") or len(participants)),
+        "data_source": "frozen_prediction_snapshot",
+    }
+    source_path = str(snapshot.get("source_file_path") or "").strip()
+    if source_path and Path(source_path).exists() and _parse_race_csv_meta is not None:
+        info = _parse_race_csv_meta(source_path)
+        if isinstance(info, dict) and info.get("status") == "success":
+            for key in ("distance", "grade"):
+                value = info.get(key)
+                if value is not None and value != "Unknown":
+                    enrich[key] = value
+    return (
+        ParsedMeta(
+            race_date=race_date,
+            venue_code=venue,
+            race_number=race_number_int,
+            race_id_override=race_id,
+        ),
+        enrich,
+        None,
+    )
+
+
 def upsert_race_meta(conn: sqlite3.Connection, pm: ParsedMeta, enrich: Dict[str, object]) -> Tuple[bool, bool]:
     """Upsert minimal race_metadata. Returns (inserted, updated)."""
     # Human-friendly venue for joins (align with API overlay and persistence script expectations)
@@ -186,14 +302,19 @@ def upsert_race_meta(conn: sqlite3.Connection, pm: ParsedMeta, enrich: Dict[str,
         "distance": (str(enrich.get("distance")) if enrich and enrich.get("distance") else None),
         "field_size": (int(enrich.get("field_size")) if enrich and isinstance(enrich.get("field_size"), (int, float)) else None),
         "extraction_timestamp": datetime.now().isoformat(timespec="seconds"),
-        "data_source": "upcoming_csv",
+        "data_source": str((enrich or {}).get("data_source") or "upcoming_csv"),
     }
 
     # Build INSERT with ON CONFLICT(race_id) DO UPDATE for selected mutable fields
     cur = conn.cursor()
-    inserted = False
-    updated = False
     try:
+        existed = (
+            cur.execute(
+                "SELECT 1 FROM race_metadata WHERE race_id = ? LIMIT 1",
+                (cols["race_id"],),
+            ).fetchone()
+            is not None
+        )
         cur.execute(
             """
             INSERT INTO race_metadata (
@@ -221,20 +342,7 @@ def upsert_race_meta(conn: sqlite3.Connection, pm: ParsedMeta, enrich: Dict[str,
                 cols["data_source"],
             ),
         )
-        # Detect insert vs update via changes()
-        try:
-            # lastrowid is not reliable on UPSERT; use changes() heuristic
-            ch = cur.execute("SELECT changes()").fetchone()[0]
-            if ch == 1:
-                inserted = True
-            elif ch == 0:
-                # No-op
-                pass
-            else:
-                updated = True
-        except Exception:
-            pass
-        return inserted, updated
+        return not existed, existed
     finally:
         cur.close()
 
@@ -243,19 +351,33 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Populate race_metadata from upcoming CSVs")
     ap.add_argument("--dir", dest="upcoming_dir", default=os.getenv("UPCOMING_RACES_DIR", "./upcoming_races_temp"))
     ap.add_argument("--db", dest="db_path", default=os.getenv("STAGING_DB_PATH") or os.getenv("GREYHOUND_DB_PATH") or None)
+    ap.add_argument("--date", dest="target_date", help="Optional race_date filter in YYYY-MM-DD format")
+    ap.add_argument("--snapshot-dir", dest="snapshot_dir", default="artifacts/prediction_snapshots")
+    ap.add_argument(
+        "--from-snapshots",
+        action="store_true",
+        help="Seed only result-free frozen snapshots, preserving snapshot race_id values",
+    )
     ap.add_argument("--limit", type=int, default=0, help="Limit number of files processed (0 = no limit)")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--verbose", action="store_true")
     ns = ap.parse_args()
 
     upc = Path(ns.upcoming_dir).expanduser().resolve()
-    if not upc.exists() or not upc.is_dir():
+    if not ns.from_snapshots and (not upc.exists() or not upc.is_dir()):
         print(f"❌ Upcoming dir not found: {upc}")
         return 2
 
-    # Gather candidate CSVs
-    files = [p for p in upc.iterdir() if p.is_file() and p.suffix.lower() == ".csv" and not p.name.startswith(".")]
-    files.sort()
+    # Gather candidate files
+    if ns.from_snapshots:
+        snapshot_root = Path(ns.snapshot_dir).expanduser().resolve()
+        if not snapshot_root.exists() or not snapshot_root.is_dir():
+            print(f"❌ Snapshot dir not found: {snapshot_root}")
+            return 2
+        files = _snapshot_files(snapshot_root, ns.target_date)
+    else:
+        files = [p for p in upc.iterdir() if p.is_file() and p.suffix.lower() == ".csv" and not p.name.startswith(".")]
+        files.sort()
     if ns.limit and ns.limit > 0:
         files = files[: ns.limit]
 
@@ -277,26 +399,40 @@ def main() -> int:
 
         for p in files:
             # Extract core meta
-            pm = _extract_meta(p)
+            if ns.from_snapshots:
+                pm, enrich, skip_reason = _meta_from_snapshot(p)
+                if skip_reason:
+                    skipped += 1
+                    if ns.verbose:
+                        print(f"[skip] {p.name}: {skip_reason}")
+                    continue
+            else:
+                pm = _extract_meta(p)
+                enrich = {}
             if pm is None:
                 skipped += 1
                 if ns.verbose:
                     print(f"[skip] Unable to extract meta from {p.name} (no CSV/filename match)")
                 continue
+            if ns.target_date and pm.race_date != ns.target_date:
+                skipped += 1
+                if ns.verbose:
+                    print(f"[skip] {pm.race_id}: date {pm.race_date} != {ns.target_date}")
+                continue
 
             # Enrich with distance/grade/field_size when available
-            enrich: Dict[str, object] = {}
-            try:
-                if _parse_race_csv_meta is not None:
-                    info = _parse_race_csv_meta(str(p))
-                    if isinstance(info, dict) and info.get("status") == "success":
-                        # Only copy selected keys if present
-                        for k in ("distance", "grade", "field_size"):
-                            v = info.get(k)
-                            if v is not None and v != "Unknown":
-                                enrich[k] = v
-            except Exception:
-                pass
+            if not ns.from_snapshots:
+                try:
+                    if _parse_race_csv_meta is not None:
+                        info = _parse_race_csv_meta(str(p))
+                        if isinstance(info, dict) and info.get("status") == "success":
+                            # Only copy selected keys if present
+                            for k in ("distance", "grade", "field_size"):
+                                v = info.get(k)
+                                if v is not None and v != "Unknown":
+                                    enrich[k] = v
+                except Exception:
+                    pass
 
             if ns.dry_run:
                 if ns.verbose:
@@ -344,4 +480,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

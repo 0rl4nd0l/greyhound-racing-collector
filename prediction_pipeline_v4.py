@@ -1270,9 +1270,11 @@ class PredictionPipelineV4:
         elif embedded_form_history:
             inferred_distance = _mode_numeric("DIST")
             if inferred_distance is not None:
-                race_level_distance = inferred_distance
-                race_level_distance_source = "historical_form_mode_inferred"
-                target_field_warnings.append("distance_inferred_from_historical_form_mode")
+                target_field_warnings.append(
+                    f"historical_form_distance_mode_available:{inferred_distance:g}"
+                )
+            race_level_distance = None
+            race_level_distance_source = "default_missing_target"
 
         explicit_grade, explicit_grade_column = _first_non_empty(
             ("Race Grade", "race_grade", "target_grade", "current_race_grade", "Grade")
@@ -1455,8 +1457,21 @@ class PredictionPipelineV4:
         # Parse embedded historical data structure
         csv_historical_data = {}
         csv_historical_source_counts: dict[str, dict[str, int]] = {}
+        csv_history_rows_dropped_post_target: dict[str, int] = {}
         current_dog = None  # normalized name without prefix
         seen_header_for_dog: set[str] = set()
+        target_race_date = None
+        try:
+            if "race_date" in participants_df.columns and not participants_df.empty:
+                target_race_date = pd.to_datetime(
+                    participants_df.iloc[0].get("race_date"), errors="coerce"
+                )
+                if pd.isna(target_race_date):
+                    target_race_date = None
+                else:
+                    target_race_date = target_race_date.date()
+        except Exception:
+            target_race_date = None
 
         def _norm(name: str) -> str:
             return _normalize_dog_name_no_prefix(name)
@@ -1510,6 +1525,13 @@ class PredictionPipelineV4:
                 wgt = _row_get_ci(row, ["WGT", "Weight"])
                 date_val = _row_get_ci(row, ["DATE", "Date", "race_date", "Race Date"])
                 track_val = _row_get_ci(row, ["TRACK", "Track", "Venue", "venue"])
+                if target_race_date is not None and date_val not in (None, ""):
+                    parsed_history_date = pd.to_datetime(date_val, errors="coerce")
+                    if not pd.isna(parsed_history_date) and parsed_history_date.date() >= target_race_date:
+                        csv_history_rows_dropped_post_target[dog_name] = (
+                            csv_history_rows_dropped_post_target.get(dog_name, 0) + 1
+                        )
+                        return False
 
                 historical_race = {
                     "date": date_val or "",
@@ -1593,6 +1615,9 @@ class PredictionPipelineV4:
         for _, participant in participants_df.iterrows():
             participant_dict = participant.to_dict()
             dog_name = participant_dict["dog_clean_name"]
+            dropped_rows = csv_history_rows_dropped_post_target.get(dog_name, 0)
+            if dropped_rows:
+                participant_dict["csv_history_rows_dropped_post_target"] = dropped_rows
 
             if dog_name in csv_historical_data and csv_historical_data[dog_name]:
                 history = csv_historical_data[dog_name]

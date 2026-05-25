@@ -73,7 +73,15 @@ def test_download_accepts_valid_csv_and_writes_file(monkeypatch, _isolate_upcomi
     br = UpcomingRaceBrowser()
 
     # Minimal plausible CSV header + one row
-    csv_content = "Dog Name,Box\nRunner,1\n"
+    csv_content = "\n".join(
+        [
+            "Dog Name,Box",
+            "1. Alpha,1",
+            "2. Bravo,2",
+            "3. Charlie,3",
+            "4. Delta,4",
+        ]
+    )
 
     def _fake_find_csv_download_link(soup, race_url):
         return {"type": "direct_csv", "data": csv_content}
@@ -102,6 +110,42 @@ def test_download_accepts_valid_csv_and_writes_file(monkeypatch, _isolate_upcomi
     with open(fp, "r", encoding="utf-8") as f:
         data = f.read()
     assert "Dog Name,Box" in data
+    assert res["runner_completeness"]["status"] == "COMPLETE"
+    assert os.path.exists(f"{fp}.metadata.json")
+
+
+def test_download_rejects_partial_runner_set(monkeypatch, _isolate_upcoming_dir):
+    from upcoming_race_browser import UpcomingRaceBrowser
+
+    br = UpcomingRaceBrowser()
+    csv_content = "Dog Name,Box\n2. Shima Lexie,2\n4. Sekiro,4\n"
+
+    def _fake_find_csv_download_link(soup, race_url):
+        return {"type": "direct_csv", "data": csv_content}
+
+    monkeypatch.setattr(br, "find_csv_download_link", _fake_find_csv_download_link)
+
+    class _Resp:
+        def __init__(self, status_code=200, text="", content=b""):
+            self.status_code = status_code
+            self.text = text
+            self.content = content
+            self.headers = {}
+
+        def close(self):
+            pass
+
+    fake_session = types.SimpleNamespace(
+        get=lambda url, timeout=30: _Resp(200, content=b"<html><title>Race 5</title></html>")
+    )
+    monkeypatch.setattr(br, "session", fake_session)
+
+    res = br.download_race_csv("https://www.thedogs.com.au/racing/grafton/2025-09-02/5")
+
+    assert res.get("success") is not True
+    assert res["error"] == "Incomplete runner set in downloaded CSV"
+    assert res["runner_completeness"]["status"] == "INCOMPLETE"
+    assert os.path.exists(res["quarantine_path"])
 
 
 @pytest.fixture

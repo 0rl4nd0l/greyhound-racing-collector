@@ -17,13 +17,18 @@ FORBIDDEN_FEATURE_COLUMNS = {
     "beaten_margin",
     "finish_position",
     "margin",
+    "official_result",
+    "official_results",
     "placing",
+    "race_result",
+    "race_results",
     "result",
     "result_status",
     "results_status",
     "scraped_finish_position",
     "scraped_raw_result",
     "target_finish_position",
+    "winner",
     "winner_margin",
     "winner_name",
     "winner_odds",
@@ -240,6 +245,7 @@ def score_predictions(
     scored_races = 0
     prob_sum_errors: list[float] = []
     pairs: list[tuple[float, int]] = []
+    winner_ranks: list[int] = []
 
     for race_rows in groups.values():
         ranked = sorted(
@@ -257,6 +263,11 @@ def score_predictions(
         if not winners:
             continue
         scored_races += 1
+        for idx, row in enumerate(ranked, start=1):
+            runner_key = str(row.get("dog_name") or row.get("dog_clean_name") or row.get("box_number"))
+            if runner_key in winners:
+                winner_ranks.append(idx)
+                break
         for k in (1, 2, 3):
             top_names = {
                 str(row.get("dog_name") or row.get("dog_clean_name") or row.get("box_number"))
@@ -279,6 +290,11 @@ def score_predictions(
         "top1": top_hits[1] / scored_races if scored_races else None,
         "top2": top_hits[2] / scored_races if scored_races else None,
         "top3": top_hits[3] / scored_races if scored_races else None,
+        "winner_ranks": winner_ranks,
+        "winner_rank_counts": {
+            str(rank): winner_ranks.count(rank) for rank in sorted(set(winner_ranks))
+        },
+        "mean_winner_rank": float(np.mean(winner_ranks)) if winner_ranks else None,
         "brier": _brier(pairs),
         "log_loss": _log_loss_by_race(groups, probability_key, actual_key),
         "calibration": _calibration(pairs),

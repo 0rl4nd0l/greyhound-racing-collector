@@ -25,14 +25,20 @@ RESULT_FIELD_NAMES = {
     "label_source",
     "labels",
     "placing",
+    "official_result",
+    "official_results",
+    "race_result",
+    "race_results",
     "result",
     "result_status",
     "results_status",
     "scraped_finish_position",
     "scraped_raw_result",
+    "winner",
     "winner_margin",
     "winner_name",
     "winner_odds",
+    "winning_time",
 }
 
 
@@ -255,7 +261,10 @@ def _snapshot_readiness(
     lifecycle_status: Any,
     prediction_timestamp: str,
     feature_freeze_timestamp: str,
+    source_runner_completeness: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
+    from utils.runner_completeness import analyze_prediction_runner_match
+
     priced_rows = [
         row
         for row in predictions
@@ -291,17 +300,33 @@ def _snapshot_readiness(
             and row["odds_snapshot"].get("market_odds_win") is not None
         )
     )
+    source_report = dict(source_runner_completeness or {})
+    source_status = str(source_report.get("status") or "UNVERIFIED")
+    runner_match = analyze_prediction_runner_match(predictions, source_report)
+    source_verified = bool(source_report)
     requirements = {
         "result_free": True,
         "pre_jump_lifecycle": lifecycle_status == "upcoming_not_jumped",
         "prediction_timestamp_present": bool(prediction_timestamp),
         "feature_freeze_timestamp_present": bool(feature_freeze_timestamp),
         "runner_rows_present": bool(predictions),
+        "runner_rows_have_identity": all(
+            row.get("dog_name") and row.get("box_number") is not None
+            for row in predictions
+        )
+        if predictions
+        else False,
         "runner_rows_have_probabilities": all(
             row.get("win_prob_norm") is not None for row in predictions
         )
         if predictions
         else False,
+        "source_runner_set_complete": (
+            source_status == "COMPLETE" if source_verified else True
+        ),
+        "predictions_match_source_runner_set": (
+            runner_match.get("status") == "MATCHED" if source_verified else True
+        ),
         "priced_runners_have_odds_timestamps": missing_timestamp_count == 0,
         "priced_runners_captured_before_prediction": not_before_prediction_count == 0,
         "priced_runners_captured_before_jump": not_before_jump_count == 0,
@@ -320,6 +345,8 @@ def _snapshot_readiness(
             "odds_not_captured_before_prediction_count": not_before_prediction_count,
             "odds_not_captured_before_jump_count": not_before_jump_count,
         },
+        "source_runner_completeness": source_report or None,
+        "prediction_runner_match": runner_match if source_verified else None,
     }
 
 
@@ -385,6 +412,22 @@ def _prediction_rows(
                 "odds_snapshot": odds_snapshot,
                 "ev_win": _ev_win(win_prob_norm, odds_snapshot),
                 "data_quality_flags": flags,
+                "data_shape": {
+                    key: row.get(key)
+                    for key in (
+                        "parser_context",
+                        "target_field_warning",
+                        "distance_source",
+                        "grade_source",
+                        "field_size_source",
+                        "csv_historical_races",
+                        "csv_prefixed_history_rows",
+                        "csv_blank_history_rows",
+                        "csv_historical_sources",
+                        "csv_history_rows_dropped_post_target",
+                    )
+                    if row.get(key) not in (None, "")
+                },
             }
         )
     return snapshot_rows
@@ -431,6 +474,7 @@ def build_prediction_snapshot(
     prediction_timestamp: str | None = None,
     feature_freeze_timestamp: str | None = None,
     stale_odds_after_minutes: float = 30.0,
+    source_runner_completeness: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a result-free snapshot record from an already computed prediction.
 
@@ -465,6 +509,19 @@ def build_prediction_snapshot(
         or "unknown"
     )
     identity = _race_identity(prediction_result, lifecycle_data)
+    if source_runner_completeness is None and source_file_path:
+        try:
+            from utils.runner_completeness import analyze_csv_runner_completeness
+
+            source_path = Path(source_file_path)
+            if source_path.exists():
+                source_runner_completeness = analyze_csv_runner_completeness(
+                    source_path
+                ).as_dict()
+        except Exception:
+            source_runner_completeness = None
+    source_runner_completeness = dict(source_runner_completeness or {})
+    frozen_participants = list(source_runner_completeness.get("participants") or [])
 
     snapshot = {
         "schema_version": "prediction_snapshot_v1",
@@ -494,6 +551,13 @@ def build_prediction_snapshot(
             jump_datetime=str(jump_datetime) if jump_datetime else None,
             stale_odds_after_minutes=stale_odds_after_minutes,
         ),
+        "source_runner_completeness": source_runner_completeness or None,
+        "expected_runner_count": source_runner_completeness.get("runner_count"),
+        "frozen_participants": frozen_participants,
+        "runner_set_status": source_runner_completeness.get("status"),
+        "runner_set_complete": source_runner_completeness.get("status") == "COMPLETE"
+        if source_runner_completeness
+        else None,
         "data_quality_flags": list(prediction_result.get("quality_flags") or []),
         "snapshot_provenance": {
             "builder": "accuracy_program.snapshots.build_prediction_snapshot",
@@ -505,6 +569,7 @@ def build_prediction_snapshot(
         lifecycle_status=lifecycle_status,
         prediction_timestamp=timestamp,
         feature_freeze_timestamp=feature_freeze,
+        source_runner_completeness=source_runner_completeness,
     )
     assert_no_result_fields(snapshot)
     return snapshot

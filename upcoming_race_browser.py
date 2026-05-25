@@ -10,6 +10,8 @@ Author: AI Assistant
 Date: July 23, 2025
 """
 
+import hashlib
+import json
 import os
 import random
 import re
@@ -25,6 +27,12 @@ except Exception as _bs4_import_error:
     bs4 = None
 
 from utils.http_client import get_shared_session
+from utils.runner_completeness import (
+    analyze_csv_runner_completeness,
+    analyze_csv_text_runner_completeness,
+    quarantine_csv_content,
+    quarantine_existing_file,
+)
 
 # Prefer centralized venue normalization if available
 try:
@@ -90,6 +98,29 @@ class UpcomingRaceBrowser:
 
         print("🏁 Upcoming Race Browser initialized")
         print(f"📂 Upcoming races directory: {self.upcoming_dir}")
+
+    def _write_csv_provenance(self, filepath, *, race_url, csv_info, content, completeness):
+        metadata_path = f"{filepath}.metadata.json"
+        resolved_csv_url = None
+        csv_method = None
+        if isinstance(csv_info, str):
+            resolved_csv_url = csv_info
+            csv_method = "GET"
+        elif isinstance(csv_info, dict):
+            resolved_csv_url = csv_info.get("url")
+            csv_method = csv_info.get("type") or "unknown"
+        payload = {
+            "schema_version": "form_guide_download_provenance_v1",
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+            "race_url": race_url,
+            "resolved_csv_url": resolved_csv_url,
+            "csv_method": csv_method,
+            "content_length": len(content.encode("utf-8")),
+            "content_sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+            "runner_completeness": completeness.as_dict(),
+        }
+        with open(metadata_path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2, sort_keys=True)
 
     def _normalize_race_url(self, race_url: str):
         """Return a tuple of (base_race_url, expert_form_url) with fragments/queries removed and expert-form deduped.
@@ -924,6 +955,18 @@ class UpcomingRaceBrowser:
                     # Pass the base race URL; scraper will derive the expert-form URL
                     ef_success = scraper.download_csv_from_expert_form(base_race_url, filename)
                     if ef_success and os.path.exists(filepath):
+                        completeness = analyze_csv_runner_completeness(filepath)
+                        if not completeness.is_complete:
+                            quarantine_path = quarantine_existing_file(
+                                filepath,
+                                reason="incomplete_runner_set",
+                            )
+                            return {
+                                "success": False,
+                                "error": "Incomplete runner set in downloaded CSV",
+                                "runner_completeness": completeness.as_dict(),
+                                "quarantine_path": str(quarantine_path),
+                            }
                         print(
                             f"   ✅ Fallback saved CSV via expert-form scraper: {filename}"
                         )
@@ -931,6 +974,7 @@ class UpcomingRaceBrowser:
                             "success": True,
                             "filename": filename,
                             "filepath": filepath,
+                            "runner_completeness": completeness.as_dict(),
                         }
                     else:
                         print(
@@ -1007,13 +1051,43 @@ class UpcomingRaceBrowser:
                     "error": "CSV doesn't appear to be a form guide",
                 }
 
+            completeness = analyze_csv_text_runner_completeness(
+                content,
+                source=f"download:{race_url}",
+            )
+            if not completeness.is_complete:
+                quarantine_path = quarantine_csv_content(
+                    content,
+                    self.upcoming_dir,
+                    filename,
+                    reason="incomplete_runner_set",
+                )
+                return {
+                    "success": False,
+                    "error": "Incomplete runner set in downloaded CSV",
+                    "runner_completeness": completeness.as_dict(),
+                    "quarantine_path": str(quarantine_path),
+                }
+
             # Save file
             with open(filepath, "w", encoding="utf-8") as f:
                 f.write(content)
+            self._write_csv_provenance(
+                filepath,
+                race_url=race_url,
+                csv_info=csv_info,
+                content=content,
+                completeness=completeness,
+            )
 
             print(f"   ✅ Downloaded: {filename}")
 
-            return {"success": True, "filename": filename, "filepath": filepath}
+            return {
+                "success": True,
+                "filename": filename,
+                "filepath": filepath,
+                "runner_completeness": completeness.as_dict(),
+            }
 
         except Exception as e:
             return {"success": False, "error": f"Error downloading race CSV: {str(e)}"}

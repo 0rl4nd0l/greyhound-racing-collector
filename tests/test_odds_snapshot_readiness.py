@@ -305,6 +305,8 @@ def test_snapshot_evaluation_links_results_and_scores_valid_pre_jump_odds_only(t
         [
             ("Race 1 - WPK - 2026-05-24", "Alpha", "Alpha", 1, 1, "official"),
             ("Race 1 - WPK - 2026-05-24", "Bravo", "Bravo", 2, 2, "official"),
+            ("Race 1 - WPK - 2026-05-24", "Charlie", "Charlie", 3, 3, "official"),
+            ("Race 1 - WPK - 2026-05-24", "Delta", "Delta", 4, 4, "official"),
         ],
     )
     conn.commit()
@@ -327,8 +329,20 @@ def test_snapshot_evaluation_links_results_and_scores_valid_pre_jump_odds_only(t
                 {
                     "dog_clean_name": "Bravo",
                     "box_number": 2,
-                    "win_prob_norm": 0.4,
+                    "win_prob_norm": 0.2,
                     "predicted_rank": 2,
+                },
+                {
+                    "dog_clean_name": "Charlie",
+                    "box_number": 3,
+                    "win_prob_norm": 0.15,
+                    "predicted_rank": 3,
+                },
+                {
+                    "dog_clean_name": "Delta",
+                    "box_number": 4,
+                    "win_prob_norm": 0.05,
+                    "predicted_rank": 4,
                 },
             ],
         },
@@ -348,8 +362,196 @@ def test_snapshot_evaluation_links_results_and_scores_valid_pre_jump_odds_only(t
     report = evaluate_snapshots(str(db_path), [str(snapshot_path)])
 
     assert report["status"] == "SUCCESS"
-    assert report["runner_rows_scored"] == 2
+    assert report["runner_rows_scored"] == 4
     assert report["metrics_by_arm"]["model_only"]["top1"] == pytest.approx(1.0)
-    assert report["ev_roi_coverage"]["status"] == "SUCCESS"
-    assert report["ev_roi_coverage"]["valid_pre_jump_dog_odds_rows"] == 1
-    assert report["ev_roi_coverage"]["missing_or_invalid_odds_rows"] == 1
+    assert report["metrics_by_arm"]["model_only"]["winner_ranks"] == [1]
+    assert report["ev_roi_coverage"]["status"] == "DATA_MISSING"
+    assert report["ev_roi_coverage"]["reason"] == "partial_pre_jump_dog_level_odds"
+
+
+def test_snapshot_evaluator_excludes_incomplete_runner_sets_even_if_labels_exist(tmp_path):
+    db_path = tmp_path / "labels.db"
+    conn = sqlite3.connect(db_path)
+    conn.executescript(
+        """
+        CREATE TABLE race_metadata (
+            race_id TEXT PRIMARY KEY,
+            venue TEXT,
+            race_number INTEGER,
+            race_date TEXT,
+            results_status TEXT,
+            winner_name TEXT
+        );
+        CREATE TABLE dog_race_data (
+            race_id TEXT,
+            dog_name TEXT,
+            dog_clean_name TEXT,
+            box_number INTEGER,
+            finish_position INTEGER,
+            data_source TEXT
+        );
+        """
+    )
+    conn.execute(
+        "INSERT INTO race_metadata VALUES ('Race 1 - SHEP - 2026-05-25', 'SHEP', 1, '2026-05-25', 'complete', 'Shima Lexie')"
+    )
+    conn.executemany(
+        "INSERT INTO dog_race_data VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            ("Race 1 - SHEP - 2026-05-25", "Shima Lexie", "Shima Lexie", 2, 1, "official"),
+            ("Race 1 - SHEP - 2026-05-25", "Sekiro", "Sekiro", 4, 2, "official"),
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+    snapshot = build_prediction_snapshot(
+        {
+            "race_id": "Race 1 - SHEP - 2026-05-25",
+            "model_version": "model-v1",
+            "predictions": [
+                {"dog_clean_name": "Shima Lexie", "box_number": 2, "win_prob_norm": 0.6},
+                {"dog_clean_name": "Sekiro", "box_number": 4, "win_prob_norm": 0.4},
+            ],
+        },
+        lifecycle={
+            "status": "upcoming_not_jumped",
+            "race_date": "2026-05-25",
+            "venue": "SHEP",
+            "race_number": 1,
+        },
+        prediction_timestamp="2026-05-24T21:38:53",
+    )
+    snapshot_path = tmp_path / "snapshot.json"
+    snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
+
+    report = evaluate_snapshots(str(db_path), [str(snapshot_path)])
+
+    assert report["status"] == "DATA_MISSING"
+    assert report["label_quality_counts"] == {"snapshot_not_ready": 1}
+    assert report["snapshot_corpus_readiness"]["status"] == "NOT_READY"
+
+
+def test_snapshot_evaluator_does_not_join_wrong_same_date_race_number_venue(tmp_path):
+    db_path = tmp_path / "labels.db"
+    conn = sqlite3.connect(db_path)
+    conn.executescript(
+        """
+        CREATE TABLE race_metadata (
+            race_id TEXT PRIMARY KEY,
+            venue TEXT,
+            race_number INTEGER,
+            race_date TEXT,
+            results_status TEXT,
+            winner_name TEXT
+        );
+        CREATE TABLE dog_race_data (
+            race_id TEXT,
+            dog_name TEXT,
+            dog_clean_name TEXT,
+            box_number INTEGER,
+            finish_position INTEGER,
+            data_source TEXT
+        );
+        """
+    )
+    conn.execute(
+        "INSERT INTO race_metadata VALUES ('Race 1 - WAR - 2026-05-25', 'WAR', 1, '2026-05-25', 'complete', 'Alpha')"
+    )
+    conn.commit()
+    conn.close()
+
+    snapshot = build_prediction_snapshot(
+        {
+            "race_id": "Race 1 - WPK - 2026-05-25",
+            "model_version": "model-v1",
+            "predictions": [
+                {"dog_clean_name": "Alpha", "box_number": 1, "win_prob_norm": 0.4},
+                {"dog_clean_name": "Bravo", "box_number": 2, "win_prob_norm": 0.3},
+                {"dog_clean_name": "Charlie", "box_number": 3, "win_prob_norm": 0.2},
+                {"dog_clean_name": "Delta", "box_number": 4, "win_prob_norm": 0.1},
+            ],
+        },
+        lifecycle={
+            "status": "upcoming_not_jumped",
+            "race_date": "2026-05-25",
+            "venue": "WPK",
+            "race_number": 1,
+        },
+        source_file_path="Race 1 - WPK - 2026-05-25.csv",
+        prediction_timestamp="2026-05-24T21:38:53",
+    )
+    snapshot_path = tmp_path / "snapshot.json"
+    snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
+
+    report = evaluate_snapshots(str(db_path), [str(snapshot_path)])
+
+    assert report["status"] == "DATA_MISSING"
+    assert report["label_quality_counts"] == {"missing_race_metadata": 1}
+
+
+def test_snapshot_evaluator_requires_all_runner_labels(tmp_path):
+    db_path = tmp_path / "labels.db"
+    conn = sqlite3.connect(db_path)
+    conn.executescript(
+        """
+        CREATE TABLE race_metadata (
+            race_id TEXT PRIMARY KEY,
+            venue TEXT,
+            race_number INTEGER,
+            race_date TEXT,
+            results_status TEXT,
+            winner_name TEXT
+        );
+        CREATE TABLE dog_race_data (
+            race_id TEXT,
+            dog_name TEXT,
+            dog_clean_name TEXT,
+            box_number INTEGER,
+            finish_position INTEGER,
+            data_source TEXT
+        );
+        """
+    )
+    conn.execute(
+        "INSERT INTO race_metadata VALUES ('Race 1 - WPK - 2026-05-25', 'WPK', 1, '2026-05-25', 'partial_sportsbet_results', 'Alpha')"
+    )
+    conn.executemany(
+        "INSERT INTO dog_race_data VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            ("Race 1 - WPK - 2026-05-25", "Alpha", "Alpha", 1, 1, "sportsbet"),
+            ("Race 1 - WPK - 2026-05-25", "Bravo", "Bravo", 2, 2, "sportsbet"),
+            ("Race 1 - WPK - 2026-05-25", "Charlie", "Charlie", 3, None, "sportsbet"),
+            ("Race 1 - WPK - 2026-05-25", "Delta", "Delta", 4, None, "sportsbet"),
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+    snapshot = build_prediction_snapshot(
+        {
+            "race_id": "Race 1 - WPK - 2026-05-25",
+            "model_version": "model-v1",
+            "predictions": [
+                {"dog_clean_name": "Alpha", "box_number": 1, "win_prob_norm": 0.4},
+                {"dog_clean_name": "Bravo", "box_number": 2, "win_prob_norm": 0.3},
+                {"dog_clean_name": "Charlie", "box_number": 3, "win_prob_norm": 0.2},
+                {"dog_clean_name": "Delta", "box_number": 4, "win_prob_norm": 0.1},
+            ],
+        },
+        lifecycle={
+            "status": "upcoming_not_jumped",
+            "race_date": "2026-05-25",
+            "venue": "WPK",
+            "race_number": 1,
+        },
+        source_file_path="Race 1 - WPK - 2026-05-25.csv",
+        prediction_timestamp="2026-05-24T21:38:53",
+    )
+    snapshot_path = tmp_path / "snapshot.json"
+    snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
+
+    report = evaluate_snapshots(str(db_path), [str(snapshot_path)])
+
+    assert report["status"] == "DATA_MISSING"
+    assert report["label_quality_counts"] == {"missing_dog_result_labels": 1}

@@ -26,6 +26,12 @@ from accuracy_program.evaluation import (
     score_predictions,
 )
 from accuracy_program.snapshots import assert_no_result_fields
+from utils.runner_completeness import (
+    MIN_COMPLETE_RUNNERS,
+    RunnerRow,
+    analyze_prediction_runner_match,
+    analyze_runner_rows,
+)
 
 DURABLE_SNAPSHOT_REQUIREMENTS = {
     "result_free",
@@ -38,6 +44,8 @@ DURABLE_SNAPSHOT_REQUIREMENTS = {
     "runner_rows_present",
     "runner_rows_have_identity",
     "runner_rows_have_probabilities",
+    "source_runner_set_complete",
+    "predictions_match_source_runner_set",
     "priced_runners_have_odds_timestamps",
     "priced_runners_captured_before_prediction",
     "priced_runners_captured_before_jump",
@@ -118,6 +126,10 @@ def _snapshot_readiness(snapshot: Mapping[str, Any]) -> dict[str, Any]:
     if predictions and not missing_odds_rows:
         missing_live_odds_explicit = True
 
+    source_report = _snapshot_runner_report(snapshot)
+    source_status = str(source_report.get("status") or "UNVERIFIED")
+    runner_match = analyze_prediction_runner_match(predictions, source_report)
+
     requirements = {
         "result_free": True,
         "pre_jump_lifecycle": snapshot.get("lifecycle_status") == "upcoming_not_jumped",
@@ -139,6 +151,8 @@ def _snapshot_readiness(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         )
         if predictions
         else False,
+        "source_runner_set_complete": source_status == "COMPLETE",
+        "predictions_match_source_runner_set": runner_match.get("status") == "MATCHED",
         "priced_runners_have_odds_timestamps": all(
             row["odds_snapshot"].get("odds_timestamp") for row in priced_rows
         ),
@@ -166,7 +180,45 @@ def _snapshot_readiness(snapshot: Mapping[str, Any]) -> dict[str, Any]:
             "priced_runner_count": len(priced_rows),
             "missing_live_odds_count": len(missing_odds_rows),
         },
+        "source_runner_completeness": source_report,
+        "prediction_runner_match": runner_match,
     }
+
+
+def _snapshot_runner_report(snapshot: Mapping[str, Any]) -> dict[str, Any]:
+    source_report = snapshot.get("source_runner_completeness")
+    if isinstance(source_report, Mapping) and source_report:
+        return dict(source_report)
+
+    participants = []
+    for participant in snapshot.get("frozen_participants") or []:
+        if not isinstance(participant, Mapping):
+            continue
+        try:
+            box_number = int(participant.get("box_number"))
+        except (TypeError, ValueError):
+            continue
+        dog_name = str(participant.get("dog_name") or "").strip()
+        if dog_name:
+            participants.append(RunnerRow(box_number=box_number, dog_name=dog_name))
+
+    if not participants:
+        for row in snapshot.get("predictions") or []:
+            if not isinstance(row, Mapping):
+                continue
+            try:
+                box_number = int(row.get("box_number"))
+            except (TypeError, ValueError):
+                continue
+            dog_name = str(row.get("dog_name") or row.get("dog_clean_name") or "").strip()
+            if dog_name:
+                participants.append(RunnerRow(box_number=box_number, dog_name=dog_name))
+
+    return analyze_runner_rows(
+        participants,
+        source=f"snapshot:{snapshot.get('race_id')}",
+        min_complete_runners=MIN_COMPLETE_RUNNERS,
+    ).as_dict()
 
 
 def _corpus_readiness_report(
@@ -238,22 +290,32 @@ def _race_metadata(conn: sqlite3.Connection, snapshot: Mapping[str, Any]) -> dic
     race_number = snapshot.get("race_number")
     if not race_date or race_number is None or "race_date" not in columns or "race_number" not in columns:
         return {}
+    venue = snapshot.get("venue")
+    if not venue or "venue" not in columns:
+        return {}
+    snapshot_race_id = str(snapshot.get("race_id") or "").strip()
 
     query = (
         f"SELECT {select_clause} FROM race_metadata "
-        "WHERE race_date = ? AND CAST(race_number AS INTEGER) = ?"
+        "WHERE race_date = ? AND CAST(race_number AS INTEGER) = ? "
+        "AND (upper(replace(replace(venue, ' ', ''), '_', '')) = ? "
+        "OR upper(replace(replace(race_id, ' ', ''), '_', '')) LIKE ?) "
+        "ORDER BY CASE "
+        "WHEN race_id = ? THEN 0 "
+        "WHEN upper(replace(replace(venue, ' ', ''), '_', '')) = ? THEN 1 "
+        "WHEN upper(replace(replace(race_id, ' ', ''), '_', '')) LIKE ? THEN 2 "
+        "ELSE 3 END"
     )
-    params: list[Any] = [race_date, int(race_number)]
-    venue = snapshot.get("venue")
-    if venue and "venue" in columns:
-        query += (
-            " ORDER BY CASE "
-            "WHEN upper(replace(replace(venue, ' ', ''), '_', '')) = ? THEN 0 "
-            "WHEN upper(replace(replace(race_id, ' ', ''), '_', '')) LIKE ? THEN 1 "
-            "ELSE 2 END"
-        )
-        venue_norm = _norm_name(venue)
-        params.extend([venue_norm, f"%{venue_norm}%"])
+    venue_norm = _norm_name(venue)
+    params: list[Any] = [
+        race_date,
+        int(race_number),
+        venue_norm,
+        f"%{venue_norm}%",
+        snapshot_race_id,
+        venue_norm,
+        f"%{venue_norm}%",
+    ]
     query += " LIMIT 1"
     row = conn.execute(query, params).fetchone()
     return dict(row) if row else {}
@@ -285,12 +347,15 @@ def _labels_by_runner(conn: sqlite3.Connection, race_id: str) -> dict[str, dict[
         data = dict(row)
         pos = data.get("finish_position") or data.get("placing") or data.get("scraped_finish_position")
         try:
-            actual_win = int(str(pos).strip()) == 1
+            finish_position = int(str(pos).strip())
         except Exception:
-            actual_win = False
+            continue
+        if finish_position <= 0:
+            continue
+        actual_win = finish_position == 1
         label = {
             "actual_win": int(actual_win),
-            "finish_position": pos,
+            "finish_position": finish_position,
             "label_source": data.get("data_source"),
         }
         for key in (
@@ -305,6 +370,24 @@ def _labels_by_runner(conn: sqlite3.Connection, race_id: str) -> dict[str, dict[
 def _runner_rows(snapshot: Mapping[str, Any], conn: sqlite3.Connection) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     snapshot_race_id = str(snapshot.get("race_id") or "")
     metadata = _race_metadata(conn, snapshot)
+    if not metadata:
+        return [], {
+            "race_id": snapshot_race_id,
+            "label_race_id": snapshot_race_id,
+            "label_quality": "missing_race_metadata",
+            "missing_reason": "missing_race_metadata",
+        }
+
+    runner_report = _snapshot_runner_report(snapshot)
+    if runner_report.get("status") != "COMPLETE":
+        return [], {
+            "race_id": snapshot_race_id,
+            "label_race_id": metadata.get("race_id") or snapshot_race_id,
+            "label_quality": "incomplete_runner_set",
+            "missing_reason": "incomplete_runner_set",
+            "runner_completeness": runner_report,
+        }
+
     label_race_id = str(metadata.get("race_id") or snapshot_race_id)
     labels = _labels_by_runner(conn, label_race_id)
     rows: list[dict[str, Any]] = []
@@ -317,6 +400,12 @@ def _runner_rows(snapshot: Mapping[str, Any], conn: sqlite3.Connection) -> tuple
     else:
         label_quality = "missing_result_label"
 
+    predictions = [
+        runner
+        for runner in snapshot.get("predictions") or []
+        if isinstance(runner, Mapping)
+    ]
+    missing_labels: list[dict[str, Any]] = []
     for runner in snapshot.get("predictions") or []:
         if not isinstance(runner, Mapping):
             continue
@@ -324,6 +413,7 @@ def _runner_rows(snapshot: Mapping[str, Any], conn: sqlite3.Connection) -> tuple
         box = runner.get("box_number")
         label = labels.get(_norm_name(name)) or labels.get(f"box:{box}") or {}
         if "actual_win" not in label:
+            missing_labels.append({"dog_name": str(name or ""), "box_number": box})
             continue
         odds_snapshot = runner.get("odds_snapshot") if isinstance(runner.get("odds_snapshot"), Mapping) else {}
         odds_win = _valid_pre_jump_odds(runner, odds_snapshot)
@@ -348,6 +438,30 @@ def _runner_rows(snapshot: Mapping[str, Any], conn: sqlite3.Connection) -> tuple
                 "label_quality": label_quality,
             }
         )
+    if missing_labels:
+        return [], {
+            "race_id": snapshot_race_id,
+            "label_race_id": label_race_id,
+            "label_quality": "missing_dog_result_labels",
+            "missing_reason": "missing_dog_result_labels",
+            "missing_label_count": len(missing_labels),
+            "missing_labels": missing_labels[:25],
+        }
+    if len(rows) != len(predictions):
+        return [], {
+            "race_id": snapshot_race_id,
+            "label_race_id": label_race_id,
+            "label_quality": "runner_label_count_mismatch",
+            "missing_reason": f"runner_label_count_mismatch:{len(rows)}!={len(predictions)}",
+        }
+    winner_count = sum(int(row.get("actual_win") or 0) for row in rows)
+    if winner_count != 1:
+        return [], {
+            "race_id": snapshot_race_id,
+            "label_race_id": label_race_id,
+            "label_quality": "invalid_winner_count",
+            "missing_reason": f"invalid_winner_count:{winner_count}",
+        }
     return rows, {"race_id": snapshot_race_id, "label_race_id": label_race_id, "label_quality": label_quality}
 
 
@@ -369,31 +483,53 @@ def _valid_pre_jump_odds(
     if before_prediction is not True:
         return None
     before_jump = odds_snapshot.get("odds_captured_before_jump")
-    if before_jump is False:
+    if before_jump is not True:
+        return None
+    provenance = odds_snapshot.get("odds_provenance")
+    if not isinstance(provenance, Mapping) or not provenance.get("source"):
         return None
     return odds
 
 
 def _ev_roi_coverage(rows: list[Mapping[str, Any]]) -> dict[str, Any]:
-    valid_rows = [
-        row
-        for row in rows
-        if row.get("odds_win") is not None and row.get("ev_win") is not None
-    ]
-    valid_races = {str(row.get("race_id")) for row in valid_rows if row.get("race_id")}
-    if not valid_rows:
+    by_race: dict[str, list[Mapping[str, Any]]] = {}
+    for row in rows:
+        by_race.setdefault(str(row.get("race_id")), []).append(row)
+
+    complete_odds_races = []
+    valid_rows: list[Mapping[str, Any]] = []
+    partial_odds_races = []
+    for race_id, race_rows in by_race.items():
+        race_valid = [
+            row
+            for row in race_rows
+            if row.get("odds_win") is not None and row.get("ev_win") is not None
+        ]
+        if len(race_valid) == len(race_rows) and race_rows:
+            complete_odds_races.append(race_id)
+            valid_rows.extend(race_valid)
+        elif race_valid:
+            partial_odds_races.append(race_id)
+
+    if not complete_odds_races:
         return {
             "status": "DATA_MISSING",
-            "reason": "no_valid_pre_jump_dog_level_odds",
+            "reason": (
+                "partial_pre_jump_dog_level_odds"
+                if partial_odds_races
+                else "no_valid_pre_jump_dog_level_odds"
+            ),
             "valid_pre_jump_dog_odds_rows": 0,
             "missing_or_invalid_odds_rows": len(rows),
             "races_with_valid_pre_jump_odds": 0,
+            "partial_odds_races": partial_odds_races,
         }
     return {
         "status": "SUCCESS",
         "valid_pre_jump_dog_odds_rows": len(valid_rows),
         "missing_or_invalid_odds_rows": len(rows) - len(valid_rows),
-        "races_with_valid_pre_jump_odds": len(valid_races),
+        "races_with_valid_pre_jump_odds": len(complete_odds_races),
+        "partial_odds_races": partial_odds_races,
     }
 
 
@@ -471,6 +607,8 @@ def evaluate_snapshots(db_path: str, snapshot_paths: list[str]) -> dict[str, Any
                         "counts": readiness.get("counts", {}),
                     }
                 )
+                label_quality_counts["snapshot_not_ready"] += 1
+                continue
             lifecycle_counts[str(snapshot.get("lifecycle_status") or "unknown")] += 1
             race_rows, summary = _runner_rows(snapshot, conn)
             rows.extend(race_rows)

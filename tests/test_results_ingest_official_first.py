@@ -110,7 +110,8 @@ def _make_ingest_db(tmp_path):
             field_size INTEGER,
             url TEXT,
             parse_confidence REAL,
-            data_quality_note TEXT
+            data_quality_note TEXT,
+            data_source TEXT
         )
         """
     )
@@ -182,6 +183,26 @@ def _candidate(module, tmp_path):
     )
 
 
+def _four_runner_csv() -> str:
+    return "\n".join(
+        [
+            "Dog Name",
+            "1. Alpha Runner",
+            "2. Bravo Runner",
+            "3. Charlie Runner",
+            "4. Delta Runner",
+        ]
+    )
+
+
+FOUR_PARTICIPANTS = [
+    {"box_number": 1, "dog_name": "Alpha Runner"},
+    {"box_number": 2, "dog_name": "Bravo Runner"},
+    {"box_number": 3, "dog_name": "Charlie Runner"},
+    {"box_number": 4, "dog_name": "Delta Runner"},
+]
+
+
 def test_thedogs_fetch_success_uses_resulted_status(tmp_path):
     module = _load_ingest_module()
     candidate = _candidate(module, tmp_path)
@@ -245,6 +266,23 @@ def test_result_validation_rejects_boxes_outside_frozen_participants(tmp_path):
     error = module.result_validation_error(candidate, result)
 
     assert error == "result_boxes_not_in_participants:9"
+
+
+def test_result_validation_uses_frozen_participant_reason_for_snapshot_candidates(tmp_path):
+    module = _load_ingest_module()
+    candidate = _candidate(module, tmp_path)
+    candidate.participant_source = "snapshot"
+    result = module.SourceResult(
+        source="sportsbet_results_top4",
+        status="partial_sportsbet_results",
+        source_url="https://example.test/results",
+        positions_by_box={6: 1, 8: 2, 9: 3},
+        raw_order=[6, 8, 9],
+    )
+
+    error = module.result_validation_error(candidate, result)
+
+    assert error == "result_boxes_not_in_frozen_participants:9"
 
 
 def test_write_sportsbet_fallback_records_partial_status_and_thedogs_error(tmp_path):
@@ -357,6 +395,37 @@ def test_write_official_result_uses_resulted_lifecycle_status(tmp_path):
     assert row == ("thedogs_official", "resulted", 1.0)
 
 
+def test_write_result_seeds_missing_metadata_for_snapshot_candidate(tmp_path):
+    module = _load_ingest_module()
+    _db_path, conn = _make_ingest_db(tmp_path)
+    candidate = _candidate(module, tmp_path)
+    candidate.participant_source = "snapshot"
+    official = module.SourceResult(
+        source="thedogs_official",
+        status="resulted",
+        source_url="https://www.thedogs.com.au/racing/warragul/2026-05-21/4",
+        positions_by_box={6: 1, 8: 2, 3: 3, 4: 4, 1: 5, 2: 6, 5: 7, 7: 8},
+        raw_order=[6, 8, 3, 4, 1, 2, 5, 7],
+    )
+
+    summary = module.write_result(conn, candidate, official, [official], dry_run=False)
+    conn.commit()
+
+    meta = conn.execute(
+        "SELECT race_id, results_status, data_source FROM race_metadata WHERE race_id = ?",
+        (candidate.race_id,),
+    ).fetchone()
+    labels = conn.execute(
+        "SELECT COUNT(*) FROM dog_race_data WHERE race_id = ?",
+        (candidate.race_id,),
+    ).fetchone()[0]
+    conn.close()
+
+    assert summary["metadata_seeded"] is True
+    assert meta == (candidate.race_id, "resulted", "frozen_snapshot")
+    assert labels == 8
+
+
 def test_dry_run_write_result_does_not_mutate_database(tmp_path):
     module = _load_ingest_module()
     _db_path, conn = _make_ingest_db(tmp_path)
@@ -417,7 +486,7 @@ def test_load_candidates_skips_today_race_before_jump(tmp_path):
     upcoming_dir = tmp_path / "upcoming"
     upcoming_dir.mkdir()
     candidate_csv = upcoming_dir / "Race 4 - WRGL - 2026-05-21.csv"
-    candidate_csv.write_text("Dog Name\n1. Alpha Runner\n", encoding="utf-8")
+    candidate_csv.write_text(_four_runner_csv(), encoding="utf-8")
     conn.execute(
         """
         INSERT INTO race_metadata
@@ -455,7 +524,7 @@ def test_load_candidates_keeps_race_metadata_candidates_working(tmp_path):
     upcoming_dir = tmp_path / "upcoming"
     upcoming_dir.mkdir()
     candidate_csv = upcoming_dir / "Race 4 - WRGL - 2026-05-21.csv"
-    candidate_csv.write_text("Dog Name\n1. Alpha Runner\n", encoding="utf-8")
+    candidate_csv.write_text(_four_runner_csv(), encoding="utf-8")
     conn.execute(
         """
         INSERT INTO race_metadata
@@ -481,7 +550,7 @@ def test_load_candidates_keeps_race_metadata_candidates_working(tmp_path):
     assert skipped == []
     assert len(candidates) == 1
     assert candidates[0].race_id == "Race 4 - WRGL - 2026-05-21"
-    assert candidates[0].participants == [{"box_number": 1, "dog_name": "Alpha Runner"}]
+    assert candidates[0].participants == FOUR_PARTICIPANTS
 
 
 def _write_snapshot(
@@ -520,9 +589,27 @@ def _write_snapshot(
             {
                 "dog_name": "Alpha Runner",
                 "box_number": 1,
-                "win_prob_norm": 1.0,
+                "win_prob_norm": 0.4,
                 "predicted_rank": 1,
-            }
+            },
+            {
+                "dog_name": "Bravo Runner",
+                "box_number": 2,
+                "win_prob_norm": 0.3,
+                "predicted_rank": 2,
+            },
+            {
+                "dog_name": "Charlie Runner",
+                "box_number": 3,
+                "win_prob_norm": 0.2,
+                "predicted_rank": 3,
+            },
+            {
+                "dog_name": "Delta Runner",
+                "box_number": 4,
+                "win_prob_norm": 0.1,
+                "predicted_rank": 4,
+            },
         ],
     }
     if extra_fields:
@@ -538,7 +625,7 @@ def test_load_candidates_falls_back_to_frozen_snapshot_when_metadata_missing(tmp
     upcoming_dir = tmp_path / "upcoming"
     upcoming_dir.mkdir()
     candidate_csv = upcoming_dir / "Race 4 - WRGL - 2026-05-21.csv"
-    candidate_csv.write_text("Dog Name\n1. Alpha Runner\n", encoding="utf-8")
+    candidate_csv.write_text(_four_runner_csv(), encoding="utf-8")
     snapshot_dir = tmp_path / "snapshots"
     _write_snapshot(snapshot_dir, source_file_path=str(candidate_csv))
 
@@ -560,8 +647,43 @@ def test_load_candidates_falls_back_to_frozen_snapshot_when_metadata_missing(tmp
     assert candidate.race_date == "2026-05-21"
     assert candidate.race_time == "16:30"
     assert candidate.lifecycle_status == "jumped_pending_results"
-    assert candidate.participants == [{"box_number": 1, "dog_name": "Alpha Runner"}]
+    assert candidate.participants == FOUR_PARTICIPANTS
+    assert candidate.participant_source == "snapshot"
     assert candidate.sportsbet_slug == "warragul"
+
+
+def test_snapshot_fallback_rejects_current_csv_participant_mismatch(tmp_path):
+    module = _load_ingest_module()
+    db_path, conn = _make_ingest_db(tmp_path)
+    conn.close()
+    upcoming_dir = tmp_path / "upcoming"
+    upcoming_dir.mkdir()
+    candidate_csv = upcoming_dir / "Race 4 - WRGL - 2026-05-21.csv"
+    candidate_csv.write_text(
+        _four_runner_csv() + "\n5. Echo Runner\n",
+        encoding="utf-8",
+    )
+    snapshot_dir = tmp_path / "snapshots"
+    _write_snapshot(snapshot_dir, source_file_path=str(candidate_csv))
+
+    candidates, skipped = module.load_candidates(
+        db_path,
+        "2026-05-21",
+        upcoming_dir,
+        [],
+        now=datetime(2026, 5, 21, 17, 37, tzinfo=ZoneInfo("Australia/Melbourne")),
+        snapshot_dir=snapshot_dir,
+    )
+
+    assert candidates == []
+    assert skipped == [
+        {
+            "race_id": "Race 4 - WRGL - 2026-05-21",
+            "reason": "snapshot_csv_participant_mismatch",
+            "snapshot_boxes": [1, 2, 3, 4],
+            "csv_boxes": [1, 2, 3, 4, 5],
+        }
+    ]
 
 
 def test_snapshot_fallback_requires_result_free_pre_jump_snapshot(tmp_path):
@@ -571,7 +693,7 @@ def test_snapshot_fallback_requires_result_free_pre_jump_snapshot(tmp_path):
     upcoming_dir = tmp_path / "upcoming"
     upcoming_dir.mkdir()
     candidate_csv = upcoming_dir / "Race 4 - WRGL - 2026-05-21.csv"
-    candidate_csv.write_text("Dog Name\n1. Alpha Runner\n", encoding="utf-8")
+    candidate_csv.write_text(_four_runner_csv(), encoding="utf-8")
     snapshot_dir = tmp_path / "snapshots"
     _write_snapshot(
         snapshot_dir,
@@ -609,7 +731,7 @@ def test_load_candidates_uses_latest_snapshot_for_jump_time_guard(tmp_path):
     upcoming_dir = tmp_path / "upcoming"
     upcoming_dir.mkdir()
     candidate_csv = upcoming_dir / "Race 4 - WRGL - 2026-05-21.csv"
-    candidate_csv.write_text("Dog Name\n1. Alpha Runner\n", encoding="utf-8")
+    candidate_csv.write_text(_four_runner_csv(), encoding="utf-8")
     snapshot_dir = tmp_path / "snapshots"
     _write_snapshot(
         snapshot_dir,
@@ -657,7 +779,7 @@ def test_frozen_snapshot_rescues_incomplete_metadata_row_without_jump_time(tmp_p
     upcoming_dir = tmp_path / "upcoming"
     upcoming_dir.mkdir()
     candidate_csv = upcoming_dir / "Race 4 - WRGL - 2026-05-21.csv"
-    candidate_csv.write_text("Dog Name\n1. Alpha Runner\n", encoding="utf-8")
+    candidate_csv.write_text(_four_runner_csv(), encoding="utf-8")
     snapshot_dir = tmp_path / "snapshots"
     _write_snapshot(
         snapshot_dir,

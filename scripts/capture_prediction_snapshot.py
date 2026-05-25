@@ -26,6 +26,7 @@ from accuracy_program.snapshots import (  # noqa: E402
     build_prediction_snapshot,
     persist_prediction_snapshot,
 )
+from utils.runner_completeness import analyze_csv_runner_completeness  # noqa: E402
 from utils.race_lifecycle import (  # noqa: E402
     STALE_FORM_GUIDE,
     UPCOMING_NOT_JUMPED,
@@ -110,6 +111,7 @@ def _capture_one(
     from app import enhance_prediction_with_csv_meta, run_prediction_for_race_file
 
     prediction_timestamp = datetime.now().isoformat(timespec="seconds")
+    source_runner_completeness = analyze_csv_runner_completeness(race_file).as_dict()
     result = run_prediction_for_race_file(str(race_file))
     if not isinstance(result, dict) or not result.get("success"):
         return {
@@ -128,17 +130,26 @@ def _capture_one(
         lifecycle=lifecycle,
         prediction_timestamp=prediction_timestamp,
         feature_freeze_timestamp=prediction_timestamp,
+        source_runner_completeness=source_runner_completeness,
     )
     assert_no_result_fields(snapshot)
     live_lifecycle = snapshot.get("lifecycle_status") == UPCOMING_NOT_JUMPED
-    write_snapshot = bool(persist and live_lifecycle and not mechanics_only)
+    runner_set_complete = snapshot.get("runner_set_complete") is True
+    write_snapshot = bool(
+        persist and live_lifecycle and runner_set_complete and not mechanics_only
+    )
     persistence = persist_prediction_snapshot(
         snapshot,
         snapshot_dir,
         dry_run=not write_snapshot,
     )
     if persist and not write_snapshot:
-        persistence["status"] = "skipped_non_live_lifecycle"
+        if not live_lifecycle:
+            persistence["status"] = "skipped_non_live_lifecycle"
+        elif not runner_set_complete:
+            persistence["status"] = "skipped_incomplete_runner_set"
+        else:
+            persistence["status"] = "skipped_not_persistable"
 
     priced_rows = [
         row
@@ -157,6 +168,8 @@ def _capture_one(
         "feature_freeze_timestamp": snapshot.get("feature_freeze_timestamp"),
         "model_version": snapshot.get("model_version"),
         "runner_count": len(snapshot.get("predictions") or []),
+        "runner_set_complete": runner_set_complete,
+        "source_runner_completeness": source_runner_completeness,
         "priced_ev_runner_count": len(priced_rows),
         "snapshot_readiness": snapshot.get("snapshot_readiness"),
         "probability_sum_check": _probability_sum(snapshot),

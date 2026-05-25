@@ -13,7 +13,6 @@ fallback rows are marked as partial_sportsbet_results rather than complete.
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import re
 import shutil
@@ -31,6 +30,13 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from utils.race_lifecycle import RESULTED, UPCOMING_NOT_JUMPED, classify_race_record
+from utils.runner_completeness import (
+    MIN_COMPLETE_RUNNERS,
+    RunnerRow,
+    analyze_csv_runner_completeness,
+    analyze_runner_rows,
+    participants_from_runner_rows,
+)
 
 try:
     from accuracy_program.snapshots import assert_no_result_fields
@@ -130,23 +136,15 @@ def result_slug_from_url(url: str) -> Optional[str]:
 
 
 def parse_participants_from_csv(csv_path: Path) -> List[dict]:
-    participants: List[dict] = []
-    seen = set()
-    with csv_path.open(newline="", encoding="utf-8-sig") as handle:
-        reader = csv.DictReader(handle)
-        for row in reader:
-            raw_name = str(row.get("Dog Name") or "").strip()
-            match = re.match(r"^\s*(\d{1,2})\s*[\.\):-]\s*(.+?)\s*$", raw_name)
-            if not match:
-                continue
-            box_number = int(match.group(1))
-            dog_name = clean_dog_name(raw_name)
-            key = (box_number, norm_name(dog_name))
-            if key in seen:
-                continue
-            seen.add(key)
-            participants.append({"box_number": box_number, "dog_name": dog_name})
-    return participants
+    return participants_from_runner_rows(
+        [
+            RunnerRow(
+                box_number=int(participant["box_number"]),
+                dog_name=str(participant["dog_name"]),
+            )
+            for participant in analyze_csv_runner_completeness(csv_path).participants
+        ]
+    )
 
 
 def parse_sportsbet_result_text(text: str) -> Dict[int, dict]:
@@ -252,6 +250,9 @@ class RaceCandidate:
     csv_path: Path
     participants: List[dict]
     lifecycle_status: str
+    participant_source: str = "csv"
+    csv_participants: Optional[List[dict]] = None
+    runner_completeness: Optional[dict] = None
 
     @property
     def venue_code(self) -> str:
@@ -299,7 +300,12 @@ def result_validation_error(candidate: RaceCandidate, result: SourceResult) -> O
     result_boxes = {int(box) for box in result.positions_by_box}
     unknown_boxes = sorted(result_boxes - participant_boxes)
     if unknown_boxes:
-        return "result_boxes_not_in_participants:" + ",".join(
+        reason = (
+            "result_boxes_not_in_frozen_participants"
+            if candidate.participant_source == "snapshot"
+            else "result_boxes_not_in_participants"
+        )
+        return reason + ":" + ",".join(
             str(box) for box in unknown_boxes
         )
     if result.winner_box is None:
@@ -561,6 +567,55 @@ def _snapshot_identity(snapshot: dict) -> Optional[dict]:
     except (TypeError, ValueError):
         return None
 
+    frozen_participants = []
+    for participant in snapshot.get("frozen_participants") or []:
+        if not isinstance(participant, dict):
+            continue
+        try:
+            box = int(participant.get("box_number"))
+        except (TypeError, ValueError):
+            continue
+        dog_name = clean_dog_name(participant.get("dog_name"))
+        if dog_name:
+            frozen_participants.append({"box_number": box, "dog_name": dog_name})
+
+    if not frozen_participants:
+        for row in snapshot.get("predictions") or []:
+            if not isinstance(row, dict):
+                continue
+            try:
+                box = int(row.get("box_number"))
+            except (TypeError, ValueError):
+                continue
+            dog_name = clean_dog_name(row.get("dog_name") or row.get("dog_clean_name"))
+            if dog_name:
+                frozen_participants.append({"box_number": box, "dog_name": dog_name})
+
+    runner_report = analyze_runner_rows(
+        [
+            RunnerRow(
+                box_number=int(participant["box_number"]),
+                dog_name=str(participant["dog_name"]),
+            )
+            for participant in frozen_participants
+        ],
+        source=f"snapshot:{race_id}",
+        min_complete_runners=MIN_COMPLETE_RUNNERS,
+    ).as_dict()
+    source_report = snapshot.get("source_runner_completeness")
+    if isinstance(source_report, dict) and source_report.get("status") == "INCOMPLETE":
+        return {
+            "_skip_reason": "snapshot_incomplete_runner_set",
+            "race_id": race_id,
+            "runner_completeness": source_report,
+        }
+    if runner_report.get("status") != "COMPLETE":
+        return {
+            "_skip_reason": "snapshot_incomplete_runner_set",
+            "race_id": race_id,
+            "runner_completeness": runner_report,
+        }
+
     start_datetime = str(snapshot.get("jump_datetime") or "").strip() or None
     race_time = str(snapshot.get("jump_time") or "").strip() or None
     return {
@@ -574,6 +629,9 @@ def _snapshot_identity(snapshot: dict) -> Optional[dict]:
         "results_status": None,
         "winner_name": None,
         "source_file_path": str(snapshot.get("source_file_path") or "").strip() or None,
+        "participants": frozen_participants,
+        "runner_completeness": runner_report,
+        "participant_source": "snapshot",
     }
 
 
@@ -602,6 +660,15 @@ def load_snapshot_candidate_rows(
 
         if identity is None:
             skipped.append({"race_id": str(path), "reason": "not_frozen_pre_jump_snapshot"})
+            continue
+        if identity.get("_skip_reason"):
+            skipped.append(
+                {
+                    "race_id": identity.get("race_id") or str(path),
+                    "reason": str(identity["_skip_reason"]),
+                    "runner_completeness": identity.get("runner_completeness"),
+                }
+            )
             continue
         if race_id_filter and identity["race_id"] not in race_id_filter:
             continue
@@ -682,6 +749,16 @@ def load_candidates(
             if not csv_path:
                 skipped.append({"race_id": row["race_id"], "reason": "no_local_csv"})
                 continue
+            runner_completeness = analyze_csv_runner_completeness(csv_path).as_dict()
+            if runner_completeness.get("status") != "COMPLETE":
+                skipped.append(
+                    {
+                        "race_id": row["race_id"],
+                        "reason": "incomplete_runner_set",
+                        "runner_completeness": runner_completeness,
+                    }
+                )
+                continue
             participants = parse_participants_from_csv(csv_path)
             if not participants:
                 skipped.append(
@@ -701,6 +778,9 @@ def load_candidates(
                     csv_path=csv_path,
                     participants=participants,
                     lifecycle_status=lifecycle_status,
+                    participant_source="csv",
+                    csv_participants=participants,
+                    runner_completeness=runner_completeness,
                 )
             )
     finally:
@@ -727,10 +807,24 @@ def load_candidates(
                     }
                 )
                 continue
-            participants = parse_participants_from_csv(row["csv_path"])
-            if not participants:
+            frozen_participants = list(row.get("participants") or [])
+            csv_runner_completeness = analyze_csv_runner_completeness(row["csv_path"]).as_dict()
+            csv_participants = parse_participants_from_csv(row["csv_path"])
+            if not frozen_participants:
                 skipped.append(
                     {"race_id": row["race_id"], "reason": "no_participants_from_csv"}
+                )
+                continue
+            frozen_boxes = {int(participant["box_number"]) for participant in frozen_participants}
+            csv_boxes = {int(participant["box_number"]) for participant in csv_participants}
+            if csv_boxes and csv_boxes != frozen_boxes:
+                skipped.append(
+                    {
+                        "race_id": row["race_id"],
+                        "reason": "snapshot_csv_participant_mismatch",
+                        "snapshot_boxes": sorted(frozen_boxes),
+                        "csv_boxes": sorted(csv_boxes),
+                    }
                 )
                 continue
             candidate_race_ids.add(str(row["race_id"]))
@@ -744,8 +838,11 @@ def load_candidates(
                     start_datetime=row["start_datetime"],
                     sportsbet_url=row["sportsbet_url"],
                     csv_path=row["csv_path"],
-                    participants=participants,
+                    participants=frozen_participants,
                     lifecycle_status=lifecycle_status,
+                    participant_source="snapshot",
+                    csv_participants=csv_participants,
+                    runner_completeness=row.get("runner_completeness") or csv_runner_completeness,
                 )
             )
 
@@ -770,6 +867,47 @@ def winner_odds_for_box(conn: sqlite3.Connection, race_id: str, box_number: int)
     except Exception:
         return None
     return None
+
+
+def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    try:
+        return {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})")}
+    except Exception:
+        return set()
+
+
+def ensure_race_metadata_row(conn: sqlite3.Connection, candidate: RaceCandidate) -> bool:
+    existing = conn.execute(
+        "SELECT 1 FROM race_metadata WHERE race_id = ? LIMIT 1",
+        (candidate.race_id,),
+    ).fetchone()
+    if existing:
+        return False
+
+    columns = _table_columns(conn, "race_metadata")
+    values = {
+        "race_id": candidate.race_id,
+        "venue": candidate.venue,
+        "race_number": candidate.race_number,
+        "race_date": candidate.race_date,
+        "race_time": candidate.race_time,
+        "start_datetime": candidate.start_datetime,
+        "sportsbet_url": candidate.sportsbet_url,
+        "results_status": "pending",
+        "field_size": len(candidate.participants),
+        "actual_field_size": len(candidate.participants),
+        "data_source": "frozen_snapshot" if candidate.participant_source == "snapshot" else "upcoming_csv",
+        "extraction_timestamp": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+    }
+    insert_columns = [column for column in values if column in columns]
+    if not insert_columns:
+        raise RuntimeError("race_metadata_schema_missing_insertable_columns")
+    placeholders = ", ".join(["?"] * len(insert_columns))
+    conn.execute(
+        f"INSERT INTO race_metadata ({', '.join(insert_columns)}) VALUES ({placeholders})",
+        tuple(values[column] for column in insert_columns),
+    )
+    return True
 
 
 def write_result(
@@ -816,6 +954,8 @@ def write_result(
             "box_order": result.raw_order,
             "dry_run": True,
         }
+
+    metadata_seeded = ensure_race_metadata_row(conn, candidate)
 
     for participant in candidate.participants:
         box_number = int(participant["box_number"])
@@ -869,7 +1009,7 @@ def write_result(
                 ),
             )
 
-    conn.execute(
+    metadata_update = conn.execute(
         """
         UPDATE race_metadata
         SET winner_name = ?,
@@ -901,6 +1041,8 @@ def write_result(
             candidate.race_id,
         ),
     )
+    if metadata_update.rowcount == 0:
+        raise RuntimeError(f"race_metadata_update_failed:{candidate.race_id}")
 
     return {
         "race_id": candidate.race_id,
@@ -908,6 +1050,7 @@ def write_result(
         "source": result.source,
         "winner_name": winner_name,
         "box_order": result.raw_order,
+        "metadata_seeded": metadata_seeded,
     }
 
 
