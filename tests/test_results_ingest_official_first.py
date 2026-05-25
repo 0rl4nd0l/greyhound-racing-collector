@@ -226,6 +226,94 @@ def test_thedogs_fetch_success_uses_resulted_status(tmp_path):
     assert result.positions_by_box == {6: 1, 8: 2}
 
 
+def test_thedogs_fetch_discovers_public_result_route_before_selenium(tmp_path):
+    module = _load_ingest_module()
+    candidate = _candidate(module, tmp_path)
+
+    class Response:
+        def __init__(self, url, text, status_code=200):
+            self.url = url
+            self.text = text
+            self.status_code = status_code
+
+    class Session:
+        def __init__(self):
+            self.urls = []
+
+        def get(self, url, **_kwargs):
+            self.urls.append(url)
+            if url.endswith("/racing/warragul/2026-05-21?trial=false"):
+                return Response(
+                    url,
+                    """
+                    <a href="/racing/warragul/2026-05-21/4/barn-function-area?trial=false">R4</a>
+                    """,
+                )
+            return Response(
+                url,
+                """
+                <html><title>thedogs - Warragul 21 May 2026 Race 4</title>
+                <body>
+                <table>
+                <tr><td>1st</td><td>Foxtrot Runner</td></tr>
+                <tr><td>2nd</td><td>Hotel Runner</td></tr>
+                </table>
+                </body></html>
+                """,
+            )
+
+    class Driver:
+        def get(self, _url):
+            raise AssertionError("Selenium should not be used when public HTML succeeds")
+
+    session = Session()
+
+    result = module.TheDogsResultFetcher(
+        Driver(),
+        wait_seconds=0,
+        http_session=session,
+    ).fetch(candidate)
+
+    assert session.urls[0] == "https://www.thedogs.com.au/racing/warragul/2026-05-21?trial=false"
+    assert session.urls[1] == (
+        "https://www.thedogs.com.au/racing/warragul/2026-05-21/4/"
+        "barn-function-area?trial=false"
+    )
+    assert result.source == "thedogs_official"
+    assert result.status == "resulted"
+    assert result.source_url.endswith("/barn-function-area?trial=false")
+    assert result.positions_by_box == {6: 1, 8: 2}
+
+
+def test_thedogs_http_403_is_reported_without_selenium_fallback(tmp_path):
+    module = _load_ingest_module()
+    candidate = _candidate(module, tmp_path)
+
+    class Response:
+        url = "https://www.thedogs.com.au/racing/warragul/2026-05-21?trial=false"
+        text = "403 Forbidden"
+        status_code = 403
+
+    class Session:
+        def get(self, *_args, **_kwargs):
+            return Response()
+
+    class Driver:
+        def get(self, _url):
+            raise AssertionError("Blocked official access should remain auditable")
+
+    result = module.TheDogsResultFetcher(
+        Driver(),
+        wait_seconds=0,
+        http_session=Session(),
+    ).fetch(candidate)
+
+    assert result.source == "thedogs_official"
+    assert result.status == "error"
+    assert result.error == "thedogs_403_forbidden"
+    assert result.positions_by_box == {}
+
+
 def test_sportsbet_fetcher_marks_top_four_as_partial(tmp_path):
     module = _load_ingest_module()
     candidate = _candidate(module, tmp_path)

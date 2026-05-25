@@ -558,3 +558,14 @@ def test_snapshot_evaluator_scores_partial_sportsbet_winner_only_labels(tmp_path
     assert report["label_quality_counts"] == {"partial_sportsbet_winner_only": 1}
     assert report["metrics_by_arm"]["model_only"]["top1"] == pytest.approx(1.0)
     assert report["metrics_by_arm"]["model_only"]["winner_ranks"] == [1]
+    diagnostics = report["failure_mode_diagnostics"]
+    assert diagnostics["winner_rank_by_race"] == {"Race 1 - WPK - 2026-05-25": 1}
+    assert diagnostics["complete_vs_partial_labels"]["partial"]["races"] == 1
+    assert diagnostics["label_quality_breakdown"]["partial_sportsbet_winner_only"][
+        "top1"
+    ] == pytest.approx(1.0)
+    assert diagnostics["distance_breakdown"] == {
+        "status": "DATA_MISSING",
+        "reason": "no_distance_metadata",
+        "races_missing_distance": 1,
+    }

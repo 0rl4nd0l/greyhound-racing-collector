@@ -13,6 +13,7 @@ fallback rows are marked as partial_sportsbet_results rather than complete.
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import re
 import shutil
@@ -23,6 +24,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional
+from urllib.parse import urljoin
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -37,6 +39,7 @@ from utils.runner_completeness import (
     analyze_runner_rows,
     participants_from_runner_rows,
 )
+from utils.http_client import get_shared_session
 
 try:
     from accuracy_program.snapshots import assert_no_result_fields
@@ -49,6 +52,13 @@ SPORTSBET_CATEGORY_TEMPLATE = (
     "https://www.sportsbet.com.au/results/{date}/racing/greyhound-racing-4"
 )
 THEDOGS_BASE = "https://www.thedogs.com.au"
+THEDOGS_PUBLIC_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+}
 
 
 class _SeleniumByFallback:
@@ -177,6 +187,40 @@ def _ordinal_to_position(value: str) -> Optional[int]:
     if match:
         return int(match.group(1))
     return None
+
+
+def rendered_text_from_html(markup: str) -> str:
+    try:
+        from bs4 import BeautifulSoup
+
+        return BeautifulSoup(markup or "", "html.parser").get_text("\n", strip=True)
+    except Exception:
+        cleaned = re.sub(
+            r"<(script|style)\b[^>]*>.*?</\1>",
+            "\n",
+            str(markup or ""),
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        cleaned = re.sub(r"<br\s*/?>", "\n", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"</(?:p|div|tr|li|td|th|h[1-6])>", "\n", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"<[^>]+>", " ", cleaned)
+        cleaned = html.unescape(cleaned)
+        return "\n".join(line.strip() for line in cleaned.splitlines() if line.strip())
+
+
+def response_is_forbidden(status_code: Optional[int], title: str, text: str) -> bool:
+    return (
+        status_code == 403
+        or (title or "").strip() == "403 Forbidden"
+        or (text or "").strip() == "403 Forbidden"
+    )
+
+
+def title_from_html(markup: str) -> str:
+    match = re.search(r"<title[^>]*>(.*?)</title>", str(markup or ""), re.IGNORECASE | re.DOTALL)
+    if not match:
+        return ""
+    return html.unescape(re.sub(r"\s+", " ", match.group(1))).strip()
 
 
 def parse_thedogs_result_text(text: str, participants: List[dict]) -> Dict[int, int]:
@@ -314,11 +358,144 @@ def result_validation_error(candidate: RaceCandidate, result: SourceResult) -> O
 
 
 class TheDogsResultFetcher:
-    def __init__(self, driver, wait_seconds: float = 4.0, by=None):
+    def __init__(self, driver, wait_seconds: float = 4.0, by=None, http_session=None):
         self.driver = driver
         self.wait_seconds = wait_seconds
         self.by = by or _SeleniumByFallback
+        self.http_session = http_session
         self.site_blocked_error: Optional[str] = None
+        self._meeting_url_cache: Dict[tuple, List[str]] = {}
+
+    def _result_urls(self, candidate: RaceCandidate) -> List[str]:
+        slug = candidate.thedogs_slug
+        if not slug:
+            return []
+
+        urls: List[str] = []
+        urls.extend(self._discover_meeting_race_urls(candidate))
+        urls.extend(
+            [
+                f"{THEDOGS_BASE}/racing/{slug}/{candidate.race_date}/{candidate.race_number}/results?trial=false",
+                f"{THEDOGS_BASE}/racing/{slug}/{candidate.race_date}/{candidate.race_number}/results",
+                f"{THEDOGS_BASE}/racing/{slug}/{candidate.race_date}/{candidate.race_number}",
+            ]
+        )
+
+        deduped: List[str] = []
+        seen = set()
+        for url in urls:
+            if url and url not in seen:
+                deduped.append(url)
+                seen.add(url)
+        return deduped
+
+    def _discover_meeting_race_urls(self, candidate: RaceCandidate) -> List[str]:
+        if self.http_session is None:
+            return []
+
+        slug = candidate.thedogs_slug
+        if not slug:
+            return []
+
+        cache_key = (slug, candidate.race_date, int(candidate.race_number))
+        if cache_key in self._meeting_url_cache:
+            return self._meeting_url_cache[cache_key]
+
+        meeting_url = f"{THEDOGS_BASE}/racing/{slug}/{candidate.race_date}?trial=false"
+        urls: List[str] = []
+        try:
+            response = self.http_session.get(
+                meeting_url,
+                headers=THEDOGS_PUBLIC_HEADERS,
+                timeout=20,
+                allow_redirects=True,
+            )
+            text = getattr(response, "text", "") or ""
+            if response_is_forbidden(
+                getattr(response, "status_code", None),
+                title_from_html(text),
+                rendered_text_from_html(text),
+            ):
+                self.site_blocked_error = "thedogs_403_forbidden"
+                self._meeting_url_cache[cache_key] = []
+                return []
+
+            pattern = re.compile(
+                rf"""href=["'](?P<href>/racing/{re.escape(slug)}/{re.escape(candidate.race_date)}/{int(candidate.race_number)}/[^"']+)["']""",
+                re.IGNORECASE,
+            )
+            for match in pattern.finditer(text):
+                href = html.unescape(match.group("href"))
+                if "/expert-form" in href or "/results/" in href:
+                    continue
+                urls.append(urljoin(THEDOGS_BASE, href))
+        except Exception:
+            urls = []
+
+        self._meeting_url_cache[cache_key] = urls
+        return urls
+
+    def _result_from_text(
+        self,
+        candidate: RaceCandidate,
+        source_url: str,
+        text: str,
+    ) -> Optional[SourceResult]:
+        positions = parse_thedogs_result_text(text, candidate.participants)
+        if not positions:
+            return None
+        ordered_boxes = [
+            box for box, _ in sorted(positions.items(), key=lambda item: item[1])
+        ]
+        return SourceResult(
+            source="thedogs_official",
+            status=RESULTED,
+            source_url=source_url,
+            positions_by_box=positions,
+            raw_order=ordered_boxes,
+        )
+
+    def _fetch_via_http(self, candidate: RaceCandidate, urls: List[str]) -> Optional[SourceResult]:
+        if self.http_session is None:
+            return None
+
+        last_error = None
+        for url in urls:
+            try:
+                response = self.http_session.get(
+                    url,
+                    headers=THEDOGS_PUBLIC_HEADERS,
+                    timeout=20,
+                    allow_redirects=True,
+                )
+                markup = getattr(response, "text", "") or ""
+                text = rendered_text_from_html(markup)
+                status_code = getattr(response, "status_code", None)
+                if response_is_forbidden(status_code, title_from_html(markup), text):
+                    last_error = "thedogs_403_forbidden"
+                    self.site_blocked_error = last_error
+                    break
+                if status_code and status_code >= 400:
+                    last_error = f"thedogs_http_{status_code}"
+                    continue
+
+                result = self._result_from_text(candidate, getattr(response, "url", url), text)
+                if result:
+                    return result
+                last_error = "no_thedogs_positions_found"
+            except Exception as exc:
+                last_error = f"thedogs_http_error:{type(exc).__name__}"
+
+        if last_error:
+            return SourceResult(
+                source="thedogs_official",
+                status="error",
+                source_url=urls[0] if urls else None,
+                positions_by_box={},
+                raw_order=[],
+                error=last_error,
+            )
+        return None
 
     def fetch(self, candidate: RaceCandidate) -> SourceResult:
         if self.site_blocked_error:
@@ -342,33 +519,38 @@ class TheDogsResultFetcher:
                 error="missing_thedogs_venue_slug",
             )
 
-        urls = [
-            f"{THEDOGS_BASE}/racing/{slug}/{candidate.race_date}/{candidate.race_number}",
-            f"{THEDOGS_BASE}/racing/{slug}/{candidate.race_date}/{candidate.race_number}/results",
-        ]
+        urls = self._result_urls(candidate)
+        if self.site_blocked_error:
+            return SourceResult(
+                source="thedogs_official",
+                status="error",
+                source_url=urls[0] if urls else None,
+                positions_by_box={},
+                raw_order=[],
+                error=self.site_blocked_error,
+            )
+        http_result = self._fetch_via_http(candidate, urls)
+        if http_result and http_result.positions_by_box:
+            return http_result
+        if http_result and http_result.error == "thedogs_403_forbidden":
+            return http_result
+
         last_error = None
+        if http_result and http_result.error:
+            last_error = http_result.error
         for url in urls:
             try:
                 self.driver.get(url)
                 time.sleep(self.wait_seconds)
                 title = (self.driver.title or "").strip()
                 text = self.driver.find_element(self.by.TAG_NAME, "body").text
-                if title == "403 Forbidden" or text.strip() == "403 Forbidden":
+                if response_is_forbidden(None, title, text):
                     last_error = "thedogs_403_forbidden"
                     self.site_blocked_error = last_error
                     break
-                positions = parse_thedogs_result_text(text, candidate.participants)
-                if positions:
-                    ordered_boxes = [
-                        box for box, _ in sorted(positions.items(), key=lambda item: item[1])
-                    ]
-                    return SourceResult(
-                        source="thedogs_official",
-                        status=RESULTED,
-                        source_url=url,
-                        positions_by_box=positions,
-                        raw_order=ordered_boxes,
-                    )
+                result = self._result_from_text(candidate, url, text)
+                if result:
+                    return result
                 last_error = "no_thedogs_positions_found"
             except Exception as exc:
                 last_error = f"thedogs_error:{type(exc).__name__}"
@@ -1149,7 +1331,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     ingested: List[dict] = []
     failed: List[dict] = []
     try:
-        thedogs = TheDogsResultFetcher(driver, by=By)
+        thedogs = TheDogsResultFetcher(driver, by=By, http_session=get_shared_session())
         sportsbet = SportsbetResultFetcher(driver, args.date, by=By)
 
         conn = sqlite3.connect(db_path)

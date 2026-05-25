@@ -1,0 +1,227 @@
+{
+  "calibration_blending_decision": "report_only: no calibration/blending deployment is made by this script",
+  "ev_roi_coverage": {
+    "missing_or_invalid_odds_rows": 18,
+    "partial_odds_races": [],
+    "races_with_valid_pre_jump_odds": 0,
+    "reason": "no_valid_pre_jump_dog_level_odds",
+    "status": "DATA_MISSING",
+    "valid_pre_jump_dog_odds_rows": 0
+  },
+  "failure_mode_diagnostics": {
+    "complete_vs_partial_labels": {
+      "partial": {
+        "mean_winner_rank": 6.5,
+        "races": 2,
+        "top1": 0.0,
+        "top2": 0.0,
+        "top3": 0.0
+      }
+    },
+    "distance_breakdown": {
+      "races_missing_distance": 2,
+      "reason": "no_distance_metadata",
+      "status": "DATA_MISSING"
+    },
+    "field_size_effects": {
+      "9": {
+        "mean_winner_rank": 6.5,
+        "races": 2,
+        "top1": 0.0,
+        "top2": 0.0,
+        "top3": 0.0
+      }
+    },
+    "label_quality_breakdown": {
+      "partial_sportsbet_winner_only": {
+        "mean_winner_rank": 6.5,
+        "races": 2,
+        "top1": 0.0,
+        "top2": 0.0,
+        "top3": 0.0
+      }
+    },
+    "missing_feature_or_odds_effects": {
+      "data_quality_flag_counts": {
+        "missing_live_odds": 18,
+        "single_model_no_ensemble_agreement": 18
+      },
+      "races_with_no_valid_pre_jump_odds": 2,
+      "races_with_partial_pre_jump_odds": 0
+    },
+    "probability_uniformity": {
+      "avg_normalized_entropy": 0.9754150407519467,
+      "avg_probability_spread": 0.1406,
+      "low_spread_races": 0,
+      "top_pick_probability_avg": 0.22294999999999998
+    },
+    "races": [
+      {
+        "distance": null,
+        "field_size": 9,
+        "label_group": "partial",
+        "label_quality": "partial_sportsbet_winner_only",
+        "label_race_id": "Race 13 - SHEP - 2026-05-25",
+        "missing_pre_jump_odds_count": 9,
+        "probability_entropy_norm": 0.9752380032506669,
+        "probability_spread": 0.1411,
+        "race_id": "Race 13 - SHEP - 2026-05-25",
+        "result_detail_quality": "winner_only",
+        "top1_hit": false,
+        "top2_hit": false,
+        "top3_hit": false,
+        "top_pick_box": 1,
+        "top_pick_margin": 0.122,
+        "top_pick_name": "City Limit",
+        "top_pick_probability": 0.2238,
+        "top_pick_wrong": true,
+        "valid_pre_jump_odds_count": 0,
+        "venue": "SHEP",
+        "winner_box": 7,
+        "winner_name": "Paw Uma",
+        "winner_probability": 0.1018,
+        "winner_rank": 6
+      },
+      {
+        "distance": null,
+        "field_size": 9,
+        "label_group": "partial",
+        "label_quality": "partial_sportsbet_winner_only",
+        "label_race_id": "Race 14 - SHEP - 2026-05-25",
+        "missing_pre_jump_odds_count": 9,
+        "probability_entropy_norm": 0.9755920782532266,
+        "probability_spread": 0.1401,
+        "race_id": "Race 14 - SHEP - 2026-05-25",
+        "result_detail_quality": "winner_only",
+        "top1_hit": false,
+        "top2_hit": false,
+        "top3_hit": false,
+        "top_pick_box": 1,
+        "top_pick_margin": 0.11339999999999999,
+        "top_pick_name": "Clause Edward",
+        "top_pick_probability": 0.2221,
+        "top_pick_wrong": true,
+        "valid_pre_jump_odds_count": 0,
+        "venue": "SHEP",
+        "winner_box": 7,
+        "winner_name": "Ripper Riley",
+        "winner_probability": 0.101,
+        "winner_rank": 7
+      }
+    ],
+    "status": "SUCCESS",
+    "venue_breakdown": {
+      "SHEP": {
+        "mean_winner_rank": 6.5,
+        "races": 2,
+        "top1": 0.0,
+        "top2": 0.0,
+        "top3": 0.0
+      }
+    },
+    "winner_rank_by_race": {
+      "Race 13 - SHEP - 2026-05-25": 6,
+      "Race 14 - SHEP - 2026-05-25": 7
+    },
+    "wrong_top_pick_confidence": {
+      "avg_top_pick_probability_when_wrong": 0.22294999999999998,
+      "max_top_pick_probability_when_wrong": 0.2238,
+      "values": [
+        0.2238,
+        0.2221
+      ],
+      "wrong_top_pick_races": 2
+    }
+  },
+  "label_quality_counts": {
+    "partial_sportsbet_winner_only": 2
+  },
+  "lifecycle_counts": {
+    "upcoming_not_jumped": 2
+  },
+  "metrics_by_arm": {
+    "model_only": {
+      "brier": 0.10255343166666668,
+      "calibration": {
+        "intercept": -2.2857093686557937,
+        "slope": -0.09708175995822424
+      },
+      "dog_predictions_evaluated": 18,
+      "log_loss": 2.288689968503296,
+      "mean_winner_rank": 6.5,
+      "probability_sum": {
+        "max_abs_error": 0.00010000000000021103,
+        "mean_abs_error": 5.0000000000105516e-05
+      },
+      "races_evaluated": 2,
+      "reliability_bins": [
+        {
+          "actual_rate": 0.0,
+          "avg_predicted": 0.08235,
+          "bin": 0,
+          "count": 4,
+          "lower": 0.0,
+          "upper": 0.1
+        },
+        {
+          "actual_rate": 0.16666666666666666,
+          "avg_predicted": 0.10204999999999999,
+          "bin": 1,
+          "count": 12,
+          "lower": 0.1,
+          "upper": 0.2
+        },
+        {
+          "actual_rate": 0.0,
+          "avg_predicted": 0.22294999999999998,
+          "bin": 2,
+          "count": 2,
+          "lower": 0.2,
+          "upper": 0.3
+        }
+      ],
+      "roi_ev_by_decile": [],
+      "top1": 0.0,
+      "top2": 0.0,
+      "top3": 0.0,
+      "winner_rank_counts": {
+        "6": 1,
+        "7": 1
+      },
+      "winner_ranks": [
+        6,
+        7
+      ]
+    }
+  },
+  "rejected_snapshots": [],
+  "runner_rows_scored": 18,
+  "snapshot_corpus_readiness": {
+    "durable_pre_jump_snapshot_requirements": [
+      "feature_freeze_timestamp_present",
+      "missing_live_odds_explicit",
+      "model_version_present",
+      "pre_jump_lifecycle",
+      "pre_jump_snapshot_state",
+      "prediction_timestamp_present",
+      "predictions_match_source_runner_set",
+      "priced_runners_captured_before_jump",
+      "priced_runners_captured_before_prediction",
+      "priced_runners_have_odds_timestamps",
+      "result_free",
+      "runner_rows_have_identity",
+      "runner_rows_have_probabilities",
+      "runner_rows_present",
+      "source_file_path_present",
+      "source_runner_set_complete"
+    ],
+    "readiness_status_counts": {
+      "READY": 2
+    },
+    "snapshot_files": 2,
+    "status": "READY"
+  },
+  "snapshot_files": 2,
+  "snapshots_rejected": 0,
+  "status": "SUCCESS"
+}

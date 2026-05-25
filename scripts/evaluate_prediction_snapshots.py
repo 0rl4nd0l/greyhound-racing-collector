@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sqlite3
 import sys
-from collections import Counter
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
@@ -493,6 +494,9 @@ def _runner_rows(snapshot: Mapping[str, Any], conn: sqlite3.Connection) -> tuple
             continue
         odds_snapshot = runner.get("odds_snapshot") if isinstance(runner.get("odds_snapshot"), Mapping) else {}
         odds_win = _valid_pre_jump_odds(runner, odds_snapshot)
+        data_quality_flags = _quality_flags(
+            runner.get("data_quality_flags") or runner.get("quality_flags")
+        )
         rows.append(
             {
                 "race_id": snapshot_race_id or label_race_id,
@@ -514,6 +518,7 @@ def _runner_rows(snapshot: Mapping[str, Any], conn: sqlite3.Connection) -> tuple
                 ),
                 "label_quality": label_quality,
                 "result_detail_quality": label.get("result_detail_quality"),
+                "data_quality_flags": data_quality_flags,
             }
         )
     if missing_labels:
@@ -616,6 +621,230 @@ def _ev_roi_coverage(rows: list[Mapping[str, Any]]) -> dict[str, Any]:
         "missing_or_invalid_odds_rows": len(rows) - len(valid_rows),
         "races_with_valid_pre_jump_odds": len(complete_odds_races),
         "partial_odds_races": partial_odds_races,
+    }
+
+
+def _empty_breakdown() -> dict[str, Any]:
+    return {
+        "races": 0,
+        "top1": None,
+        "top2": None,
+        "top3": None,
+        "mean_winner_rank": None,
+    }
+
+
+def _group_breakdown(race_summaries: list[Mapping[str, Any]], key: str) -> dict[str, Any]:
+    grouped: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+    missing = 0
+    for race in race_summaries:
+        value = race.get(key)
+        if value in (None, ""):
+            missing += 1
+            continue
+        grouped[str(value)].append(race)
+
+    out: dict[str, Any] = {}
+    for value, races in sorted(grouped.items()):
+        ranks = [int(race["winner_rank"]) for race in races if race.get("winner_rank")]
+        out[value] = {
+            "races": len(races),
+            "top1": sum(1 for race in races if race.get("top1_hit")) / len(races),
+            "top2": sum(1 for race in races if race.get("top2_hit")) / len(races),
+            "top3": sum(1 for race in races if race.get("top3_hit")) / len(races),
+            "mean_winner_rank": sum(ranks) / len(ranks) if ranks else None,
+        }
+    if missing:
+        out["DATA_MISSING"] = {**_empty_breakdown(), "races": missing}
+    return out
+
+
+def _partial_or_complete(label_quality: Any) -> str:
+    text = str(label_quality or "")
+    if text.startswith("partial_"):
+        return "partial"
+    if text in {"official_or_complete_result", "winner_name_only_result"}:
+        return "complete_or_official"
+    return "other"
+
+
+def _quality_flags(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value else []
+    try:
+        return [str(flag) for flag in value]
+    except TypeError:
+        return [str(value)]
+
+
+def _probability_entropy_norm(probs: list[float]) -> float | None:
+    if len(probs) <= 1:
+        return None
+    total = sum(max(0.0, prob) for prob in probs)
+    if total <= 0:
+        return None
+    normalized = [max(0.0, prob) / total for prob in probs]
+    entropy = -sum(prob * math.log(prob) for prob in normalized if prob > 0)
+    return entropy / math.log(len(normalized))
+
+
+def _failure_mode_diagnostics(rows: list[Mapping[str, Any]]) -> dict[str, Any]:
+    by_race: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+    for row in rows:
+        by_race[str(row.get("race_id"))].append(row)
+
+    race_summaries: list[dict[str, Any]] = []
+    flag_counts: Counter[str] = Counter()
+    for race_id, race_rows in sorted(by_race.items()):
+        ranked = sorted(
+            race_rows,
+            key=lambda row: _safe_float(row.get("win_prob_norm")) or 0.0,
+            reverse=True,
+        )
+        if not ranked:
+            continue
+        for row in ranked:
+            flag_counts.update(str(flag) for flag in row.get("data_quality_flags") or [])
+        winner_rank = None
+        winner = None
+        for idx, row in enumerate(ranked, start=1):
+            if int(row.get("actual_win") or 0) == 1:
+                winner_rank = idx
+                winner = row
+                break
+        if winner_rank is None or winner is None:
+            continue
+        probs = [
+            prob
+            for prob in (_safe_float(row.get("win_prob_norm")) for row in ranked)
+            if prob is not None
+        ]
+        top_pick = ranked[0]
+        top_prob = _safe_float(top_pick.get("win_prob_norm"))
+        second_prob = _safe_float(ranked[1].get("win_prob_norm")) if len(ranked) > 1 else None
+        valid_odds = [row for row in ranked if row.get("odds_win") is not None]
+        label_quality = str(top_pick.get("label_quality") or "")
+        race_summaries.append(
+            {
+                "race_id": race_id,
+                "label_race_id": top_pick.get("label_race_id"),
+                "label_quality": label_quality,
+                "label_group": _partial_or_complete(label_quality),
+                "result_detail_quality": top_pick.get("result_detail_quality"),
+                "venue": top_pick.get("venue"),
+                "distance": top_pick.get("distance"),
+                "field_size": len(ranked),
+                "winner_name": winner.get("dog_name"),
+                "winner_box": winner.get("box_number"),
+                "winner_rank": winner_rank,
+                "top1_hit": winner_rank <= 1,
+                "top2_hit": winner_rank <= 2,
+                "top3_hit": winner_rank <= 3,
+                "winner_probability": _safe_float(winner.get("win_prob_norm")),
+                "top_pick_name": top_pick.get("dog_name"),
+                "top_pick_box": top_pick.get("box_number"),
+                "top_pick_probability": top_prob,
+                "top_pick_wrong": winner_rank != 1,
+                "top_pick_margin": (
+                    top_prob - second_prob
+                    if top_prob is not None and second_prob is not None
+                    else None
+                ),
+                "probability_spread": (
+                    max(probs) - min(probs) if len(probs) >= 2 else None
+                ),
+                "probability_entropy_norm": _probability_entropy_norm(probs),
+                "valid_pre_jump_odds_count": len(valid_odds),
+                "missing_pre_jump_odds_count": len(ranked) - len(valid_odds),
+            }
+        )
+
+    if not race_summaries:
+        return {"status": "DATA_MISSING", "reason": "no_race_summaries"}
+
+    wrong_top_pick_probs = [
+        race.get("top_pick_probability")
+        for race in race_summaries
+        if race.get("top_pick_wrong") and race.get("top_pick_probability") is not None
+    ]
+    entropy_values = [
+        race.get("probability_entropy_norm")
+        for race in race_summaries
+        if race.get("probability_entropy_norm") is not None
+    ]
+    spread_values = [
+        race.get("probability_spread")
+        for race in race_summaries
+        if race.get("probability_spread") is not None
+    ]
+    top_pick_probs = [
+        race.get("top_pick_probability")
+        for race in race_summaries
+        if race.get("top_pick_probability") is not None
+    ]
+
+    label_breakdown = _group_breakdown(race_summaries, "label_quality")
+    label_group_breakdown = _group_breakdown(race_summaries, "label_group")
+    distance_breakdown = _group_breakdown(race_summaries, "distance")
+    if set(distance_breakdown) == {"DATA_MISSING"}:
+        distance_breakdown = {
+            "status": "DATA_MISSING",
+            "reason": "no_distance_metadata",
+            "races_missing_distance": len(race_summaries),
+        }
+
+    return {
+        "status": "SUCCESS",
+        "races": race_summaries,
+        "winner_rank_by_race": {
+            race["race_id"]: race["winner_rank"] for race in race_summaries
+        },
+        "wrong_top_pick_confidence": {
+            "wrong_top_pick_races": len(wrong_top_pick_probs),
+            "avg_top_pick_probability_when_wrong": (
+                sum(wrong_top_pick_probs) / len(wrong_top_pick_probs)
+                if wrong_top_pick_probs
+                else None
+            ),
+            "max_top_pick_probability_when_wrong": (
+                max(wrong_top_pick_probs) if wrong_top_pick_probs else None
+            ),
+            "values": wrong_top_pick_probs,
+        },
+        "probability_uniformity": {
+            "avg_normalized_entropy": (
+                sum(entropy_values) / len(entropy_values) if entropy_values else None
+            ),
+            "avg_probability_spread": (
+                sum(spread_values) / len(spread_values) if spread_values else None
+            ),
+            "top_pick_probability_avg": (
+                sum(top_pick_probs) / len(top_pick_probs) if top_pick_probs else None
+            ),
+            "low_spread_races": sum(
+                1
+                for value in spread_values
+                if value is not None and value <= 0.05
+            ),
+        },
+        "field_size_effects": _group_breakdown(race_summaries, "field_size"),
+        "missing_feature_or_odds_effects": {
+            "races_with_no_valid_pre_jump_odds": sum(
+                1 for race in race_summaries if race["valid_pre_jump_odds_count"] == 0
+            ),
+            "races_with_partial_pre_jump_odds": sum(
+                1
+                for race in race_summaries
+                if 0 < race["valid_pre_jump_odds_count"] < race["field_size"]
+            ),
+            "data_quality_flag_counts": dict(sorted(flag_counts.items())),
+        },
+        "venue_breakdown": _group_breakdown(race_summaries, "venue"),
+        "distance_breakdown": distance_breakdown,
+        "label_quality_breakdown": label_breakdown,
+        "complete_vs_partial_labels": label_group_breakdown,
     }
 
 
@@ -739,6 +968,7 @@ def evaluate_snapshots(db_path: str, snapshot_paths: list[str]) -> dict[str, Any
         "label_quality_counts": dict(label_quality_counts),
         "ev_roi_coverage": _ev_roi_coverage(scorable_rows),
         "metrics_by_arm": metrics_by_arm,
+        "failure_mode_diagnostics": _failure_mode_diagnostics(scorable_rows),
         "calibration_blending_decision": (
             "report_only: no calibration/blending deployment is made by this script"
         ),
