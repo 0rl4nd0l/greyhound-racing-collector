@@ -285,6 +285,60 @@ def test_thedogs_fetch_discovers_public_result_route_before_selenium(tmp_path):
     assert result.positions_by_box == {6: 1, 8: 2}
 
 
+def test_thedogs_fetch_tries_public_result_url_after_forbidden_meeting_discovery(tmp_path):
+    module = _load_ingest_module()
+    candidate = _candidate(module, tmp_path)
+
+    class Response:
+        def __init__(self, url, text, status_code=200):
+            self.url = url
+            self.text = text
+            self.status_code = status_code
+
+    class Session:
+        def __init__(self):
+            self.urls = []
+
+        def get(self, url, **_kwargs):
+            self.urls.append(url)
+            if url.endswith("/racing/warragul/2026-05-21?trial=false"):
+                return Response(url, "403 Forbidden", status_code=403)
+            if url.endswith("/racing/warragul/2026-05-21/4/results?trial=false"):
+                return Response(
+                    url,
+                    """
+                    <html><body>
+                    Results
+                    1st
+                    6. Foxtrot Runner
+                    2nd
+                    8. Hotel Runner
+                    </body></html>
+                    """,
+                )
+            return Response(url, "", status_code=404)
+
+    class Driver:
+        def get(self, _url):
+            raise AssertionError("Selenium should not be used when public HTML succeeds")
+
+    session = Session()
+
+    result = module.TheDogsResultFetcher(
+        Driver(),
+        wait_seconds=0,
+        http_session=session,
+    ).fetch(candidate)
+
+    assert session.urls[:2] == [
+        "https://www.thedogs.com.au/racing/warragul/2026-05-21?trial=false",
+        "https://www.thedogs.com.au/racing/warragul/2026-05-21/4/results?trial=false",
+    ]
+    assert result.source == "thedogs_official"
+    assert result.status == "resulted"
+    assert result.positions_by_box == {6: 1, 8: 2}
+
+
 def test_thedogs_http_403_is_reported_without_selenium_fallback(tmp_path):
     module = _load_ingest_module()
     candidate = _candidate(module, tmp_path)
@@ -311,6 +365,45 @@ def test_thedogs_http_403_is_reported_without_selenium_fallback(tmp_path):
     assert result.source == "thedogs_official"
     assert result.status == "error"
     assert result.error == "thedogs_403_forbidden"
+    assert result.positions_by_box == {}
+
+
+def test_thedogs_http_404_is_reported_without_selenium_fallback(tmp_path):
+    module = _load_ingest_module()
+    candidate = _candidate(module, tmp_path)
+
+    class Response:
+        def __init__(self, url, text="", status_code=200):
+            self.url = url
+            self.text = text
+            self.status_code = status_code
+
+    class Session:
+        def __init__(self):
+            self.urls = []
+
+        def get(self, url, **_kwargs):
+            self.urls.append(url)
+            if url.endswith("/racing/warragul/2026-05-21?trial=false"):
+                return Response(url, "<html><body>No race links yet</body></html>")
+            return Response(url, "Not Found", status_code=404)
+
+    class Driver:
+        def get(self, _url):
+            raise AssertionError("HTTP 404 should remain the auditable official error")
+
+    session = Session()
+
+    result = module.TheDogsResultFetcher(
+        Driver(),
+        wait_seconds=0,
+        http_session=session,
+    ).fetch(candidate)
+
+    assert "https://www.thedogs.com.au/racing/warragul/2026-05-21/4/results?trial=false" in session.urls
+    assert result.source == "thedogs_official"
+    assert result.status == "error"
+    assert result.error == "thedogs_http_404"
     assert result.positions_by_box == {}
 
 

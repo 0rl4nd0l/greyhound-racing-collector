@@ -226,6 +226,13 @@ def response_is_forbidden(status_code: Optional[int], title: str, text: str) -> 
     )
 
 
+def terminal_public_http_error(error: Optional[str]) -> bool:
+    return bool(
+        error == "thedogs_403_forbidden"
+        or re.match(r"^thedogs_http_4\d\d$", str(error or ""))
+    )
+
+
 def title_from_html(markup: str) -> str:
     match = re.search(r"<title[^>]*>(.*?)</title>", str(markup or ""), re.IGNORECASE | re.DOTALL)
     if not match:
@@ -373,7 +380,6 @@ class TheDogsResultFetcher:
         self.wait_seconds = wait_seconds
         self.by = by or _SeleniumByFallback
         self.http_session = http_session
-        self.site_blocked_error: Optional[str] = None
         self._meeting_url_cache: Dict[tuple, List[str]] = {}
 
     def _result_urls(self, candidate: RaceCandidate) -> List[str]:
@@ -426,7 +432,6 @@ class TheDogsResultFetcher:
                 title_from_html(text),
                 rendered_text_from_html(text),
             ):
-                self.site_blocked_error = "thedogs_403_forbidden"
                 self._meeting_url_cache[cache_key] = []
                 return []
 
@@ -483,7 +488,6 @@ class TheDogsResultFetcher:
                 status_code = getattr(response, "status_code", None)
                 if response_is_forbidden(status_code, title_from_html(markup), text):
                     last_error = "thedogs_403_forbidden"
-                    self.site_blocked_error = last_error
                     break
                 if status_code and status_code >= 400:
                     last_error = f"thedogs_http_{status_code}"
@@ -508,16 +512,6 @@ class TheDogsResultFetcher:
         return None
 
     def fetch(self, candidate: RaceCandidate) -> SourceResult:
-        if self.site_blocked_error:
-            return SourceResult(
-                source="thedogs_official",
-                status="error",
-                source_url=None,
-                positions_by_box={},
-                raw_order=[],
-                error=self.site_blocked_error,
-            )
-
         slug = candidate.thedogs_slug
         if not slug:
             return SourceResult(
@@ -530,19 +524,10 @@ class TheDogsResultFetcher:
             )
 
         urls = self._result_urls(candidate)
-        if self.site_blocked_error:
-            return SourceResult(
-                source="thedogs_official",
-                status="error",
-                source_url=urls[0] if urls else None,
-                positions_by_box={},
-                raw_order=[],
-                error=self.site_blocked_error,
-            )
         http_result = self._fetch_via_http(candidate, urls)
         if http_result and http_result.positions_by_box:
             return http_result
-        if http_result and http_result.error == "thedogs_403_forbidden":
+        if http_result and terminal_public_http_error(http_result.error):
             return http_result
 
         last_error = None
@@ -556,7 +541,6 @@ class TheDogsResultFetcher:
                 text = self.driver.find_element(self.by.TAG_NAME, "body").text
                 if response_is_forbidden(None, title, text):
                     last_error = "thedogs_403_forbidden"
-                    self.site_blocked_error = last_error
                     break
                 result = self._result_from_text(candidate, url, text)
                 if result:
