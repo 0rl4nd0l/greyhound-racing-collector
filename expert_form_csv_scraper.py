@@ -214,7 +214,7 @@ class ExpertFormCsvScraper:
             self.safe_log(f"Error finding CSV form: {e}", "ERROR")
             return None
 
-    def download_csv_from_expert_form(self, race_url, filename):
+    def download_csv_from_expert_form(self, race_url, filename, race_info=None):
         """Download CSV using the expert-form method"""
         try:
             expert_form_url = self.get_expert_form_url(race_url)
@@ -296,7 +296,12 @@ class ExpertFormCsvScraper:
                                 sample = (r.text or "").strip()[:400].lower()
                                 if ("csv" in ctype or "text" in ctype) and ("," in sample or "dog" in sample or "runner" in sample or "box" in sample):
                                     self.safe_log(f"Direct CSV URL worked: {u}")
-                                    return self.save_csv_content(r.text, filename)
+                                    return self.save_csv_content(
+                                        r.text,
+                                        filename,
+                                        race_info=race_info,
+                                        race_url=race_url,
+                                    )
                         finally:
                             if r is not None:
                                 try:
@@ -325,7 +330,12 @@ class ExpertFormCsvScraper:
                             try:
                                 r = self.session.get(url, timeout=30, headers={"Referer": expert_form_url})
                                 if r.status_code == 200:
-                                    return self.save_csv_content(r.text, filename)
+                                    return self.save_csv_content(
+                                        r.text,
+                                        filename,
+                                        race_info=race_info,
+                                        race_url=race_url,
+                                    )
                             finally:
                                 if r is not None:
                                     try:
@@ -356,7 +366,12 @@ class ExpertFormCsvScraper:
                             try:
                                 r = self.session.get(url, timeout=30, headers={"Referer": expert_form_url})
                                 if r.status_code == 200:
-                                    return self.save_csv_content(r.text, filename)
+                                    return self.save_csv_content(
+                                        r.text,
+                                        filename,
+                                        race_info=race_info,
+                                        race_url=race_url,
+                                    )
                             finally:
                                 if r is not None:
                                     try:
@@ -417,7 +432,12 @@ class ExpertFormCsvScraper:
                         for header in ["dog", "name", "runner", "placing", "box"]
                     ):
                         self.safe_log(f"Got CSV data directly ({len(lines)} lines)")
-                        return self.save_csv_content(content, filename)
+                        return self.save_csv_content(
+                            content,
+                            filename,
+                            race_info=race_info,
+                            race_url=race_url,
+                        )
 
             # Check if response contains a download URL
             if content.startswith("http"):
@@ -426,7 +446,12 @@ class ExpertFormCsvScraper:
                 try:
                     csv_response = self.session.get(content, timeout=30)
                     if csv_response.status_code == 200:
-                        return self.save_csv_content(csv_response.text, filename)
+                        return self.save_csv_content(
+                            csv_response.text,
+                            filename,
+                            race_info=race_info,
+                            race_url=race_url,
+                        )
                 finally:
                     if csv_response is not None:
                         try:
@@ -456,7 +481,10 @@ class ExpertFormCsvScraper:
                             csv_response = self.session.get(href, timeout=30)
                             if csv_response.status_code == 200:
                                 return self.save_csv_content(
-                                    csv_response.text, filename
+                                    csv_response.text,
+                                    filename,
+                                    race_info=race_info,
+                                    race_url=race_url,
                                 )
                         finally:
                             if csv_response is not None:
@@ -474,7 +502,7 @@ class ExpertFormCsvScraper:
             self.safe_log(f"Error with expert-form method: {e}", "ERROR")
             return False
 
-    def save_csv_content(self, content, filename):
+    def save_csv_content(self, content, filename, race_info=None, race_url=None):
         """Save CSV content to files and API's upcoming directory"""
         try:
             # Validate content
@@ -530,6 +558,8 @@ class ExpertFormCsvScraper:
             upcoming_filepath = os.path.join(self.output_dir, filename)
             with open(upcoming_filepath, "w", encoding="utf-8", newline="") as f:
                 f.write(content)
+            race_info = dict(race_info or {})
+            race_url = race_url or race_info.get("url")
             with open(f"{upcoming_filepath}.metadata.json", "w", encoding="utf-8") as f:
                 json.dump(
                     {
@@ -537,6 +567,25 @@ class ExpertFormCsvScraper:
                         "created_at": datetime.now().isoformat(timespec="seconds"),
                         "source": "expert_form_csv_scraper",
                         "filename": filename,
+                        "race_url": race_url,
+                        "race_info": {
+                            key: value
+                            for key, value in race_info.items()
+                            if key
+                            in {
+                                "date",
+                                "distance",
+                                "grade",
+                                "race_name",
+                                "race_number",
+                                "race_time",
+                                "title",
+                                "url",
+                                "venue",
+                                "venue_name",
+                            }
+                            and value not in (None, "")
+                        },
                         "content_length": len(content.encode("utf-8")),
                         "content_sha256": hashlib.sha256(
                             content.encode("utf-8")
@@ -626,7 +675,11 @@ class ExpertFormCsvScraper:
             )
 
             # Try expert-form method
-            success = self.download_csv_from_expert_form(race_info["url"], filename)
+            success = self.download_csv_from_expert_form(
+                race_info["url"],
+                filename,
+                race_info=race_info,
+            )
 
             if success:
                 self.collected_races.add(race_id)
@@ -662,6 +715,12 @@ class ExpertFormCsvScraper:
                         "venue": race_data.get("venue", "UNKNOWN"),
                         "date": target_date.strftime("%Y-%m-%d"),
                         "url": race_data.get("url", ""),
+                        "race_time": race_data.get("race_time"),
+                        "race_name": race_data.get("race_name"),
+                        "venue_name": race_data.get("venue_name"),
+                        "distance": race_data.get("distance"),
+                        "grade": race_data.get("grade"),
+                        "title": race_data.get("title"),
                     }
                     upcoming_races.append(race_info)
 

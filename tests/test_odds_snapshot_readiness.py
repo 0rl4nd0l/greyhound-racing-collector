@@ -490,7 +490,7 @@ def test_snapshot_evaluator_does_not_join_wrong_same_date_race_number_venue(tmp_
     assert report["label_quality_counts"] == {"missing_race_metadata": 1}
 
 
-def test_snapshot_evaluator_requires_all_runner_labels(tmp_path):
+def test_snapshot_evaluator_scores_partial_sportsbet_winner_only_labels(tmp_path):
     db_path = tmp_path / "labels.db"
     conn = sqlite3.connect(db_path)
     conn.executescript(
@@ -553,5 +553,8 @@ def test_snapshot_evaluator_requires_all_runner_labels(tmp_path):
 
     report = evaluate_snapshots(str(db_path), [str(snapshot_path)])
 
-    assert report["status"] == "DATA_MISSING"
-    assert report["label_quality_counts"] == {"missing_dog_result_labels": 1}
+    assert report["status"] == "SUCCESS"
+    assert report["runner_rows_scored"] == 4
+    assert report["label_quality_counts"] == {"partial_sportsbet_winner_only": 1}
+    assert report["metrics_by_arm"]["model_only"]["top1"] == pytest.approx(1.0)
+    assert report["metrics_by_arm"]["model_only"]["winner_ranks"] == [1]

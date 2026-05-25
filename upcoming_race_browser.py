@@ -99,7 +99,16 @@ class UpcomingRaceBrowser:
         print("🏁 Upcoming Race Browser initialized")
         print(f"📂 Upcoming races directory: {self.upcoming_dir}")
 
-    def _write_csv_provenance(self, filepath, *, race_url, csv_info, content, completeness):
+    def _write_csv_provenance(
+        self,
+        filepath,
+        *,
+        race_url,
+        csv_info,
+        content,
+        completeness,
+        race_info=None,
+    ):
         metadata_path = f"{filepath}.metadata.json"
         resolved_csv_url = None
         csv_method = None
@@ -113,6 +122,24 @@ class UpcomingRaceBrowser:
             "schema_version": "form_guide_download_provenance_v1",
             "created_at": datetime.now().isoformat(timespec="seconds"),
             "race_url": race_url,
+            "race_info": {
+                key: value
+                for key, value in dict(race_info or {}).items()
+                if key
+                in {
+                    "date",
+                    "distance",
+                    "grade",
+                    "race_name",
+                    "race_number",
+                    "race_time",
+                    "title",
+                    "url",
+                    "venue",
+                    "venue_name",
+                }
+                and value not in (None, "")
+            },
             "resolved_csv_url": resolved_csv_url,
             "csv_method": csv_method,
             "content_length": len(content.encode("utf-8")),
@@ -953,7 +980,11 @@ class UpcomingRaceBrowser:
 
                     scraper = ExpertFormCsvScraper(max_workers=1, verbose=False)
                     # Pass the base race URL; scraper will derive the expert-form URL
-                    ef_success = scraper.download_csv_from_expert_form(base_race_url, filename)
+                    ef_success = scraper.download_csv_from_expert_form(
+                        base_race_url,
+                        filename,
+                        race_info={**race_info, "url": base_race_url},
+                    )
                     if ef_success and os.path.exists(filepath):
                         completeness = analyze_csv_runner_completeness(filepath)
                         if not completeness.is_complete:
@@ -1078,6 +1109,7 @@ class UpcomingRaceBrowser:
                 csv_info=csv_info,
                 content=content,
                 completeness=completeness,
+                race_info={**race_info, "url": race_url},
             )
 
             print(f"   ✅ Downloaded: {filename}")

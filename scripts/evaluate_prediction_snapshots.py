@@ -357,6 +357,7 @@ def _labels_by_runner(conn: sqlite3.Connection, race_id: str) -> dict[str, dict[
             "actual_win": int(actual_win),
             "finish_position": finish_position,
             "label_source": data.get("data_source"),
+            "result_detail_quality": "finish_position",
         }
         for key in (
             _norm_name(data.get("dog_clean_name") or data.get("dog_name")),
@@ -365,6 +366,65 @@ def _labels_by_runner(conn: sqlite3.Connection, race_id: str) -> dict[str, dict[
             if key and key != "box:None":
                 labels[key] = label
     return labels
+
+
+def _winner_only_labels(
+    metadata: Mapping[str, Any],
+    predictions: list[Mapping[str, Any]],
+) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
+    """Build win/loss labels from race_metadata.winner_name only.
+
+    This is intentionally narrower than full result labeling. It supports
+    win-label metrics when fallback sources provide a reliable winner but not
+    every runner's exact finish position.
+    """
+
+    winner_name = str(metadata.get("winner_name") or "").strip()
+    winner_key = _norm_name(winner_name)
+    if not winner_key:
+        return {}, {"reason": "missing_winner_name"}
+
+    matches = [
+        runner
+        for runner in predictions
+        if _norm_name(runner.get("dog_name") or runner.get("dog_clean_name"))
+        == winner_key
+    ]
+    if len(matches) != 1:
+        return (
+            {},
+            {
+                "reason": "winner_name_match_count_not_one",
+                "winner_name": winner_name,
+                "match_count": len(matches),
+            },
+        )
+
+    source = (
+        metadata.get("winner_source")
+        or metadata.get("results_status")
+        or "race_metadata_winner_name"
+    )
+    labels: dict[str, dict[str, Any]] = {}
+    for runner in predictions:
+        name = runner.get("dog_name") or runner.get("dog_clean_name")
+        box = runner.get("box_number")
+        actual_win = _norm_name(name) == winner_key
+        label = {
+            "actual_win": int(actual_win),
+            "finish_position": 1 if actual_win else None,
+            "label_source": source,
+            "result_detail_quality": "winner_only",
+        }
+        for key in (_norm_name(name), f"box:{box}"):
+            if key and key != "box:None":
+                labels[key] = label
+
+    return labels, {
+        "winner_name": winner_name,
+        "label_source": source,
+        "result_detail_quality": "winner_only",
+    }
 
 
 def _runner_rows(snapshot: Mapping[str, Any], conn: sqlite3.Connection) -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -390,7 +450,6 @@ def _runner_rows(snapshot: Mapping[str, Any], conn: sqlite3.Connection) -> tuple
 
     label_race_id = str(metadata.get("race_id") or snapshot_race_id)
     labels = _labels_by_runner(conn, label_race_id)
-    rows: list[dict[str, Any]] = []
     label_status = str(metadata.get("results_status") or "").strip().lower()
     source_note = str(metadata.get("winner_source") or metadata.get("data_quality_note") or "")
     if label_status == "partial_sportsbet_results" or "partial_sportsbet_results" in source_note:
@@ -405,15 +464,32 @@ def _runner_rows(snapshot: Mapping[str, Any], conn: sqlite3.Connection) -> tuple
         for runner in snapshot.get("predictions") or []
         if isinstance(runner, Mapping)
     ]
+
     missing_labels: list[dict[str, Any]] = []
-    for runner in snapshot.get("predictions") or []:
-        if not isinstance(runner, Mapping):
-            continue
+    for runner in predictions:
         name = runner.get("dog_name") or runner.get("dog_clean_name")
         box = runner.get("box_number")
         label = labels.get(_norm_name(name)) or labels.get(f"box:{box}") or {}
         if "actual_win" not in label:
             missing_labels.append({"dog_name": str(name or ""), "box_number": box})
+
+    winner_only_summary: dict[str, Any] | None = None
+    if missing_labels and metadata.get("winner_name"):
+        winner_only_labels, winner_only_summary = _winner_only_labels(metadata, predictions)
+        if winner_only_labels:
+            labels = winner_only_labels
+            missing_labels = []
+            if label_quality == "partial_sportsbet_results":
+                label_quality = "partial_sportsbet_winner_only"
+            else:
+                label_quality = "winner_name_only_result"
+
+    rows: list[dict[str, Any]] = []
+    for runner in predictions:
+        name = runner.get("dog_name") or runner.get("dog_clean_name")
+        box = runner.get("box_number")
+        label = labels.get(_norm_name(name)) or labels.get(f"box:{box}") or {}
+        if "actual_win" not in label:
             continue
         odds_snapshot = runner.get("odds_snapshot") if isinstance(runner.get("odds_snapshot"), Mapping) else {}
         odds_win = _valid_pre_jump_odds(runner, odds_snapshot)
@@ -428,6 +504,7 @@ def _runner_rows(snapshot: Mapping[str, Any], conn: sqlite3.Connection) -> tuple
                 "distance": metadata.get("distance"),
                 "win_prob_norm": _safe_float(runner.get("win_prob_norm")),
                 "actual_win": int(label["actual_win"]),
+                "finish_position": label.get("finish_position"),
                 "odds_win": odds_win,
                 "ev_win": (
                     _safe_float(runner.get("win_prob_norm")) * odds_win - 1.0
@@ -436,6 +513,7 @@ def _runner_rows(snapshot: Mapping[str, Any], conn: sqlite3.Connection) -> tuple
                     else None
                 ),
                 "label_quality": label_quality,
+                "result_detail_quality": label.get("result_detail_quality"),
             }
         )
     if missing_labels:
@@ -446,6 +524,7 @@ def _runner_rows(snapshot: Mapping[str, Any], conn: sqlite3.Connection) -> tuple
             "missing_reason": "missing_dog_result_labels",
             "missing_label_count": len(missing_labels),
             "missing_labels": missing_labels[:25],
+            "winner_only_labeling": winner_only_summary,
         }
     if len(rows) != len(predictions):
         return [], {
@@ -462,7 +541,14 @@ def _runner_rows(snapshot: Mapping[str, Any], conn: sqlite3.Connection) -> tuple
             "label_quality": "invalid_winner_count",
             "missing_reason": f"invalid_winner_count:{winner_count}",
         }
-    return rows, {"race_id": snapshot_race_id, "label_race_id": label_race_id, "label_quality": label_quality}
+    summary = {
+        "race_id": snapshot_race_id,
+        "label_race_id": label_race_id,
+        "label_quality": label_quality,
+    }
+    if winner_only_summary:
+        summary["winner_only_labeling"] = winner_only_summary
+    return rows, summary
 
 
 def _valid_pre_jump_odds(
