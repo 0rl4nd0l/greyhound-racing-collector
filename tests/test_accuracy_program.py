@@ -31,6 +31,13 @@ def test_snapshot_excludes_result_labels_and_preserves_ev_contract():
                 "confidence_score": 0.62,
                 "odds_win": 3.0,
                 "odds_timestamp": "2026-05-21T15:44:00",
+                "odds_source": "sportsbet",
+                "odds_source_url": "https://www.sportsbet.com.au/greyhound-racing/race-4",
+                "odds_race_id": "Race 4 - WRGL - 2026-05-21",
+                "odds_dog_name": "Alpha Runner",
+                "odds_box_number": 1,
+                "odds_match_method": "race_id_box_name",
+                "odds_match_confidence": 1.0,
                 "ev_win": 0.2,
             }
         ],
@@ -57,6 +64,7 @@ def test_snapshot_excludes_result_labels_and_preserves_ev_contract():
         snapshot["predictions"][0]["odds_snapshot"]["odds_timestamp"]
         == "2026-05-21T15:44:00"
     )
+    assert snapshot["predictions"][0]["odds_match_status"] == "valid_pre_jump_dog_odds"
     assert "actual_results" not in snapshot
     assert "actual_results" not in snapshot["predictions"][0]
 
@@ -86,8 +94,107 @@ def test_snapshot_ev_stays_null_without_valid_pre_jump_odds():
 
     runner = snapshot["predictions"][0]
     assert runner["ev_win"] is None
+    assert runner["odds_match_status"] == "missing_timestamp"
+    assert runner["odds_exclusion_reason"] == "missing_timestamp"
     assert "missing_odds_timestamp" in runner["data_quality_flags"]
     assert "invalid_pre_jump_odds" in runner["data_quality_flags"]
+
+
+def test_snapshot_odds_provenance_gate_rejects_unsafe_ev_inputs():
+    base = {
+        "dog_clean_name": "Alpha Runner",
+        "box_number": 1,
+        "win_prob_norm": 0.4,
+        "predicted_rank": 1,
+        "odds_win": 3.0,
+        "odds_source": "sportsbet",
+        "odds_source_url": "https://www.sportsbet.com.au/greyhound-racing/race-4",
+        "odds_race_id": "Race 4 - WRGL - 2026-05-21",
+        "odds_dog_name": "Alpha Runner",
+        "odds_box_number": 1,
+        "odds_match_method": "race_id_box_name",
+        "odds_match_confidence": 1.0,
+    }
+    cases = [
+        (
+            "valid_pre_jump_dog_odds",
+            {"odds_timestamp": "2026-05-21T15:44:00"},
+            pytest.approx(0.2),
+        ),
+        ("missing_timestamp", {}, None),
+        (
+            "timestamp_after_prediction",
+            {"odds_timestamp": "2026-05-21T15:46:00"},
+            None,
+        ),
+        (
+            "timestamp_after_prediction",
+            {
+                "odds_timestamp": "2026-05-21T15:44:00",
+                "feature_freeze_timestamp": "2026-05-21T15:43:00",
+            },
+            None,
+        ),
+        (
+            "timestamp_after_jump",
+            {
+                "odds_timestamp": "2026-05-21T15:59:30",
+                "prediction_timestamp": "2026-05-21T16:00:00",
+            },
+            None,
+        ),
+        (
+            "stale_beyond_ttl",
+            {"odds_timestamp": "2026-05-21T15:00:00"},
+            None,
+        ),
+        (
+            "box_mismatch",
+            {"odds_timestamp": "2026-05-21T15:44:00", "odds_box_number": 2},
+            None,
+        ),
+        (
+            "post_race_or_sp_only",
+            {"odds_timestamp": "2026-05-21T15:44:00", "odds_market_type": "sp"},
+            None,
+        ),
+        (
+            "post_race_or_sp_only",
+            {
+                "odds_timestamp": "2026-05-21T15:44:00",
+                "odds_source_url": "https://www.sportsbet.com.au/greyhound-racing/results/race-4",
+            },
+            None,
+        ),
+    ]
+
+    for expected_status, override, expected_ev in cases:
+        row = {**base, **override}
+        prediction_timestamp = row.pop("prediction_timestamp", "2026-05-21T15:45:00")
+        feature_freeze_timestamp = row.pop("feature_freeze_timestamp", prediction_timestamp)
+        snapshot = build_prediction_snapshot(
+            {
+                "race_id": "Race 4 - WRGL - 2026-05-21",
+                "model_version": "model-v1",
+                "predictions": [row],
+            },
+            lifecycle={
+                "status": "upcoming_not_jumped",
+                "jump_datetime": "2026-05-21T15:58:00",
+            },
+            prediction_timestamp=prediction_timestamp,
+            feature_freeze_timestamp=feature_freeze_timestamp,
+            stale_odds_after_minutes=30.0,
+        )
+        runner = snapshot["predictions"][0]
+        assert runner["odds_match_status"] == expected_status
+        if expected_ev is None:
+            assert runner["ev_win"] is None
+            assert runner["odds_exclusion_reason"] == expected_status
+        else:
+            assert runner["ev_win"] == expected_ev
+            assert runner["odds_exclusion_reason"] is None
+        assert_no_result_fields(snapshot)
 
 
 def test_snapshot_carries_history_and_target_metadata_provenance_result_free():

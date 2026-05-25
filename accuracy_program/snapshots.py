@@ -10,6 +10,27 @@ from pathlib import Path
 from typing import Any, Mapping
 
 
+TRUSTED_ODDS_SOURCES = {"sportsbet"}
+POST_RACE_OR_RESULT_ODDS_MARKETS = {
+    "dividend",
+    "dividends",
+    "payout",
+    "result",
+    "results",
+    "sp",
+    "starting_price",
+    "startingprice",
+}
+POST_RACE_SOURCE_URL_MARKERS = ("dividend", "payout", "result")
+POST_RACE_SOURCE_TABLES = {"dog_race_data", "race_results", "results"}
+STRICT_ODDS_MATCH_METHODS = {
+    "dog_name_box",
+    "name_box",
+    "race_id_box_name",
+    "race_id_box_name_exact",
+    "strict_identity",
+}
+
 RESULT_FIELD_NAMES = {
     "actual_results",
     "actual_finish_position",
@@ -91,6 +112,10 @@ def _safe_bool(value: Any) -> bool | None:
     return None
 
 
+def _normalize_identity(value: Any) -> str:
+    return re.sub(r"[^A-Z0-9]", "", str(value or "").upper())
+
+
 def _quality_flags(row: Mapping[str, Any]) -> list[str]:
     raw = row.get("quality_flags")
     if raw is None or (isinstance(raw, str) and not raw.strip()):
@@ -146,10 +171,29 @@ def _first_value(row: Mapping[str, Any], keys: tuple[str, ...]) -> Any:
     return None
 
 
+def _normalize_market_type(value: Any, odds_snapshot: Mapping[str, Any]) -> str:
+    raw = str(value or "").strip().lower()
+    if raw:
+        return re.sub(r"[^a-z0-9_]", "_", raw)
+    return "win" if odds_snapshot.get("market_odds_win") is not None else ""
+
+
+def _normalize_odds_level(value: Any, row: Mapping[str, Any]) -> str:
+    raw = str(value or "").strip().lower()
+    if raw:
+        return re.sub(r"[^a-z0-9_]", "_", raw)
+    if row.get("box_number") is not None and (
+        row.get("dog_clean_name") or row.get("dog_name") or row.get("name")
+    ):
+        return "dog"
+    return "unknown"
+
+
 def _build_odds_snapshot(
     row: Mapping[str, Any],
     *,
     prediction_timestamp: str,
+    feature_freeze_timestamp: str,
     jump_datetime: str | None,
     stale_odds_after_minutes: float,
 ) -> dict[str, Any]:
@@ -174,8 +218,22 @@ def _build_odds_snapshot(
     if odds_timestamp:
         odds_snapshot["odds_timestamp"] = str(odds_timestamp)
 
+    market_type = _normalize_market_type(
+        _first_value(row, ("odds_market_type", "market_type", "market_odds_type")),
+        odds_snapshot,
+    )
+    if market_type:
+        odds_snapshot["market_type"] = market_type
+    odds_level = _normalize_odds_level(
+        _first_value(row, ("odds_level", "market_odds_level", "live_odds_level")),
+        row,
+    )
+    if odds_level:
+        odds_snapshot["odds_level"] = odds_level
+
     odds_dt = _parse_timestamp(odds_timestamp)
     prediction_dt = _parse_timestamp(prediction_timestamp)
+    feature_freeze_dt = _parse_timestamp(feature_freeze_timestamp)
     if odds_dt is not None and prediction_dt is not None:
         age_seconds = _seconds_between(prediction_dt, odds_dt)
         odds_snapshot["odds_age_seconds_at_prediction"] = age_seconds
@@ -185,6 +243,11 @@ def _build_odds_snapshot(
             age_seconds > stale_odds_after_minutes * 60.0
         )
         odds_snapshot["stale_odds_after_minutes"] = stale_odds_after_minutes
+
+    if odds_dt is not None and feature_freeze_dt is not None:
+        freeze_age_seconds = _seconds_between(feature_freeze_dt, odds_dt)
+        odds_snapshot["odds_age_seconds_at_feature_freeze"] = freeze_age_seconds
+        odds_snapshot["odds_captured_before_feature_freeze"] = freeze_age_seconds >= 0
 
     jump_dt = _parse_timestamp(jump_datetime)
     if odds_dt is not None and jump_dt is not None:
@@ -203,6 +266,16 @@ def _build_odds_snapshot(
                 "market_source",
             ),
         ),
+        "source_url": _first_value(
+            row,
+            (
+                "odds_source_url",
+                "market_odds_source_url",
+                "live_odds_source_url",
+                "source_url",
+                "sportsbet_url",
+            ),
+        ),
         "source_table": _first_value(
             row,
             (
@@ -213,10 +286,55 @@ def _build_odds_snapshot(
         ),
         "odds_id": _first_value(row, ("odds_id", "live_odds_id", "market_odds_id")),
         "odds_race_id": _first_value(row, ("odds_race_id", "market_odds_race_id")),
+        "odds_dog_name": _first_value(
+            row,
+            (
+                "odds_dog_name",
+                "odds_dog_clean_name",
+                "market_odds_dog_name",
+                "market_odds_dog_clean_name",
+            ),
+        ),
+        "odds_box_number": _safe_int(
+            _first_value(row, ("odds_box_number", "market_odds_box_number"))
+        ),
         "match_type": _first_value(row, ("odds_match_type", "market_odds_match_type")),
+        "match_method": _first_value(
+            row, ("odds_match_method", "market_odds_match_method")
+        ),
         "match_key": _first_value(row, ("odds_match_key", "market_odds_match_key")),
         "match_confidence": _first_value(
             row, ("odds_match_confidence", "market_odds_match_confidence")
+        ),
+        "candidate_count": _safe_int(
+            _first_value(
+                row,
+                (
+                    "odds_candidate_count",
+                    "market_odds_candidate_count",
+                    "odds_match_candidate_count",
+                ),
+            )
+        ),
+        "duplicate_count": _safe_int(
+            _first_value(
+                row,
+                (
+                    "odds_duplicate_count",
+                    "market_odds_duplicate_count",
+                    "duplicate_odds_count",
+                ),
+            )
+        ),
+        "fetch_timestamp": _first_value(
+            row,
+            (
+                "odds_fetch_timestamp",
+                "fetch_timestamp",
+                "fetched_at",
+                "odds_fetched_at",
+                "market_odds_fetched_at",
+            ),
         ),
     }
     provenance = {k: v for k, v in provenance.items() if v not in (None, "")}
@@ -225,24 +343,142 @@ def _build_odds_snapshot(
     return odds_snapshot
 
 
-def _odds_valid_for_ev(odds_snapshot: Mapping[str, Any]) -> bool:
-    odds = _safe_float(odds_snapshot.get("market_odds_win"))
+def _odds_match_method(provenance: Mapping[str, Any]) -> str | None:
+    method = provenance.get("match_method") or provenance.get("match_type")
+    return str(method).strip() if method not in (None, "") else None
+
+
+def classify_odds_snapshot_for_ev(
+    runner: Mapping[str, Any],
+    odds_snapshot: Mapping[str, Any] | None = None,
+    *,
+    snapshot_race_id: Any = None,
+) -> dict[str, Any]:
+    """Classify leakage-safe dog-level odds eligibility for EV calculation."""
+
+    snapshot = odds_snapshot if isinstance(odds_snapshot, Mapping) else {}
+    odds = _safe_float(
+        snapshot.get("market_odds_win")
+        or runner.get("odds")
+        or runner.get("odds_win")
+        or runner.get("market_odds_win")
+    )
+    provenance = (
+        snapshot.get("odds_provenance")
+        if isinstance(snapshot.get("odds_provenance"), Mapping)
+        else {}
+    )
+    method = _odds_match_method(provenance)
+
+    def result(status: str) -> dict[str, Any]:
+        valid = status == "valid_pre_jump_dog_odds"
+        return {
+            "odds_match_status": status,
+            "odds_match_method": method,
+            "odds_exclusion_reason": None if valid else status,
+            "odds_provenance_status": "complete" if valid else "excluded",
+            "is_ev_eligible": valid,
+        }
+
     if odds is None or odds <= 1.0:
-        return False
-    if not odds_snapshot.get("odds_timestamp"):
-        return False
-    if odds_snapshot.get("odds_captured_before_prediction") is not True:
-        return False
+        return result("no_odds_row")
+
+    market_type = _normalize_market_type(snapshot.get("market_type"), snapshot)
+    if market_type in POST_RACE_OR_RESULT_ODDS_MARKETS:
+        return result("post_race_or_sp_only")
+    if market_type and market_type != "win":
+        return result("race_level_only_odds")
+
+    if str(snapshot.get("odds_level") or "").lower() in {"race", "race_level", "market"}:
+        return result("race_level_only_odds")
+
+    if not snapshot.get("odds_timestamp"):
+        return result("missing_timestamp")
+    if snapshot.get("odds_captured_before_prediction") is not True:
+        return result("timestamp_after_prediction")
     if (
-        "odds_captured_before_jump" in odds_snapshot
-        and odds_snapshot.get("odds_captured_before_jump") is not True
+        "odds_captured_before_feature_freeze" in snapshot
+        and snapshot.get("odds_captured_before_feature_freeze") is not True
     ):
-        return False
-    return True
+        return result("timestamp_after_prediction")
+    if (
+        "odds_captured_before_jump" in snapshot
+        and snapshot.get("odds_captured_before_jump") is not True
+    ):
+        return result("timestamp_after_jump")
+    if snapshot.get("odds_stale_at_prediction") is True:
+        return result("stale_beyond_ttl")
+
+    source = str(provenance.get("source") or runner.get("odds_source") or "").strip().lower()
+    if source not in TRUSTED_ODDS_SOURCES:
+        return result("untrusted_source")
+    source_url = str(provenance.get("source_url") or "").strip()
+    if not source_url:
+        return result("missing_source_url")
+    if any(marker in source_url.lower() for marker in POST_RACE_SOURCE_URL_MARKERS):
+        return result("post_race_or_sp_only")
+    source_table = str(provenance.get("source_table") or "").strip().lower()
+    if source_table in POST_RACE_SOURCE_TABLES:
+        return result("post_race_or_sp_only")
+
+    if snapshot_race_id and provenance.get("odds_race_id"):
+        if str(provenance.get("odds_race_id")) != str(snapshot_race_id):
+            return result("race_id_mismatch")
+
+    runner_box = _safe_int(runner.get("box_number"))
+    odds_box = _safe_int(provenance.get("odds_box_number"))
+    if runner_box is not None and odds_box is not None and runner_box != odds_box:
+        return result("box_mismatch")
+
+    runner_name = runner.get("dog_name") or runner.get("dog_clean_name") or runner.get("name")
+    odds_name = provenance.get("odds_dog_name")
+    if odds_name and _normalize_identity(odds_name) != _normalize_identity(runner_name):
+        return result("dog_name_mismatch")
+
+    if _safe_int(provenance.get("duplicate_count")) and int(provenance["duplicate_count"]) > 1:
+        return result("duplicate_odds_rows")
+    if _safe_int(provenance.get("candidate_count")) and int(provenance["candidate_count"]) > 1:
+        return result("duplicate_odds_rows")
+
+    confidence = _safe_float(provenance.get("match_confidence"))
+    method_key = str(method or "").strip().lower()
+    explicit_identity_match = (
+        runner_box is not None
+        and odds_box is not None
+        and runner_box == odds_box
+        and bool(odds_name)
+        and _normalize_identity(odds_name) == _normalize_identity(runner_name)
+    )
+    strict_method_match = method_key in STRICT_ODDS_MATCH_METHODS
+    if not explicit_identity_match and not strict_method_match:
+        return result("ambiguous_runner_identity")
+    if confidence is not None and confidence < 0.99:
+        return result("ambiguous_runner_identity")
+
+    return result("valid_pre_jump_dog_odds")
 
 
-def _ev_win(win_prob_norm: Any, odds_snapshot: Mapping[str, Any]) -> float | None:
-    if not _odds_valid_for_ev(odds_snapshot):
+def _odds_valid_for_ev(
+    runner: Mapping[str, Any],
+    odds_snapshot: Mapping[str, Any],
+    *,
+    snapshot_race_id: Any = None,
+) -> bool:
+    return classify_odds_snapshot_for_ev(
+        runner,
+        odds_snapshot,
+        snapshot_race_id=snapshot_race_id,
+    )["is_ev_eligible"] is True
+
+
+def _ev_win(
+    win_prob_norm: Any,
+    row: Mapping[str, Any],
+    odds_snapshot: Mapping[str, Any],
+    *,
+    snapshot_race_id: Any = None,
+) -> float | None:
+    if not _odds_valid_for_ev(row, odds_snapshot, snapshot_race_id=snapshot_race_id):
         return None
     probability = _safe_float(win_prob_norm)
     odds = _safe_float(odds_snapshot.get("market_odds_win"))
@@ -252,7 +488,10 @@ def _ev_win(win_prob_norm: Any, odds_snapshot: Mapping[str, Any]) -> float | Non
 
 
 def _runner_odds_quality_flags(
-    row: Mapping[str, Any], odds_snapshot: Mapping[str, Any]
+    row: Mapping[str, Any],
+    odds_snapshot: Mapping[str, Any],
+    *,
+    odds_eligibility: Mapping[str, Any],
 ) -> list[str]:
     flags = _quality_flags(row)
     for flag in _quality_flags({"quality_flags": row.get("provenance_quality_flags")}):
@@ -260,6 +499,9 @@ def _runner_odds_quality_flags(
     odds = _safe_float(odds_snapshot.get("market_odds_win"))
     if odds is None:
         _add_quality_flag(flags, "missing_live_odds")
+        exclusion_reason = odds_eligibility.get("odds_exclusion_reason")
+        if exclusion_reason:
+            _add_quality_flag(flags, f"odds_excluded:{exclusion_reason}")
         return flags
     if not odds_snapshot.get("odds_timestamp"):
         _add_quality_flag(flags, "missing_odds_timestamp")
@@ -270,7 +512,12 @@ def _runner_odds_quality_flags(
         and odds_snapshot.get("odds_captured_before_jump") is not True
     ):
         _add_quality_flag(flags, "odds_not_captured_before_jump")
-    if not _odds_valid_for_ev(odds_snapshot):
+    if odds_snapshot.get("odds_stale_at_prediction") is True:
+        _add_quality_flag(flags, "stale_live_odds")
+    exclusion_reason = odds_eligibility.get("odds_exclusion_reason")
+    if exclusion_reason:
+        _add_quality_flag(flags, f"odds_excluded:{exclusion_reason}")
+    if odds_eligibility.get("is_ev_eligible") is not True:
         _add_quality_flag(flags, "invalid_pre_jump_odds")
     return flags
 
@@ -400,6 +647,7 @@ def _prediction_rows(
     prediction_result: Mapping[str, Any],
     *,
     prediction_timestamp: str,
+    feature_freeze_timestamp: str,
     jump_datetime: str | None,
     stale_odds_after_minutes: float,
 ) -> list[dict[str, Any]]:
@@ -410,6 +658,12 @@ def _prediction_rows(
         return []
 
     snapshot_rows: list[dict[str, Any]] = []
+    race_context = _as_dict(prediction_result.get("race_context"))
+    snapshot_race_id = (
+        prediction_result.get("race_id")
+        or prediction_result.get("raceId")
+        or race_context.get("race_id")
+    )
     for row in rows:
         if not isinstance(row, Mapping):
             continue
@@ -421,13 +675,23 @@ def _prediction_rows(
         odds_snapshot = _build_odds_snapshot(
             row,
             prediction_timestamp=prediction_timestamp,
+            feature_freeze_timestamp=feature_freeze_timestamp,
             jump_datetime=jump_datetime,
             stale_odds_after_minutes=stale_odds_after_minutes,
         )
         win_prob_norm = _safe_float(
             row.get("win_prob_norm", row.get("win_probability"))
         )
-        flags = _runner_odds_quality_flags(row, odds_snapshot)
+        odds_eligibility = classify_odds_snapshot_for_ev(
+            row,
+            odds_snapshot,
+            snapshot_race_id=snapshot_race_id,
+        )
+        flags = _runner_odds_quality_flags(
+            row,
+            odds_snapshot,
+            odds_eligibility=odds_eligibility,
+        )
         odds_provenance = odds_snapshot.get("odds_provenance")
         odds_source = (
             odds_provenance.get("source")
@@ -455,8 +719,17 @@ def _prediction_rows(
                 "odds_timestamp": odds_snapshot.get("odds_timestamp"),
                 "odds_source": odds_source,
                 "odds_match_confidence": _safe_float(odds_match_confidence),
+                "odds_match_status": odds_eligibility.get("odds_match_status"),
+                "odds_match_method": odds_eligibility.get("odds_match_method"),
+                "odds_exclusion_reason": odds_eligibility.get("odds_exclusion_reason"),
+                "odds_provenance_status": odds_eligibility.get("odds_provenance_status"),
                 "odds_snapshot": odds_snapshot,
-                "ev_win": _ev_win(win_prob_norm, odds_snapshot),
+                "ev_win": _ev_win(
+                    win_prob_norm,
+                    row,
+                    odds_snapshot,
+                    snapshot_race_id=snapshot_race_id,
+                ),
                 "history_source": row.get("history_source"),
                 "history_match_status": row.get("history_match_status"),
                 "db_history_match_status": row.get("db_history_match_status"),
@@ -612,6 +885,7 @@ def build_prediction_snapshot(
         "predictions": _prediction_rows(
             prediction_result,
             prediction_timestamp=timestamp,
+            feature_freeze_timestamp=feature_freeze,
             jump_datetime=str(jump_datetime) if jump_datetime else None,
             stale_odds_after_minutes=stale_odds_after_minutes,
         ),

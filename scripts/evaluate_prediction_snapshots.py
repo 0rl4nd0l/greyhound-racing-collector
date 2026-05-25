@@ -26,7 +26,10 @@ from accuracy_program.evaluation import (
     market_implied_probabilities,
     score_predictions,
 )
-from accuracy_program.snapshots import assert_no_result_fields
+from accuracy_program.snapshots import (
+    assert_no_result_fields,
+    classify_odds_snapshot_for_ev,
+)
 from utils.runner_completeness import (
     MIN_COMPLETE_RUNNERS,
     RunnerRow,
@@ -231,8 +234,14 @@ def _snapshot_provenance_report(snapshots: Iterable[Mapping[str, Any]]) -> dict[
     grade_source_counts: Counter[str] = Counter()
     metadata_safe_counts: Counter[str] = Counter()
     rejected_metadata_counts: Counter[str] = Counter()
+    odds_match_counts: Counter[str] = Counter()
+    odds_exclusion_counts: Counter[str] = Counter()
+    odds_provenance_counts: Counter[str] = Counter()
+    odds_match_method_counts: Counter[str] = Counter()
     target_distance_races: set[str] = set()
     target_grade_races: set[str] = set()
+    valid_pre_jump_odds_rows = 0
+    ev_non_null_rows = 0
     runner_count = 0
 
     for snapshot in snapshots:
@@ -261,6 +270,40 @@ def _snapshot_provenance_report(snapshots: Iterable[Mapping[str, Any]]) -> dict[
                 target_grade_races.add(race_id)
             for source in runner.get("rejected_metadata_sources") or []:
                 rejected_metadata_counts[str(source)] += 1
+            odds_snapshot = (
+                runner.get("odds_snapshot")
+                if isinstance(runner.get("odds_snapshot"), Mapping)
+                else {}
+            )
+            odds_eligibility = classify_odds_snapshot_for_ev(
+                runner,
+                odds_snapshot,
+                snapshot_race_id=race_id,
+            )
+            odds_match_status = str(
+                runner.get("odds_match_status")
+                or odds_eligibility.get("odds_match_status")
+                or "DATA_MISSING"
+            )
+            odds_match_counts[odds_match_status] += 1
+            exclusion = (
+                runner.get("odds_exclusion_reason")
+                or odds_eligibility.get("odds_exclusion_reason")
+            )
+            odds_exclusion_counts[str(exclusion or "none")] += 1
+            odds_provenance_counts[
+                str(
+                    runner.get("odds_provenance_status")
+                    or odds_eligibility.get("odds_provenance_status")
+                    or "DATA_MISSING"
+                )
+            ] += 1
+            method = runner.get("odds_match_method") or odds_eligibility.get("odds_match_method")
+            odds_match_method_counts[str(method or "DATA_MISSING")] += 1
+            if odds_match_status == "valid_pre_jump_dog_odds":
+                valid_pre_jump_odds_rows += 1
+            if runner.get("ev_win") is not None:
+                ev_non_null_rows += 1
 
     return {
         "runner_count": runner_count,
@@ -272,6 +315,12 @@ def _snapshot_provenance_report(snapshots: Iterable[Mapping[str, Any]]) -> dict[
         "grade_source_distribution": dict(grade_source_counts),
         "metadata_is_leakage_safe_distribution": dict(metadata_safe_counts),
         "rejected_metadata_source_distribution": dict(rejected_metadata_counts),
+        "odds_match_status_distribution": dict(odds_match_counts),
+        "odds_exclusion_reason_distribution": dict(odds_exclusion_counts),
+        "odds_provenance_status_distribution": dict(odds_provenance_counts),
+        "odds_match_method_distribution": dict(odds_match_method_counts),
+        "valid_pre_jump_dog_odds_rows": valid_pre_jump_odds_rows,
+        "ev_win_non_null_rows": ev_non_null_rows,
         "target_distance_present_races": len(target_distance_races),
         "target_grade_present_races": len(target_grade_races),
     }
@@ -548,7 +597,11 @@ def _runner_rows(snapshot: Mapping[str, Any], conn: sqlite3.Connection) -> tuple
         if "actual_win" not in label:
             continue
         odds_snapshot = runner.get("odds_snapshot") if isinstance(runner.get("odds_snapshot"), Mapping) else {}
-        odds_win = _valid_pre_jump_odds(runner, odds_snapshot)
+        odds_win = _valid_pre_jump_odds(
+            runner,
+            odds_snapshot,
+            snapshot_race_id=snapshot_race_id,
+        )
         data_quality_flags = _quality_flags(
             runner.get("data_quality_flags") or runner.get("quality_flags")
         )
@@ -612,7 +665,10 @@ def _runner_rows(snapshot: Mapping[str, Any], conn: sqlite3.Connection) -> tuple
 
 
 def _valid_pre_jump_odds(
-    runner: Mapping[str, Any], odds_snapshot: Mapping[str, Any]
+    runner: Mapping[str, Any],
+    odds_snapshot: Mapping[str, Any],
+    *,
+    snapshot_race_id: Any = None,
 ) -> float | None:
     odds = _safe_float(
         odds_snapshot.get("market_odds_win")
@@ -622,17 +678,12 @@ def _valid_pre_jump_odds(
     )
     if odds is None or odds <= 1.0:
         return None
-    odds_timestamp = odds_snapshot.get("odds_timestamp") or runner.get("odds_timestamp")
-    if not odds_timestamp:
-        return None
-    before_prediction = odds_snapshot.get("odds_captured_before_prediction")
-    if before_prediction is not True:
-        return None
-    before_jump = odds_snapshot.get("odds_captured_before_jump")
-    if before_jump is not True:
-        return None
-    provenance = odds_snapshot.get("odds_provenance")
-    if not isinstance(provenance, Mapping) or not provenance.get("source"):
+    eligibility = classify_odds_snapshot_for_ev(
+        runner,
+        odds_snapshot,
+        snapshot_race_id=snapshot_race_id,
+    )
+    if eligibility.get("is_ev_eligible") is not True:
         return None
     return odds
 

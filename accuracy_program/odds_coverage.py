@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import sqlite3
+from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable, Mapping
+
+from accuracy_program.snapshots import (
+    assert_no_result_fields,
+    classify_odds_snapshot_for_ev,
+)
 
 _DOG_PREFIX_RE = re.compile(r"^\s*\d{1,2}\s*[\.\):-]\s*")
 
@@ -83,6 +90,203 @@ def _parse_timestamp(value: Any) -> datetime | None:
         except ValueError:
             continue
     return None
+
+
+def _snapshot_files(paths: Iterable[str | os.PathLike[str]]) -> list[Path]:
+    files: list[Path] = []
+    for raw in paths:
+        path = Path(raw)
+        if path.is_dir():
+            files.extend(sorted(path.glob("**/*.json")))
+        elif path.is_file():
+            files.append(path)
+    return files
+
+
+def _counter_dict(counter: Counter[str]) -> dict[str, int]:
+    return dict(sorted(counter.items(), key=lambda item: (-item[1], item[0])))
+
+
+def _runner_null_ev_reason(
+    runner: Mapping[str, Any],
+    odds_eligibility: Mapping[str, Any],
+) -> str:
+    if runner.get("ev_win") is not None:
+        return "ev_win_present"
+    return str(
+        runner.get("odds_exclusion_reason")
+        or odds_eligibility.get("odds_exclusion_reason")
+        or odds_eligibility.get("odds_match_status")
+        or "unknown"
+    )
+
+
+def analyze_snapshot_odds_coverage(
+    snapshot_paths: Iterable[str | os.PathLike[str]],
+) -> dict[str, Any]:
+    """Return leakage-safe odds/EV diagnostics from result-free snapshots."""
+
+    files = _snapshot_files(snapshot_paths)
+    if not files:
+        return {
+            "status": "DATA_MISSING",
+            "reason": "no_snapshot_files_found",
+            "snapshot_files": 0,
+            "runner_rows": 0,
+            "null_ev_reason_rows": [],
+        }
+
+    rejected: list[dict[str, str]] = []
+    rows: list[dict[str, Any]] = []
+    status_counts: Counter[str] = Counter()
+    exclusion_counts: Counter[str] = Counter()
+    provenance_counts: Counter[str] = Counter()
+    match_method_counts: Counter[str] = Counter()
+    null_ev_counts: Counter[str] = Counter()
+    race_rows: dict[str, list[dict[str, Any]]] = defaultdict(list)
+
+    for path in files:
+        try:
+            snapshot = json.loads(path.read_text(encoding="utf-8"))
+            assert_no_result_fields(snapshot)
+        except Exception as exc:
+            rejected.append({"path": str(path), "reason": str(exc)})
+            continue
+
+        race_id = str(snapshot.get("race_id") or "")
+        prediction_timestamp = snapshot.get("prediction_timestamp")
+        freeze_timestamp = snapshot.get("feature_freeze_timestamp")
+        jump_time = snapshot.get("jump_datetime") or snapshot.get("jump_time")
+        for runner in snapshot.get("predictions") or []:
+            if not isinstance(runner, Mapping):
+                continue
+            odds_snapshot = (
+                runner.get("odds_snapshot")
+                if isinstance(runner.get("odds_snapshot"), Mapping)
+                else {}
+            )
+            eligibility = classify_odds_snapshot_for_ev(
+                runner,
+                odds_snapshot,
+                snapshot_race_id=race_id,
+            )
+            status = str(
+                runner.get("odds_match_status")
+                or eligibility.get("odds_match_status")
+                or "unknown"
+            )
+            exclusion = str(
+                runner.get("odds_exclusion_reason")
+                or eligibility.get("odds_exclusion_reason")
+                or "none"
+            )
+            provenance_status = str(
+                runner.get("odds_provenance_status")
+                or eligibility.get("odds_provenance_status")
+                or "unknown"
+            )
+            method = str(
+                runner.get("odds_match_method")
+                or eligibility.get("odds_match_method")
+                or "DATA_MISSING"
+            )
+            null_ev_reason = _runner_null_ev_reason(runner, eligibility)
+            record = {
+                "snapshot_path": str(path),
+                "race_id": race_id,
+                "dog_name": runner.get("dog_name") or runner.get("dog_clean_name"),
+                "box_number": runner.get("box_number"),
+                "odds_decimal": runner.get("odds")
+                or odds_snapshot.get("market_odds_win"),
+                "ev_win": runner.get("ev_win"),
+                "odds_match_status": status,
+                "odds_match_method": method,
+                "odds_exclusion_reason": exclusion,
+                "odds_provenance_status": provenance_status,
+                "null_ev_reason": null_ev_reason,
+                "odds_timestamp": odds_snapshot.get("odds_timestamp")
+                or runner.get("odds_timestamp"),
+                "prediction_timestamp": prediction_timestamp,
+                "feature_freeze_timestamp": freeze_timestamp,
+                "jump_time": jump_time,
+                "odds_age_seconds_at_prediction": odds_snapshot.get(
+                    "odds_age_seconds_at_prediction"
+                ),
+                "odds_captured_before_prediction": odds_snapshot.get(
+                    "odds_captured_before_prediction"
+                ),
+                "odds_captured_before_feature_freeze": odds_snapshot.get(
+                    "odds_captured_before_feature_freeze"
+                ),
+                "odds_captured_before_jump": odds_snapshot.get(
+                    "odds_captured_before_jump"
+                ),
+                "odds_stale_at_prediction": odds_snapshot.get(
+                    "odds_stale_at_prediction"
+                ),
+                "odds_source": runner.get("odds_source")
+                or (
+                    odds_snapshot.get("odds_provenance", {}).get("source")
+                    if isinstance(odds_snapshot.get("odds_provenance"), Mapping)
+                    else None
+                ),
+                "odds_source_url": (
+                    odds_snapshot.get("odds_provenance", {}).get("source_url")
+                    if isinstance(odds_snapshot.get("odds_provenance"), Mapping)
+                    else None
+                ),
+            }
+            rows.append(record)
+            race_rows[race_id].append(record)
+            status_counts[status] += 1
+            exclusion_counts[exclusion] += 1
+            provenance_counts[provenance_status] += 1
+            match_method_counts[method] += 1
+            null_ev_counts[null_ev_reason] += 1
+
+    complete_valid_races = 0
+    partial_valid_races = 0
+    no_valid_races = 0
+    for runners in race_rows.values():
+        valid = [
+            row for row in runners if row["odds_match_status"] == "valid_pre_jump_dog_odds"
+        ]
+        if valid and len(valid) == len(runners):
+            complete_valid_races += 1
+        elif valid:
+            partial_valid_races += 1
+        else:
+            no_valid_races += 1
+
+    valid_rows = status_counts.get("valid_pre_jump_dog_odds", 0)
+    return {
+        "status": "SUCCESS" if not rejected else "PARTIAL",
+        "snapshot_files": len(files),
+        "snapshots_rejected": len(rejected),
+        "rejected_snapshots": rejected,
+        "runner_rows": len(rows),
+        "valid_pre_jump_dog_odds_rows": valid_rows,
+        "ev_eligibility_rows": valid_rows,
+        "ev_win_non_null_rows": sum(1 for row in rows if row.get("ev_win") is not None),
+        "rows_with_null_ev": sum(1 for row in rows if row.get("ev_win") is None),
+        "odds_coverage_rate": valid_rows / len(rows) if rows else None,
+        "races": len(race_rows),
+        "races_with_complete_valid_odds": complete_valid_races,
+        "races_with_partial_valid_odds": partial_valid_races,
+        "races_with_no_valid_odds": no_valid_races,
+        "odds_match_status_distribution": _counter_dict(status_counts),
+        "odds_exclusion_reason_distribution": _counter_dict(exclusion_counts),
+        "odds_provenance_status_distribution": _counter_dict(provenance_counts),
+        "odds_match_method_distribution": _counter_dict(match_method_counts),
+        "null_ev_reason_distribution": _counter_dict(null_ev_counts),
+        "stale_odds_rows": status_counts.get("stale_beyond_ttl", 0),
+        "missing_timestamp_rows": status_counts.get("missing_timestamp", 0),
+        "timestamp_after_prediction_rows": status_counts.get(
+            "timestamp_after_prediction", 0
+        ),
+        "timestamp_after_jump_rows": status_counts.get("timestamp_after_jump", 0),
+        "null_ev_reason_rows": rows,
+    }
 
 
 def _age_hours(now_dt: datetime, timestamp: datetime) -> float:

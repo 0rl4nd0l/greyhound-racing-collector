@@ -214,6 +214,12 @@ def test_prediction_snapshot_carries_odds_timestamp_provenance_and_readiness():
                     "odds_timestamp": "2026-05-24T09:55:00",
                     "odds_source": "sportsbet",
                     "odds_source_table": "live_odds",
+                    "odds_source_url": "https://www.sportsbet.com.au/greyhound-racing/r1",
+                    "odds_race_id": "R1",
+                    "odds_dog_name": "Alpha Runner",
+                    "odds_box_number": 1,
+                    "odds_match_method": "race_id_box_name",
+                    "odds_match_confidence": 1.0,
                     "ev_win": 0.2,
                 },
                 {
@@ -241,8 +247,15 @@ def test_prediction_snapshot_carries_odds_timestamp_provenance_and_readiness():
     assert odds_snapshot["odds_stale_at_prediction"] is False
     assert odds_snapshot["odds_provenance"] == {
         "source": "sportsbet",
+        "source_url": "https://www.sportsbet.com.au/greyhound-racing/r1",
         "source_table": "live_odds",
+        "odds_race_id": "R1",
+        "odds_dog_name": "Alpha Runner",
+        "odds_box_number": 1,
+        "match_method": "race_id_box_name",
+        "match_confidence": 1.0,
     }
+    assert snapshot["predictions"][0]["odds_match_status"] == "valid_pre_jump_dog_odds"
     assert snapshot["snapshot_readiness"]["counts"]["missing_live_odds_count"] == 1
     assert snapshot["snapshot_readiness"]["status"] == "READY"
     assert_no_result_fields(snapshot)
@@ -325,6 +338,12 @@ def test_snapshot_evaluation_links_results_and_scores_valid_pre_jump_odds_only(t
                     "odds_win": 2.0,
                     "odds_timestamp": "2026-05-24T09:55:00",
                     "odds_source": "sportsbet",
+                    "odds_source_url": "https://www.sportsbet.com.au/greyhound-racing/wpk-r1",
+                    "odds_race_id": "Race 1 - WPK - 2026-05-24",
+                    "odds_dog_name": "Alpha",
+                    "odds_box_number": 1,
+                    "odds_match_method": "race_id_box_name",
+                    "odds_match_confidence": 1.0,
                     "history_source": "db_and_embedded_csv_history",
                     "history_match_status": "matched_identity_with_pre_target_results",
                     "db_history_match_status": "matched_identity_with_pre_target_results",
@@ -405,6 +424,11 @@ def test_snapshot_evaluation_links_results_and_scores_valid_pre_jump_odds_only(t
     assert provenance["runner_inclusion_reason_distribution"][
         "model_scored_low_confidence_retained"
     ] == 1
+    assert provenance["odds_match_status_distribution"] == {
+        "valid_pre_jump_dog_odds": 1,
+        "no_odds_row": 3,
+    }
+    assert provenance["odds_exclusion_reason_distribution"]["no_odds_row"] == 3
     assert provenance["target_distance_present_races"] == 1
 
 
