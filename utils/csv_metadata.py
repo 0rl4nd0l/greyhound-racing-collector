@@ -297,7 +297,13 @@ def _extract_from_csv_data(file_path: str) -> Optional[Dict[str, Any]]:
         # Try pandas first for robust CSV handling
         if pd is None:
             raise ImportError("pandas not available")
-        df = pd.read_csv(file_path, nrows=50)  # Only read first 50 rows for efficiency
+        df = pd.read_csv(
+            file_path,
+            nrows=50,
+            sep=None,
+            engine="python",
+            encoding="utf-8-sig",
+        )
 
         # Clean up the dataframe - remove rows where all values are empty quotes
         df = df.replace('""', "")  # Replace empty quotes with empty strings
@@ -308,6 +314,7 @@ def _extract_from_csv_data(file_path: str) -> Optional[Dict[str, Any]]:
         if embedded_form_history:
             result["csv_row_context"] = "embedded_form_history"
             result["target_metadata_from_csv"] = False
+            result["metadata_is_leakage_safe"] = False
 
         # Extract venue from TRACK column (most reliable source)
         if "TRACK" in df.columns and not embedded_form_history:
@@ -325,6 +332,8 @@ def _extract_from_csv_data(file_path: str) -> Optional[Dict[str, Any]]:
                 # Get most common distance
                 distance_counts = df["DIST"].value_counts()
                 result["distance"] = str(distance_counts.index[0])
+                result["distance_source"] = "csv_target_row:DIST"
+                result["metadata_is_leakage_safe"] = True
 
         # Extract grade from G column
         if "G" in df.columns and not embedded_form_history:
@@ -333,6 +342,8 @@ def _extract_from_csv_data(file_path: str) -> Optional[Dict[str, Any]]:
                 # Get most common grade
                 grade_counts = df["G"].value_counts()
                 result["grade"] = str(grade_counts.index[0])
+                result["grade_source"] = "csv_target_row:G"
+                result["metadata_is_leakage_safe"] = True
 
         # Calculate field size (number of unique dogs/boxes)
         if "Dog Name" in df.columns and embedded_form_history:
@@ -368,8 +379,14 @@ def _extract_from_csv_data(file_path: str) -> Optional[Dict[str, Any]]:
     except Exception as e:
         # If pandas fails, try basic CSV reader as fallback
         try:
-            with open(file_path, "r", newline="", encoding="utf-8") as f:
-                reader = csv.DictReader(f)
+            with open(file_path, "r", newline="", encoding="utf-8-sig") as f:
+                sample = f.read(4096)
+                f.seek(0)
+                try:
+                    dialect = csv.Sniffer().sniff(sample, delimiters=",|;\t")
+                except Exception:
+                    dialect = csv.excel
+                reader = csv.DictReader(f, dialect=dialect)
 
                 # Read first few rows to analyze
                 rows = []

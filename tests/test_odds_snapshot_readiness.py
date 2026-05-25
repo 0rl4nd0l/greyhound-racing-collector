@@ -5,7 +5,7 @@ from datetime import datetime
 import pytest
 
 from accuracy_program.odds_coverage import analyze_odds_coverage, normalize_dog_name
-from accuracy_program.snapshots import build_prediction_snapshot
+from accuracy_program.snapshots import assert_no_result_fields, build_prediction_snapshot
 from scripts.evaluate_prediction_snapshots import evaluate_snapshots
 
 
@@ -245,7 +245,7 @@ def test_prediction_snapshot_carries_odds_timestamp_provenance_and_readiness():
     }
     assert snapshot["snapshot_readiness"]["counts"]["missing_live_odds_count"] == 1
     assert snapshot["snapshot_readiness"]["status"] == "READY"
-    assert "finish_position" not in str(snapshot)
+    assert_no_result_fields(snapshot)
 
 
 def test_snapshot_evaluation_reports_missing_frozen_corpus(tmp_path):
@@ -325,24 +325,52 @@ def test_snapshot_evaluation_links_results_and_scores_valid_pre_jump_odds_only(t
                     "odds_win": 2.0,
                     "odds_timestamp": "2026-05-24T09:55:00",
                     "odds_source": "sportsbet",
+                    "history_source": "db_and_embedded_csv_history",
+                    "history_match_status": "matched_identity_with_pre_target_results",
+                    "db_history_match_status": "matched_identity_with_pre_target_results",
+                    "runner_inclusion_reason": "model_scored",
+                    "distance_source": "target_column:Race Distance",
+                    "grade_source": "target_column:Race Grade",
+                    "metadata_is_leakage_safe": True,
                 },
                 {
                     "dog_clean_name": "Bravo",
                     "box_number": 2,
                     "win_prob_norm": 0.2,
                     "predicted_rank": 2,
+                    "history_source": "embedded_csv_form_history",
+                    "history_match_status": "embedded_history_only",
+                    "db_history_match_status": "matched_identity_no_result_rows",
+                    "runner_inclusion_reason": "model_scored_low_confidence_retained",
+                    "distance_source": "default_missing_target",
+                    "grade_source": "default_missing_target",
+                    "metadata_is_leakage_safe": False,
                 },
                 {
                     "dog_clean_name": "Charlie",
                     "box_number": 3,
                     "win_prob_norm": 0.15,
                     "predicted_rank": 3,
+                    "history_source": "no_usable_history",
+                    "history_match_status": "no_matching_identity",
+                    "db_history_match_status": "no_matching_identity",
+                    "runner_inclusion_reason": "model_scored",
+                    "distance_source": "default_missing_target",
+                    "grade_source": "default_missing_target",
+                    "metadata_is_leakage_safe": False,
                 },
                 {
                     "dog_clean_name": "Delta",
                     "box_number": 4,
                     "win_prob_norm": 0.05,
                     "predicted_rank": 4,
+                    "history_source": "db_result_history",
+                    "history_match_status": "matched_identity_with_pre_target_results",
+                    "db_history_match_status": "matched_identity_with_pre_target_results",
+                    "runner_inclusion_reason": "model_scored",
+                    "distance_source": "target_column:Race Distance",
+                    "grade_source": "target_column:Race Grade",
+                    "metadata_is_leakage_safe": True,
                 },
             ],
         },
@@ -367,6 +395,17 @@ def test_snapshot_evaluation_links_results_and_scores_valid_pre_jump_odds_only(t
     assert report["metrics_by_arm"]["model_only"]["winner_ranks"] == [1]
     assert report["ev_roi_coverage"]["status"] == "DATA_MISSING"
     assert report["ev_roi_coverage"]["reason"] == "partial_pre_jump_dog_level_odds"
+    provenance = report["snapshot_provenance_report"]
+    assert provenance["history_source_distribution"] == {
+        "db_and_embedded_csv_history": 1,
+        "embedded_csv_form_history": 1,
+        "no_usable_history": 1,
+        "db_result_history": 1,
+    }
+    assert provenance["runner_inclusion_reason_distribution"][
+        "model_scored_low_confidence_retained"
+    ] == 1
+    assert provenance["target_distance_present_races"] == 1
 
 
 def test_snapshot_evaluator_excludes_incomplete_runner_sets_even_if_labels_exist(tmp_path):

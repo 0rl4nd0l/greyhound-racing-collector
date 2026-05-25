@@ -90,6 +90,53 @@ def test_snapshot_ev_stays_null_without_valid_pre_jump_odds():
     assert "invalid_pre_jump_odds" in runner["data_quality_flags"]
 
 
+def test_snapshot_carries_history_and_target_metadata_provenance_result_free():
+    snapshot = build_prediction_snapshot(
+        {
+            "race_id": "Race 4 - WRGL - 2026-05-21",
+            "model_version": "model-v1",
+            "predictions": [
+                {
+                    "dog_clean_name": "Alpha Runner",
+                    "box_number": 1,
+                    "win_prob_norm": 0.4,
+                    "predicted_rank": 1,
+                    "history_source": "embedded_csv_form_history",
+                    "history_match_status": "embedded_history_only",
+                    "db_history_match_status": "matched_identity_rows_missing_finish_position",
+                    "db_result_history_count": 0,
+                    "runner_inclusion_reason": "model_scored_low_confidence_retained",
+                    "distance_source": "default_missing_target",
+                    "grade_source": "default_missing_target",
+                    "metadata_source_detail": {
+                        "distance": "default_missing_target:no_safe_pre_race_distance",
+                        "grade": "default_missing_target:no_safe_pre_race_grade",
+                    },
+                    "metadata_is_leakage_safe": False,
+                    "rejected_metadata_sources": [
+                        "embedded_form_history:DIST",
+                        "embedded_form_history:G",
+                    ],
+                    "quality_flags": [
+                        "optimizer_retained_low_quality_for_runner_alignment"
+                    ],
+                }
+            ],
+        },
+        lifecycle={"status": "upcoming_not_jumped"},
+        prediction_timestamp="2026-05-21T15:45:00",
+    )
+
+    runner = snapshot["predictions"][0]
+    assert runner["history_source"] == "embedded_csv_form_history"
+    assert runner["history_match_status"] == "embedded_history_only"
+    assert runner["db_history_match_status"] == "matched_identity_rows_missing_finish_position"
+    assert runner["runner_inclusion_reason"] == "model_scored_low_confidence_retained"
+    assert runner["metadata_is_leakage_safe"] is False
+    assert runner["ev_win"] is None
+    assert_no_result_fields(snapshot)
+
+
 def test_snapshot_persistence_is_explicit_result_free_and_dry_runnable(tmp_path):
     snapshot = build_prediction_snapshot(
         {

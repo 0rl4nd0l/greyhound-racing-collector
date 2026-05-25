@@ -222,6 +222,61 @@ def _snapshot_runner_report(snapshot: Mapping[str, Any]) -> dict[str, Any]:
     ).as_dict()
 
 
+def _snapshot_provenance_report(snapshots: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
+    history_source_counts: Counter[str] = Counter()
+    history_match_counts: Counter[str] = Counter()
+    db_history_match_counts: Counter[str] = Counter()
+    runner_inclusion_counts: Counter[str] = Counter()
+    distance_source_counts: Counter[str] = Counter()
+    grade_source_counts: Counter[str] = Counter()
+    metadata_safe_counts: Counter[str] = Counter()
+    rejected_metadata_counts: Counter[str] = Counter()
+    target_distance_races: set[str] = set()
+    target_grade_races: set[str] = set()
+    runner_count = 0
+
+    for snapshot in snapshots:
+        race_id = str(snapshot.get("race_id") or "")
+        for runner in snapshot.get("predictions") or []:
+            if not isinstance(runner, Mapping):
+                continue
+            runner_count += 1
+            history_source_counts[str(runner.get("history_source") or "DATA_MISSING")] += 1
+            history_match_counts[str(runner.get("history_match_status") or "DATA_MISSING")] += 1
+            db_history_match_counts[
+                str(runner.get("db_history_match_status") or "DATA_MISSING")
+            ] += 1
+            runner_inclusion_counts[
+                str(runner.get("runner_inclusion_reason") or "DATA_MISSING")
+            ] += 1
+            distance_source = str(runner.get("distance_source") or "DATA_MISSING")
+            grade_source = str(runner.get("grade_source") or "DATA_MISSING")
+            distance_source_counts[distance_source] += 1
+            grade_source_counts[grade_source] += 1
+            metadata_safe = runner.get("metadata_is_leakage_safe")
+            metadata_safe_counts[str(metadata_safe)] += 1
+            if metadata_safe is True and distance_source != "default_missing_target":
+                target_distance_races.add(race_id)
+            if metadata_safe is True and grade_source != "default_missing_target":
+                target_grade_races.add(race_id)
+            for source in runner.get("rejected_metadata_sources") or []:
+                rejected_metadata_counts[str(source)] += 1
+
+    return {
+        "runner_count": runner_count,
+        "history_source_distribution": dict(history_source_counts),
+        "history_match_status_distribution": dict(history_match_counts),
+        "db_history_match_status_distribution": dict(db_history_match_counts),
+        "runner_inclusion_reason_distribution": dict(runner_inclusion_counts),
+        "distance_source_distribution": dict(distance_source_counts),
+        "grade_source_distribution": dict(grade_source_counts),
+        "metadata_is_leakage_safe_distribution": dict(metadata_safe_counts),
+        "rejected_metadata_source_distribution": dict(rejected_metadata_counts),
+        "target_distance_present_races": len(target_distance_races),
+        "target_grade_present_races": len(target_grade_races),
+    }
+
+
 def _corpus_readiness_report(
     *,
     files_found: int,
@@ -903,6 +958,7 @@ def evaluate_snapshots(db_path: str, snapshot_paths: list[str]) -> dict[str, Any
     readiness_status_counts: Counter[str] = Counter()
     rejected_snapshots: list[dict[str, str]] = []
     readiness_failures: list[dict[str, Any]] = []
+    loaded_snapshots: list[Mapping[str, Any]] = []
 
     with _open_readonly(db_path) as conn:
         for path in files:
@@ -912,6 +968,7 @@ def evaluate_snapshots(db_path: str, snapshot_paths: list[str]) -> dict[str, Any
             except Exception as exc:
                 rejected_snapshots.append({"path": str(path), "reason": str(exc)})
                 continue
+            loaded_snapshots.append(snapshot)
             readiness = _snapshot_readiness(snapshot)
             readiness_status_counts[str(readiness.get("status") or "unknown")] += 1
             if readiness.get("status") != "READY":
@@ -935,6 +992,7 @@ def evaluate_snapshots(db_path: str, snapshot_paths: list[str]) -> dict[str, Any
         readiness_status_counts=readiness_status_counts,
         readiness_failures=readiness_failures,
     )
+    provenance_report = _snapshot_provenance_report(loaded_snapshots)
 
     scorable_rows = [row for row in rows if row.get("win_prob_norm") is not None]
     if not scorable_rows:
@@ -944,6 +1002,7 @@ def evaluate_snapshots(db_path: str, snapshot_paths: list[str]) -> dict[str, Any
             "snapshot_files": len(files),
             "rejected_snapshots": rejected_snapshots,
             "snapshot_corpus_readiness": corpus_readiness,
+            "snapshot_provenance_report": provenance_report,
             "lifecycle_counts": dict(lifecycle_counts),
             "label_quality_counts": dict(label_quality_counts),
             "metrics_by_arm": {},
@@ -966,6 +1025,7 @@ def evaluate_snapshots(db_path: str, snapshot_paths: list[str]) -> dict[str, Any
         "runner_rows_scored": len(scorable_rows),
         "lifecycle_counts": dict(lifecycle_counts),
         "label_quality_counts": dict(label_quality_counts),
+        "snapshot_provenance_report": provenance_report,
         "ev_roi_coverage": _ev_roi_coverage(scorable_rows),
         "metrics_by_arm": metrics_by_arm,
         "failure_mode_diagnostics": _failure_mode_diagnostics(scorable_rows),

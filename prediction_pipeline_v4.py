@@ -16,6 +16,7 @@ import sqlite3
 from typing import Any, Optional
 
 from ml_system_v4 import MLSystemV4
+from temporal_feature_builder import classify_dog_history_status
 from utils.feature_flags import load_flags
 from utils.leakage_guard import strip_target_leakage_columns
 from src.parsers.csv_ingestion import CsvIngestion
@@ -117,6 +118,40 @@ def _append_quality_flag(prediction: dict[str, Any], flag: str) -> None:
     if flag not in flags:
         flags.append(flag)
     prediction["quality_flags"] = flags
+
+
+def _coerce_quality_flags(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [part.strip() for part in value.split(",") if part.strip()]
+    if isinstance(value, (list, tuple, set)):
+        return [str(part).strip() for part in value if str(part).strip()]
+    return []
+
+
+def _is_present_metadata_value(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (dict, list, tuple, set)):
+        return bool(value)
+    try:
+        return not bool(pd.isna(value))
+    except (TypeError, ValueError):
+        return True
+
+
+def _runner_inclusion_reason(prediction: dict[str, Any]) -> str:
+    flags = set(_coerce_quality_flags(prediction.get("quality_flags")))
+    status = str(prediction.get("quality_filter_status") or "")
+    if (
+        status == "retained_for_runner_alignment"
+        or "optimizer_retained_low_quality_for_runner_alignment" in flags
+    ):
+        return "model_scored_low_confidence_retained"
+    return "model_scored"
 
 
 def _market_disagreement_threshold() -> float:
@@ -351,6 +386,99 @@ class PredictionPipelineV4:
         self.ml_system_v4 = _get_cached_ml_system_v4(self.db_path)
         logger.info("🚀 Prediction Pipeline V4 - Advanced System Initialized")
 
+    def _target_timestamp_for_history_provenance(self, race_data: pd.DataFrame):
+        try:
+            builder = getattr(self.ml_system_v4, "temporal_builder", None)
+            if builder is not None and hasattr(builder, "get_race_timestamp"):
+                return builder.get_race_timestamp(race_data.iloc[0])
+        except Exception:
+            pass
+        try:
+            return pd.to_datetime(race_data.iloc[0].get("race_date")).to_pydatetime()
+        except Exception:
+            return datetime.now()
+
+    def _annotate_history_provenance(self, race_data: pd.DataFrame) -> pd.DataFrame:
+        if race_data is None or race_data.empty:
+            return race_data
+
+        annotated = race_data.copy()
+        target_timestamp = self._target_timestamp_for_history_provenance(annotated)
+        try:
+            lookback_days = int(
+                getattr(
+                    getattr(self.ml_system_v4, "temporal_builder", None),
+                    "default_lookback_days",
+                    365,
+                )
+            )
+        except Exception:
+            lookback_days = 365
+
+        history_sources: list[str] = []
+        history_match_statuses: list[str] = []
+        db_history_match_statuses: list[str] = []
+        db_result_counts: list[int] = []
+        provenance_flags: list[list[str]] = []
+        diagnostics: list[dict[str, Any]] = []
+
+        for _, row in annotated.iterrows():
+            dog_name = str(row.get("dog_clean_name") or "").strip()
+            try:
+                embedded_count = int(pd.to_numeric(row.get("csv_historical_races"), errors="coerce") or 0)
+            except Exception:
+                embedded_count = 0
+            db_report = classify_dog_history_status(
+                self.db_path,
+                dog_name,
+                target_timestamp,
+                lookback_days=lookback_days,
+            )
+            db_count = int(db_report.get("db_result_history_count") or 0)
+            db_status = str(
+                db_report.get("db_history_match_status") or "no_matching_identity"
+            )
+            has_db = db_count > 0
+            has_embedded = embedded_count > 0
+
+            if has_db and has_embedded:
+                history_source = "db_and_embedded_csv_history"
+                history_match_status = "matched_identity_with_pre_target_results"
+            elif has_db:
+                history_source = "db_result_history"
+                history_match_status = "matched_identity_with_pre_target_results"
+            elif has_embedded:
+                history_source = "embedded_csv_form_history"
+                history_match_status = "embedded_history_only"
+            else:
+                history_source = "no_usable_history"
+                history_match_status = db_status
+
+            flags: list[str] = []
+            if history_source == "no_usable_history":
+                flags.append("missing_usable_history")
+            elif history_source == "embedded_csv_form_history":
+                flags.append("embedded_csv_history_only")
+            if db_status == "matched_identity_rows_temporally_excluded":
+                flags.append("db_history_temporally_excluded")
+            if db_status == "matched_identity_rows_missing_finish_position":
+                flags.append("db_history_missing_finish_position")
+
+            history_sources.append(history_source)
+            history_match_statuses.append(history_match_status)
+            db_history_match_statuses.append(db_status)
+            db_result_counts.append(db_count)
+            provenance_flags.append(flags)
+            diagnostics.append(db_report.get("db_history_counts") or {})
+
+        annotated["history_source"] = history_sources
+        annotated["history_match_status"] = history_match_statuses
+        annotated["db_history_match_status"] = db_history_match_statuses
+        annotated["db_result_history_count"] = db_result_counts
+        annotated["provenance_quality_flags"] = provenance_flags
+        annotated["db_history_diagnostic"] = diagnostics
+        return annotated
+
     def predict_race_file(
         self, race_file_path: str, tgr_enabled: bool | None = None, optimizer_enabled: bool | None = None
     ) -> dict:
@@ -463,6 +591,7 @@ class PredictionPipelineV4:
             race_data, dropped_leakage_fields = strip_target_leakage_columns(
                 race_data, allow_labels=False
             )
+            race_data = self._annotate_history_provenance(race_data)
 
             # Apply runtime TGR toggle if provided
             try:
@@ -963,6 +1092,15 @@ class PredictionPipelineV4:
                                     "target_field_warning",
                                     "distance_source",
                                     "grade_source",
+                                    "metadata_source_detail",
+                                    "metadata_is_leakage_safe",
+                                    "rejected_metadata_sources",
+                                    "history_source",
+                                    "history_match_status",
+                                    "db_history_match_status",
+                                    "db_result_history_count",
+                                    "db_history_diagnostic",
+                                    "provenance_quality_flags",
                                     "weight_source",
                                     "starting_price_source",
                                 ]
@@ -977,10 +1115,11 @@ class PredictionPipelineV4:
                                             continue
                                         entry = {}
                                         for c in csv_cols:
-                                            if c in race_data.columns and pd.notna(
-                                                row_df.get(c)
-                                            ):
-                                                entry[c] = row_df.get(c)
+                                            if c not in race_data.columns:
+                                                continue
+                                            value = row_df.get(c)
+                                            if _is_present_metadata_value(value):
+                                                entry[c] = value
                                         if entry:
                                             lookup[key] = entry
                                 # Merge into predictions
@@ -996,6 +1135,10 @@ class PredictionPipelineV4:
                                     if key in lookup:
                                         for k, v in lookup[key].items():
                                             try:
+                                                if k == "provenance_quality_flags":
+                                                    for flag in _coerce_quality_flags(v):
+                                                        _append_quality_flag(p, flag)
+                                                    continue
                                                 # Unconditionally reflect enriched CSV stats into predictions
                                                 p[k] = v
                                             except Exception:
@@ -1004,6 +1147,7 @@ class PredictionPipelineV4:
                                     # Ensure presence of csv_historical_races key for downstream UI logic
                                     if "csv_historical_races" not in p:
                                         p["csv_historical_races"] = 0
+                                    p["runner_inclusion_reason"] = _runner_inclusion_reason(p)
                             except Exception:
                                 pass
                     except Exception:
@@ -1047,6 +1191,7 @@ class PredictionPipelineV4:
                         for source_col, field_name in (
                             ("distance_source", "distance"),
                             ("grade_source", "grade"),
+                            ("metadata_is_leakage_safe", "metadata_is_leakage_safe"),
                             ("weight_source", "weight"),
                             ("starting_price_source", "starting_price"),
                         ):
@@ -1064,6 +1209,20 @@ class PredictionPipelineV4:
                                         target_field_sources[field_name] = values[0]
                             except Exception:
                                 continue
+                        metadata_source_detail = None
+                        rejected_metadata_sources = []
+                        try:
+                            if "metadata_source_detail" in cols and len(race_data) > 0:
+                                value = race_data["metadata_source_detail"].iloc[0]
+                                if _is_present_metadata_value(value):
+                                    metadata_source_detail = value
+                            if "rejected_metadata_sources" in cols and len(race_data) > 0:
+                                for value in race_data["rejected_metadata_sources"]:
+                                    for item in _coerce_quality_flags(value):
+                                        if item not in rejected_metadata_sources:
+                                            rejected_metadata_sources.append(item)
+                        except Exception:
+                            metadata_source_detail = None
                         target_field_warnings = []
                         try:
                             if "target_field_warning" in cols and len(race_data) > 0:
@@ -1101,6 +1260,8 @@ class PredictionPipelineV4:
                                 "total_dogs": total_dogs,
                                 "parser_context": parser_context,
                                 "target_field_sources": target_field_sources,
+                                "metadata_source_detail": metadata_source_detail,
+                                "rejected_metadata_sources": rejected_metadata_sources,
                                 "target_field_warnings": target_field_warnings,
                             },
                         )
@@ -1231,6 +1392,30 @@ class PredictionPipelineV4:
             except Exception:
                 return None
 
+        def _target_metadata_from_filename() -> dict[str, str]:
+            meta: dict[str, str] = {}
+            stem = filename.replace(".csv", "")
+            try:
+                distance_match = _re.search(
+                    r"\b(?:race[-_\s]?distance|distance|dist)[-_=:\s]+(\d{3,4})\s*m?\b",
+                    stem,
+                    _re.I,
+                )
+                if distance_match:
+                    meta["distance"] = distance_match.group(1)
+                grade_match = _re.search(
+                    r"\b(?:race[-_\s]?grade|grade|class)[-_=:\s]+([A-Za-z0-9]+)\b",
+                    stem,
+                    _re.I,
+                )
+                if grade_match:
+                    value = grade_match.group(1)
+                    if value:
+                        meta["grade"] = str(value).upper()
+            except Exception:
+                return {}
+            return meta
+
         def _looks_like_embedded_form_history() -> bool:
             columns = {str(c).strip().upper() for c in race_data.columns}
             historical_columns = {
@@ -1259,20 +1444,30 @@ class PredictionPipelineV4:
         if embedded_form_history:
             target_field_warnings.append("embedded_form_history_detected")
 
+        filename_target_meta = _target_metadata_from_filename()
+
+        safe_distance_columns = (
+            "Race Distance",
+            "race_distance",
+            "target_distance",
+            "current_race_distance",
+        )
+        if not embedded_form_history:
+            safe_distance_columns = safe_distance_columns + ("Distance",)
         explicit_distance, explicit_distance_column = _first_non_empty(
-            (
-                "Race Distance",
-                "race_distance",
-                "target_distance",
-                "current_race_distance",
-                "Distance",
-            )
+            safe_distance_columns
         )
         race_level_distance = None
         race_level_distance_source = None
+        race_level_distance_detail = None
         if explicit_distance is not None:
             race_level_distance = safe_float_convert(explicit_distance, 500.0)
             race_level_distance_source = f"target_column:{explicit_distance_column}"
+            race_level_distance_detail = f"source_csv_target_column:{explicit_distance_column}"
+        elif filename_target_meta.get("distance"):
+            race_level_distance = safe_float_convert(filename_target_meta["distance"], 500.0)
+            race_level_distance_source = "filename:distance"
+            race_level_distance_detail = "filename_encoded_distance"
         elif embedded_form_history:
             inferred_distance = _mode_numeric("DIST")
             if inferred_distance is not None:
@@ -1282,14 +1477,26 @@ class PredictionPipelineV4:
             race_level_distance = None
             race_level_distance_source = "default_missing_target"
 
-        explicit_grade, explicit_grade_column = _first_non_empty(
-            ("Race Grade", "race_grade", "target_grade", "current_race_grade", "Grade")
+        safe_grade_columns = (
+            "Race Grade",
+            "race_grade",
+            "target_grade",
+            "current_race_grade",
         )
+        if not embedded_form_history:
+            safe_grade_columns = safe_grade_columns + ("Grade",)
+        explicit_grade, explicit_grade_column = _first_non_empty(safe_grade_columns)
         race_level_grade = None
         race_level_grade_source = None
+        race_level_grade_detail = None
         if explicit_grade is not None:
             race_level_grade = str(explicit_grade).upper()
             race_level_grade_source = f"target_column:{explicit_grade_column}"
+            race_level_grade_detail = f"source_csv_target_column:{explicit_grade_column}"
+        elif filename_target_meta.get("grade"):
+            race_level_grade = str(filename_target_meta["grade"]).upper()
+            race_level_grade_source = "filename:grade"
+            race_level_grade_detail = "filename_encoded_grade"
         elif embedded_form_history:
             race_level_grade = "G5"
             race_level_grade_source = "default_missing_target"
@@ -1366,25 +1573,64 @@ class PredictionPipelineV4:
                     race_level_distance if race_level_distance is not None else 500.0
                 )
                 distance_source = race_level_distance_source or "default_missing_target"
+                distance_detail = (
+                    race_level_distance_detail
+                    or "default_missing_target:no_safe_pre_race_distance"
+                )
                 grade_value = race_level_grade or "G5"
                 grade_source = race_level_grade_source or "default_missing_target"
+                grade_detail = (
+                    race_level_grade_detail
+                    or "default_missing_target:no_safe_pre_race_grade"
+                )
             else:
                 weight_value = safe_float_convert(_row_value(row, "WGT"), 30.0)
                 weight_source = "csv_row:WGT"
                 starting_price_value = safe_float_convert(_row_value(row, "SP"), 3.0)
                 starting_price_source = "csv_row:SP"
+                row_distance = _row_value(row, "DIST")
                 distance_value = (
                     race_level_distance
                     if race_level_distance is not None
-                    else safe_float_convert(_row_value(row, "DIST"), 500.0)
+                    else safe_float_convert(row_distance, 500.0)
                 )
-                distance_source = race_level_distance_source or "csv_row:DIST"
+                if race_level_distance_source:
+                    distance_source = race_level_distance_source
+                    distance_detail = race_level_distance_detail
+                elif row_distance is not None:
+                    distance_source = "csv_target_row:DIST"
+                    distance_detail = "source_csv_target_row:DIST"
+                else:
+                    distance_source = "default_missing_target"
+                    distance_detail = "default_missing_target:no_safe_pre_race_distance"
                 if race_level_grade is not None:
                     grade_value = race_level_grade
                     grade_source = race_level_grade_source or "target_column"
+                    grade_detail = race_level_grade_detail
                 else:
-                    grade_value = str(_row_value(row, "G", "G5") or "G5").upper()
-                    grade_source = "csv_row:G"
+                    row_grade = _row_value(row, "G")
+                    grade_value = str(row_grade or "G5").upper()
+                    if row_grade is not None:
+                        grade_source = "csv_target_row:G"
+                        grade_detail = "source_csv_target_row:G"
+                    else:
+                        grade_source = "default_missing_target"
+                        grade_detail = "default_missing_target:no_safe_pre_race_grade"
+
+            rejected_metadata_sources: list[str] = []
+            if embedded_form_history:
+                if "DIST" in race_data.columns and race_level_distance_source == "default_missing_target":
+                    rejected_metadata_sources.append("embedded_form_history:DIST")
+                if "G" in race_data.columns and race_level_grade_source == "default_missing_target":
+                    rejected_metadata_sources.append("embedded_form_history:G")
+            metadata_source_detail = {
+                "distance": distance_detail,
+                "grade": grade_detail,
+            }
+            metadata_is_leakage_safe = any(
+                source not in (None, "", "default_missing_target")
+                for source in (distance_source, grade_source)
+            )
 
             mapped_row = {
                 "race_id": filename.replace(".csv", ""),
@@ -1398,6 +1644,9 @@ class PredictionPipelineV4:
                 "venue": str(venue).upper().replace(" ", "_").replace("/", "_"),
                 "grade": grade_value,
                 "grade_source": grade_source,
+                "metadata_source_detail": metadata_source_detail,
+                "metadata_is_leakage_safe": bool(metadata_is_leakage_safe),
+                "rejected_metadata_sources": rejected_metadata_sources,
                 "track_condition": "Good",
                 "weather": "Fine",
                 "temperature": 20.0,

@@ -2,12 +2,14 @@ import importlib.util
 import sqlite3
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pandas as pd
 
 from enhanced_accuracy_optimizer import AccuracyOptimizer
 from temporal_feature_builder import (
     TemporalFeatureBuilder,
+    classify_dog_history_status,
     normalize_dog_identity_key,
 )
 from utils.leakage_guard import assert_no_target_leakage_columns
@@ -127,6 +129,68 @@ def test_missing_db_history_has_concrete_reason(tmp_path):
     )
 
 
+def test_history_status_reports_matched_identity_rows_missing_finish_position(tmp_path):
+    db_path = tmp_path / "history.db"
+    conn = _init_history_db(db_path)
+    conn.execute(
+        """
+        INSERT INTO race_metadata (
+            race_id, venue, grade, distance, track_condition, weather, field_size,
+            race_date, race_time
+        ) VALUES ('missing_finish', 'MEA', 'G5', '525', 'Good', 'Fine', 8,
+            '2026-05-01', '19:20')
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO dog_race_data (
+            race_id, dog_name, dog_clean_name, box_number, finish_position,
+            individual_time
+        ) VALUES ('missing_finish', 'Missing Finish', 'Missing Finish', 1, NULL, NULL)
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    report = classify_dog_history_status(
+        str(db_path), "Missing Finish", datetime(2026, 5, 21, 12, 0)
+    )
+
+    assert report["db_result_history_count"] == 0
+    assert report["db_history_match_status"] == "matched_identity_rows_missing_finish_position"
+
+
+def test_history_status_does_not_treat_target_null_finish_as_history(tmp_path):
+    db_path = tmp_path / "history.db"
+    conn = _init_history_db(db_path)
+    conn.execute(
+        """
+        INSERT INTO race_metadata (
+            race_id, venue, grade, distance, track_condition, weather, field_size,
+            race_date, race_time
+        ) VALUES ('target_unresulted', 'MEA', 'G5', '525', 'Good', 'Fine', 8,
+            '2026-05-21', '19:20')
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO dog_race_data (
+            race_id, dog_name, dog_clean_name, box_number, finish_position,
+            individual_time
+        ) VALUES ('target_unresulted', 'Target Null', 'Target Null', 1, NULL, NULL)
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    report = classify_dog_history_status(
+        str(db_path), "Target Null", datetime(2026, 5, 21, 12, 0)
+    )
+
+    assert report["db_result_history_count"] == 0
+    assert report["db_history_match_status"] == "matched_identity_no_result_rows"
+
+
 def test_form_guide_csv_forward_fill_and_target_metadata_are_leakage_safe():
     race_data = pd.DataFrame(
         [
@@ -173,12 +237,160 @@ def test_form_guide_csv_forward_fill_and_target_metadata_are_leakage_safe():
     assert mapped.loc[0, "distance_source"] == "target_column:Race Distance"
     assert mapped.loc[0, "grade"] == "GRADE 5"
     assert mapped.loc[0, "grade_source"] == "target_column:Race Grade"
+    assert bool(mapped.loc[0, "metadata_is_leakage_safe"]) is True
+    assert mapped.loc[0, "metadata_source_detail"] == {
+        "distance": "source_csv_target_column:Race Distance",
+        "grade": "source_csv_target_column:Race Grade",
+    }
     assert mapped.loc[0, "finish_position"] is None
     assert mapped.loc[0, "individual_time"] is None
     assert mapped.loc[0, "starting_price_source"] == "default_missing_target"
     assert_no_target_leakage_columns(
         ["box_number", "dog_clean_name", "distance", "grade", "csv_historical_races"]
     )
+
+
+def test_embedded_form_defaults_target_metadata_and_excludes_future_rows():
+    race_data = pd.DataFrame(
+        [
+            {
+                "Dog Name": "1. Alpha Runner",
+                "PLC": "2",
+                "BOX": "1",
+                "DIST": "520",
+                "DATE": "2026-05-10",
+                "TRACK": "MEA",
+                "G": "5",
+                "TIME": "30.12",
+            },
+            {
+                "Dog Name": '""',
+                "PLC": "1",
+                "BOX": "1",
+                "DIST": "520",
+                "DATE": "2026-05-21",
+                "TRACK": "MEA",
+                "G": "5",
+                "TIME": "29.90",
+            },
+        ]
+    )
+    pipeline = object.__new__(PredictionPipelineV4)
+
+    mapped = pipeline._map_csv_to_v4_format(
+        race_data, "Race 7 - MEA - 2026-05-21.csv"
+    )
+
+    assert mapped.loc[0, "distance_source"] == "default_missing_target"
+    assert mapped.loc[0, "grade_source"] == "default_missing_target"
+    assert bool(mapped.loc[0, "metadata_is_leakage_safe"]) is False
+    assert mapped.loc[0, "rejected_metadata_sources"] == [
+        "embedded_form_history:DIST",
+        "embedded_form_history:G",
+    ]
+    assert mapped.loc[0, "csv_historical_races"] == 1
+    assert mapped.loc[0, "csv_history_rows_dropped_post_target"] == 1
+    assert mapped.loc[0, "finish_position"] is None
+
+
+def test_generic_post_result_metadata_is_rejected_for_embedded_form_history():
+    race_data = pd.DataFrame(
+        [
+            {
+                "Dog Name": "1. Alpha Runner",
+                "PLC": "2",
+                "BOX": "1",
+                "DIST": "520",
+                "Distance": "520m",
+                "Grade": "Grade 5",
+                "DATE": "2026-05-10",
+                "TRACK": "MEA",
+                "G": "5",
+                "TIME": "30.12",
+            }
+        ]
+    )
+    pipeline = object.__new__(PredictionPipelineV4)
+
+    mapped = pipeline._map_csv_to_v4_format(
+        race_data, "Race 7 - MEA - 2026-05-21.csv"
+    )
+
+    assert mapped.loc[0, "distance_source"] == "default_missing_target"
+    assert mapped.loc[0, "grade_source"] == "default_missing_target"
+    assert bool(mapped.loc[0, "metadata_is_leakage_safe"]) is False
+
+
+def test_filename_venue_token_does_not_fill_target_grade():
+    race_data = pd.DataFrame(
+        [
+            {
+                "Dog Name": "1. Alpha Runner",
+                "PLC": "2",
+                "BOX": "1",
+                "DIST": "520",
+                "DATE": "2026-05-10",
+                "TRACK": "AP_K",
+                "G": "5",
+                "TIME": "30.12",
+            }
+        ]
+    )
+    pipeline = object.__new__(PredictionPipelineV4)
+
+    mapped = pipeline._map_csv_to_v4_format(
+        race_data, "Race 1 - AP_K - 2026-05-21.csv"
+    )
+
+    assert mapped.loc[0, "distance_source"] == "default_missing_target"
+    assert mapped.loc[0, "grade_source"] == "default_missing_target"
+    assert bool(mapped.loc[0, "metadata_is_leakage_safe"]) is False
+
+
+def test_history_provenance_distinguishes_db_embedded_and_no_history(tmp_path):
+    db_path = tmp_path / "history.db"
+    conn = _init_history_db(db_path)
+    _insert_history(conn, "hist_alpha", "Alpha Runner", race_date="2026-05-01")
+    conn.commit()
+    conn.close()
+
+    pipeline = object.__new__(PredictionPipelineV4)
+    pipeline.db_path = str(db_path)
+    pipeline.ml_system_v4 = SimpleNamespace(
+        temporal_builder=TemporalFeatureBuilder(str(db_path))
+    )
+    race_data = pd.DataFrame(
+        [
+            {
+                "dog_clean_name": "Alpha Runner",
+                "race_date": "2026-05-21",
+                "race_time": "12:00",
+                "csv_historical_races": 2,
+            },
+            {
+                "dog_clean_name": "Embedded Only",
+                "race_date": "2026-05-21",
+                "race_time": "12:00",
+                "csv_historical_races": 3,
+            },
+            {
+                "dog_clean_name": "No History",
+                "race_date": "2026-05-21",
+                "race_time": "12:00",
+                "csv_historical_races": 0,
+            },
+        ]
+    )
+
+    annotated = pipeline._annotate_history_provenance(race_data)
+
+    assert annotated.loc[0, "history_source"] == "db_and_embedded_csv_history"
+    assert annotated.loc[0, "history_match_status"] == "matched_identity_with_pre_target_results"
+    assert annotated.loc[1, "history_source"] == "embedded_csv_form_history"
+    assert annotated.loc[1, "history_match_status"] == "embedded_history_only"
+    assert "embedded_csv_history_only" in annotated.loc[1, "provenance_quality_flags"]
+    assert annotated.loc[2, "history_source"] == "no_usable_history"
+    assert annotated.loc[2, "history_match_status"] == "no_matching_identity"
 
 
 def test_incomplete_runner_sets_are_rejected():

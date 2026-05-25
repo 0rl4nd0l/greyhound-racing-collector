@@ -45,6 +45,131 @@ def _dog_identity_key_sql(column: str) -> str:
         expression = f"REPLACE({expression}, {_sql_string_literal(token)}, '')"
     return f"UPPER({expression})"
 
+
+def classify_dog_history_status(
+    db_path: str,
+    dog_name: str,
+    target_timestamp: datetime,
+    lookback_days: int = 365,
+) -> dict[str, Any]:
+    """Classify DB result-history availability for reporting, not feature input."""
+    identity_key = normalize_dog_identity_key(dog_name)
+    report: dict[str, Any] = {
+        "db_history_match_status": "no_matching_identity",
+        "db_result_history_count": 0,
+        "db_history_counts": {},
+    }
+    if not identity_key:
+        return report
+
+    dog_clean_key_sql = _dog_identity_key_sql("d.dog_clean_name")
+    dog_name_key_sql = _dog_identity_key_sql("d.dog_name")
+    identity_filter = f"({dog_clean_key_sql} = ? OR {dog_name_key_sql} = ?)"
+    target_date = target_timestamp.strftime("%Y-%m-%d")
+    cutoff_date = (target_timestamp - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
+
+    try:
+        with sqlite3.connect(db_path) as conn:
+            params = (identity_key, identity_key)
+            total_rows = int(
+                conn.execute(
+                    f"SELECT COUNT(*) FROM dog_race_data d WHERE {identity_filter}",
+                    params,
+                ).fetchone()[0]
+            )
+            if total_rows <= 0:
+                report["db_history_counts"] = {"identity_rows": 0}
+                return report
+
+            counts = {
+                "identity_rows": total_rows,
+                "usable_pre_target_result_rows": int(
+                    conn.execute(
+                        f"""
+                        SELECT COUNT(*)
+                        FROM dog_race_data d
+                        JOIN race_metadata r ON d.race_id = r.race_id
+                        WHERE {identity_filter}
+                            AND r.race_date IS NOT NULL
+                            AND d.finish_position IS NOT NULL
+                            AND date(r.race_date) < date(?)
+                            AND date(r.race_date) >= date(?)
+                        """,
+                        (*params, target_date, cutoff_date),
+                    ).fetchone()[0]
+                ),
+                "pre_target_result_rows": int(
+                    conn.execute(
+                        f"""
+                        SELECT COUNT(*)
+                        FROM dog_race_data d
+                        JOIN race_metadata r ON d.race_id = r.race_id
+                        WHERE {identity_filter}
+                            AND r.race_date IS NOT NULL
+                            AND d.finish_position IS NOT NULL
+                            AND date(r.race_date) < date(?)
+                        """,
+                        (*params, target_date),
+                    ).fetchone()[0]
+                ),
+                "date_ge_target_result_rows": int(
+                    conn.execute(
+                        f"""
+                        SELECT COUNT(*)
+                        FROM dog_race_data d
+                        JOIN race_metadata r ON d.race_id = r.race_id
+                        WHERE {identity_filter}
+                            AND r.race_date IS NOT NULL
+                            AND d.finish_position IS NOT NULL
+                            AND date(r.race_date) >= date(?)
+                        """,
+                        (*params, target_date),
+                    ).fetchone()[0]
+                ),
+                "rows_missing_finish_position": int(
+                    conn.execute(
+                        f"""
+                        SELECT COUNT(*)
+                        FROM dog_race_data d
+                        JOIN race_metadata r ON d.race_id = r.race_id
+                        WHERE {identity_filter}
+                            AND r.race_date IS NOT NULL
+                            AND d.finish_position IS NULL
+                            AND date(r.race_date) < date(?)
+                        """,
+                        (*params, target_date),
+                    ).fetchone()[0]
+                ),
+                "rows_missing_race_metadata": int(
+                    conn.execute(
+                        f"""
+                        SELECT COUNT(*)
+                        FROM dog_race_data d
+                        LEFT JOIN race_metadata r ON d.race_id = r.race_id
+                        WHERE {identity_filter}
+                            AND (r.race_id IS NULL OR r.race_date IS NULL)
+                        """,
+                        params,
+                    ).fetchone()[0]
+                ),
+            }
+    except Exception as exc:
+        report["db_history_match_status"] = f"history_status_lookup_failed:{type(exc).__name__}"
+        return report
+
+    usable = int(counts["usable_pre_target_result_rows"])
+    report["db_result_history_count"] = usable
+    report["db_history_counts"] = counts
+    if usable > 0:
+        report["db_history_match_status"] = "matched_identity_with_pre_target_results"
+    elif counts["rows_missing_finish_position"] > 0:
+        report["db_history_match_status"] = "matched_identity_rows_missing_finish_position"
+    elif counts["pre_target_result_rows"] > 0 or counts["date_ge_target_result_rows"] > 0:
+        report["db_history_match_status"] = "matched_identity_rows_temporally_excluded"
+    else:
+        report["db_history_match_status"] = "matched_identity_no_result_rows"
+    return report
+
 # Import TGR integration if available
 try:
     from tgr_prediction_integration import TGRPredictionIntegrator

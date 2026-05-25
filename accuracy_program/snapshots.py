@@ -77,10 +77,28 @@ def _safe_int(value: Any) -> int | None:
         return None
 
 
+def _safe_bool(value: Any) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, str) and not value.strip():
+        return None
+    if isinstance(value, bool):
+        return value
+    if str(value).strip().lower() in {"1", "true", "yes", "on"}:
+        return True
+    if str(value).strip().lower() in {"0", "false", "no", "off"}:
+        return False
+    return None
+
+
 def _quality_flags(row: Mapping[str, Any]) -> list[str]:
-    raw = row.get("quality_flags") or row.get("data_quality_flags") or []
+    raw = row.get("quality_flags")
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        raw = row.get("data_quality_flags")
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        raw = []
     if isinstance(raw, str):
-        return [raw]
+        return [value.strip() for value in raw.split(",") if value.strip()]
     if isinstance(raw, list):
         return [str(value) for value in raw if value not in (None, "")]
     return []
@@ -237,6 +255,8 @@ def _runner_odds_quality_flags(
     row: Mapping[str, Any], odds_snapshot: Mapping[str, Any]
 ) -> list[str]:
     flags = _quality_flags(row)
+    for flag in _quality_flags({"quality_flags": row.get("provenance_quality_flags")}):
+        _add_quality_flag(flags, flag)
     odds = _safe_float(odds_snapshot.get("market_odds_win"))
     if odds is None:
         _add_quality_flag(flags, "missing_live_odds")
@@ -253,6 +273,32 @@ def _runner_odds_quality_flags(
     if not _odds_valid_for_ev(odds_snapshot):
         _add_quality_flag(flags, "invalid_pre_jump_odds")
     return flags
+
+
+def _runner_inclusion_reason(row: Mapping[str, Any]) -> str:
+    value = row.get("runner_inclusion_reason")
+    if value is not None and str(value).strip() != "":
+        return str(value)
+    flags = set(_quality_flags(row))
+    if "optimizer_retained_low_quality_for_runner_alignment" in flags:
+        return "model_scored_low_confidence_retained"
+    if row.get("quality_filter_status") == "retained_for_runner_alignment":
+        return "model_scored_low_confidence_retained"
+    return "model_scored"
+
+
+def _metadata_source_detail(row: Mapping[str, Any]) -> Any:
+    value = row.get("metadata_source_detail")
+    if isinstance(value, Mapping):
+        return dict(value)
+    if value is not None and str(value).strip() != "":
+        return str(value)
+    detail = {}
+    if row.get("distance_source") not in (None, ""):
+        detail["distance"] = row.get("distance_source")
+    if row.get("grade_source") not in (None, ""):
+        detail["grade"] = row.get("grade_source")
+    return detail or None
 
 
 def _snapshot_readiness(
@@ -411,6 +457,18 @@ def _prediction_rows(
                 "odds_match_confidence": _safe_float(odds_match_confidence),
                 "odds_snapshot": odds_snapshot,
                 "ev_win": _ev_win(win_prob_norm, odds_snapshot),
+                "history_source": row.get("history_source"),
+                "history_match_status": row.get("history_match_status"),
+                "db_history_match_status": row.get("db_history_match_status"),
+                "db_result_history_count": _safe_int(row.get("db_result_history_count")),
+                "runner_inclusion_reason": _runner_inclusion_reason(row),
+                "distance_source": row.get("distance_source"),
+                "grade_source": row.get("grade_source"),
+                "metadata_source_detail": _metadata_source_detail(row),
+                "metadata_is_leakage_safe": _safe_bool(row.get("metadata_is_leakage_safe")),
+                "rejected_metadata_sources": _quality_flags(
+                    {"quality_flags": row.get("rejected_metadata_sources")}
+                ),
                 "data_quality_flags": flags,
                 "data_shape": {
                     key: row.get(key)
@@ -419,6 +477,12 @@ def _prediction_rows(
                         "target_field_warning",
                         "distance_source",
                         "grade_source",
+                        "metadata_source_detail",
+                        "metadata_is_leakage_safe",
+                        "rejected_metadata_sources",
+                        "history_source",
+                        "history_match_status",
+                        "db_history_match_status",
                         "field_size_source",
                         "csv_historical_races",
                         "csv_prefixed_history_rows",
