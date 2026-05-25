@@ -13,6 +13,7 @@ import hashlib
 import logging
 import os
 import pickle
+import re
 import sqlite3
 import warnings
 from datetime import datetime, timedelta
@@ -23,6 +24,26 @@ import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+
+def normalize_dog_identity_key(name: Any) -> str:
+    """Return a stable dog identity key for DB lookups across punctuation variants."""
+    try:
+        return re.sub(r"[^A-Z0-9]", "", str(name or "").upper())
+    except Exception:
+        return ""
+
+
+def _sql_string_literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _dog_identity_key_sql(column: str) -> str:
+    """SQLite-native equivalent for the common dog-name punctuation variants."""
+    expression = f"COALESCE({column}, '')"
+    for token in (" ", "-", ".", ",", "'", "`", "’", '"', "/", "\t", ":", "(", ")"):
+        expression = f"REPLACE({expression}, {_sql_string_literal(token)}, '')"
+    return f"UPPER({expression})"
 
 # Import TGR integration if available
 try:
@@ -232,6 +253,84 @@ class TemporalFeatureBuilder:
         except Exception:
             return np.nan
 
+    def _missing_db_history_reason(
+        self, dog_name: str, target_timestamp: datetime, cutoff_date: str
+    ) -> str:
+        """Classify why a dog has no usable DB history without changing features."""
+        identity_key = normalize_dog_identity_key(dog_name)
+        if not identity_key:
+            return "empty_dog_identity"
+
+        dog_clean_key_sql = _dog_identity_key_sql("d.dog_clean_name")
+        dog_name_key_sql = _dog_identity_key_sql("d.dog_name")
+        identity_filter = """
+            (
+                {dog_clean_key_sql} = ?
+                OR {dog_name_key_sql} = ?
+            )
+        """.format(
+            dog_clean_key_sql=dog_clean_key_sql,
+            dog_name_key_sql=dog_name_key_sql,
+        )
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                total_rows = conn.execute(
+                    f"SELECT COUNT(*) FROM dog_race_data d WHERE {identity_filter}",
+                    (identity_key, identity_key),
+                ).fetchone()[0]
+                if not total_rows:
+                    return "no_matching_dog_identity_in_db"
+
+                result_rows = conn.execute(
+                    f"""
+                    SELECT COUNT(*)
+                    FROM dog_race_data d
+                    JOIN race_metadata r ON d.race_id = r.race_id
+                    WHERE {identity_filter}
+                        AND r.race_date IS NOT NULL
+                        AND d.finish_position IS NOT NULL
+                    """,
+                    (identity_key, identity_key),
+                ).fetchone()[0]
+                if not result_rows:
+                    return "matching_identity_has_no_result_rows"
+
+                target_date = target_timestamp.strftime("%Y-%m-%d")
+                pre_target_rows = conn.execute(
+                    f"""
+                    SELECT COUNT(*)
+                    FROM dog_race_data d
+                    JOIN race_metadata r ON d.race_id = r.race_id
+                    WHERE {identity_filter}
+                        AND r.race_date IS NOT NULL
+                        AND d.finish_position IS NOT NULL
+                        AND date(r.race_date) < date(?)
+                    """,
+                    (identity_key, identity_key, target_date),
+                ).fetchone()[0]
+                if not pre_target_rows:
+                    return "matching_result_rows_not_before_target"
+
+                in_window_rows = conn.execute(
+                    f"""
+                    SELECT COUNT(*)
+                    FROM dog_race_data d
+                    JOIN race_metadata r ON d.race_id = r.race_id
+                    WHERE {identity_filter}
+                        AND r.race_date IS NOT NULL
+                        AND d.finish_position IS NOT NULL
+                        AND date(r.race_date) < date(?)
+                        AND date(r.race_date) >= date(?)
+                    """,
+                    (identity_key, identity_key, target_date, cutoff_date),
+                ).fetchone()[0]
+                if not in_window_rows:
+                    return "matching_result_rows_before_lookback_window"
+
+                return "matching_rows_filtered_after_timestamp"
+        except Exception as exc:
+            return f"reason_lookup_failed:{type(exc).__name__}"
+
     def load_dog_historical_data(
         self, dog_name: str, target_timestamp: datetime, lookback_days: int = None
     ) -> pd.DataFrame:
@@ -276,20 +375,13 @@ class TemporalFeatureBuilder:
                 f"DB query @ {self.db_path} for dog='{dog_name}' as of {target_timestamp.date()}: raw_rows={raw_count}"
             )
 
-            # Fallback: retry with sanitized name if no rows
+            # Fallback: retry with a punctuation-free equality key. Keep this
+            # exact to avoid substring contamination across unrelated dogs.
             if historical_data.empty:
                 try:
-                    sanitized = (
-                        str(dog_name)
-                        .replace('"', "")
-                        .replace("'", "")
-                        .replace("`", "")
-                        .replace("’", "")
-                        .strip()
-                        .upper()
-                    )
-                    # Case-insensitive sanitized comparison for resilience to punctuation/case
-                    # Safer fallback: compare against a lightly-normalized DB expression and use LIKE with sanitized param
+                    normalized_key = normalize_dog_identity_key(dog_name)
+                    dog_clean_key_sql = _dog_identity_key_sql("d.dog_clean_name")
+                    dog_name_key_sql = _dog_identity_key_sql("d.dog_name")
                     query_fallback = """
                     SELECT 
                         d.*,
@@ -301,26 +393,39 @@ class TemporalFeatureBuilder:
                     LEFT JOIN race_metadata r ON d.race_id = r.race_id
                     LEFT JOIN enhanced_expert_data e ON d.race_id = e.race_id 
                         AND d.dog_clean_name = e.dog_clean_name
-                    WHERE REPLACE(REPLACE(REPLACE(REPLACE(UPPER(d.dog_clean_name), ' ', ''), '-', ''), '.', ''), ',', '') LIKE ?
+                    WHERE (
+                            {dog_clean_key_sql} = ?
+                            OR {dog_name_key_sql} = ?
+                        )
                         AND r.race_date IS NOT NULL
                         AND d.finish_position IS NOT NULL
                         AND date(r.race_date) >= date(?)
                     ORDER BY r.race_date DESC, r.race_time DESC
                     LIMIT 100
-                    """
+                    """.format(
+                        dog_clean_key_sql=dog_clean_key_sql,
+                        dog_name_key_sql=dog_name_key_sql,
+                    )
                     with sqlite3.connect(self.db_path) as conn2:
                         historical_data = pd.read_sql_query(
-                            query_fallback, conn2, params=[f"%{sanitized}%", cutoff_date]
+                            query_fallback,
+                            conn2,
+                            params=[normalized_key, normalized_key, cutoff_date],
                         )
                     raw_count = len(historical_data)
                     logger.debug(
-                        f"Fallback DB query for sanitized dog='{sanitized}': raw_rows={raw_count}"
+                        f"Fallback DB query for dog_key='{normalized_key}': raw_rows={raw_count}"
                     )
                 except Exception as _e:
                     logger.debug(f"Fallback query failed: {_e}")
 
             if historical_data.empty:
-                logger.info(f"No historical rows found in DB for dog='{dog_name}'")
+                reason = self._missing_db_history_reason(
+                    dog_name, target_timestamp, cutoff_date
+                )
+                logger.info(
+                    f"No historical rows found in DB for dog='{dog_name}' reason={reason}"
+                )
                 return pd.DataFrame()
 
             # Filter to only races before target timestamp

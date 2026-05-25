@@ -1182,7 +1182,13 @@ class PredictionPipelineV4:
             try:
                 if pd.isna(value) or value == "" or value is None:
                     return default
-                return float(pd.to_numeric(value, errors="coerce"))
+                parsed = pd.to_numeric(value, errors="coerce")
+                if pd.notna(parsed):
+                    return float(parsed)
+                match = _re.search(r"(\d+(?:\.\d+)?)", str(value))
+                if match:
+                    return float(match.group(1))
+                return default
             except (ValueError, TypeError):
                 return default
 
