@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import re
 import shutil
 import sqlite3
@@ -30,6 +31,11 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from utils.race_lifecycle import RESULTED, UPCOMING_NOT_JUMPED, classify_race_record
+
+try:
+    from accuracy_program.snapshots import assert_no_result_fields
+except Exception:  # pragma: no cover - keeps the ingestion CLI usable in partial envs
+    assert_no_result_fields = None
 
 TARGET_TABLE = "dog_race_data"
 PARTIAL_SPORTSBET_RESULTS = "partial_sportsbet_results"
@@ -253,7 +259,7 @@ class RaceCandidate:
 
     @property
     def sportsbet_slug(self) -> Optional[str]:
-        return sportsbet_slug_from_url(self.sportsbet_url or "")
+        return sportsbet_slug_from_url(self.sportsbet_url or "") or self.thedogs_slug
 
     @property
     def thedogs_slug(self) -> Optional[str]:
@@ -279,6 +285,26 @@ class SourceResult:
         if not self.positions_by_box:
             return None
         return sorted(self.positions_by_box.items(), key=lambda item: item[1])[0][0]
+
+
+def result_validation_error(candidate: RaceCandidate, result: SourceResult) -> Optional[str]:
+    if not result.positions_by_box:
+        return result.error or "no_result_positions"
+
+    participant_boxes = {
+        int(participant["box_number"])
+        for participant in candidate.participants
+        if participant.get("box_number") is not None
+    }
+    result_boxes = {int(box) for box in result.positions_by_box}
+    unknown_boxes = sorted(result_boxes - participant_boxes)
+    if unknown_boxes:
+        return "result_boxes_not_in_participants:" + ",".join(
+            str(box) for box in unknown_boxes
+        )
+    if result.winner_box is None:
+        return "missing_winner_box"
+    return None
 
 
 class TheDogsResultFetcher:
@@ -448,6 +474,36 @@ def resolve_csv_path(upcoming_dir: Path, row: sqlite3.Row) -> Optional[Path]:
     return None
 
 
+def resolve_csv_path_from_identity(
+    upcoming_dir: Path,
+    *,
+    race_id: str,
+    venue: str,
+    race_number: int,
+    race_date: str,
+    source_file_path: Optional[str] = None,
+) -> Optional[Path]:
+    if source_file_path:
+        source_path = Path(source_file_path)
+        if source_path.exists():
+            return source_path
+        basename_match = upcoming_dir / source_path.name
+        if basename_match.exists():
+            return basename_match
+
+    exact = upcoming_dir / f"{race_id}.csv"
+    if exact.exists():
+        return exact
+
+    code = code_from_race_id(race_id) or str(venue or "").strip()
+    if code and race_number:
+        candidate = upcoming_dir / f"Race {int(race_number)} - {code} - {race_date}.csv"
+        if candidate.exists():
+            return candidate
+
+    return None
+
+
 def _row_dict(row: sqlite3.Row) -> dict:
     return {key: row[key] for key in row.keys()}
 
@@ -462,9 +518,124 @@ def _lifecycle_record_for_row(row: sqlite3.Row) -> dict:
     return data
 
 
-def jumped_or_already_resulted(row: sqlite3.Row, now: Optional[datetime] = None) -> tuple[bool, str]:
-    lifecycle = classify_race_record(_lifecycle_record_for_row(row), now=now)
+def jumped_or_already_resulted(
+    row: sqlite3.Row,
+    now: Optional[datetime] = None,
+    *,
+    source_context: str = "live_record",
+) -> tuple[bool, str]:
+    lifecycle = classify_race_record(
+        _lifecycle_record_for_row(row),
+        now=now,
+        source_context=source_context,
+    )
     return lifecycle.status != UPCOMING_NOT_JUMPED, lifecycle.status
+
+
+def _snapshot_files(snapshot_dir: Path, target_date: str) -> List[Path]:
+    date_dir = snapshot_dir / target_date
+    if not date_dir.exists():
+        return []
+    return sorted(path for path in date_dir.glob("*/*.json") if path.is_file())
+
+
+def _snapshot_identity(snapshot: dict) -> Optional[dict]:
+    if assert_no_result_fields is None:
+        raise ValueError("snapshot_result_guard_unavailable")
+    assert_no_result_fields(snapshot)
+
+    if snapshot.get("is_pre_jump_snapshot") is not True:
+        return None
+    if snapshot.get("snapshot_state") != "pre_jump_feature_freeze":
+        return None
+
+    race_id = str(snapshot.get("race_id") or "").strip()
+    race_date = str(snapshot.get("race_date") or "").strip()
+    venue = str(snapshot.get("venue") or "").strip()
+    race_number = snapshot.get("race_number")
+    if not race_id or not race_date or not venue or race_number in (None, ""):
+        return None
+
+    try:
+        race_number_int = int(race_number)
+    except (TypeError, ValueError):
+        return None
+
+    start_datetime = str(snapshot.get("jump_datetime") or "").strip() or None
+    race_time = str(snapshot.get("jump_time") or "").strip() or None
+    return {
+        "race_id": race_id,
+        "venue": venue,
+        "race_number": race_number_int,
+        "race_date": race_date,
+        "race_time": race_time,
+        "start_datetime": start_datetime,
+        "sportsbet_url": None,
+        "results_status": None,
+        "winner_name": None,
+        "source_file_path": str(snapshot.get("source_file_path") or "").strip() or None,
+    }
+
+
+def load_snapshot_candidate_rows(
+    snapshot_dir: Path,
+    target_date: str,
+    upcoming_dir: Path,
+    race_ids: Iterable[str],
+) -> tuple[List[dict], List[dict]]:
+    race_id_filter = {race_id for race_id in race_ids if race_id}
+    skipped: List[dict] = []
+    latest_by_race_id: Dict[str, dict] = {}
+
+    for path in _snapshot_files(snapshot_dir, target_date):
+        try:
+            snapshot = json.loads(path.read_text(encoding="utf-8"))
+            identity = _snapshot_identity(snapshot)
+        except Exception as exc:
+            skipped.append(
+                {
+                    "race_id": str(path),
+                    "reason": f"snapshot_unreadable_or_not_result_free:{type(exc).__name__}",
+                }
+            )
+            continue
+
+        if identity is None:
+            skipped.append({"race_id": str(path), "reason": "not_frozen_pre_jump_snapshot"})
+            continue
+        if race_id_filter and identity["race_id"] not in race_id_filter:
+            continue
+
+        identity["_snapshot_sort_key"] = str(
+            snapshot.get("feature_freeze_timestamp")
+            or snapshot.get("prediction_timestamp")
+            or ""
+        )
+        existing = latest_by_race_id.get(identity["race_id"])
+        if existing and existing.get("_snapshot_sort_key", "") >= identity["_snapshot_sort_key"]:
+            continue
+        latest_by_race_id[identity["race_id"]] = identity
+
+    rows: List[dict] = []
+    for identity in latest_by_race_id.values():
+
+        csv_path = resolve_csv_path_from_identity(
+            upcoming_dir,
+            race_id=identity["race_id"],
+            venue=identity["venue"],
+            race_number=identity["race_number"],
+            race_date=identity["race_date"],
+            source_file_path=identity.get("source_file_path"),
+        )
+        if not csv_path:
+            skipped.append({"race_id": identity["race_id"], "reason": "snapshot_csv_missing"})
+            continue
+
+        identity["csv_path"] = csv_path
+        identity.pop("_snapshot_sort_key", None)
+        rows.append(identity)
+
+    return rows, skipped
 
 
 def load_candidates(
@@ -473,6 +644,7 @@ def load_candidates(
     upcoming_dir: Path,
     race_ids: Iterable[str],
     now: Optional[datetime] = None,
+    snapshot_dir: Optional[Path] = None,
 ) -> tuple[List[RaceCandidate], List[dict]]:
     race_id_filter = [race_id for race_id in race_ids if race_id]
     params: List[object] = [target_date]
@@ -492,6 +664,7 @@ def load_candidates(
 
     candidates: List[RaceCandidate] = []
     skipped: List[dict] = []
+    candidate_race_ids: set[str] = set()
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     try:
@@ -515,6 +688,7 @@ def load_candidates(
                     {"race_id": row["race_id"], "reason": "no_participants_from_csv"}
                 )
                 continue
+            candidate_race_ids.add(str(row["race_id"]))
             candidates.append(
                 RaceCandidate(
                     race_id=row["race_id"],
@@ -531,6 +705,49 @@ def load_candidates(
             )
     finally:
         conn.close()
+
+    if snapshot_dir and snapshot_dir.exists():
+        snapshot_rows, snapshot_skipped = load_snapshot_candidate_rows(
+            snapshot_dir, target_date, upcoming_dir, race_id_filter
+        )
+        skipped.extend(snapshot_skipped)
+        for row in snapshot_rows:
+            if row["race_id"] in candidate_race_ids:
+                continue
+            eligible, lifecycle_status = jumped_or_already_resulted(
+                row,
+                now=now,
+                source_context="csv_file",
+            )
+            if not eligible:
+                skipped.append(
+                    {
+                        "race_id": row["race_id"],
+                        "reason": f"race_not_jumped:{lifecycle_status}",
+                    }
+                )
+                continue
+            participants = parse_participants_from_csv(row["csv_path"])
+            if not participants:
+                skipped.append(
+                    {"race_id": row["race_id"], "reason": "no_participants_from_csv"}
+                )
+                continue
+            candidate_race_ids.add(str(row["race_id"]))
+            candidates.append(
+                RaceCandidate(
+                    race_id=row["race_id"],
+                    venue=row["venue"],
+                    race_number=int(row["race_number"]),
+                    race_date=row["race_date"],
+                    race_time=row["race_time"],
+                    start_datetime=row["start_datetime"],
+                    sportsbet_url=row["sportsbet_url"],
+                    csv_path=row["csv_path"],
+                    participants=participants,
+                    lifecycle_status=lifecycle_status,
+                )
+            )
 
     return candidates, skipped
 
@@ -730,6 +947,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Directory containing local upcoming expert-form CSVs",
     )
     parser.add_argument(
+        "--snapshot-dir",
+        default="artifacts/prediction_snapshots",
+        help="Directory containing frozen pre-jump prediction snapshots",
+    )
+    parser.add_argument(
         "--race-id",
         action="append",
         default=[],
@@ -748,6 +970,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     db_path = Path(args.db)
     upcoming_dir = Path(args.upcoming_dir)
+    snapshot_dir = Path(args.snapshot_dir) if args.snapshot_dir else None
 
     if not db_path.exists():
         print(f"ERROR database not found: {db_path}", file=sys.stderr)
@@ -756,7 +979,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"ERROR upcoming directory not found: {upcoming_dir}", file=sys.stderr)
         return 2
 
-    candidates, skipped = load_candidates(db_path, args.date, upcoming_dir, args.race_id)
+    candidates, skipped = load_candidates(
+        db_path,
+        args.date,
+        upcoming_dir,
+        args.race_id,
+        snapshot_dir=snapshot_dir,
+    )
     print(f"Candidates: {len(candidates)}")
     if skipped:
         print(f"Skipped before fetch: {len(skipped)}")
@@ -787,11 +1016,17 @@ def main(argv: Optional[List[str]] = None) -> int:
                 attempts: List[SourceResult] = []
                 official = thedogs.fetch(candidate)
                 attempts.append(official)
-                chosen = official if official.positions_by_box else None
+                official_error = result_validation_error(candidate, official)
+                if official_error and not official.error:
+                    official.error = official_error
+                chosen = official if official_error is None else None
                 if chosen is None:
                     fallback = sportsbet.fetch(candidate)
                     attempts.append(fallback)
-                    chosen = fallback if fallback.positions_by_box else None
+                    fallback_error = result_validation_error(candidate, fallback)
+                    if fallback_error and not fallback.error:
+                        fallback.error = fallback_error
+                    chosen = fallback if fallback_error is None else None
 
                 if chosen is None:
                     failed.append(

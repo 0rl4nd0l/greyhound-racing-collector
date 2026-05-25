@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import sqlite3
 import sys
 from datetime import datetime
@@ -230,6 +231,22 @@ def test_sportsbet_fetcher_marks_top_four_as_partial(tmp_path):
     assert result.positions_by_box == {6: 1, 8: 2, 3: 3, 4: 4}
 
 
+def test_result_validation_rejects_boxes_outside_frozen_participants(tmp_path):
+    module = _load_ingest_module()
+    candidate = _candidate(module, tmp_path)
+    result = module.SourceResult(
+        source="sportsbet_results_top4",
+        status="partial_sportsbet_results",
+        source_url="https://example.test/results",
+        positions_by_box={6: 1, 8: 2, 9: 3},
+        raw_order=[6, 8, 9],
+    )
+
+    error = module.result_validation_error(candidate, result)
+
+    assert error == "result_boxes_not_in_participants:9"
+
+
 def test_write_sportsbet_fallback_records_partial_status_and_thedogs_error(tmp_path):
     module = _load_ingest_module()
     db_path, conn = _make_ingest_db(tmp_path)
@@ -424,6 +441,242 @@ def test_load_candidates_skips_today_race_before_jump(tmp_path):
     )
 
     assert candidates == []
+    assert skipped == [
+        {
+            "race_id": "Race 4 - WRGL - 2026-05-21",
+            "reason": "race_not_jumped:upcoming_not_jumped",
+        }
+    ]
+
+
+def test_load_candidates_keeps_race_metadata_candidates_working(tmp_path):
+    module = _load_ingest_module()
+    db_path, conn = _make_ingest_db(tmp_path)
+    upcoming_dir = tmp_path / "upcoming"
+    upcoming_dir.mkdir()
+    candidate_csv = upcoming_dir / "Race 4 - WRGL - 2026-05-21.csv"
+    candidate_csv.write_text("Dog Name\n1. Alpha Runner\n", encoding="utf-8")
+    conn.execute(
+        """
+        INSERT INTO race_metadata
+            (race_id, venue, race_number, race_date, race_time, sportsbet_url, results_status)
+        VALUES (?, 'WRGL', 4, '2026-05-21', '16:30', ?, 'pending')
+        """,
+        (
+            "Race 4 - WRGL - 2026-05-21",
+            "https://www.sportsbet.com.au/betting/greyhound-racing/australia-nz/warragul/race-4",
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    candidates, skipped = module.load_candidates(
+        db_path,
+        "2026-05-21",
+        upcoming_dir,
+        [],
+        now=datetime(2026, 5, 21, 17, 37, tzinfo=ZoneInfo("Australia/Melbourne")),
+    )
+
+    assert skipped == []
+    assert len(candidates) == 1
+    assert candidates[0].race_id == "Race 4 - WRGL - 2026-05-21"
+    assert candidates[0].participants == [{"box_number": 1, "dog_name": "Alpha Runner"}]
+
+
+def _write_snapshot(
+    snapshot_dir: Path,
+    *,
+    race_id: str = "Race 4 - WRGL - 2026-05-21",
+    venue: str = "WRGL",
+    race_number: int = 4,
+    race_date: str = "2026-05-21",
+    jump_time: str | None = "16:30",
+    prediction_timestamp: str = "2026-05-21T16:00:00",
+    source_file_path: str | None = None,
+    snapshot_state: str = "pre_jump_feature_freeze",
+    is_pre_jump_snapshot: bool = True,
+    extra_fields: dict | None = None,
+) -> Path:
+    path = snapshot_dir / race_date / venue / f"{prediction_timestamp.replace(':', '')}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    snapshot = {
+        "schema_version": "prediction_snapshot_v1",
+        "race_id": race_id,
+        "stable_race_key": f"{race_date}|{venue}|{race_number}",
+        "race_date": race_date,
+        "venue": venue,
+        "race_number": race_number,
+        "jump_time": jump_time,
+        "jump_datetime": f"{race_date}T{jump_time}:00+10:00" if jump_time else None,
+        "source_file_path": source_file_path,
+        "lifecycle_status": "upcoming_not_jumped",
+        "snapshot_state": snapshot_state,
+        "is_pre_jump_snapshot": is_pre_jump_snapshot,
+        "prediction_timestamp": prediction_timestamp,
+        "feature_freeze_timestamp": prediction_timestamp,
+        "model_version": "test-model",
+        "predictions": [
+            {
+                "dog_name": "Alpha Runner",
+                "box_number": 1,
+                "win_prob_norm": 1.0,
+                "predicted_rank": 1,
+            }
+        ],
+    }
+    if extra_fields:
+        snapshot.update(extra_fields)
+    path.write_text(json.dumps(snapshot), encoding="utf-8")
+    return path
+
+
+def test_load_candidates_falls_back_to_frozen_snapshot_when_metadata_missing(tmp_path):
+    module = _load_ingest_module()
+    db_path, conn = _make_ingest_db(tmp_path)
+    conn.close()
+    upcoming_dir = tmp_path / "upcoming"
+    upcoming_dir.mkdir()
+    candidate_csv = upcoming_dir / "Race 4 - WRGL - 2026-05-21.csv"
+    candidate_csv.write_text("Dog Name\n1. Alpha Runner\n", encoding="utf-8")
+    snapshot_dir = tmp_path / "snapshots"
+    _write_snapshot(snapshot_dir, source_file_path=str(candidate_csv))
+
+    candidates, skipped = module.load_candidates(
+        db_path,
+        "2026-05-21",
+        upcoming_dir,
+        [],
+        now=datetime(2026, 5, 21, 17, 37, tzinfo=ZoneInfo("Australia/Melbourne")),
+        snapshot_dir=snapshot_dir,
+    )
+
+    assert skipped == []
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate.race_id == "Race 4 - WRGL - 2026-05-21"
+    assert candidate.venue == "WRGL"
+    assert candidate.race_number == 4
+    assert candidate.race_date == "2026-05-21"
+    assert candidate.race_time == "16:30"
+    assert candidate.lifecycle_status == "jumped_pending_results"
+    assert candidate.participants == [{"box_number": 1, "dog_name": "Alpha Runner"}]
+    assert candidate.sportsbet_slug == "warragul"
+
+
+def test_snapshot_fallback_requires_result_free_pre_jump_snapshot(tmp_path):
+    module = _load_ingest_module()
+    db_path, conn = _make_ingest_db(tmp_path)
+    conn.close()
+    upcoming_dir = tmp_path / "upcoming"
+    upcoming_dir.mkdir()
+    candidate_csv = upcoming_dir / "Race 4 - WRGL - 2026-05-21.csv"
+    candidate_csv.write_text("Dog Name\n1. Alpha Runner\n", encoding="utf-8")
+    snapshot_dir = tmp_path / "snapshots"
+    _write_snapshot(
+        snapshot_dir,
+        prediction_timestamp="2026-05-21T15:00:00",
+        source_file_path=str(candidate_csv),
+        is_pre_jump_snapshot=False,
+    )
+    _write_snapshot(
+        snapshot_dir,
+        prediction_timestamp="2026-05-21T16:00:00",
+        source_file_path=str(candidate_csv),
+        extra_fields={"winner_name": "Alpha Runner"},
+    )
+
+    candidates, skipped = module.load_candidates(
+        db_path,
+        "2026-05-21",
+        upcoming_dir,
+        [],
+        now=datetime(2026, 5, 21, 17, 37, tzinfo=ZoneInfo("Australia/Melbourne")),
+        snapshot_dir=snapshot_dir,
+    )
+
+    assert candidates == []
+    assert [item["reason"] for item in skipped] == [
+        "not_frozen_pre_jump_snapshot",
+        "snapshot_unreadable_or_not_result_free:ValueError",
+    ]
+
+
+def test_load_candidates_uses_latest_snapshot_for_jump_time_guard(tmp_path):
+    module = _load_ingest_module()
+    db_path, conn = _make_ingest_db(tmp_path)
+    conn.close()
+    upcoming_dir = tmp_path / "upcoming"
+    upcoming_dir.mkdir()
+    candidate_csv = upcoming_dir / "Race 4 - WRGL - 2026-05-21.csv"
+    candidate_csv.write_text("Dog Name\n1. Alpha Runner\n", encoding="utf-8")
+    snapshot_dir = tmp_path / "snapshots"
+    _write_snapshot(
+        snapshot_dir,
+        jump_time=None,
+        prediction_timestamp="2026-05-21T15:00:00",
+        source_file_path=str(candidate_csv),
+    )
+    _write_snapshot(
+        snapshot_dir,
+        jump_time="18:30",
+        prediction_timestamp="2026-05-21T16:00:00",
+        source_file_path=str(candidate_csv),
+    )
+
+    candidates, skipped = module.load_candidates(
+        db_path,
+        "2026-05-21",
+        upcoming_dir,
+        [],
+        now=datetime(2026, 5, 21, 17, 37, tzinfo=ZoneInfo("Australia/Melbourne")),
+        snapshot_dir=snapshot_dir,
+    )
+
+    assert candidates == []
+    assert skipped == [
+        {
+            "race_id": "Race 4 - WRGL - 2026-05-21",
+            "reason": "race_not_jumped:upcoming_not_jumped",
+        }
+    ]
+
+
+def test_frozen_snapshot_rescues_incomplete_metadata_row_without_jump_time(tmp_path):
+    module = _load_ingest_module()
+    db_path, conn = _make_ingest_db(tmp_path)
+    conn.execute(
+        """
+        INSERT INTO race_metadata
+            (race_id, venue, race_number, race_date, race_time, sportsbet_url, results_status)
+        VALUES ('Race 4 - WRGL - 2026-05-21', 'WRGL', 4, '2026-05-21', NULL, NULL, 'pending')
+        """
+    )
+    conn.commit()
+    conn.close()
+    upcoming_dir = tmp_path / "upcoming"
+    upcoming_dir.mkdir()
+    candidate_csv = upcoming_dir / "Race 4 - WRGL - 2026-05-21.csv"
+    candidate_csv.write_text("Dog Name\n1. Alpha Runner\n", encoding="utf-8")
+    snapshot_dir = tmp_path / "snapshots"
+    _write_snapshot(
+        snapshot_dir,
+        jump_time=None,
+        source_file_path=str(candidate_csv),
+    )
+
+    candidates, skipped = module.load_candidates(
+        db_path,
+        "2026-05-21",
+        upcoming_dir,
+        [],
+        now=datetime(2026, 5, 21, 17, 37, tzinfo=ZoneInfo("Australia/Melbourne")),
+        snapshot_dir=snapshot_dir,
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].race_id == "Race 4 - WRGL - 2026-05-21"
+    assert candidates[0].lifecycle_status == "jumped_pending_results"
     assert skipped == [
         {
             "race_id": "Race 4 - WRGL - 2026-05-21",
