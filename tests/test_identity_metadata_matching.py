@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from enhanced_accuracy_optimizer import AccuracyOptimizer
 from temporal_feature_builder import (
     TemporalFeatureBuilder,
     normalize_dog_identity_key,
@@ -188,3 +189,39 @@ def test_incomplete_runner_sets_are_rejected():
 
     assert report.status == "INCOMPLETE"
     assert "duplicate_box_numbers:1" in report.reasons
+
+
+def test_optimizer_retains_low_confidence_runner_for_alignment(monkeypatch):
+    monkeypatch.delenv("V4_OPTIMIZER_DROP_LOW_QUALITY", raising=False)
+    optimizer = object.__new__(AccuracyOptimizer)
+    optimizer.config = {"min_confidence_threshold": 0.3}
+
+    predictions = [
+        {
+            "dog_clean_name": "Maximum Nana",
+            "box_number": 1,
+            "win_probability": 0.3845,
+            "confidence": 0.2643,
+            "ensemble_models": 1,
+            "model_agreement": None,
+        },
+        {
+            "dog_clean_name": "Fresh Eyes",
+            "box_number": 2,
+            "win_probability": 0.1641,
+            "confidence": 0.3994,
+            "ensemble_models": 1,
+            "model_agreement": None,
+        },
+    ]
+
+    filtered = optimizer._apply_quality_filters(predictions)
+
+    assert [prediction["box_number"] for prediction in filtered] == [1, 2]
+    retained = filtered[0]
+    assert retained["quality_filter_status"] == "retained_for_runner_alignment"
+    assert "optimizer_low_confidence" in retained["quality_flags"]
+    assert (
+        "optimizer_retained_low_quality_for_runner_alignment"
+        in retained["quality_flags"]
+    )

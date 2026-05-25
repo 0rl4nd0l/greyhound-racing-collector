@@ -1220,25 +1220,50 @@ class AccuracyOptimizer:
             }
 
     def _apply_quality_filters(self, predictions: List[Dict]) -> List[Dict]:
-        """Apply quality filters to ensure high-accuracy predictions."""
+        """Apply quality filters without breaking source runner alignment."""
 
         filtered_predictions = []
         min_confidence = self.config.get("min_confidence_threshold", 0.3)
+        drop_low_quality = str(
+            os.getenv("V4_OPTIMIZER_DROP_LOW_QUALITY", "0")
+        ).strip().lower() in ("1", "true", "yes", "on")
 
         for prediction in predictions:
-            # Filter by confidence threshold
-            if prediction.get("confidence", 0) >= min_confidence:
-                # Additional quality checks
-                if self._passes_quality_checks(prediction):
-                    filtered_predictions.append(prediction)
-                else:
-                    logger.debug(
-                        f"Prediction filtered out: {prediction['dog_clean_name']}"
-                    )
-            else:
+            confidence = prediction.get("confidence", 0)
+            passes_confidence = confidence >= min_confidence
+            passes_checks = self._passes_quality_checks(prediction)
+
+            if passes_confidence and passes_checks:
+                prediction["quality_filter_status"] = "passed"
+                filtered_predictions.append(prediction)
+                continue
+
+            if not passes_confidence:
                 logger.debug(
                     f"Low confidence prediction filtered: {prediction['dog_clean_name']}"
                 )
+                _append_quality_flag(prediction, "optimizer_low_confidence")
+            else:
+                logger.debug(
+                    f"Prediction filtered out: {prediction['dog_clean_name']}"
+                )
+                _append_quality_flag(prediction, "optimizer_quality_check_failed")
+
+            prediction["quality_filter_status"] = (
+                "dropped" if drop_low_quality else "retained_for_runner_alignment"
+            )
+            prediction["quality_filter_min_confidence"] = float(min_confidence)
+            prediction["quality_filter_confidence"] = _safe_probability_float(
+                confidence
+            )
+
+            if drop_low_quality:
+                continue
+
+            _append_quality_flag(
+                prediction, "optimizer_retained_low_quality_for_runner_alignment"
+            )
+            filtered_predictions.append(prediction)
 
         return filtered_predictions
 
