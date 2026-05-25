@@ -26,6 +26,8 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 from urllib.parse import urljoin
 
+import requests
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -39,7 +41,6 @@ from utils.runner_completeness import (
     analyze_runner_rows,
     participants_from_runner_rows,
 )
-from utils.http_client import get_shared_session
 
 try:
     from accuracy_program.snapshots import assert_no_result_fields
@@ -64,6 +65,15 @@ THEDOGS_PUBLIC_HEADERS = {
 class _SeleniumByFallback:
     TAG_NAME = "tag name"
     CSS_SELECTOR = "css selector"
+
+
+class _StatelessPublicHttpClient:
+    def get(self, url: str, **kwargs):
+        kwargs.pop("cookies", None)
+        with requests.Session() as session:
+            session.trust_env = False
+            session.cookies.clear()
+            return session.get(url, cookies={}, **kwargs)
 
 
 VENUE_TO_THEDOGS_SLUG = {
@@ -1331,7 +1341,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     ingested: List[dict] = []
     failed: List[dict] = []
     try:
-        thedogs = TheDogsResultFetcher(driver, by=By, http_session=get_shared_session())
+        thedogs = TheDogsResultFetcher(
+            driver,
+            by=By,
+            http_session=_StatelessPublicHttpClient(),
+        )
         sportsbet = SportsbetResultFetcher(driver, args.date, by=By)
 
         conn = sqlite3.connect(db_path)

@@ -314,6 +314,56 @@ def test_thedogs_http_403_is_reported_without_selenium_fallback(tmp_path):
     assert result.positions_by_box == {}
 
 
+def test_thedogs_public_http_client_is_stateless(monkeypatch):
+    module = _load_ingest_module()
+    observed = {}
+
+    class Cookies:
+        def __init__(self):
+            self.cleared = False
+
+        def clear(self):
+            self.cleared = True
+
+    class Response:
+        status_code = 200
+        text = "ok"
+        url = "https://example.test/result"
+
+    class Session:
+        def __init__(self):
+            self.trust_env = True
+            self.cookies = Cookies()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def get(self, url, **kwargs):
+            observed["url"] = url
+            observed["trust_env"] = self.trust_env
+            observed["cookies_cleared"] = self.cookies.cleared
+            observed["request_cookies"] = kwargs.get("cookies")
+            return Response()
+
+    monkeypatch.setattr(module.requests, "Session", Session)
+
+    response = module._StatelessPublicHttpClient().get(
+        "https://www.thedogs.com.au/racing/warragul/2026-05-21?trial=false",
+        cookies={"session": "should-not-be-sent"},
+    )
+
+    assert response.status_code == 200
+    assert observed == {
+        "url": "https://www.thedogs.com.au/racing/warragul/2026-05-21?trial=false",
+        "trust_env": False,
+        "cookies_cleared": True,
+        "request_cookies": {},
+    }
+
+
 def test_sportsbet_fetcher_marks_top_four_as_partial(tmp_path):
     module = _load_ingest_module()
     candidate = _candidate(module, tmp_path)
