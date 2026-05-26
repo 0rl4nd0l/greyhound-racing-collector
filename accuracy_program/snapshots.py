@@ -8,6 +8,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Mapping
+from urllib.parse import urlparse
 
 
 TRUSTED_ODDS_SOURCES = {"sportsbet"}
@@ -176,6 +177,25 @@ def _normalize_market_type(value: Any, odds_snapshot: Mapping[str, Any]) -> str:
     if raw:
         return re.sub(r"[^a-z0-9_]", "_", raw)
     return "win" if odds_snapshot.get("market_odds_win") is not None else ""
+
+
+def _source_url_is_post_race(raw_url: Any) -> bool:
+    url = str(raw_url or "").strip().lower()
+    if not url:
+        return False
+    if any(marker in url for marker in POST_RACE_SOURCE_URL_MARKERS):
+        return True
+    try:
+        parsed = urlparse(url)
+        text = " ".join(part for part in (parsed.path, parsed.query, parsed.fragment) if part)
+    except Exception:
+        text = url
+    tokens = {token for token in re.split(r"[^a-z0-9]+", text.lower()) if token}
+    return (
+        "sp" in tokens
+        or "startingprice" in tokens
+        or ("starting" in tokens and "price" in tokens)
+    )
 
 
 def _normalize_odds_level(value: Any, row: Mapping[str, Any]) -> str:
@@ -415,7 +435,7 @@ def classify_odds_snapshot_for_ev(
     source_url = str(provenance.get("source_url") or "").strip()
     if not source_url:
         return result("missing_source_url")
-    if any(marker in source_url.lower() for marker in POST_RACE_SOURCE_URL_MARKERS):
+    if _source_url_is_post_race(source_url):
         return result("post_race_or_sp_only")
     source_table = str(provenance.get("source_table") or "").strip().lower()
     if source_table in POST_RACE_SOURCE_TABLES:

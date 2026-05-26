@@ -40,6 +40,8 @@ SAFE_ENV_DEFAULTS = {
     "PREDICTION_IMPORT_MODE": "prediction_only",
     "ENABLE_LIVE_SCRAPING": "0",
     "ENABLE_RESULTS_SCRAPERS": "0",
+    "ENABLE_AUTO_SCRAPE_ODDS": "0",
+    "SPORTSBET_DOM_FALLBACK_ODDS": "0",
     "TGR_ENABLED": "0",
     "DISABLE_SPORTSBET_INTEGRATOR": "1",
     "INGEST_EMBEDDED_HISTORY_ON_PREDICT": "0",
@@ -100,15 +102,58 @@ def _probability_sum(snapshot: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _capture_live_odds_for_lifecycle(
+    *,
+    db_path: Path,
+    lifecycle: Any,
+) -> dict[str, Any]:
+    from odds_auto_integrator import ensure_odds_for_target_race
+
+    venue = getattr(lifecycle, "venue", None)
+    race_number = getattr(lifecycle, "race_number", None)
+    race_date = getattr(lifecycle, "race_date", None)
+    if not venue or not race_number or not race_date:
+        return {
+            "status": "DATA_MISSING",
+            "success": False,
+            "reason": "missing_lifecycle_target_identity",
+            "venue": venue,
+            "race_number": race_number,
+            "race_date": race_date,
+            "append_only": True,
+        }
+    return ensure_odds_for_target_race(
+        str(db_path),
+        venue,
+        race_number,
+        race_date,
+        allow_auto_scrape_odds=True,
+        append_only=True,
+    )
+
+
 def _capture_one(
     *,
     race_file: Path,
     lifecycle: Any,
+    db_path: Path,
     snapshot_dir: Path,
     persist: bool,
     mechanics_only: bool,
+    capture_live_odds: bool,
 ) -> dict[str, Any]:
     from app import enhance_prediction_with_csv_meta, run_prediction_for_race_file
+
+    odds_capture: dict[str, Any] | None = None
+    if (
+        capture_live_odds
+        and not mechanics_only
+        and getattr(lifecycle, "status", None) == UPCOMING_NOT_JUMPED
+    ):
+        odds_capture = _capture_live_odds_for_lifecycle(
+            db_path=db_path,
+            lifecycle=lifecycle,
+        )
 
     prediction_timestamp = datetime.now().isoformat(timespec="seconds")
     source_runner_completeness = analyze_csv_runner_completeness(race_file).as_dict()
@@ -118,7 +163,11 @@ def _capture_one(
             "status": "FAILED",
             "race_file": str(race_file),
             "lifecycle_status": getattr(lifecycle, "status", None),
-            "error": (result or {}).get("error") if isinstance(result, dict) else "prediction_failed",
+            "odds_capture_requested": bool(capture_live_odds),
+            "odds_capture": odds_capture,
+            "error": (
+                (result or {}).get("error") if isinstance(result, dict) else "prediction_failed"
+            ),
         }
     try:
         result = enhance_prediction_with_csv_meta(result, str(race_file))
@@ -135,9 +184,7 @@ def _capture_one(
     assert_no_result_fields(snapshot)
     live_lifecycle = snapshot.get("lifecycle_status") == UPCOMING_NOT_JUMPED
     runner_set_complete = snapshot.get("runner_set_complete") is True
-    write_snapshot = bool(
-        persist and live_lifecycle and runner_set_complete and not mechanics_only
-    )
+    write_snapshot = bool(persist and live_lifecycle and runner_set_complete and not mechanics_only)
     persistence = persist_prediction_snapshot(
         snapshot,
         snapshot_dir,
@@ -170,6 +217,8 @@ def _capture_one(
         "runner_count": len(snapshot.get("predictions") or []),
         "runner_set_complete": runner_set_complete,
         "source_runner_completeness": source_runner_completeness,
+        "odds_capture_requested": bool(capture_live_odds),
+        "odds_capture": odds_capture,
         "priced_ev_runner_count": len(priced_rows),
         "snapshot_readiness": snapshot.get("snapshot_readiness"),
         "probability_sum_check": _probability_sum(snapshot),
@@ -222,9 +271,11 @@ def capture_snapshots(args: argparse.Namespace) -> dict[str, Any]:
         _capture_one(
             race_file=path,
             lifecycle=lifecycle,
+            db_path=db_path,
             snapshot_dir=Path(args.snapshot_dir),
             persist=bool(args.persist),
             mechanics_only=mechanics_only,
+            capture_live_odds=bool(args.capture_live_odds),
         )
         for path, lifecycle in targets
     ]
@@ -240,6 +291,7 @@ def capture_snapshots(args: argparse.Namespace) -> dict[str, Any]:
         "status": status,
         "dry_run": not bool(args.persist),
         "persist_requested": bool(args.persist),
+        "odds_capture_requested": bool(args.capture_live_odds),
         "db_path": str(db_path),
         "snapshot_dir": str(Path(args.snapshot_dir)),
         "candidate_files": len(files),
@@ -247,10 +299,7 @@ def capture_snapshots(args: argparse.Namespace) -> dict[str, Any]:
         "capture_count": len(captures),
         "captures": captures,
         "data_missing": data_missing,
-        "safe_runtime_env": {
-            key: os.environ.get(key)
-            for key in sorted(SAFE_ENV_DEFAULTS)
-        },
+        "safe_runtime_env": {key: os.environ.get(key) for key in sorted(SAFE_ENV_DEFAULTS)},
     }
 
 
@@ -262,6 +311,11 @@ def main() -> int:
     parser.add_argument("--race-file", action="append", help="Specific local race CSV")
     parser.add_argument("--limit", type=int, default=10)
     parser.add_argument("--persist", action="store_true", help="Write result-free JSON snapshots")
+    parser.add_argument(
+        "--capture-live-odds",
+        action="store_true",
+        help="Explicitly capture append-only Sportsbet dog-level win odds before prediction snapshots",
+    )
     parser.add_argument(
         "--mechanics-on-stale",
         action="store_true",

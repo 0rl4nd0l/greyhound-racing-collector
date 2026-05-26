@@ -7,6 +7,7 @@ import pytest
 from accuracy_program.odds_coverage import analyze_odds_coverage, normalize_dog_name
 from accuracy_program.snapshots import assert_no_result_fields, build_prediction_snapshot
 from scripts.evaluate_prediction_snapshots import evaluate_snapshots
+from sportsbet_odds_integrator import SportsbetOddsIntegrator
 
 
 def _build_odds_db(path):
@@ -185,16 +186,13 @@ def test_odds_coverage_reports_normalized_identity_ambiguity_and_timestamp_quali
     assert report["safe_match_counts"]["ambiguous_strict_identity_rows"] == 1
     assert report["stale_late_risks"]["stale_current_win_rows"] == 1
     assert report["timestamp_quality"]["live_odds_current_win"]["stale_rows"] == 1
-    assert report["source_provenance"]["live_odds"] == [
-        {"source": "sportsbet", "rows": 4}
-    ]
+    assert report["source_provenance"]["live_odds"] == [{"source": "sportsbet", "rows": 4}]
 
     missing = {row["missing_reason"]: row["rows"] for row in report["missing_reasons"]}
     assert missing["ambiguous_race_id_box_name"] == 1
     assert missing["no_race_metadata_race_id"] == 1
     mismatch_counts = {
-        row["mismatch_type"]: row["rows"]
-        for row in report["venue_date_race_mismatches"]["counts"]
+        row["mismatch_type"]: row["rows"] for row in report["venue_date_race_mismatches"]["counts"]
     }
     assert mismatch_counts["venue_date_race_resolves_different_race_id"] == 1
 
@@ -258,6 +256,176 @@ def test_prediction_snapshot_carries_odds_timestamp_provenance_and_readiness():
     assert snapshot["predictions"][0]["odds_match_status"] == "valid_pre_jump_dog_odds"
     assert snapshot["snapshot_readiness"]["counts"]["missing_live_odds_count"] == 1
     assert snapshot["snapshot_readiness"]["status"] == "READY"
+    assert_no_result_fields(snapshot)
+
+
+def test_append_only_pre_jump_odds_capture_preserves_rows_and_source_url(tmp_path):
+    db_path = tmp_path / "append_only_odds.db"
+    integrator = SportsbetOddsIntegrator(db_path=str(db_path))
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE dog_race_data (
+                id INTEGER PRIMARY KEY,
+                race_id TEXT,
+                dog_name TEXT,
+                dog_clean_name TEXT,
+                box_number INTEGER
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO dog_race_data
+                (race_id, dog_name, dog_clean_name, box_number)
+            VALUES ('R1', 'Alpha Runner', 'Alpha Runner', 1)
+            """
+        )
+        conn.commit()
+
+    race_info = {
+        "race_id": "R1",
+        "preserve_race_id": True,
+        "venue": "Wentworth Park",
+        "race_number": 1,
+        "race_date": "2026-05-24",
+        "race_time": "10:30",
+        "venue_url": "https://www.sportsbet.com.au/greyhound-racing/wpk-r1",
+    }
+    odds_row = {
+        "dog_name": "Alpha Runner",
+        "dog_clean_name": "Alpha Runner",
+        "box_number": 1,
+        "odds_decimal": 3.0,
+        "odds_fractional": "3.00",
+    }
+
+    first = integrator.append_pre_jump_odds_snapshot(
+        race_info,
+        [odds_row],
+        capture_timestamp="2026-05-24T09:55:00",
+    )
+    second = integrator.append_pre_jump_odds_snapshot(
+        race_info,
+        [{**odds_row, "odds_decimal": 2.8}],
+        capture_timestamp="2026-05-24T09:56:00",
+    )
+
+    assert first["status"] == "SUCCESS"
+    assert second["status"] == "SUCCESS"
+    rejected = integrator.append_pre_jump_odds_snapshot(
+        {
+            **race_info,
+            "race_id": "R2",
+            "venue_url": "https://www.sportsbet.com.au/greyhound-racing/results/wpk-r1",
+        },
+        [odds_row],
+    )
+    assert rejected["status"] == "REJECTED"
+    assert "post_race_source_url_rejected" in rejected["warnings"]
+    for unsafe_url in (
+        "https://www.sportsbet.com.au/greyhound-racing/starting-price/wpk-r1",
+        "https://www.sportsbet.com.au/greyhound-racing/wpk-r1?market=sp",
+    ):
+        unsafe = integrator.append_pre_jump_odds_snapshot(
+            {**race_info, "race_id": "R2", "venue_url": unsafe_url},
+            [odds_row],
+        )
+        assert unsafe["status"] == "REJECTED"
+        assert "post_race_source_url_rejected" in unsafe["warnings"]
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT odds_decimal, source_url, capture_mode, timestamp, is_current
+            FROM live_odds
+            WHERE race_id = 'R1'
+            ORDER BY id
+            """
+        ).fetchall()
+
+    assert rows == [
+        (
+            3.0,
+            "https://www.sportsbet.com.au/greyhound-racing/wpk-r1",
+            "manual_pre_jump_snapshot",
+            "2026-05-24T09:55:00",
+            1,
+        ),
+        (
+            2.8,
+            "https://www.sportsbet.com.au/greyhound-racing/wpk-r1",
+            "manual_pre_jump_snapshot",
+            "2026-05-24T09:56:00",
+            1,
+        ),
+    ]
+
+    report = analyze_odds_coverage(
+        db_path,
+        now=datetime.fromisoformat("2026-05-24T10:00:00"),
+    )
+    assert report["source_url_quality"]["source_url_column_present"] is True
+    assert report["source_url_quality"]["rows_with_source_url"] == 2
+    assert report["source_url_quality"]["rows_missing_source_url"] == 0
+
+
+def test_prediction_market_context_carries_db_odds_provenance_into_snapshot():
+    import importlib.util
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "_real_prediction_pipeline_v4_for_odds_snapshot_test",
+        repo_root / "prediction_pipeline_v4.py",
+    )
+    pipeline_module = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    spec.loader.exec_module(pipeline_module)
+
+    predictions = [
+        {
+            "dog_clean_name": "Alpha Runner",
+            "box_number": 1,
+            "win_prob_norm": 0.4,
+            "predicted_rank": 1,
+        }
+    ]
+    market_odds = {"Alpha Runner": 3.0}
+    market_records = {
+        "Alpha Runner": {
+            "id": 10,
+            "race_id": "R1",
+            "dog_clean_name": "Alpha Runner",
+            "box_number": 1,
+            "odds_decimal": 3.0,
+            "market_type": "win",
+            "source": "sportsbet",
+            "timestamp": "2026-05-24T09:55:00",
+            "source_url": "https://www.sportsbet.com.au/greyhound-racing/wpk-r1",
+            "odds_level": "dog",
+        }
+    }
+
+    pipeline_module._annotate_market_context(predictions, market_odds, market_records)
+    snapshot = build_prediction_snapshot(
+        {
+            "race_id": "R1",
+            "model_version": "model-v1",
+            "predictions": predictions,
+        },
+        lifecycle={
+            "status": "upcoming_not_jumped",
+            "jump_datetime": "2026-05-24T10:30:00",
+        },
+        prediction_timestamp="2026-05-24T10:00:00",
+    )
+
+    runner = snapshot["predictions"][0]
+    assert runner["odds_match_status"] == "valid_pre_jump_dog_odds"
+    assert runner["ev_win"] == pytest.approx(0.2)
+    assert runner["odds_snapshot"]["odds_provenance"]["source_url"] == (
+        "https://www.sportsbet.com.au/greyhound-racing/wpk-r1"
+    )
     assert_no_result_fields(snapshot)
 
 
@@ -421,9 +589,10 @@ def test_snapshot_evaluation_links_results_and_scores_valid_pre_jump_odds_only(t
         "no_usable_history": 1,
         "db_result_history": 1,
     }
-    assert provenance["runner_inclusion_reason_distribution"][
-        "model_scored_low_confidence_retained"
-    ] == 1
+    assert (
+        provenance["runner_inclusion_reason_distribution"]["model_scored_low_confidence_retained"]
+        == 1
+    )
     assert provenance["odds_match_status_distribution"] == {
         "valid_pre_jump_dog_odds": 1,
         "no_odds_row": 3,

@@ -225,6 +225,7 @@ def ensure_odds_for_target_race(
     race_number: int | None,
     race_date: Any = None,
     allow_auto_scrape_odds: bool | None = None,
+    append_only: bool = False,
 ) -> dict[str, Any]:
     """Fetch and persist current Sportsbet odds for a target race if visible."""
 
@@ -237,6 +238,9 @@ def ensure_odds_for_target_race(
         "race_id": None,
         "alias_race_id": None,
         "opt_in_source": opt_in_source,
+        "append_only": bool(append_only),
+        "capture_reports": [],
+        "captured_rows": 0,
     }
     if not allowed:
         summary["warnings"].append(f"auto odds scraping disabled; {opt_in_source}")
@@ -288,23 +292,60 @@ def ensure_odds_for_target_race(
             return summary
 
         enhanced = integrator.get_race_odds_from_page(selected)
-        integrator.save_odds_to_database(enhanced)
         source_race_id = integrator._canonical_race_id(
             enhanced.get("venue"), enhanced.get("race_date"), enhanced.get("race_number")
         ) or enhanced.get("race_id")
         summary["race_id"] = source_race_id
         summary["win_count"] = len(enhanced.get("odds_data") or [])
         summary["place_count"] = len(enhanced.get("odds_data_place") or [])
-
         alias = _alias_race_id(int(race_number), venue, target_date)
         summary["alias_race_id"] = alias
-        try:
-            summary["alias_rows"] = _copy_current_odds_to_alias(
-                db_path, source_race_id, alias, venue, int(race_number), target_date
+        if append_only:
+            canonical_info = dict(enhanced)
+            canonical_info["race_id"] = source_race_id
+            canonical_report = integrator.append_pre_jump_odds_snapshot(
+                canonical_info,
+                enhanced.get("odds_data") or [],
+                capture_mode="opt_in_live_pre_jump_snapshot",
             )
-        except Exception as exc:
-            summary["warnings"].append(f"alias odds copy failed: {exc}")
-        summary["success"] = summary["win_count"] > 0
+            alias_info = dict(enhanced)
+            alias_info.update(
+                {
+                    "race_id": alias,
+                    "venue": venue,
+                    "race_number": int(race_number),
+                    "race_date": target_date,
+                    "preserve_race_id": True,
+                }
+            )
+            alias_report = integrator.append_pre_jump_odds_snapshot(
+                alias_info,
+                enhanced.get("odds_data") or [],
+                capture_mode="opt_in_live_pre_jump_snapshot_alias",
+            )
+            summary["capture_reports"] = [canonical_report, alias_report]
+            summary["alias_rows"] = alias_report.get("inserted_rows", 0)
+            summary["win_count"] = int(canonical_report.get("inserted_rows") or 0)
+            summary["place_count"] = 0
+            summary["captured_rows"] = sum(
+                int(report.get("inserted_rows") or 0)
+                for report in summary["capture_reports"]
+            )
+            for report in summary["capture_reports"]:
+                summary["warnings"].extend(report.get("warnings") or [])
+        else:
+            integrator.save_odds_to_database(enhanced)
+            try:
+                summary["alias_rows"] = _copy_current_odds_to_alias(
+                    db_path, source_race_id, alias, venue, int(race_number), target_date
+                )
+            except Exception as exc:
+                summary["warnings"].append(f"alias odds copy failed: {exc}")
+        summary["success"] = (
+            int(summary.get("captured_rows") or 0) > 0
+            if append_only
+            else summary["win_count"] > 0
+        )
         if not summary["success"]:
             summary["warnings"].append("race found but no win odds extracted")
         return summary

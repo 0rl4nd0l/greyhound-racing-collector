@@ -64,6 +64,10 @@ def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
     return row is not None
 
 
+def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    return {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+
+
 def _dict_row(row: sqlite3.Row | None) -> dict[str, Any]:
     return dict(row) if row is not None else {}
 
@@ -171,9 +175,7 @@ def analyze_snapshot_odds_coverage(
                 snapshot_race_id=race_id,
             )
             status = str(
-                runner.get("odds_match_status")
-                or eligibility.get("odds_match_status")
-                or "unknown"
+                runner.get("odds_match_status") or eligibility.get("odds_match_status") or "unknown"
             )
             exclusion = str(
                 runner.get("odds_exclusion_reason")
@@ -196,8 +198,7 @@ def analyze_snapshot_odds_coverage(
                 "race_id": race_id,
                 "dog_name": runner.get("dog_name") or runner.get("dog_clean_name"),
                 "box_number": runner.get("box_number"),
-                "odds_decimal": runner.get("odds")
-                or odds_snapshot.get("market_odds_win"),
+                "odds_decimal": runner.get("odds") or odds_snapshot.get("market_odds_win"),
                 "ev_win": runner.get("ev_win"),
                 "odds_match_status": status,
                 "odds_match_method": method,
@@ -218,12 +219,8 @@ def analyze_snapshot_odds_coverage(
                 "odds_captured_before_feature_freeze": odds_snapshot.get(
                     "odds_captured_before_feature_freeze"
                 ),
-                "odds_captured_before_jump": odds_snapshot.get(
-                    "odds_captured_before_jump"
-                ),
-                "odds_stale_at_prediction": odds_snapshot.get(
-                    "odds_stale_at_prediction"
-                ),
+                "odds_captured_before_jump": odds_snapshot.get("odds_captured_before_jump"),
+                "odds_stale_at_prediction": odds_snapshot.get("odds_stale_at_prediction"),
                 "odds_source": runner.get("odds_source")
                 or (
                     odds_snapshot.get("odds_provenance", {}).get("source")
@@ -248,9 +245,7 @@ def analyze_snapshot_odds_coverage(
     partial_valid_races = 0
     no_valid_races = 0
     for runners in race_rows.values():
-        valid = [
-            row for row in runners if row["odds_match_status"] == "valid_pre_jump_dog_odds"
-        ]
+        valid = [row for row in runners if row["odds_match_status"] == "valid_pre_jump_dog_odds"]
         if valid and len(valid) == len(runners):
             complete_valid_races += 1
         elif valid:
@@ -281,9 +276,7 @@ def analyze_snapshot_odds_coverage(
         "null_ev_reason_distribution": _counter_dict(null_ev_counts),
         "stale_odds_rows": status_counts.get("stale_beyond_ttl", 0),
         "missing_timestamp_rows": status_counts.get("missing_timestamp", 0),
-        "timestamp_after_prediction_rows": status_counts.get(
-            "timestamp_after_prediction", 0
-        ),
+        "timestamp_after_prediction_rows": status_counts.get("timestamp_after_prediction", 0),
         "timestamp_after_jump_rows": status_counts.get("timestamp_after_jump", 0),
         "null_ev_reason_rows": rows,
     }
@@ -742,6 +735,58 @@ def analyze_odds_coverage(
                 """
             ).fetchone()
         )
+        live_odds_columns = _table_columns(conn, "live_odds")
+        if "source_url" in live_odds_columns:
+            source_url_quality = _dict_row(
+                conn.execute(
+                    f"""
+                    SELECT
+                        COUNT(*) AS rows_checked,
+                        SUM(CASE
+                            WHEN trim(coalesce(source_url, '')) <> ''
+                            THEN 1 ELSE 0 END) AS rows_with_source_url,
+                        SUM(CASE
+                            WHEN trim(coalesce(source_url, '')) = ''
+                            THEN 1 ELSE 0 END) AS rows_missing_source_url,
+                        SUM(CASE
+                            WHEN lower(coalesce(source_url, '')) LIKE '%result%'
+                              OR lower(coalesce(source_url, '')) LIKE '%dividend%'
+                              OR lower(coalesce(source_url, '')) LIKE '%payout%'
+                              OR lower(coalesce(source_url, '')) LIKE '%starting-price%'
+                              OR lower(coalesce(source_url, '')) LIKE '%starting_price%'
+                              OR lower(coalesce(source_url, '')) LIKE '%startingprice%'
+                              OR lower(coalesce(source_url, '')) LIKE '%/sp/%'
+                              OR lower(coalesce(source_url, '')) LIKE '%/sp?%'
+                              OR lower(coalesce(source_url, '')) LIKE '%/sp#%'
+                              OR lower(coalesce(source_url, '')) LIKE '%/sp'
+                              OR lower(coalesce(source_url, '')) LIKE '%=sp%'
+                              OR lower(coalesce(source_url, '')) LIKE '%?sp%'
+                              OR lower(coalesce(source_url, '')) LIKE '%&sp%'
+                            THEN 1 ELSE 0 END) AS post_race_source_url_rows
+                    FROM live_odds
+                    WHERE {win_where}
+                    """
+                ).fetchone()
+            )
+        else:
+            source_url_quality = {
+                "rows_checked": int(win_counts.get("dog_level_win_odds_rows") or 0),
+                "rows_with_source_url": 0,
+                "rows_missing_source_url": int(win_counts.get("dog_level_win_odds_rows") or 0),
+                "post_race_source_url_rows": 0,
+                "source_url_column_present": False,
+            }
+        source_url_quality.setdefault(
+            "source_url_column_present", "source_url" in live_odds_columns
+        )
+        for key in (
+            "rows_checked",
+            "rows_with_source_url",
+            "rows_missing_source_url",
+            "post_race_source_url_rows",
+        ):
+            if source_url_quality.get(key) is None:
+                source_url_quality[key] = 0
         source_counts = {
             "live_odds": [
                 dict(row)
@@ -915,10 +960,10 @@ def analyze_odds_coverage(
             "odds_history_dog_level": history_timestamp_quality,
         },
         "source_provenance": source_counts,
+        "source_url_quality": source_url_quality,
         "coverage_rates": {
             "race_id_metadata_match_rate": (
-                int(match_counts.get("race_id_metadata_matches") or 0)
-                / dog_level_win_rows
+                int(match_counts.get("race_id_metadata_matches") or 0) / dog_level_win_rows
                 if dog_level_win_rows
                 else None
             ),

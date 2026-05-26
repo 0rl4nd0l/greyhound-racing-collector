@@ -166,6 +166,14 @@ def test_snapshot_odds_provenance_gate_rejects_unsafe_ev_inputs():
             },
             None,
         ),
+        (
+            "post_race_or_sp_only",
+            {
+                "odds_timestamp": "2026-05-21T15:44:00",
+                "odds_source_url": "https://www.sportsbet.com.au/greyhound-racing/race-4?market=sp",
+            },
+            None,
+        ),
     ]
 
     for expected_status, override, expected_ev in cases:
