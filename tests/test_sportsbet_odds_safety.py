@@ -6,7 +6,12 @@ import pytest
 
 import odds_auto_integrator
 from odds_auto_integrator import _copy_current_odds_to_alias
-from sportsbet_odds_integrator import SportsbetOddsIntegrator
+from sportsbet_odds_integrator import (
+    SPORTSBET_LIST_POSITION_BOX_SOURCE,
+    SPORTSBET_RUNNER_TEXT_BOX_SOURCE,
+    SportsbetOddsIntegrator,
+    sportsbet_runner_box_metadata,
+)
 from utils import feature_flags
 
 
@@ -264,6 +269,8 @@ def test_append_pre_jump_capture_defaults_to_canonical_race_id_and_preserves_sou
                 "dog_clean_name": "PABLO VENDETTA",
                 "box_number": 1,
                 "odds_decimal": 3.5,
+                "sportsbet_box_source": SPORTSBET_RUNNER_TEXT_BOX_SOURCE,
+                "sportsbet_list_position": 1,
             }
         ],
         capture_mode="opt_in_live_pre_jump_snapshot",
@@ -275,7 +282,8 @@ def test_append_pre_jump_capture_defaults_to_canonical_race_id_and_preserves_sou
     with sqlite3.connect(db_path) as conn:
         row = conn.execute(
             """
-            SELECT race_id, source_url, capture_mode, dog_clean_name, box_number
+            SELECT race_id, source_url, capture_mode, dog_clean_name, box_number,
+                   sportsbet_box_source, sportsbet_list_position
             FROM live_odds
             """
         ).fetchone()
@@ -286,7 +294,31 @@ def test_append_pre_jump_capture_defaults_to_canonical_race_id_and_preserves_sou
         "opt_in_live_pre_jump_snapshot",
         "PABLO VENDETTA",
         1,
+        SPORTSBET_RUNNER_TEXT_BOX_SOURCE,
+        1,
     )
+
+
+def test_sportsbet_runner_box_metadata_uses_explicit_runner_text_over_list_position():
+    metadata = sportsbet_runner_box_metadata(
+        list_position=5,
+        runner_text="6. Memories\n(6)\nF: 244311\n9.00\n3.25",
+    )
+
+    assert metadata["box_number"] == 6
+    assert metadata["sportsbet_box_source"] == SPORTSBET_RUNNER_TEXT_BOX_SOURCE
+    assert metadata["sportsbet_list_position"] == 5
+
+
+def test_sportsbet_runner_box_metadata_marks_list_position_only_as_ambiguous():
+    metadata = sportsbet_runner_box_metadata(
+        list_position=5,
+        runner_text="Memories\nF: 244311\n9.00\n3.25",
+    )
+
+    assert metadata["box_number"] == 5
+    assert metadata["sportsbet_box_source"] == SPORTSBET_LIST_POSITION_BOX_SOURCE
+    assert metadata["sportsbet_list_position"] == 5
 
 
 def test_alias_odds_copy_rolls_back_when_metadata_upsert_fails(tmp_path, monkeypatch):

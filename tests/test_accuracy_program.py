@@ -162,6 +162,14 @@ def test_snapshot_odds_provenance_gate_rejects_unsafe_ev_inputs():
             None,
         ),
         (
+            "ambiguous_box_source",
+            {
+                "odds_timestamp": "2026-05-21T15:44:00",
+                "odds_sportsbet_box_source": "list_position_fallback",
+            },
+            None,
+        ),
+        (
             "post_race_or_sp_only",
             {"odds_timestamp": "2026-05-21T15:44:00", "odds_market_type": "sp"},
             None,
@@ -227,6 +235,7 @@ def test_snapshot_ev_accepts_canonical_race_id_equivalence_only_for_same_race():
         "odds_box_number": 1,
         "odds_match_method": "race_id_box_name",
         "odds_match_confidence": 1.0,
+        "odds_sportsbet_box_source": "explicit_dom",
     }
 
     def snapshot_for(odds_race_id: str):
@@ -249,6 +258,10 @@ def test_snapshot_ev_accepts_canonical_race_id_equivalence_only_for_same_race():
     assert accepted_runner["odds_match_status"] == "valid_pre_jump_dog_odds"
     assert accepted_runner["odds_match_method"] == "canonical_race_id_box_dog"
     assert accepted_runner["ev_win"] == pytest.approx(0.2)
+    assert (
+        accepted_runner["odds_snapshot"]["odds_provenance"]["sportsbet_box_source"]
+        == "explicit_dom"
+    )
 
     rejected = snapshot_for("WRGL_2026-05-22_4")
     rejected_runner = rejected["predictions"][0]

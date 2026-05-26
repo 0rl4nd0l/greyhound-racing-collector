@@ -401,6 +401,24 @@ def _build_odds_snapshot(
                 ),
             )
         ),
+        "sportsbet_box_source": _first_value(
+            row,
+            (
+                "odds_sportsbet_box_source",
+                "sportsbet_box_source",
+                "market_odds_sportsbet_box_source",
+            ),
+        ),
+        "sportsbet_list_position": _safe_int(
+            _first_value(
+                row,
+                (
+                    "odds_sportsbet_list_position",
+                    "sportsbet_list_position",
+                    "market_odds_sportsbet_list_position",
+                ),
+            )
+        ),
         "fetch_timestamp": _first_value(
             row,
             (
@@ -507,6 +525,10 @@ def classify_odds_snapshot_for_ev(
             return result("race_id_mismatch")
         if canonical_method:
             canonical_match_method = canonical_method
+
+    sportsbet_box_source = str(provenance.get("sportsbet_box_source") or "").strip().lower()
+    if sportsbet_box_source in {"list_position_fallback", "ambiguous_box_source"}:
+        return result("ambiguous_box_source")
 
     runner_box = _safe_int(runner.get("box_number"))
     odds_box = _safe_int(provenance.get("odds_box_number"))

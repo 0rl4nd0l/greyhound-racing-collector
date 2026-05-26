@@ -303,16 +303,59 @@ def _copy_current_odds_to_alias(
             "UPDATE live_odds SET is_current = 0 WHERE race_id = ? AND is_current = 1",
             (alias_race_id,),
         )
-        cur.execute(
-            """
-            INSERT INTO live_odds (
-                race_id, venue, race_number, race_date, race_time, dog_name,
-                dog_clean_name, box_number, odds_decimal, odds_fractional,
-                market_type, source, is_current, topN
+        cur.execute("PRAGMA table_info(live_odds)")
+        live_columns = {str(row[1]) for row in cur.fetchall()}
+        optional_columns = [
+            column
+            for column in (
+                "source_url",
+                "capture_timestamp",
+                "capture_mode",
+                "odds_level",
+                "sportsbet_box_source",
+                "sportsbet_list_position",
+                "sportsbet_raw_runner_text",
             )
-            SELECT
-                ?, ?, ?, ?, race_time, dog_name, dog_clean_name, box_number,
-                odds_decimal, odds_fractional, market_type, source, 1, topN
+            if column in live_columns
+        ]
+        insert_columns = [
+            "race_id",
+            "venue",
+            "race_number",
+            "race_date",
+            "race_time",
+            "dog_name",
+            "dog_clean_name",
+            "box_number",
+            "odds_decimal",
+            "odds_fractional",
+            "market_type",
+            "source",
+            "is_current",
+            "topN",
+            *optional_columns,
+        ]
+        select_columns = [
+            "?",
+            "?",
+            "?",
+            "?",
+            "race_time",
+            "dog_name",
+            "dog_clean_name",
+            "box_number",
+            "odds_decimal",
+            "odds_fractional",
+            "market_type",
+            "source",
+            "1",
+            "topN",
+            *optional_columns,
+        ]
+        cur.execute(
+            f"""
+            INSERT INTO live_odds ({', '.join(insert_columns)})
+            SELECT {', '.join(select_columns)}
             FROM live_odds
             WHERE race_id = ? AND is_current = 1
             """,

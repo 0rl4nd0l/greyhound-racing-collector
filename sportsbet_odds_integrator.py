@@ -57,10 +57,16 @@ LIVE_ODDS_CAPTURE_COLUMNS = {
     "capture_timestamp": "TEXT",
     "capture_mode": "TEXT",
     "odds_level": "TEXT",
+    "sportsbet_box_source": "TEXT",
+    "sportsbet_list_position": "INTEGER",
+    "sportsbet_raw_runner_text": "TEXT",
 }
 
 
 POST_RACE_SOURCE_URL_MARKERS = ("dividend", "payout", "result")
+SPORTSBET_LIST_POSITION_BOX_SOURCE = "list_position_fallback"
+SPORTSBET_RUNNER_TEXT_BOX_SOURCE = "runner_text"
+SPORTSBET_EXPLICIT_DOM_BOX_SOURCE = "explicit_dom"
 
 
 def _race_metadata_columns(cursor: sqlite3.Cursor) -> set[str]:
@@ -101,6 +107,80 @@ def _source_url_is_post_race(raw_url: Any) -> bool:
         or "startingprice" in token_set
         or ("starting" in token_set and "price" in token_set)
     )
+
+
+def _safe_runner_box(value: Any) -> Optional[int]:
+    try:
+        parsed = int(str(value).strip())
+    except Exception:
+        return None
+    return parsed if 1 <= parsed <= 10 else None
+
+
+def parse_sportsbet_runner_box_from_text(raw_text: Any) -> Optional[int]:
+    """Extract explicit Sportsbet runner/box number from runner text."""
+
+    text = str(raw_text or "").replace("\xa0", " ")
+    if not text.strip():
+        return None
+
+    lines = [line.strip() for line in re.split(r"[\r\n]+", text) if line.strip()]
+    for line in lines:
+        # Sportsbet race cards render greyhounds like "6. Memories" and "(6)".
+        for pattern in (
+            r"^\s*(\d{1,2})\s*[.)]\s+[A-Za-z][A-Za-z' -]+(?:\s*\(\d{1,2}\))?\s*$",
+            r"^\s*[A-Za-z][A-Za-z' -]+\s*\((\d{1,2})\)\s*$",
+        ):
+            match = re.match(pattern, line)
+            if match:
+                box = _safe_runner_box(match.group(1))
+                if box is not None:
+                    return box
+
+    attr_match = re.search(
+        r"\b(?:box|runner|rug|selection|number|runnerNumber|selectionNumber|competitorNumber)\b"
+        r"[^0-9]{0,20}(\d{1,2})\b",
+        text,
+        re.IGNORECASE,
+    )
+    if attr_match:
+        return _safe_runner_box(attr_match.group(1))
+    return None
+
+
+def sportsbet_runner_box_metadata(
+    *,
+    list_position: int,
+    runner_text: Any = "",
+    explicit_metadata: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Return parsed box metadata without treating list position as authoritative."""
+
+    for value in (explicit_metadata or {}).values():
+        box = parse_sportsbet_runner_box_from_text(value)
+        if box is not None:
+            return {
+                "box_number": box,
+                "sportsbet_box_source": SPORTSBET_EXPLICIT_DOM_BOX_SOURCE,
+                "sportsbet_list_position": list_position,
+            }
+
+    box = parse_sportsbet_runner_box_from_text(runner_text)
+    raw_text = str(runner_text or "").strip()
+    if box is not None:
+        return {
+            "box_number": box,
+            "sportsbet_box_source": SPORTSBET_RUNNER_TEXT_BOX_SOURCE,
+            "sportsbet_list_position": list_position,
+            "sportsbet_raw_runner_text": raw_text[:500] if raw_text else None,
+        }
+
+    return {
+        "box_number": list_position,
+        "sportsbet_box_source": SPORTSBET_LIST_POSITION_BOX_SOURCE,
+        "sportsbet_list_position": list_position,
+        "sportsbet_raw_runner_text": raw_text[:500] if raw_text else None,
+    }
 
 
 def _metadata_value_is_present(column: str, value: Any) -> bool:
@@ -964,6 +1044,9 @@ class SportsbetOddsIntegrator:
                 pass
             cur = conn.cursor()
             conn.execute("BEGIN")
+            for column, definition in LIVE_ODDS_CAPTURE_COLUMNS.items():
+                _ensure_column(cur, "live_odds", column, definition)
+            live_cols = _table_columns(cur, "live_odds")
             race_id = race_info.get("race_id")
             venue = race_info.get("venue")
             race_date = race_info.get("race_date")
@@ -983,12 +1066,33 @@ class SportsbetOddsIntegrator:
                     box = int(box) if box is not None else None
                 except Exception:
                     box = None
+                values = {
+                    "race_id": race_id,
+                    "venue": venue,
+                    "race_number": race_info.get("race_number"),
+                    "race_date": race_date,
+                    "race_time": race_time,
+                    "dog_name": r.get("dog_name"),
+                    "dog_clean_name": dog,
+                    "box_number": box,
+                    "odds_decimal": odds,
+                    "odds_fractional": r.get("odds_fractional", ""),
+                    "market_type": market_type,
+                    "source": "sportsbet",
+                    "is_current": 1,
+                    "topN": topN,
+                    "sportsbet_box_source": r.get("sportsbet_box_source"),
+                    "sportsbet_list_position": r.get("sportsbet_list_position"),
+                    "sportsbet_raw_runner_text": r.get("sportsbet_raw_runner_text"),
+                }
+                insert_values = {
+                    column: value for column, value in values.items() if column in live_cols
+                }
+                columns = list(insert_values.keys())
+                placeholders = ", ".join("?" for _ in columns)
                 cur.execute(
-                    """
-                    INSERT INTO live_odds (race_id, venue, race_date, race_time, dog_clean_name, box_number, odds_decimal, market_type, source, is_current, topN)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sportsbet', 1, ?)
-                    """,
-                    (race_id, venue, race_date, race_time, dog, box, odds, market_type, topN),
+                    f"INSERT INTO live_odds ({', '.join(columns)}) VALUES ({placeholders})",
+                    tuple(insert_values[column] for column in columns),
                 )
             conn.commit()
         except Exception as e:
@@ -1145,6 +1249,9 @@ class SportsbetOddsIntegrator:
                     "capture_timestamp": capture_ts,
                     "capture_mode": capture_mode,
                     "odds_level": "dog",
+                    "sportsbet_box_source": row.get("sportsbet_box_source"),
+                    "sportsbet_list_position": row.get("sportsbet_list_position"),
+                    "sportsbet_raw_runner_text": row.get("sportsbet_raw_runner_text"),
                 }
                 insert_values = {
                     column: value for column, value in values.items() if column in live_cols
@@ -1485,13 +1592,21 @@ class SportsbetOddsIntegrator:
                 # Add to results if we have both name and odds
                 if dog_name and odds_decimal > 0:
                     cleaned = self.clean_dog_name(dog_name)
+                    try:
+                        runner_text = card.text.strip()
+                    except Exception:
+                        runner_text = dog_name
+                    box_meta = sportsbet_runner_box_metadata(
+                        list_position=i + 1,
+                        runner_text=runner_text,
+                    )
                     odds_data.append(
                         {
                             "dog_name": dog_name,
                             "dog_clean_name": cleaned,
-                            "box_number": i + 1,
                             "odds_decimal": odds_decimal,
                             "odds_fractional": odds_text,
+                            **box_meta,
                         }
                     )
                     processed_names.add(cleaned)
@@ -2019,13 +2134,21 @@ class SportsbetOddsIntegrator:
 
                         if dog_name and odds_decimal > 0:
                             print(f"    ✅ Container {i+1}: Found {dog_name} - ${odds_decimal:.2f}")
+                            try:
+                                runner_text = container.text.strip()
+                            except Exception:
+                                runner_text = expected_dog_name or dog_name
+                            box_meta = sportsbet_runner_box_metadata(
+                                list_position=i + 1,
+                                runner_text=runner_text,
+                            )
                             odds_data.append(
                                 {
                                     "dog_name": dog_name,
                                     "dog_clean_name": self.clean_dog_name(dog_name),
-                                    "box_number": i + 1,
                                     "odds_decimal": odds_decimal,
                                     "odds_fractional": odds_text,
+                                    **box_meta,
                                 }
                             )
                         else:
@@ -2222,13 +2345,17 @@ class SportsbetOddsIntegrator:
 
                     if dog_name and odds_decimal > 0:
                         print(f"    ✅ Extracted: {dog_name} - ${odds_decimal:.2f}")
+                        box_meta = sportsbet_runner_box_metadata(
+                            list_position=i + 1,
+                            runner_text=runner_text,
+                        )
                         odds_data.append(
                             {
                                 "dog_name": dog_name,
                                 "dog_clean_name": self.clean_dog_name(dog_name),
-                                "box_number": i + 1,
                                 "odds_decimal": odds_decimal,
                                 "odds_fractional": odds_text,
+                                **box_meta,
                             }
                         )
                     else:
@@ -2419,13 +2546,29 @@ class SportsbetOddsIntegrator:
                         break
 
                 if dog_name:
-                    dog_names.append(dog_name)
+                    dog_names.append(
+                        {
+                            "dog_name": dog_name,
+                            "box_meta": sportsbet_runner_box_metadata(
+                                list_position=i + 1,
+                                runner_text=runner_text,
+                            ),
+                        }
+                    )
                     print(f"    Dog {i+1}: {dog_name}")
                 else:
                     # Try alternative extraction for this runner
                     alt_name = self._extract_dog_name_enhanced(runner_text)
                     if alt_name:
-                        dog_names.append(alt_name)
+                        dog_names.append(
+                            {
+                                "dog_name": alt_name,
+                                "box_meta": sportsbet_runner_box_metadata(
+                                    list_position=i + 1,
+                                    runner_text=runner_text,
+                                ),
+                            }
+                        )
                         print(f"    Dog {i+1}: {alt_name} (alternative extraction)")
 
             # Now find all buttons with decimal odds patterns
@@ -2519,16 +2662,18 @@ class SportsbetOddsIntegrator:
 
             for i in range(min_count):
                 if i < len(dog_names) and i < len(odds_buttons):
-                    dog_name = dog_names[i]
+                    dog_entry = dog_names[i]
+                    dog_name = dog_entry["dog_name"]
+                    box_meta = dog_entry["box_meta"]
                     odds_text, odds_decimal = odds_buttons[i]
 
                     odds_data.append(
                         {
                             "dog_name": dog_name,
                             "dog_clean_name": self.clean_dog_name(dog_name),
-                            "box_number": i + 1,
                             "odds_decimal": odds_decimal,
                             "odds_fractional": odds_text,
+                            **box_meta,
                         }
                     )
 
@@ -2596,13 +2741,21 @@ class SportsbetOddsIntegrator:
                         if dog_name and odds_text:
                             odds_decimal = self.parse_odds_to_decimal(odds_text)
                             if odds_decimal > 0:
+                                try:
+                                    row_text = row.text.strip()
+                                except Exception:
+                                    row_text = dog_name
+                                box_meta = sportsbet_runner_box_metadata(
+                                    list_position=i + 1,
+                                    runner_text=row_text,
+                                )
                                 odds_data.append(
                                     {
                                         "dog_name": dog_name,
                                         "dog_clean_name": self.clean_dog_name(dog_name),
-                                        "box_number": i + 1,
                                         "odds_decimal": odds_decimal,
                                         "odds_fractional": odds_text,
+                                        **box_meta,
                                     }
                                 )
 
@@ -2689,13 +2842,18 @@ class SportsbetOddsIntegrator:
                     clean_name = self.clean_dog_name(dog_name)
                     if clean_name not in seen_names:
                         seen_names.add(clean_name)
+                        list_position = len(odds_data) + 1
+                        box_meta = sportsbet_runner_box_metadata(
+                            list_position=list_position,
+                            runner_text=dog_name,
+                        )
                         odds_data.append(
                             {
                                 "dog_name": dog_name,
                                 "dog_clean_name": clean_name,
-                                "box_number": len(odds_data) + 1,
                                 "odds_decimal": odds_decimal,
                                 "odds_fractional": odds_text,
+                                **box_meta,
                             }
                         )
 
@@ -3512,14 +3670,22 @@ class SportsbetOddsIntegrator:
 
                     # Parse odds
                     odds_decimal = self.parse_odds_to_decimal(odds_text)
+                    try:
+                        runner_text = runner.text.strip()
+                    except Exception:
+                        runner_text = dog_name
+                    box_meta = sportsbet_runner_box_metadata(
+                        list_position=i + 1,
+                        runner_text=runner_text,
+                    )
 
                     odds_data.append(
                         {
                             "dog_name": dog_name,
                             "dog_clean_name": self.clean_dog_name(dog_name),
-                            "box_number": i + 1,
                             "odds_decimal": odds_decimal,
                             "odds_fractional": odds_text,
+                            **box_meta,
                         }
                     )
 
@@ -3681,26 +3847,33 @@ class SportsbetOddsIntegrator:
             )
 
             # Insert new odds (canonical id) for WIN market (default)
+            for column, definition in LIVE_ODDS_CAPTURE_COLUMNS.items():
+                _ensure_column(cursor, "live_odds", column, definition)
+            live_cols = _table_columns(cursor, "live_odds")
             for dog_odds in odds_data:
+                values = {
+                    "race_id": canonical_rid,
+                    "venue": race_info.get("venue"),
+                    "race_number": race_info.get("race_number", 0),
+                    "race_date": race_info.get("race_date"),
+                    "race_time": race_info.get("race_time"),
+                    "dog_name": dog_odds.get("dog_name"),
+                    "dog_clean_name": dog_odds.get("dog_clean_name"),
+                    "box_number": dog_odds.get("box_number"),
+                    "odds_decimal": float(dog_odds.get("odds_decimal", 0.0)),
+                    "odds_fractional": dog_odds.get("odds_fractional", ""),
+                    "sportsbet_box_source": dog_odds.get("sportsbet_box_source"),
+                    "sportsbet_list_position": dog_odds.get("sportsbet_list_position"),
+                    "sportsbet_raw_runner_text": dog_odds.get("sportsbet_raw_runner_text"),
+                }
+                insert_values = {
+                    column: value for column, value in values.items() if column in live_cols
+                }
+                columns = list(insert_values.keys())
+                placeholders = ", ".join("?" for _ in columns)
                 cursor.execute(
-                    """
-                    INSERT INTO live_odds 
-                    (race_id, venue, race_number, race_date, race_time, 
-                     dog_name, dog_clean_name, box_number, odds_decimal, odds_fractional)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                    (
-                        canonical_rid,
-                        race_info.get("venue"),
-                        race_info.get("race_number", 0),
-                        race_info.get("race_date"),
-                        race_info.get("race_time"),
-                        dog_odds.get("dog_name"),
-                        dog_odds.get("dog_clean_name"),
-                        dog_odds.get("box_number"),
-                        float(dog_odds.get("odds_decimal", 0.0)),
-                        dog_odds.get("odds_fractional", ""),
-                    ),
+                    f"INSERT INTO live_odds ({', '.join(columns)}) VALUES ({placeholders})",
+                    tuple(insert_values[column] for column in columns),
                 )
 
             conn.commit()

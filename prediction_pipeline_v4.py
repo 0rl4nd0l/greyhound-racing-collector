@@ -146,6 +146,13 @@ def _store_market_odds_record(
             odds_records[key] = stored
 
 
+def _has_ambiguous_sportsbet_box_source(record: dict[str, Any] | None) -> bool:
+    if not record:
+        return False
+    source = str(record.get("sportsbet_box_source") or "").strip().lower()
+    return source in {"list_position_fallback", "ambiguous_box_source"}
+
+
 def _safe_float(value: Any, default: float | None = None) -> float | None:
     try:
         if value is None:
@@ -301,6 +308,10 @@ def _annotate_market_context(
             prediction["odds_box_number"] = record.get("box_number")
             prediction["odds_market_type"] = record.get("market_type") or "win"
             prediction["odds_level"] = record.get("odds_level") or "dog"
+            prediction["odds_sportsbet_box_source"] = record.get("sportsbet_box_source")
+            prediction["odds_sportsbet_list_position"] = record.get(
+                "sportsbet_list_position"
+            )
             if record.get("dog_clean_name") and record.get("box_number") is not None:
                 prediction["odds_match_method"] = "race_id_box_name"
                 prediction["odds_match_confidence"] = 1.0
@@ -802,6 +813,16 @@ class PredictionPipelineV4:
                         else:
                             source_url_expr = "NULL"
                         odds_level_expr = "lo.odds_level" if "odds_level" in live_cols else "'dog'"
+                        sportsbet_box_source_expr = (
+                            "lo.sportsbet_box_source"
+                            if "sportsbet_box_source" in live_cols
+                            else "NULL"
+                        )
+                        sportsbet_list_position_expr = (
+                            "lo.sportsbet_list_position"
+                            if "sportsbet_list_position" in live_cols
+                            else "NULL"
+                        )
                         rows = conn.execute(
                             f"""
                             SELECT
@@ -815,7 +836,9 @@ class PredictionPipelineV4:
                                 coalesce(lo.source, 'sportsbet') AS source,
                                 lo.timestamp,
                                 {source_url_expr} AS source_url,
-                                {odds_level_expr} AS odds_level
+                                {odds_level_expr} AS odds_level,
+                                {sportsbet_box_source_expr} AS sportsbet_box_source,
+                                {sportsbet_list_position_expr} AS sportsbet_list_position
                             FROM live_odds lo
                             LEFT JOIN race_metadata rm ON rm.race_id = lo.race_id
                             WHERE lo.race_id = ?
@@ -832,6 +855,8 @@ class PredictionPipelineV4:
                             _store_market_odds_record(records, dict(row))
                         odds: dict[str, float] = {}
                         for key, record in records.items():
+                            if _has_ambiguous_sportsbet_box_source(record):
+                                continue
                             odds[key] = float(record["odds_decimal"])
                         return odds, records
 
