@@ -429,6 +429,36 @@ def test_prediction_market_context_carries_db_odds_provenance_into_snapshot():
     assert_no_result_fields(snapshot)
 
 
+def test_alt_race_odds_merge_preserves_snapshot_race_win_odds():
+    import importlib.util
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "_real_prediction_pipeline_v4_for_alt_odds_merge_test",
+        repo_root / "prediction_pipeline_v4.py",
+    )
+    pipeline_module = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    spec.loader.exec_module(pipeline_module)
+
+    win_odds, win_records, place_odds, resolved_markets = (
+        pipeline_module._merge_missing_market_odds(
+            {"Alpha Runner": 3.0},
+            {"Alpha Runner": {"race_id": "Race 7 - HOR - 2026-05-26"}},
+            {},
+            {"Alpha Runner": 4.0},
+            {"Alpha Runner": {"race_id": "HOR_2026-05-26_7"}},
+            {"Alpha Runner": 1.6},
+        )
+    )
+
+    assert win_odds == {"Alpha Runner": 3.0}
+    assert win_records == {"Alpha Runner": {"race_id": "Race 7 - HOR - 2026-05-26"}}
+    assert place_odds == {"Alpha Runner": 1.6}
+    assert resolved_markets == ["place"]
+
+
 def test_snapshot_evaluation_reports_missing_frozen_corpus(tmp_path):
     report = evaluate_snapshots(
         str(tmp_path / "labels.db"),

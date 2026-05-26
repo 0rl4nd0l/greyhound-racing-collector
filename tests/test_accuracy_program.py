@@ -121,6 +121,14 @@ def test_snapshot_odds_provenance_gate_rejects_unsafe_ev_inputs():
             {"odds_timestamp": "2026-05-21T15:44:00"},
             pytest.approx(0.2),
         ),
+        (
+            "duplicate_odds_rows",
+            {
+                "odds_timestamp": "2026-05-21T15:44:00",
+                "odds_candidate_count": 2,
+            },
+            None,
+        ),
         ("missing_timestamp", {}, None),
         (
             "timestamp_after_prediction",
@@ -203,6 +211,51 @@ def test_snapshot_odds_provenance_gate_rejects_unsafe_ev_inputs():
             assert runner["ev_win"] == expected_ev
             assert runner["odds_exclusion_reason"] is None
         assert_no_result_fields(snapshot)
+
+
+def test_snapshot_ev_accepts_canonical_race_id_equivalence_only_for_same_race():
+    base_runner = {
+        "dog_clean_name": "Alpha Runner",
+        "box_number": 1,
+        "win_prob_norm": 0.4,
+        "predicted_rank": 1,
+        "odds_win": 3.0,
+        "odds_timestamp": "2026-05-21T15:44:00",
+        "odds_source": "sportsbet",
+        "odds_source_url": "https://www.sportsbet.com.au/greyhound-racing/race-4",
+        "odds_dog_name": "Alpha Runner",
+        "odds_box_number": 1,
+        "odds_match_method": "race_id_box_name",
+        "odds_match_confidence": 1.0,
+    }
+
+    def snapshot_for(odds_race_id: str):
+        return build_prediction_snapshot(
+            {
+                "race_id": "Race 4 - WRGL - 2026-05-21",
+                "model_version": "model-v1",
+                "predictions": [{**base_runner, "odds_race_id": odds_race_id}],
+            },
+            lifecycle={
+                "status": "upcoming_not_jumped",
+                "jump_datetime": "2026-05-21T15:58:00",
+            },
+            prediction_timestamp="2026-05-21T15:45:00",
+            stale_odds_after_minutes=30.0,
+        )
+
+    accepted = snapshot_for("WRGL_2026-05-21_4")
+    accepted_runner = accepted["predictions"][0]
+    assert accepted_runner["odds_match_status"] == "valid_pre_jump_dog_odds"
+    assert accepted_runner["odds_match_method"] == "canonical_race_id_box_dog"
+    assert accepted_runner["ev_win"] == pytest.approx(0.2)
+
+    rejected = snapshot_for("WRGL_2026-05-22_4")
+    rejected_runner = rejected["predictions"][0]
+    assert rejected_runner["odds_match_status"] == "race_id_mismatch"
+    assert rejected_runner["ev_win"] is None
+    assert_no_result_fields(accepted)
+    assert_no_result_fields(rejected)
 
 
 def test_snapshot_carries_history_and_target_metadata_provenance_result_free():

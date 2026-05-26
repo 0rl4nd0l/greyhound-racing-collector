@@ -10,6 +10,13 @@ from pathlib import Path
 from typing import Any, Mapping
 from urllib.parse import urlparse
 
+try:
+    from config.venue_mapping import normalize_venue
+except Exception:
+
+    def normalize_venue(value: str) -> str:
+        return re.sub(r"[^A-Z0-9_]", "", str(value or "").upper())
+
 
 TRUSTED_ODDS_SOURCES = {"sportsbet"}
 POST_RACE_OR_RESULT_ODDS_MARKETS = {
@@ -115,6 +122,54 @@ def _safe_bool(value: Any) -> bool | None:
 
 def _normalize_identity(value: Any) -> str:
     return re.sub(r"[^A-Z0-9]", "", str(value or "").upper())
+
+
+def _canonical_race_identity(value: Any) -> tuple[str, str, int] | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+
+    filename_match = re.match(
+        r"^\s*Race\s+(\d+)\s*-\s*(.+?)\s*-\s*(\d{4}-\d{2}-\d{2})\s*$",
+        raw,
+        re.IGNORECASE,
+    )
+    if filename_match:
+        race_number = filename_match.group(1)
+        venue = filename_match.group(2)
+        race_date = filename_match.group(3)
+    else:
+        canonical_match = re.match(
+            r"^\s*(.+?)_(\d{4}-\d{2}-\d{2})_(\d+)\s*$",
+            raw,
+            re.IGNORECASE,
+        )
+        if not canonical_match:
+            return None
+        venue = canonical_match.group(1)
+        race_date = canonical_match.group(2)
+        race_number = canonical_match.group(3)
+
+    try:
+        parsed_race_number = int(race_number)
+    except Exception:
+        return None
+
+    venue_code = normalize_venue(str(venue).replace("/", "_"))
+    if not venue_code or venue_code == "UNKNOWN":
+        return None
+    return (str(venue_code).upper(), str(race_date), parsed_race_number)
+
+
+def _race_ids_match(snapshot_race_id: Any, odds_race_id: Any) -> tuple[bool, str | None]:
+    if str(snapshot_race_id) == str(odds_race_id):
+        return True, None
+
+    snapshot_identity = _canonical_race_identity(snapshot_race_id)
+    odds_identity = _canonical_race_identity(odds_race_id)
+    if snapshot_identity is not None and snapshot_identity == odds_identity:
+        return True, "canonical_race_id_box_dog"
+    return False, None
 
 
 def _quality_flags(row: Mapping[str, Any]) -> list[str]:
@@ -389,12 +444,14 @@ def classify_odds_snapshot_for_ev(
         else {}
     )
     method = _odds_match_method(provenance)
+    effective_method = method
+    canonical_match_method: str | None = None
 
     def result(status: str) -> dict[str, Any]:
         valid = status == "valid_pre_jump_dog_odds"
         return {
             "odds_match_status": status,
-            "odds_match_method": method,
+            "odds_match_method": effective_method,
             "odds_exclusion_reason": None if valid else status,
             "odds_provenance_status": "complete" if valid else "excluded",
             "is_ev_eligible": valid,
@@ -442,8 +499,14 @@ def classify_odds_snapshot_for_ev(
         return result("post_race_or_sp_only")
 
     if snapshot_race_id and provenance.get("odds_race_id"):
-        if str(provenance.get("odds_race_id")) != str(snapshot_race_id):
+        race_ids_match, canonical_method = _race_ids_match(
+            snapshot_race_id,
+            provenance.get("odds_race_id"),
+        )
+        if not race_ids_match:
             return result("race_id_mismatch")
+        if canonical_method:
+            canonical_match_method = canonical_method
 
     runner_box = _safe_int(runner.get("box_number"))
     odds_box = _safe_int(provenance.get("odds_box_number"))
@@ -461,7 +524,6 @@ def classify_odds_snapshot_for_ev(
         return result("duplicate_odds_rows")
 
     confidence = _safe_float(provenance.get("match_confidence"))
-    method_key = str(method or "").strip().lower()
     explicit_identity_match = (
         runner_box is not None
         and odds_box is not None
@@ -469,6 +531,9 @@ def classify_odds_snapshot_for_ev(
         and bool(odds_name)
         and _normalize_identity(odds_name) == _normalize_identity(runner_name)
     )
+    if canonical_match_method and explicit_identity_match:
+        effective_method = canonical_match_method
+    method_key = str(effective_method or "").strip().lower()
     strict_method_match = method_key in STRICT_ODDS_MATCH_METHODS
     if not explicit_identity_match and not strict_method_match:
         return result("ambiguous_runner_identity")

@@ -239,6 +239,56 @@ def test_alias_metadata_update_preserves_unrelated_columns(tmp_path):
     assert old_alias_current == 0
 
 
+def test_append_pre_jump_capture_defaults_to_canonical_race_id_and_preserves_source_url(
+    tmp_path,
+):
+    db_path = tmp_path / "canonical_capture.db"
+    integrator = SportsbetOddsIntegrator(db_path=str(db_path))
+    source_url = (
+        "https://www.sportsbet.com.au/greyhound-racing/australia-nz/"
+        "horsham/race-7-10514874"
+    )
+
+    report = integrator.append_pre_jump_odds_snapshot(
+        {
+            "race_id": "sportsbet-race-10514874",
+            "venue": "Horsham",
+            "race_number": 7,
+            "race_date": "2026-05-26",
+            "race_time": "16:36",
+            "venue_url": source_url,
+        },
+        [
+            {
+                "dog_name": "Pablo Vendetta",
+                "dog_clean_name": "PABLO VENDETTA",
+                "box_number": 1,
+                "odds_decimal": 3.5,
+            }
+        ],
+        capture_mode="opt_in_live_pre_jump_snapshot",
+        capture_timestamp="2026-05-26T15:42:29",
+    )
+
+    assert report["status"] == "SUCCESS"
+    assert report["race_id"] == "HOR_2026-05-26_7"
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(
+            """
+            SELECT race_id, source_url, capture_mode, dog_clean_name, box_number
+            FROM live_odds
+            """
+        ).fetchone()
+
+    assert row == (
+        "HOR_2026-05-26_7",
+        source_url,
+        "opt_in_live_pre_jump_snapshot",
+        "PABLO VENDETTA",
+        1,
+    )
+
+
 def test_alias_odds_copy_rolls_back_when_metadata_upsert_fails(tmp_path, monkeypatch):
     import sportsbet_odds_integrator as odds_module
 

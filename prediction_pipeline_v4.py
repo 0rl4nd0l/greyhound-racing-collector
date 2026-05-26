@@ -192,6 +192,25 @@ def _lookup_market_odds_record(
     return None
 
 
+def _merge_missing_market_odds(
+    win_odds: dict[str, float],
+    win_odds_records: dict[str, dict[str, Any]],
+    place_odds: dict[str, float],
+    alt_win_odds: dict[str, float],
+    alt_win_odds_records: dict[str, dict[str, Any]],
+    alt_place_odds: dict[str, float],
+) -> tuple[dict[str, float], dict[str, dict[str, Any]], dict[str, float], list[str]]:
+    resolved_markets: list[str] = []
+    if not win_odds and alt_win_odds:
+        win_odds = alt_win_odds
+        win_odds_records = alt_win_odds_records
+        resolved_markets.append("win")
+    if not place_odds and alt_place_odds:
+        place_odds = alt_place_odds
+        resolved_markets.append("place")
+    return win_odds, win_odds_records, place_odds, resolved_markets
+
+
 def _append_quality_flag(prediction: dict[str, Any], flag: str) -> None:
     flags = prediction.get("quality_flags")
     if not isinstance(flags, list):
@@ -955,13 +974,13 @@ class PredictionPipelineV4:
                     alt_id = _resolve_alt_race_id(conn, race_id, race_data)
                     if alt_id and alt_id != race_id:
                         try:
-                            # Re-query with the resolved id
-                            win_odds = {}
-                            win_odds_records = {}
-                            place_odds = {}
-                            win_odds, win_odds_records = _load_win_odds_for_race(alt_id)
+                            # Re-query only the markets missing under the snapshot race_id.
+                            alt_win_odds, alt_win_odds_records = _load_win_odds_for_race(
+                                alt_id
+                            )
                             cur = conn.cursor()
                             # place/top3 odds
+                            alt_place_odds: dict[str, float] = {}
                             try:
                                 cur.execute(
                                     """
@@ -974,7 +993,7 @@ class PredictionPipelineV4:
                                 for dog, odds, _topn in cur.fetchall() or []:
                                     try:
                                         if dog:
-                                            _store_market_odds(place_odds, dog, odds)
+                                            _store_market_odds(alt_place_odds, dog, odds)
                                     except Exception:
                                         continue
                             except sqlite3.OperationalError:
@@ -989,13 +1008,28 @@ class PredictionPipelineV4:
                                 for dog, odds in cur.fetchall() or []:
                                     try:
                                         if dog:
-                                            _store_market_odds(place_odds, dog, odds)
+                                            _store_market_odds(alt_place_odds, dog, odds)
                                     except Exception:
                                         continue
-                            # use alt_id for downstream odds-based EV
-                            if win_odds or place_odds:
+                            (
+                                win_odds,
+                                win_odds_records,
+                                place_odds,
+                                resolved_markets,
+                            ) = _merge_missing_market_odds(
+                                win_odds,
+                                win_odds_records,
+                                place_odds,
+                                alt_win_odds,
+                                alt_win_odds_records,
+                                alt_place_odds,
+                            )
+                            if resolved_markets:
                                 logger.info(
-                                    f"Resolved alt race_id for odds join: {race_id} -> {alt_id}"
+                                    "Resolved alt race_id for %s odds join: %s -> %s",
+                                    ",".join(resolved_markets),
+                                    race_id,
+                                    alt_id,
                                 )
                         except Exception as _fe:
                             logger.debug(f"alt race_id fallback failed: {_fe}")
