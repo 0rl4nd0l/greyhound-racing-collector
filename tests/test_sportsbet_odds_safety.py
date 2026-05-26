@@ -401,6 +401,174 @@ def test_auto_odds_ensure_requires_internal_opt_in(monkeypatch, tmp_path):
     assert not db_path.exists()
 
 
+class _FakeAnchor:
+    def __init__(self, text="", href="", aria_label=""):
+        self.text = text
+        self._href = href
+        self._aria_label = aria_label
+
+    def get_attribute(self, name):
+        if name == "href":
+            return self._href
+        if name == "aria-label":
+            return self._aria_label
+        return ""
+
+
+class _FakeDriver:
+    def __init__(self, *, landing_anchors=None, region_anchors=None):
+        self.landing_anchors = landing_anchors or []
+        self.region_anchors = region_anchors or []
+        self.urls = []
+        self.current_url = ""
+
+    def get(self, url):
+        self.current_url = url
+        self.urls.append(url)
+
+    def execute_script(self, *_args):
+        return "complete"
+
+    def find_elements(self, *_args):
+        if self.current_url.endswith("/betting/greyhound-racing"):
+            return self.landing_anchors
+        if self.current_url.endswith("/greyhound-racing/australia-nz"):
+            return self.region_anchors
+        return []
+
+
+def test_sportsbet_meeting_url_resolves_alias_from_region_page(monkeypatch):
+    monkeypatch.setattr(odds_auto_integrator.time, "sleep", lambda _seconds: None)
+    driver = _FakeDriver(
+        region_anchors=[
+            _FakeAnchor(
+                text="",
+                href="https://www.sportsbet.com.au/greyhound-racing/australia-nz/q1-lakeside",
+                aria_label="Q1 Lakeside",
+            )
+        ]
+    )
+
+    resolved = odds_auto_integrator._find_meeting_url_for_target(
+        driver,
+        "https://www.sportsbet.com.au",
+        "QOT",
+    )
+
+    assert resolved == (
+        "https://www.sportsbet.com.au/greyhound-racing/australia-nz/q1-lakeside"
+    )
+
+
+def test_auto_odds_falls_back_to_sportsbet_meeting_when_landing_misses_target(
+    monkeypatch, tmp_path
+):
+    import sportsbet_odds_integrator as odds_module
+
+    monkeypatch.setattr(odds_auto_integrator.time, "sleep", lambda _seconds: None)
+    driver = _FakeDriver(
+        landing_anchors=[
+            _FakeAnchor(
+                text="R3 Horsham\n16m",
+                href="https://www.sportsbet.com.au/greyhound-racing/australia-nz/horsham/race-3-10514870",
+            )
+        ],
+        region_anchors=[
+            _FakeAnchor(
+                text="Horsham",
+                href="https://www.sportsbet.com.au/greyhound-racing/australia-nz/horsham",
+            )
+        ],
+    )
+
+    class FakeIntegrator:
+        instances = []
+
+        def __init__(self, db_path, allow_auto_scrape_odds=None):
+            self.db_path = db_path
+            self.allow_auto_scrape_odds = allow_auto_scrape_odds
+            self.base_url = "https://www.sportsbet.com.au"
+            self.greyhound_url = f"{self.base_url}/betting/greyhound-racing"
+            self.driver = driver
+            self.selected_race_info = None
+            self.meeting_calls = []
+            FakeIntegrator.instances.append(self)
+
+        def setup_driver(self):
+            return True
+
+        def find_specific_race_from_meeting(
+            self, meeting_url, target_race_number, expected_venue=None
+        ):
+            self.meeting_calls.append(
+                (meeting_url, target_race_number, expected_venue)
+            )
+            return (
+                "https://www.sportsbet.com.au/greyhound-racing/"
+                "australia-nz/horsham/race-1-10514868"
+            )
+
+        def get_race_odds_from_page(self, race_info):
+            self.selected_race_info = dict(race_info)
+            return {
+                **race_info,
+                "venue": "Horsham",
+                "race_date": "2026-05-26",
+                "race_number": 1,
+                "odds_data": [
+                    {
+                        "dog_name": "Fast Dog",
+                        "dog_clean_name": "FAST DOG",
+                        "box_number": 1,
+                        "odds_decimal": 2.5,
+                    }
+                ],
+            }
+
+        def _canonical_race_id(self, venue, race_date, race_number):
+            return f"HOR_{race_date}_{race_number}"
+
+        def append_pre_jump_odds_snapshot(self, race_info, odds_data, capture_mode):
+            return {
+                "inserted_rows": len(odds_data),
+                "warnings": [],
+                "capture_mode": capture_mode,
+                "race_id": race_info["race_id"],
+            }
+
+        def close_driver(self):
+            pass
+
+    monkeypatch.setattr(odds_module, "SportsbetOddsIntegrator", FakeIntegrator)
+
+    summary = odds_auto_integrator.ensure_odds_for_target_race(
+        str(tmp_path / "odds.db"),
+        "HOR",
+        1,
+        "2026-05-26",
+        allow_auto_scrape_odds=True,
+        append_only=True,
+    )
+
+    fake = FakeIntegrator.instances[0]
+    assert summary["success"] is True
+    assert summary["discovery_method"] == "sportsbet_meeting_exact_race"
+    assert summary["win_count"] == 1
+    assert summary["captured_rows"] == 2
+    assert summary["warnings"] == []
+    assert fake.meeting_calls == [
+        (
+            "https://www.sportsbet.com.au/greyhound-racing/australia-nz/horsham",
+            1,
+            "HOR",
+        )
+    ]
+    assert fake.selected_race_info["venue_url"] == (
+        "https://www.sportsbet.com.au/greyhound-racing/"
+        "australia-nz/horsham/race-1-10514868"
+    )
+
+
 def test_dom_fallback_page_scraping_requires_opt_in_and_is_limited(tmp_path, monkeypatch):
     db_path = tmp_path / "dom.db"
     integrator = SportsbetOddsIntegrator(
