@@ -122,3 +122,39 @@ def test_lifecycle_uses_corrected_sidecar_jump_time(tmp_path):
 
     assert classify_race_file(path, now=before_jump).status == UPCOMING_NOT_JUMPED
     assert classify_race_file(path, now=after_jump).status == JUMPED_PENDING_RESULTS
+
+
+def test_csv_provenance_writer_preserves_exact_race_time(tmp_path):
+    path = tmp_path / "Race 4 - TOWNSVILLE - 2026-05-26.csv"
+    path.write_text(
+        "Dog Name,Sex,PLC,BOX,WGT,DIST,DATE,TRACK,G,TIME,WIN,BON,1 SEC,MGN,W/2G,PIR,SP\n"
+        "1. Runner One,D,1,1,30.0,380,2026-05-01,TVLE,6,22.1,22.1,21.9,,1.0,Other Dog,1,2.0\n",
+        encoding="utf-8",
+    )
+    browser = UpcomingRaceBrowser()
+    browser._write_csv_provenance(
+        str(path),
+        race_url="https://www.thedogs.com.au/racing/townsville/2026-05-26/4/example",
+        csv_info="https://www.thedogs.com.au/racing/townsville/2026-05-26/4/example/export-expert-form",
+        content=path.read_text(encoding="utf-8"),
+        completeness=type("Completeness", (), {"as_dict": lambda self: {"status": "COMPLETE"}})(),
+        race_info={
+            "date": "2026-05-26",
+            "venue": "TOWNSVILLE",
+            "race_number": "4",
+            "race_time": "8:15 PM",
+            "race_time_source": "canonical_race_url",
+            "race_time_mapping_status": "exact_url_match",
+        },
+    )
+
+    sidecar = json.loads(path.with_suffix(path.suffix + ".metadata.json").read_text())
+    assert sidecar["race_info"]["race_time"] == "8:15 PM"
+    assert sidecar["race_info"]["race_time_source"] == "canonical_race_url"
+    assert sidecar["race_info"]["race_time_mapping_status"] == "exact_url_match"
+
+    before_jump = datetime(2026, 5, 26, 20, 14, tzinfo=ZoneInfo("Australia/Melbourne"))
+    lifecycle = classify_race_file(path, now=before_jump)
+
+    assert lifecycle.status == UPCOMING_NOT_JUMPED
+    assert lifecycle.jump_time == "20:15"

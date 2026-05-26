@@ -132,6 +132,8 @@ class UpcomingRaceBrowser:
                     "race_name",
                     "race_number",
                     "race_time",
+                    "race_time_mapping_status",
+                    "race_time_source",
                     "title",
                     "url",
                     "venue",
@@ -989,6 +991,15 @@ class UpcomingRaceBrowser:
 
             if not race_info:
                 return {"success": False, "error": "Could not extract race information"}
+            if not race_info.get("race_time"):
+                exact_race_time = self._extract_formatted_race_time(soup)
+                if exact_race_time:
+                    race_info["race_time"] = exact_race_time
+                    race_info["race_time_source"] = "canonical_race_url"
+                    race_info["race_time_mapping_status"] = "exact_url_match"
+                else:
+                    race_info["race_time_source"] = "canonical_race_url"
+                    race_info["race_time_mapping_status"] = "missing_race_time"
 
             # Generate filename
             filename = f"Race {race_info['race_number']} - {race_info['venue']} - {race_info['date']}.csv"
