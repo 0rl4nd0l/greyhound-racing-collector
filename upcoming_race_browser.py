@@ -13,7 +13,6 @@ Date: July 23, 2025
 import hashlib
 import json
 import os
-import random
 import re
 import sys
 import time
@@ -793,11 +792,12 @@ class UpcomingRaceBrowser:
             else:
                 combined_text = link_text
 
-            # Extract time (format like "7:45 PM" or "19:45" or valid 4-digit HHMM)
+            # Extract time only from explicit clock strings in this link context.
+            # Bare 4-digit numbers are too ambiguous on race cards because they can
+            # be timestamps, distances, result positions, or runner metadata.
             time_patterns = [
                 r"(\d{1,2}:\d{2}\s*(?:AM|PM))",  # 12-hour with AM/PM
                 r"(\d{1,2}:\d{2})",  # 24-hour with colon
-                r"(\d{4})",  # 24-hour HHMM (validate)
             ]
 
             for pattern in time_patterns:
@@ -825,22 +825,6 @@ class UpcomingRaceBrowser:
                             )
                             break
                         else:
-                            continue
-                    elif re.match(r"^\d{4}$", raw_t):
-                        # Raw HHMM digits; validate bounds
-                        h = int(raw_t[:2])
-                        m = int(raw_t[2:])
-                        if 0 <= h <= 23 and 0 <= m <= 59:
-                            from datetime import datetime as _dt
-
-                            race_time = (
-                                _dt.strptime(f"{h:02d}:{m:02d}", "%H:%M")
-                                .strftime("%I:%M %p")
-                                .lstrip("0")
-                            )
-                            break
-                        else:
-                            # Ignore invalid 4-digit times like 7215
                             continue
                 except Exception:
                     continue
@@ -919,6 +903,55 @@ class UpcomingRaceBrowser:
 
         except Exception as e:
             return None
+
+    def _extract_race_number_from_url(self, race_url):
+        """Extract the canonical race number from a TheDogs race URL."""
+        try:
+            url = (race_url or "").split("#", 1)[0].split("?", 1)[0]
+            parts = url.strip("/").split("/")
+            if "racing" not in parts:
+                return None
+            racing_index = parts.index("racing")
+            if len(parts) <= racing_index + 3:
+                return None
+            race_number = parts[racing_index + 3]
+            return int(race_number) if str(race_number).isdigit() else None
+        except Exception:
+            return None
+
+    def _format_clock_time(self, value):
+        """Normalize a clock string to the existing metadata display format."""
+        raw = str(value or "").strip()
+        if not raw:
+            return None
+        try:
+            if re.match(r"^\d{1,2}:\d{2}\s*(?:AM|PM)$", raw, re.I):
+                return datetime.strptime(raw.upper().replace(" ", ""), "%I:%M%p").strftime(
+                    "%I:%M %p"
+                ).lstrip("0")
+            if re.match(r"^\d{1,2}:\d{2}$", raw):
+                return datetime.strptime(raw, "%H:%M").strftime("%I:%M %p").lstrip("0")
+        except Exception:
+            return None
+        return None
+
+    def _extract_formatted_race_time(self, soup):
+        """Read the explicit race-page formatted-time element, if present."""
+        try:
+            selectors = [
+                'formatted-time[data-format="datetime_short"]',
+                'formatted-time[data-format="time_24"]',
+            ]
+            for selector in selectors:
+                for element in soup.select(selector):
+                    text = element.get_text(" ", strip=True)
+                    match = re.search(r"\b(\d{1,2}:\d{2})\b", text)
+                    formatted = self._format_clock_time(match.group(1) if match else text)
+                    if formatted:
+                        return formatted
+        except Exception:
+            return None
+        return None
 
     def download_race_csv(self, race_url):
         """Download CSV form guide for a specific race"""
@@ -1720,6 +1753,14 @@ class UpcomingRaceBrowser:
             # Multiple strategies to find race time
             race_time = None
 
+            # Strategy 0: TheDogs race pages expose the scheduled race time in a
+            # formatted-time element tied to the canonical race page. Prefer this
+            # over broad page-text regexes, which can pick up unrelated times.
+            formatted_time = self._extract_formatted_race_time(soup)
+            if formatted_time:
+                print(f"     ✅ Found race time: {formatted_time} (from formatted-time)")
+                return formatted_time
+
             # Strategy 1: Look for common race time selectors
             time_selectors = [
                 ".race-time",
@@ -1916,7 +1957,9 @@ class UpcomingRaceBrowser:
 
             print(f"   📊 Processing races for {len(venue_links)} venues")
 
-            # Process venues in parallel using up to 3 concurrent threads
+            # Process venues in parallel using up to 3 concurrent threads.
+            # Race times must be mapped by each canonical race URL. Do not
+            # estimate remaining race times from the first race in the venue.
             from concurrent.futures import ThreadPoolExecutor
             from itertools import chain
 
@@ -1925,62 +1968,45 @@ class UpcomingRaceBrowser:
                 venue_races = []
                 print(f"     🏟️ Processing {len(links)} races for {venue}")
 
-                # Get the first race time to establish pattern
-                first_link = links[0]
-                first_race = self.extract_race_info_from_link(
-                    first_link[0], first_link[1], date_str
-                )
-                if first_race:
-                    first_time = self._scrape_race_time_from_page(first_race["url"])
-                    if first_time:
-                        first_race["race_time"] = first_time
-                        first_race["time_source"] = "live_scraped"
-                        venue_races.append(first_race)
+                def race_link_sort_key(link_data):
+                    _link_element, href = link_data
+                    race_number = self._extract_race_number_from_url(href)
+                    return race_number if race_number is not None else 999
 
-                        # Estimate remaining race times (usually 20-25 min apart)
-                        try:
-                            from datetime import datetime, timedelta
+                for link_element, href in sorted(links, key=race_link_sort_key):
+                    try:
+                        race_info = self.extract_race_info_from_link(
+                            link_element, href, date_str
+                        )
+                        if not race_info:
+                            continue
 
-                            base_time = datetime.strptime(first_time, "%I:%M %p")
+                        canonical_race_number = self._extract_race_number_from_url(
+                            race_info.get("url")
+                        )
+                        race_number = int(race_info.get("race_number", 0))
+                        if canonical_race_number != race_number:
+                            race_info["race_time"] = None
+                            race_info["race_time_source"] = "canonical_race_url"
+                            race_info[
+                                "race_time_mapping_status"
+                            ] = "race_number_url_mismatch"
+                            venue_races.append(race_info)
+                            continue
 
-                            # Process remaining races with estimated times
-                            for link_element, href in links[1:]:
-                                race_info = self.extract_race_info_from_link(
-                                    link_element, href, date_str
-                                )
-                                if race_info:
-                                    # Estimate time based on race number difference
-                                    race_num_diff = int(race_info["race_number"]) - int(
-                                        first_race["race_number"]
-                                    )
-                                    estimated_time = base_time + timedelta(
-                                        minutes=race_num_diff * 22
-                                    )
-                                    race_info["race_time"] = estimated_time.strftime(
-                                        "%I:%M %p"
-                                    ).lstrip("0")
-                                    race_info["time_source"] = "estimated"
-                                    venue_races.append(race_info)
-                        except Exception as e:
-                            print(f"     ⚠️ Error estimating times for {venue}: {e}")
-
-                            # Fallback: Get real times for all races
-                            for link_element, href in links[1:]:
-                                try:
-                                    race_info = self.extract_race_info_from_link(
-                                        link_element, href, date_str
-                                    )
-                                    if race_info:
-                                        real_time = self._scrape_race_time_from_page(
-                                            race_info["url"]
-                                        )
-                                        if real_time:
-                                            race_info["race_time"] = real_time
-                                            race_info["time_source"] = "live_scraped"
-                                            venue_races.append(race_info)
-                                except Exception as e:
-                                    print(f"     ⚠️ Error processing race: {e}")
-                                time.sleep(0.5 + random.random() * 0.5)
+                        real_time = self._scrape_race_time_from_page(race_info["url"])
+                        if real_time:
+                            race_info["race_time"] = real_time
+                            race_info["time_source"] = "live_scraped"
+                            race_info["race_time_source"] = "canonical_race_url"
+                            race_info["race_time_mapping_status"] = "exact_url_match"
+                        else:
+                            race_info["race_time"] = None
+                            race_info["race_time_source"] = "canonical_race_url"
+                            race_info["race_time_mapping_status"] = "missing_race_time"
+                        venue_races.append(race_info)
+                    except Exception as e:
+                        print(f"     ⚠️ Error processing race link for {venue}: {e}")
                 return venue_races
 
             # Process venues concurrently
