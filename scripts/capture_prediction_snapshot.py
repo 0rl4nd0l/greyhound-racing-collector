@@ -26,7 +26,12 @@ from accuracy_program.snapshots import (  # noqa: E402
     build_prediction_snapshot,
     persist_prediction_snapshot,
 )
-from utils.runner_completeness import analyze_csv_runner_completeness  # noqa: E402
+from utils.runner_completeness import (  # noqa: E402
+    analyze_csv_runner_completeness,
+    canonical_race_url_from_sidecar,
+    fetch_canonical_runner_set,
+    verify_final_runner_set,
+)
 from utils.race_lifecycle import (  # noqa: E402
     STALE_FORM_GUIDE,
     UPCOMING_NOT_JUMPED,
@@ -141,22 +146,37 @@ def _capture_one(
     persist: bool,
     mechanics_only: bool,
     capture_live_odds: bool,
+    allow_unverified_runner_set: bool,
 ) -> dict[str, Any]:
     from app import enhance_prediction_with_csv_meta, run_prediction_for_race_file
+
+    prediction_timestamp = datetime.now().isoformat(timespec="seconds")
+    source_runner_completeness = analyze_csv_runner_completeness(race_file).as_dict()
+    canonical_url = canonical_race_url_from_sidecar(race_file)
+    final_runner_set_verification: dict[str, Any] | None = None
+    final_runner_verified = False
+    if not mechanics_only and getattr(lifecycle, "status", None) == UPCOMING_NOT_JUMPED:
+        canonical_runner_set = fetch_canonical_runner_set(canonical_url)
+        final_runner_set_verification = verify_final_runner_set(
+            source_runner_completeness,
+            canonical_runner_set,
+        )
+        final_runner_verified = (
+            final_runner_set_verification.get("final_runner_set_status") == "verified"
+        )
 
     odds_capture: dict[str, Any] | None = None
     if (
         capture_live_odds
         and not mechanics_only
         and getattr(lifecycle, "status", None) == UPCOMING_NOT_JUMPED
+        and (final_runner_verified or allow_unverified_runner_set)
     ):
         odds_capture = _capture_live_odds_for_lifecycle(
             db_path=db_path,
             lifecycle=lifecycle,
         )
 
-    prediction_timestamp = datetime.now().isoformat(timespec="seconds")
-    source_runner_completeness = analyze_csv_runner_completeness(race_file).as_dict()
     result = run_prediction_for_race_file(str(race_file))
     if not isinstance(result, dict) or not result.get("success"):
         return {
@@ -165,6 +185,7 @@ def _capture_one(
             "lifecycle_status": getattr(lifecycle, "status", None),
             "odds_capture_requested": bool(capture_live_odds),
             "odds_capture": odds_capture,
+            "final_runner_set_verification": final_runner_set_verification,
             "error": (
                 (result or {}).get("error") if isinstance(result, dict) else "prediction_failed"
             ),
@@ -180,21 +201,37 @@ def _capture_one(
         prediction_timestamp=prediction_timestamp,
         feature_freeze_timestamp=prediction_timestamp,
         source_runner_completeness=source_runner_completeness,
+        final_runner_set_verification=final_runner_set_verification,
     )
     assert_no_result_fields(snapshot)
     live_lifecycle = snapshot.get("lifecycle_status") == UPCOMING_NOT_JUMPED
     runner_set_complete = snapshot.get("runner_set_complete") is True
-    write_snapshot = bool(persist and live_lifecycle and runner_set_complete and not mechanics_only)
+    final_runner_verified = snapshot.get("final_runner_set_status") == "verified"
+    write_snapshot = bool(
+        persist
+        and live_lifecycle
+        and runner_set_complete
+        and (final_runner_verified or allow_unverified_runner_set)
+        and not mechanics_only
+    )
     persistence = persist_prediction_snapshot(
         snapshot,
         snapshot_dir,
         dry_run=not write_snapshot,
+        require_final_runner_verification=not allow_unverified_runner_set,
     )
     if persist and not write_snapshot:
         if not live_lifecycle:
             persistence["status"] = "skipped_non_live_lifecycle"
         elif not runner_set_complete:
             persistence["status"] = "skipped_incomplete_runner_set"
+        elif not final_runner_verified and not allow_unverified_runner_set:
+            persistence["status"] = "skipped_pre_jump_runner_set_unverified"
+            persistence["reason"] = "pre_jump_runner_set_unverified"
+            persistence["final_runner_set_status"] = snapshot.get("final_runner_set_status")
+            persistence["final_runner_set_mismatch_reason"] = snapshot.get(
+                "final_runner_set_mismatch_reason"
+            )
         else:
             persistence["status"] = "skipped_not_persistable"
 
@@ -217,6 +254,12 @@ def _capture_one(
         "runner_count": len(snapshot.get("predictions") or []),
         "runner_set_complete": runner_set_complete,
         "source_runner_completeness": source_runner_completeness,
+        "final_runner_set_verified": final_runner_verified,
+        "final_runner_set_status": snapshot.get("final_runner_set_status"),
+        "final_runner_set_mismatch_reason": snapshot.get(
+            "final_runner_set_mismatch_reason"
+        ),
+        "final_runner_set_verification": final_runner_set_verification,
         "odds_capture_requested": bool(capture_live_odds),
         "odds_capture": odds_capture,
         "priced_ev_runner_count": len(priced_rows),
@@ -276,9 +319,14 @@ def capture_snapshots(args: argparse.Namespace) -> dict[str, Any]:
             persist=bool(args.persist),
             mechanics_only=mechanics_only,
             capture_live_odds=bool(args.capture_live_odds),
+            allow_unverified_runner_set=bool(args.allow_unverified_runner_set),
         )
         for path, lifecycle in targets
     ]
+    final_runner_counts = Counter(
+        str(capture.get("final_runner_set_status") or "not_checked")
+        for capture in captures
+    )
 
     if captures and mechanics_only:
         status = "MECHANICS_ONLY_NOT_LIVE"
@@ -292,10 +340,12 @@ def capture_snapshots(args: argparse.Namespace) -> dict[str, Any]:
         "dry_run": not bool(args.persist),
         "persist_requested": bool(args.persist),
         "odds_capture_requested": bool(args.capture_live_odds),
+        "allow_unverified_runner_set": bool(args.allow_unverified_runner_set),
         "db_path": str(db_path),
         "snapshot_dir": str(Path(args.snapshot_dir)),
         "candidate_files": len(files),
         "lifecycle_counts": dict(counts),
+        "final_runner_set_counts": dict(final_runner_counts),
         "capture_count": len(captures),
         "captures": captures,
         "data_missing": data_missing,
@@ -320,6 +370,11 @@ def main() -> int:
         "--mechanics-on-stale",
         action="store_true",
         help="If no live races exist, run one stale-form-guide mechanics test without persisting",
+    )
+    parser.add_argument(
+        "--allow-unverified-runner-set",
+        action="store_true",
+        help="Allow persistence when canonical pre-race runner-set verification is unavailable or mismatched",
     )
     parser.add_argument("--output", help="Optional report JSON path")
     args = parser.parse_args()

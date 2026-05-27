@@ -662,6 +662,7 @@ def _snapshot_readiness(
     prediction_timestamp: str,
     feature_freeze_timestamp: str,
     source_runner_completeness: Mapping[str, Any] | None = None,
+    final_runner_set_verification: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     from utils.runner_completeness import analyze_prediction_runner_match
 
@@ -704,6 +705,8 @@ def _snapshot_readiness(
     source_status = str(source_report.get("status") or "UNVERIFIED")
     runner_match = analyze_prediction_runner_match(predictions, source_report)
     source_verified = bool(source_report)
+    final_runner_report = dict(final_runner_set_verification or {})
+    final_runner_status = str(final_runner_report.get("final_runner_set_status") or "")
     requirements = {
         "result_free": True,
         "pre_jump_lifecycle": lifecycle_status == "upcoming_not_jumped",
@@ -732,6 +735,8 @@ def _snapshot_readiness(
         "priced_runners_captured_before_jump": not_before_jump_count == 0,
         "missing_live_odds_explicit": missing_odds_explicit,
     }
+    if final_runner_report:
+        requirements["final_runner_set_verified"] = final_runner_status == "verified"
     return {
         "schema_version": "snapshot_readiness_v1",
         "status": "READY" if all(requirements.values()) else "NOT_READY",
@@ -747,6 +752,7 @@ def _snapshot_readiness(
         },
         "source_runner_completeness": source_report or None,
         "prediction_runner_match": runner_match if source_verified else None,
+        "final_runner_set_verification": final_runner_report or None,
     }
 
 
@@ -919,6 +925,7 @@ def build_prediction_snapshot(
     feature_freeze_timestamp: str | None = None,
     stale_odds_after_minutes: float = 30.0,
     source_runner_completeness: Mapping[str, Any] | None = None,
+    final_runner_set_verification: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a result-free snapshot record from an already computed prediction.
 
@@ -966,6 +973,7 @@ def build_prediction_snapshot(
             source_runner_completeness = None
     source_runner_completeness = dict(source_runner_completeness or {})
     frozen_participants = list(source_runner_completeness.get("participants") or [])
+    final_runner_set_verification = dict(final_runner_set_verification or {})
 
     snapshot = {
         "schema_version": "prediction_snapshot_v1",
@@ -1009,12 +1017,47 @@ def build_prediction_snapshot(
             "source_file_path": source_file_path,
         },
     }
+    if final_runner_set_verification:
+        snapshot.update(
+            {
+                "final_runner_set_status": final_runner_set_verification.get(
+                    "final_runner_set_status"
+                ),
+                "final_runner_set_source": final_runner_set_verification.get(
+                    "final_runner_set_source"
+                )
+                or final_runner_set_verification.get("final_runner_source"),
+                "final_runner_set_source_url": final_runner_set_verification.get(
+                    "final_runner_set_source_url"
+                )
+                or final_runner_set_verification.get("final_runner_source_url"),
+                "final_runner_set_mismatch_reason": final_runner_set_verification.get(
+                    "mismatch_reason"
+                ),
+                "canonical_active_boxes": final_runner_set_verification.get(
+                    "canonical_active_boxes"
+                )
+                or final_runner_set_verification.get("final_runner_boxes"),
+                "source_active_boxes": final_runner_set_verification.get(
+                    "source_active_boxes"
+                ),
+                "canonical_scratch_boxes": final_runner_set_verification.get(
+                    "canonical_scratch_boxes"
+                )
+                or final_runner_set_verification.get("scratched_boxes"),
+                "source_reserve_boxes": final_runner_set_verification.get(
+                    "source_reserve_boxes"
+                ),
+                "final_runner_set_verification": final_runner_set_verification,
+            }
+        )
     snapshot["snapshot_readiness"] = _snapshot_readiness(
         snapshot["predictions"],
         lifecycle_status=lifecycle_status,
         prediction_timestamp=timestamp,
         feature_freeze_timestamp=feature_freeze,
         source_runner_completeness=source_runner_completeness,
+        final_runner_set_verification=final_runner_set_verification,
     )
     assert_no_result_fields(snapshot)
     return snapshot
@@ -1063,6 +1106,7 @@ def persist_prediction_snapshot(
     output_dir: str | Path,
     *,
     dry_run: bool = False,
+    require_final_runner_verification: bool = False,
 ) -> dict[str, Any]:
     """Persist a result-free snapshot JSON and append an audit manifest line.
 
@@ -1081,8 +1125,20 @@ def persist_prediction_snapshot(
         "stable_race_key": snapshot.get("stable_race_key"),
         "prediction_timestamp": snapshot.get("prediction_timestamp"),
         "lifecycle_status": snapshot.get("lifecycle_status"),
+        "final_runner_set_status": snapshot.get("final_runner_set_status"),
     }
     if dry_run:
+        return report
+    if (
+        require_final_runner_verification
+        and snapshot.get("lifecycle_status") == "upcoming_not_jumped"
+        and snapshot.get("final_runner_set_status") != "verified"
+    ):
+        report["status"] = "skipped_pre_jump_runner_set_unverified"
+        report["reason"] = "pre_jump_runner_set_unverified"
+        report["final_runner_set_mismatch_reason"] = snapshot.get(
+            "final_runner_set_mismatch_reason"
+        )
         return report
 
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1101,6 +1157,7 @@ def persist_prediction_snapshot(
         "feature_freeze_timestamp": snapshot.get("feature_freeze_timestamp"),
         "lifecycle_status": snapshot.get("lifecycle_status"),
         "runner_count": len(snapshot.get("predictions") or []),
+        "final_runner_set_status": snapshot.get("final_runner_set_status"),
     }
     with manifest_path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(manifest, sort_keys=True, default=str) + "\n")

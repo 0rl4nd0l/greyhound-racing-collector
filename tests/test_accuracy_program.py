@@ -406,6 +406,146 @@ def test_snapshot_readiness_marks_incomplete_source_runner_set_not_ready():
     )
 
 
+def test_snapshot_readiness_carries_verified_final_runner_set():
+    snapshot = build_prediction_snapshot(
+        {
+            "race_id": "Race 4 - BEN - 2026-05-27",
+            "model_version": "model-v1",
+            "predictions": [
+                {
+                    "dog_clean_name": "Alpha Runner",
+                    "box_number": 1,
+                    "win_prob_norm": 0.55,
+                    "quality_flags": ["missing_live_odds"],
+                },
+                {
+                    "dog_clean_name": "Bravo Runner",
+                    "box_number": 2,
+                    "win_prob_norm": 0.45,
+                    "quality_flags": ["missing_live_odds"],
+                },
+            ],
+        },
+        lifecycle={"status": "upcoming_not_jumped"},
+        source_runner_completeness={
+            "schema_version": "runner_completeness_v1",
+            "status": "COMPLETE",
+            "runner_count": 2,
+            "min_complete_runners": 2,
+            "boxes": [1, 2],
+            "dog_names": ["Alpha Runner", "Bravo Runner"],
+            "participants": [
+                {"box_number": 1, "dog_name": "Alpha Runner"},
+                {"box_number": 2, "dog_name": "Bravo Runner"},
+            ],
+            "duplicate_boxes": [],
+            "duplicate_dog_names": [],
+            "invalid_runner_rows": 0,
+            "reasons": [],
+        },
+        final_runner_set_verification={
+            "schema_version": "final_runner_set_verification_v1",
+            "final_runner_set_status": "verified",
+            "final_runner_set_source": "canonical_pre_race_page",
+            "final_runner_set_source_url": "https://www.thedogs.com.au/racing/bendigo/2026-05-27/4/example",
+            "canonical_active_boxes": [1, 2],
+            "source_active_boxes": [1, 2],
+            "canonical_scratch_boxes": [],
+            "source_reserve_boxes": [],
+            "mismatch_reason": None,
+        },
+        prediction_timestamp="2026-05-27T15:45:00",
+    )
+
+    assert snapshot["final_runner_set_status"] == "verified"
+    assert snapshot["canonical_active_boxes"] == [1, 2]
+    assert snapshot["source_active_boxes"] == [1, 2]
+    assert snapshot["snapshot_readiness"]["requirements"]["final_runner_set_verified"] is True
+    assert snapshot["snapshot_readiness"]["status"] == "READY"
+
+
+def test_snapshot_readiness_marks_unverified_final_runner_set_not_ready():
+    snapshot = build_prediction_snapshot(
+        {
+            "race_id": "Race 4 - BEN - 2026-05-27",
+            "model_version": "model-v1",
+            "predictions": [
+                {
+                    "dog_clean_name": "Alpha Runner",
+                    "box_number": 1,
+                    "win_prob_norm": 1.0,
+                    "quality_flags": ["missing_live_odds"],
+                },
+            ],
+        },
+        lifecycle={"status": "upcoming_not_jumped"},
+        source_runner_completeness={
+            "schema_version": "runner_completeness_v1",
+            "status": "COMPLETE",
+            "runner_count": 1,
+            "min_complete_runners": 1,
+            "boxes": [1],
+            "dog_names": ["Alpha Runner"],
+            "participants": [{"box_number": 1, "dog_name": "Alpha Runner"}],
+            "duplicate_boxes": [],
+            "duplicate_dog_names": [],
+            "invalid_runner_rows": 0,
+            "reasons": [],
+        },
+        final_runner_set_verification={
+            "schema_version": "final_runner_set_verification_v1",
+            "final_runner_set_status": "mismatch",
+            "final_runner_set_source": "canonical_pre_race_page",
+            "canonical_active_boxes": [1, 2],
+            "source_active_boxes": [1],
+            "canonical_scratch_boxes": [],
+            "source_reserve_boxes": [],
+            "mismatch_reason": "source_missing_active_boxes:2",
+        },
+        prediction_timestamp="2026-05-27T15:45:00",
+    )
+
+    assert snapshot["final_runner_set_status"] == "mismatch"
+    assert snapshot["final_runner_set_mismatch_reason"] == "source_missing_active_boxes:2"
+    assert snapshot["snapshot_readiness"]["requirements"]["final_runner_set_verified"] is False
+    assert snapshot["snapshot_readiness"]["status"] == "NOT_READY"
+
+
+def test_snapshot_persistence_requires_final_runner_set_when_requested(tmp_path):
+    snapshot = build_prediction_snapshot(
+        {
+            "race_id": "Race 4 - BEN - 2026-05-27",
+            "model_version": "model-v1",
+            "predictions": [
+                {
+                    "dog_clean_name": "Alpha Runner",
+                    "box_number": 1,
+                    "win_prob_norm": 1.0,
+                    "quality_flags": ["missing_live_odds"],
+                },
+            ],
+        },
+        lifecycle={"status": "upcoming_not_jumped"},
+        final_runner_set_verification={
+            "schema_version": "final_runner_set_verification_v1",
+            "final_runner_set_status": "unavailable",
+            "final_runner_set_source": "canonical_pre_race_page",
+            "mismatch_reason": "no_race_runner_rows",
+        },
+        prediction_timestamp="2026-05-27T15:45:00",
+    )
+
+    report = persist_prediction_snapshot(
+        snapshot,
+        tmp_path,
+        require_final_runner_verification=True,
+    )
+
+    assert report["status"] == "skipped_pre_jump_runner_set_unverified"
+    assert not list(tmp_path.rglob("*.json"))
+    assert not (tmp_path / "manifest.jsonl").exists()
+
+
 def test_bet_readiness_marks_abstain_without_reranking_or_ev_changes():
     prediction_result = {
         "race_id": "Race 4 - WRGL - 2026-05-21",
