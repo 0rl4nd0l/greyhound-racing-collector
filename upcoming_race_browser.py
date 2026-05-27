@@ -974,32 +974,95 @@ class UpcomingRaceBrowser:
             return {}
 
         found = {}
+        expected_race_number = self._extract_race_number_from_url(race_url)
+        canonical_path = str(race_url or "").split("?", 1)[0].rstrip("/")
 
-        def _walk_json(obj):
+        def _extract_current_race_header_metadata():
+            headers = soup.select(".race-header")
+            if len(headers) > 1:
+                return {}
+            if not headers or expected_race_number is None:
+                return {}
+
+            header = headers[0]
+            number_element = header.select_one(".race-box__number")
+            number_text = number_element.get_text(" ", strip=True) if number_element else ""
+            if number_text.upper() != f"R{expected_race_number}":
+                return {}
+
+            grade_element = header.select_one(".race-header__info__grade")
+            grade_text = grade_element.get_text(" ", strip=True) if grade_element else ""
+            if not grade_text:
+                return {}
+
+            distance = normalize_target_distance(grade_text)
+            grade_without_distance = re.sub(
+                r"\b\d{3,4}\s*m\b", "", grade_text, flags=re.I
+            ).strip(" -–—|")
+            grade = normalize_target_grade(grade_without_distance) or normalize_target_grade(
+                grade_text
+            )
+
+            header_found = {}
+            if distance:
+                header_found["distance"] = distance
+            if grade:
+                header_found["grade"] = grade
+            return header_found
+
+        found.update(_extract_current_race_header_metadata())
+
+        def _dict_ties_to_current_race(obj):
+            if not isinstance(obj, dict):
+                return False
+            for key, value in obj.items():
+                normalized_key = str(key).strip().lower().replace("-", "_")
+                if normalized_key in {"url", "@id", "canonical_url", "race_url"}:
+                    value_path = str(value or "").split("?", 1)[0].rstrip("/")
+                    if canonical_path and value_path == canonical_path:
+                        return True
+                if normalized_key in {"race_number", "race_no", "race_num"}:
+                    try:
+                        if int(value) == expected_race_number:
+                            return True
+                    except Exception:
+                        continue
+                if normalized_key in {"name", "title"}:
+                    if expected_race_number is not None and re.search(
+                        rf"\bR(?:ace\s*)?{expected_race_number}\b",
+                        str(value or ""),
+                        re.I,
+                    ):
+                        return True
+            return False
+
+        def _walk_json(obj, tied_to_current_race=False):
             if isinstance(obj, dict):
+                current_tied = tied_to_current_race or _dict_ties_to_current_race(obj)
                 for key, value in obj.items():
                     normalized_key = str(key).strip().lower().replace("-", "_")
-                    if normalized_key in {
-                        "distance",
-                        "race_distance",
-                        "target_distance",
-                    } or normalized_key.endswith("_distance"):
-                        distance = normalize_target_distance(value)
-                        if distance and "distance" not in found:
-                            found["distance"] = distance
-                    if normalized_key in {
-                        "grade",
-                        "race_grade",
-                        "target_grade",
-                        "race_class",
-                    }:
-                        grade = normalize_target_grade(value)
-                        if grade and "grade" not in found:
-                            found["grade"] = grade
-                    _walk_json(value)
+                    if current_tied:
+                        if normalized_key in {
+                            "distance",
+                            "race_distance",
+                            "target_distance",
+                        } or normalized_key.endswith("_distance"):
+                            distance = normalize_target_distance(value)
+                            if distance and "distance" not in found:
+                                found["distance"] = distance
+                        if normalized_key in {
+                            "grade",
+                            "race_grade",
+                            "target_grade",
+                            "race_class",
+                        }:
+                            grade = normalize_target_grade(value)
+                            if grade and "grade" not in found:
+                                found["grade"] = grade
+                    _walk_json(value, current_tied)
             elif isinstance(obj, list):
                 for item in obj:
-                    _walk_json(item)
+                    _walk_json(item, tied_to_current_race)
 
         try:
             for script in soup.find_all("script", type=re.compile("ld\\+json", re.I)):
@@ -1027,22 +1090,55 @@ class UpcomingRaceBrowser:
                 pass
             return [text for text in candidates if text]
 
+        def _is_unsafe_metadata_context(element):
+            try:
+                if element.find_parent("table") is not None:
+                    return True
+                for node in [element, *list(element.parents)]:
+                    attrs = " ".join(
+                        [
+                            " ".join(node.get("class", []))
+                            if isinstance(node.get("class"), list)
+                            else str(node.get("class", "")),
+                            str(node.get("id", "")),
+                        ]
+                    ).lower()
+                    if any(
+                        marker in attrs
+                        for marker in (
+                            "result",
+                            "dividend",
+                            "payout",
+                            "runner-form",
+                            "form-guide",
+                            "race-runners",
+                        )
+                    ):
+                        return True
+            except Exception:
+                return True
+            return False
+
         def _extract_labeled(label_patterns, normalizer):
             try:
                 for element in soup.find_all(True):
+                    if _is_unsafe_metadata_context(element):
+                        continue
                     text = element.get_text(" ", strip=True)
                     if not text:
                         continue
+                    has_child_elements = element.find(True) is not None
                     for label_pattern in label_patterns:
-                        direct = re.search(
-                            rf"\b{label_pattern}\b\s*[:\-]?\s+([A-Za-z0-9 ]{{1,40}})",
-                            text,
-                            re.I,
-                        )
-                        if direct:
-                            value = normalizer(direct.group(1))
-                            if value:
-                                return value
+                        if not has_child_elements:
+                            direct = re.search(
+                                rf"\b{label_pattern}\b\s*[:\-]?\s+([A-Za-z0-9 ]{{1,40}})",
+                                text,
+                                re.I,
+                            )
+                            if direct:
+                                value = normalizer(direct.group(1))
+                                if value:
+                                    return value
                         if re.fullmatch(rf"\s*{label_pattern}\s*", text, re.I):
                             for candidate in _candidate_texts(element):
                                 if candidate == text:
@@ -1068,6 +1164,9 @@ class UpcomingRaceBrowser:
             )
             if grade:
                 found["grade"] = grade
+
+        if not any(key in found for key in ("distance", "grade")):
+            return {}
 
         metadata = build_safe_target_metadata_payload(
             found,

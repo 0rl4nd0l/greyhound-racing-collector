@@ -194,6 +194,153 @@ def test_canonical_pre_race_page_distance_and_grade_are_safe_metadata():
     assert metadata["metadata_is_leakage_safe"] is True
 
 
+def test_current_race_header_distance_and_grade_are_safe_metadata():
+    browser = UpcomingRaceBrowser()
+    soup = BeautifulSoup(
+        """
+        <html>
+          <body>
+            <div class="race-header">
+              <div class="race-box__number">R10</div>
+              <div class="race-header__info">
+                <div class="race-header__info__name">Annual Pest Management Pathways H</div>
+                <div class="race-header__info__grade">P5 366m</div>
+              </div>
+            </div>
+          </body>
+        </html>
+        """,
+        "html.parser",
+    )
+
+    metadata = browser._extract_safe_target_metadata_from_page(
+        soup,
+        "https://www.thedogs.com.au/racing/capalaba/2026-05-27/10/annual-pest-management-pathways-h?trial=false",
+    )
+
+    assert metadata["target_distance"] == "366m"
+    assert metadata["target_distance_source"] == "canonical_pre_race_page"
+    assert metadata["target_grade"] == "P5"
+    assert metadata["target_grade_source"] == "canonical_pre_race_page"
+    assert metadata["metadata_is_leakage_safe"] is True
+
+
+def test_current_race_header_accepts_ordinal_grade():
+    browser = UpcomingRaceBrowser()
+    soup = BeautifulSoup(
+        """
+        <div class="race-header">
+          <div class="race-box__number">R4</div>
+          <div class="race-header__info__grade">3rd/4th Grade 330m</div>
+        </div>
+        """,
+        "html.parser",
+    )
+
+    metadata = browser._extract_safe_target_metadata_from_page(
+        soup,
+        "https://www.thedogs.com.au/racing/temora/2026-05-27/4/choppa-s-concreting?trial=false",
+    )
+
+    assert metadata["target_distance"] == "330m"
+    assert metadata["target_grade"] == "3rd/4th Grade"
+
+
+def test_structured_target_metadata_requires_current_race_tie():
+    browser = UpcomingRaceBrowser()
+    soup = BeautifulSoup(
+        """
+        <html>
+          <body>
+            <script type="application/ld+json">
+              {
+                "url": "https://www.thedogs.com.au/racing/the-meadows/2026-05-21/7/example",
+                "race_distance": "525m",
+                "race_grade": "Grade 5"
+              }
+            </script>
+          </body>
+        </html>
+        """,
+        "html.parser",
+    )
+
+    metadata = browser._extract_safe_target_metadata_from_page(
+        soup,
+        "https://www.thedogs.com.au/racing/the-meadows/2026-05-21/7/example",
+    )
+
+    assert metadata["target_distance"] == "525m"
+    assert metadata["target_grade"] == "Grade 5"
+
+    unrelated = browser._extract_safe_target_metadata_from_page(
+        soup,
+        "https://www.thedogs.com.au/racing/the-meadows/2026-05-21/8/other",
+    )
+    assert unrelated == {}
+
+
+def test_ambiguous_multi_race_headers_are_rejected():
+    browser = UpcomingRaceBrowser()
+    soup = BeautifulSoup(
+        """
+        <div class="race-header">
+          <div class="race-box__number">R7</div>
+          <div class="race-header__info__grade">Grade 5 525m</div>
+        </div>
+        <div class="race-header">
+          <div class="race-box__number">R8</div>
+          <div class="race-header__info__grade">Maiden 400m</div>
+        </div>
+        """,
+        "html.parser",
+    )
+
+    metadata = browser._extract_safe_target_metadata_from_page(
+        soup,
+        "https://www.thedogs.com.au/racing/the-meadows/2026-05-21/7/example",
+    )
+
+    assert metadata == {}
+
+
+def test_result_table_distance_and_grade_are_rejected():
+    browser = UpcomingRaceBrowser()
+    soup = BeautifulSoup(
+        """
+        <html>
+          <body>
+            <table class="results-table">
+              <tr><th>Distance</th><td>525m</td></tr>
+              <tr><th>Grade</th><td>Grade 5</td></tr>
+              <tr><th>PLC</th><td>1</td></tr>
+            </table>
+          </body>
+        </html>
+        """,
+        "html.parser",
+    )
+
+    metadata = browser._extract_safe_target_metadata_from_page(
+        soup,
+        "https://www.thedogs.com.au/racing/the-meadows/2026-05-21/7/example",
+    )
+
+    assert metadata == {}
+
+
+def test_unavailable_target_metadata_fails_closed():
+    browser = UpcomingRaceBrowser()
+    soup = BeautifulSoup("<html><body><h1>Race 7</h1></body></html>", "html.parser")
+
+    metadata = browser._extract_safe_target_metadata_from_page(
+        soup,
+        "https://www.thedogs.com.au/racing/the-meadows/2026-05-21/7/example",
+    )
+
+    assert metadata == {}
+
+
 def test_csv_provenance_writer_records_safe_target_metadata(tmp_path):
     path = tmp_path / "Race 7 - MEA - 2026-05-21.csv"
     path.write_text(

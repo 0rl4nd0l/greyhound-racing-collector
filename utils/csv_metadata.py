@@ -66,8 +66,10 @@ def normalize_target_grade(value: Any) -> Optional[str]:
         return None
     compact = re.sub(r"\s+", " ", text)
     patterns = (
+        r"\b\d+(?:st|nd|rd|th)(?:/\d+(?:st|nd|rd|th))?\s+Grade\b",
         r"\bGrade\s*\d+\b",
         r"\bG\d+\b",
+        r"\bP\d+\b",
         r"\bMaiden\b",
         r"\bNovice\b",
         r"\bOpen\b",
@@ -83,8 +85,15 @@ def normalize_target_grade(value: Any) -> Optional[str]:
         match = re.search(pattern, compact, re.I)
         if match:
             value = match.group(0).strip()
-            if re.fullmatch(r"G\d+", value, re.I):
+            if re.fullmatch(r"(?:G|P)\d+", value, re.I):
                 return value.upper()
+            if re.search(r"\d+(?:st|nd|rd|th)", value, re.I):
+                value = re.sub(
+                    r"\b(\d+)(ST|ND|RD|TH)\b",
+                    lambda m: f"{m.group(1)}{m.group(2).lower()}",
+                    value.upper(),
+                )
+                return re.sub(r"\bGRADE\b", "Grade", value)
             return value.upper() if value.upper() == "FFA" else value.title()
     return None
 
