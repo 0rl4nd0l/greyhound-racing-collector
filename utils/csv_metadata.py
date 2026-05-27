@@ -34,6 +34,10 @@ SAFE_SIDECAR_TARGET_SOURCES = {
     "sidecar_target_metadata",
     "explicit_csv_sidecar",
 }
+CANONICAL_SIDECAR_TARGET_SOURCES = {
+    "canonical_pre_race_page",
+    "sidecar_target_metadata",
+}
 UNSAFE_TARGET_SOURCE_MARKERS = (
     "embedded_form_history",
     "post_result",
@@ -108,6 +112,192 @@ def is_safe_sidecar_target_source(source: Any) -> bool:
     return text in SAFE_SIDECAR_TARGET_SOURCES or text.startswith(
         ("target_column:", "filename:")
     )
+
+
+def is_canonical_sidecar_target_source(source: Any) -> bool:
+    """Return True only for canonical pre-race sidecar target metadata sources."""
+
+    text = str(source or "").strip()
+    if not is_safe_sidecar_target_source(text):
+        return False
+    return text in CANONICAL_SIDECAR_TARGET_SOURCES
+
+
+def _safe_int(value: Any) -> Optional[int]:
+    try:
+        if value is None or str(value).strip() == "":
+            return None
+        return int(str(value).strip())
+    except Exception:
+        return None
+
+
+def _filename_race_number(csv_path: Union[str, os.PathLike]) -> Optional[int]:
+    match = re.search(r"Race\s+(\d+)", os.path.basename(os.fspath(csv_path)), re.I)
+    return _safe_int(match.group(1)) if match else None
+
+
+def _canonical_url_race_number(url: Any) -> Optional[int]:
+    """Extract the race-number path segment from a canonical TheDogs race URL."""
+
+    text = str(url or "").split("?", 1)[0].split("#", 1)[0].strip("/")
+    if not text:
+        return None
+    parts = [part for part in text.split("/") if part]
+    for idx, part in enumerate(parts):
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", part) and idx + 1 < len(parts):
+            race_number = _safe_int(parts[idx + 1])
+            if race_number is not None:
+                return race_number
+    for part in reversed(parts):
+        race_number = _safe_int(part)
+        if race_number is not None:
+            return race_number
+    return None
+
+
+def _sidecar_path(csv_path: Union[str, os.PathLike]) -> str:
+    return f"{os.fspath(csv_path)}.metadata.json"
+
+
+def _sidecar_field(payload: Dict[str, Any], race_info: Dict[str, Any], key: str) -> Any:
+    value = payload.get(key)
+    if value not in (None, ""):
+        return value
+    return race_info.get(key)
+
+
+def verify_canonical_sidecar_target_metadata(
+    csv_path: Union[str, os.PathLike],
+    *,
+    race_number: Optional[int] = None,
+    canonical_url: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Verify target distance/grade can be persisted from canonical sidecar metadata.
+
+    This verifier is intentionally stricter than ``load_safe_sidecar_target_metadata``:
+    live snapshot persistence requires both target fields, a canonical pre-race
+    source, exact URL-backed race-time mapping, and a canonical URL whose race
+    number matches the race being captured.
+    """
+
+    path = _sidecar_path(csv_path)
+    capture_race_number = _safe_int(race_number) or _filename_race_number(csv_path)
+    default: Dict[str, Any] = {
+        "target_metadata_status": "missing",
+        "target_metadata_failure_reason": "sidecar_metadata_missing",
+        "target_distance": None,
+        "target_grade": None,
+        "target_distance_source": None,
+        "target_grade_source": None,
+        "metadata_is_leakage_safe": False,
+        "metadata_source_detail": None,
+        "canonical_race_url": canonical_url,
+        "race_time_mapping_status": None,
+        "race_time_source": None,
+        "canonical_url_race_number": None,
+        "capture_race_number": capture_race_number,
+        "sidecar_path": path,
+        "failure_reasons": ["sidecar_metadata_missing"],
+    }
+    if not os.path.exists(path):
+        return default
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except Exception as exc:
+        result = dict(default)
+        result["target_metadata_failure_reason"] = f"sidecar_metadata_unreadable:{type(exc).__name__}"
+        result["failure_reasons"] = [result["target_metadata_failure_reason"]]
+        return result
+    if not isinstance(payload, dict):
+        result = dict(default)
+        result["target_metadata_failure_reason"] = "sidecar_metadata_not_object"
+        result["failure_reasons"] = ["sidecar_metadata_not_object"]
+        return result
+
+    race_info = payload.get("race_info") if isinstance(payload.get("race_info"), dict) else {}
+    canonical_race_url = (
+        canonical_url
+        or payload.get("race_url")
+        or race_info.get("url")
+        or payload.get("metadata_source_url")
+    )
+    distance_source = payload.get("target_distance_source")
+    grade_source = payload.get("target_grade_source")
+    distance = normalize_target_distance(payload.get("target_distance"))
+    grade = normalize_target_grade(payload.get("target_grade"))
+    leakage_safe = payload.get("metadata_is_leakage_safe") is True
+    race_time_mapping_status = _sidecar_field(
+        payload, race_info, "race_time_mapping_status"
+    )
+    race_time_source = _sidecar_field(payload, race_info, "race_time_source")
+    canonical_url_race_number = _canonical_url_race_number(canonical_race_url)
+
+    missing: list[str] = []
+    unsafe: list[str] = []
+    mismatch: list[str] = []
+    if not distance:
+        missing.append("missing_target_distance")
+    if not grade:
+        missing.append("missing_target_grade")
+    if not canonical_race_url:
+        missing.append("missing_canonical_race_url")
+    if not leakage_safe:
+        unsafe.append("metadata_is_leakage_safe_not_true")
+    if not is_canonical_sidecar_target_source(distance_source):
+        unsafe.append(f"noncanonical_target_distance_source:{distance_source or 'missing'}")
+    if not is_canonical_sidecar_target_source(grade_source):
+        unsafe.append(f"noncanonical_target_grade_source:{grade_source or 'missing'}")
+    if str(race_time_mapping_status or "") != "exact_url_match":
+        mismatch.append(
+            f"race_time_mapping_status_not_exact_url_match:{race_time_mapping_status or 'missing'}"
+        )
+    if str(race_time_source or "") != "canonical_race_url":
+        mismatch.append(f"race_time_source_not_canonical_race_url:{race_time_source or 'missing'}")
+    if capture_race_number is None:
+        mismatch.append("capture_race_number_missing")
+    if canonical_url_race_number is None:
+        mismatch.append("canonical_url_race_number_missing")
+    elif capture_race_number is not None and canonical_url_race_number != capture_race_number:
+        mismatch.append(
+            f"canonical_url_race_number_mismatch:{canonical_url_race_number}!={capture_race_number}"
+        )
+
+    status = "verified"
+    reasons: list[str] = []
+    if missing:
+        status = "missing"
+        reasons = missing
+    elif unsafe:
+        status = "unsafe"
+        reasons = unsafe
+    elif mismatch:
+        status = "mismatch"
+        reasons = mismatch
+
+    return {
+        "target_metadata_status": status,
+        "target_metadata_failure_reason": None if status == "verified" else ";".join(reasons),
+        "target_distance": distance if status == "verified" else None,
+        "target_grade": grade if status == "verified" else None,
+        "target_distance_source": str(distance_source) if distance_source not in (None, "") else None,
+        "target_grade_source": str(grade_source) if grade_source not in (None, "") else None,
+        "metadata_is_leakage_safe": status == "verified",
+        "metadata_source_detail": {
+            "distance": f"sidecar_metadata:{distance_source}",
+            "grade": f"sidecar_metadata:{grade_source}",
+        }
+        if distance_source or grade_source
+        else None,
+        "canonical_race_url": str(canonical_race_url) if canonical_race_url else None,
+        "race_time_mapping_status": race_time_mapping_status,
+        "race_time_source": race_time_source,
+        "canonical_url_race_number": canonical_url_race_number,
+        "capture_race_number": capture_race_number,
+        "sidecar_path": path,
+        "failure_reasons": reasons,
+    }
 
 
 def build_safe_target_metadata_payload(
