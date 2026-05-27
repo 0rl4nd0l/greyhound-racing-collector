@@ -4,11 +4,14 @@ Provides lightweight metadata extraction from race CSV files with fallback to fi
 """
 
 import csv
+import hashlib
+import io
 import json
 import os
 import re
-from datetime import datetime
-from typing import Any, Dict, Optional, Union
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, Mapping, Optional, Union
 
 # Optional heavy dependency - make pandas optional in constrained test envs
 try:
@@ -44,6 +47,29 @@ UNSAFE_TARGET_SOURCE_MARKERS = (
     "result_page",
     "sportsbet_result",
 )
+FORM_GUIDE_SPEC_VERSION = "form_guide_pipe_v1"
+THEDOGS_EXPERT_FORM_COLUMNS = (
+    "Dog Name",
+    "Sex",
+    "PLC",
+    "BOX",
+    "WGT",
+    "DIST",
+    "DATE",
+    "TRACK",
+    "G",
+    "TIME",
+    "WIN",
+    "BON",
+    "1 SEC",
+    "MGN",
+    "W/2G",
+    "PIR",
+    "SP",
+)
+SUPPORTED_FORM_GUIDE_DELIMITERS = {",", "|"}
+NORMALIZATION_SOURCE = "canonical_thedogs_export"
+PIPE_DELIMITER = "|"
 
 
 def normalize_target_distance(value: Any) -> Optional[str]:
@@ -167,19 +193,14 @@ def _sidecar_field(payload: Dict[str, Any], race_info: Dict[str, Any], key: str)
     return race_info.get(key)
 
 
-def verify_canonical_sidecar_target_metadata(
-    csv_path: Union[str, os.PathLike],
+def verify_canonical_sidecar_payload(
+    payload: Mapping[str, Any],
     *,
+    csv_path: Union[str, os.PathLike],
     race_number: Optional[int] = None,
     canonical_url: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Verify target distance/grade can be persisted from canonical sidecar metadata.
-
-    This verifier is intentionally stricter than ``load_safe_sidecar_target_metadata``:
-    live snapshot persistence requires both target fields, a canonical pre-race
-    source, exact URL-backed race-time mapping, and a canonical URL whose race
-    number matches the race being captured.
-    """
+    """Verify an in-memory sidecar payload using the canonical live-capture gate."""
 
     path = _sidecar_path(csv_path)
     capture_race_number = _safe_int(race_number) or _filename_race_number(csv_path)
@@ -200,38 +221,33 @@ def verify_canonical_sidecar_target_metadata(
         "sidecar_path": path,
         "failure_reasons": ["sidecar_metadata_missing"],
     }
-    if not os.path.exists(path):
-        return default
-    try:
-        with open(path, "r", encoding="utf-8") as handle:
-            payload = json.load(handle)
-    except Exception as exc:
-        result = dict(default)
-        result["target_metadata_failure_reason"] = f"sidecar_metadata_unreadable:{type(exc).__name__}"
-        result["failure_reasons"] = [result["target_metadata_failure_reason"]]
-        return result
-    if not isinstance(payload, dict):
+    if not isinstance(payload, Mapping):
         result = dict(default)
         result["target_metadata_failure_reason"] = "sidecar_metadata_not_object"
         result["failure_reasons"] = ["sidecar_metadata_not_object"]
         return result
 
-    race_info = payload.get("race_info") if isinstance(payload.get("race_info"), dict) else {}
+    payload_dict = dict(payload)
+    race_info = (
+        payload_dict.get("race_info")
+        if isinstance(payload_dict.get("race_info"), dict)
+        else {}
+    )
     canonical_race_url = (
         canonical_url
-        or payload.get("race_url")
+        or payload_dict.get("race_url")
         or race_info.get("url")
-        or payload.get("metadata_source_url")
+        or payload_dict.get("metadata_source_url")
     )
-    distance_source = payload.get("target_distance_source")
-    grade_source = payload.get("target_grade_source")
-    distance = normalize_target_distance(payload.get("target_distance"))
-    grade = normalize_target_grade(payload.get("target_grade"))
-    leakage_safe = payload.get("metadata_is_leakage_safe") is True
+    distance_source = payload_dict.get("target_distance_source")
+    grade_source = payload_dict.get("target_grade_source")
+    distance = normalize_target_distance(payload_dict.get("target_distance"))
+    grade = normalize_target_grade(payload_dict.get("target_grade"))
+    leakage_safe = payload_dict.get("metadata_is_leakage_safe") is True
     race_time_mapping_status = _sidecar_field(
-        payload, race_info, "race_time_mapping_status"
+        payload_dict, race_info, "race_time_mapping_status"
     )
-    race_time_source = _sidecar_field(payload, race_info, "race_time_source")
+    race_time_source = _sidecar_field(payload_dict, race_info, "race_time_source")
     canonical_url_race_number = _canonical_url_race_number(canonical_race_url)
 
     missing: list[str] = []
@@ -300,6 +316,62 @@ def verify_canonical_sidecar_target_metadata(
     }
 
 
+def verify_canonical_sidecar_target_metadata(
+    csv_path: Union[str, os.PathLike],
+    *,
+    race_number: Optional[int] = None,
+    canonical_url: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Verify target distance/grade can be persisted from canonical sidecar metadata.
+
+    This verifier is intentionally stricter than ``load_safe_sidecar_target_metadata``:
+    live snapshot persistence requires both target fields, a canonical pre-race
+    source, exact URL-backed race-time mapping, and a canonical URL whose race
+    number matches the race being captured.
+    """
+
+    path = _sidecar_path(csv_path)
+    capture_race_number = _safe_int(race_number) or _filename_race_number(csv_path)
+    default: Dict[str, Any] = {
+        "target_metadata_status": "missing",
+        "target_metadata_failure_reason": "sidecar_metadata_missing",
+        "target_distance": None,
+        "target_grade": None,
+        "target_distance_source": None,
+        "target_grade_source": None,
+        "metadata_is_leakage_safe": False,
+        "metadata_source_detail": None,
+        "canonical_race_url": canonical_url,
+        "race_time_mapping_status": None,
+        "race_time_source": None,
+        "canonical_url_race_number": None,
+        "capture_race_number": capture_race_number,
+        "sidecar_path": path,
+        "failure_reasons": ["sidecar_metadata_missing"],
+    }
+    if not os.path.exists(path):
+        return default
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except Exception as exc:
+        result = dict(default)
+        result["target_metadata_failure_reason"] = f"sidecar_metadata_unreadable:{type(exc).__name__}"
+        result["failure_reasons"] = [result["target_metadata_failure_reason"]]
+        return result
+    if not isinstance(payload, dict):
+        result = dict(default)
+        result["target_metadata_failure_reason"] = "sidecar_metadata_not_object"
+        result["failure_reasons"] = ["sidecar_metadata_not_object"]
+        return result
+    return verify_canonical_sidecar_payload(
+        payload,
+        csv_path=csv_path,
+        race_number=race_number,
+        canonical_url=canonical_url,
+    )
+
+
 def build_safe_target_metadata_payload(
     race_info: Optional[Dict[str, Any]] = None,
     *,
@@ -337,6 +409,295 @@ def build_safe_target_metadata_payload(
         payload["target_grade_source"] = grade_source
         payload["metadata_is_leakage_safe"] = True
     return payload
+
+
+def _utc_timestamp() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _display_delimiter(delimiter: Optional[str]) -> Optional[str]:
+    if delimiter == "\t":
+        return "\\t"
+    return delimiter
+
+
+def detect_form_guide_delimiter(content: str) -> Optional[str]:
+    """Detect the dominant delimiter for a downloaded form-guide export."""
+
+    text = str(content or "")
+    sample = text[:8192]
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=",|;\t")
+        return dialect.delimiter
+    except Exception:
+        first_line = next((line for line in text.splitlines() if line.strip()), "")
+        counts = {delimiter: first_line.count(delimiter) for delimiter in ",|;\t"}
+        delimiter, count = max(counts.items(), key=lambda item: item[1])
+        return delimiter if count > 0 else None
+
+
+def _read_form_guide_rows(content: str, delimiter: str) -> tuple[list[list[str]], Optional[str]]:
+    try:
+        rows = list(csv.reader(io.StringIO(content), delimiter=delimiter))
+    except Exception as exc:
+        return [], f"csv_parse_error:{type(exc).__name__}"
+    if not rows:
+        return [], "empty_csv"
+    expected_len = len(rows[0])
+    for idx, row in enumerate(rows, start=1):
+        if len(row) != expected_len:
+            return [], f"row_{idx}_column_count_mismatch:{len(row)}!={expected_len}"
+    return rows, None
+
+
+def _filename_target_date(path: Union[str, os.PathLike]) -> Optional[datetime]:
+    match = re.search(r"Race\s+\d+\s+-\s+.+?\s+-\s+(\d{4}-\d{2}-\d{2})\.csv$", Path(path).name, re.I)
+    if not match:
+        return None
+    try:
+        return datetime.strptime(match.group(1), "%Y-%m-%d")
+    except Exception:
+        return None
+
+
+def _normalize_cell(value: Any) -> str:
+    return str(value or "").lstrip("\ufeff").strip()
+
+
+def _normalize_output_cell(value: Any) -> str:
+    return str(value or "").lstrip("\ufeff")
+
+
+def _validate_thedogs_export_rows(
+    rows: list[list[str]],
+    *,
+    accepted_csv_path: Union[str, os.PathLike],
+) -> tuple[bool, list[str]]:
+    reasons: list[str] = []
+    header = tuple(_normalize_cell(cell) for cell in rows[0])
+    if header != THEDOGS_EXPERT_FORM_COLUMNS:
+        reasons.append("schema_header_mismatch")
+    if len(header) < len(THEDOGS_EXPERT_FORM_COLUMNS):
+        reasons.append("schema_missing_expected_columns")
+        return False, reasons
+
+    target_date = _filename_target_date(accepted_csv_path)
+    if target_date is None:
+        reasons.append("target_date_missing_from_filename")
+
+    dog_name_index = 0
+    date_index = THEDOGS_EXPERT_FORM_COLUMNS.index("DATE")
+    current_dog = None
+    primary_runner_rows = 0
+    historical_rows = 0
+    for row_number, row in enumerate(rows[1:], start=2):
+        if not any(_normalize_cell(cell) for cell in row):
+            continue
+        dog_cell = _normalize_cell(row[dog_name_index]).strip('"')
+        if dog_cell:
+            if re.match(r"^\d{1,2}\s*[\.\):-]\s*.+", dog_cell):
+                current_dog = dog_cell
+                primary_runner_rows += 1
+            else:
+                reasons.append(f"row_{row_number}_dog_name_missing_box_prefix")
+        elif current_dog is None:
+            reasons.append(f"row_{row_number}_blank_dog_name_before_primary_runner")
+
+        row_date_text = _normalize_cell(row[date_index])
+        if row_date_text:
+            try:
+                row_date = datetime.strptime(row_date_text, "%Y-%m-%d")
+            except Exception:
+                reasons.append(f"row_{row_number}_invalid_history_date:{row_date_text}")
+                continue
+            historical_rows += 1
+            if target_date is not None and row_date >= target_date:
+                reasons.append(
+                    f"row_{row_number}_non_historical_date:{row_date_text}>={target_date.strftime('%Y-%m-%d')}"
+                )
+
+    if primary_runner_rows == 0:
+        reasons.append("no_box_prefixed_target_runner_rows")
+    if historical_rows == 0:
+        reasons.append("no_historical_rows")
+    return not reasons, reasons
+
+
+def _rows_to_pipe_text(rows: list[list[str]]) -> str:
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=PIPE_DELIMITER, lineterminator="\n")
+    writer.writerows([[_normalize_output_cell(cell) for cell in row] for row in rows])
+    return output.getvalue()
+
+
+def build_csv_download_provenance_payload(
+    *,
+    filepath: Union[str, os.PathLike],
+    race_url: Optional[str],
+    csv_info: Any,
+    content: str,
+    completeness: Any,
+    race_info: Optional[Mapping[str, Any]] = None,
+    source: Optional[str] = None,
+    normalization: Optional[Mapping[str, Any]] = None,
+    filename: Optional[str] = None,
+    allow_generic_fields: bool = True,
+) -> Dict[str, Any]:
+    resolved_csv_url = None
+    csv_method = None
+    if isinstance(csv_info, str):
+        resolved_csv_url = csv_info
+        csv_method = "GET"
+    elif isinstance(csv_info, Mapping):
+        resolved_csv_url = csv_info.get("url")
+        csv_method = csv_info.get("type") or "unknown"
+
+    race_info_dict = dict(race_info or {})
+    payload: Dict[str, Any] = {
+        "schema_version": "form_guide_download_provenance_v1",
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "race_url": race_url,
+        "race_info": {
+            key: value
+            for key, value in race_info_dict.items()
+            if key
+            in {
+                "date",
+                "distance",
+                "grade",
+                "race_name",
+                "race_number",
+                "race_time",
+                "race_time_mapping_status",
+                "race_time_source",
+                "title",
+                "url",
+                "venue",
+                "venue_name",
+            }
+            and value not in (None, "")
+        },
+        "resolved_csv_url": resolved_csv_url,
+        "csv_method": csv_method,
+        "content_length": len(str(content).encode("utf-8")),
+        "content_sha256": hashlib.sha256(str(content).encode("utf-8")).hexdigest(),
+        "runner_completeness": (
+            completeness.as_dict() if hasattr(completeness, "as_dict") else dict(completeness or {})
+        ),
+    }
+    if source:
+        payload["source"] = source
+    if filename:
+        payload["filename"] = filename
+    payload.update(
+        build_safe_target_metadata_payload(
+            race_info_dict,
+            source_url=race_url,
+            source="canonical_pre_race_page",
+            allow_generic_fields=allow_generic_fields,
+        )
+    )
+    if normalization:
+        payload.update(dict(normalization))
+    return payload
+
+
+def normalize_verified_thedogs_export_content(
+    content: str,
+    *,
+    accepted_csv_path: Union[str, os.PathLike],
+    raw_export_path: Union[str, os.PathLike],
+    sidecar_payload: Mapping[str, Any],
+    runner_completeness: Optional[Mapping[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Normalize only verified canonical TheDogs export data to pipe format."""
+
+    original_delimiter = detect_form_guide_delimiter(content)
+    base: Dict[str, Any] = {
+        "form_guide_spec_version": FORM_GUIDE_SPEC_VERSION,
+        "normalization_source": NORMALIZATION_SOURCE,
+        "normalization_timestamp": _utc_timestamp(),
+        "original_delimiter": _display_delimiter(original_delimiter),
+        "normalized_delimiter": PIPE_DELIMITER,
+        "raw_export_path": str(raw_export_path),
+        "accepted_csv_path": str(accepted_csv_path),
+        "raw_content_length": len(str(content).encode("utf-8")),
+        "raw_content_sha256": hashlib.sha256(str(content).encode("utf-8")).hexdigest(),
+    }
+    if original_delimiter not in SUPPORTED_FORM_GUIDE_DELIMITERS:
+        return {
+            **base,
+            "delimiter_status": "rejected",
+            "normalization_status": "rejected",
+            "normalization_failure_reason": f"unsupported_delimiter:{_display_delimiter(original_delimiter)}",
+            "normalized_content": None,
+        }
+
+    rows, parse_error = _read_form_guide_rows(content, original_delimiter)
+    if parse_error:
+        return {
+            **base,
+            "delimiter_status": "rejected",
+            "normalization_status": "rejected",
+            "normalization_failure_reason": parse_error,
+            "normalized_content": None,
+        }
+
+    schema_ok, schema_reasons = _validate_thedogs_export_rows(
+        rows,
+        accepted_csv_path=accepted_csv_path,
+    )
+    runner_status = dict(runner_completeness or {}).get("status")
+    metadata_verification = verify_canonical_sidecar_payload(
+        sidecar_payload,
+        csv_path=accepted_csv_path,
+    )
+    verification = {
+        "schema_status": "verified" if schema_ok else "rejected",
+        "schema_failure_reasons": schema_reasons,
+        "runner_set_status": runner_status,
+        "target_metadata_status": metadata_verification.get("target_metadata_status"),
+        "target_metadata_failure_reason": metadata_verification.get(
+            "target_metadata_failure_reason"
+        ),
+        "race_time_mapping_status": metadata_verification.get("race_time_mapping_status"),
+        "race_time_source": metadata_verification.get("race_time_source"),
+        "canonical_url_race_number": metadata_verification.get("canonical_url_race_number"),
+        "capture_race_number": metadata_verification.get("capture_race_number"),
+    }
+    failure_reasons: list[str] = []
+    if not schema_ok:
+        failure_reasons.extend(schema_reasons)
+    if runner_status != "COMPLETE":
+        failure_reasons.append(f"runner_set_not_complete:{runner_status or 'missing'}")
+    if metadata_verification.get("target_metadata_status") != "verified":
+        failure_reasons.append(
+            "target_metadata_not_verified:"
+            + str(metadata_verification.get("target_metadata_failure_reason") or metadata_verification.get("target_metadata_status"))
+        )
+
+    if failure_reasons:
+        return {
+            **base,
+            "delimiter_status": "verified",
+            "normalization_status": "rejected",
+            "normalization_failure_reason": ";".join(failure_reasons),
+            "normalization_verification": verification,
+            "normalized_content": None,
+        }
+
+    normalized_content = _rows_to_pipe_text(rows)
+    return {
+        **base,
+        "delimiter_status": "verified",
+        "normalization_status": "verified",
+        "normalization_failure_reason": None,
+        "normalization_action": (
+            "already_pipe" if original_delimiter == PIPE_DELIMITER else "converted_to_pipe"
+        ),
+        "normalization_verification": verification,
+        "normalized_content": normalized_content,
+    }
 
 
 def load_safe_sidecar_target_metadata(csv_path: Union[str, os.PathLike]) -> Dict[str, Any]:

@@ -17,7 +17,6 @@ Version: 1.0.0 - Expert form approach implementation
 """
 
 import json
-import hashlib
 import os
 import random
 import re
@@ -42,7 +41,10 @@ from utils.runner_completeness import (
     analyze_csv_text_runner_completeness,
     quarantine_csv_content,
 )
-from utils.csv_metadata import build_safe_target_metadata_payload
+from utils.csv_metadata import (
+    build_csv_download_provenance_payload,
+    normalize_verified_thedogs_export_content,
+)
 
 
 class ExpertFormCsvScraper:
@@ -112,6 +114,25 @@ class ExpertFormCsvScraper:
                 print(f"[{timestamp}] ✅ {message}")
             elif self.verbose or level == "INFO":
                 print(f"[{timestamp}] {message}")
+
+    def _dedupe_artifact_path(self, path: Path) -> Path:
+        if not path.exists():
+            return path
+        timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+        for counter in range(1, 1000):
+            candidate = path.with_name(
+                f"{path.stem}_{timestamp}_{counter}{path.suffix}"
+            )
+            if not candidate.exists():
+                return candidate
+        raise FileExistsError(f"Could not allocate unique artifact path for {path}")
+
+    def _write_raw_export(self, filename: str, content: str) -> Path:
+        raw_dir = Path(self.output_dir) / "raw_exports"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        raw_path = self._dedupe_artifact_path(raw_dir / filename)
+        raw_path.write_text(content, encoding="utf-8", newline="")
+        return raw_path
 
     def get_expert_form_url(self, race_url):
         """Convert a race URL to its expert-form URL"""
@@ -528,22 +549,56 @@ class ExpertFormCsvScraper:
             else:
                 self.safe_log("CSV appears to be valid form guide data")
 
+            race_info = dict(race_info or {})
+            race_url = race_url or race_info.get("url")
+            upcoming_filepath = os.path.join(self.output_dir, filename)
+            raw_export_path = self._write_raw_export(filename, content)
+
             completeness = analyze_csv_text_runner_completeness(
                 content,
                 source=filename,
             )
-            if not completeness.is_complete:
+
+            preliminary_sidecar = build_csv_download_provenance_payload(
+                filepath=upcoming_filepath,
+                race_url=race_url,
+                csv_info={"type": "expert_form_csv_scraper", "url": race_url},
+                content=content,
+                completeness=completeness,
+                race_info=race_info,
+                source="expert_form_csv_scraper",
+                filename=filename,
+                allow_generic_fields=False,
+            )
+            normalization = normalize_verified_thedogs_export_content(
+                content,
+                accepted_csv_path=upcoming_filepath,
+                raw_export_path=raw_export_path,
+                sidecar_payload=preliminary_sidecar,
+                runner_completeness=completeness.as_dict(),
+            )
+            normalization_metadata = {
+                key: value
+                for key, value in normalization.items()
+                if key != "normalized_content"
+            }
+            if normalization.get("normalization_status") != "verified":
+                reason = str(
+                    normalization.get("normalization_failure_reason")
+                    or "normalization_rejected"
+                )
                 quarantine_path = quarantine_csv_content(
                     content,
                     self.output_dir,
                     filename,
-                    reason="incomplete_runner_set",
+                    reason=reason[:120],
                 )
                 self.safe_log(
-                    f"Incomplete runner set quarantined: {quarantine_path} {completeness.reasons}",
+                    f"Canonical normalization rejected CSV: {quarantine_path} {reason}",
                     "ERROR",
                 )
                 return False
+            normalized_content = str(normalization["normalized_content"])
 
             # Save to download directory first (for backup/tracking)
             download_filepath = os.path.join(self.download_dir, filename)
@@ -555,55 +610,23 @@ class ExpertFormCsvScraper:
             with open(unprocessed_filepath, "w", encoding="utf-8", newline="") as f:
                 f.write(content)
 
-            # Also save into API's upcoming races dir with compliant name
-            upcoming_filepath = os.path.join(self.output_dir, filename)
+            # Also save accepted canonical pipe CSV into API's upcoming races dir.
             with open(upcoming_filepath, "w", encoding="utf-8", newline="") as f:
-                f.write(content)
-            race_info = dict(race_info or {})
-            race_url = race_url or race_info.get("url")
-            target_metadata = build_safe_target_metadata_payload(
-                race_info,
-                source_url=race_url,
-                source="canonical_pre_race_page",
+                f.write(normalized_content)
+            sidecar_payload = build_csv_download_provenance_payload(
+                filepath=upcoming_filepath,
+                race_url=race_url,
+                csv_info={"type": "expert_form_csv_scraper", "url": race_url},
+                content=normalized_content,
+                completeness=completeness,
+                race_info=race_info,
+                source="expert_form_csv_scraper",
+                normalization=normalization_metadata,
+                filename=filename,
                 allow_generic_fields=False,
             )
             with open(f"{upcoming_filepath}.metadata.json", "w", encoding="utf-8") as f:
-                json.dump(
-                    {
-                        "schema_version": "form_guide_download_provenance_v1",
-                        "created_at": datetime.now().isoformat(timespec="seconds"),
-                        "source": "expert_form_csv_scraper",
-                        "filename": filename,
-                        "race_url": race_url,
-                        "race_info": {
-                            key: value
-                            for key, value in race_info.items()
-                            if key
-                            in {
-                                "date",
-                                "distance",
-                                "grade",
-                                "race_name",
-                                "race_number",
-                                "race_time",
-                                "title",
-                                "url",
-                                "venue",
-                                "venue_name",
-                            }
-                            and value not in (None, "")
-                        },
-                        "content_length": len(content.encode("utf-8")),
-                        "content_sha256": hashlib.sha256(
-                            content.encode("utf-8")
-                        ).hexdigest(),
-                        "runner_completeness": completeness.as_dict(),
-                        **target_metadata,
-                    },
-                    f,
-                    indent=2,
-                    sort_keys=True,
-                )
+                json.dump(sidecar_payload, f, indent=2, sort_keys=True)
 
             # Add to existing files list to prevent future duplicates
             self.existing_files.add(filename)

@@ -10,7 +10,6 @@ Author: AI Assistant
 Date: July 23, 2025
 """
 
-import hashlib
 import json
 import os
 import re
@@ -33,7 +32,9 @@ from utils.runner_completeness import (
     quarantine_existing_file,
 )
 from utils.csv_metadata import (
+    build_csv_download_provenance_payload,
     build_safe_target_metadata_payload,
+    normalize_verified_thedogs_export_content,
     normalize_target_distance,
     normalize_target_grade,
 )
@@ -112,55 +113,46 @@ class UpcomingRaceBrowser:
         content,
         completeness,
         race_info=None,
+        normalization=None,
+        source="upcoming_race_browser",
     ):
         metadata_path = f"{filepath}.metadata.json"
-        resolved_csv_url = None
-        csv_method = None
-        if isinstance(csv_info, str):
-            resolved_csv_url = csv_info
-            csv_method = "GET"
-        elif isinstance(csv_info, dict):
-            resolved_csv_url = csv_info.get("url")
-            csv_method = csv_info.get("type") or "unknown"
-        payload = {
-            "schema_version": "form_guide_download_provenance_v1",
-            "created_at": datetime.now().isoformat(timespec="seconds"),
-            "race_url": race_url,
-            "race_info": {
-                key: value
-                for key, value in dict(race_info or {}).items()
-                if key
-                in {
-                    "date",
-                    "distance",
-                    "grade",
-                    "race_name",
-                    "race_number",
-                    "race_time",
-                    "race_time_mapping_status",
-                    "race_time_source",
-                    "title",
-                    "url",
-                    "venue",
-                    "venue_name",
-                }
-                and value not in (None, "")
-            },
-            "resolved_csv_url": resolved_csv_url,
-            "csv_method": csv_method,
-            "content_length": len(content.encode("utf-8")),
-            "content_sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
-            "runner_completeness": completeness.as_dict(),
-        }
-        payload.update(
-            build_safe_target_metadata_payload(
-                race_info,
-                source_url=race_url,
-                source="canonical_pre_race_page",
-            )
+        payload = build_csv_download_provenance_payload(
+            filepath=filepath,
+            race_url=race_url,
+            csv_info=csv_info,
+            content=content,
+            completeness=completeness,
+            race_info=race_info,
+            source=source,
+            normalization=normalization,
+            filename=os.path.basename(filepath),
+            allow_generic_fields=False,
         )
         with open(metadata_path, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, indent=2, sort_keys=True)
+
+    def _dedupe_artifact_path(self, path: Path) -> Path:
+        if not path.exists():
+            return path
+        timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+        for counter in range(1, 1000):
+            candidate = path.with_name(
+                f"{path.stem}_{timestamp}_{counter}{path.suffix}"
+            )
+            if not candidate.exists():
+                return candidate
+        raise FileExistsError(f"Could not allocate unique artifact path for {path}")
+
+    def _raw_export_path(self, filename: str) -> Path:
+        raw_dir = Path(self.upcoming_dir) / "raw_exports"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        return self._dedupe_artifact_path(raw_dir / filename)
+
+    def _write_raw_export(self, filename: str, content: str) -> Path:
+        raw_path = self._raw_export_path(filename)
+        raw_path.write_text(content, encoding="utf-8", newline="")
+        return raw_path
 
     def _normalize_race_url(self, race_url: str):
         """Return a tuple of (base_race_url, expert_form_url) with fragments/queries removed and expert-form deduped.
@@ -1352,44 +1344,92 @@ class UpcomingRaceBrowser:
             if len(lines) < 2:
                 return {"success": False, "error": "CSV has insufficient data"}
 
+            raw_export_path = self._write_raw_export(filename, content)
+
             # Check for expected headers
             first_line = lines[0].lower()
             if not any(
                 header in first_line for header in ["dog name", "dog", "runner", "name"]
             ):
+                quarantine_path = quarantine_csv_content(
+                    content,
+                    self.upcoming_dir,
+                    filename,
+                    reason="noncanonical_form_guide_header",
+                )
                 return {
                     "success": False,
                     "error": "CSV doesn't appear to be a form guide",
+                    "raw_export_path": str(raw_export_path),
+                    "quarantine_path": str(quarantine_path),
                 }
 
             completeness = analyze_csv_text_runner_completeness(
                 content,
                 source=f"download:{race_url}",
             )
-            if not completeness.is_complete:
-                quarantine_path = quarantine_csv_content(
-                    content,
-                    self.upcoming_dir,
-                    filename,
-                    reason="incomplete_runner_set",
-                )
-                return {
-                    "success": False,
-                    "error": "Incomplete runner set in downloaded CSV",
-                    "runner_completeness": completeness.as_dict(),
-                    "quarantine_path": str(quarantine_path),
-                }
 
-            # Save file
-            with open(filepath, "w", encoding="utf-8") as f:
-                f.write(content)
-            self._write_csv_provenance(
-                filepath,
+            preliminary_sidecar = build_csv_download_provenance_payload(
+                filepath=filepath,
                 race_url=race_url,
                 csv_info=csv_info,
                 content=content,
                 completeness=completeness,
                 race_info={**race_info, "url": race_url},
+                source="upcoming_race_browser",
+                filename=filename,
+                allow_generic_fields=False,
+            )
+            normalization = normalize_verified_thedogs_export_content(
+                content,
+                accepted_csv_path=filepath,
+                raw_export_path=raw_export_path,
+                sidecar_payload=preliminary_sidecar,
+                runner_completeness=completeness.as_dict(),
+            )
+            normalization_metadata = {
+                key: value
+                for key, value in normalization.items()
+                if key != "normalized_content"
+            }
+
+            if normalization.get("normalization_status") != "verified":
+                reason = str(
+                    normalization.get("normalization_failure_reason")
+                    or "normalization_rejected"
+                )
+                quarantine_path = quarantine_csv_content(
+                    content,
+                    self.upcoming_dir,
+                    filename,
+                    reason=reason[:120],
+                )
+                return {
+                    "success": False,
+                    "error": (
+                        "Incomplete runner set in downloaded CSV"
+                        if "runner_set_not_complete" in reason
+                        else "Downloaded CSV failed canonical TheDogs normalization gate"
+                    ),
+                    "runner_completeness": completeness.as_dict(),
+                    "normalization": normalization_metadata,
+                    "raw_export_path": str(raw_export_path),
+                    "quarantine_path": str(quarantine_path),
+                }
+
+            normalized_content = str(normalization["normalized_content"])
+
+            # Save accepted canonical pipe-delimited file
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(normalized_content)
+            self._write_csv_provenance(
+                filepath,
+                race_url=race_url,
+                csv_info=csv_info,
+                content=normalized_content,
+                completeness=completeness,
+                race_info={**race_info, "url": race_url},
+                normalization=normalization_metadata,
             )
 
             print(f"   ✅ Downloaded: {filename}")
@@ -1399,6 +1439,8 @@ class UpcomingRaceBrowser:
                 "filename": filename,
                 "filepath": filepath,
                 "runner_completeness": completeness.as_dict(),
+                "normalization": normalization_metadata,
+                "raw_export_path": str(raw_export_path),
             }
 
         except Exception as e:

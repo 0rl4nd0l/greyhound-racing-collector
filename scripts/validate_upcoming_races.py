@@ -201,6 +201,10 @@ def validate_file(path: Path, strict_future: bool) -> List[str]:
     return problems
 
 
+def is_csv_metadata_sidecar(path: Path) -> bool:
+    return path.name.endswith(".csv.metadata.json")
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Validate upcoming race CSV files")
     parser.add_argument(
@@ -234,14 +238,21 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0
 
     entries = sorted([p for p in upcoming_dir.iterdir() if not p.name.startswith(".")])
-    # Filter to files and symlinks only
-    csv_paths = [p for p in entries if p.is_file() or p.is_symlink()]
+    # Filter to accepted form-guide CSVs only. Metadata sidecars are expected
+    # next to accepted CSVs but are not capture inputs.
+    csv_paths = [
+        p
+        for p in entries
+        if (p.is_file() or p.is_symlink()) and p.suffix.lower() == ".csv"
+    ]
 
     # Log discovery summary
     skipped: Dict[str, str] = {}
     for p in entries:
         if not (p.is_file() or p.is_symlink()):
             skipped[p.name] = "not a regular file or symlink"
+        elif is_csv_metadata_sidecar(p):
+            skipped[p.name] = "accepted CSV metadata sidecar"
         elif p.suffix.lower() != ".csv":
             skipped[p.name] = "invalid extension (only .csv allowed)"
 
@@ -265,14 +276,20 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     all_problems: Dict[str, List[str]] = {}
     for p in csv_paths:
-        if p.suffix.lower() != ".csv":
-            # Fail early on non-csv (already accounted in skipped but keep guard)
-            reason = f"{p.name}: Invalid extension; only .csv files are allowed in upcoming_races"
-            all_problems.setdefault(p.name, []).append(reason)
-            continue
         probs = validate_file(p, strict_future)
         if probs:
             all_problems[p.name] = probs
+
+    invalid_non_csv = [
+        p
+        for p in entries
+        if (p.is_file() or p.is_symlink())
+        and p.suffix.lower() != ".csv"
+        and not is_csv_metadata_sidecar(p)
+    ]
+    for p in invalid_non_csv:
+        reason = f"{p.name}: Invalid extension; only .csv files and .csv.metadata.json sidecars are allowed in upcoming_races"
+        all_problems.setdefault(p.name, []).append(reason)
 
     if all_problems:
         print("Validation failed for the following files:")

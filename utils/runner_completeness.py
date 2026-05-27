@@ -27,6 +27,7 @@ except Exception:
 MIN_COMPLETE_RUNNERS = 4
 PRIMARY_RUNNER_RE = re.compile(r"^\s*(\d{1,2})\s*[\.\):-]\s*(.+?)\s*$")
 POST_RESULT_URL_MARKERS = ("result", "results", "dividend", "payout")
+CSV_DELIMITERS = ",|;\t"
 
 
 def normalise_runner_name(value: Any) -> str:
@@ -80,10 +81,25 @@ def _header_value(row: Mapping[str, Any], names: Iterable[str]) -> Any:
     return None
 
 
+def detect_csv_delimiter(content: str) -> str:
+    """Detect the form-guide delimiter without accepting mixed structures."""
+
+    sample = str(content or "")[:8192]
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=CSV_DELIMITERS)
+        return dialect.delimiter
+    except Exception:
+        first_line = next((line for line in str(content or "").splitlines() if line.strip()), "")
+        counts = {delimiter: first_line.count(delimiter) for delimiter in CSV_DELIMITERS}
+        delimiter, count = max(counts.items(), key=lambda item: item[1])
+        return delimiter if count > 0 else ","
+
+
 def parse_runner_rows_from_text(content: str) -> tuple[list[RunnerRow], int]:
     """Return target-race runner rows and invalid target-like row count."""
 
-    reader = csv.DictReader(io.StringIO(content))
+    delimiter = detect_csv_delimiter(content)
+    reader = csv.DictReader(io.StringIO(content), delimiter=delimiter)
     prefixed: list[RunnerRow] = []
     fallback: list[RunnerRow] = []
     invalid = 0

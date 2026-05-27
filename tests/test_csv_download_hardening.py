@@ -4,8 +4,17 @@ import sys
 import types
 import tempfile
 import json
+from pathlib import Path
 
 import pytest
+
+
+ROOT = Path(__file__).resolve().parents[1]
+REAL_COMMA_EXPORT = (
+    ROOT
+    / "artifacts/full_evidence_orchestration_20260525/post_target_metadata_fix_live_batch/quarantine/20260527T092141Z_non_pipe_delimited_Race 13 - BAL - 2026-05-27.csv"
+)
+REAL_COMMA_SIDECAR = Path(f"{REAL_COMMA_EXPORT}.metadata.json")
 
 
 @pytest.fixture(autouse=True)
@@ -67,26 +76,37 @@ def test_download_rejects_html_masquerading_as_csv(monkeypatch, _isolate_upcomin
     assert "filepath" not in res
 
 
-def test_download_accepts_valid_csv_and_writes_file(monkeypatch, _isolate_upcoming_dir):
+def test_download_accepts_verified_thedogs_export_and_writes_pipe_file(monkeypatch, _isolate_upcoming_dir):
     from upcoming_race_browser import UpcomingRaceBrowser
 
-    br = UpcomingRaceBrowser()
+    if not REAL_COMMA_EXPORT.exists() or not REAL_COMMA_SIDECAR.exists():
+        pytest.skip("real TheDogs comma export fixture is not present")
 
-    # Minimal plausible CSV header + one row
-    csv_content = "\n".join(
-        [
-            "Dog Name,Box",
-            "1. Alpha,1",
-            "2. Bravo,2",
-            "3. Charlie,3",
-            "4. Delta,4",
-        ]
-    )
+    br = UpcomingRaceBrowser()
+    csv_content = REAL_COMMA_EXPORT.read_text(encoding="utf-8")
+    sidecar = json.loads(REAL_COMMA_SIDECAR.read_text(encoding="utf-8"))
 
     def _fake_find_csv_download_link(soup, race_url):
         return {"type": "direct_csv", "data": csv_content}
 
     monkeypatch.setattr(br, "find_csv_download_link", _fake_find_csv_download_link)
+    monkeypatch.setattr(
+        br,
+        "extract_detailed_race_info",
+        lambda soup, race_url: dict(sidecar["race_info"]),
+    )
+    monkeypatch.setattr(
+        br,
+        "_extract_safe_target_metadata_from_page",
+        lambda soup, race_url: {
+            "target_distance": sidecar["target_distance"],
+            "target_distance_source": sidecar["target_distance_source"],
+            "target_grade": sidecar["target_grade"],
+            "target_grade_source": sidecar["target_grade_source"],
+            "metadata_is_leakage_safe": sidecar["metadata_is_leakage_safe"],
+            "metadata_source_url": sidecar["metadata_source_url"],
+        },
+    )
 
     # Stub network GET for the race page to avoid external calls
     class _Resp:
@@ -103,14 +123,17 @@ def test_download_accepts_valid_csv_and_writes_file(monkeypatch, _isolate_upcomi
     )
     monkeypatch.setattr(br, "session", fake_session)
 
-    res = br.download_race_csv("https://www.thedogs.com.au/racing/grafton/2025-09-02/5")
+    res = br.download_race_csv(sidecar["race_url"])
     assert res.get("success"), f"Expected success, got: {res}"
     fp = res.get("filepath")
     assert fp and os.path.exists(fp)
     with open(fp, "r", encoding="utf-8") as f:
         data = f.read()
-    assert "Dog Name,Box" in data
+    assert data.splitlines()[0].startswith("Dog Name|Sex|PLC|BOX")
     assert res["runner_completeness"]["status"] == "COMPLETE"
+    assert res["normalization"]["original_delimiter"] == ","
+    assert res["normalization"]["normalized_delimiter"] == "|"
+    assert os.path.exists(res["raw_export_path"])
     assert os.path.exists(f"{fp}.metadata.json")
 
 
