@@ -199,6 +199,23 @@ def _ordinal_to_position(value: str) -> Optional[int]:
     return None
 
 
+def _strict_ordinal_to_position(value: str) -> Optional[int]:
+    match = re.match(r"^\s*([1-9]|10)(?:st|nd|rd|th)\s*$", str(value or ""), re.IGNORECASE)
+    if match:
+        return int(match.group(1))
+    return None
+
+
+def _rug_box_from_markup(markup: str) -> Optional[int]:
+    match = re.search(r"\bname=[\"']rug_(\d{1,2})[\"']", str(markup or ""), re.IGNORECASE)
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return None
+
+
 def rendered_text_from_html(markup: str) -> str:
     try:
         from bs4 import BeautifulSoup
@@ -216,6 +233,71 @@ def rendered_text_from_html(markup: str) -> str:
         cleaned = re.sub(r"<[^>]+>", " ", cleaned)
         cleaned = html.unescape(cleaned)
         return "\n".join(line.strip() for line in cleaned.splitlines() if line.strip())
+
+
+def parse_thedogs_result_html(markup: str) -> Dict[int, int]:
+    """Parse official TheDogs result rows by rug box from the result table.
+
+    This deliberately does not filter to local participants. Unknown official
+    boxes must stay visible so participant-alignment validation can reject the
+    race instead of silently treating a later local runner as the winner.
+    """
+    if not str(markup or "").strip():
+        return {}
+
+    try:
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(markup or "", "html.parser")
+        positions: Dict[int, int] = {}
+        for row in soup.select("table.race-runners--result tr.race-runner"):
+            position_cell = row.select_one("td.race-runners__finish-position")
+            box_cell = row.select_one("td.race-runners__box")
+            if position_cell is None or box_cell is None:
+                continue
+
+            position = _strict_ordinal_to_position(position_cell.get_text(" ", strip=True))
+            if position is None:
+                continue
+
+            box_number = None
+            rug = box_cell.find(attrs={"name": re.compile(r"^rug_\d{1,2}$")})
+            if rug is not None:
+                box_number = _rug_box_from_markup(str(rug))
+            if box_number is None:
+                box_number = _rug_box_from_markup(str(box_cell))
+            if box_number is None:
+                continue
+
+            positions.setdefault(box_number, position)
+        return positions
+    except Exception:
+        positions: Dict[int, int] = {}
+        row_pattern = re.compile(
+            r"<tr\b(?=[^>]*\brace-runner\b)[^>]*>(?P<row>.*?)</tr>",
+            re.IGNORECASE | re.DOTALL,
+        )
+        position_pattern = re.compile(
+            r"<td\b(?=[^>]*\brace-runners__finish-position\b)[^>]*>(?P<value>.*?)</td>",
+            re.IGNORECASE | re.DOTALL,
+        )
+        box_pattern = re.compile(
+            r"<td\b(?=[^>]*\brace-runners__box\b)[^>]*>(?P<value>.*?)</td>",
+            re.IGNORECASE | re.DOTALL,
+        )
+        for row_match in row_pattern.finditer(str(markup or "")):
+            row_markup = row_match.group("row")
+            position_match = position_pattern.search(row_markup)
+            box_match = box_pattern.search(row_markup)
+            if not position_match or not box_match:
+                continue
+            position_text = rendered_text_from_html(position_match.group("value"))
+            position = _strict_ordinal_to_position(position_text)
+            box_number = _rug_box_from_markup(box_match.group("value"))
+            if position is None or box_number is None:
+                continue
+            positions.setdefault(box_number, position)
+        return positions
 
 
 def response_is_forbidden(status_code: Optional[int], title: str, text: str) -> bool:
@@ -369,6 +451,15 @@ def result_validation_error(candidate: RaceCandidate, result: SourceResult) -> O
         return reason + ":" + ",".join(
             str(box) for box in unknown_boxes
         )
+    finish_positions = [
+        int(position)
+        for position in result.positions_by_box.values()
+        if position is not None
+    ]
+    if 1 not in finish_positions:
+        return "missing_first_place_result"
+    if len(finish_positions) != len(set(finish_positions)):
+        return "duplicate_finish_positions"
     if result.winner_box is None:
         return "missing_winner_box"
     return None
@@ -470,6 +561,30 @@ class TheDogsResultFetcher:
             raw_order=ordered_boxes,
         )
 
+    def _result_from_html(
+        self,
+        candidate: RaceCandidate,
+        source_url: str,
+        markup: str,
+    ) -> Optional[SourceResult]:
+        positions = parse_thedogs_result_html(markup)
+        if positions:
+            ordered_boxes = [
+                box for box, _ in sorted(positions.items(), key=lambda item: item[1])
+            ]
+            return SourceResult(
+                source="thedogs_official",
+                status=RESULTED,
+                source_url=source_url,
+                positions_by_box=positions,
+                raw_order=ordered_boxes,
+            )
+        return self._result_from_text(
+            candidate,
+            source_url,
+            rendered_text_from_html(markup),
+        )
+
     def _fetch_via_http(self, candidate: RaceCandidate, urls: List[str]) -> Optional[SourceResult]:
         if self.http_session is None:
             return None
@@ -493,7 +608,7 @@ class TheDogsResultFetcher:
                     last_error = f"thedogs_http_{status_code}"
                     continue
 
-                result = self._result_from_text(candidate, getattr(response, "url", url), text)
+                result = self._result_from_html(candidate, getattr(response, "url", url), markup)
                 if result:
                     return result
                 last_error = "no_thedogs_positions_found"
@@ -542,7 +657,12 @@ class TheDogsResultFetcher:
                 if response_is_forbidden(None, title, text):
                     last_error = "thedogs_403_forbidden"
                     break
-                result = self._result_from_text(candidate, url, text)
+                page_source = getattr(self.driver, "page_source", None)
+                result = (
+                    self._result_from_html(candidate, url, page_source)
+                    if page_source
+                    else self._result_from_text(candidate, url, text)
+                )
                 if result:
                     return result
                 last_error = "no_thedogs_positions_found"

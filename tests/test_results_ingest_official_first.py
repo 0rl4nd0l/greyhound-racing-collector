@@ -86,6 +86,72 @@ def test_parse_thedogs_result_text_matches_ordinals_to_local_runners():
     assert positions == {6: 1, 8: 2, 3: 3}
 
 
+def test_parse_thedogs_result_html_preserves_unknown_official_boxes():
+    module = _load_ingest_module()
+    markup = """
+    <table class="race-runners race-runners--result">
+      <tr class="accordion__anchor race-runner">
+        <td class="race-runners__finish-position">1st</td>
+        <td class="race-runners__box"><sprite-svg name="rug_2"></sprite-svg></td>
+        <td class="race-runners__name"><a>Poppy Florence</a></td>
+      </tr>
+      <tr class="accordion__anchor race-runner">
+        <td class="race-runners__finish-position">2nd</td>
+        <td class="race-runners__box"><sprite-svg name="rug_6"></sprite-svg></td>
+        <td class="race-runners__name"><a>Dalair Milo</a></td>
+      </tr>
+      <tr class="accordion__anchor race-runner race-runner--scratched">
+        <td class="race-runners__finish-position">SCR</td>
+        <td class="race-runners__box"><sprite-svg name="rug_9"></sprite-svg></td>
+        <td class="race-runners__name"><a>Deuces</a></td>
+      </tr>
+    </table>
+    """
+
+    positions = module.parse_thedogs_result_html(markup)
+
+    assert positions == {2: 1, 6: 2}
+
+
+def test_result_validation_rejects_official_boxes_outside_local_participants(tmp_path):
+    module = _load_ingest_module()
+    candidate = _candidate(module, tmp_path)
+    candidate.participants = [
+        {"box_number": 4, "dog_name": "Cobra Beach"},
+        {"box_number": 6, "dog_name": "Dalair Milo"},
+        {"box_number": 7, "dog_name": "More Drama"},
+        {"box_number": 9, "dog_name": "Deuces"},
+        {"box_number": 10, "dog_name": "Spring Orchid"},
+    ]
+    result = module.SourceResult(
+        source="thedogs_official",
+        status="resulted",
+        source_url="https://www.thedogs.com.au/racing/gunnedah/2026-05-27/2",
+        positions_by_box={2: 1, 6: 2, 8: 3, 4: 5, 7: 7},
+        raw_order=[2, 6, 8, 4, 7],
+    )
+
+    error = module.result_validation_error(candidate, result)
+
+    assert error == "result_boxes_not_in_participants:2,8"
+
+
+def test_result_validation_rejects_local_subset_without_first_place(tmp_path):
+    module = _load_ingest_module()
+    candidate = _candidate(module, tmp_path)
+    result = module.SourceResult(
+        source="thedogs_official",
+        status="resulted",
+        source_url="https://www.thedogs.com.au/racing/gunnedah/2026-05-27/2",
+        positions_by_box={6: 2, 4: 5, 7: 7},
+        raw_order=[6, 4, 7],
+    )
+
+    error = module.result_validation_error(candidate, result)
+
+    assert error == "missing_first_place_result"
+
+
 def _make_ingest_db(tmp_path):
     db_path = tmp_path / "results.sqlite"
     conn = sqlite3.connect(db_path)
