@@ -1102,3 +1102,47 @@ def test_frozen_snapshot_rescues_incomplete_metadata_row_without_jump_time(tmp_p
             "reason": "race_not_jumped:upcoming_not_jumped",
         }
     ]
+
+
+def test_frozen_snapshot_rescue_preserves_metadata_sportsbet_url(tmp_path):
+    module = _load_ingest_module()
+    db_path, conn = _make_ingest_db(tmp_path)
+    sportsbet_url = (
+        "https://www.sportsbet.com.au/greyhound-racing/australia-nz/"
+        "q1-lakeside/race-4-10524017"
+    )
+    conn.execute(
+        """
+        INSERT INTO race_metadata
+            (race_id, venue, race_number, race_date, race_time, sportsbet_url, results_status)
+        VALUES (?, 'LADBROKES-Q1-LAKESIDE', 4, '2026-05-21', NULL, ?, 'pending')
+        """,
+        ("Race 4 - LADBROKES-Q1-LAKESIDE - 2026-05-21", sportsbet_url),
+    )
+    conn.commit()
+    conn.close()
+    upcoming_dir = tmp_path / "upcoming"
+    upcoming_dir.mkdir()
+    candidate_csv = upcoming_dir / "Race 4 - LADBROKES-Q1-LAKESIDE - 2026-05-21.csv"
+    candidate_csv.write_text(_four_runner_csv(), encoding="utf-8")
+    snapshot_dir = tmp_path / "snapshots"
+    _write_snapshot(
+        snapshot_dir,
+        race_id="Race 4 - LADBROKES-Q1-LAKESIDE - 2026-05-21",
+        venue="LADBROKES-Q1-LAKESIDE",
+        source_file_path=str(candidate_csv),
+    )
+
+    candidates, _skipped = module.load_candidates(
+        db_path,
+        "2026-05-21",
+        upcoming_dir,
+        [],
+        now=datetime(2026, 5, 21, 17, 37, tzinfo=ZoneInfo("Australia/Melbourne")),
+        snapshot_dir=snapshot_dir,
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].participant_source == "snapshot"
+    assert candidates[0].sportsbet_url == sportsbet_url
+    assert candidates[0].sportsbet_slug == "q1-lakeside"

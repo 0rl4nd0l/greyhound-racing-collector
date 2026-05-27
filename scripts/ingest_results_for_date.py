@@ -1028,10 +1028,12 @@ def load_candidates(
     candidates: List[RaceCandidate] = []
     skipped: List[dict] = []
     candidate_race_ids: set[str] = set()
+    metadata_by_race_id: Dict[str, dict] = {}
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     try:
         for row in conn.execute(query, params).fetchall():
+            metadata_by_race_id[str(row["race_id"])] = _row_dict(row)
             eligible, lifecycle_status = jumped_or_already_resulted(row, now=now)
             if not eligible:
                 skipped.append(
@@ -1123,6 +1125,10 @@ def load_candidates(
                     }
                 )
                 continue
+            metadata_row = metadata_by_race_id.get(str(row["race_id"])) or {}
+            sportsbet_url = row.get("sportsbet_url") or metadata_row.get("sportsbet_url")
+            if isinstance(sportsbet_url, str):
+                sportsbet_url = sportsbet_url.strip() or None
             candidate_race_ids.add(str(row["race_id"]))
             candidates.append(
                 RaceCandidate(
@@ -1132,7 +1138,7 @@ def load_candidates(
                     race_date=row["race_date"],
                     race_time=row["race_time"],
                     start_datetime=row["start_datetime"],
-                    sportsbet_url=row["sportsbet_url"],
+                    sportsbet_url=sportsbet_url,
                     csv_path=row["csv_path"],
                     participants=frozen_participants,
                     lifecycle_status=lifecycle_status,
