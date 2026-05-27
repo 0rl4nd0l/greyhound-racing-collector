@@ -233,6 +233,14 @@ def test_form_guide_csv_forward_fill_and_target_metadata_are_leakage_safe():
     assert mapped.loc[0, "dog_clean_name"] == "Nannys Boy"
     assert mapped.loc[0, "csv_historical_races"] == 2
     assert mapped.loc[0, "csv_blank_history_rows"] == 1
+    assert mapped.loc[0, "embedded_history_race_count"] == 2
+    assert mapped.loc[0, "embedded_history_recent_count"] == 2
+    assert mapped.loc[0, "embedded_history_avg_finish"] == 1.5
+    assert mapped.loc[0, "embedded_history_best_finish"] == 1
+    assert mapped.loc[0, "embedded_history_same_track_count"] == 2
+    assert mapped.loc[0, "embedded_history_same_distance_band_count"] == 2
+    assert mapped.loc[0, "embedded_history_recency_days_min"] == 11
+    assert mapped.loc[0, "embedded_history_recency_days_max"] == 20
     assert mapped.loc[0, "distance"] == 525.0
     assert mapped.loc[0, "distance_source"] == "target_column:Race Distance"
     assert mapped.loc[0, "grade"] == "GRADE 5"
@@ -284,12 +292,18 @@ def test_embedded_form_defaults_target_metadata_and_excludes_future_rows():
     assert mapped.loc[0, "distance_source"] == "default_missing_target"
     assert mapped.loc[0, "grade_source"] == "default_missing_target"
     assert bool(mapped.loc[0, "metadata_is_leakage_safe"]) is False
-    assert mapped.loc[0, "rejected_metadata_sources"] == [
+    rejected = set(mapped.loc[0, "rejected_metadata_sources"])
+    assert {
         "embedded_form_history:DIST",
         "embedded_form_history:G",
-    ]
+        "post_result_field:PLC",
+        "post_result_field:TIME",
+    }.issubset(rejected)
     assert mapped.loc[0, "csv_historical_races"] == 1
     assert mapped.loc[0, "csv_history_rows_dropped_post_target"] == 1
+    assert mapped.loc[0, "embedded_history_race_count"] == 1
+    assert mapped.loc[0, "embedded_history_recent_count"] == 1
+    assert mapped.loc[0, "embedded_history_recency_days_min"] == 11
     assert mapped.loc[0, "finish_position"] is None
 
 
@@ -319,6 +333,9 @@ def test_generic_post_result_metadata_is_rejected_for_embedded_form_history():
     assert mapped.loc[0, "distance_source"] == "default_missing_target"
     assert mapped.loc[0, "grade_source"] == "default_missing_target"
     assert bool(mapped.loc[0, "metadata_is_leakage_safe"]) is False
+    rejected = set(mapped.loc[0, "rejected_metadata_sources"])
+    assert "post_result_field:PLC" in rejected
+    assert "post_result_field:TIME" in rejected
 
 
 def test_filename_venue_token_does_not_fill_target_grade():
@@ -345,6 +362,31 @@ def test_filename_venue_token_does_not_fill_target_grade():
     assert mapped.loc[0, "distance_source"] == "default_missing_target"
     assert mapped.loc[0, "grade_source"] == "default_missing_target"
     assert bool(mapped.loc[0, "metadata_is_leakage_safe"]) is False
+
+
+def test_explicit_filename_target_metadata_is_accepted_when_labelled():
+    race_data = pd.DataFrame(
+        [
+            {
+                "Dog Name": "1. Alpha Runner",
+                "BOX": "1",
+                "DATE": "2026-05-10",
+                "TRACK": "AP_K",
+            }
+        ]
+    )
+    pipeline = object.__new__(PredictionPipelineV4)
+
+    mapped = pipeline._map_csv_to_v4_format(
+        race_data,
+        "Race 1 - AP_K - 2026-05-21 - distance-520m - grade-G5.csv",
+    )
+
+    assert mapped.loc[0, "distance"] == 520.0
+    assert mapped.loc[0, "distance_source"] == "filename:distance"
+    assert mapped.loc[0, "grade"] == "G5"
+    assert mapped.loc[0, "grade_source"] == "filename:grade"
+    assert bool(mapped.loc[0, "metadata_is_leakage_safe"]) is True
 
 
 def test_history_provenance_distinguishes_db_embedded_and_no_history(tmp_path):

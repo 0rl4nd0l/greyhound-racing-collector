@@ -1,6 +1,9 @@
 import json
 import sqlite3
+import subprocess
+import sys
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 
@@ -257,6 +260,100 @@ def test_prediction_snapshot_carries_odds_timestamp_provenance_and_readiness():
     assert snapshot["snapshot_readiness"]["counts"]["missing_live_odds_count"] == 1
     assert snapshot["snapshot_readiness"]["status"] == "READY"
     assert_no_result_fields(snapshot)
+
+
+def test_non_box_feature_quality_audit_writes_reports_without_db_writes(tmp_path):
+    repo_root = Path(__file__).resolve().parents[1]
+    snapshot_dir = tmp_path / "snapshots"
+    output_dir = tmp_path / "audit_out"
+    snapshot_dir.mkdir()
+    metadata_path = tmp_path / "metadata.json"
+    db_path = tmp_path / "audit.db"
+    metadata_path.write_text(
+        json.dumps(
+            {
+                "model_id": "fixture-model",
+                "feature_names": [
+                    "venue",
+                    "grade",
+                    "distance",
+                    "field_size",
+                    "box_number",
+                    "historical_avg_position",
+                    "historical_win_rate",
+                    "target_distance",
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (snapshot_dir / "fixture.json").write_text(
+        json.dumps(
+            {
+                "race_id": "Race 1 - TEST - 2026-05-26",
+                "race_date": "2026-05-26",
+                "venue": "TEST",
+                "race_number": 1,
+                "predictions": [
+                    {
+                        "dog_name": "Alpha Runner",
+                        "box_number": 1,
+                        "predicted_rank": 1,
+                        "win_prob_norm": 0.6,
+                        "distance_source": "default_missing_target",
+                        "grade_source": "default_missing_target",
+                        "metadata_is_leakage_safe": False,
+                        "history_source": "embedded_csv_form_history",
+                        "db_result_history_count": 0,
+                    },
+                    {
+                        "dog_name": "Beta Runner",
+                        "box_number": 2,
+                        "predicted_rank": 2,
+                        "win_prob_norm": 0.4,
+                        "distance_source": "default_missing_target",
+                        "grade_source": "default_missing_target",
+                        "metadata_is_leakage_safe": False,
+                        "history_source": "no_usable_history",
+                        "db_result_history_count": 0,
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/audit_non_box_feature_quality.py",
+            "--snapshots",
+            str(snapshot_dir),
+            "--output-dir",
+            str(output_dir),
+            "--model-metadata",
+            str(metadata_path),
+            "--db",
+            str(db_path),
+            "--no-reconstruct",
+        ],
+        cwd=repo_root,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert not db_path.exists()
+    assert (output_dir / "live_feature_missingness.csv").exists()
+    assert (output_dir / "summary.json").exists()
+    assert (output_dir / "report.md").exists()
+    summary = json.loads((output_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary["runner_rows"] == 2
+    assert summary["model_id"] == "fixture-model"
+    assert "Production predictions changed" in (
+        output_dir / "report.md"
+    ).read_text(encoding="utf-8")
+    assert "runner_rows" in result.stdout
 
 
 def test_append_only_pre_jump_odds_capture_preserves_rows_and_source_url(tmp_path):

@@ -315,6 +315,20 @@ def _extract_from_csv_data(file_path: str) -> Optional[Dict[str, Any]]:
             result["csv_row_context"] = "embedded_form_history"
             result["target_metadata_from_csv"] = False
             result["metadata_is_leakage_safe"] = False
+        rejected_metadata_sources = []
+
+        def _first_non_empty(columns):
+            for column in columns:
+                if column not in df.columns:
+                    continue
+                try:
+                    values = df[column].dropna()
+                    for value in values:
+                        if str(value).strip() != "":
+                            return value, column
+                except Exception:
+                    continue
+            return None, None
 
         # Extract venue from TRACK column (most reliable source)
         if "TRACK" in df.columns and not embedded_form_history:
@@ -325,8 +339,32 @@ def _extract_from_csv_data(file_path: str) -> Optional[Dict[str, Any]]:
                 raw_venue = str(venue_counts.index[0]).upper()
                 result["venue"] = standardize_venue_name(raw_venue)
 
-        # Extract distance from DIST column
-        if "DIST" in df.columns and not embedded_form_history:
+        safe_distance, safe_distance_col = _first_non_empty(
+            (
+                "Race Distance",
+                "race_distance",
+                "target_distance",
+                "current_race_distance",
+            )
+        )
+        safe_grade, safe_grade_col = _first_non_empty(
+            (
+                "Race Grade",
+                "race_grade",
+                "target_grade",
+                "current_race_grade",
+            )
+        )
+
+        if safe_distance is not None:
+            result["distance"] = str(safe_distance)
+            result["distance_source"] = f"target_column:{safe_distance_col}"
+            result["target_metadata_from_csv"] = True
+            result["metadata_is_leakage_safe"] = True
+        elif "DIST" in df.columns and embedded_form_history:
+            rejected_metadata_sources.append("embedded_form_history:DIST")
+        # Extract distance from DIST column only when rows are not embedded form history.
+        elif "DIST" in df.columns:
             distances = df["DIST"].dropna().unique()
             if len(distances) > 0:
                 # Get most common distance
@@ -335,8 +373,15 @@ def _extract_from_csv_data(file_path: str) -> Optional[Dict[str, Any]]:
                 result["distance_source"] = "csv_target_row:DIST"
                 result["metadata_is_leakage_safe"] = True
 
-        # Extract grade from G column
-        if "G" in df.columns and not embedded_form_history:
+        if safe_grade is not None:
+            result["grade"] = str(safe_grade)
+            result["grade_source"] = f"target_column:{safe_grade_col}"
+            result["target_metadata_from_csv"] = True
+            result["metadata_is_leakage_safe"] = True
+        elif "G" in df.columns and embedded_form_history:
+            rejected_metadata_sources.append("embedded_form_history:G")
+        # Extract grade from G column only when rows are not embedded form history.
+        elif "G" in df.columns:
             grades = df["G"].dropna().unique()
             if len(grades) > 0:
                 # Get most common grade
@@ -344,6 +389,24 @@ def _extract_from_csv_data(file_path: str) -> Optional[Dict[str, Any]]:
                 result["grade"] = str(grade_counts.index[0])
                 result["grade_source"] = "csv_target_row:G"
                 result["metadata_is_leakage_safe"] = True
+
+        if embedded_form_history:
+            for rejected_col in (
+                "PLC",
+                "TIME",
+                "BON",
+                "MGN",
+                "WIN",
+                "PIR",
+                "finish_position",
+                "winner",
+                "winner_name",
+                "payout",
+            ):
+                if rejected_col in df.columns:
+                    rejected_metadata_sources.append(f"post_result_field:{rejected_col}")
+        if rejected_metadata_sources:
+            result["rejected_metadata_sources"] = rejected_metadata_sources
 
         # Calculate field size (number of unique dogs/boxes)
         if "Dog Name" in df.columns and embedded_form_history:

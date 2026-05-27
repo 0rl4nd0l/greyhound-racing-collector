@@ -1314,6 +1314,21 @@ class PredictionPipelineV4:
                                     "csv_prefixed_history_rows",
                                     "csv_blank_history_rows",
                                     "csv_historical_sources",
+                                    "embedded_history_race_count",
+                                    "embedded_history_recent_count",
+                                    "embedded_history_avg_finish",
+                                    "embedded_history_best_finish",
+                                    "embedded_history_win_rate",
+                                    "embedded_history_place_rate",
+                                    "embedded_history_avg_time",
+                                    "embedded_history_best_time",
+                                    "embedded_history_recent_avg_time",
+                                    "embedded_history_same_track_count",
+                                    "embedded_history_same_distance_band_count",
+                                    "embedded_history_recency_days_min",
+                                    "embedded_history_recency_days_max",
+                                    "embedded_history_recency_days_mean",
+                                    "embedded_history_sources",
                                     "parser_context",
                                     "target_field_warning",
                                     "distance_source",
@@ -1586,6 +1601,15 @@ class PredictionPipelineV4:
             except Exception:
                 return default
 
+        def _dog_name_cell(row) -> str:
+            try:
+                value = row.get("Dog Name", "") if hasattr(row, "get") else ""
+                if value is None or pd.isna(value):
+                    return ""
+                return str(value or "").strip()
+            except Exception:
+                return ""
+
         def _first_non_empty(columns: tuple[str, ...]):
             for column in columns:
                 if column not in race_data.columns:
@@ -1616,14 +1640,14 @@ class PredictionPipelineV4:
             stem = filename.replace(".csv", "")
             try:
                 distance_match = _re.search(
-                    r"\b(?:race[-_\s]?distance|distance|dist)[-_=:\s]+(\d{3,4})\s*m?\b",
+                    r"\b(?:race[-_\s]?distance|distance)[-_=:\s]+(\d{3,4})\s*m?\b",
                     stem,
                     _re.I,
                 )
                 if distance_match:
                     meta["distance"] = distance_match.group(1)
                 grade_match = _re.search(
-                    r"\b(?:race[-_\s]?grade|grade|class)[-_=:\s]+([A-Za-z0-9]+)\b",
+                    r"\b(?:race[-_\s]?grade|grade)[-_=:\s]+([A-Za-z0-9]+)\b",
                     stem,
                     _re.I,
                 )
@@ -1726,7 +1750,7 @@ class PredictionPipelineV4:
 
         # First pass: determine unique participants and stable box numbers
         for _, row in race_data.iterrows():
-            raw_name = str(row.get("Dog Name", "") or "").strip()
+            raw_name = _dog_name_cell(row)
             has_prefix = _has_numeric_prefix(raw_name)
             norm_name = _normalize_dog_name_no_prefix(raw_name)
 
@@ -1779,7 +1803,7 @@ class PredictionPipelineV4:
             # Find the first row corresponding to this dog to pull auxiliary columns
             first_row = None
             for _, row in race_data.iterrows():
-                rn = _normalize_dog_name_no_prefix(str(row.get("Dog Name", "") or "").strip())
+                rn = _normalize_dog_name_no_prefix(_dog_name_cell(row))
                 if rn == norm_name:
                     first_row = row
                     break
@@ -1843,6 +1867,20 @@ class PredictionPipelineV4:
                     rejected_metadata_sources.append("embedded_form_history:DIST")
                 if "G" in race_data.columns and race_level_grade_source == "default_missing_target":
                     rejected_metadata_sources.append("embedded_form_history:G")
+                for rejected_col in (
+                    "PLC",
+                    "TIME",
+                    "BON",
+                    "MGN",
+                    "WIN",
+                    "PIR",
+                    "finish_position",
+                    "winner",
+                    "winner_name",
+                    "payout",
+                ):
+                    if rejected_col in race_data.columns:
+                        rejected_metadata_sources.append(f"post_result_field:{rejected_col}")
             metadata_source_detail = {
                 "distance": distance_detail,
                 "grade": grade_detail,
@@ -1988,6 +2026,42 @@ class PredictionPipelineV4:
             except Exception:
                 return None
 
+        def _dog_name_cell(row) -> str:
+            try:
+                value = row.get("Dog Name", "") if hasattr(row, "get") else ""
+                if value is None or pd.isna(value):
+                    return ""
+                return str(value or "").strip()
+            except Exception:
+                return ""
+
+        def _history_date(v):
+            try:
+                if v is None or str(v).strip() == "":
+                    return None
+                parsed = pd.to_datetime(v, errors="coerce")
+                if pd.isna(parsed):
+                    return None
+                return parsed.date()
+            except Exception:
+                return None
+
+        def _same_distance_band_count(history: list[dict[str, Any]], target_distance: Any) -> int:
+            try:
+                target = _to_int_like(target_distance)
+                if target is None or target <= 0:
+                    return 0
+                return int(
+                    sum(
+                        1
+                        for h in history
+                        if h.get("distance") is not None
+                        and abs(float(h.get("distance")) - float(target)) <= 50
+                    )
+                )
+            except Exception:
+                return 0
+
         def _append_historical_race(dog_name: str, row, source: str) -> bool:
             try:
                 # Case-insensitive header support with tolerant numeric parsing
@@ -2032,7 +2106,7 @@ class PredictionPipelineV4:
             return False
 
         for _, row in raw_csv_data.iterrows():
-            raw_name = str(row.get("Dog Name", "") or "").strip()
+            raw_name = _dog_name_cell(row)
             has_prefix = _has_numeric_prefix(raw_name)
             norm_name = _norm(raw_name)
 
@@ -2107,6 +2181,32 @@ class PredictionPipelineV4:
 
                 if positions:
                     source_counts = csv_historical_source_counts.get(dog_name, {})
+                    recent_positions = positions[:5]
+                    recent_times = times[:5]
+                    same_track_count = 0
+                    try:
+                        target_venue = str(participant_dict.get("venue") or "").strip().upper()
+                        if target_venue:
+                            same_track_count = int(
+                                sum(
+                                    1
+                                    for h in history
+                                    if str(h.get("track") or "").strip().upper() == target_venue
+                                )
+                            )
+                    except Exception:
+                        same_track_count = 0
+
+                    recency_days: list[int] = []
+                    if target_race_date is not None:
+                        for h in history:
+                            history_date = _history_date(h.get("date"))
+                            if history_date is None:
+                                continue
+                            delta = (target_race_date - history_date).days
+                            if delta > 0:
+                                recency_days.append(int(delta))
+
                     participant_dict["csv_historical_races"] = len(positions)
                     participant_dict["csv_prefixed_history_rows"] = int(
                         source_counts.get("prefixed_form_row", 0)
@@ -2131,6 +2231,44 @@ class PredictionPipelineV4:
                         participant_dict["csv_avg_time"] = sum(times) / len(times)
                         participant_dict["csv_best_time"] = min(times)
 
+                    participant_dict["embedded_history_race_count"] = len(positions)
+                    participant_dict["embedded_history_recent_count"] = len(recent_positions)
+                    participant_dict["embedded_history_avg_finish"] = sum(positions) / len(
+                        positions
+                    )
+                    participant_dict["embedded_history_best_finish"] = min(positions)
+                    participant_dict["embedded_history_win_rate"] = len(
+                        [p for p in positions if p == 1]
+                    ) / len(positions)
+                    participant_dict["embedded_history_place_rate"] = len(
+                        [p for p in positions if p <= 3]
+                    ) / len(positions)
+                    if times:
+                        participant_dict["embedded_history_avg_time"] = sum(times) / len(times)
+                        participant_dict["embedded_history_best_time"] = min(times)
+                    if recent_times:
+                        participant_dict["embedded_history_recent_avg_time"] = sum(
+                            recent_times
+                        ) / len(recent_times)
+                    participant_dict["embedded_history_same_track_count"] = same_track_count
+                    if str(participant_dict.get("distance_source") or "").startswith(
+                        ("target_column:", "filename:")
+                    ):
+                        participant_dict["embedded_history_same_distance_band_count"] = (
+                            _same_distance_band_count(
+                                history, participant_dict.get("distance")
+                            )
+                        )
+                    if recency_days:
+                        participant_dict["embedded_history_recency_days_min"] = min(recency_days)
+                        participant_dict["embedded_history_recency_days_max"] = max(recency_days)
+                        participant_dict["embedded_history_recency_days_mean"] = sum(
+                            recency_days
+                        ) / len(recency_days)
+                    participant_dict["embedded_history_sources"] = ",".join(
+                        sorted(source_counts)
+                    )
+
                     logger.debug(
                         f"{dog_name}: Found {len(positions)} CSV races, avg finish: {participant_dict['csv_avg_finish_position']:.1f}"
                     )
@@ -2142,6 +2280,9 @@ class PredictionPipelineV4:
                 participant_dict["csv_prefixed_history_rows"] = 0
                 participant_dict["csv_blank_history_rows"] = 0
                 participant_dict["csv_historical_sources"] = ""
+                participant_dict["embedded_history_race_count"] = 0
+                participant_dict["embedded_history_recent_count"] = 0
+                participant_dict["embedded_history_sources"] = ""
                 logger.debug(f"{dog_name}: No CSV historical data found")
 
             enriched_participants.append(participant_dict)
