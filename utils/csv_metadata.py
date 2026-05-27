@@ -4,6 +4,7 @@ Provides lightweight metadata extraction from race CSV files with fallback to fi
 """
 
 import csv
+import json
 import os
 import re
 from datetime import datetime
@@ -14,6 +15,185 @@ try:
     import pandas as pd  # noqa: F401
 except Exception:  # pragma: no cover
     pd = None
+
+
+SAFE_TARGET_DISTANCE_COLUMNS = (
+    "Race Distance",
+    "race_distance",
+    "target_distance",
+    "current_race_distance",
+)
+SAFE_TARGET_GRADE_COLUMNS = (
+    "Race Grade",
+    "race_grade",
+    "target_grade",
+    "current_race_grade",
+)
+SAFE_SIDECAR_TARGET_SOURCES = {
+    "canonical_pre_race_page",
+    "sidecar_target_metadata",
+    "explicit_csv_sidecar",
+}
+UNSAFE_TARGET_SOURCE_MARKERS = (
+    "embedded_form_history",
+    "post_result",
+    "result_page",
+    "sportsbet_result",
+)
+
+
+def normalize_target_distance(value: Any) -> Optional[str]:
+    """Normalize explicit pre-race distance metadata, preserving fail-closed behavior."""
+
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    match = re.search(r"\b(\d{3,4})\s*m?\b", text, re.I)
+    if not match:
+        return None
+    return f"{match.group(1)}m"
+
+
+def normalize_target_grade(value: Any) -> Optional[str]:
+    """Normalize explicit pre-race grade/class metadata without inferring from venue tokens."""
+
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    compact = re.sub(r"\s+", " ", text)
+    patterns = (
+        r"\bGrade\s*\d+\b",
+        r"\bG\d+\b",
+        r"\bMaiden\b",
+        r"\bNovice\b",
+        r"\bOpen\b",
+        r"\bMixed\b",
+        r"\bRestricted\b",
+        r"\bFree For All\b",
+        r"\bFFA\b",
+        r"\bGroup\s*\d+\b",
+        r"\bFinal\b",
+        r"\bHeat\b",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, compact, re.I)
+        if match:
+            value = match.group(0).strip()
+            if re.fullmatch(r"G\d+", value, re.I):
+                return value.upper()
+            return value.upper() if value.upper() == "FFA" else value.title()
+    return None
+
+
+def is_safe_sidecar_target_source(source: Any) -> bool:
+    text = str(source or "").strip()
+    if not text:
+        return False
+    lowered = text.lower()
+    if any(marker in lowered for marker in UNSAFE_TARGET_SOURCE_MARKERS):
+        return False
+    return text in SAFE_SIDECAR_TARGET_SOURCES or text.startswith(
+        ("target_column:", "filename:")
+    )
+
+
+def build_safe_target_metadata_payload(
+    race_info: Optional[Dict[str, Any]] = None,
+    *,
+    source_url: Optional[str] = None,
+    source: str = "canonical_pre_race_page",
+    allow_generic_fields: bool = True,
+) -> Dict[str, Any]:
+    """Build sidecar target metadata from explicit, pre-race race-card fields only."""
+
+    race_info = dict(race_info or {})
+    distance_source = race_info.get("target_distance_source") or source
+    grade_source = race_info.get("target_grade_source") or source
+    distance_value = race_info.get("target_distance")
+    if distance_value in (None, "") and allow_generic_fields:
+        distance_value = race_info.get("distance")
+    grade_value = race_info.get("target_grade")
+    if grade_value in (None, "") and allow_generic_fields:
+        grade_value = race_info.get("grade")
+    distance = normalize_target_distance(distance_value)
+    grade = normalize_target_grade(grade_value)
+    payload: Dict[str, Any] = {
+        "target_distance": None,
+        "target_distance_source": "default_missing_target",
+        "target_grade": None,
+        "target_grade_source": "default_missing_target",
+        "metadata_is_leakage_safe": False,
+        "metadata_source_url": source_url,
+    }
+    if distance and is_safe_sidecar_target_source(distance_source):
+        payload["target_distance"] = distance
+        payload["target_distance_source"] = distance_source
+        payload["metadata_is_leakage_safe"] = True
+    if grade and is_safe_sidecar_target_source(grade_source):
+        payload["target_grade"] = grade
+        payload["target_grade_source"] = grade_source
+        payload["metadata_is_leakage_safe"] = True
+    return payload
+
+
+def load_safe_sidecar_target_metadata(csv_path: Union[str, os.PathLike]) -> Dict[str, Any]:
+    """Read leakage-safe target metadata from a CSV sidecar, if present.
+
+    Existing sidecars may include race_info distance/grade without provenance. Those are
+    intentionally ignored until a sidecar carries explicit top-level target fields and a
+    safe source.
+    """
+
+    sidecar_path = f"{csv_path}.metadata.json"
+    default = {
+        "target_distance": None,
+        "target_distance_source": "default_missing_target",
+        "target_grade": None,
+        "target_grade_source": "default_missing_target",
+        "metadata_is_leakage_safe": False,
+        "metadata_source_url": None,
+        "rejected_metadata_sources": [],
+    }
+    if not os.path.exists(sidecar_path):
+        return default
+    try:
+        with open(sidecar_path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except Exception:
+        return default
+
+    leakage_safe = bool(payload.get("metadata_is_leakage_safe"))
+    rejected = list(payload.get("rejected_metadata_sources") or [])
+    result = dict(default)
+    result["metadata_source_url"] = payload.get("metadata_source_url") or payload.get(
+        "race_url"
+    )
+
+    distance_source = payload.get("target_distance_source") or "sidecar_target_metadata"
+    distance = normalize_target_distance(payload.get("target_distance"))
+    if distance and leakage_safe and is_safe_sidecar_target_source(distance_source):
+        result["target_distance"] = distance
+        result["target_distance_source"] = str(distance_source)
+        result["metadata_is_leakage_safe"] = True
+    elif payload.get("target_distance") not in (None, ""):
+        rejected.append(f"unsafe_sidecar_target_distance:{distance_source}")
+
+    grade_source = payload.get("target_grade_source") or "sidecar_target_metadata"
+    grade = normalize_target_grade(payload.get("target_grade"))
+    if grade and leakage_safe and is_safe_sidecar_target_source(grade_source):
+        result["target_grade"] = grade
+        result["target_grade_source"] = str(grade_source)
+        result["metadata_is_leakage_safe"] = True
+    elif payload.get("target_grade") not in (None, ""):
+        rejected.append(f"unsafe_sidecar_target_grade:{grade_source}")
+
+    if rejected:
+        result["rejected_metadata_sources"] = rejected
+    return result
 
 
 def parse_race_csv_meta(file_path: str) -> Dict[str, Any]:
@@ -339,22 +519,8 @@ def _extract_from_csv_data(file_path: str) -> Optional[Dict[str, Any]]:
                 raw_venue = str(venue_counts.index[0]).upper()
                 result["venue"] = standardize_venue_name(raw_venue)
 
-        safe_distance, safe_distance_col = _first_non_empty(
-            (
-                "Race Distance",
-                "race_distance",
-                "target_distance",
-                "current_race_distance",
-            )
-        )
-        safe_grade, safe_grade_col = _first_non_empty(
-            (
-                "Race Grade",
-                "race_grade",
-                "target_grade",
-                "current_race_grade",
-            )
-        )
+        safe_distance, safe_distance_col = _first_non_empty(SAFE_TARGET_DISTANCE_COLUMNS)
+        safe_grade, safe_grade_col = _first_non_empty(SAFE_TARGET_GRADE_COLUMNS)
 
         if safe_distance is not None:
             result["distance"] = str(safe_distance)

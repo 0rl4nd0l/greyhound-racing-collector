@@ -23,6 +23,8 @@ import re
 import sqlite3
 import sys
 import time
+import json
+import hashlib
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -39,6 +41,7 @@ from src.parsers.csv_ingestion import CsvIngestion
 from utils.date_parsing import parse_date_flexible
 from utils.http_client import get_shared_session
 from utils.race_file_utils import RaceFileManager
+from utils.csv_metadata import build_safe_target_metadata_payload
 
 
 class StatisticsTracker:
@@ -610,6 +613,48 @@ class FormGuideCsvScraper:
                 # Save CSV file
                 with open(filepath, "w", encoding="utf-8") as f:
                     f.write(csv_text)
+                target_metadata = build_safe_target_metadata_payload(
+                    race_info,
+                    source_url=race_info.get("url"),
+                    source="canonical_pre_race_page",
+                    allow_generic_fields=False,
+                )
+                with open(f"{filepath}.metadata.json", "w", encoding="utf-8") as f:
+                    json.dump(
+                        {
+                            "schema_version": "form_guide_download_provenance_v1",
+                            "created_at": datetime.now().isoformat(timespec="seconds"),
+                            "source": "form_guide_csv_scraper",
+                            "filename": filename,
+                            "race_url": race_info.get("url"),
+                            "race_info": {
+                                key: value
+                                for key, value in dict(race_info or {}).items()
+                                if key
+                                in {
+                                    "date",
+                                    "distance",
+                                    "grade",
+                                    "race_name",
+                                    "race_number",
+                                    "race_time",
+                                    "title",
+                                    "url",
+                                    "venue",
+                                    "venue_name",
+                                }
+                                and value not in (None, "")
+                            },
+                            "content_length": len(csv_text.encode("utf-8")),
+                            "content_sha256": hashlib.sha256(
+                                csv_text.encode("utf-8")
+                            ).hexdigest(),
+                            **target_metadata,
+                        },
+                        f,
+                        indent=2,
+                        sort_keys=True,
+                    )
 
                 print(f"✅ Downloaded: {filename}")
                 return True, last_http_status

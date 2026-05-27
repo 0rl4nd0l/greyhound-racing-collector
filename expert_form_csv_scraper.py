@@ -42,6 +42,7 @@ from utils.runner_completeness import (
     analyze_csv_text_runner_completeness,
     quarantine_csv_content,
 )
+from utils.csv_metadata import build_safe_target_metadata_payload
 
 
 class ExpertFormCsvScraper:
@@ -560,6 +561,12 @@ class ExpertFormCsvScraper:
                 f.write(content)
             race_info = dict(race_info or {})
             race_url = race_url or race_info.get("url")
+            target_metadata = build_safe_target_metadata_payload(
+                race_info,
+                source_url=race_url,
+                source="canonical_pre_race_page",
+                allow_generic_fields=False,
+            )
             with open(f"{upcoming_filepath}.metadata.json", "w", encoding="utf-8") as f:
                 json.dump(
                     {
@@ -591,6 +598,7 @@ class ExpertFormCsvScraper:
                             content.encode("utf-8")
                         ).hexdigest(),
                         "runner_completeness": completeness.as_dict(),
+                        **target_metadata,
                     },
                     f,
                     indent=2,

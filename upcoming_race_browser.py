@@ -32,6 +32,11 @@ from utils.runner_completeness import (
     quarantine_csv_content,
     quarantine_existing_file,
 )
+from utils.csv_metadata import (
+    build_safe_target_metadata_payload,
+    normalize_target_distance,
+    normalize_target_grade,
+)
 
 # Prefer centralized venue normalization if available
 try:
@@ -147,6 +152,13 @@ class UpcomingRaceBrowser:
             "content_sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
             "runner_completeness": completeness.as_dict(),
         }
+        payload.update(
+            build_safe_target_metadata_payload(
+                race_info,
+                source_url=race_url,
+                source="canonical_pre_race_page",
+            )
+        )
         with open(metadata_path, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, indent=2, sort_keys=True)
 
@@ -955,6 +967,128 @@ class UpcomingRaceBrowser:
             return None
         return None
 
+    def _extract_safe_target_metadata_from_page(self, soup, race_url):
+        """Extract only explicit current-race distance/grade from a canonical race page."""
+
+        if soup is None:
+            return {}
+
+        found = {}
+
+        def _walk_json(obj):
+            if isinstance(obj, dict):
+                for key, value in obj.items():
+                    normalized_key = str(key).strip().lower().replace("-", "_")
+                    if normalized_key in {
+                        "distance",
+                        "race_distance",
+                        "target_distance",
+                    } or normalized_key.endswith("_distance"):
+                        distance = normalize_target_distance(value)
+                        if distance and "distance" not in found:
+                            found["distance"] = distance
+                    if normalized_key in {
+                        "grade",
+                        "race_grade",
+                        "target_grade",
+                        "race_class",
+                    }:
+                        grade = normalize_target_grade(value)
+                        if grade and "grade" not in found:
+                            found["grade"] = grade
+                    _walk_json(value)
+            elif isinstance(obj, list):
+                for item in obj:
+                    _walk_json(item)
+
+        try:
+            for script in soup.find_all("script", type=re.compile("ld\\+json", re.I)):
+                raw = script.string or script.get_text("", strip=True)
+                if not raw:
+                    continue
+                try:
+                    _walk_json(json.loads(raw))
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+        def _candidate_texts(element):
+            candidates = []
+            try:
+                candidates.append(element.get_text(" ", strip=True))
+                sibling = element.find_next_sibling()
+                if sibling is not None:
+                    candidates.append(sibling.get_text(" ", strip=True))
+                parent = element.parent
+                if parent is not None:
+                    candidates.append(parent.get_text(" ", strip=True))
+            except Exception:
+                pass
+            return [text for text in candidates if text]
+
+        def _extract_labeled(label_patterns, normalizer):
+            try:
+                for element in soup.find_all(True):
+                    text = element.get_text(" ", strip=True)
+                    if not text:
+                        continue
+                    for label_pattern in label_patterns:
+                        direct = re.search(
+                            rf"\b{label_pattern}\b\s*[:\-]?\s+([A-Za-z0-9 ]{{1,40}})",
+                            text,
+                            re.I,
+                        )
+                        if direct:
+                            value = normalizer(direct.group(1))
+                            if value:
+                                return value
+                        if re.fullmatch(rf"\s*{label_pattern}\s*", text, re.I):
+                            for candidate in _candidate_texts(element):
+                                if candidate == text:
+                                    continue
+                                value = normalizer(candidate)
+                                if value:
+                                    return value
+            except Exception:
+                return None
+            return None
+
+        if "distance" not in found:
+            distance = _extract_labeled(
+                (r"Race\s+Distance", r"Distance"),
+                normalize_target_distance,
+            )
+            if distance:
+                found["distance"] = distance
+        if "grade" not in found:
+            grade = _extract_labeled(
+                (r"Race\s+Grade", r"Grade", r"Race\s+Class", r"Class"),
+                normalize_target_grade,
+            )
+            if grade:
+                found["grade"] = grade
+
+        metadata = build_safe_target_metadata_payload(
+            found,
+            source_url=race_url,
+            source="canonical_pre_race_page",
+        )
+        return {
+            key: value
+            for key, value in {
+                "distance": metadata.get("target_distance"),
+                "grade": metadata.get("target_grade"),
+                "target_distance": metadata.get("target_distance"),
+                "target_distance_source": metadata.get("target_distance_source"),
+                "target_grade": metadata.get("target_grade"),
+                "target_grade_source": metadata.get("target_grade_source"),
+                "metadata_is_leakage_safe": metadata.get("metadata_is_leakage_safe"),
+                "metadata_source_url": metadata.get("metadata_source_url"),
+            }.items()
+            if value not in (None, "", "default_missing_target")
+        }
+
     def download_race_csv(self, race_url):
         """Download CSV form guide for a specific race"""
         try:
@@ -991,6 +1125,9 @@ class UpcomingRaceBrowser:
 
             if not race_info:
                 return {"success": False, "error": "Could not extract race information"}
+            race_info.update(
+                self._extract_safe_target_metadata_from_page(soup, race_url)
+            )
             if not race_info.get("race_time"):
                 exact_race_time = self._extract_formatted_race_time(soup)
                 if exact_race_time:

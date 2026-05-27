@@ -682,6 +682,11 @@ def summarize(rows: list[dict[str, Any]], errors: list[str]) -> dict[str, Any]:
     distance_counter = Counter(str(row.get("distance_source") or "DATA_MISSING") for row in rows)
     grade_counter = Counter(str(row.get("grade_source") or "DATA_MISSING") for row in rows)
     history_counter = Counter(str(row.get("history_source") or "DATA_MISSING") for row in rows)
+    rejected_metadata_counter = Counter()
+    for row in rows:
+        for item in str(row.get("rejected_metadata_sources") or "").split(";"):
+            if item:
+                rejected_metadata_counter[item] += 1
     top_pick_box_counter = Counter(
         str(row.get("box_number")) for row in rows if int(row.get("is_top_pick") or 0) == 1
     )
@@ -691,6 +696,7 @@ def summarize(rows: list[dict[str, Any]], errors: list[str]) -> dict[str, Any]:
         "races": len(race_ids),
         "distance_source_counts": dict(distance_counter),
         "grade_source_counts": dict(grade_counter),
+        "rejected_metadata_source_counts": dict(rejected_metadata_counter),
         "history_source_counts": dict(history_counter),
         "db_result_history_zero_rows": int(
             sum(int(row.get("db_result_history_count") or 0) == 0 for row in rows)
@@ -861,6 +867,12 @@ def write_report(
     before = baseline or {"status": "DATA_MISSING"}
     after = summary
     richness = after.get("embedded_history_richness") or {}
+    distance_sources = after.get("distance_source_counts") or {}
+    grade_sources = after.get("grade_source_counts") or {}
+    default_distance_rows = int(distance_sources.get("default_missing_target", 0) or 0)
+    default_grade_rows = int(grade_sources.get("default_missing_target", 0) or 0)
+    safe_distance_rows = max(0, int(after.get("runner_rows") or 0) - default_distance_rows)
+    safe_grade_rows = max(0, int(after.get("runner_rows") or 0) - default_grade_rows)
     content = [
         "# Non-Box Feature Quality Audit",
         "",
@@ -895,6 +907,12 @@ def write_report(
             sort_keys=True,
         ),
         "```",
+        "",
+        "## Target Metadata Capture Status",
+        "",
+        f"- Safe target distance rows in audited snapshots: `{safe_distance_rows}/{summary['runner_rows']}`.",
+        f"- Safe target grade rows in audited snapshots: `{safe_grade_rows}/{summary['runner_rows']}`.",
+        "- Existing snapshots are not rewritten; these counts reflect only explicit target metadata already available in each snapshot source CSV/sidecar.",
         "",
         "## Embedded History Richness",
         "",
@@ -970,6 +988,16 @@ def write_report(
                 ],
                 ["flag", "rows", "row_rate"],
             ),
+            "",
+            "## Rejected Metadata Sources",
+            "",
+            "```json",
+            json.dumps(
+                summary.get("rejected_metadata_source_counts") or {},
+                indent=2,
+                sort_keys=True,
+            ),
+            "```",
             "",
             "## Production Prediction Change",
             "",

@@ -19,6 +19,7 @@ from ml_system_v4 import MLSystemV4
 from temporal_feature_builder import classify_dog_history_status
 from utils.feature_flags import load_flags
 from utils.leakage_guard import strip_target_leakage_columns
+from utils.csv_metadata import load_safe_sidecar_target_metadata
 from src.parsers.csv_ingestion import CsvIngestion
 
 # --- Helpers for participant detection and normalization ---
@@ -1688,6 +1689,10 @@ class PredictionPipelineV4:
             target_field_warnings.append("embedded_form_history_detected")
 
         filename_target_meta = _target_metadata_from_filename()
+        sidecar_target_meta = load_safe_sidecar_target_metadata(race_file_path)
+        sidecar_rejected_metadata_sources = list(
+            sidecar_target_meta.get("rejected_metadata_sources") or []
+        )
 
         safe_distance_columns = (
             "Race Distance",
@@ -1701,7 +1706,18 @@ class PredictionPipelineV4:
         race_level_distance = None
         race_level_distance_source = None
         race_level_distance_detail = None
-        if explicit_distance is not None:
+        if sidecar_target_meta.get("target_distance"):
+            race_level_distance = safe_float_convert(
+                sidecar_target_meta["target_distance"], 500.0
+            )
+            race_level_distance_source = str(
+                sidecar_target_meta.get("target_distance_source")
+                or "sidecar_target_metadata"
+            )
+            race_level_distance_detail = (
+                f"sidecar_metadata:{race_level_distance_source}"
+            )
+        elif explicit_distance is not None:
             race_level_distance = safe_float_convert(explicit_distance, 500.0)
             race_level_distance_source = f"target_column:{explicit_distance_column}"
             race_level_distance_detail = f"source_csv_target_column:{explicit_distance_column}"
@@ -1730,7 +1746,14 @@ class PredictionPipelineV4:
         race_level_grade = None
         race_level_grade_source = None
         race_level_grade_detail = None
-        if explicit_grade is not None:
+        if sidecar_target_meta.get("target_grade"):
+            race_level_grade = str(sidecar_target_meta["target_grade"]).upper()
+            race_level_grade_source = str(
+                sidecar_target_meta.get("target_grade_source")
+                or "sidecar_target_metadata"
+            )
+            race_level_grade_detail = f"sidecar_metadata:{race_level_grade_source}"
+        elif explicit_grade is not None:
             race_level_grade = str(explicit_grade).upper()
             race_level_grade_source = f"target_column:{explicit_grade_column}"
             race_level_grade_detail = f"source_csv_target_column:{explicit_grade_column}"
@@ -1858,14 +1881,11 @@ class PredictionPipelineV4:
                         grade_source = "default_missing_target"
                         grade_detail = "default_missing_target:no_safe_pre_race_grade"
 
-            rejected_metadata_sources: list[str] = []
+            rejected_metadata_sources: list[str] = list(sidecar_rejected_metadata_sources)
             if embedded_form_history:
-                if (
-                    "DIST" in race_data.columns
-                    and race_level_distance_source == "default_missing_target"
-                ):
+                if "DIST" in race_data.columns:
                     rejected_metadata_sources.append("embedded_form_history:DIST")
-                if "G" in race_data.columns and race_level_grade_source == "default_missing_target":
+                if "G" in race_data.columns:
                     rejected_metadata_sources.append("embedded_form_history:G")
                 for rejected_col in (
                     "PLC",
@@ -2251,9 +2271,16 @@ class PredictionPipelineV4:
                             recent_times
                         ) / len(recent_times)
                     participant_dict["embedded_history_same_track_count"] = same_track_count
-                    if str(participant_dict.get("distance_source") or "").startswith(
+                    distance_source_for_band = str(
+                        participant_dict.get("distance_source") or ""
+                    )
+                    if distance_source_for_band.startswith(
                         ("target_column:", "filename:")
-                    ):
+                    ) or distance_source_for_band in {
+                        "canonical_pre_race_page",
+                        "sidecar_target_metadata",
+                        "explicit_csv_sidecar",
+                    }:
                         participant_dict["embedded_history_same_distance_band_count"] = (
                             _same_distance_band_count(
                                 history, participant_dict.get("distance")

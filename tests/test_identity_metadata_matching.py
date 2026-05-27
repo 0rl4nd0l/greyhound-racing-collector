@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -305,6 +306,60 @@ def test_embedded_form_defaults_target_metadata_and_excludes_future_rows():
     assert mapped.loc[0, "embedded_history_recent_count"] == 1
     assert mapped.loc[0, "embedded_history_recency_days_min"] == 11
     assert mapped.loc[0, "finish_position"] is None
+
+
+def test_sidecar_target_metadata_is_accepted_for_embedded_form_history(tmp_path):
+    race_data = pd.DataFrame(
+        [
+            {
+                "Dog Name": "1. Alpha Runner",
+                "PLC": "2",
+                "BOX": "1",
+                "DIST": "520",
+                "DATE": "2026-05-10",
+                "TRACK": "MEA",
+                "G": "5",
+                "TIME": "30.12",
+            },
+            {
+                "Dog Name": '""',
+                "PLC": "1",
+                "BOX": "1",
+                "DIST": "525",
+                "DATE": "2026-05-01",
+                "TRACK": "MEA",
+                "G": "5",
+                "TIME": "29.90",
+            },
+        ]
+    )
+    csv_path = tmp_path / "Race 7 - MEA - 2026-05-21.csv"
+    csv_path.with_suffix(csv_path.suffix + ".metadata.json").write_text(
+        json.dumps(
+            {
+                "target_distance": "525m",
+                "target_distance_source": "canonical_pre_race_page",
+                "target_grade": "Grade 5",
+                "target_grade_source": "canonical_pre_race_page",
+                "metadata_is_leakage_safe": True,
+                "metadata_source_url": "https://www.thedogs.com.au/racing/the-meadows/2026-05-21/7/example",
+            }
+        ),
+        encoding="utf-8",
+    )
+    pipeline = object.__new__(PredictionPipelineV4)
+
+    mapped = pipeline._map_csv_to_v4_format(race_data, str(csv_path))
+
+    assert mapped.loc[0, "distance"] == 525.0
+    assert mapped.loc[0, "distance_source"] == "canonical_pre_race_page"
+    assert mapped.loc[0, "grade"] == "GRADE 5"
+    assert mapped.loc[0, "grade_source"] == "canonical_pre_race_page"
+    assert bool(mapped.loc[0, "metadata_is_leakage_safe"]) is True
+    assert mapped.loc[0, "embedded_history_same_distance_band_count"] == 2
+    rejected = set(mapped.loc[0, "rejected_metadata_sources"])
+    assert "embedded_form_history:DIST" in rejected
+    assert "embedded_form_history:G" in rejected
 
 
 def test_generic_post_result_metadata_is_rejected_for_embedded_form_history():

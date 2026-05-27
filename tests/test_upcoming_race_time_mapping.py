@@ -158,3 +158,74 @@ def test_csv_provenance_writer_preserves_exact_race_time(tmp_path):
 
     assert lifecycle.status == UPCOMING_NOT_JUMPED
     assert lifecycle.jump_time == "20:15"
+
+
+def test_canonical_pre_race_page_distance_and_grade_are_safe_metadata():
+    browser = UpcomingRaceBrowser()
+    soup = BeautifulSoup(
+        """
+        <html>
+          <body>
+            <section class="race-card">
+              <dl>
+                <dt>Race Distance</dt><dd>520m</dd>
+                <dt>Race Grade</dt><dd>Grade 5</dd>
+              </dl>
+            </section>
+            <table>
+              <tr><th>PLC</th><th>TIME</th><th>BON</th></tr>
+              <tr><td>1</td><td>29.90</td><td>29.80</td></tr>
+            </table>
+          </body>
+        </html>
+        """,
+        "html.parser",
+    )
+
+    metadata = browser._extract_safe_target_metadata_from_page(
+        soup,
+        "https://www.thedogs.com.au/racing/the-meadows/2026-05-21/7/example",
+    )
+
+    assert metadata["target_distance"] == "520m"
+    assert metadata["target_distance_source"] == "canonical_pre_race_page"
+    assert metadata["target_grade"] == "Grade 5"
+    assert metadata["target_grade_source"] == "canonical_pre_race_page"
+    assert metadata["metadata_is_leakage_safe"] is True
+
+
+def test_csv_provenance_writer_records_safe_target_metadata(tmp_path):
+    path = tmp_path / "Race 7 - MEA - 2026-05-21.csv"
+    path.write_text(
+        "Dog Name,Box\n"
+        "1. Runner One,1\n"
+        "2. Runner Two,2\n"
+        "3. Runner Three,3\n"
+        "4. Runner Four,4\n",
+        encoding="utf-8",
+    )
+    browser = UpcomingRaceBrowser()
+    browser._write_csv_provenance(
+        str(path),
+        race_url="https://www.thedogs.com.au/racing/the-meadows/2026-05-21/7/example",
+        csv_info={"type": "direct_csv", "url": "https://example.test/export.csv"},
+        content=path.read_text(encoding="utf-8"),
+        completeness=type("Completeness", (), {"as_dict": lambda self: {"status": "COMPLETE"}})(),
+        race_info={
+            "date": "2026-05-21",
+            "venue": "MEA",
+            "race_number": "7",
+            "target_distance": "520m",
+            "target_distance_source": "canonical_pre_race_page",
+            "target_grade": "Grade 5",
+            "target_grade_source": "canonical_pre_race_page",
+            "metadata_is_leakage_safe": True,
+        },
+    )
+
+    sidecar = json.loads(path.with_suffix(path.suffix + ".metadata.json").read_text())
+    assert sidecar["target_distance"] == "520m"
+    assert sidecar["target_distance_source"] == "canonical_pre_race_page"
+    assert sidecar["target_grade"] == "Grade 5"
+    assert sidecar["target_grade_source"] == "canonical_pre_race_page"
+    assert sidecar["metadata_is_leakage_safe"] is True
