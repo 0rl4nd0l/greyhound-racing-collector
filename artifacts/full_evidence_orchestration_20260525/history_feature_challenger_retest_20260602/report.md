@@ -157,5 +157,6 @@ This was a report-only retest over the reused clean official holdout and reconst
 
 ## Closeout Commit
 
-- Commit created: `d1c94867`
+- Evidence consistency note: the locally preserved retest closeout is commit `8996b4a4`; the prior `d1c94867` reference was a stale duplicate-subject hash and is corrected here for local closeout consistency.
+- Commit created: `8996b4a4`
 - Commit subject: `report(challenger): retest reconstructed history features`
