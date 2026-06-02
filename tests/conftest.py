@@ -12,6 +12,28 @@ import tempfile
 
 import pytest
 
+_DB_ENV_KEYS = (
+    "DATABASE_URL",
+    "DATABASE_PATH",
+    "GREYHOUND_DB_PATH",
+    "STAGING_DB_PATH",
+    "ANALYTICS_DB_PATH",
+    "SINGLE_DB_MODE",
+)
+
+
+@pytest.fixture(autouse=True)
+def isolate_database_routing_environment():
+    """Keep in-process helper calls from leaking DB routing into later tests."""
+    before = {key: os.environ.get(key) for key in _DB_ENV_KEYS}
+    yield
+    for key, value in before.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+
+
 # Optional Alembic imports for programmatic migrations
 try:  # pragma: no cover
     from alembic import command as _alembic_command  # type: ignore
