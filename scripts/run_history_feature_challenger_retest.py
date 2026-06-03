@@ -102,6 +102,16 @@ HISTORY_NUMERIC_FEATURES = (
     "csv_staging_prior_start_count",
     "embedded_form_prior_start_count",
 )
+GRADE_CONTEXT_NUMERIC_FEATURES = (
+    "same_grade_start_count",
+    "same_grade_win_rate",
+    "same_grade_place_rate",
+    "grade_change_indicator",
+    "grade_strength_delta",
+    "same_distance_same_grade_start_count",
+    "same_distance_same_grade_best_time",
+    "same_distance_same_grade_avg_time",
+)
 NO_BOX_CONTEXT_FEATURES = (
     "field_size",
     "target_distance_numeric",
@@ -868,11 +878,15 @@ def _recommendation(
 
     for name in (
         "history_only_hgb",
+        "grade_context_hgb",
         "no_box_history_hgb",
         "reduced_box_band_history_hgb",
+        "reduced_box_band_grade_context_hgb",
         "calibrated_history_only_hgb",
+        "calibrated_grade_context_hgb",
         "calibrated_no_box_history_hgb",
         "calibrated_reduced_box_band_history_hgb",
+        "calibrated_reduced_box_band_grade_context_hgb",
     ):
         result = variants.get(name) or {}
         if result.get("status") != "RUN":
@@ -1100,9 +1114,16 @@ def run_retest(
 
     feature_sets = {
         "history_only_hgb": HISTORY_NUMERIC_FEATURES,
+        "grade_context_hgb": (*HISTORY_NUMERIC_FEATURES, *GRADE_CONTEXT_NUMERIC_FEATURES),
         "no_box_history_hgb": (*HISTORY_NUMERIC_FEATURES, *NO_BOX_CONTEXT_FEATURES),
         "reduced_box_band_history_hgb": (
             *HISTORY_NUMERIC_FEATURES,
+            *NO_BOX_CONTEXT_FEATURES,
+            *REDUCED_BOX_FEATURES,
+        ),
+        "reduced_box_band_grade_context_hgb": (
+            *HISTORY_NUMERIC_FEATURES,
+            *GRADE_CONTEXT_NUMERIC_FEATURES,
             *NO_BOX_CONTEXT_FEATURES,
             *REDUCED_BOX_FEATURES,
         ),
@@ -1159,8 +1180,10 @@ def run_retest(
 
     for base_name in (
         "history_only_hgb",
+        "grade_context_hgb",
         "no_box_history_hgb",
         "reduced_box_band_history_hgb",
+        "reduced_box_band_grade_context_hgb",
     ):
         calibrated_name = f"calibrated_{base_name}"
         if variants.get(base_name, {}).get("status") != "RUN":
@@ -1334,6 +1357,8 @@ def run_retest(
         "feature_coverage_recomputed": {
             "train": _feature_coverage(train_rows, HISTORY_NUMERIC_FEATURES),
             "eval": _feature_coverage(eval_rows, HISTORY_NUMERIC_FEATURES),
+            "grade_context_train": _feature_coverage(train_rows, GRADE_CONTEXT_NUMERIC_FEATURES),
+            "grade_context_eval": _feature_coverage(eval_rows, GRADE_CONTEXT_NUMERIC_FEATURES),
         },
     }
     packet_provenance = {

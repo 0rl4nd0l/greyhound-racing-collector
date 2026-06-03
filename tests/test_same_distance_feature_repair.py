@@ -88,15 +88,19 @@ def test_repair_packet_populates_historical_same_distance_fields(tmp_path):
     if not PACKET_CSV.exists() or not DB_PATH.exists():
         pytest.skip("packet or database artifact is not present")
 
+    output_dir = Path(
+        "artifacts/full_evidence_orchestration_20260525/"
+        f"bounded_target_grade_repair_20260603/{tmp_path.name}_same_distance"
+    )
     result = repair_packet(
         input_packet=PACKET_CSV,
-        output_dir=tmp_path,
+        output_dir=output_dir,
         db_path=DB_PATH,
     )
     assert result["leakage_status"] == "PASS"
     assert result["parity_status"] == "PASS"
 
-    repaired_rows = _load_csv(tmp_path / "repaired_pre_race_history_feature_packet.csv")
+    repaired_rows = _load_csv(output_dir / "repaired_pre_race_history_feature_packet.csv")
     original_rows = _packet_rows()
 
     for field in (
