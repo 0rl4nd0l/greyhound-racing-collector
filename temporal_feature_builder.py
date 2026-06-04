@@ -170,7 +170,7 @@ def classify_dog_history_status(
         report["db_history_match_status"] = "matched_identity_no_result_rows"
     return report
 
-# Import TGR integration if available
+# Import TGR (The Greyhound Record data source) integration if available
 try:
     from tgr_prediction_integration import TGRPredictionIntegrator
 except ImportError:
@@ -257,8 +257,15 @@ class TemporalFeatureBuilder:
                 "False",
             )
             tgr_flag = os.getenv("TGR_ENABLED", "0") not in ("0", "false", "False")
-            # Completely disable TGR by default. Only enable when TGR_ENABLED=1.
-            allow_tgr = tgr_flag
+            tgr_research_override = os.getenv("GREYHOUND_ALLOW_TGR", "0") not in (
+                "0",
+                "false",
+                "False",
+            )
+            # The Greyhound Record (TGR) source-derived features are quarantined
+            # by default after manifest-ready audits found all-zero live TGR
+            # coverage. Re-enable only for explicit research.
+            allow_tgr = tgr_flag and tgr_research_override
             # Scraper is only considered when TGR is explicitly enabled.
             use_scraper = tgr_flag and (mode != "prediction_only") and enable_results_scrapers
         except Exception:
@@ -336,11 +343,22 @@ class TemporalFeatureBuilder:
 
     def set_tgr_enabled(self, enabled: bool) -> None:
         """Enable/disable inclusion of TGR features at runtime without reinitializing.
-        This does not start scraping; it only toggles use of DB-derived TGR features when available.
+
+        The Greyhound Record (TGR) source-derived features are quarantined by
+        default after manifest-ready audits found all-zero live TGR coverage.
+        Runtime enable requests are ignored unless
+        GREYHOUND_ALLOW_TGR=1 is set for an explicit report-only research lane.
         """
         try:
-            self._tgr_runtime_enabled = bool(enabled)
+            research_override = os.getenv("GREYHOUND_ALLOW_TGR", "0") not in (
+                "0",
+                "false",
+                "False",
+            )
+            self._tgr_runtime_enabled = bool(enabled) and research_override
             status = "enabled" if self._tgr_runtime_enabled else "disabled"
+            if bool(enabled) and not research_override:
+                logger.info("TGR enable request ignored; GREYHOUND_ALLOW_TGR=1 required")
             logger.info(f"TGR feature inclusion runtime toggle {status}")
         except Exception as e:
             logger.debug(f"Failed to set TGR runtime toggle: {e}")

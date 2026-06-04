@@ -35,7 +35,7 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-# Import TGR integration if available
+# Import TGR (The Greyhound Record data source) integration if available
 try:
     from tgr_prediction_integration import TGRPredictionIntegrator
 except ImportError:
@@ -126,10 +126,15 @@ class OptimizedTemporalFeatureBuilder:
             "feature_computations": 0,
         }
 
-        # Initialize TGR integration if available and enabled via flag
+        # Initialize The Greyhound Record (TGR) integration if available and enabled via flag
         self.tgr_integrator = None
         tgr_flag = os.getenv("TGR_ENABLED", "0") not in ("0", "false", "False")
-        if TGRPredictionIntegrator and tgr_flag:
+        tgr_research_override = os.getenv("GREYHOUND_ALLOW_TGR", "0") not in (
+            "0",
+            "false",
+            "False",
+        )
+        if TGRPredictionIntegrator and tgr_flag and tgr_research_override:
             try:
                 self.tgr_integrator = TGRPredictionIntegrator(
                     db_path=self.db_path, enable_tgr_lookup=True
@@ -560,10 +565,17 @@ class OptimizedTemporalFeatureBuilder:
         return True
 
     def set_tgr_enabled(self, enabled: bool) -> None:
-        """Enable/disable inclusion of TGR features at runtime without reinitializing."""
+        """Enable/disable inclusion of The Greyhound Record (TGR) features at runtime without reinitializing."""
         try:
-            self._tgr_runtime_enabled = bool(enabled)
+            research_override = os.getenv("GREYHOUND_ALLOW_TGR", "0") not in (
+                "0",
+                "false",
+                "False",
+            )
+            self._tgr_runtime_enabled = bool(enabled) and research_override
             status = "enabled" if self._tgr_runtime_enabled else "disabled"
+            if bool(enabled) and not research_override:
+                logger.info("[OptimizedBuilder] TGR enable request ignored; GREYHOUND_ALLOW_TGR=1 required")
             logger.info(
                 f"[OptimizedBuilder] TGR feature inclusion runtime toggle {status}"
             )
