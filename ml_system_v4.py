@@ -69,7 +69,7 @@ try:
 except ImportError:
     FeatureCompatibilityShim = None
 
-# Import TGR prediction integration
+# Import TGR (The Greyhound Record data source) prediction integration
 try:
     from tgr_prediction_integration import (
         TGRPredictionIntegrator,
@@ -1196,9 +1196,12 @@ class MLSystemV4:
             logger.error("No data available for training")
             return False
 
-        # Proactively enable TGR features during training if available
+        # The Greyhound Record (TGR) source-derived features are dropped from
+        # the default training surface because manifest-ready audits found
+        # all-zero live TGR coverage. Keep it disabled unless an
+        # explicit research override is set.
         try:
-            self.set_tgr_enabled(True)
+            self.set_tgr_enabled(False)
         except Exception:
             pass
 
@@ -1830,9 +1833,21 @@ class MLSystemV4:
             logger.debug(f"Cache save failed for {race_id}: {e}")
 
     def set_tgr_enabled(self, enabled: bool) -> None:
-        """Set TGR feature inclusion at runtime and propagate to the temporal builder."""
+        """Set TGR feature inclusion at runtime and propagate to the temporal builder.
+
+        The Greyhound Record (TGR) source-derived features are quarantined by
+        default. They can only be re-enabled for explicit report-only research
+        by setting GREYHOUND_ALLOW_TGR=1.
+        """
         try:
-            self._tgr_enabled = bool(enabled)
+            research_override = os.getenv("GREYHOUND_ALLOW_TGR", "0") not in (
+                "0",
+                "false",
+                "False",
+            )
+            self._tgr_enabled = bool(enabled) and research_override
+            if bool(enabled) and not research_override:
+                logger.info("Runtime TGR enable request ignored; GREYHOUND_ALLOW_TGR=1 required")
             if hasattr(self, "temporal_builder") and hasattr(
                 self.temporal_builder, "set_tgr_enabled"
             ):
@@ -1842,6 +1857,74 @@ class MLSystemV4:
             )
         except Exception as e:
             logger.debug(f"Failed to set runtime TGR toggle: {e}")
+
+    def _tgr_research_override_enabled(self) -> bool:
+        """Return whether explicit research-only TGR usage is allowed."""
+        try:
+            return os.getenv("GREYHOUND_ALLOW_TGR", "0") not in (
+                "0",
+                "false",
+                "False",
+            )
+        except Exception:
+            return False
+
+    def _maybe_block_tgr_disabled_prediction_inputs(
+        self,
+        race_id: str,
+        expected_cols: list[str] | None = None,
+        missing_cols: list[str] | None = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Fail closed if a disabled-default prediction path still requires TGR columns.
+
+        When TGR is sidelined, do not silently add zero-filled ``tgr_*``
+        compatibility columns for legacy artifacts. Either the loaded contract
+        is TGR-free, or prediction must stop with an explicit diagnostic.
+        """
+        try:
+            if self._tgr_research_override_enabled():
+                return None
+            if getattr(self, "_tgr_enabled", None) is True:
+                return None
+            expected_tgr = sorted(
+                {
+                    str(col)
+                    for col in (expected_cols or [])
+                    if isinstance(col, str) and col.startswith("tgr_")
+                }
+            )
+            missing_tgr = sorted(
+                {
+                    str(col)
+                    for col in (missing_cols or [])
+                    if isinstance(col, str) and col.startswith("tgr_")
+                }
+            )
+            if not expected_tgr and not missing_tgr:
+                return None
+            blocking_cols = expected_tgr or missing_tgr
+            logger.error(
+                "TGR-disabled guardrail blocked prediction for %s; loaded artifact still requires TGR columns: %s",
+                race_id,
+                blocking_cols,
+            )
+            return {
+                "success": False,
+                "error": "TGR-disabled guardrail blocked legacy TGR compatibility path",
+                "race_id": race_id,
+                "fallback_reason": "Loaded artifact requires TGR features while TGR is disabled",
+                "tgr_guardrail": {
+                    "status": "blocked",
+                    "tgr_enabled": False,
+                    "research_override_required": True,
+                    "research_override_present": False,
+                    "expected_tgr_columns": expected_tgr,
+                    "missing_tgr_columns": missing_tgr,
+                },
+            }
+        except Exception as e:
+            logger.debug(f"Failed to apply TGR-disabled prediction guardrail: {e}")
+            return None
 
     def build_features_for_race_with_cache(
         self, race_data: pd.DataFrame, race_id: str
@@ -2232,6 +2315,14 @@ class MLSystemV4:
                     f"Extra features (will be dropped): {set(extra_features)}"
                 )
 
+            tgr_guardrail_result = self._maybe_block_tgr_disabled_prediction_inputs(
+                race_id=race_id,
+                expected_cols=expected_cols,
+                missing_cols=missing_features,
+            )
+            if tgr_guardrail_result is not None:
+                return tgr_guardrail_result
+
             # Ensure required columns are present and in the exact expected order to avoid signature drift
             X_pred = X_pred.reindex(columns=expected_cols, fill_value=0)
 
@@ -2332,7 +2423,7 @@ class MLSystemV4:
             try:
                 # Detect if expected columns include any TGR features
                 tgr_expected = [c for c in expected_cols if isinstance(c, str) and c.startswith("tgr_")]
-                if not tgr_expected:
+                if not tgr_expected and self._tgr_research_override_enabled():
                     # Try to obtain canonical TGR feature list if not present in expected_cols
                     try:
                         from tgr_prediction_integration import TGRPredictionIntegrator as _TGR
@@ -2480,6 +2571,14 @@ class MLSystemV4:
 
                             missing_cols = set(re.findall(r"'([^']+)'", missing_str))
                         if missing_cols:
+                            tgr_guardrail_result = (
+                                self._maybe_block_tgr_disabled_prediction_inputs(
+                                    race_id=race_id,
+                                    missing_cols=list(missing_cols),
+                                )
+                            )
+                            if tgr_guardrail_result is not None:
+                                return tgr_guardrail_result
                             for col in missing_cols:
                                 if col not in X_pred.columns:
                                     # Numeric defaults for unknowns
