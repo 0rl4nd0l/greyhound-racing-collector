@@ -396,6 +396,37 @@ class TemporalFeatureBuilder:
         except Exception:
             return np.nan
 
+    def _safe_target_distance_from_row(self, dog_row: pd.Series) -> float | None:
+        """Return safe pre-race target distance for model-facing features.
+
+        The historical feature builder used to expose ``target_distance`` only
+        when prior timed history existed and distance-adjusted time was
+        computed. That caused live rows with verified pre-race distance but no
+        usable timed history to be encoded as ``target_distance = 0``. For
+        prediction rows carrying explicit provenance, preserve the safe target
+        distance independently of historical time availability.
+        """
+        try:
+            distance_source = str(dog_row.get("distance_source") or "").strip()
+            if distance_source and distance_source in {
+                "default_missing_target",
+                "DATA_MISSING",
+                "unknown",
+            }:
+                return None
+            if distance_source.startswith("default_missing_target"):
+                return None
+            distance = self._to_meters(dog_row.get("distance"))
+            if pd.isna(distance) or float(distance) <= 0:
+                return None
+            # If no provenance column exists, keep legacy behavior and do not
+            # infer a new model-facing target_distance here.
+            if not distance_source:
+                return None
+            return float(distance)
+        except Exception:
+            return None
+
     def _missing_db_history_reason(
         self, dog_name: str, target_timestamp: datetime, cutoff_date: str
     ) -> str:
@@ -1000,12 +1031,13 @@ class TemporalFeatureBuilder:
             except Exception:
                 pass
 
+            safe_target_distance = self._safe_target_distance_from_row(dog_row)
             historical_features = self.create_historical_features(
                 historical_data,
                 target_timestamp,
                 target_venue=dog_row.get("venue"),
                 target_grade=dog_row.get("grade"),
-                target_distance=self._to_meters(dog_row.get("distance")),
+                target_distance=safe_target_distance,
             )
 
             # Combine features: CSV-derived values take precedence over DB-derived ones when present
@@ -1060,6 +1092,10 @@ class TemporalFeatureBuilder:
             features["race_id"] = target_race_id
             features["dog_clean_name"] = dog_row["dog_clean_name"]
             features["target_timestamp"] = target_timestamp
+            if safe_target_distance is not None:
+                features["target_distance"] = safe_target_distance
+            else:
+                features.pop("target_distance", None)
 
             # Add target if available (for training)
             if "finish_position" in dog_row and pd.notna(dog_row["finish_position"]):
