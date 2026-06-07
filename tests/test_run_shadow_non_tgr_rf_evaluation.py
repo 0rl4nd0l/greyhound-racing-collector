@@ -371,6 +371,15 @@ def test_shadow_output_path_rejects_production_paths(tmp_path):
         / "shadow_run",
         root=tmp_path,
     )
+    assert_shadow_output_dir_safe(
+        tmp_path
+        / "artifacts"
+        / "full_evidence_orchestration_20260525"
+        / "shadow_reliability_resume_after_db_recovery_test"
+        / "phase_5_shadow_rerun"
+        / "shadow_run",
+        root=tmp_path,
+    )
 
     with pytest.raises(ValueError, match="output_dir_must_be_shadow_artifact"):
         assert_shadow_output_dir_safe(tmp_path / "predictions" / "shadow", root=tmp_path)
@@ -422,4 +431,5 @@ def test_allowed_output_prefixes_are_shadow_only():
         "artifacts/shadow_evaluation",
         "artifacts/full_evidence_orchestration_20260525/shadow_evaluation_",
         "artifacts/full_evidence_orchestration_20260525/shadow_reliability_population_hardening_v1_",
+        "artifacts/full_evidence_orchestration_20260525/shadow_reliability_resume_after_db_recovery_",
     )

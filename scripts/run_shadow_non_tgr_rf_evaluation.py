@@ -52,6 +52,7 @@ from scripts.run_feature_recovery_execution_v1 import (  # noqa: E402
     relpath,
     safe_float,
     safe_int,
+    serialize_cell,
     sha256_file,
     sqlite_ro,
     write_csv,
@@ -64,6 +65,11 @@ CALIBRATION_METHOD_KEY = "power_gamma_2.4"
 POWER_GAMMA = 2.4
 SHADOW_MODEL_FAMILY = "RandomForest"
 SHADOW_OUTPUT_MODE = "shadow_only"
+ALL_MISSING_TRAIN_POLICIES = ("report_only", "quarantine_feature", "fail")
+WATCHED_PARITY_FEATURES = (
+    "same_distance_same_grade_best_time",
+    "same_distance_same_grade_avg_time",
+)
 
 DEFAULT_FULL_EVIDENCE_PARENT = ROOT / "artifacts/full_evidence_orchestration_20260525"
 DEFAULT_LIVE_PARENT = ROOT / "artifacts/shadow_evaluation"
@@ -71,6 +77,8 @@ DEFAULT_LIVE_PARENT = ROOT / "artifacts/shadow_evaluation"
 ALLOWED_OUTPUT_PREFIXES = (
     "artifacts/shadow_evaluation",
     "artifacts/full_evidence_orchestration_20260525/shadow_evaluation_",
+    "artifacts/full_evidence_orchestration_20260525/shadow_reliability_population_hardening_v1_",
+    "artifacts/full_evidence_orchestration_20260525/shadow_reliability_resume_after_db_recovery_",
 )
 PROTECTED_OUTPUT_PREFIXES = (
     "artifacts/prediction_snapshots",
@@ -363,6 +371,153 @@ def family_population_report(
     }
 
 
+def present_values(rows: Sequence[Mapping[str, Any]], feature: str) -> list[Any]:
+    return [row.get(feature) for row in rows if row.get(feature) not in (None, "")]
+
+
+def train_eval_feature_parity_report(
+    dataset: Mapping[str, Any],
+    *,
+    policy: str,
+) -> dict[str, Any]:
+    if policy not in ALL_MISSING_TRAIN_POLICIES:
+        raise ValueError(f"unknown_all_missing_train_policy:{policy}")
+    features = list(dataset["features"])
+    train_rows = list(dataset["train_rows"])
+    holdout_rows = list(dataset["holdout_rows"])
+    by_feature: dict[str, Any] = {}
+    all_missing_train_features: list[str] = []
+    all_missing_train_present_holdout_features: list[str] = []
+
+    for feature in features:
+        train_present = present_values(train_rows, feature)
+        holdout_present = present_values(holdout_rows, feature)
+        all_missing_in_train = not train_present
+        all_missing_in_holdout = not holdout_present
+        present_in_holdout = bool(holdout_present)
+        if all_missing_in_train:
+            all_missing_train_features.append(feature)
+        if all_missing_in_train and present_in_holdout:
+            all_missing_train_present_holdout_features.append(feature)
+
+        if all_missing_in_train and present_in_holdout:
+            parity_status = "ALL_MISSING_IN_TRAIN_PRESENT_IN_HOLDOUT"
+        elif all_missing_in_train and all_missing_in_holdout:
+            parity_status = "ALL_MISSING_BOTH_SPLITS"
+        elif not all_missing_in_train and all_missing_in_holdout:
+            parity_status = "PRESENT_IN_TRAIN_ALL_MISSING_IN_HOLDOUT"
+        else:
+            parity_status = "PRESENT_IN_BOTH_SPLITS"
+
+        by_feature[feature] = {
+            "feature": feature,
+            "train_rows": len(train_rows),
+            "holdout_rows": len(holdout_rows),
+            "train_present_rows": len(train_present),
+            "train_present_pct": len(train_present) / len(train_rows) if train_rows else 0.0,
+            "holdout_present_rows": len(holdout_present),
+            "holdout_present_pct": len(holdout_present) / len(holdout_rows) if holdout_rows else 0.0,
+            "train_unique_present_values": len({serialize_cell(value) for value in train_present}),
+            "holdout_unique_present_values": len({serialize_cell(value) for value in holdout_present}),
+            "all_missing_in_train": all_missing_in_train,
+            "all_missing_in_holdout": all_missing_in_holdout,
+            "present_in_holdout": present_in_holdout,
+            "watched_feature": feature in WATCHED_PARITY_FEATURES,
+            "parity_status": parity_status,
+        }
+
+    inactive = list(all_missing_train_features) if policy == "quarantine_feature" else []
+    policy_status = "FAIL" if policy == "fail" and all_missing_train_features else "WARN" if all_missing_train_features else "PASS"
+    if policy == "quarantine_feature" and all_missing_train_features:
+        policy_action = "quarantine_train_all_missing_features_for_this_run_only"
+    elif policy == "fail" and all_missing_train_features:
+        policy_action = "fail_before_training_or_scoring"
+    elif policy == "report_only" and all_missing_train_features:
+        policy_action = "report_warning_keep_features_active"
+    else:
+        policy_action = "no_inactive_features"
+
+    watched = {
+        feature: by_feature.get(feature, {"feature": feature, "missing_from_schema": True})
+        for feature in WATCHED_PARITY_FEATURES
+    }
+    return {
+        "schema_version": "train_eval_feature_parity_report_v1",
+        "policy": policy,
+        "policy_status": policy_status,
+        "policy_action": policy_action,
+        "feature_count": len(features),
+        "train_rows": len(train_rows),
+        "train_races": len({row.get("race_id") for row in train_rows}),
+        "holdout_rows": len(holdout_rows),
+        "holdout_races": len({row.get("race_id") for row in holdout_rows}),
+        "all_missing_train_feature_count": len(all_missing_train_features),
+        "all_missing_train_features": all_missing_train_features,
+        "all_missing_train_present_holdout_feature_count": len(
+            all_missing_train_present_holdout_features
+        ),
+        "all_missing_train_present_holdout_features": all_missing_train_present_holdout_features,
+        "inactive_features_due_to_train_all_missing": inactive,
+        "watched_features": watched,
+        "by_feature": by_feature,
+    }
+
+
+def inactive_feature_policy_report(parity_report: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "schema_version": "inactive_feature_policy_report_v1",
+        "policy": parity_report.get("policy"),
+        "policy_status": parity_report.get("policy_status"),
+        "policy_action": parity_report.get("policy_action"),
+        "canonical_schema_mutation": False,
+        "model_registry_mutation": False,
+        "inactive_features_due_to_train_all_missing": list(
+            parity_report.get("inactive_features_due_to_train_all_missing") or []
+        ),
+        "active_feature_count_after_policy": int(parity_report.get("feature_count") or 0)
+        - len(parity_report.get("inactive_features_due_to_train_all_missing") or []),
+        "original_schema_feature_count": parity_report.get("feature_count"),
+        "all_missing_train_features": list(parity_report.get("all_missing_train_features") or []),
+        "all_missing_train_present_holdout_features": list(
+            parity_report.get("all_missing_train_present_holdout_features") or []
+        ),
+        "warning": (
+            "features all-missing in train are explicit; report_only keeps them active, "
+            "quarantine_feature removes them only from this run, fail aborts before training/scoring"
+        ),
+    }
+
+
+def dataset_with_all_missing_train_policy(
+    dataset: Mapping[str, Any],
+    parity_report: Mapping[str, Any],
+) -> dict[str, Any]:
+    policy = str(parity_report.get("policy") or "")
+    inactive = list(parity_report.get("inactive_features_due_to_train_all_missing") or [])
+    if policy == "fail" and parity_report.get("all_missing_train_features"):
+        raise RuntimeError(
+            "all_missing_train_policy_failed:"
+            + ",".join(str(feature) for feature in parity_report["all_missing_train_features"])
+        )
+    output = dict(dataset)
+    original_features = list(dataset["features"])
+    if inactive:
+        inactive_set = set(inactive)
+        output["features"] = [feature for feature in original_features if feature not in inactive_set]
+        output["categorical_features"] = [
+            feature
+            for feature in list(dataset.get("categorical_features") or [])
+            if feature not in inactive_set
+        ]
+    else:
+        output["features"] = original_features
+        output["categorical_features"] = list(dataset.get("categorical_features") or [])
+    output["schema_features"] = original_features
+    output["all_missing_train_policy"] = policy
+    output["inactive_features_due_to_train_all_missing"] = inactive
+    return output
+
+
 def build_shadow_feature_matrix(
     *,
     clean_dataset: Path,
@@ -527,6 +682,8 @@ def train_or_load_shadow_rf(
         }
 
     features = list(dataset["features"])
+    schema_features = list(dataset.get("schema_features") or features)
+    inactive = list(dataset.get("inactive_features_due_to_train_all_missing") or [])
     categorical = set(dataset.get("categorical_features") or [])
     categorical_indices = [index for index, feature in enumerate(features) if feature in categorical]
     numeric_indices = [index for index, feature in enumerate(features) if feature not in categorical]
@@ -582,6 +739,11 @@ def train_or_load_shadow_rf(
         "holdout_rows": len(holdout_rows),
         "holdout_races": len({row.get("race_id") for row in holdout_rows}),
         "feature_count": len(features),
+        "schema_feature_count": len(schema_features),
+        "active_feature_count": len(features),
+        "inactive_feature_count": len(inactive),
+        "inactive_features_due_to_train_all_missing": inactive,
+        "all_missing_train_policy": dataset.get("all_missing_train_policy") or "report_only",
         "categorical_feature_count": len(categorical_indices),
         "numeric_or_boolean_feature_count": len(numeric_indices),
         "model_artifact_path": shadow_relpath(shadow_model_path),
@@ -966,6 +1128,14 @@ def model_metadata(
         "calibration_method": CALIBRATION_METHOD_KEY,
         "power_gamma": POWER_GAMMA,
         "feature_count": len(features),
+        "schema_feature_count": len(features),
+        "active_feature_count": training_report.get("active_feature_count")
+        or training_report.get("feature_count"),
+        "inactive_feature_count": training_report.get("inactive_feature_count", 0),
+        "inactive_features_due_to_train_all_missing": list(
+            training_report.get("inactive_features_due_to_train_all_missing") or []
+        ),
+        "all_missing_train_policy": training_report.get("all_missing_train_policy") or "report_only",
         "feature_columns": features,
         "schema_version_source": schema.get("schema_version"),
         "schema_feature_columns_sha256": hashlib.sha256(
@@ -982,6 +1152,47 @@ def model_metadata(
         "promotion_allowed": False,
         "production_pointer_update": False,
         "active_model_replacement": False,
+    }
+
+
+def active_features_for_loaded_model(
+    *,
+    model_path: Path,
+    schema: Mapping[str, Any],
+) -> tuple[list[str], dict[str, Any]]:
+    features = list(schema["feature_columns"])
+    training_report_path = model_path.parent / "shadow_training_report.json"
+    if not training_report_path.exists():
+        return features, {
+            "schema_version": "loaded_shadow_model_feature_policy_v1",
+            "source": "canonical_schema_default",
+            "reason": "shadow_training_report_missing_next_to_model",
+            "model_path": shadow_relpath(model_path),
+            "training_report_path": shadow_relpath(training_report_path),
+            "active_feature_count": len(features),
+            "schema_feature_count": len(features),
+            "inactive_features_due_to_train_all_missing": [],
+        }
+
+    report = load_json(training_report_path)
+    inactive = list(report.get("inactive_features_due_to_train_all_missing") or [])
+    inactive_set = set(inactive)
+    active = [feature for feature in features if feature not in inactive_set]
+    expected_active = safe_int(report.get("active_feature_count"))
+    if expected_active is not None and expected_active != len(active):
+        raise RuntimeError(
+            "loaded_model_active_feature_metadata_mismatch:"
+            f"expected={expected_active}:derived={len(active)}"
+        )
+    return active, {
+        "schema_version": "loaded_shadow_model_feature_policy_v1",
+        "source": shadow_relpath(training_report_path),
+        "reason": "shadow_training_report_loaded_next_to_model",
+        "model_path": shadow_relpath(model_path),
+        "active_feature_count": len(active),
+        "schema_feature_count": len(features),
+        "inactive_features_due_to_train_all_missing": inactive,
+        "all_missing_train_policy": report.get("all_missing_train_policy") or "report_only",
     }
 
 
@@ -1252,6 +1463,7 @@ def write_summary(
     *,
     final_status: str,
     feature_audit: Mapping[str, Any] | None,
+    parity_report: Mapping[str, Any] | None,
     training_report: Mapping[str, Any] | None,
     replay_metrics: Mapping[str, Any] | None,
     protected: Mapping[str, Any],
@@ -1264,6 +1476,9 @@ def write_summary(
         "Scope: shadow-only repaired non-TGR RandomForest with locked `power_gamma_2.4` calibration.",
         "",
         f"Feature matrix audit: `{None if feature_audit is None else feature_audit.get('status')}`.",
+        f"Train/eval parity policy: `{None if parity_report is None else parity_report.get('policy')}`.",
+        f"All-missing train features: `{None if parity_report is None else parity_report.get('all_missing_train_feature_count')}`.",
+        f"All-missing train / present holdout features: `{None if parity_report is None else parity_report.get('all_missing_train_present_holdout_feature_count')}`.",
         f"Training status: `{None if training_report is None else training_report.get('status')}`.",
         f"Protected paths unchanged: `{protected.get('protected_paths_unchanged')}`.",
         "",
@@ -1310,6 +1525,7 @@ def run_shadow(args: argparse.Namespace) -> int:
     protected_before = protected_path_snapshot()
     final_status = "IMPLEMENTATION_ABORTED"
     feature_audit: dict[str, Any] | None = None
+    parity_report: dict[str, Any] | None = None
     training_report: dict[str, Any] | None = None
     replay_metrics: dict[str, Any] | None = None
     protected = protected_path_verification(protected_before)
@@ -1329,15 +1545,23 @@ def run_shadow(args: argparse.Namespace) -> int:
         )
         write_json(output_dir / "shadow_feature_matrix_audit.json", feature_audit)
         write_json(output_dir / "shadow_feature_population_report.json", population)
+        parity_report = train_eval_feature_parity_report(
+            dataset,
+            policy=args.all_missing_train_policy,
+        )
+        policy_report = inactive_feature_policy_report(parity_report)
+        write_json(output_dir / "train_eval_feature_parity_report.json", parity_report)
+        write_json(output_dir / "inactive_feature_policy_report.json", policy_report)
         if feature_audit["status"] != "PASS":
             final_status = "BLOCKED_BY_FEATURE_MATRIX"
             return 2
         if args.stop_after_audit:
             final_status = "PARTIAL_SHADOW_IMPLEMENTATION_NEEDS_FIXES"
             return 0
+        dataset_for_model = dataset_with_all_missing_train_policy(dataset, parity_report)
 
         pipeline, training_report = train_or_load_shadow_rf(
-            dataset=dataset,
+            dataset=dataset_for_model,
             output_dir=output_dir,
             load_model=args.load_model,
         )
@@ -1348,7 +1572,7 @@ def run_shadow(args: argparse.Namespace) -> int:
             final_status = "PARTIAL_SHADOW_IMPLEMENTATION_NEEDS_FIXES"
             return 2
 
-        replay = replay_shadow_evaluation(pipeline=pipeline, dataset=dataset, output_dir=output_dir)
+        replay = replay_shadow_evaluation(pipeline=pipeline, dataset=dataset_for_model, output_dir=output_dir)
         replay_metrics = replay["metrics"]
         comparison = {
             "schema_version": "champion_vs_shadow_comparison_v1",
@@ -1409,7 +1633,7 @@ def run_shadow(args: argparse.Namespace) -> int:
                 "shadow_calibrated_rf_power_gamma_2_4"
             ]["box_bias"],
         }
-        monitoring, drift = build_monitoring_reports(dataset=dataset, replay=replay)
+        monitoring, drift = build_monitoring_reports(dataset=dataset_for_model, replay=replay)
         write_json(output_dir / "shadow_calibration_report.json", calibration_report)
         write_json(output_dir / "shadow_probability_sum_report.json", replay["probability_sum_report"])
         write_json(output_dir / "shadow_ranking_preservation_report.json", replay["ranking_report"])
@@ -1425,6 +1649,8 @@ def run_shadow(args: argparse.Namespace) -> int:
         text = str(exc)
         if text.startswith("schema_contract_failed"):
             final_status = "BLOCKED_BY_SCHEMA_REPRODUCTION"
+        elif text.startswith("all_missing_train_policy_failed"):
+            final_status = "BLOCKED_BY_TRAIN_EVAL_FEATURE_PARITY"
         elif "calibration_changed_rankings" in text:
             final_status = "PARTIAL_SHADOW_IMPLEMENTATION_NEEDS_FIXES"
         else:
@@ -1456,6 +1682,7 @@ def run_shadow(args: argparse.Namespace) -> int:
             output_dir,
             final_status=final_status,
             feature_audit=feature_audit,
+            parity_report=parity_report,
             training_report=training_report,
             replay_metrics=replay_metrics,
             protected=protected,
@@ -1588,10 +1815,23 @@ def score_live(args: argparse.Namespace) -> int:
         deps = sklearn_imports()
         if deps["status"] != "OK":
             raise RuntimeError(f"missing_ml_dependencies:{deps['error']}")
+        active_features = list(schema["feature_columns"])
+        active_feature_policy = {
+            "schema_version": "loaded_shadow_model_feature_policy_v1",
+            "source": "canonical_schema_default",
+            "reason": "initialized_before_model_selection",
+            "active_feature_count": len(active_features),
+            "schema_feature_count": len(active_features),
+            "inactive_features_due_to_train_all_missing": [],
+        }
         if args.model:
             pipeline = deps["load"](args.model)
             model_source = shadow_relpath(args.model)
             model_version = f"shadow_loaded_{args.model.stem}"
+            active_features, active_feature_policy = active_features_for_loaded_model(
+                model_path=args.model,
+                schema=schema,
+            )
         elif args.train_if_missing:
             dataset, feature_audit, population = build_shadow_feature_matrix(
                 clean_dataset=args.clean_dataset,
@@ -1601,17 +1841,40 @@ def score_live(args: argparse.Namespace) -> int:
             )
             write_json(output_dir / "shadow_feature_matrix_audit.json", feature_audit)
             write_json(output_dir / "shadow_feature_population_report.json", population)
-            pipeline, training_report = train_or_load_shadow_rf(dataset=dataset, output_dir=output_dir)
+            parity_report = train_eval_feature_parity_report(
+                dataset,
+                policy=args.all_missing_train_policy,
+            )
+            policy_report = inactive_feature_policy_report(parity_report)
+            write_json(output_dir / "train_eval_feature_parity_report.json", parity_report)
+            write_json(output_dir / "inactive_feature_policy_report.json", policy_report)
+            dataset_for_model = dataset_with_all_missing_train_policy(dataset, parity_report)
+            active_features = list(dataset_for_model["features"])
+            pipeline, training_report = train_or_load_shadow_rf(dataset=dataset_for_model, output_dir=output_dir)
             write_json(output_dir / "shadow_training_report.json", training_report)
             if pipeline is None:
                 raise RuntimeError("shadow_model_training_failed")
             model_source = shadow_relpath(output_dir / "shadow_randomforest_model.joblib")
             model_version = f"shadow_randomforest_{CALIBRATION_METHOD_KEY}_{now_id()}"
+            active_feature_policy = {
+                "schema_version": "loaded_shadow_model_feature_policy_v1",
+                "source": "trained_in_current_shadow_score_live_run",
+                "reason": "train_if_missing_active_feature_policy",
+                "model_path": model_source,
+                "active_feature_count": len(active_features),
+                "schema_feature_count": len(schema["feature_columns"]),
+                "inactive_features_due_to_train_all_missing": list(
+                    training_report.get("inactive_features_due_to_train_all_missing") or []
+                ),
+                "all_missing_train_policy": training_report.get("all_missing_train_policy")
+                or "report_only",
+            }
         else:
             raise RuntimeError("shadow_model_required_or_train_if_missing")
 
+        write_json(output_dir / "active_feature_policy_report.json", active_feature_policy)
         rows = build_live_feature_rows(input_paths=input_paths, schema=schema, db_path=args.db)
-        x_live, _ = prepare_xy(rows, list(schema["feature_columns"]))
+        x_live, _ = prepare_xy(rows, active_features)
         raw_probs = [float(value) for value in pipeline.predict_proba(x_live)[:, 1]]
         uncalibrated = normalize_probabilities_by_race(
             rows,
@@ -1672,6 +1935,12 @@ def score_live(args: argparse.Namespace) -> int:
             "model_source": model_source,
             "model_version": model_version,
             "calibration_method": CALIBRATION_METHOD_KEY,
+            "active_feature_count": len(active_features),
+            "schema_feature_count": len(schema["feature_columns"]),
+            "inactive_features_due_to_train_all_missing": active_feature_policy.get(
+                "inactive_features_due_to_train_all_missing"
+            )
+            or [],
             "tgr_enabled": False,
             "registry_mutation": False,
             "production_prediction_write": False,
@@ -1698,7 +1967,10 @@ def score_live(args: argparse.Namespace) -> int:
         return 0
     except RuntimeError as exc:
         write_json(output_dir / "shadow_runtime_error.json", {"error": repr(exc)})
-        final_status = "PARTIAL_SHADOW_IMPLEMENTATION_NEEDS_FIXES"
+        if str(exc).startswith("all_missing_train_policy_failed"):
+            final_status = "BLOCKED_BY_TRAIN_EVAL_FEATURE_PARITY"
+        else:
+            final_status = "PARTIAL_SHADOW_IMPLEMENTATION_NEEDS_FIXES"
         return 2
     finally:
         protected = protected_path_verification(protected_before)
@@ -1723,6 +1995,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     run_parser.add_argument("--db", type=Path, default=DEFAULT_DB)
     run_parser.add_argument("--output-dir", type=Path, default=None)
     run_parser.add_argument("--load-model", type=Path, default=None)
+    run_parser.add_argument(
+        "--all-missing-train-policy",
+        choices=ALL_MISSING_TRAIN_POLICIES,
+        default="report_only",
+        help="How to handle features with no observed train values.",
+    )
     run_parser.add_argument("--stop-after-definition", action="store_true")
     run_parser.add_argument("--stop-after-audit", action="store_true")
 
@@ -1735,6 +2013,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     live_parser.add_argument("--schema", type=Path, default=DEFAULT_SCHEMA)
     live_parser.add_argument("--db", type=Path, default=DEFAULT_DB)
     live_parser.add_argument("--output-dir", type=Path, default=None)
+    live_parser.add_argument(
+        "--all-missing-train-policy",
+        choices=ALL_MISSING_TRAIN_POLICIES,
+        default="report_only",
+        help="How to handle features with no observed train values when --train-if-missing is used.",
+    )
     return parser.parse_args(args_list)
 
 
