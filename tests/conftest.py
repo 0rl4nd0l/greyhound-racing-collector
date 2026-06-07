@@ -9,6 +9,8 @@ import os
 import shutil
 import sqlite3
 import tempfile
+from pathlib import Path
+from urllib.parse import parse_qs, unquote, urlparse
 
 import pytest
 
@@ -20,6 +22,89 @@ _DB_ENV_KEYS = (
     "ANALYTICS_DB_PATH",
     "SINGLE_DB_MODE",
 )
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_PROTECTED_REPO_DB_PATHS = {
+    (_REPO_ROOT / "greyhound_racing_data.db").resolve(),
+    (_REPO_ROOT / "greyhound_racing_data_writable.db").resolve(),
+}
+_REAL_SQLITE_CONNECT = sqlite3.connect
+
+
+def _pytest_legacy_db_path() -> str:
+    """Return a writable DB path for tests that still expect a local sqlite DB."""
+    override = os.environ.get("PYTEST_GREYHOUND_DB_PATH")
+    if override:
+        path = Path(override).expanduser().resolve()
+    else:
+        base_dir = Path(
+            os.environ.get(
+                "PYTEST_GREYHOUND_DB_DIR",
+                str(Path(tempfile.gettempdir()) / "greyhound_racing_collector_pytest"),
+            )
+        )
+        path = (base_dir / f"greyhound_racing_data_{os.getpid()}.db").resolve()
+    if path in _PROTECTED_REPO_DB_PATHS:
+        raise RuntimeError(f"refusing_pytest_protected_db_path:{path}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        connection = _REAL_SQLITE_CONNECT(str(path))
+        connection.close()
+    return str(path)
+
+
+def _sqlite_connect_target(database, *, uri: bool = False):
+    if database is None:
+        return None, False
+    try:
+        database_text = os.fspath(database)
+    except TypeError:
+        return None, False
+    if not isinstance(database_text, str) or database_text in {"", ":memory:"}:
+        return None, False
+    if uri and database_text.startswith("file:"):
+        parsed = urlparse(database_text)
+        params = parse_qs(parsed.query)
+        readonly = "ro" in params.get("mode", [])
+        path_text = unquote(parsed.path or "")
+        if parsed.netloc and parsed.netloc != "localhost":
+            path_text = f"//{parsed.netloc}{path_text}"
+        if not path_text:
+            return None, readonly
+        return Path(path_text).expanduser().resolve(), readonly
+    return Path(database_text).expanduser().resolve(), False
+
+
+def _is_protected_repo_db(database, *, uri: bool = False) -> bool:
+    path, _readonly = _sqlite_connect_target(database, uri=uri)
+    return path in _PROTECTED_REPO_DB_PATHS
+
+
+def _protected_sqlite_connect(database, *args, **kwargs):
+    uri = bool(kwargs.get("uri", False))
+    target, readonly = _sqlite_connect_target(database, uri=uri)
+    if target in _PROTECTED_REPO_DB_PATHS and not readonly:
+        safe_path = _pytest_legacy_db_path()
+        os.environ["PYTEST_REDIRECTED_PROTECTED_DB"] = str(target)
+        os.environ["PYTEST_REDIRECTED_PROTECTED_DB_TO"] = safe_path
+        database = Path(safe_path).as_uri() if uri else safe_path
+    return _REAL_SQLITE_CONNECT(database, *args, **kwargs)
+
+
+sqlite3.connect = _protected_sqlite_connect
+
+
+def _configure_safe_test_database_environment() -> None:
+    safe_path = _pytest_legacy_db_path()
+    for key in (
+        "DATABASE_PATH",
+        "GREYHOUND_DB_PATH",
+        "STAGING_DB_PATH",
+        "ANALYTICS_DB_PATH",
+    ):
+        value = os.environ.get(key)
+        if not value or _is_protected_repo_db(value):
+            os.environ[key] = safe_path
 
 
 @pytest.fixture(autouse=True)
@@ -79,12 +164,8 @@ try:
     _os.environ.setdefault("TESTING", "1")
     _os.environ.setdefault("FLASK_ENV", "testing")
     _os.environ.setdefault("SQLITE_DISABLE_WAL", "1")
-    # Ensure all DB users resolve the same absolute path to avoid SQLite IO errors in CI/parallel
-    try:
-        _root_db_abs = _os.path.join(_os.getcwd(), "greyhound_racing_data.db")
-        _os.environ.setdefault("GREYHOUND_DB_PATH", _root_db_abs)
-    except Exception:
-        pass
+    # Route pytest DB users to a disposable sqlite file, never the repo's protected DB.
+    _configure_safe_test_database_environment()
 
     import sys as _sys
     import types as _types
@@ -95,6 +176,9 @@ try:
         class _MLSystemV4:
             def __init__(self, *args, **kwargs):
                 pass
+
+            def set_tgr_enabled(self, enabled):
+                self._tgr_enabled = False
 
             def predict(self, features):
                 """Minimal single-dog predict API expected by some tests.
@@ -1022,7 +1106,7 @@ def ensure_upload_dir():
 
 @pytest.fixture(scope="session", autouse=True)
 def ensure_root_sqlite_db_for_legacy_tests():
-    """Ensure a root-level greyhound_racing_data.db exists and matches Alembic head.
+    """Ensure a disposable legacy sqlite DB exists and matches Alembic head.
 
     Some legacy tests connect directly to sqlite3.connect("greyhound_racing_data.db").
     We prefer applying Alembic migrations programmatically so the schema matches models/Base.
@@ -1037,7 +1121,7 @@ def ensure_root_sqlite_db_for_legacy_tests():
             if not os.path.exists(ini_path):
                 return False
             cfg = _AlembicConfig(ini_path)
-            # Override DB URL to target the legacy root DB
+            # Override DB URL to target the disposable legacy test DB.
             cfg.set_main_option("sqlalchemy.url", f"sqlite:///{db_path}")
             # Ensure script_location is absolute for safety
             script_loc = os.path.join(os.getcwd(), "alembic")
@@ -1048,7 +1132,9 @@ def ensure_root_sqlite_db_for_legacy_tests():
             return False
 
     try:
-        root_db_path = os.path.join(os.getcwd(), "greyhound_racing_data.db")
+        root_db_path = _pytest_legacy_db_path()
+        if _is_protected_repo_db(root_db_path):
+            raise RuntimeError(f"refusing_pytest_protected_db_path:{root_db_path}")
         # If a previous file exists and lacks Alembic versioning, start fresh to avoid conflicts
         try:
             if os.path.exists(root_db_path):
