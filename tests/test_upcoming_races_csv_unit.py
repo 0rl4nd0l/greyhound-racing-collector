@@ -192,6 +192,27 @@ Test Dog Golf,4,30.1,Trainer Anderson""",
         assert race3["race_date"] == "2025-02-03"  # Extracted from filename
         assert race3["race_number"] == 3  # Extracted from filename
 
+    def test_upcoming_races_csv_preserves_hyphenated_alphanumeric_venue_from_filename(
+        self, client, test_app
+    ):
+        """Test API listing metadata for hyphenated/alphanumeric venue filenames."""
+        upcoming_dir = test_app.config["UPCOMING_DIR"]
+        filename = "Race 1 - LADBROKES-Q1-LAKESIDE - 2026-05-29.csv"
+        file_path = os.path.join(upcoming_dir, filename)
+        with open(file_path, "w", newline="") as f:
+            f.write("Dog Name,Box\nAlpha Runner,1\nBravo Runner,2\n")
+
+        response = client.get("/api/upcoming_races_csv")
+        assert response.status_code == 200
+
+        data = response.get_json()
+        race_by_filename = {race["filename"]: race for race in data["races"]}
+        race = race_by_filename[filename]
+
+        assert race["venue"] == "LADBROKES-Q1-LAKESIDE"
+        assert race["race_date"] == "2026-05-29"
+        assert race["race_number"] == 1
+
     def test_upcoming_races_csv_pagination(self, client, temp_upcoming_dir):
         """Test pagination functionality"""
         upcoming_dir, test_files = temp_upcoming_dir
