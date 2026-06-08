@@ -11,6 +11,7 @@ from scripts import run_shadow_non_tgr_rf_evaluation as shadow_eval
 from scripts.run_feature_recovery_execution_v1 import load_db_history
 from scripts.run_shadow_non_tgr_rf_evaluation import (
     ALLOWED_OUTPUT_PREFIXES,
+    DEFAULT_SCHEMA,
     FORBIDDEN_APPROVAL_ENV_VARS,
     POWER_GAMMA,
     active_features_for_loaded_model,
@@ -340,10 +341,7 @@ def _parity_dataset():
 
 
 def test_default_repaired_schema_has_78_features_and_no_tgr():
-    schema_path = Path(
-        "outputs/milestone_6a_non_tgr_challenger_training_design/repaired_non_tgr_schema.json"
-    )
-    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    schema = json.loads(DEFAULT_SCHEMA.read_text(encoding="utf-8"))
 
     audit = validate_schema_contract(schema)
 
