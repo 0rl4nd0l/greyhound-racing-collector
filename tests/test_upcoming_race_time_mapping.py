@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 
 from upcoming_race_browser import UpcomingRaceBrowser
 from utils.race_lifecycle import JUMPED_PENDING_RESULTS, UPCOMING_NOT_JUMPED, classify_race_file
+from utils.csv_metadata import normalize_target_grade
 
 
 class FakeResponse:
@@ -244,6 +245,237 @@ def test_current_race_header_accepts_ordinal_grade():
 
     assert metadata["target_distance"] == "330m"
     assert metadata["target_grade"] == "3rd/4th Grade"
+
+
+def test_current_race_header_title_class_words_are_safe_metadata():
+    browser = UpcomingRaceBrowser()
+    soup = BeautifulSoup(
+        """
+        <div class="race-header">
+          <div class="race-box__number">R7</div>
+          <div class="race-header__info__name">Ladbrokes Thunderbolt Heat 1</div>
+          <div class="race-header__info__grade">457m</div>
+        </div>
+        """,
+        "html.parser",
+    )
+
+    metadata = browser._extract_safe_target_metadata_from_page(
+        soup,
+        "https://www.thedogs.com.au/racing/goulburn/2026-05-29/7/ladbrokes-thunderbolt-heat-1?trial=false",
+    )
+
+    assert metadata["target_distance"] == "457m"
+    assert metadata["target_grade"] == "Heat"
+    assert metadata["target_grade_source"] == "canonical_pre_race_page"
+
+
+def test_target_grade_normalizes_official_shorthand_classes():
+    assert normalize_target_grade("NG1-4") == "NG1-4"
+    assert normalize_target_grade("M1/M2/M3") == "M1/M2/M3"
+    assert normalize_target_grade("M5") == "M5"
+    assert normalize_target_grade("PM") == "PM"
+    assert normalize_target_grade("PM 390m") == "PM"
+    assert normalize_target_grade("8:12 PM") is None
+    assert normalize_target_grade("R/W") == "R/W"
+    assert normalize_target_grade("RW") == "R/W"
+    assert normalize_target_grade("N/P") == "N/P"
+    assert normalize_target_grade("N-P PBD Stake PR2 Division2") == "N/P"
+    assert normalize_target_grade("0-3 Win") == "0-3 Win"
+    assert normalize_target_grade("1 - 4 Win") == "1-4 Win"
+    assert normalize_target_grade("Best 8") == "Best 8"
+    assert normalize_target_grade("Invitational") == "Invitational"
+    assert normalize_target_grade("No Grade") == "No Grade"
+    assert normalize_target_grade("Non Graded") == "Non Graded"
+    assert normalize_target_grade("Special Event") == "Special Event"
+    assert normalize_target_grade("Other") == "Other"
+    assert normalize_target_grade("Other 515m") == "Other"
+    assert normalize_target_grade("Other Dog") is None
+
+
+def test_current_race_header_accepts_non_graded_class():
+    browser = UpcomingRaceBrowser()
+    soup = BeautifulSoup(
+        """
+        <div class="race-header">
+          <div class="race-box__number">R5</div>
+          <div class="race-header__info__name">Interior Constructions</div>
+          <div class="race-header__info__grade">Non Graded 525m</div>
+        </div>
+        """,
+        "html.parser",
+    )
+
+    metadata = browser._extract_safe_target_metadata_from_page(
+        soup,
+        "https://www.thedogs.com.au/racing/wagga/2026-05-29/5/interior-constructions?trial=false",
+    )
+
+    assert metadata["target_distance"] == "525m"
+    assert metadata["target_grade"] == "Non Graded"
+    assert metadata["target_grade_source"] == "canonical_pre_race_page"
+
+
+def test_current_race_header_accepts_special_event_class():
+    browser = UpcomingRaceBrowser()
+    soup = BeautifulSoup(
+        """
+        <div class="race-header">
+          <div class="race-box__number">R4</div>
+          <div class="race-header__info__name">Grv Distance Racing</div>
+          <div class="race-header__info__grade">Special Event 680m</div>
+        </div>
+        """,
+        "html.parser",
+    )
+
+    metadata = browser._extract_safe_target_metadata_from_page(
+        soup,
+        "https://www.thedogs.com.au/racing/geelong/2026-05-29/4/grv-distance-racing?trial=false",
+    )
+
+    assert metadata["target_distance"] == "680m"
+    assert metadata["target_grade"] == "Special Event"
+    assert metadata["target_grade_source"] == "canonical_pre_race_page"
+
+
+def test_current_race_header_accepts_other_class():
+    browser = UpcomingRaceBrowser()
+    soup = BeautifulSoup(
+        """
+        <div class="race-header">
+          <div class="race-box__number">R8</div>
+          <div class="race-header__info__name">Hst Tree Services Division1</div>
+          <div class="race-header__info__grade">Other 515m</div>
+        </div>
+        """,
+        "html.parser",
+    )
+
+    metadata = browser._extract_safe_target_metadata_from_page(
+        soup,
+        "https://www.thedogs.com.au/racing/launceston/2026-06-08/8/hst-tree-services-division1?trial=false",
+    )
+
+    assert metadata["target_distance"] == "515m"
+    assert metadata["target_grade"] == "Other"
+    assert metadata["target_grade_source"] == "canonical_pre_race_page"
+
+
+def test_current_race_header_accepts_official_shorthand_grade_codes():
+    browser = UpcomingRaceBrowser()
+    soup = BeautifulSoup(
+        """
+        <div class="race-header">
+          <div class="race-box__number">R7</div>
+          <div class="race-header__info__name">Ladbrokes Thunderbolt Heat 1</div>
+          <div class="race-header__info__grade">NG1-4 457m</div>
+        </div>
+        """,
+        "html.parser",
+    )
+
+    metadata = browser._extract_safe_target_metadata_from_page(
+        soup,
+        "https://www.thedogs.com.au/racing/goulburn/2026-05-29/7/ladbrokes-thunderbolt-heat-1?trial=false",
+    )
+
+    assert metadata["target_distance"] == "457m"
+    assert metadata["target_grade"] == "NG1-4"
+    assert metadata["target_grade_source"] == "canonical_pre_race_page"
+
+
+def test_current_race_title_accepts_np_class_when_grade_area_has_distance_only():
+    browser = UpcomingRaceBrowser()
+    soup = BeautifulSoup(
+        """
+        <div class="race-header">
+          <div class="race-box__number">R9</div>
+          <div class="race-header__info__name">Thedogssa N/P PBD Stake PR2 Division2</div>
+          <div class="race-header__info__grade">342m</div>
+        </div>
+        """,
+        "html.parser",
+    )
+
+    metadata = browser._extract_safe_target_metadata_from_page(
+        soup,
+        "https://www.thedogs.com.au/racing/angle-park/2026-06-02/9/thedogssa-n-p-pbd-stake-pr2-division2?trial=false",
+    )
+
+    assert metadata["target_distance"] == "342m"
+    assert metadata["target_grade"] == "N/P"
+    assert metadata["target_grade_source"] == "canonical_pre_race_page"
+
+
+def test_current_race_title_accepts_explicit_win_class_when_grade_area_has_distance_only():
+    browser = UpcomingRaceBrowser()
+    soup = BeautifulSoup(
+        """
+        <div class="race-header">
+          <div class="race-box__number">R10</div>
+          <div class="race-header__info__name">Greyhound Clubs NSW 1-3 Win</div>
+          <div class="race-header__info__grade">350m</div>
+        </div>
+        """,
+        "html.parser",
+    )
+
+    metadata = browser._extract_safe_target_metadata_from_page(
+        soup,
+        "https://www.thedogs.com.au/racing/goulburn/2026-05-29/10/greyhound-clubs-nsw-1-3-win?trial=false",
+    )
+
+    assert metadata["target_distance"] == "350m"
+    assert metadata["target_grade"] == "1-3 Win"
+    assert metadata["target_grade_source"] == "canonical_pre_race_page"
+
+
+def test_structured_current_race_title_class_words_are_safe_metadata():
+    browser = UpcomingRaceBrowser()
+    soup = BeautifulSoup(
+        """
+        <script type="application/ld+json">
+          {
+            "url": "https://www.thedogs.com.au/racing/goulburn/2026-05-29/11/goulburn-greyhounds-as-pets-masters",
+            "name": "Goulburn Greyhounds As Pets Masters",
+            "race_distance": "457m"
+          }
+        </script>
+        """,
+        "html.parser",
+    )
+
+    metadata = browser._extract_safe_target_metadata_from_page(
+        soup,
+        "https://www.thedogs.com.au/racing/goulburn/2026-05-29/11/goulburn-greyhounds-as-pets-masters",
+    )
+
+    assert metadata["target_distance"] == "457m"
+    assert metadata["target_grade"] == "Masters"
+    assert metadata["target_grade_source"] == "canonical_pre_race_page"
+
+
+def test_generic_current_race_title_without_class_still_has_no_target_grade():
+    browser = UpcomingRaceBrowser()
+    soup = BeautifulSoup(
+        """
+        <div class="race-header">
+          <div class="race-box__number">R3</div>
+          <div class="race-header__info__name">Greyhounds Make Great Pets</div>
+          <div class="race-header__info__grade">352m</div>
+        </div>
+        """,
+        "html.parser",
+    )
+
+    metadata = browser._extract_safe_target_metadata_from_page(
+        soup,
+        "https://www.thedogs.com.au/racing/ladbrokes-q1-lakeside/2026-05-29/3/greyhounds-make-great-pets?trial=false",
+    )
+
+    assert metadata["target_distance"] == "352m"
+    assert "target_grade" not in metadata
 
 
 def test_structured_target_metadata_requires_current_race_tie():

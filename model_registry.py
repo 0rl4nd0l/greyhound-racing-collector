@@ -563,16 +563,23 @@ class ModelRegistry:
             # Iterate candidates until we find one with existing files
             for model_id, _score, metadata in candidates:
                 model_path = Path(metadata.model_file_path)
-                scaler_path = Path(metadata.scaler_file_path)
-                if not (model_path.exists() and scaler_path.exists()):
+                scaler_path = Path(metadata.scaler_file_path) if metadata.scaler_file_path else None
+                if not model_path.exists():
                     logger.warning(
-                        f"Skipping registry model '{model_id}' due to missing files: "
-                        f"model_exists={model_path.exists()}, scaler_exists={scaler_path.exists()}"
+                        f"Skipping registry model '{model_id}' due to missing model file: "
+                        f"model_exists={model_path.exists()}"
                     )
                     continue
                 try:
                     model = joblib.load(model_path)
-                    scaler = joblib.load(scaler_path)
+                    scaler = None
+                    if scaler_path and scaler_path.exists():
+                        scaler = joblib.load(scaler_path)
+                    elif scaler_path:
+                        logger.warning(
+                            f"Loading registry model '{model_id}' without scaler; "
+                            f"missing scaler file: {scaler_path}"
+                        )
                     return model, scaler, metadata
                 except Exception as e:
                     logger.warning(f"Failed loading registry model '{model_id}': {e}")
@@ -718,15 +725,20 @@ class ModelRegistry:
                 continue
             try:
                 metadata = ModelMetadata(**model_data)
-                # Skip models whose artifacts are missing to reduce noisy load errors
+                # Skip models whose primary artifact is missing. Scalers are optional
+                # for pipeline artifacts that embed preprocessing.
                 model_exists = os.path.exists(metadata.model_file_path)
-                scaler_exists = os.path.exists(metadata.scaler_file_path)
-                if not (model_exists and scaler_exists):
+                scaler_exists = os.path.exists(metadata.scaler_file_path) if metadata.scaler_file_path else False
+                if not model_exists:
                     logger.warning(
-                        f"Skipping registry model '{model_id}' due to missing artifacts: "
+                        f"Skipping registry model '{model_id}' due to missing model artifact: "
                         f"model_exists={model_exists}, scaler_exists={scaler_exists}"
                     )
                     continue
+                if metadata.scaler_file_path and not scaler_exists:
+                    logger.warning(
+                        f"Registry model '{model_id}' has no scaler artifact; treating scaler as optional"
+                    )
                 models.append(metadata)
             except (TypeError, KeyError) as e:
                 logger.warning(f"Error loading metadata for {model_id}: {e}")

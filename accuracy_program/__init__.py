@@ -8,6 +8,8 @@ __all__ = [
     "analyze_odds_coverage",
     "apply_bet_readiness_gates",
     "build_prediction_snapshot",
+    "power_normalize_by_race",
+    "power_normalize_prediction_group",
     "score_predictions",
     "validate_feature_columns",
 ]
@@ -33,4 +35,14 @@ def __getattr__(name):
         from .snapshots import build_prediction_snapshot
 
         return build_prediction_snapshot
+    if name in {"power_normalize_by_race", "power_normalize_prediction_group"}:
+        from .calibration import (
+            power_normalize_by_race,
+            power_normalize_prediction_group,
+        )
+
+        return {
+            "power_normalize_by_race": power_normalize_by_race,
+            "power_normalize_prediction_group": power_normalize_prediction_group,
+        }[name]
     raise AttributeError(name)

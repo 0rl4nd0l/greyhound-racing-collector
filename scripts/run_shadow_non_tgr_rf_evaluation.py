@@ -9,10 +9,12 @@ or betting files, mutates snapshots, rewrites manifests, or enables TGR.
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import json
 import math
 import os
+import re
 import shutil
 import sys
 from collections import Counter, defaultdict
@@ -22,8 +24,9 @@ from typing import Any, Mapping, Sequence
 
 
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+ROOT_STR = str(ROOT)
+sys.path = [path for path in sys.path if path != ROOT_STR]
+sys.path.insert(0, ROOT_STR)
 
 from scripts.run_feature_recovery_execution_v1 import (  # noqa: E402
     DEFAULT_CLEAN_DATASET,
@@ -59,6 +62,8 @@ from scripts.run_feature_recovery_execution_v1 import (  # noqa: E402
     write_json,
     write_text,
 )
+from utils.csv_metadata import load_safe_sidecar_target_metadata  # noqa: E402
+from utils.race_lifecycle import extract_target_metadata_from_filename  # noqa: E402
 
 
 CALIBRATION_METHOD_KEY = "power_gamma_2.4"
@@ -70,6 +75,9 @@ WATCHED_PARITY_FEATURES = (
     "same_distance_same_grade_best_time",
     "same_distance_same_grade_avg_time",
 )
+SAME_DISTANCE_HISTORY_SOURCE = "prior_dog_history"
+SAME_DISTANCE_HISTORY_CUTOFF = "strictly_before_target_race"
+SAME_DISTANCE_HISTORY_CUTOFF_BASIS = "race_date_less_than_target_race_date"
 
 DEFAULT_FULL_EVIDENCE_PARENT = ROOT / "artifacts/full_evidence_orchestration_20260525"
 DEFAULT_LIVE_PARENT = ROOT / "artifacts/shadow_evaluation"
@@ -79,6 +87,7 @@ ALLOWED_OUTPUT_PREFIXES = (
     "artifacts/full_evidence_orchestration_20260525/shadow_evaluation_",
     "artifacts/full_evidence_orchestration_20260525/shadow_reliability_population_hardening_v1_",
     "artifacts/full_evidence_orchestration_20260525/shadow_reliability_resume_after_db_recovery_",
+    "artifacts/full_evidence_orchestration_20260525/daily_race_ingest_shadow_",
 )
 PROTECTED_OUTPUT_PREFIXES = (
     "artifacts/prediction_snapshots",
@@ -118,6 +127,7 @@ POST_OUTCOME_PREFIXES = (
     "scraped_",
     "target_finish",
 )
+LIVE_RUNNER_PREFIX_RE = re.compile(r"^\s*(\d{1,2})\.\s*(.+?)\s*$")
 
 
 def now_id() -> str:
@@ -1701,12 +1711,248 @@ def csv_value(row: Mapping[str, Any], *names: str) -> Any:
     return None
 
 
+def parse_live_runner_identity(raw_dog_name: Any, raw_box: Any) -> tuple[str, int | None]:
+    dog_name_text = str(raw_dog_name or "").strip()
+    if not dog_name_text:
+        return "", None
+    prefix_match = LIVE_RUNNER_PREFIX_RE.match(dog_name_text)
+    if prefix_match:
+        return prefix_match.group(2).strip(), safe_int(prefix_match.group(1))
+    return dog_name_text, safe_int(raw_box)
+
+
+def load_live_csv(path: Path) -> list[dict[str, str]]:
+    with path.open("r", encoding="utf-8", errors="replace", newline="") as handle:
+        header = handle.readline()
+        delimiter = "|" if "|" in header else ","
+        handle.seek(0)
+        return [dict(row) for row in csv.DictReader(handle, delimiter=delimiter)]
+
+
+def load_live_sidecar_context(path: Path) -> dict[str, Any]:
+    safe_target = load_safe_sidecar_target_metadata(path)
+    context: dict[str, Any] = {
+        "target_distance": safe_target.get("target_distance"),
+        "target_distance_source": safe_target.get("target_distance_source"),
+        "target_grade": safe_target.get("target_grade"),
+        "target_grade_source": safe_target.get("target_grade_source"),
+        "metadata_is_leakage_safe": bool(safe_target.get("metadata_is_leakage_safe")),
+        "metadata_source_url": safe_target.get("metadata_source_url"),
+        "race_info": {},
+        "rejected_metadata_sources": list(safe_target.get("rejected_metadata_sources") or []),
+    }
+    sidecar_path = Path(f"{path}.metadata.json")
+    if not sidecar_path.exists():
+        return context
+    try:
+        payload = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    except Exception:
+        context["rejected_metadata_sources"].append("sidecar_unreadable")
+        return context
+    if not isinstance(payload, Mapping):
+        context["rejected_metadata_sources"].append("sidecar_not_object")
+        return context
+    race_info = payload.get("race_info") if isinstance(payload.get("race_info"), Mapping) else {}
+    if payload.get("metadata_is_leakage_safe") is True:
+        context["race_info"] = {
+            key: race_info.get(key)
+            for key in (
+                "date",
+                "venue",
+                "race_number",
+                "race_time",
+                "url",
+                "race_time_mapping_status",
+                "race_time_source",
+            )
+            if race_info.get(key) not in (None, "")
+        }
+        context["metadata_source_url"] = (
+            context.get("metadata_source_url")
+            or payload.get("metadata_source_url")
+            or payload.get("race_url")
+            or race_info.get("url")
+        )
+    elif race_info:
+        context["rejected_metadata_sources"].append("sidecar_race_info_not_leakage_safe")
+    return context
+
+
 def input_files_from_path(path: Path) -> list[Path]:
     if path.is_file():
         return [path]
     if path.is_dir():
         return sorted(item for item in path.rglob("*.csv") if item.is_file())
     raise ValueError(f"input_path_missing:{path}")
+
+
+def same_distance_same_grade_history_rows(
+    history_rows: Sequence[Mapping[str, Any]],
+    target: Mapping[str, Any],
+) -> list[Mapping[str, Any]]:
+    target_distance = safe_float(target.get("distance"))
+    target_grade = normalize_grade(target.get("grade"))
+    if target_distance is None or not target_grade:
+        return []
+    matched: list[Mapping[str, Any]] = []
+    for row in history_rows:
+        distance = safe_float(row.get("distance_num"))
+        if distance is None or abs(distance - target_distance) > 50.0:
+            continue
+        if normalize_grade(row.get("grade_normalized")) != target_grade:
+            continue
+        matched.append(row)
+    return matched
+
+
+def same_distance_same_grade_live_row_provenance(
+    *,
+    history_rows: Sequence[Mapping[str, Any]],
+    target: Mapping[str, Any],
+) -> dict[str, Any]:
+    matched_rows = same_distance_same_grade_history_rows(history_rows, target)
+    time_rows = [row for row in matched_rows if safe_float(row.get("time_num")) is not None]
+    status = "PASS" if time_rows else "NOT_POPULATED"
+    return {
+        "same_distance_same_grade_history_status": status,
+        "same_distance_same_grade_history_source": SAME_DISTANCE_HISTORY_SOURCE
+        if time_rows
+        else None,
+        "same_distance_same_grade_history_cutoff": SAME_DISTANCE_HISTORY_CUTOFF,
+        "same_distance_same_grade_history_cutoff_basis": SAME_DISTANCE_HISTORY_CUTOFF_BASIS,
+        "same_distance_same_grade_prior_history_rows_matched": len(matched_rows),
+        "same_distance_same_grade_prior_history_rows_used": len(time_rows),
+        "same_distance_same_grade_target_race_rows_used": 0,
+        "same_distance_same_grade_post_outcome_rows_used": 0,
+        "same_distance_same_grade_post_outcome_fields_used": [],
+    }
+
+
+def _present(value: Any) -> bool:
+    return value not in (None, "")
+
+
+def _int_from_row(row: Mapping[str, Any], key: str) -> int:
+    try:
+        return int(row.get(key) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def same_distance_same_grade_history_provenance_report(
+    rows: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    by_feature: dict[str, Any] = {}
+    report_failures: list[str] = []
+    report_partial = False
+
+    for feature in WATCHED_PARITY_FEATURES:
+        populated_rows = [row for row in rows if _present(row.get(feature))]
+        sources = sorted(
+            {
+                str(row.get("same_distance_same_grade_history_source") or "")
+                for row in populated_rows
+                if row.get("same_distance_same_grade_history_source") not in (None, "")
+            }
+        )
+        cutoffs = sorted(
+            {
+                str(row.get("same_distance_same_grade_history_cutoff") or "")
+                for row in populated_rows
+                if row.get("same_distance_same_grade_history_cutoff") not in (None, "")
+            }
+        )
+        cutoff_bases = sorted(
+            {
+                str(row.get("same_distance_same_grade_history_cutoff_basis") or "")
+                for row in populated_rows
+                if row.get("same_distance_same_grade_history_cutoff_basis") not in (None, "")
+            }
+        )
+        post_outcome_fields = sorted(
+            {
+                str(field)
+                for row in populated_rows
+                for field in (row.get("same_distance_same_grade_post_outcome_fields_used") or [])
+                if field not in (None, "")
+            }
+        )
+        prior_history_rows_used = sum(
+            _int_from_row(row, "same_distance_same_grade_prior_history_rows_used")
+            for row in populated_rows
+        )
+        target_race_rows_used = sum(
+            _int_from_row(row, "same_distance_same_grade_target_race_rows_used")
+            for row in populated_rows
+        )
+        post_outcome_rows_used = sum(
+            _int_from_row(row, "same_distance_same_grade_post_outcome_rows_used")
+            for row in populated_rows
+        )
+
+        reasons: list[str] = []
+        if not populated_rows:
+            reasons.append("feature_not_populated")
+        if populated_rows and sources != [SAME_DISTANCE_HISTORY_SOURCE]:
+            reasons.append("history_source_not_prior_dog_history")
+        if populated_rows and cutoffs != [SAME_DISTANCE_HISTORY_CUTOFF]:
+            reasons.append("history_cutoff_not_strictly_before_target_race")
+        if populated_rows and prior_history_rows_used <= 0:
+            reasons.append("prior_history_rows_used_missing")
+        if target_race_rows_used:
+            reasons.append("target_race_rows_used")
+        if post_outcome_rows_used:
+            reasons.append("post_outcome_rows_used")
+        if post_outcome_fields:
+            reasons.append("post_outcome_fields_used")
+
+        if not reasons:
+            status = "PASS"
+        elif reasons == ["feature_not_populated"]:
+            status = "NOT_POPULATED"
+            report_partial = True
+        else:
+            status = "FAIL"
+            report_failures.extend(f"{feature}:{reason}" for reason in reasons)
+
+        by_feature[feature] = {
+            "status": status,
+            "fail_reasons": reasons,
+            "present_rows": len(populated_rows),
+            "source": sources[0] if len(sources) == 1 else None,
+            "sources": sources,
+            "history_cutoff": cutoffs[0] if len(cutoffs) == 1 else None,
+            "history_cutoffs": cutoffs,
+            "history_cutoff_basis": cutoff_bases[0] if len(cutoff_bases) == 1 else None,
+            "history_cutoff_bases": cutoff_bases,
+            "prior_history_rows_used": prior_history_rows_used,
+            "target_race_rows_used": target_race_rows_used,
+            "post_outcome_rows_used": post_outcome_rows_used,
+            "post_outcome_fields_used": post_outcome_fields,
+        }
+
+    statuses = [entry["status"] for entry in by_feature.values()]
+    if report_failures:
+        status = "FAIL"
+    elif statuses and all(item == "PASS" for item in statuses):
+        status = "PASS"
+    elif report_partial:
+        status = "NOT_POPULATED"
+    else:
+        status = "UNKNOWN"
+
+    return {
+        "schema_version": "same_distance_same_grade_history_provenance_v1",
+        "status": status,
+        "fail_reasons": report_failures,
+        "required_source": SAME_DISTANCE_HISTORY_SOURCE,
+        "required_history_cutoff": SAME_DISTANCE_HISTORY_CUTOFF,
+        "cutoff_basis": SAME_DISTANCE_HISTORY_CUTOFF_BASIS,
+        "target_race_rows_allowed": 0,
+        "post_outcome_rows_allowed": 0,
+        "feature_rows": len(rows),
+        "by_feature": by_feature,
+    }
 
 
 def build_live_feature_rows(
@@ -1723,18 +1969,60 @@ def build_live_feature_rows(
         connection.close()
     output: list[dict[str, Any]] = []
     for path in input_paths:
-        rows = load_csv(path)
-        field_size = len(rows)
-        race_id_default = path.stem
+        rows = load_live_csv(path)
+        filename_metadata = extract_target_metadata_from_filename(path.name)
+        sidecar_context = load_live_sidecar_context(path)
+        sidecar_race_info = sidecar_context.get("race_info") or {}
+        runner_rows = []
         for raw in rows:
+            dog_name, box = parse_live_runner_identity(
+                csv_value(raw, "dog_name", "Dog Name", "dog", "runner", "runner_name"),
+                csv_value(raw, "box_number", "box", "Box"),
+            )
+            if dog_name:
+                runner_rows.append((raw, dog_name, box))
+        field_size = len(runner_rows)
+        race_id_default = path.stem
+        for raw, dog_name, box in runner_rows:
             race_id = str(csv_value(raw, "race_id", "Race ID", "race") or race_id_default)
-            dog_name = csv_value(raw, "dog_name", "Dog Name", "dog", "runner", "runner_name")
-            box = safe_int(csv_value(raw, "box_number", "box", "Box"))
-            race_date = parse_date(csv_value(raw, "race_date", "date", "Race Date") or path.name)
-            venue = str(csv_value(raw, "venue", "track", "Venue") or "")
-            race_number = safe_int(csv_value(raw, "race_number", "Race Number")) or parse_race_number(race_id)
-            target_distance = safe_float(csv_value(raw, "target_distance", "distance", "Distance"))
-            target_grade = normalize_grade(csv_value(raw, "target_grade", "grade", "Grade"))
+            race_date = parse_date(
+                csv_value(raw, "target_race_date", "race_date_safe")
+                or sidecar_race_info.get("date")
+                or filename_metadata.get("race_date")
+                or path.name
+            )
+            venue = str(
+                csv_value(raw, "target_venue", "venue_safe", "race_venue")
+                or sidecar_race_info.get("venue")
+                or filename_metadata.get("venue")
+                or ""
+            )
+            race_number = (
+                safe_int(csv_value(raw, "target_race_number", "race_number_safe"))
+                or safe_int(sidecar_race_info.get("race_number"))
+                or safe_int(filename_metadata.get("race_number"))
+                or parse_race_number(race_id)
+            )
+            target_distance = safe_float(
+                csv_value(raw, "target_distance_safe", "target_distance", "race_distance")
+                or sidecar_context.get("target_distance")
+            )
+            target_grade = normalize_grade(
+                csv_value(raw, "target_grade_safe", "target_grade", "race_grade")
+                or sidecar_context.get("target_grade")
+            )
+            target_distance_source = (
+                "explicit_csv_target_field"
+                if csv_value(raw, "target_distance_safe", "target_distance", "race_distance")
+                not in (None, "")
+                else sidecar_context.get("target_distance_source")
+            )
+            target_grade_source = (
+                "explicit_csv_target_field"
+                if csv_value(raw, "target_grade_safe", "target_grade", "race_grade")
+                not in (None, "")
+                else sidecar_context.get("target_grade_source")
+            )
             target = {"distance": target_distance, "grade": target_grade}
             row_features = {feature: None for feature in features}
             row_features.update(
@@ -1756,6 +2044,7 @@ def build_live_feature_rows(
                     "race_number": race_number,
                     "race_time_minutes_since_midnight": parse_datetime_minutes(
                         csv_value(raw, "race_time", "jump_time", "Race Time")
+                        or sidecar_race_info.get("race_time")
                     ),
                     "track_condition": csv_value(raw, "track_condition", "Track Condition"),
                     "weather": csv_value(raw, "weather", "Weather"),
@@ -1786,6 +2075,10 @@ def build_live_feature_rows(
                 if race_date and str(row.get("race_date") or "") < race_date
             ]
             add_history_features(row_features, dog_history, target, race_date, venue)
+            history_provenance = same_distance_same_grade_live_row_provenance(
+                history_rows=dog_history,
+                target=target,
+            )
             output_row = {
                 "race_id": race_id,
                 "shadow_race_group_id": f"{path.as_posix()}::{race_id}",
@@ -1794,7 +2087,21 @@ def build_live_feature_rows(
                 "venue": venue,
                 "dog_name": dog_name,
                 "box_number": box,
+                "target_distance_source": target_distance_source,
+                "target_grade_source": target_grade_source,
+                "target_metadata_source_url": sidecar_context.get("metadata_source_url"),
+                "target_metadata_from_sidecar": bool(
+                    sidecar_context.get("metadata_is_leakage_safe")
+                    and (
+                        sidecar_context.get("target_distance")
+                        or sidecar_context.get("target_grade")
+                    )
+                ),
+                "target_metadata_rejected_sources": sidecar_context.get(
+                    "rejected_metadata_sources", []
+                ),
             }
+            output_row.update(history_provenance)
             output_row.update(row_features)
             output.append(output_row)
     return output
@@ -1802,6 +2109,7 @@ def build_live_feature_rows(
 
 def score_live(args: argparse.Namespace) -> int:
     ensure_shadow_runtime_guard()
+    run_started_at = datetime.now().astimezone()
     output_dir = prepare_output_dir(args.output_dir or default_live_output_dir())
     protected_before = protected_path_snapshot()
     final_status = "IMPLEMENTATION_ABORTED"
@@ -1873,7 +2181,14 @@ def score_live(args: argparse.Namespace) -> int:
             raise RuntimeError("shadow_model_required_or_train_if_missing")
 
         write_json(output_dir / "active_feature_policy_report.json", active_feature_policy)
+        feature_freeze_at = datetime.now().astimezone()
         rows = build_live_feature_rows(input_paths=input_paths, schema=schema, db_path=args.db)
+        write_json(output_dir / "shadow_feature_rows.json", rows)
+        same_distance_history_report = same_distance_same_grade_history_provenance_report(rows)
+        write_json(
+            output_dir / "same_distance_same_grade_history_provenance.json",
+            same_distance_history_report,
+        )
         x_live, _ = prepare_xy(rows, active_features)
         raw_probs = [float(value) for value in pipeline.predict_proba(x_live)[:, 1]]
         uncalibrated = normalize_probabilities_by_race(
@@ -1909,6 +2224,7 @@ def score_live(args: argparse.Namespace) -> int:
                     "output_mode": SHADOW_OUTPUT_MODE,
                 }
             )
+        prediction_timestamp = datetime.now().astimezone()
         write_json(output_dir / "shadow_predictions.json", predictions)
         write_csv(
             output_dir / "shadow_predictions.csv",
@@ -1929,9 +2245,17 @@ def score_live(args: argparse.Namespace) -> int:
         )
         manifest = {
             "schema_version": "shadow_live_scoring_manifest_v1",
+            "generated_at": prediction_timestamp.isoformat(),
+            "run_started_at": run_started_at.isoformat(),
+            "feature_freeze_timestamp": feature_freeze_at.isoformat(),
+            "prediction_timestamp": prediction_timestamp.isoformat(),
             "output_mode": SHADOW_OUTPUT_MODE,
             "input_files": [shadow_relpath(path) for path in input_paths],
             "prediction_rows": len(predictions),
+            "feature_rows": shadow_relpath(output_dir / "shadow_feature_rows.json"),
+            "same_distance_same_grade_history_provenance": shadow_relpath(
+                output_dir / "same_distance_same_grade_history_provenance.json"
+            ),
             "model_source": model_source,
             "model_version": model_version,
             "calibration_method": CALIBRATION_METHOD_KEY,

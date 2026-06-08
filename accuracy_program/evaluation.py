@@ -116,10 +116,14 @@ def _safe_float(value: Any) -> float | None:
         return None
 
 
-def _race_groups(rows: Iterable[Mapping[str, Any]]) -> dict[str, list[Mapping[str, Any]]]:
+def _race_groups(
+    rows: Iterable[Mapping[str, Any]],
+    *,
+    race_id_key: str = "race_id",
+) -> dict[str, list[Mapping[str, Any]]]:
     groups: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
     for row in rows:
-        race_id = row.get("race_id")
+        race_id = row.get(race_id_key)
         if race_id is None:
             continue
         groups[str(race_id)].append(row)
@@ -237,10 +241,11 @@ def score_predictions(
     probability_key: str = "win_prob_norm",
     actual_key: str = "actual_win",
     odds_key: str = "odds_win",
+    race_id_key: str = "race_id",
 ) -> dict[str, Any]:
     """Score already frozen dog-level predictions with result labels."""
 
-    groups = _race_groups(rows)
+    groups = _race_groups(rows, race_id_key=race_id_key)
     top_hits = {1: 0, 2: 0, 3: 0}
     scored_races = 0
     prob_sum_errors: list[float] = []

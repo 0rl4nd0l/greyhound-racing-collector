@@ -18224,7 +18224,7 @@ def _extract_csv_metadata(file_path):
 
     # Regex pattern to match: "Race {number} – {venue} – {date}.csv"
     # The en dash (–) is different from hyphen (-)
-    pattern = r"Race\s+(\d+)\s*[–-]\s*([A-Z_]+)\s*[–-]\s*(\d{4}-\d{2}-\d{2})\.csv"
+    pattern = r"Race\s+(\d+)\s*[–-]\s*([A-Z0-9_]+(?:-[A-Z0-9_]+)*)\s*[–-]\s*(\d{4}-\d{2}-\d{2})\.csv"
 
     match = re.match(pattern, filename, re.IGNORECASE)
     if match:

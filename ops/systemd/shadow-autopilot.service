@@ -1,0 +1,15 @@
+[Unit]
+Description=Greyhound shadow autopilot evidence collection
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/l4nd0/greyhound_racing_collector
+Environment=PYTHONUNBUFFERED=1
+Environment=GREYHOUND_ALLOW_TGR=0
+Environment=PATH=/home/l4nd0/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/usr/bin/python3 /home/l4nd0/greyhound_racing_collector/scripts/shadow_autopilot_daemon.py run-once --days-ahead 1 --refresh-limit 16 --rejoin-pending-limit 8 --timeout-seconds 840
+TimeoutStartSec=900
+Nice=10
+IOSchedulingClass=best-effort

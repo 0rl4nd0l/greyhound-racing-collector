@@ -1,13 +1,19 @@
 import json
 import os
+import sys
 import time
+import types
+from argparse import Namespace
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from scripts import prejump_prediction_loop as loop
 from scripts.refresh_prejump_upcoming import (
+    expand_excluded_race_ids,
+    refresh_prejump_upcoming,
     refresh_timing_summary,
     select_prejump_races,
+    stable_race_id,
 )
 
 
@@ -432,6 +438,202 @@ def test_refresh_timing_summary_reports_next_future_window():
     assert timing["next_race"]["race_number"] == 3
     assert timing["recommended_rerun_after_local"] == "2026-05-29T13:50:00+10:00"
     assert timing["minutes_until_window_opens"] == 50.0
+
+
+def test_select_prejump_races_can_exclude_already_attempted_race_ids():
+    now = datetime(2026, 5, 29, 13, 0, tzinfo=ZoneInfo("Australia/Melbourne"))
+    races = [
+        {
+            "url": "https://example.test/r1",
+            "date": "2026-05-29",
+            "race_time": "1:45 PM",
+            "race_number": 1,
+            "venue": "TEST",
+        },
+        {
+            "url": "https://example.test/r2",
+            "date": "2026-05-29",
+            "race_time": "2:00 PM",
+            "race_number": 2,
+            "venue": "TEST",
+        },
+    ]
+    excluded = {stable_race_id(races[0])}
+
+    selected, records = select_prejump_races(
+        races,
+        now=now,
+        min_minutes=20,
+        max_minutes=160,
+        limit=0,
+        exclude_race_ids=excluded,
+    )
+
+    assert [race["race_number"] for race in selected] == [2]
+    assert records[0]["race_id"] == "Race 1 - TEST - 2026-05-29"
+    assert records[0]["bucket"] == "excluded_race_id"
+    assert records[0]["excluded_reason"] == "excluded_race_id"
+    assert records[1]["bucket"] == "preferred_window"
+
+
+def test_select_prejump_races_excludes_known_venue_alias_ids():
+    now = datetime(2026, 6, 8, 17, 30, tzinfo=ZoneInfo("Australia/Melbourne"))
+    races = [
+        {
+            "url": "https://example.test/qot-r2",
+            "date": "2026-06-08",
+            "race_time": "6:41 PM",
+            "race_number": 2,
+            "venue": "QOT",
+        },
+        {
+            "url": "https://example.test/lctn-r1",
+            "date": "2026-06-08",
+            "race_time": "7:06 PM",
+            "race_number": 1,
+            "venue": "LCTN",
+        },
+        {
+            "url": "https://example.test/new",
+            "date": "2026-06-08",
+            "race_time": "7:20 PM",
+            "race_number": 9,
+            "venue": "TEST",
+        },
+    ]
+    excluded = {
+        "Race 2 - LADBROKES-Q-STRAIGHT - 2026-06-08",
+        "Race 1 - LAUNCESTON - 2026-06-08",
+    }
+
+    selected, records = select_prejump_races(
+        races,
+        now=now,
+        min_minutes=20,
+        max_minutes=160,
+        limit=0,
+        exclude_race_ids=excluded,
+    )
+
+    assert [race["race_number"] for race in selected] == [9]
+    assert records[0]["race_id"] == "Race 2 - QOT - 2026-06-08"
+    assert records[0]["bucket"] == "excluded_race_id"
+    assert "Race 2 - LADBROKES-Q-STRAIGHT - 2026-06-08" in records[0]["race_id_aliases"]
+    assert records[1]["race_id"] == "Race 1 - LCTN - 2026-06-08"
+    assert records[1]["bucket"] == "excluded_race_id"
+    assert "Race 1 - LAUNCESTON - 2026-06-08" in records[1]["race_id_aliases"]
+    assert records[2]["bucket"] == "preferred_window"
+
+
+def test_expand_excluded_race_ids_adds_known_venue_aliases():
+    expanded = expand_excluded_race_ids(
+        {
+            "Race 7 - QOT - 2026-06-08",
+            "Race 5 - LAUNCESTON - 2026-06-08",
+        }
+    )
+
+    assert "Race 7 - LADBROKES-Q-STRAIGHT - 2026-06-08" in expanded
+    assert "Race 5 - LCTN - 2026-06-08" in expanded
+
+
+def test_select_prejump_races_excludes_url_slug_venue_alias_ids():
+    now = datetime(2026, 6, 9, 14, 0, tzinfo=ZoneInfo("Australia/Melbourne"))
+    races = [
+        {
+            "url": "https://www.thedogs.com.au/racing/ladbrokes-q1-lakeside/2026-06-09/3/garrard-s-horse-and-hound?trial=false",
+            "date": "2026-06-09",
+            "race_time": "3:18 PM",
+            "race_number": 3,
+            "venue": "QOT",
+        },
+        {
+            "url": "https://www.thedogs.com.au/racing/horsham/2026-06-09/2/chs-group?trial=false",
+            "date": "2026-06-09",
+            "race_time": "3:20 PM",
+            "race_number": 2,
+            "venue": "HOR",
+        },
+    ]
+    excluded = {"Race 3 - LADBROKES-Q1-LAKESIDE - 2026-06-09"}
+
+    selected, records = select_prejump_races(
+        races,
+        now=now,
+        min_minutes=20,
+        max_minutes=160,
+        limit=0,
+        exclude_race_ids=excluded,
+    )
+
+    assert [race["venue"] for race in selected] == ["HOR"]
+    assert records[0]["race_id"] == "Race 3 - QOT - 2026-06-09"
+    assert records[0]["bucket"] == "excluded_race_id"
+    assert "Race 3 - LADBROKES-Q1-LAKESIDE - 2026-06-09" in records[0]["race_id_aliases"]
+    assert records[1]["bucket"] == "preferred_window"
+
+
+def test_refresh_prejump_upcoming_reports_top_level_artifact_counts(tmp_path, monkeypatch):
+    refresh_module = sys.modules[refresh_prejump_upcoming.__module__]
+    now = datetime(2026, 5, 29, 13, 0, tzinfo=ZoneInfo("Australia/Melbourne"))
+    monkeypatch.setattr(refresh_module, "melbourne_now", lambda: now)
+
+    class FakeUpcomingRaceBrowser:
+        def get_upcoming_races(self, days_ahead):
+            assert days_ahead == 0
+            return [
+                {
+                    "url": "https://example.test/racing/test/2026-05-29/1/example?trial=false",
+                    "date": "2026-05-29",
+                    "race_time": "1:45 PM",
+                    "race_number": 1,
+                    "venue": "TEST",
+                }
+            ]
+
+        def download_race_csv(self, url):
+            assert url.endswith("trial=false")
+            upcoming_dir = tmp_path / "upcoming"
+            csv_path = upcoming_dir / "Race 1 - TEST - 2026-05-29.csv"
+            csv_path.write_text("box|dog_name\n1|Alpha Runner\n", encoding="utf-8")
+            csv_path.with_suffix(".csv.metadata.json").write_text(
+                json.dumps({"race_url": url}),
+                encoding="utf-8",
+            )
+            raw_dir = upcoming_dir / "raw_exports"
+            raw_dir.mkdir()
+            (raw_dir / csv_path.name).write_text("box,dog_name\n1,Alpha Runner\n", encoding="utf-8")
+            quarantine_dir = upcoming_dir / "quarantine"
+            quarantine_dir.mkdir()
+            (quarantine_dir / "rejected.csv").write_text("bad\n", encoding="utf-8")
+            return {"success": True, "path": str(csv_path)}
+
+    fake_module = types.SimpleNamespace(UpcomingRaceBrowser=FakeUpcomingRaceBrowser)
+    monkeypatch.setitem(sys.modules, "upcoming_race_browser", fake_module)
+
+    report = refresh_prejump_upcoming(
+        Namespace(
+            upcoming_dir=str(tmp_path / "upcoming"),
+            days_ahead=0,
+            min_minutes=20,
+            max_minutes=160,
+            limit=16,
+            exclude_race_id=[],
+            exclude_race_ids_file=None,
+            dry_run=False,
+        )
+    )
+
+    assert report["accepted_csv_count"] == 1
+    assert report["sidecar_count"] == 1
+    assert report["raw_export_count"] == 1
+    assert report["quarantine_count"] == 1
+    assert report["artifact_counts"] == {
+        "accepted_csv_count": 1,
+        "sidecar_count": 1,
+        "raw_export_count": 1,
+        "quarantine_count": 1,
+    }
 
 
 def test_prejump_loop_operator_action_surfaces_refresh_rerun_window(

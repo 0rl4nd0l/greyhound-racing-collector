@@ -1,0 +1,12 @@
+[Unit]
+Description=Run greyhound report-only challenger calibration every 30 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=30min
+AccuracySec=2min
+Persistent=true
+Unit=shadow-challenger-calibration.service
+
+[Install]
+WantedBy=timers.target

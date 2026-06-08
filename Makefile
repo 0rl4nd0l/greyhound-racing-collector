@@ -1,7 +1,7 @@
 # Makefile for the Greyhound Racing Collector project
 # Updated for unified environment structure
 
-.PHONY: help init deps lock test lint format e2e perf security schema-tests schema-baseline schema-monitor contract-validate contract-validate-api install-hooks clean check-preflight check-v4-sanity train-win train-place calibrate-win calibrate-place backtest-win backtest-place simulate-anomalies
+.PHONY: help init deps lock test lint format e2e perf security schema-tests schema-baseline schema-monitor contract-validate contract-validate-api install-hooks clean check-preflight check-v4-sanity train-win train-place calibrate-win calibrate-place backtest-win backtest-place simulate-anomalies prototype-model-upgrades
 
 VENV := .venv
 PYTHON := $(VENV)/bin/python
@@ -40,6 +40,7 @@ help:
 	@echo "  persist-predictions  - Import predictions/*.json into DB (maps to standardized race_id when possible)"
 	@echo "  predict-upcoming     - Predict all CSVs in UPCOMING_RACES_DIR -> predictions/*.json"
 	@echo "  predict-and-persist  - Run predict-upcoming, then persist-predictions (last 72h)"
+	@echo "  prototype-model-upgrades - Run throwaway TUI for future model upgrade decisions"
 
 $(VENV)/bin/python:
 	python3.11 -m venv $(VENV)
@@ -142,6 +143,9 @@ predict-upcoming:
 	UPCOMING_RACES_DIR=$${UPCOMING_RACES_DIR:-./upcoming_races_temp} $(PYTHON) upcoming_race_predictor_wrapper.py
 
 predict-and-persist: predict-upcoming persist-predictions
+
+prototype-model-upgrades:
+	$(PYTHON) scripts/prototypes/model_upgrade_path_tui.py $${ARGS:-}
 
 # Generate prediction coverage report (last HOURS, default 24)
 # Usage: make report-coverage HOURS=24 DATABASE_PATH=./greyhound_racing_data.db

@@ -1,5 +1,6 @@
 from utils.runner_completeness import (
     analyze_csv_text_runner_completeness,
+    align_csv_text_to_canonical_final_runner_set,
     extract_canonical_runner_set_from_html,
     verify_final_runner_set,
 )
@@ -136,7 +137,7 @@ def test_final_runner_verifier_accepts_matching_canonical_active_boxes():
     assert report["mismatch_reason"] is None
 
 
-def test_final_runner_verifier_rejects_source_reserve_as_active():
+def test_final_runner_verifier_treats_source_reserve_as_non_active_by_default():
     canonical = extract_canonical_runner_set_from_html(
         _race_page(
             _runner_row(1, "Alpha Runner"),
@@ -156,6 +157,32 @@ def test_final_runner_verifier_rejects_source_reserve_as_active():
         ),
         canonical,
     )
+
+    assert report["final_runner_set_status"] == "verified"
+    assert report["source_reserve_boxes"] == [9]
+    assert report["source_active_boxes"] == [1, 2]
+    assert report["mismatch_reason"] is None
+
+
+def test_final_runner_verifier_rejects_explicit_source_reserve_active_box():
+    canonical = extract_canonical_runner_set_from_html(
+        _race_page(
+            _runner_row(1, "Alpha Runner"),
+            _runner_row(2, "Bravo Runner"),
+            _runner_row(9, "Reserve Runner"),
+        ),
+        source_url="https://www.thedogs.com.au/racing/test/2026-05-27/4/example",
+    )
+    source = _source_report(
+        [
+            {"box_number": 1, "dog_name": "Alpha Runner"},
+            {"box_number": 2, "dog_name": "Bravo Runner"},
+            {"box_number": 9, "dog_name": "Reserve Runner"},
+        ]
+    )
+    source["active_boxes"] = [1, 2, 9]
+
+    report = verify_final_runner_set(source, canonical)
 
     assert report["final_runner_set_status"] == "mismatch"
     assert report["source_reserve_boxes"] == [9]
@@ -217,8 +244,127 @@ def test_final_runner_verifier_reports_reserve_replacing_scratched_runner_withou
     assert canonical["scratched_boxes"] == [4]
     assert canonical["reserve_boxes"] == [9]
     assert report["final_runner_set_status"] == "mismatch"
-    assert "source_extra_active_boxes:9" in report["mismatch_reason"]
     assert "box_4_name_mismatch" in report["mismatch_reason"]
+
+
+def test_canonical_alignment_promotes_reserve_and_drops_scratched_runner():
+    canonical = extract_canonical_runner_set_from_html(
+        _race_page(
+            _runner_row(1, "Alpha Runner"),
+            _runner_row(2, "Bravo Runner"),
+            _runner_row(3, "Charlie Runner"),
+            _runner_row(4, "Scratched Runner", scratched=True),
+            _runner_row(9, "Reserve Runner", into_box=4),
+        ),
+        source_url="https://www.thedogs.com.au/racing/test/2026-05-27/4/example",
+    )
+    source_csv = "\n".join(
+        [
+            "Dog Name|Sex|PLC|BOX|DATE",
+            "1. Alpha Runner|D|1|1|2026-05-01",
+            "|D|2|2|2026-04-20",
+            "2. Bravo Runner|D|1|2|2026-05-01",
+            "3. Charlie Runner|D|1|3|2026-05-01",
+            "4. Scratched Runner|D|1|4|2026-05-01",
+            "9. Reserve Runner|D|1|8|2026-05-01",
+            "|D|2|7|2026-04-20",
+        ]
+    )
+
+    aligned_csv, alignment = align_csv_text_to_canonical_final_runner_set(
+        source_csv,
+        canonical,
+        source="memory.csv",
+    )
+    aligned_report = analyze_csv_text_runner_completeness(aligned_csv)
+    verification = verify_final_runner_set(aligned_report.as_dict(), canonical)
+
+    assert alignment["status"] == "aligned"
+    assert alignment["prediction_runner_count"] == 4
+    assert alignment["dropped_participants"] == [
+        {"box_number": 4, "dog_name": "Scratched Runner"}
+    ]
+    assert alignment["remapped_participants"] == [
+        {
+            "dog_name": "Reserve Runner",
+            "source_box_number": 9,
+            "final_box_number": 4,
+            "original_box_number": 9,
+        }
+    ]
+    assert "4. Reserve Runner" in aligned_csv
+    assert "4. Scratched Runner" not in aligned_csv
+    assert "9. Reserve Runner" not in aligned_csv
+    assert aligned_report.boxes == [1, 2, 3, 4]
+    assert verification["final_runner_set_status"] == "verified"
+
+
+def test_canonical_alignment_drops_unpromoted_reserves_before_prediction():
+    canonical = extract_canonical_runner_set_from_html(
+        _race_page(
+            _runner_row(1, "Alpha Runner"),
+            _runner_row(2, "Bravo Runner"),
+            _runner_row(9, "Reserve Runner"),
+        ),
+        source_url="https://www.thedogs.com.au/racing/test/2026-05-27/4/example",
+    )
+    source_csv = "\n".join(
+        [
+            "Dog Name|Sex|PLC|BOX|DATE",
+            "1. Alpha Runner|D|1|1|2026-05-01",
+            "2. Bravo Runner|D|1|2|2026-05-01",
+            "9. Reserve Runner|D|1|8|2026-05-01",
+        ]
+    )
+
+    aligned_csv, alignment = align_csv_text_to_canonical_final_runner_set(
+        source_csv,
+        canonical,
+    )
+    aligned_report = analyze_csv_text_runner_completeness(
+        aligned_csv,
+        min_complete_runners=2,
+    )
+
+    assert alignment["status"] == "aligned"
+    assert alignment["prediction_runner_count"] == 2
+    assert alignment["dropped_participants"] == [
+        {"box_number": 9, "dog_name": "Reserve Runner"}
+    ]
+    assert "9. Reserve Runner" not in aligned_csv
+    assert aligned_report.boxes == [1, 2]
+
+
+def test_canonical_alignment_fails_closed_when_final_runner_missing_from_source():
+    canonical = extract_canonical_runner_set_from_html(
+        _race_page(
+            _runner_row(1, "Alpha Runner"),
+            _runner_row(2, "Bravo Runner"),
+        ),
+        source_url="https://www.thedogs.com.au/racing/test/2026-05-27/4/example",
+    )
+    source_csv = "\n".join(
+        [
+            "Dog Name|Sex|PLC|BOX|DATE",
+            "1. Alpha Runner|D|1|1|2026-05-01",
+        ]
+    )
+
+    aligned_csv, alignment = align_csv_text_to_canonical_final_runner_set(
+        source_csv,
+        canonical,
+    )
+
+    assert aligned_csv == source_csv
+    assert alignment["status"] == "not_aligned"
+    assert alignment["reason"] == "canonical_participant_missing_from_source_csv"
+    assert alignment["missing_canonical_participants"] == [
+        {
+            "box_number": 2,
+            "dog_name": "Bravo Runner",
+            "original_box_number": None,
+        }
+    ]
 
 
 def test_final_runner_verifier_fails_closed_when_canonical_page_unavailable():
