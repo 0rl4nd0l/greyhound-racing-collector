@@ -10,8 +10,8 @@ Author: AI Assistant
 Date: July 23, 2025
 """
 
+import json
 import os
-import random
 import re
 import sys
 import time
@@ -25,6 +25,19 @@ except Exception as _bs4_import_error:
     bs4 = None
 
 from utils.http_client import get_shared_session
+from utils.runner_completeness import (
+    analyze_csv_runner_completeness,
+    analyze_csv_text_runner_completeness,
+    quarantine_csv_content,
+    quarantine_existing_file,
+)
+from utils.csv_metadata import (
+    build_csv_download_provenance_payload,
+    build_safe_target_metadata_payload,
+    normalize_verified_thedogs_export_content,
+    normalize_target_distance,
+    normalize_target_grade,
+)
 
 # Prefer centralized venue normalization if available
 try:
@@ -90,6 +103,56 @@ class UpcomingRaceBrowser:
 
         print("🏁 Upcoming Race Browser initialized")
         print(f"📂 Upcoming races directory: {self.upcoming_dir}")
+
+    def _write_csv_provenance(
+        self,
+        filepath,
+        *,
+        race_url,
+        csv_info,
+        content,
+        completeness,
+        race_info=None,
+        normalization=None,
+        source="upcoming_race_browser",
+    ):
+        metadata_path = f"{filepath}.metadata.json"
+        payload = build_csv_download_provenance_payload(
+            filepath=filepath,
+            race_url=race_url,
+            csv_info=csv_info,
+            content=content,
+            completeness=completeness,
+            race_info=race_info,
+            source=source,
+            normalization=normalization,
+            filename=os.path.basename(filepath),
+            allow_generic_fields=False,
+        )
+        with open(metadata_path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2, sort_keys=True)
+
+    def _dedupe_artifact_path(self, path: Path) -> Path:
+        if not path.exists():
+            return path
+        timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+        for counter in range(1, 1000):
+            candidate = path.with_name(
+                f"{path.stem}_{timestamp}_{counter}{path.suffix}"
+            )
+            if not candidate.exists():
+                return candidate
+        raise FileExistsError(f"Could not allocate unique artifact path for {path}")
+
+    def _raw_export_path(self, filename: str) -> Path:
+        raw_dir = Path(self.upcoming_dir) / "raw_exports"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        return self._dedupe_artifact_path(raw_dir / filename)
+
+    def _write_raw_export(self, filename: str, content: str) -> Path:
+        raw_path = self._raw_export_path(filename)
+        raw_path.write_text(content, encoding="utf-8", newline="")
+        return raw_path
 
     def _normalize_race_url(self, race_url: str):
         """Return a tuple of (base_race_url, expert_form_url) with fragments/queries removed and expert-form deduped.
@@ -735,11 +798,12 @@ class UpcomingRaceBrowser:
             else:
                 combined_text = link_text
 
-            # Extract time (format like "7:45 PM" or "19:45" or valid 4-digit HHMM)
+            # Extract time only from explicit clock strings in this link context.
+            # Bare 4-digit numbers are too ambiguous on race cards because they can
+            # be timestamps, distances, result positions, or runner metadata.
             time_patterns = [
                 r"(\d{1,2}:\d{2}\s*(?:AM|PM))",  # 12-hour with AM/PM
                 r"(\d{1,2}:\d{2})",  # 24-hour with colon
-                r"(\d{4})",  # 24-hour HHMM (validate)
             ]
 
             for pattern in time_patterns:
@@ -767,22 +831,6 @@ class UpcomingRaceBrowser:
                             )
                             break
                         else:
-                            continue
-                    elif re.match(r"^\d{4}$", raw_t):
-                        # Raw HHMM digits; validate bounds
-                        h = int(raw_t[:2])
-                        m = int(raw_t[2:])
-                        if 0 <= h <= 23 and 0 <= m <= 59:
-                            from datetime import datetime as _dt
-
-                            race_time = (
-                                _dt.strptime(f"{h:02d}:{m:02d}", "%H:%M")
-                                .strftime("%I:%M %p")
-                                .lstrip("0")
-                            )
-                            break
-                        else:
-                            # Ignore invalid 4-digit times like 7215
                             continue
                 except Exception:
                     continue
@@ -862,6 +910,276 @@ class UpcomingRaceBrowser:
         except Exception as e:
             return None
 
+    def _extract_race_number_from_url(self, race_url):
+        """Extract the canonical race number from a TheDogs race URL."""
+        try:
+            url = (race_url or "").split("#", 1)[0].split("?", 1)[0]
+            parts = url.strip("/").split("/")
+            if "racing" not in parts:
+                return None
+            racing_index = parts.index("racing")
+            if len(parts) <= racing_index + 3:
+                return None
+            race_number = parts[racing_index + 3]
+            return int(race_number) if str(race_number).isdigit() else None
+        except Exception:
+            return None
+
+    def _format_clock_time(self, value):
+        """Normalize a clock string to the existing metadata display format."""
+        raw = str(value or "").strip()
+        if not raw:
+            return None
+        try:
+            if re.match(r"^\d{1,2}:\d{2}\s*(?:AM|PM)$", raw, re.I):
+                return datetime.strptime(raw.upper().replace(" ", ""), "%I:%M%p").strftime(
+                    "%I:%M %p"
+                ).lstrip("0")
+            if re.match(r"^\d{1,2}:\d{2}$", raw):
+                return datetime.strptime(raw, "%H:%M").strftime("%I:%M %p").lstrip("0")
+        except Exception:
+            return None
+        return None
+
+    def _extract_formatted_race_time(self, soup):
+        """Read the explicit race-page formatted-time element, if present."""
+        try:
+            selectors = [
+                'formatted-time[data-format="datetime_short"]',
+                'formatted-time[data-format="time_24"]',
+            ]
+            for selector in selectors:
+                for element in soup.select(selector):
+                    text = element.get_text(" ", strip=True)
+                    match = re.search(r"\b(\d{1,2}:\d{2})\b", text)
+                    formatted = self._format_clock_time(match.group(1) if match else text)
+                    if formatted:
+                        return formatted
+        except Exception:
+            return None
+        return None
+
+    def _extract_safe_target_metadata_from_page(self, soup, race_url):
+        """Extract only explicit current-race distance/grade from a canonical race page."""
+
+        if soup is None:
+            return {}
+
+        found = {}
+        expected_race_number = self._extract_race_number_from_url(race_url)
+        canonical_path = str(race_url or "").split("?", 1)[0].rstrip("/")
+
+        def _extract_current_race_header_metadata():
+            headers = soup.select(".race-header")
+            if len(headers) > 1:
+                return {}
+            if not headers or expected_race_number is None:
+                return {}
+
+            header = headers[0]
+            number_element = header.select_one(".race-box__number")
+            number_text = number_element.get_text(" ", strip=True) if number_element else ""
+            if number_text.upper() != f"R{expected_race_number}":
+                return {}
+
+            grade_element = header.select_one(".race-header__info__grade")
+            grade_text = grade_element.get_text(" ", strip=True) if grade_element else ""
+            if not grade_text:
+                return {}
+
+            distance = normalize_target_distance(grade_text)
+            grade_without_distance = re.sub(
+                r"\b\d{3,4}\s*m\b", "", grade_text, flags=re.I
+            ).strip(" -–—|")
+            grade = normalize_target_grade(grade_without_distance) or normalize_target_grade(
+                grade_text
+            )
+
+            header_found = {}
+            if distance:
+                header_found["distance"] = distance
+            if grade:
+                header_found["grade"] = grade
+            return header_found
+
+        found.update(_extract_current_race_header_metadata())
+
+        def _dict_ties_to_current_race(obj):
+            if not isinstance(obj, dict):
+                return False
+            for key, value in obj.items():
+                normalized_key = str(key).strip().lower().replace("-", "_")
+                if normalized_key in {"url", "@id", "canonical_url", "race_url"}:
+                    value_path = str(value or "").split("?", 1)[0].rstrip("/")
+                    if canonical_path and value_path == canonical_path:
+                        return True
+                if normalized_key in {"race_number", "race_no", "race_num"}:
+                    try:
+                        if int(value) == expected_race_number:
+                            return True
+                    except Exception:
+                        continue
+                if normalized_key in {"name", "title"}:
+                    if expected_race_number is not None and re.search(
+                        rf"\bR(?:ace\s*)?{expected_race_number}\b",
+                        str(value or ""),
+                        re.I,
+                    ):
+                        return True
+            return False
+
+        def _walk_json(obj, tied_to_current_race=False):
+            if isinstance(obj, dict):
+                current_tied = tied_to_current_race or _dict_ties_to_current_race(obj)
+                for key, value in obj.items():
+                    normalized_key = str(key).strip().lower().replace("-", "_")
+                    if current_tied:
+                        if normalized_key in {
+                            "distance",
+                            "race_distance",
+                            "target_distance",
+                        } or normalized_key.endswith("_distance"):
+                            distance = normalize_target_distance(value)
+                            if distance and "distance" not in found:
+                                found["distance"] = distance
+                        if normalized_key in {
+                            "grade",
+                            "race_grade",
+                            "target_grade",
+                            "race_class",
+                        }:
+                            grade = normalize_target_grade(value)
+                            if grade and "grade" not in found:
+                                found["grade"] = grade
+                    _walk_json(value, current_tied)
+            elif isinstance(obj, list):
+                for item in obj:
+                    _walk_json(item, tied_to_current_race)
+
+        try:
+            for script in soup.find_all("script", type=re.compile("ld\\+json", re.I)):
+                raw = script.string or script.get_text("", strip=True)
+                if not raw:
+                    continue
+                try:
+                    _walk_json(json.loads(raw))
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+        def _candidate_texts(element):
+            candidates = []
+            try:
+                candidates.append(element.get_text(" ", strip=True))
+                sibling = element.find_next_sibling()
+                if sibling is not None:
+                    candidates.append(sibling.get_text(" ", strip=True))
+                parent = element.parent
+                if parent is not None:
+                    candidates.append(parent.get_text(" ", strip=True))
+            except Exception:
+                pass
+            return [text for text in candidates if text]
+
+        def _is_unsafe_metadata_context(element):
+            try:
+                if element.find_parent("table") is not None:
+                    return True
+                for node in [element, *list(element.parents)]:
+                    attrs = " ".join(
+                        [
+                            " ".join(node.get("class", []))
+                            if isinstance(node.get("class"), list)
+                            else str(node.get("class", "")),
+                            str(node.get("id", "")),
+                        ]
+                    ).lower()
+                    if any(
+                        marker in attrs
+                        for marker in (
+                            "result",
+                            "dividend",
+                            "payout",
+                            "runner-form",
+                            "form-guide",
+                            "race-runners",
+                        )
+                    ):
+                        return True
+            except Exception:
+                return True
+            return False
+
+        def _extract_labeled(label_patterns, normalizer):
+            try:
+                for element in soup.find_all(True):
+                    if _is_unsafe_metadata_context(element):
+                        continue
+                    text = element.get_text(" ", strip=True)
+                    if not text:
+                        continue
+                    has_child_elements = element.find(True) is not None
+                    for label_pattern in label_patterns:
+                        if not has_child_elements:
+                            direct = re.search(
+                                rf"\b{label_pattern}\b\s*[:\-]?\s+([A-Za-z0-9 ]{{1,40}})",
+                                text,
+                                re.I,
+                            )
+                            if direct:
+                                value = normalizer(direct.group(1))
+                                if value:
+                                    return value
+                        if re.fullmatch(rf"\s*{label_pattern}\s*", text, re.I):
+                            for candidate in _candidate_texts(element):
+                                if candidate == text:
+                                    continue
+                                value = normalizer(candidate)
+                                if value:
+                                    return value
+            except Exception:
+                return None
+            return None
+
+        if "distance" not in found:
+            distance = _extract_labeled(
+                (r"Race\s+Distance", r"Distance"),
+                normalize_target_distance,
+            )
+            if distance:
+                found["distance"] = distance
+        if "grade" not in found:
+            grade = _extract_labeled(
+                (r"Race\s+Grade", r"Grade", r"Race\s+Class", r"Class"),
+                normalize_target_grade,
+            )
+            if grade:
+                found["grade"] = grade
+
+        if not any(key in found for key in ("distance", "grade")):
+            return {}
+
+        metadata = build_safe_target_metadata_payload(
+            found,
+            source_url=race_url,
+            source="canonical_pre_race_page",
+        )
+        return {
+            key: value
+            for key, value in {
+                "distance": metadata.get("target_distance"),
+                "grade": metadata.get("target_grade"),
+                "target_distance": metadata.get("target_distance"),
+                "target_distance_source": metadata.get("target_distance_source"),
+                "target_grade": metadata.get("target_grade"),
+                "target_grade_source": metadata.get("target_grade_source"),
+                "metadata_is_leakage_safe": metadata.get("metadata_is_leakage_safe"),
+                "metadata_source_url": metadata.get("metadata_source_url"),
+            }.items()
+            if value not in (None, "", "default_missing_target")
+        }
+
     def download_race_csv(self, race_url):
         """Download CSV form guide for a specific race"""
         try:
@@ -898,6 +1216,18 @@ class UpcomingRaceBrowser:
 
             if not race_info:
                 return {"success": False, "error": "Could not extract race information"}
+            race_info.update(
+                self._extract_safe_target_metadata_from_page(soup, race_url)
+            )
+            if not race_info.get("race_time"):
+                exact_race_time = self._extract_formatted_race_time(soup)
+                if exact_race_time:
+                    race_info["race_time"] = exact_race_time
+                    race_info["race_time_source"] = "canonical_race_url"
+                    race_info["race_time_mapping_status"] = "exact_url_match"
+                else:
+                    race_info["race_time_source"] = "canonical_race_url"
+                    race_info["race_time_mapping_status"] = "missing_race_time"
 
             # Generate filename
             filename = f"Race {race_info['race_number']} - {race_info['venue']} - {race_info['date']}.csv"
@@ -922,8 +1252,24 @@ class UpcomingRaceBrowser:
 
                     scraper = ExpertFormCsvScraper(max_workers=1, verbose=False)
                     # Pass the base race URL; scraper will derive the expert-form URL
-                    ef_success = scraper.download_csv_from_expert_form(base_race_url, filename)
+                    ef_success = scraper.download_csv_from_expert_form(
+                        base_race_url,
+                        filename,
+                        race_info={**race_info, "url": base_race_url},
+                    )
                     if ef_success and os.path.exists(filepath):
+                        completeness = analyze_csv_runner_completeness(filepath)
+                        if not completeness.is_complete:
+                            quarantine_path = quarantine_existing_file(
+                                filepath,
+                                reason="incomplete_runner_set",
+                            )
+                            return {
+                                "success": False,
+                                "error": "Incomplete runner set in downloaded CSV",
+                                "runner_completeness": completeness.as_dict(),
+                                "quarantine_path": str(quarantine_path),
+                            }
                         print(
                             f"   ✅ Fallback saved CSV via expert-form scraper: {filename}"
                         )
@@ -931,6 +1277,7 @@ class UpcomingRaceBrowser:
                             "success": True,
                             "filename": filename,
                             "filepath": filepath,
+                            "runner_completeness": completeness.as_dict(),
                         }
                     else:
                         print(
@@ -997,23 +1344,104 @@ class UpcomingRaceBrowser:
             if len(lines) < 2:
                 return {"success": False, "error": "CSV has insufficient data"}
 
+            raw_export_path = self._write_raw_export(filename, content)
+
             # Check for expected headers
             first_line = lines[0].lower()
             if not any(
                 header in first_line for header in ["dog name", "dog", "runner", "name"]
             ):
+                quarantine_path = quarantine_csv_content(
+                    content,
+                    self.upcoming_dir,
+                    filename,
+                    reason="noncanonical_form_guide_header",
+                )
                 return {
                     "success": False,
                     "error": "CSV doesn't appear to be a form guide",
+                    "raw_export_path": str(raw_export_path),
+                    "quarantine_path": str(quarantine_path),
                 }
 
-            # Save file
+            completeness = analyze_csv_text_runner_completeness(
+                content,
+                source=f"download:{race_url}",
+            )
+
+            preliminary_sidecar = build_csv_download_provenance_payload(
+                filepath=filepath,
+                race_url=race_url,
+                csv_info=csv_info,
+                content=content,
+                completeness=completeness,
+                race_info={**race_info, "url": race_url},
+                source="upcoming_race_browser",
+                filename=filename,
+                allow_generic_fields=False,
+            )
+            normalization = normalize_verified_thedogs_export_content(
+                content,
+                accepted_csv_path=filepath,
+                raw_export_path=raw_export_path,
+                sidecar_payload=preliminary_sidecar,
+                runner_completeness=completeness.as_dict(),
+            )
+            normalization_metadata = {
+                key: value
+                for key, value in normalization.items()
+                if key != "normalized_content"
+            }
+
+            if normalization.get("normalization_status") != "verified":
+                reason = str(
+                    normalization.get("normalization_failure_reason")
+                    or "normalization_rejected"
+                )
+                quarantine_path = quarantine_csv_content(
+                    content,
+                    self.upcoming_dir,
+                    filename,
+                    reason=reason[:120],
+                )
+                return {
+                    "success": False,
+                    "error": (
+                        "Incomplete runner set in downloaded CSV"
+                        if "runner_set_not_complete" in reason
+                        else "Downloaded CSV failed canonical TheDogs normalization gate"
+                    ),
+                    "runner_completeness": completeness.as_dict(),
+                    "normalization": normalization_metadata,
+                    "raw_export_path": str(raw_export_path),
+                    "quarantine_path": str(quarantine_path),
+                }
+
+            normalized_content = str(normalization["normalized_content"])
+
+            # Save accepted canonical pipe-delimited file
             with open(filepath, "w", encoding="utf-8") as f:
-                f.write(content)
+                f.write(normalized_content)
+            self._write_csv_provenance(
+                filepath,
+                race_url=race_url,
+                csv_info=csv_info,
+                content=normalized_content,
+                completeness=completeness,
+                race_info={**race_info, "url": race_url},
+                normalization=normalization_metadata,
+            )
 
             print(f"   ✅ Downloaded: {filename}")
 
-            return {"success": True, "filename": filename, "filepath": filepath}
+            return {
+                "success": True,
+                "filename": filename,
+                "filepath": filepath,
+                "runner_completeness": completeness.as_dict(),
+                "normalization": normalization_metadata,
+                "raw_export_path": str(raw_export_path),
+            }
 
         except Exception as e:
             return {"success": False, "error": f"Error downloading race CSV: {str(e)}"}
@@ -1614,6 +2042,14 @@ class UpcomingRaceBrowser:
             # Multiple strategies to find race time
             race_time = None
 
+            # Strategy 0: TheDogs race pages expose the scheduled race time in a
+            # formatted-time element tied to the canonical race page. Prefer this
+            # over broad page-text regexes, which can pick up unrelated times.
+            formatted_time = self._extract_formatted_race_time(soup)
+            if formatted_time:
+                print(f"     ✅ Found race time: {formatted_time} (from formatted-time)")
+                return formatted_time
+
             # Strategy 1: Look for common race time selectors
             time_selectors = [
                 ".race-time",
@@ -1810,7 +2246,9 @@ class UpcomingRaceBrowser:
 
             print(f"   📊 Processing races for {len(venue_links)} venues")
 
-            # Process venues in parallel using up to 3 concurrent threads
+            # Process venues in parallel using up to 3 concurrent threads.
+            # Race times must be mapped by each canonical race URL. Do not
+            # estimate remaining race times from the first race in the venue.
             from concurrent.futures import ThreadPoolExecutor
             from itertools import chain
 
@@ -1819,62 +2257,45 @@ class UpcomingRaceBrowser:
                 venue_races = []
                 print(f"     🏟️ Processing {len(links)} races for {venue}")
 
-                # Get the first race time to establish pattern
-                first_link = links[0]
-                first_race = self.extract_race_info_from_link(
-                    first_link[0], first_link[1], date_str
-                )
-                if first_race:
-                    first_time = self._scrape_race_time_from_page(first_race["url"])
-                    if first_time:
-                        first_race["race_time"] = first_time
-                        first_race["time_source"] = "live_scraped"
-                        venue_races.append(first_race)
+                def race_link_sort_key(link_data):
+                    _link_element, href = link_data
+                    race_number = self._extract_race_number_from_url(href)
+                    return race_number if race_number is not None else 999
 
-                        # Estimate remaining race times (usually 20-25 min apart)
-                        try:
-                            from datetime import datetime, timedelta
+                for link_element, href in sorted(links, key=race_link_sort_key):
+                    try:
+                        race_info = self.extract_race_info_from_link(
+                            link_element, href, date_str
+                        )
+                        if not race_info:
+                            continue
 
-                            base_time = datetime.strptime(first_time, "%I:%M %p")
+                        canonical_race_number = self._extract_race_number_from_url(
+                            race_info.get("url")
+                        )
+                        race_number = int(race_info.get("race_number", 0))
+                        if canonical_race_number != race_number:
+                            race_info["race_time"] = None
+                            race_info["race_time_source"] = "canonical_race_url"
+                            race_info[
+                                "race_time_mapping_status"
+                            ] = "race_number_url_mismatch"
+                            venue_races.append(race_info)
+                            continue
 
-                            # Process remaining races with estimated times
-                            for link_element, href in links[1:]:
-                                race_info = self.extract_race_info_from_link(
-                                    link_element, href, date_str
-                                )
-                                if race_info:
-                                    # Estimate time based on race number difference
-                                    race_num_diff = int(race_info["race_number"]) - int(
-                                        first_race["race_number"]
-                                    )
-                                    estimated_time = base_time + timedelta(
-                                        minutes=race_num_diff * 22
-                                    )
-                                    race_info["race_time"] = estimated_time.strftime(
-                                        "%I:%M %p"
-                                    ).lstrip("0")
-                                    race_info["time_source"] = "estimated"
-                                    venue_races.append(race_info)
-                        except Exception as e:
-                            print(f"     ⚠️ Error estimating times for {venue}: {e}")
-
-                            # Fallback: Get real times for all races
-                            for link_element, href in links[1:]:
-                                try:
-                                    race_info = self.extract_race_info_from_link(
-                                        link_element, href, date_str
-                                    )
-                                    if race_info:
-                                        real_time = self._scrape_race_time_from_page(
-                                            race_info["url"]
-                                        )
-                                        if real_time:
-                                            race_info["race_time"] = real_time
-                                            race_info["time_source"] = "live_scraped"
-                                            venue_races.append(race_info)
-                                except Exception as e:
-                                    print(f"     ⚠️ Error processing race: {e}")
-                                time.sleep(0.5 + random.random() * 0.5)
+                        real_time = self._scrape_race_time_from_page(race_info["url"])
+                        if real_time:
+                            race_info["race_time"] = real_time
+                            race_info["time_source"] = "live_scraped"
+                            race_info["race_time_source"] = "canonical_race_url"
+                            race_info["race_time_mapping_status"] = "exact_url_match"
+                        else:
+                            race_info["race_time"] = None
+                            race_info["race_time_source"] = "canonical_race_url"
+                            race_info["race_time_mapping_status"] = "missing_race_time"
+                        venue_races.append(race_info)
+                    except Exception as e:
+                        print(f"     ⚠️ Error processing race link for {venue}: {e}")
                 return venue_races
 
             # Process venues concurrently

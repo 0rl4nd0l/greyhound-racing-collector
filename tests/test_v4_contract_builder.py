@@ -14,6 +14,18 @@ _mod = _importlib_util.module_from_spec(_spec)
 assert _spec and _spec.loader, "Failed to create import spec for ml_system_v4"
 _spec.loader.exec_module(_mod)  # type: ignore
 MLSystemV4 = _mod.MLSystemV4
+_IMPORT_TIME_GREYHOUND_DB_PATH = _os.environ.get("GREYHOUND_DB_PATH")
+
+
+def test_00_database_env_mutation_is_local_to_single_test(tmp_path):
+    leaky_db_path = tmp_path / "leaky-greyhound.sqlite"
+    _os.environ["GREYHOUND_DB_PATH"] = str(leaky_db_path)
+
+    assert _os.environ["GREYHOUND_DB_PATH"] == str(leaky_db_path)
+
+
+def test_01_database_env_is_restored_for_v4_contract_tests():
+    assert _os.environ.get("GREYHOUND_DB_PATH") == _IMPORT_TIME_GREYHOUND_DB_PATH
 
 
 def test_build_and_save_contract_contains_expected_metadata(tmp_path):

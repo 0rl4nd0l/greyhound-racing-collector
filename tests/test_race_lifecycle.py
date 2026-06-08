@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -69,6 +70,30 @@ def test_today_file_with_future_jump_time_is_live_upcoming(tmp_path):
 
     assert lifecycle.status == UPCOMING_NOT_JUMPED
     assert lifecycle.jump_time == "18:30"
+
+
+def test_today_file_with_sidecar_future_jump_time_is_live_upcoming(tmp_path):
+    path = write_csv(tmp_path, "Race 1 - AP_K - 2026-05-21.csv")
+    sidecar = tmp_path / "Race 1 - AP_K - 2026-05-21.csv.metadata.json"
+    sidecar.write_text(
+        json.dumps(
+            {
+                "schema_version": "form_guide_download_provenance_v1",
+                "race_info": {
+                    "date": "2026-05-21",
+                    "venue": "AP_K",
+                    "race_number": 1,
+                    "race_time": "18:45",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    lifecycle = classify_race_file(path, now=NOW)
+
+    assert lifecycle.status == UPCOMING_NOT_JUMPED
+    assert lifecycle.jump_time == "18:45"
 
 
 def test_explicit_official_result_overrides_date_status(tmp_path):

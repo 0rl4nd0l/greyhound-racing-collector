@@ -35,7 +35,7 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-# Import TGR integration if available
+# Import TGR (The Greyhound Record data source) integration if available
 try:
     from tgr_prediction_integration import TGRPredictionIntegrator
 except ImportError:
@@ -126,10 +126,15 @@ class OptimizedTemporalFeatureBuilder:
             "feature_computations": 0,
         }
 
-        # Initialize TGR integration if available and enabled via flag
+        # Initialize The Greyhound Record (TGR) integration if available and enabled via flag
         self.tgr_integrator = None
         tgr_flag = os.getenv("TGR_ENABLED", "0") not in ("0", "false", "False")
-        if TGRPredictionIntegrator and tgr_flag:
+        tgr_research_override = os.getenv("GREYHOUND_ALLOW_TGR", "0") not in (
+            "0",
+            "false",
+            "False",
+        )
+        if TGRPredictionIntegrator and tgr_flag and tgr_research_override:
             try:
                 self.tgr_integrator = TGRPredictionIntegrator(
                     db_path=self.db_path, enable_tgr_lookup=True
@@ -413,6 +418,35 @@ class OptimizedTemporalFeatureBuilder:
             "race_frequency": 2.0,
         }
 
+    def _safe_target_distance_from_row(self, dog_row: pd.Series) -> float | None:
+        """Return safe pre-race target distance for model-facing features."""
+        try:
+            distance_source = str(dog_row.get("distance_source") or "").strip()
+            if distance_source and distance_source in {
+                "default_missing_target",
+                "DATA_MISSING",
+                "unknown",
+            }:
+                return None
+            if distance_source.startswith("default_missing_target"):
+                return None
+            raw_distance = dog_row.get("distance")
+            if pd.isna(raw_distance):
+                return None
+            import re
+
+            match = re.search(r"(\d+(?:\.\d+)?)", str(raw_distance))
+            if not match:
+                return None
+            distance = float(match.group(1))
+            if distance <= 0:
+                return None
+            if not distance_source:
+                return None
+            return distance
+        except Exception:
+            return None
+
     def build_features_for_race(
         self, race_data: pd.DataFrame, target_race_id: str
     ) -> pd.DataFrame:
@@ -460,12 +494,13 @@ class OptimizedTemporalFeatureBuilder:
             historical_data = batch_historical_data.get(dog_name, pd.DataFrame())
 
             # Create historical features
+            safe_target_distance = self._safe_target_distance_from_row(dog_row)
             historical_features = self.create_historical_features(
                 historical_data,
                 target_timestamp,
                 target_venue=dog_row.get("venue"),
                 target_grade=dog_row.get("grade"),
-                target_distance=pd.to_numeric(dog_row.get("distance"), errors="coerce"),
+                target_distance=safe_target_distance,
             )
 
             features.update(historical_features)
@@ -493,6 +528,10 @@ class OptimizedTemporalFeatureBuilder:
             features["race_id"] = target_race_id
             features["dog_clean_name"] = dog_name
             features["target_timestamp"] = target_timestamp
+            if safe_target_distance is not None:
+                features["target_distance"] = safe_target_distance
+            else:
+                features.pop("target_distance", None)
 
             # Add target if available (for training)
             if "finish_position" in dog_row and pd.notna(dog_row["finish_position"]):
@@ -560,10 +599,17 @@ class OptimizedTemporalFeatureBuilder:
         return True
 
     def set_tgr_enabled(self, enabled: bool) -> None:
-        """Enable/disable inclusion of TGR features at runtime without reinitializing."""
+        """Enable/disable inclusion of The Greyhound Record (TGR) features at runtime without reinitializing."""
         try:
-            self._tgr_runtime_enabled = bool(enabled)
+            research_override = os.getenv("GREYHOUND_ALLOW_TGR", "0") not in (
+                "0",
+                "false",
+                "False",
+            )
+            self._tgr_runtime_enabled = bool(enabled) and research_override
             status = "enabled" if self._tgr_runtime_enabled else "disabled"
+            if bool(enabled) and not research_override:
+                logger.info("[OptimizedBuilder] TGR enable request ignored; GREYHOUND_ALLOW_TGR=1 required")
             logger.info(
                 f"[OptimizedBuilder] TGR feature inclusion runtime toggle {status}"
             )

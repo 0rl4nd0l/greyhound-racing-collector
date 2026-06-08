@@ -4,16 +4,756 @@ Provides lightweight metadata extraction from race CSV files with fallback to fi
 """
 
 import csv
+import hashlib
+import io
+import json
 import os
 import re
-from datetime import datetime
-from typing import Any, Dict, Optional, Union
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, Mapping, Optional, Union
 
 # Optional heavy dependency - make pandas optional in constrained test envs
 try:
     import pandas as pd  # noqa: F401
 except Exception:  # pragma: no cover
     pd = None
+
+
+SAFE_TARGET_DISTANCE_COLUMNS = (
+    "Race Distance",
+    "race_distance",
+    "target_distance",
+    "current_race_distance",
+)
+SAFE_TARGET_GRADE_COLUMNS = (
+    "Race Grade",
+    "race_grade",
+    "target_grade",
+    "current_race_grade",
+)
+SAFE_SIDECAR_TARGET_SOURCES = {
+    "canonical_pre_race_page",
+    "sidecar_target_metadata",
+    "explicit_csv_sidecar",
+}
+CANONICAL_SIDECAR_TARGET_SOURCES = {
+    "canonical_pre_race_page",
+    "sidecar_target_metadata",
+}
+UNSAFE_TARGET_SOURCE_MARKERS = (
+    "embedded_form_history",
+    "post_result",
+    "result_page",
+    "sportsbet_result",
+)
+FORM_GUIDE_SPEC_VERSION = "form_guide_pipe_v1"
+THEDOGS_EXPERT_FORM_COLUMNS = (
+    "Dog Name",
+    "Sex",
+    "PLC",
+    "BOX",
+    "WGT",
+    "DIST",
+    "DATE",
+    "TRACK",
+    "G",
+    "TIME",
+    "WIN",
+    "BON",
+    "1 SEC",
+    "MGN",
+    "W/2G",
+    "PIR",
+    "SP",
+)
+SUPPORTED_FORM_GUIDE_DELIMITERS = {",", "|"}
+NORMALIZATION_SOURCE = "canonical_thedogs_export"
+PIPE_DELIMITER = "|"
+
+
+def normalize_target_distance(value: Any) -> Optional[str]:
+    """Normalize explicit pre-race distance metadata, preserving fail-closed behavior."""
+
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    match = re.search(r"\b(\d{3,4})\s*m?\b", text, re.I)
+    if not match:
+        return None
+    return f"{match.group(1)}m"
+
+
+def normalize_target_grade(value: Any) -> Optional[str]:
+    """Normalize explicit pre-race grade/class metadata without inferring from venue tokens."""
+
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    compact = re.sub(r"\s+", " ", text)
+    patterns = (
+        r"\b\d+(?:st|nd|rd|th)(?:/\d+(?:st|nd|rd|th))?\s+Grade\b",
+        r"\bGrade\s*\d+\b",
+        r"\bG\d+\b",
+        r"\bP\d+\b",
+        r"\bMaiden\b",
+        r"\bNovice\b",
+        r"\bOpen\b",
+        r"\bMixed\b",
+        r"\bRestricted\b",
+        r"\bFree For All\b",
+        r"\bFFA\b",
+        r"\bGroup\s*\d+\b",
+        r"\bFinal\b",
+        r"\bHeat\b",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, compact, re.I)
+        if match:
+            value = match.group(0).strip()
+            if re.fullmatch(r"(?:G|P)\d+", value, re.I):
+                return value.upper()
+            if re.search(r"\d+(?:st|nd|rd|th)", value, re.I):
+                value = re.sub(
+                    r"\b(\d+)(ST|ND|RD|TH)\b",
+                    lambda m: f"{m.group(1)}{m.group(2).lower()}",
+                    value.upper(),
+                )
+                return re.sub(r"\bGRADE\b", "Grade", value)
+            return value.upper() if value.upper() == "FFA" else value.title()
+    return None
+
+
+def is_safe_sidecar_target_source(source: Any) -> bool:
+    text = str(source or "").strip()
+    if not text:
+        return False
+    lowered = text.lower()
+    if any(marker in lowered for marker in UNSAFE_TARGET_SOURCE_MARKERS):
+        return False
+    return text in SAFE_SIDECAR_TARGET_SOURCES or text.startswith(
+        ("target_column:", "filename:")
+    )
+
+
+def is_canonical_sidecar_target_source(source: Any) -> bool:
+    """Return True only for canonical pre-race sidecar target metadata sources."""
+
+    text = str(source or "").strip()
+    if not is_safe_sidecar_target_source(text):
+        return False
+    return text in CANONICAL_SIDECAR_TARGET_SOURCES
+
+
+def _safe_int(value: Any) -> Optional[int]:
+    try:
+        if value is None or str(value).strip() == "":
+            return None
+        return int(str(value).strip())
+    except Exception:
+        return None
+
+
+def _filename_race_number(csv_path: Union[str, os.PathLike]) -> Optional[int]:
+    match = re.search(r"Race\s+(\d+)", os.path.basename(os.fspath(csv_path)), re.I)
+    return _safe_int(match.group(1)) if match else None
+
+
+def _canonical_url_race_number(url: Any) -> Optional[int]:
+    """Extract the race-number path segment from a canonical TheDogs race URL."""
+
+    text = str(url or "").split("?", 1)[0].split("#", 1)[0].strip("/")
+    if not text:
+        return None
+    parts = [part for part in text.split("/") if part]
+    for idx, part in enumerate(parts):
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", part) and idx + 1 < len(parts):
+            race_number = _safe_int(parts[idx + 1])
+            if race_number is not None:
+                return race_number
+    for part in reversed(parts):
+        race_number = _safe_int(part)
+        if race_number is not None:
+            return race_number
+    return None
+
+
+def _sidecar_path(csv_path: Union[str, os.PathLike]) -> str:
+    return f"{os.fspath(csv_path)}.metadata.json"
+
+
+def _sidecar_field(payload: Dict[str, Any], race_info: Dict[str, Any], key: str) -> Any:
+    value = payload.get(key)
+    if value not in (None, ""):
+        return value
+    return race_info.get(key)
+
+
+def verify_canonical_sidecar_payload(
+    payload: Mapping[str, Any],
+    *,
+    csv_path: Union[str, os.PathLike],
+    race_number: Optional[int] = None,
+    canonical_url: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Verify an in-memory sidecar payload using the canonical live-capture gate."""
+
+    path = _sidecar_path(csv_path)
+    capture_race_number = _safe_int(race_number) or _filename_race_number(csv_path)
+    default: Dict[str, Any] = {
+        "target_metadata_status": "missing",
+        "target_metadata_failure_reason": "sidecar_metadata_missing",
+        "target_distance": None,
+        "target_grade": None,
+        "target_distance_source": None,
+        "target_grade_source": None,
+        "metadata_is_leakage_safe": False,
+        "metadata_source_detail": None,
+        "canonical_race_url": canonical_url,
+        "race_time_mapping_status": None,
+        "race_time_source": None,
+        "canonical_url_race_number": None,
+        "capture_race_number": capture_race_number,
+        "sidecar_path": path,
+        "failure_reasons": ["sidecar_metadata_missing"],
+    }
+    if not isinstance(payload, Mapping):
+        result = dict(default)
+        result["target_metadata_failure_reason"] = "sidecar_metadata_not_object"
+        result["failure_reasons"] = ["sidecar_metadata_not_object"]
+        return result
+
+    payload_dict = dict(payload)
+    race_info = (
+        payload_dict.get("race_info")
+        if isinstance(payload_dict.get("race_info"), dict)
+        else {}
+    )
+    canonical_race_url = (
+        canonical_url
+        or payload_dict.get("race_url")
+        or race_info.get("url")
+        or payload_dict.get("metadata_source_url")
+    )
+    distance_source = payload_dict.get("target_distance_source")
+    grade_source = payload_dict.get("target_grade_source")
+    distance = normalize_target_distance(payload_dict.get("target_distance"))
+    grade = normalize_target_grade(payload_dict.get("target_grade"))
+    leakage_safe = payload_dict.get("metadata_is_leakage_safe") is True
+    race_time_mapping_status = _sidecar_field(
+        payload_dict, race_info, "race_time_mapping_status"
+    )
+    race_time_source = _sidecar_field(payload_dict, race_info, "race_time_source")
+    canonical_url_race_number = _canonical_url_race_number(canonical_race_url)
+
+    missing: list[str] = []
+    unsafe: list[str] = []
+    mismatch: list[str] = []
+    if not distance:
+        missing.append("missing_target_distance")
+    if not grade:
+        missing.append("missing_target_grade")
+    if not canonical_race_url:
+        missing.append("missing_canonical_race_url")
+    if not leakage_safe:
+        unsafe.append("metadata_is_leakage_safe_not_true")
+    if not is_canonical_sidecar_target_source(distance_source):
+        unsafe.append(f"noncanonical_target_distance_source:{distance_source or 'missing'}")
+    if not is_canonical_sidecar_target_source(grade_source):
+        unsafe.append(f"noncanonical_target_grade_source:{grade_source or 'missing'}")
+    if str(race_time_mapping_status or "") != "exact_url_match":
+        mismatch.append(
+            f"race_time_mapping_status_not_exact_url_match:{race_time_mapping_status or 'missing'}"
+        )
+    if str(race_time_source or "") != "canonical_race_url":
+        mismatch.append(f"race_time_source_not_canonical_race_url:{race_time_source or 'missing'}")
+    if capture_race_number is None:
+        mismatch.append("capture_race_number_missing")
+    if canonical_url_race_number is None:
+        mismatch.append("canonical_url_race_number_missing")
+    elif capture_race_number is not None and canonical_url_race_number != capture_race_number:
+        mismatch.append(
+            f"canonical_url_race_number_mismatch:{canonical_url_race_number}!={capture_race_number}"
+        )
+
+    status = "verified"
+    reasons: list[str] = []
+    if missing:
+        status = "missing"
+        reasons = missing
+    elif unsafe:
+        status = "unsafe"
+        reasons = unsafe
+    elif mismatch:
+        status = "mismatch"
+        reasons = mismatch
+
+    return {
+        "target_metadata_status": status,
+        "target_metadata_failure_reason": None if status == "verified" else ";".join(reasons),
+        "target_distance": distance if status == "verified" else None,
+        "target_grade": grade if status == "verified" else None,
+        "target_distance_source": str(distance_source) if distance_source not in (None, "") else None,
+        "target_grade_source": str(grade_source) if grade_source not in (None, "") else None,
+        "metadata_is_leakage_safe": status == "verified",
+        "metadata_source_detail": {
+            "distance": f"sidecar_metadata:{distance_source}",
+            "grade": f"sidecar_metadata:{grade_source}",
+        }
+        if distance_source or grade_source
+        else None,
+        "canonical_race_url": str(canonical_race_url) if canonical_race_url else None,
+        "race_time_mapping_status": race_time_mapping_status,
+        "race_time_source": race_time_source,
+        "canonical_url_race_number": canonical_url_race_number,
+        "capture_race_number": capture_race_number,
+        "sidecar_path": path,
+        "failure_reasons": reasons,
+    }
+
+
+def verify_canonical_sidecar_target_metadata(
+    csv_path: Union[str, os.PathLike],
+    *,
+    race_number: Optional[int] = None,
+    canonical_url: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Verify target distance/grade can be persisted from canonical sidecar metadata.
+
+    This verifier is intentionally stricter than ``load_safe_sidecar_target_metadata``:
+    live snapshot persistence requires both target fields, a canonical pre-race
+    source, exact URL-backed race-time mapping, and a canonical URL whose race
+    number matches the race being captured.
+    """
+
+    path = _sidecar_path(csv_path)
+    capture_race_number = _safe_int(race_number) or _filename_race_number(csv_path)
+    default: Dict[str, Any] = {
+        "target_metadata_status": "missing",
+        "target_metadata_failure_reason": "sidecar_metadata_missing",
+        "target_distance": None,
+        "target_grade": None,
+        "target_distance_source": None,
+        "target_grade_source": None,
+        "metadata_is_leakage_safe": False,
+        "metadata_source_detail": None,
+        "canonical_race_url": canonical_url,
+        "race_time_mapping_status": None,
+        "race_time_source": None,
+        "canonical_url_race_number": None,
+        "capture_race_number": capture_race_number,
+        "sidecar_path": path,
+        "failure_reasons": ["sidecar_metadata_missing"],
+    }
+    if not os.path.exists(path):
+        return default
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except Exception as exc:
+        result = dict(default)
+        result["target_metadata_failure_reason"] = f"sidecar_metadata_unreadable:{type(exc).__name__}"
+        result["failure_reasons"] = [result["target_metadata_failure_reason"]]
+        return result
+    if not isinstance(payload, dict):
+        result = dict(default)
+        result["target_metadata_failure_reason"] = "sidecar_metadata_not_object"
+        result["failure_reasons"] = ["sidecar_metadata_not_object"]
+        return result
+    return verify_canonical_sidecar_payload(
+        payload,
+        csv_path=csv_path,
+        race_number=race_number,
+        canonical_url=canonical_url,
+    )
+
+
+def build_safe_target_metadata_payload(
+    race_info: Optional[Dict[str, Any]] = None,
+    *,
+    source_url: Optional[str] = None,
+    source: str = "canonical_pre_race_page",
+    allow_generic_fields: bool = True,
+) -> Dict[str, Any]:
+    """Build sidecar target metadata from explicit, pre-race race-card fields only."""
+
+    race_info = dict(race_info or {})
+    distance_source = race_info.get("target_distance_source") or source
+    grade_source = race_info.get("target_grade_source") or source
+    distance_value = race_info.get("target_distance")
+    if distance_value in (None, "") and allow_generic_fields:
+        distance_value = race_info.get("distance")
+    grade_value = race_info.get("target_grade")
+    if grade_value in (None, "") and allow_generic_fields:
+        grade_value = race_info.get("grade")
+    distance = normalize_target_distance(distance_value)
+    grade = normalize_target_grade(grade_value)
+    payload: Dict[str, Any] = {
+        "target_distance": None,
+        "target_distance_source": "default_missing_target",
+        "target_grade": None,
+        "target_grade_source": "default_missing_target",
+        "metadata_is_leakage_safe": False,
+        "metadata_source_url": source_url,
+    }
+    if distance and is_safe_sidecar_target_source(distance_source):
+        payload["target_distance"] = distance
+        payload["target_distance_source"] = distance_source
+        payload["metadata_is_leakage_safe"] = True
+    if grade and is_safe_sidecar_target_source(grade_source):
+        payload["target_grade"] = grade
+        payload["target_grade_source"] = grade_source
+        payload["metadata_is_leakage_safe"] = True
+    return payload
+
+
+def _utc_timestamp() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _display_delimiter(delimiter: Optional[str]) -> Optional[str]:
+    if delimiter == "\t":
+        return "\\t"
+    return delimiter
+
+
+def detect_form_guide_delimiter(content: str) -> Optional[str]:
+    """Detect the dominant delimiter for a downloaded form-guide export."""
+
+    text = str(content or "")
+    sample = text[:8192]
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=",|;\t")
+        return dialect.delimiter
+    except Exception:
+        first_line = next((line for line in text.splitlines() if line.strip()), "")
+        counts = {delimiter: first_line.count(delimiter) for delimiter in ",|;\t"}
+        delimiter, count = max(counts.items(), key=lambda item: item[1])
+        return delimiter if count > 0 else None
+
+
+def _read_form_guide_rows(content: str, delimiter: str) -> tuple[list[list[str]], Optional[str]]:
+    try:
+        rows = list(csv.reader(io.StringIO(content), delimiter=delimiter))
+    except Exception as exc:
+        return [], f"csv_parse_error:{type(exc).__name__}"
+    if not rows:
+        return [], "empty_csv"
+    expected_len = len(rows[0])
+    for idx, row in enumerate(rows, start=1):
+        if len(row) != expected_len:
+            return [], f"row_{idx}_column_count_mismatch:{len(row)}!={expected_len}"
+    return rows, None
+
+
+def _filename_target_date(path: Union[str, os.PathLike]) -> Optional[datetime]:
+    match = re.search(r"Race\s+\d+\s+-\s+.+?\s+-\s+(\d{4}-\d{2}-\d{2})\.csv$", Path(path).name, re.I)
+    if not match:
+        return None
+    try:
+        return datetime.strptime(match.group(1), "%Y-%m-%d")
+    except Exception:
+        return None
+
+
+def _normalize_cell(value: Any) -> str:
+    return str(value or "").lstrip("\ufeff").strip()
+
+
+def _normalize_output_cell(value: Any) -> str:
+    return str(value or "").lstrip("\ufeff")
+
+
+def _validate_thedogs_export_rows(
+    rows: list[list[str]],
+    *,
+    accepted_csv_path: Union[str, os.PathLike],
+) -> tuple[bool, list[str]]:
+    reasons: list[str] = []
+    header = tuple(_normalize_cell(cell) for cell in rows[0])
+    if header != THEDOGS_EXPERT_FORM_COLUMNS:
+        reasons.append("schema_header_mismatch")
+    if len(header) < len(THEDOGS_EXPERT_FORM_COLUMNS):
+        reasons.append("schema_missing_expected_columns")
+        return False, reasons
+
+    target_date = _filename_target_date(accepted_csv_path)
+    if target_date is None:
+        reasons.append("target_date_missing_from_filename")
+
+    dog_name_index = 0
+    date_index = THEDOGS_EXPERT_FORM_COLUMNS.index("DATE")
+    current_dog = None
+    primary_runner_rows = 0
+    historical_rows = 0
+    for row_number, row in enumerate(rows[1:], start=2):
+        if not any(_normalize_cell(cell) for cell in row):
+            continue
+        dog_cell = _normalize_cell(row[dog_name_index]).strip('"')
+        if dog_cell:
+            if re.match(r"^\d{1,2}\s*[\.\):-]\s*.+", dog_cell):
+                current_dog = dog_cell
+                primary_runner_rows += 1
+            else:
+                reasons.append(f"row_{row_number}_dog_name_missing_box_prefix")
+        elif current_dog is None:
+            reasons.append(f"row_{row_number}_blank_dog_name_before_primary_runner")
+
+        row_date_text = _normalize_cell(row[date_index])
+        if row_date_text:
+            try:
+                row_date = datetime.strptime(row_date_text, "%Y-%m-%d")
+            except Exception:
+                reasons.append(f"row_{row_number}_invalid_history_date:{row_date_text}")
+                continue
+            historical_rows += 1
+            if target_date is not None and row_date >= target_date:
+                reasons.append(
+                    f"row_{row_number}_non_historical_date:{row_date_text}>={target_date.strftime('%Y-%m-%d')}"
+                )
+
+    if primary_runner_rows == 0:
+        reasons.append("no_box_prefixed_target_runner_rows")
+    if historical_rows == 0:
+        reasons.append("no_historical_rows")
+    return not reasons, reasons
+
+
+def _rows_to_pipe_text(rows: list[list[str]]) -> str:
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=PIPE_DELIMITER, lineterminator="\n")
+    writer.writerows([[_normalize_output_cell(cell) for cell in row] for row in rows])
+    return output.getvalue()
+
+
+def build_csv_download_provenance_payload(
+    *,
+    filepath: Union[str, os.PathLike],
+    race_url: Optional[str],
+    csv_info: Any,
+    content: str,
+    completeness: Any,
+    race_info: Optional[Mapping[str, Any]] = None,
+    source: Optional[str] = None,
+    normalization: Optional[Mapping[str, Any]] = None,
+    filename: Optional[str] = None,
+    allow_generic_fields: bool = True,
+) -> Dict[str, Any]:
+    resolved_csv_url = None
+    csv_method = None
+    if isinstance(csv_info, str):
+        resolved_csv_url = csv_info
+        csv_method = "GET"
+    elif isinstance(csv_info, Mapping):
+        resolved_csv_url = csv_info.get("url")
+        csv_method = csv_info.get("type") or "unknown"
+
+    race_info_dict = dict(race_info or {})
+    payload: Dict[str, Any] = {
+        "schema_version": "form_guide_download_provenance_v1",
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "race_url": race_url,
+        "race_info": {
+            key: value
+            for key, value in race_info_dict.items()
+            if key
+            in {
+                "date",
+                "distance",
+                "grade",
+                "race_name",
+                "race_number",
+                "race_time",
+                "race_time_mapping_status",
+                "race_time_source",
+                "title",
+                "url",
+                "venue",
+                "venue_name",
+            }
+            and value not in (None, "")
+        },
+        "resolved_csv_url": resolved_csv_url,
+        "csv_method": csv_method,
+        "content_length": len(str(content).encode("utf-8")),
+        "content_sha256": hashlib.sha256(str(content).encode("utf-8")).hexdigest(),
+        "runner_completeness": (
+            completeness.as_dict() if hasattr(completeness, "as_dict") else dict(completeness or {})
+        ),
+    }
+    if source:
+        payload["source"] = source
+    if filename:
+        payload["filename"] = filename
+    payload.update(
+        build_safe_target_metadata_payload(
+            race_info_dict,
+            source_url=race_url,
+            source="canonical_pre_race_page",
+            allow_generic_fields=allow_generic_fields,
+        )
+    )
+    if normalization:
+        payload.update(dict(normalization))
+    return payload
+
+
+def normalize_verified_thedogs_export_content(
+    content: str,
+    *,
+    accepted_csv_path: Union[str, os.PathLike],
+    raw_export_path: Union[str, os.PathLike],
+    sidecar_payload: Mapping[str, Any],
+    runner_completeness: Optional[Mapping[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Normalize only verified canonical TheDogs export data to pipe format."""
+
+    original_delimiter = detect_form_guide_delimiter(content)
+    base: Dict[str, Any] = {
+        "form_guide_spec_version": FORM_GUIDE_SPEC_VERSION,
+        "normalization_source": NORMALIZATION_SOURCE,
+        "normalization_timestamp": _utc_timestamp(),
+        "original_delimiter": _display_delimiter(original_delimiter),
+        "normalized_delimiter": PIPE_DELIMITER,
+        "raw_export_path": str(raw_export_path),
+        "accepted_csv_path": str(accepted_csv_path),
+        "raw_content_length": len(str(content).encode("utf-8")),
+        "raw_content_sha256": hashlib.sha256(str(content).encode("utf-8")).hexdigest(),
+    }
+    if original_delimiter not in SUPPORTED_FORM_GUIDE_DELIMITERS:
+        return {
+            **base,
+            "delimiter_status": "rejected",
+            "normalization_status": "rejected",
+            "normalization_failure_reason": f"unsupported_delimiter:{_display_delimiter(original_delimiter)}",
+            "normalized_content": None,
+        }
+
+    rows, parse_error = _read_form_guide_rows(content, original_delimiter)
+    if parse_error:
+        return {
+            **base,
+            "delimiter_status": "rejected",
+            "normalization_status": "rejected",
+            "normalization_failure_reason": parse_error,
+            "normalized_content": None,
+        }
+
+    schema_ok, schema_reasons = _validate_thedogs_export_rows(
+        rows,
+        accepted_csv_path=accepted_csv_path,
+    )
+    runner_status = dict(runner_completeness or {}).get("status")
+    metadata_verification = verify_canonical_sidecar_payload(
+        sidecar_payload,
+        csv_path=accepted_csv_path,
+    )
+    verification = {
+        "schema_status": "verified" if schema_ok else "rejected",
+        "schema_failure_reasons": schema_reasons,
+        "runner_set_status": runner_status,
+        "target_metadata_status": metadata_verification.get("target_metadata_status"),
+        "target_metadata_failure_reason": metadata_verification.get(
+            "target_metadata_failure_reason"
+        ),
+        "race_time_mapping_status": metadata_verification.get("race_time_mapping_status"),
+        "race_time_source": metadata_verification.get("race_time_source"),
+        "canonical_url_race_number": metadata_verification.get("canonical_url_race_number"),
+        "capture_race_number": metadata_verification.get("capture_race_number"),
+    }
+    failure_reasons: list[str] = []
+    if not schema_ok:
+        failure_reasons.extend(schema_reasons)
+    if runner_status != "COMPLETE":
+        failure_reasons.append(f"runner_set_not_complete:{runner_status or 'missing'}")
+    if metadata_verification.get("target_metadata_status") != "verified":
+        failure_reasons.append(
+            "target_metadata_not_verified:"
+            + str(metadata_verification.get("target_metadata_failure_reason") or metadata_verification.get("target_metadata_status"))
+        )
+
+    if failure_reasons:
+        return {
+            **base,
+            "delimiter_status": "verified",
+            "normalization_status": "rejected",
+            "normalization_failure_reason": ";".join(failure_reasons),
+            "normalization_verification": verification,
+            "normalized_content": None,
+        }
+
+    normalized_content = _rows_to_pipe_text(rows)
+    return {
+        **base,
+        "delimiter_status": "verified",
+        "normalization_status": "verified",
+        "normalization_failure_reason": None,
+        "normalization_action": (
+            "already_pipe" if original_delimiter == PIPE_DELIMITER else "converted_to_pipe"
+        ),
+        "normalization_verification": verification,
+        "normalized_content": normalized_content,
+    }
+
+
+def load_safe_sidecar_target_metadata(csv_path: Union[str, os.PathLike]) -> Dict[str, Any]:
+    """Read leakage-safe target metadata from a CSV sidecar, if present.
+
+    Existing sidecars may include race_info distance/grade without provenance. Those are
+    intentionally ignored until a sidecar carries explicit top-level target fields and a
+    safe source.
+    """
+
+    sidecar_path = f"{csv_path}.metadata.json"
+    default = {
+        "target_distance": None,
+        "target_distance_source": "default_missing_target",
+        "target_grade": None,
+        "target_grade_source": "default_missing_target",
+        "metadata_is_leakage_safe": False,
+        "metadata_source_url": None,
+        "rejected_metadata_sources": [],
+    }
+    if not os.path.exists(sidecar_path):
+        return default
+    try:
+        with open(sidecar_path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except Exception:
+        return default
+
+    leakage_safe = bool(payload.get("metadata_is_leakage_safe"))
+    rejected = list(payload.get("rejected_metadata_sources") or [])
+    result = dict(default)
+    result["metadata_source_url"] = payload.get("metadata_source_url") or payload.get(
+        "race_url"
+    )
+
+    distance_source = payload.get("target_distance_source") or "sidecar_target_metadata"
+    distance = normalize_target_distance(payload.get("target_distance"))
+    if distance and leakage_safe and is_safe_sidecar_target_source(distance_source):
+        result["target_distance"] = distance
+        result["target_distance_source"] = str(distance_source)
+        result["metadata_is_leakage_safe"] = True
+    elif payload.get("target_distance") not in (None, ""):
+        rejected.append(f"unsafe_sidecar_target_distance:{distance_source}")
+
+    grade_source = payload.get("target_grade_source") or "sidecar_target_metadata"
+    grade = normalize_target_grade(payload.get("target_grade"))
+    if grade and leakage_safe and is_safe_sidecar_target_source(grade_source):
+        result["target_grade"] = grade
+        result["target_grade_source"] = str(grade_source)
+        result["metadata_is_leakage_safe"] = True
+    elif payload.get("target_grade") not in (None, ""):
+        rejected.append(f"unsafe_sidecar_target_grade:{grade_source}")
+
+    if rejected:
+        result["rejected_metadata_sources"] = rejected
+    return result
 
 
 def parse_race_csv_meta(file_path: str) -> Dict[str, Any]:
@@ -297,7 +1037,13 @@ def _extract_from_csv_data(file_path: str) -> Optional[Dict[str, Any]]:
         # Try pandas first for robust CSV handling
         if pd is None:
             raise ImportError("pandas not available")
-        df = pd.read_csv(file_path, nrows=50)  # Only read first 50 rows for efficiency
+        df = pd.read_csv(
+            file_path,
+            nrows=50,
+            sep=None,
+            engine="python",
+            encoding="utf-8-sig",
+        )
 
         # Clean up the dataframe - remove rows where all values are empty quotes
         df = df.replace('""', "")  # Replace empty quotes with empty strings
@@ -308,6 +1054,21 @@ def _extract_from_csv_data(file_path: str) -> Optional[Dict[str, Any]]:
         if embedded_form_history:
             result["csv_row_context"] = "embedded_form_history"
             result["target_metadata_from_csv"] = False
+            result["metadata_is_leakage_safe"] = False
+        rejected_metadata_sources = []
+
+        def _first_non_empty(columns):
+            for column in columns:
+                if column not in df.columns:
+                    continue
+                try:
+                    values = df[column].dropna()
+                    for value in values:
+                        if str(value).strip() != "":
+                            return value, column
+                except Exception:
+                    continue
+            return None, None
 
         # Extract venue from TRACK column (most reliable source)
         if "TRACK" in df.columns and not embedded_form_history:
@@ -318,21 +1079,60 @@ def _extract_from_csv_data(file_path: str) -> Optional[Dict[str, Any]]:
                 raw_venue = str(venue_counts.index[0]).upper()
                 result["venue"] = standardize_venue_name(raw_venue)
 
-        # Extract distance from DIST column
-        if "DIST" in df.columns and not embedded_form_history:
+        safe_distance, safe_distance_col = _first_non_empty(SAFE_TARGET_DISTANCE_COLUMNS)
+        safe_grade, safe_grade_col = _first_non_empty(SAFE_TARGET_GRADE_COLUMNS)
+
+        if safe_distance is not None:
+            result["distance"] = str(safe_distance)
+            result["distance_source"] = f"target_column:{safe_distance_col}"
+            result["target_metadata_from_csv"] = True
+            result["metadata_is_leakage_safe"] = True
+        elif "DIST" in df.columns and embedded_form_history:
+            rejected_metadata_sources.append("embedded_form_history:DIST")
+        # Extract distance from DIST column only when rows are not embedded form history.
+        elif "DIST" in df.columns:
             distances = df["DIST"].dropna().unique()
             if len(distances) > 0:
                 # Get most common distance
                 distance_counts = df["DIST"].value_counts()
                 result["distance"] = str(distance_counts.index[0])
+                result["distance_source"] = "csv_target_row:DIST"
+                result["metadata_is_leakage_safe"] = True
 
-        # Extract grade from G column
-        if "G" in df.columns and not embedded_form_history:
+        if safe_grade is not None:
+            result["grade"] = str(safe_grade)
+            result["grade_source"] = f"target_column:{safe_grade_col}"
+            result["target_metadata_from_csv"] = True
+            result["metadata_is_leakage_safe"] = True
+        elif "G" in df.columns and embedded_form_history:
+            rejected_metadata_sources.append("embedded_form_history:G")
+        # Extract grade from G column only when rows are not embedded form history.
+        elif "G" in df.columns:
             grades = df["G"].dropna().unique()
             if len(grades) > 0:
                 # Get most common grade
                 grade_counts = df["G"].value_counts()
                 result["grade"] = str(grade_counts.index[0])
+                result["grade_source"] = "csv_target_row:G"
+                result["metadata_is_leakage_safe"] = True
+
+        if embedded_form_history:
+            for rejected_col in (
+                "PLC",
+                "TIME",
+                "BON",
+                "MGN",
+                "WIN",
+                "PIR",
+                "finish_position",
+                "winner",
+                "winner_name",
+                "payout",
+            ):
+                if rejected_col in df.columns:
+                    rejected_metadata_sources.append(f"post_result_field:{rejected_col}")
+        if rejected_metadata_sources:
+            result["rejected_metadata_sources"] = rejected_metadata_sources
 
         # Calculate field size (number of unique dogs/boxes)
         if "Dog Name" in df.columns and embedded_form_history:
@@ -368,8 +1168,14 @@ def _extract_from_csv_data(file_path: str) -> Optional[Dict[str, Any]]:
     except Exception as e:
         # If pandas fails, try basic CSV reader as fallback
         try:
-            with open(file_path, "r", newline="", encoding="utf-8") as f:
-                reader = csv.DictReader(f)
+            with open(file_path, "r", newline="", encoding="utf-8-sig") as f:
+                sample = f.read(4096)
+                f.seek(0)
+                try:
+                    dialect = csv.Sniffer().sniff(sample, delimiters=",|;\t")
+                except Exception:
+                    dialect = csv.excel
+                reader = csv.DictReader(f, dialect=dialect)
 
                 # Read first few rows to analyze
                 rows = []

@@ -1,0 +1,100 @@
+{
+  "calibration_blending_decision": "report_only: no calibration/blending deployment is made by this script",
+  "ev_roi_coverage": {
+    "missing_or_invalid_odds_rows": 9,
+    "partial_odds_races": [],
+    "races_with_valid_pre_jump_odds": 0,
+    "reason": "no_valid_pre_jump_dog_level_odds",
+    "status": "DATA_MISSING",
+    "valid_pre_jump_dog_odds_rows": 0
+  },
+  "label_quality_counts": {
+    "partial_sportsbet_winner_only": 1
+  },
+  "lifecycle_counts": {
+    "upcoming_not_jumped": 1
+  },
+  "metrics_by_arm": {
+    "model_only": {
+      "brier": 0.10248271777777779,
+      "calibration": {
+        "intercept": null,
+        "slope": null
+      },
+      "dog_predictions_evaluated": 9,
+      "log_loss": 2.284745174865715,
+      "mean_winner_rank": 6.0,
+      "probability_sum": {
+        "max_abs_error": 0.0,
+        "mean_abs_error": 0.0
+      },
+      "races_evaluated": 1,
+      "reliability_bins": [
+        {
+          "actual_rate": 0.0,
+          "avg_predicted": 0.0827,
+          "bin": 0,
+          "count": 2,
+          "lower": 0.0,
+          "upper": 0.1
+        },
+        {
+          "actual_rate": 0.16666666666666666,
+          "avg_predicted": 0.1018,
+          "bin": 1,
+          "count": 6,
+          "lower": 0.1,
+          "upper": 0.2
+        },
+        {
+          "actual_rate": 0.0,
+          "avg_predicted": 0.2238,
+          "bin": 2,
+          "count": 1,
+          "lower": 0.2,
+          "upper": 0.3
+        }
+      ],
+      "roi_ev_by_decile": [],
+      "top1": 0.0,
+      "top2": 0.0,
+      "top3": 0.0,
+      "winner_rank_counts": {
+        "6": 1
+      },
+      "winner_ranks": [
+        6
+      ]
+    }
+  },
+  "rejected_snapshots": [],
+  "runner_rows_scored": 9,
+  "snapshot_corpus_readiness": {
+    "durable_pre_jump_snapshot_requirements": [
+      "feature_freeze_timestamp_present",
+      "missing_live_odds_explicit",
+      "model_version_present",
+      "pre_jump_lifecycle",
+      "pre_jump_snapshot_state",
+      "prediction_timestamp_present",
+      "predictions_match_source_runner_set",
+      "priced_runners_captured_before_jump",
+      "priced_runners_captured_before_prediction",
+      "priced_runners_have_odds_timestamps",
+      "result_free",
+      "runner_rows_have_identity",
+      "runner_rows_have_probabilities",
+      "runner_rows_present",
+      "source_file_path_present",
+      "source_runner_set_complete"
+    ],
+    "readiness_status_counts": {
+      "READY": 1
+    },
+    "snapshot_files": 1,
+    "status": "READY"
+  },
+  "snapshot_files": 1,
+  "snapshots_rejected": 0,
+  "status": "SUCCESS"
+}

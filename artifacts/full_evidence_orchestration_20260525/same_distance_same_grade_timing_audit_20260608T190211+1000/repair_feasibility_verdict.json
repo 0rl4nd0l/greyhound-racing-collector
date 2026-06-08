@@ -1,0 +1,22 @@
+{
+  "allowed_verdicts": [
+    "SAFE_POPULATION_REPAIR_AVAILABLE",
+    "PARTIAL_SAFE_POPULATION_REPAIR_AVAILABLE",
+    "NO_SAFE_REPAIR_HISTORY_SPARSE",
+    "NO_SAFE_REPAIR_TARGET_METADATA_MISSING",
+    "NO_SAFE_REPAIR_UNSAFE_SOURCES_ONLY",
+    "NEEDS_MORE_SOURCE_DATA"
+  ],
+  "basis": [
+    "Active shadow train split has both affected timing features all-missing: 0/751 present for each feature.",
+    "Only 43/751 train rows have both target_distance_safe and target_grade_safe.",
+    "The remaining 708 train rows lack safe target distance and grade; 137 have only ambiguous embedded form-guide date/venue candidates and 571 have no safe source found.",
+    "Among the 43 safe-target rows, no row has a strict-canonical prior same-distance/same-grade dog_race_data row with valid individual_time before the target race.",
+    "No DB writes, training, promotion, registry mutation, TGR enablement, betting/EV action, snapshot rewrite, or manifest rewrite was performed."
+  ],
+  "recommendation": "keep quarantine_feature policy; do not implement population repair until safe target metadata coverage and canonical prior same-distance/same-grade history coverage are materially improved",
+  "recoverable_safe_rows": 0,
+  "schema_version": "same_distance_same_grade_repair_feasibility_verdict_v1",
+  "total_missing_train_rows": 751,
+  "verdict": "NEEDS_MORE_SOURCE_DATA"
+}

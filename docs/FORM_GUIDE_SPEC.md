@@ -3,6 +3,20 @@
 ## Overview
 This document defines the standard format and parsing rules for greyhound racing form guides, including common pitfalls and detection strategies.
 
+## Accepted Upcoming CSV Contract
+
+Files exposed in the accepted `upcoming_races/` directory must be UTF-8,
+pipe-delimited (`|`) form-guide CSVs. Raw TheDogs expert-form exports may be
+comma-delimited, but they are source exports, not accepted capture inputs. A
+comma-delimited TheDogs export can only be converted to the accepted pipe format
+after the canonical schema, target metadata sidecar, URL-backed race time, and
+runner-set completeness checks pass.
+
+Raw downloaded exports must be preserved under `raw_exports/` or an equivalent
+source-export directory. Accepted CSV sidecars must record the original
+delimiter, normalized delimiter, normalization source, normalization timestamp,
+raw export path, accepted CSV path, and normalization verification result.
+
 ## Dog Block Structure
 
 ### Standard Dog Block Format

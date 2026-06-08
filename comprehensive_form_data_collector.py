@@ -32,6 +32,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 import numpy as np
+from utils.runner_completeness import parse_runner_rows_from_csv
 
 # Import existing components
 from selenium import webdriver
@@ -312,25 +313,15 @@ class ComprehensiveFormDataCollector:
         self, race_file_path: str = None
     ) -> List[str]:
         """Identify dogs that need comprehensive form data enhancement"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
         if race_file_path:
-            # Get dogs from specific race file
-            import pandas as pd
-
             try:
-                df = pd.read_csv(race_file_path)
-                dogs = []
-                for _, row in df.iterrows():
-                    dog_name = str(row.get("Dog Name", "")).strip()
-                    if dog_name and dog_name != "":
-                        # Clean dog name
-                        clean_name = re.sub(r"^\d+\.\s*", "", dog_name)
-                        dogs.append(clean_name)
-                return list(set(dogs))
+                runners = parse_runner_rows_from_csv(race_file_path)
+                return sorted({runner.dog_name for runner in runners if runner.dog_name})
             except Exception as e:
                 logger.error(f"Error reading race file {race_file_path}: {e}")
+
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
 
         # Get dogs with limited historical data (current limitation)
         cursor.execute(

@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import sqlite3
 import sys
 from datetime import datetime
@@ -85,6 +86,72 @@ def test_parse_thedogs_result_text_matches_ordinals_to_local_runners():
     assert positions == {6: 1, 8: 2, 3: 3}
 
 
+def test_parse_thedogs_result_html_preserves_unknown_official_boxes():
+    module = _load_ingest_module()
+    markup = """
+    <table class="race-runners race-runners--result">
+      <tr class="accordion__anchor race-runner">
+        <td class="race-runners__finish-position">1st</td>
+        <td class="race-runners__box"><sprite-svg name="rug_2"></sprite-svg></td>
+        <td class="race-runners__name"><a>Poppy Florence</a></td>
+      </tr>
+      <tr class="accordion__anchor race-runner">
+        <td class="race-runners__finish-position">2nd</td>
+        <td class="race-runners__box"><sprite-svg name="rug_6"></sprite-svg></td>
+        <td class="race-runners__name"><a>Dalair Milo</a></td>
+      </tr>
+      <tr class="accordion__anchor race-runner race-runner--scratched">
+        <td class="race-runners__finish-position">SCR</td>
+        <td class="race-runners__box"><sprite-svg name="rug_9"></sprite-svg></td>
+        <td class="race-runners__name"><a>Deuces</a></td>
+      </tr>
+    </table>
+    """
+
+    positions = module.parse_thedogs_result_html(markup)
+
+    assert positions == {2: 1, 6: 2}
+
+
+def test_result_validation_rejects_official_boxes_outside_local_participants(tmp_path):
+    module = _load_ingest_module()
+    candidate = _candidate(module, tmp_path)
+    candidate.participants = [
+        {"box_number": 4, "dog_name": "Cobra Beach"},
+        {"box_number": 6, "dog_name": "Dalair Milo"},
+        {"box_number": 7, "dog_name": "More Drama"},
+        {"box_number": 9, "dog_name": "Deuces"},
+        {"box_number": 10, "dog_name": "Spring Orchid"},
+    ]
+    result = module.SourceResult(
+        source="thedogs_official",
+        status="resulted",
+        source_url="https://www.thedogs.com.au/racing/gunnedah/2026-05-27/2",
+        positions_by_box={2: 1, 6: 2, 8: 3, 4: 5, 7: 7},
+        raw_order=[2, 6, 8, 4, 7],
+    )
+
+    error = module.result_validation_error(candidate, result)
+
+    assert error == "result_boxes_not_in_participants:2,8"
+
+
+def test_result_validation_rejects_local_subset_without_first_place(tmp_path):
+    module = _load_ingest_module()
+    candidate = _candidate(module, tmp_path)
+    result = module.SourceResult(
+        source="thedogs_official",
+        status="resulted",
+        source_url="https://www.thedogs.com.au/racing/gunnedah/2026-05-27/2",
+        positions_by_box={6: 2, 4: 5, 7: 7},
+        raw_order=[6, 4, 7],
+    )
+
+    error = module.result_validation_error(candidate, result)
+
+    assert error == "missing_first_place_result"
+
+
 def _make_ingest_db(tmp_path):
     db_path = tmp_path / "results.sqlite"
     conn = sqlite3.connect(db_path)
@@ -109,7 +176,8 @@ def _make_ingest_db(tmp_path):
             field_size INTEGER,
             url TEXT,
             parse_confidence REAL,
-            data_quality_note TEXT
+            data_quality_note TEXT,
+            data_source TEXT
         )
         """
     )
@@ -181,6 +249,26 @@ def _candidate(module, tmp_path):
     )
 
 
+def _four_runner_csv() -> str:
+    return "\n".join(
+        [
+            "Dog Name",
+            "1. Alpha Runner",
+            "2. Bravo Runner",
+            "3. Charlie Runner",
+            "4. Delta Runner",
+        ]
+    )
+
+
+FOUR_PARTICIPANTS = [
+    {"box_number": 1, "dog_name": "Alpha Runner"},
+    {"box_number": 2, "dog_name": "Bravo Runner"},
+    {"box_number": 3, "dog_name": "Charlie Runner"},
+    {"box_number": 4, "dog_name": "Delta Runner"},
+]
+
+
 def test_thedogs_fetch_success_uses_resulted_status(tmp_path):
     module = _load_ingest_module()
     candidate = _candidate(module, tmp_path)
@@ -202,6 +290,237 @@ def test_thedogs_fetch_success_uses_resulted_status(tmp_path):
     assert result.source == "thedogs_official"
     assert result.status == "resulted"
     assert result.positions_by_box == {6: 1, 8: 2}
+
+
+def test_thedogs_fetch_discovers_public_result_route_before_selenium(tmp_path):
+    module = _load_ingest_module()
+    candidate = _candidate(module, tmp_path)
+
+    class Response:
+        def __init__(self, url, text, status_code=200):
+            self.url = url
+            self.text = text
+            self.status_code = status_code
+
+    class Session:
+        def __init__(self):
+            self.urls = []
+
+        def get(self, url, **_kwargs):
+            self.urls.append(url)
+            if url.endswith("/racing/warragul/2026-05-21?trial=false"):
+                return Response(
+                    url,
+                    """
+                    <a href="/racing/warragul/2026-05-21/4/barn-function-area?trial=false">R4</a>
+                    """,
+                )
+            return Response(
+                url,
+                """
+                <html><title>thedogs - Warragul 21 May 2026 Race 4</title>
+                <body>
+                <table>
+                <tr><td>1st</td><td>Foxtrot Runner</td></tr>
+                <tr><td>2nd</td><td>Hotel Runner</td></tr>
+                </table>
+                </body></html>
+                """,
+            )
+
+    class Driver:
+        def get(self, _url):
+            raise AssertionError("Selenium should not be used when public HTML succeeds")
+
+    session = Session()
+
+    result = module.TheDogsResultFetcher(
+        Driver(),
+        wait_seconds=0,
+        http_session=session,
+    ).fetch(candidate)
+
+    assert session.urls[0] == "https://www.thedogs.com.au/racing/warragul/2026-05-21?trial=false"
+    assert session.urls[1] == (
+        "https://www.thedogs.com.au/racing/warragul/2026-05-21/4/"
+        "barn-function-area?trial=false"
+    )
+    assert result.source == "thedogs_official"
+    assert result.status == "resulted"
+    assert result.source_url.endswith("/barn-function-area?trial=false")
+    assert result.positions_by_box == {6: 1, 8: 2}
+
+
+def test_thedogs_fetch_tries_public_result_url_after_forbidden_meeting_discovery(tmp_path):
+    module = _load_ingest_module()
+    candidate = _candidate(module, tmp_path)
+
+    class Response:
+        def __init__(self, url, text, status_code=200):
+            self.url = url
+            self.text = text
+            self.status_code = status_code
+
+    class Session:
+        def __init__(self):
+            self.urls = []
+
+        def get(self, url, **_kwargs):
+            self.urls.append(url)
+            if url.endswith("/racing/warragul/2026-05-21?trial=false"):
+                return Response(url, "403 Forbidden", status_code=403)
+            if url.endswith("/racing/warragul/2026-05-21/4/results?trial=false"):
+                return Response(
+                    url,
+                    """
+                    <html><body>
+                    Results
+                    1st
+                    6. Foxtrot Runner
+                    2nd
+                    8. Hotel Runner
+                    </body></html>
+                    """,
+                )
+            return Response(url, "", status_code=404)
+
+    class Driver:
+        def get(self, _url):
+            raise AssertionError("Selenium should not be used when public HTML succeeds")
+
+    session = Session()
+
+    result = module.TheDogsResultFetcher(
+        Driver(),
+        wait_seconds=0,
+        http_session=session,
+    ).fetch(candidate)
+
+    assert session.urls[:2] == [
+        "https://www.thedogs.com.au/racing/warragul/2026-05-21?trial=false",
+        "https://www.thedogs.com.au/racing/warragul/2026-05-21/4/results?trial=false",
+    ]
+    assert result.source == "thedogs_official"
+    assert result.status == "resulted"
+    assert result.positions_by_box == {6: 1, 8: 2}
+
+
+def test_thedogs_http_403_is_reported_without_selenium_fallback(tmp_path):
+    module = _load_ingest_module()
+    candidate = _candidate(module, tmp_path)
+
+    class Response:
+        url = "https://www.thedogs.com.au/racing/warragul/2026-05-21?trial=false"
+        text = "403 Forbidden"
+        status_code = 403
+
+    class Session:
+        def get(self, *_args, **_kwargs):
+            return Response()
+
+    class Driver:
+        def get(self, _url):
+            raise AssertionError("Blocked official access should remain auditable")
+
+    result = module.TheDogsResultFetcher(
+        Driver(),
+        wait_seconds=0,
+        http_session=Session(),
+    ).fetch(candidate)
+
+    assert result.source == "thedogs_official"
+    assert result.status == "error"
+    assert result.error == "thedogs_403_forbidden"
+    assert result.positions_by_box == {}
+
+
+def test_thedogs_http_404_is_reported_without_selenium_fallback(tmp_path):
+    module = _load_ingest_module()
+    candidate = _candidate(module, tmp_path)
+
+    class Response:
+        def __init__(self, url, text="", status_code=200):
+            self.url = url
+            self.text = text
+            self.status_code = status_code
+
+    class Session:
+        def __init__(self):
+            self.urls = []
+
+        def get(self, url, **_kwargs):
+            self.urls.append(url)
+            if url.endswith("/racing/warragul/2026-05-21?trial=false"):
+                return Response(url, "<html><body>No race links yet</body></html>")
+            return Response(url, "Not Found", status_code=404)
+
+    class Driver:
+        def get(self, _url):
+            raise AssertionError("HTTP 404 should remain the auditable official error")
+
+    session = Session()
+
+    result = module.TheDogsResultFetcher(
+        Driver(),
+        wait_seconds=0,
+        http_session=session,
+    ).fetch(candidate)
+
+    assert "https://www.thedogs.com.au/racing/warragul/2026-05-21/4/results?trial=false" in session.urls
+    assert result.source == "thedogs_official"
+    assert result.status == "error"
+    assert result.error == "thedogs_http_404"
+    assert result.positions_by_box == {}
+
+
+def test_thedogs_public_http_client_is_stateless(monkeypatch):
+    module = _load_ingest_module()
+    observed = {}
+
+    class Cookies:
+        def __init__(self):
+            self.cleared = False
+
+        def clear(self):
+            self.cleared = True
+
+    class Response:
+        status_code = 200
+        text = "ok"
+        url = "https://example.test/result"
+
+    class Session:
+        def __init__(self):
+            self.trust_env = True
+            self.cookies = Cookies()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def get(self, url, **kwargs):
+            observed["url"] = url
+            observed["trust_env"] = self.trust_env
+            observed["cookies_cleared"] = self.cookies.cleared
+            observed["request_cookies"] = kwargs.get("cookies")
+            return Response()
+
+    monkeypatch.setattr(module.requests, "Session", Session)
+
+    response = module._StatelessPublicHttpClient().get(
+        "https://www.thedogs.com.au/racing/warragul/2026-05-21?trial=false",
+        cookies={"session": "should-not-be-sent"},
+    )
+
+    assert response.status_code == 200
+    assert observed == {
+        "url": "https://www.thedogs.com.au/racing/warragul/2026-05-21?trial=false",
+        "trust_env": False,
+        "cookies_cleared": True,
+        "request_cookies": {},
+    }
 
 
 def test_sportsbet_fetcher_marks_top_four_as_partial(tmp_path):
@@ -228,6 +547,39 @@ def test_sportsbet_fetcher_marks_top_four_as_partial(tmp_path):
     assert result.source == "sportsbet_results_top4"
     assert result.status == "partial_sportsbet_results"
     assert result.positions_by_box == {6: 1, 8: 2, 3: 3, 4: 4}
+
+
+def test_result_validation_rejects_boxes_outside_frozen_participants(tmp_path):
+    module = _load_ingest_module()
+    candidate = _candidate(module, tmp_path)
+    result = module.SourceResult(
+        source="sportsbet_results_top4",
+        status="partial_sportsbet_results",
+        source_url="https://example.test/results",
+        positions_by_box={6: 1, 8: 2, 9: 3},
+        raw_order=[6, 8, 9],
+    )
+
+    error = module.result_validation_error(candidate, result)
+
+    assert error == "result_boxes_not_in_participants:9"
+
+
+def test_result_validation_uses_frozen_participant_reason_for_snapshot_candidates(tmp_path):
+    module = _load_ingest_module()
+    candidate = _candidate(module, tmp_path)
+    candidate.participant_source = "snapshot"
+    result = module.SourceResult(
+        source="sportsbet_results_top4",
+        status="partial_sportsbet_results",
+        source_url="https://example.test/results",
+        positions_by_box={6: 1, 8: 2, 9: 3},
+        raw_order=[6, 8, 9],
+    )
+
+    error = module.result_validation_error(candidate, result)
+
+    assert error == "result_boxes_not_in_frozen_participants:9"
 
 
 def test_write_sportsbet_fallback_records_partial_status_and_thedogs_error(tmp_path):
@@ -340,6 +692,37 @@ def test_write_official_result_uses_resulted_lifecycle_status(tmp_path):
     assert row == ("thedogs_official", "resulted", 1.0)
 
 
+def test_write_result_seeds_missing_metadata_for_snapshot_candidate(tmp_path):
+    module = _load_ingest_module()
+    _db_path, conn = _make_ingest_db(tmp_path)
+    candidate = _candidate(module, tmp_path)
+    candidate.participant_source = "snapshot"
+    official = module.SourceResult(
+        source="thedogs_official",
+        status="resulted",
+        source_url="https://www.thedogs.com.au/racing/warragul/2026-05-21/4",
+        positions_by_box={6: 1, 8: 2, 3: 3, 4: 4, 1: 5, 2: 6, 5: 7, 7: 8},
+        raw_order=[6, 8, 3, 4, 1, 2, 5, 7],
+    )
+
+    summary = module.write_result(conn, candidate, official, [official], dry_run=False)
+    conn.commit()
+
+    meta = conn.execute(
+        "SELECT race_id, results_status, data_source FROM race_metadata WHERE race_id = ?",
+        (candidate.race_id,),
+    ).fetchone()
+    labels = conn.execute(
+        "SELECT COUNT(*) FROM dog_race_data WHERE race_id = ?",
+        (candidate.race_id,),
+    ).fetchone()[0]
+    conn.close()
+
+    assert summary["metadata_seeded"] is True
+    assert meta == (candidate.race_id, "resulted", "frozen_snapshot")
+    assert labels == 8
+
+
 def test_dry_run_write_result_does_not_mutate_database(tmp_path):
     module = _load_ingest_module()
     _db_path, conn = _make_ingest_db(tmp_path)
@@ -400,7 +783,7 @@ def test_load_candidates_skips_today_race_before_jump(tmp_path):
     upcoming_dir = tmp_path / "upcoming"
     upcoming_dir.mkdir()
     candidate_csv = upcoming_dir / "Race 4 - WRGL - 2026-05-21.csv"
-    candidate_csv.write_text("Dog Name\n1. Alpha Runner\n", encoding="utf-8")
+    candidate_csv.write_text(_four_runner_csv(), encoding="utf-8")
     conn.execute(
         """
         INSERT INTO race_metadata
@@ -430,3 +813,336 @@ def test_load_candidates_skips_today_race_before_jump(tmp_path):
             "reason": "race_not_jumped:upcoming_not_jumped",
         }
     ]
+
+
+def test_load_candidates_keeps_race_metadata_candidates_working(tmp_path):
+    module = _load_ingest_module()
+    db_path, conn = _make_ingest_db(tmp_path)
+    upcoming_dir = tmp_path / "upcoming"
+    upcoming_dir.mkdir()
+    candidate_csv = upcoming_dir / "Race 4 - WRGL - 2026-05-21.csv"
+    candidate_csv.write_text(_four_runner_csv(), encoding="utf-8")
+    conn.execute(
+        """
+        INSERT INTO race_metadata
+            (race_id, venue, race_number, race_date, race_time, sportsbet_url, results_status)
+        VALUES (?, 'WRGL', 4, '2026-05-21', '16:30', ?, 'pending')
+        """,
+        (
+            "Race 4 - WRGL - 2026-05-21",
+            "https://www.sportsbet.com.au/betting/greyhound-racing/australia-nz/warragul/race-4",
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    candidates, skipped = module.load_candidates(
+        db_path,
+        "2026-05-21",
+        upcoming_dir,
+        [],
+        now=datetime(2026, 5, 21, 17, 37, tzinfo=ZoneInfo("Australia/Melbourne")),
+    )
+
+    assert skipped == []
+    assert len(candidates) == 1
+    assert candidates[0].race_id == "Race 4 - WRGL - 2026-05-21"
+    assert candidates[0].participants == FOUR_PARTICIPANTS
+
+
+def _write_snapshot(
+    snapshot_dir: Path,
+    *,
+    race_id: str = "Race 4 - WRGL - 2026-05-21",
+    venue: str = "WRGL",
+    race_number: int = 4,
+    race_date: str = "2026-05-21",
+    jump_time: str | None = "16:30",
+    prediction_timestamp: str = "2026-05-21T16:00:00",
+    source_file_path: str | None = None,
+    snapshot_state: str = "pre_jump_feature_freeze",
+    is_pre_jump_snapshot: bool = True,
+    extra_fields: dict | None = None,
+) -> Path:
+    path = snapshot_dir / race_date / venue / f"{prediction_timestamp.replace(':', '')}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    snapshot = {
+        "schema_version": "prediction_snapshot_v1",
+        "race_id": race_id,
+        "stable_race_key": f"{race_date}|{venue}|{race_number}",
+        "race_date": race_date,
+        "venue": venue,
+        "race_number": race_number,
+        "jump_time": jump_time,
+        "jump_datetime": f"{race_date}T{jump_time}:00+10:00" if jump_time else None,
+        "source_file_path": source_file_path,
+        "lifecycle_status": "upcoming_not_jumped",
+        "snapshot_state": snapshot_state,
+        "is_pre_jump_snapshot": is_pre_jump_snapshot,
+        "prediction_timestamp": prediction_timestamp,
+        "feature_freeze_timestamp": prediction_timestamp,
+        "model_version": "test-model",
+        "predictions": [
+            {
+                "dog_name": "Alpha Runner",
+                "box_number": 1,
+                "win_prob_norm": 0.4,
+                "predicted_rank": 1,
+            },
+            {
+                "dog_name": "Bravo Runner",
+                "box_number": 2,
+                "win_prob_norm": 0.3,
+                "predicted_rank": 2,
+            },
+            {
+                "dog_name": "Charlie Runner",
+                "box_number": 3,
+                "win_prob_norm": 0.2,
+                "predicted_rank": 3,
+            },
+            {
+                "dog_name": "Delta Runner",
+                "box_number": 4,
+                "win_prob_norm": 0.1,
+                "predicted_rank": 4,
+            },
+        ],
+    }
+    if extra_fields:
+        snapshot.update(extra_fields)
+    path.write_text(json.dumps(snapshot), encoding="utf-8")
+    return path
+
+
+def test_load_candidates_falls_back_to_frozen_snapshot_when_metadata_missing(tmp_path):
+    module = _load_ingest_module()
+    db_path, conn = _make_ingest_db(tmp_path)
+    conn.close()
+    upcoming_dir = tmp_path / "upcoming"
+    upcoming_dir.mkdir()
+    candidate_csv = upcoming_dir / "Race 4 - WRGL - 2026-05-21.csv"
+    candidate_csv.write_text(_four_runner_csv(), encoding="utf-8")
+    snapshot_dir = tmp_path / "snapshots"
+    _write_snapshot(snapshot_dir, source_file_path=str(candidate_csv))
+
+    candidates, skipped = module.load_candidates(
+        db_path,
+        "2026-05-21",
+        upcoming_dir,
+        [],
+        now=datetime(2026, 5, 21, 17, 37, tzinfo=ZoneInfo("Australia/Melbourne")),
+        snapshot_dir=snapshot_dir,
+    )
+
+    assert skipped == []
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate.race_id == "Race 4 - WRGL - 2026-05-21"
+    assert candidate.venue == "WRGL"
+    assert candidate.race_number == 4
+    assert candidate.race_date == "2026-05-21"
+    assert candidate.race_time == "16:30"
+    assert candidate.lifecycle_status == "jumped_pending_results"
+    assert candidate.participants == FOUR_PARTICIPANTS
+    assert candidate.participant_source == "snapshot"
+    assert candidate.sportsbet_slug == "warragul"
+
+
+def test_snapshot_fallback_rejects_current_csv_participant_mismatch(tmp_path):
+    module = _load_ingest_module()
+    db_path, conn = _make_ingest_db(tmp_path)
+    conn.close()
+    upcoming_dir = tmp_path / "upcoming"
+    upcoming_dir.mkdir()
+    candidate_csv = upcoming_dir / "Race 4 - WRGL - 2026-05-21.csv"
+    candidate_csv.write_text(
+        _four_runner_csv() + "\n5. Echo Runner\n",
+        encoding="utf-8",
+    )
+    snapshot_dir = tmp_path / "snapshots"
+    _write_snapshot(snapshot_dir, source_file_path=str(candidate_csv))
+
+    candidates, skipped = module.load_candidates(
+        db_path,
+        "2026-05-21",
+        upcoming_dir,
+        [],
+        now=datetime(2026, 5, 21, 17, 37, tzinfo=ZoneInfo("Australia/Melbourne")),
+        snapshot_dir=snapshot_dir,
+    )
+
+    assert candidates == []
+    assert skipped == [
+        {
+            "race_id": "Race 4 - WRGL - 2026-05-21",
+            "reason": "snapshot_csv_participant_mismatch",
+            "snapshot_boxes": [1, 2, 3, 4],
+            "csv_boxes": [1, 2, 3, 4, 5],
+        }
+    ]
+
+
+def test_snapshot_fallback_requires_result_free_pre_jump_snapshot(tmp_path):
+    module = _load_ingest_module()
+    db_path, conn = _make_ingest_db(tmp_path)
+    conn.close()
+    upcoming_dir = tmp_path / "upcoming"
+    upcoming_dir.mkdir()
+    candidate_csv = upcoming_dir / "Race 4 - WRGL - 2026-05-21.csv"
+    candidate_csv.write_text(_four_runner_csv(), encoding="utf-8")
+    snapshot_dir = tmp_path / "snapshots"
+    _write_snapshot(
+        snapshot_dir,
+        prediction_timestamp="2026-05-21T15:00:00",
+        source_file_path=str(candidate_csv),
+        is_pre_jump_snapshot=False,
+    )
+    _write_snapshot(
+        snapshot_dir,
+        prediction_timestamp="2026-05-21T16:00:00",
+        source_file_path=str(candidate_csv),
+        extra_fields={"winner_name": "Alpha Runner"},
+    )
+
+    candidates, skipped = module.load_candidates(
+        db_path,
+        "2026-05-21",
+        upcoming_dir,
+        [],
+        now=datetime(2026, 5, 21, 17, 37, tzinfo=ZoneInfo("Australia/Melbourne")),
+        snapshot_dir=snapshot_dir,
+    )
+
+    assert candidates == []
+    assert [item["reason"] for item in skipped] == [
+        "not_frozen_pre_jump_snapshot",
+        "snapshot_unreadable_or_not_result_free:ValueError",
+    ]
+
+
+def test_load_candidates_uses_latest_snapshot_for_jump_time_guard(tmp_path):
+    module = _load_ingest_module()
+    db_path, conn = _make_ingest_db(tmp_path)
+    conn.close()
+    upcoming_dir = tmp_path / "upcoming"
+    upcoming_dir.mkdir()
+    candidate_csv = upcoming_dir / "Race 4 - WRGL - 2026-05-21.csv"
+    candidate_csv.write_text(_four_runner_csv(), encoding="utf-8")
+    snapshot_dir = tmp_path / "snapshots"
+    _write_snapshot(
+        snapshot_dir,
+        jump_time=None,
+        prediction_timestamp="2026-05-21T15:00:00",
+        source_file_path=str(candidate_csv),
+    )
+    _write_snapshot(
+        snapshot_dir,
+        jump_time="18:30",
+        prediction_timestamp="2026-05-21T16:00:00",
+        source_file_path=str(candidate_csv),
+    )
+
+    candidates, skipped = module.load_candidates(
+        db_path,
+        "2026-05-21",
+        upcoming_dir,
+        [],
+        now=datetime(2026, 5, 21, 17, 37, tzinfo=ZoneInfo("Australia/Melbourne")),
+        snapshot_dir=snapshot_dir,
+    )
+
+    assert candidates == []
+    assert skipped == [
+        {
+            "race_id": "Race 4 - WRGL - 2026-05-21",
+            "reason": "race_not_jumped:upcoming_not_jumped",
+        }
+    ]
+
+
+def test_frozen_snapshot_rescues_incomplete_metadata_row_without_jump_time(tmp_path):
+    module = _load_ingest_module()
+    db_path, conn = _make_ingest_db(tmp_path)
+    conn.execute(
+        """
+        INSERT INTO race_metadata
+            (race_id, venue, race_number, race_date, race_time, sportsbet_url, results_status)
+        VALUES ('Race 4 - WRGL - 2026-05-21', 'WRGL', 4, '2026-05-21', NULL, NULL, 'pending')
+        """
+    )
+    conn.commit()
+    conn.close()
+    upcoming_dir = tmp_path / "upcoming"
+    upcoming_dir.mkdir()
+    candidate_csv = upcoming_dir / "Race 4 - WRGL - 2026-05-21.csv"
+    candidate_csv.write_text(_four_runner_csv(), encoding="utf-8")
+    snapshot_dir = tmp_path / "snapshots"
+    _write_snapshot(
+        snapshot_dir,
+        jump_time=None,
+        source_file_path=str(candidate_csv),
+    )
+
+    candidates, skipped = module.load_candidates(
+        db_path,
+        "2026-05-21",
+        upcoming_dir,
+        [],
+        now=datetime(2026, 5, 21, 17, 37, tzinfo=ZoneInfo("Australia/Melbourne")),
+        snapshot_dir=snapshot_dir,
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].race_id == "Race 4 - WRGL - 2026-05-21"
+    assert candidates[0].lifecycle_status == "jumped_pending_results"
+    assert skipped == [
+        {
+            "race_id": "Race 4 - WRGL - 2026-05-21",
+            "reason": "race_not_jumped:upcoming_not_jumped",
+        }
+    ]
+
+
+def test_frozen_snapshot_rescue_preserves_metadata_sportsbet_url(tmp_path):
+    module = _load_ingest_module()
+    db_path, conn = _make_ingest_db(tmp_path)
+    sportsbet_url = (
+        "https://www.sportsbet.com.au/greyhound-racing/australia-nz/"
+        "q1-lakeside/race-4-10524017"
+    )
+    conn.execute(
+        """
+        INSERT INTO race_metadata
+            (race_id, venue, race_number, race_date, race_time, sportsbet_url, results_status)
+        VALUES (?, 'LADBROKES-Q1-LAKESIDE', 4, '2026-05-21', NULL, ?, 'pending')
+        """,
+        ("Race 4 - LADBROKES-Q1-LAKESIDE - 2026-05-21", sportsbet_url),
+    )
+    conn.commit()
+    conn.close()
+    upcoming_dir = tmp_path / "upcoming"
+    upcoming_dir.mkdir()
+    candidate_csv = upcoming_dir / "Race 4 - LADBROKES-Q1-LAKESIDE - 2026-05-21.csv"
+    candidate_csv.write_text(_four_runner_csv(), encoding="utf-8")
+    snapshot_dir = tmp_path / "snapshots"
+    _write_snapshot(
+        snapshot_dir,
+        race_id="Race 4 - LADBROKES-Q1-LAKESIDE - 2026-05-21",
+        venue="LADBROKES-Q1-LAKESIDE",
+        source_file_path=str(candidate_csv),
+    )
+
+    candidates, _skipped = module.load_candidates(
+        db_path,
+        "2026-05-21",
+        upcoming_dir,
+        [],
+        now=datetime(2026, 5, 21, 17, 37, tzinfo=ZoneInfo("Australia/Melbourne")),
+        snapshot_dir=snapshot_dir,
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].participant_source == "snapshot"
+    assert candidates[0].sportsbet_url == sportsbet_url
+    assert candidates[0].sportsbet_slug == "q1-lakeside"

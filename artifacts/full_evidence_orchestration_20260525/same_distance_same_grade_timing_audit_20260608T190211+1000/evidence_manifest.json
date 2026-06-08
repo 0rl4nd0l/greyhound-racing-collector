@@ -1,0 +1,182 @@
+{
+  "db_hash_unchanged": true,
+  "files": {
+    "SUMMARY.md": {
+      "bytes": 1120,
+      "sha256": "5fa78740a9e9f777674194a2777536b2a3e8dc6354fb39132352b3979d187096"
+    },
+    "affected_feature_population.json": {
+      "bytes": 7581,
+      "sha256": "63b857f93d0ce037abafec83a52eb24d8d19bc734112c88666e268292ffb32c5"
+    },
+    "final_status.txt": {
+      "bytes": 38,
+      "sha256": "f4d14533092e4e4cd3b7119b3d9fd3410155785651adc97c94b8c494ca1886f2"
+    },
+    "missing_train_row_classification.json": {
+      "bytes": 1695608,
+      "sha256": "85c16cd71e3435386131d4c73b5008c23ad0f05f7cc6466030074334edc703c9"
+    },
+    "recommended_next_action.md": {
+      "bytes": 748,
+      "sha256": "df47696335ae80d0ca890280ba1e9e14cc3b89385624d6c465a9af22c4b4d549"
+    },
+    "repair_feasibility_verdict.json": {
+      "bytes": 1372,
+      "sha256": "bb9de51faa5695e9b3df39e6bd3e02ad0cab0b7d97324032f14a18b5aabc0f84"
+    },
+    "same_distance_same_grade_recoverability.json": {
+      "bytes": 799714,
+      "sha256": "d7da97dc7cd8dcd8d1b292a81d6e018f5953fdc54626c155b3a88e46659d3183"
+    },
+    "target_metadata_recovery_audit.json": {
+      "bytes": 737536,
+      "sha256": "260ea53dc2739b3c3c446149321a9df01f5b2152256513ee16808ac4692e98da"
+    },
+    "unsafe_source_rejections.json": {
+      "bytes": 34671,
+      "sha256": "67d7a867f852c7d07a430168fbab522e60747540f0ccd040d2e1577252514284"
+    },
+    "verification_results.txt": {
+      "bytes": 986,
+      "sha256": "4b78bb1d40fe9883ec346a0648deaa46e2cc08a2d5bab837397c1b6b15b4d443"
+    }
+  },
+  "final_status": "AUDIT_COMPLETE_NEEDS_MORE_SOURCE_DATA",
+  "forbidden_actions": {
+    "betting_or_ev_action": false,
+    "db_writes": false,
+    "label_writes": false,
+    "manifest_rewrite": false,
+    "production_pointer_mutation": false,
+    "promotion": false,
+    "registry_mutation": false,
+    "snapshot_rewrite": false,
+    "source_code_mutation": false,
+    "tgr_enablement": false,
+    "training": false
+  },
+  "generated_at": "2026-06-08T09:02:15+00:00",
+  "git_branch": "feature/dog-odds-snapshot-readiness",
+  "git_head": "d501e46cd963",
+  "output_dir": "artifacts/full_evidence_orchestration_20260525/same_distance_same_grade_timing_audit_20260608T190211+1000",
+  "protected_paths_after": {
+    "artifacts/prediction_snapshots/manifest.jsonl": {
+      "bytes": 73987,
+      "exists": true,
+      "sha256": "f94d2b71516ec1836252fe16059fd2c24532d9ebdff242fd48b3acc031d23baf",
+      "type": "file"
+    },
+    "docs/model_contracts/v4_feature_contract.json": {
+      "bytes": 2270,
+      "exists": true,
+      "sha256": "29c265c571f6877c9df7f0d52a1f6f07643652feeede4cba74f6561b948a941a",
+      "type": "file"
+    },
+    "greyhound_racing_data.db": {
+      "bytes": 54439936,
+      "exists": true,
+      "sha256": "d2d9e8e482bed24c821140ebca02a9a14b18657a351da86a1e6cbdf7a7cd6e0b",
+      "type": "file"
+    },
+    "greyhound_racing_data_writable.db": {
+      "bytes": 51707904,
+      "exists": true,
+      "sha256": "61b9ee76a52068435ef3c96528bbdbd9d4498180f6b055ab0e828a7f3559436e",
+      "type": "file"
+    },
+    "model_registry/best_metadata.json": {
+      "bytes": 2731,
+      "exists": true,
+      "sha256": "21da78c9ced19005897164d79c284a340df20ea3a5fe2cd236929fe783d4b34f",
+      "type": "file"
+    },
+    "model_registry/current_production.json": {
+      "exists": false,
+      "type": "missing"
+    },
+    "models": {
+      "exists": true,
+      "file_count": 21,
+      "listing_sha256": "0f8beed235cf01e19df3646ae079ef96a9e89866f3ef23b2b346bacd7575b804",
+      "total_bytes": 281147738,
+      "type": "directory"
+    },
+    "predictions": {
+      "exists": true,
+      "file_count": 5065,
+      "listing_sha256": "568efda2d17bac7b4844e9fa52c1b8e646503c9f048c7689136a09d974caa687",
+      "total_bytes": 64139351,
+      "type": "directory"
+    },
+    "processed_manifest.json": {
+      "exists": false,
+      "type": "missing"
+    }
+  },
+  "protected_paths_before": {
+    "artifacts/prediction_snapshots/manifest.jsonl": {
+      "bytes": 73987,
+      "exists": true,
+      "sha256": "f94d2b71516ec1836252fe16059fd2c24532d9ebdff242fd48b3acc031d23baf",
+      "type": "file"
+    },
+    "docs/model_contracts/v4_feature_contract.json": {
+      "bytes": 2270,
+      "exists": true,
+      "sha256": "29c265c571f6877c9df7f0d52a1f6f07643652feeede4cba74f6561b948a941a",
+      "type": "file"
+    },
+    "greyhound_racing_data.db": {
+      "bytes": 54439936,
+      "exists": true,
+      "sha256": "d2d9e8e482bed24c821140ebca02a9a14b18657a351da86a1e6cbdf7a7cd6e0b",
+      "type": "file"
+    },
+    "greyhound_racing_data_writable.db": {
+      "bytes": 51707904,
+      "exists": true,
+      "sha256": "61b9ee76a52068435ef3c96528bbdbd9d4498180f6b055ab0e828a7f3559436e",
+      "type": "file"
+    },
+    "model_registry/best_metadata.json": {
+      "bytes": 2731,
+      "exists": true,
+      "sha256": "21da78c9ced19005897164d79c284a340df20ea3a5fe2cd236929fe783d4b34f",
+      "type": "file"
+    },
+    "model_registry/current_production.json": {
+      "exists": false,
+      "type": "missing"
+    },
+    "models": {
+      "exists": true,
+      "file_count": 21,
+      "listing_sha256": "0f8beed235cf01e19df3646ae079ef96a9e89866f3ef23b2b346bacd7575b804",
+      "total_bytes": 281147738,
+      "type": "directory"
+    },
+    "predictions": {
+      "exists": true,
+      "file_count": 5065,
+      "listing_sha256": "568efda2d17bac7b4844e9fa52c1b8e646503c9f048c7689136a09d974caa687",
+      "total_bytes": 64139351,
+      "type": "directory"
+    },
+    "processed_manifest.json": {
+      "exists": false,
+      "type": "missing"
+    }
+  },
+  "protected_paths_unchanged": true,
+  "schema_version": "same_distance_same_grade_timing_audit_manifest_v1",
+  "source_paths": {
+    "clean_dataset": "artifacts/full_evidence_orchestration_20260525/isolated_challenger_box_bias_study_20260602/clean_official_dataset.jsonl",
+    "db": "greyhound_racing_data.db",
+    "expanded_pool_context": "artifacts/full_evidence_orchestration_20260525/expanded_pool_validation_and_tournament_20260607T161542+1000",
+    "latest_forward_aggregate": "artifacts/full_evidence_orchestration_20260525/forward_shadow_result_aggregate_20260608T184904+1000/forward_shadow_result_aggregate_report.json",
+    "latest_forward_status": "artifacts/full_evidence_orchestration_20260525/forward_shadow_status_20260608T184915+1000/forward_shadow_status_report.json",
+    "repaired_packet": "artifacts/full_evidence_orchestration_20260525/bounded_target_grade_repair_20260603/repaired_pre_race_history_feature_packet.csv",
+    "schema": "outputs/milestone_6a_non_tgr_challenger_training_design/repaired_non_tgr_schema.json"
+  }
+}

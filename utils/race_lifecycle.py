@@ -9,6 +9,7 @@ target-race results.
 from __future__ import annotations
 
 import csv
+import json
 import os
 import re
 import sqlite3
@@ -259,6 +260,54 @@ def _extract_target_metadata_from_rows(rows: list[Mapping[str, Any]]) -> dict[st
     return {}
 
 
+def _extract_target_metadata_from_sidecar(
+    csv_path: str | os.PathLike[str],
+) -> dict[str, Any]:
+    """Read target-race identity/timing from a CSV provenance sidecar."""
+
+    sidecar = Path(f"{csv_path}.metadata.json")
+    if not sidecar.exists():
+        return {}
+    try:
+        payload = json.loads(sidecar.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    if not isinstance(payload, Mapping):
+        return {}
+
+    race_info = payload.get("race_info")
+    if not isinstance(race_info, Mapping):
+        race_info = {}
+
+    def first(*keys: str) -> Any:
+        for source in (race_info, payload):
+            for key in keys:
+                value = source.get(key)
+                if value not in (None, ""):
+                    return value
+        return None
+
+    race_day = _parse_date(first("race_date", "date", "meeting_date"))
+    venue = _clean_venue(first("venue", "venue_code", "track"))
+    race_number = _clean_race_number(first("race_number", "race_no", "number"))
+    jump = _parse_time(
+        first("jump_time", "race_time", "start_time", "scheduled_time")
+    )
+
+    data: dict[str, Any] = {}
+    if race_day:
+        data["race_date"] = race_day.isoformat()
+    if venue:
+        data["venue"] = venue
+    if race_number is not None:
+        data["race_number"] = race_number
+    if jump:
+        data["jump_time"] = jump.strftime("%H:%M")
+    if data:
+        data["metadata_source"] = "csv_sidecar"
+    return data
+
+
 RESULT_STATUS_KEYS = {"result_status", "results_status", "official_result_status"}
 RESULT_COMPLETE_VALUES = {"complete", "completed", "final", "resulted", "official", "closed"}
 WINNER_KEYS = {"winner_name", "winner", "actual_winner", "official_winner"}
@@ -465,9 +514,10 @@ def classify_race_file(
     filename_meta = extract_target_metadata_from_filename(source_path)
     headers, rows = _read_sample_rows(source_path)
     row_meta = _extract_target_metadata_from_rows(rows)
+    sidecar_meta = _extract_target_metadata_from_sidecar(source_path)
 
     # Prefer filename target identity over embedded CSV DATE/TRACK history.
-    meta = {**row_meta, **filename_meta}
+    meta = {**row_meta, **sidecar_meta, **filename_meta}
     race_day = _parse_date(meta.get("race_date"))
     venue = _clean_venue(meta.get("venue"))
     race_number = _clean_race_number(meta.get("race_number"))

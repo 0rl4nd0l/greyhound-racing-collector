@@ -1,0 +1,425 @@
+{
+  "data_quality_flags": [],
+  "expected_runner_count": 7,
+  "feature_freeze_timestamp": "2026-05-21T00:02:00+10:00",
+  "frozen_participants": [
+    {
+      "box_number": 1,
+      "dog_name": "Mistakenly"
+    },
+    {
+      "box_number": 2,
+      "dog_name": "Heaven On Earth"
+    },
+    {
+      "box_number": 3,
+      "dog_name": "Indiana Icon"
+    },
+    {
+      "box_number": 4,
+      "dog_name": "Scott Matrix"
+    },
+    {
+      "box_number": 6,
+      "dog_name": "Mob Queen"
+    },
+    {
+      "box_number": 7,
+      "dog_name": "Whodat Mustang"
+    },
+    {
+      "box_number": 8,
+      "dog_name": "Chic In Paris"
+    }
+  ],
+  "is_pre_jump_snapshot": true,
+  "jump_datetime": null,
+  "jump_time": null,
+  "lifecycle_status": "upcoming_not_jumped",
+  "lifecycle_status_reason": "historical_replay_pre_result_feature_freeze_no_result_attached",
+  "model_version": "V4_ExtraTrees_ExtraTreesClassifier_Calibrated_20260329_212033",
+  "prediction_timestamp": "2026-05-21T00:02:00+10:00",
+  "predictions": [
+    {
+      "box_number": 1,
+      "confidence_score": 0.3474,
+      "data_quality_flags": [
+        "single_model_no_ensemble_agreement",
+        "missing_live_odds"
+      ],
+      "data_shape": {
+        "csv_blank_history_rows": 0,
+        "csv_historical_races": 3,
+        "csv_historical_sources": "forward_filled_prefixed_row,prefixed_form_row",
+        "csv_prefixed_history_rows": 1,
+        "distance_source": "default_missing_target",
+        "grade_source": "default_missing_target",
+        "parser_context": "embedded_form_history",
+        "target_field_warning": "embedded_form_history_detected;historical_form_distance_mode_available:390;grade_defaulted_no_target_column"
+      },
+      "dog_name": "Mistakenly",
+      "ev_win": null,
+      "odds": null,
+      "odds_match_confidence": null,
+      "odds_snapshot": {},
+      "odds_source": null,
+      "odds_timestamp": null,
+      "predicted_rank": 1,
+      "win_prob_norm": 0.281,
+      "win_prob_raw": 0.3052150383337948
+    },
+    {
+      "box_number": 2,
+      "confidence_score": 0.4305,
+      "data_quality_flags": [
+        "single_model_no_ensemble_agreement",
+        "missing_live_odds"
+      ],
+      "data_shape": {
+        "csv_blank_history_rows": 0,
+        "csv_historical_races": 2,
+        "csv_historical_sources": "forward_filled_prefixed_row,prefixed_form_row",
+        "csv_prefixed_history_rows": 1,
+        "distance_source": "default_missing_target",
+        "grade_source": "default_missing_target",
+        "parser_context": "embedded_form_history",
+        "target_field_warning": "embedded_form_history_detected;historical_form_distance_mode_available:390;grade_defaulted_no_target_column"
+      },
+      "dog_name": "Heaven On Earth",
+      "ev_win": null,
+      "odds": null,
+      "odds_match_confidence": null,
+      "odds_snapshot": {},
+      "odds_source": null,
+      "odds_timestamp": null,
+      "predicted_rank": 2,
+      "win_prob_norm": 0.1279,
+      "win_prob_raw": 0.13897280092619285
+    },
+    {
+      "box_number": 4,
+      "confidence_score": 0.4305,
+      "data_quality_flags": [
+        "single_model_no_ensemble_agreement",
+        "missing_live_odds"
+      ],
+      "data_shape": {
+        "csv_blank_history_rows": 0,
+        "csv_historical_races": 2,
+        "csv_historical_sources": "forward_filled_prefixed_row,prefixed_form_row",
+        "csv_prefixed_history_rows": 1,
+        "distance_source": "default_missing_target",
+        "grade_source": "default_missing_target",
+        "parser_context": "embedded_form_history",
+        "target_field_warning": "embedded_form_history_detected;historical_form_distance_mode_available:390;grade_defaulted_no_target_column"
+      },
+      "dog_name": "Scott Matrix",
+      "ev_win": null,
+      "odds": null,
+      "odds_match_confidence": null,
+      "odds_snapshot": {},
+      "odds_source": null,
+      "odds_timestamp": null,
+      "predicted_rank": 3,
+      "win_prob_norm": 0.1279,
+      "win_prob_raw": 0.13897280092619285
+    },
+    {
+      "box_number": 3,
+      "confidence_score": 0.4306,
+      "data_quality_flags": [
+        "single_model_no_ensemble_agreement",
+        "missing_live_odds"
+      ],
+      "data_shape": {
+        "csv_blank_history_rows": 0,
+        "csv_historical_races": 5,
+        "csv_historical_sources": "forward_filled_prefixed_row,prefixed_form_row",
+        "csv_prefixed_history_rows": 1,
+        "distance_source": "default_missing_target",
+        "grade_source": "default_missing_target",
+        "parser_context": "embedded_form_history",
+        "target_field_warning": "embedded_form_history_detected;historical_form_distance_mode_available:390;grade_defaulted_no_target_column"
+      },
+      "dog_name": "Indiana Icon",
+      "ev_win": null,
+      "odds": null,
+      "odds_match_confidence": null,
+      "odds_snapshot": {},
+      "odds_source": null,
+      "odds_timestamp": null,
+      "predicted_rank": 4,
+      "win_prob_norm": 0.1278,
+      "win_prob_raw": 0.13882758129466913
+    },
+    {
+      "box_number": 7,
+      "confidence_score": 0.4306,
+      "data_quality_flags": [
+        "single_model_no_ensemble_agreement",
+        "missing_live_odds"
+      ],
+      "data_shape": {
+        "csv_blank_history_rows": 0,
+        "csv_historical_races": 5,
+        "csv_historical_sources": "forward_filled_prefixed_row,prefixed_form_row",
+        "csv_prefixed_history_rows": 1,
+        "distance_source": "default_missing_target",
+        "grade_source": "default_missing_target",
+        "parser_context": "embedded_form_history",
+        "target_field_warning": "embedded_form_history_detected;historical_form_distance_mode_available:390;grade_defaulted_no_target_column"
+      },
+      "dog_name": "Whodat Mustang",
+      "ev_win": null,
+      "odds": null,
+      "odds_match_confidence": null,
+      "odds_snapshot": {},
+      "odds_source": null,
+      "odds_timestamp": null,
+      "predicted_rank": 5,
+      "win_prob_norm": 0.1278,
+      "win_prob_raw": 0.13882758129466913
+    },
+    {
+      "box_number": 8,
+      "confidence_score": 0.4436,
+      "data_quality_flags": [
+        "single_model_no_ensemble_agreement",
+        "missing_live_odds"
+      ],
+      "data_shape": {
+        "csv_blank_history_rows": 0,
+        "csv_historical_races": 2,
+        "csv_historical_sources": "forward_filled_prefixed_row,prefixed_form_row",
+        "csv_prefixed_history_rows": 1,
+        "distance_source": "default_missing_target",
+        "grade_source": "default_missing_target",
+        "parser_context": "embedded_form_history",
+        "target_field_warning": "embedded_form_history_detected;historical_form_distance_mode_available:390;grade_defaulted_no_target_column"
+      },
+      "dog_name": "Chic In Paris",
+      "ev_win": null,
+      "odds": null,
+      "odds_match_confidence": null,
+      "odds_snapshot": {},
+      "odds_source": null,
+      "odds_timestamp": null,
+      "predicted_rank": 6,
+      "win_prob_norm": 0.1038,
+      "win_prob_raw": 0.11270739152134282
+    },
+    {
+      "box_number": 6,
+      "confidence_score": 0.4436,
+      "data_quality_flags": [
+        "single_model_no_ensemble_agreement",
+        "missing_live_odds"
+      ],
+      "data_shape": {
+        "csv_blank_history_rows": 0,
+        "csv_historical_races": 5,
+        "csv_historical_sources": "forward_filled_prefixed_row,prefixed_form_row",
+        "csv_prefixed_history_rows": 1,
+        "distance_source": "default_missing_target",
+        "grade_source": "default_missing_target",
+        "parser_context": "embedded_form_history",
+        "target_field_warning": "embedded_form_history_detected;historical_form_distance_mode_available:390;grade_defaulted_no_target_column"
+      },
+      "dog_name": "Mob Queen",
+      "ev_win": null,
+      "odds": null,
+      "odds_match_confidence": null,
+      "odds_snapshot": {},
+      "odds_source": null,
+      "odds_timestamp": null,
+      "predicted_rank": 7,
+      "win_prob_norm": 0.1038,
+      "win_prob_raw": 0.11270739152134282
+    }
+  ],
+  "race_date": "2026-05-21",
+  "race_id": "Race 2 - SHEP - 2026-05-21",
+  "race_number": 2,
+  "runner_set_complete": true,
+  "runner_set_status": "COMPLETE",
+  "schema_version": "prediction_snapshot_v1",
+  "snapshot_provenance": {
+    "builder": "accuracy_program.snapshots.build_prediction_snapshot",
+    "source_file_path": "/home/l4nd0/greyhound_racing_collector/artifacts/historical_replay_20260525_shepparton_expanded/upcoming/Race 2 - SHEP - 2026-05-21.csv"
+  },
+  "snapshot_readiness": {
+    "counts": {
+      "missing_live_odds_count": 7,
+      "missing_odds_timestamp_count": 0,
+      "odds_not_captured_before_jump_count": 0,
+      "odds_not_captured_before_prediction_count": 0,
+      "priced_runner_count": 0,
+      "runner_count": 7,
+      "stale_live_odds_count": 0
+    },
+    "prediction_runner_match": {
+      "prediction_boxes": [
+        1,
+        2,
+        3,
+        4,
+        6,
+        7,
+        8
+      ],
+      "prediction_runner_count": 7,
+      "reasons": [],
+      "schema_version": "prediction_runner_match_v1",
+      "source_boxes": [
+        1,
+        2,
+        3,
+        4,
+        6,
+        7,
+        8
+      ],
+      "source_runner_count": 7,
+      "status": "MATCHED"
+    },
+    "requirements": {
+      "feature_freeze_timestamp_present": true,
+      "missing_live_odds_explicit": true,
+      "pre_jump_lifecycle": true,
+      "prediction_timestamp_present": true,
+      "predictions_match_source_runner_set": true,
+      "priced_runners_captured_before_jump": true,
+      "priced_runners_captured_before_prediction": true,
+      "priced_runners_have_odds_timestamps": true,
+      "result_free": true,
+      "runner_rows_have_identity": true,
+      "runner_rows_have_probabilities": true,
+      "runner_rows_present": true,
+      "source_runner_set_complete": true
+    },
+    "schema_version": "snapshot_readiness_v1",
+    "source_runner_completeness": {
+      "boxes": [
+        1,
+        2,
+        3,
+        4,
+        6,
+        7,
+        8
+      ],
+      "dog_names": [
+        "Mistakenly",
+        "Heaven On Earth",
+        "Indiana Icon",
+        "Scott Matrix",
+        "Mob Queen",
+        "Whodat Mustang",
+        "Chic In Paris"
+      ],
+      "duplicate_boxes": [],
+      "duplicate_dog_names": [],
+      "invalid_runner_rows": 0,
+      "min_complete_runners": 4,
+      "participants": [
+        {
+          "box_number": 1,
+          "dog_name": "Mistakenly"
+        },
+        {
+          "box_number": 2,
+          "dog_name": "Heaven On Earth"
+        },
+        {
+          "box_number": 3,
+          "dog_name": "Indiana Icon"
+        },
+        {
+          "box_number": 4,
+          "dog_name": "Scott Matrix"
+        },
+        {
+          "box_number": 6,
+          "dog_name": "Mob Queen"
+        },
+        {
+          "box_number": 7,
+          "dog_name": "Whodat Mustang"
+        },
+        {
+          "box_number": 8,
+          "dog_name": "Chic In Paris"
+        }
+      ],
+      "reasons": [],
+      "runner_count": 7,
+      "schema_version": "runner_completeness_v1",
+      "source": "/home/l4nd0/greyhound_racing_collector/artifacts/historical_replay_20260525_shepparton_expanded/upcoming/Race 2 - SHEP - 2026-05-21.csv",
+      "status": "COMPLETE"
+    },
+    "status": "READY"
+  },
+  "snapshot_state": "pre_jump_feature_freeze",
+  "source_file_path": "/home/l4nd0/greyhound_racing_collector/artifacts/historical_replay_20260525_shepparton_expanded/upcoming/Race 2 - SHEP - 2026-05-21.csv",
+  "source_runner_completeness": {
+    "boxes": [
+      1,
+      2,
+      3,
+      4,
+      6,
+      7,
+      8
+    ],
+    "dog_names": [
+      "Mistakenly",
+      "Heaven On Earth",
+      "Indiana Icon",
+      "Scott Matrix",
+      "Mob Queen",
+      "Whodat Mustang",
+      "Chic In Paris"
+    ],
+    "duplicate_boxes": [],
+    "duplicate_dog_names": [],
+    "invalid_runner_rows": 0,
+    "min_complete_runners": 4,
+    "participants": [
+      {
+        "box_number": 1,
+        "dog_name": "Mistakenly"
+      },
+      {
+        "box_number": 2,
+        "dog_name": "Heaven On Earth"
+      },
+      {
+        "box_number": 3,
+        "dog_name": "Indiana Icon"
+      },
+      {
+        "box_number": 4,
+        "dog_name": "Scott Matrix"
+      },
+      {
+        "box_number": 6,
+        "dog_name": "Mob Queen"
+      },
+      {
+        "box_number": 7,
+        "dog_name": "Whodat Mustang"
+      },
+      {
+        "box_number": 8,
+        "dog_name": "Chic In Paris"
+      }
+    ],
+    "reasons": [],
+    "runner_count": 7,
+    "schema_version": "runner_completeness_v1",
+    "source": "/home/l4nd0/greyhound_racing_collector/artifacts/historical_replay_20260525_shepparton_expanded/upcoming/Race 2 - SHEP - 2026-05-21.csv",
+    "status": "COMPLETE"
+  },
+  "stable_race_key": "2026-05-21|SHEP|2",
+  "venue": "SHEP"
+}

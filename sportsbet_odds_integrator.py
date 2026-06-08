@@ -25,9 +25,11 @@ from typing import Any, Dict, List, Optional, Tuple
 import requests
 
 from utils.http_client import get_shared_session
+
 try:
     from config.venue_mapping import normalize_venue
 except Exception:
+
     def normalize_venue(v: str) -> str:
         return (v or "").strip().upper()
 
@@ -50,9 +52,135 @@ RACE_METADATA_SAFE_UPSERT_FIELDS = {
 }
 
 
+LIVE_ODDS_CAPTURE_COLUMNS = {
+    "source_url": "TEXT",
+    "capture_timestamp": "TEXT",
+    "capture_mode": "TEXT",
+    "odds_level": "TEXT",
+    "sportsbet_box_source": "TEXT",
+    "sportsbet_list_position": "INTEGER",
+    "sportsbet_raw_runner_text": "TEXT",
+}
+
+
+POST_RACE_SOURCE_URL_MARKERS = ("dividend", "payout", "result")
+SPORTSBET_LIST_POSITION_BOX_SOURCE = "list_position_fallback"
+SPORTSBET_RUNNER_TEXT_BOX_SOURCE = "runner_text"
+SPORTSBET_EXPLICIT_DOM_BOX_SOURCE = "explicit_dom"
+
+
 def _race_metadata_columns(cursor: sqlite3.Cursor) -> set[str]:
     cursor.execute("PRAGMA table_info(race_metadata)")
     return {str(row[1]) for row in cursor.fetchall()}
+
+
+def _table_columns(cursor: sqlite3.Cursor, table: str) -> set[str]:
+    cursor.execute(f"PRAGMA table_info({table})")
+    return {str(row[1]) for row in cursor.fetchall()}
+
+
+def _ensure_column(
+    cursor: sqlite3.Cursor,
+    table: str,
+    column: str,
+    definition: str,
+) -> None:
+    if column not in _table_columns(cursor, table):
+        cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
+def _source_url_is_post_race(raw_url: Any) -> bool:
+    url = str(raw_url or "").strip().lower()
+    if not url:
+        return False
+    if any(marker in url for marker in POST_RACE_SOURCE_URL_MARKERS):
+        return True
+    try:
+        parsed = urlparse(url)
+        text = " ".join(part for part in (parsed.path, parsed.query, parsed.fragment) if part)
+    except Exception:
+        text = url
+    tokens = [token for token in re.split(r"[^a-z0-9]+", text.lower()) if token]
+    token_set = set(tokens)
+    return (
+        "sp" in token_set
+        or "startingprice" in token_set
+        or ("starting" in token_set and "price" in token_set)
+    )
+
+
+def _safe_runner_box(value: Any) -> Optional[int]:
+    try:
+        parsed = int(str(value).strip())
+    except Exception:
+        return None
+    return parsed if 1 <= parsed <= 10 else None
+
+
+def parse_sportsbet_runner_box_from_text(raw_text: Any) -> Optional[int]:
+    """Extract explicit Sportsbet runner/box number from runner text."""
+
+    text = str(raw_text or "").replace("\xa0", " ")
+    if not text.strip():
+        return None
+
+    lines = [line.strip() for line in re.split(r"[\r\n]+", text) if line.strip()]
+    for line in lines:
+        # Sportsbet race cards render greyhounds like "6. Memories" and "(6)".
+        for pattern in (
+            r"^\s*(\d{1,2})\s*[.)]\s+[A-Za-z][A-Za-z' -]+(?:\s*\(\d{1,2}\))?\s*$",
+            r"^\s*[A-Za-z][A-Za-z' -]+\s*\((\d{1,2})\)\s*$",
+        ):
+            match = re.match(pattern, line)
+            if match:
+                box = _safe_runner_box(match.group(1))
+                if box is not None:
+                    return box
+
+    attr_match = re.search(
+        r"\b(?:box|runner|rug|selection|number|runnerNumber|selectionNumber|competitorNumber)\b"
+        r"[^0-9]{0,20}(\d{1,2})\b",
+        text,
+        re.IGNORECASE,
+    )
+    if attr_match:
+        return _safe_runner_box(attr_match.group(1))
+    return None
+
+
+def sportsbet_runner_box_metadata(
+    *,
+    list_position: int,
+    runner_text: Any = "",
+    explicit_metadata: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Return parsed box metadata without treating list position as authoritative."""
+
+    for value in (explicit_metadata or {}).values():
+        box = parse_sportsbet_runner_box_from_text(value)
+        if box is not None:
+            return {
+                "box_number": box,
+                "sportsbet_box_source": SPORTSBET_EXPLICIT_DOM_BOX_SOURCE,
+                "sportsbet_list_position": list_position,
+            }
+
+    box = parse_sportsbet_runner_box_from_text(runner_text)
+    raw_text = str(runner_text or "").strip()
+    if box is not None:
+        return {
+            "box_number": box,
+            "sportsbet_box_source": SPORTSBET_RUNNER_TEXT_BOX_SOURCE,
+            "sportsbet_list_position": list_position,
+            "sportsbet_raw_runner_text": raw_text[:500] if raw_text else None,
+        }
+
+    return {
+        "box_number": list_position,
+        "sportsbet_box_source": SPORTSBET_LIST_POSITION_BOX_SOURCE,
+        "sportsbet_list_position": list_position,
+        "sportsbet_raw_runner_text": raw_text[:500] if raw_text else None,
+    }
 
 
 def _metadata_value_is_present(column: str, value: Any) -> bool:
@@ -115,6 +243,7 @@ def safe_upsert_race_metadata(
     )
     return "inserted"
 
+
 # IMPORTANT: Avoid importing Playwright at module import time to satisfy module_guard
 # We will lazily import it only within methods that need it.
 sync_playwright = None  # set at runtime on-demand
@@ -136,14 +265,17 @@ try:
 except Exception:  # pragma: no cover
     schedule = None
 
+
 # Avoid importing Selenium at module import time to satisfy module_guard.
 # Provide minimal placeholders; real classes are imported lazily in _selenium_primitives().
 class _TimeoutException(Exception):
     pass
 
+
 class _By:
     CSS_SELECTOR = "css selector"
     XPATH = "xpath"
+
 
 By = _By
 TimeoutException = _TimeoutException
@@ -246,7 +378,9 @@ class SportsbetOddsIntegrator:
                     race_info = self.get_race_odds_from_page(race_info)
                 races_with_odds.append(race_info)
             except Exception as exc:
-                print(f"⚠️  Error extracting DOM fallback odds for {race_info.get('race_id')}: {exc}")
+                print(
+                    f"⚠️  Error extracting DOM fallback odds for {race_info.get('race_id')}: {exc}"
+                )
                 races_with_odds.append(race_info)
         return races_with_odds
 
@@ -377,6 +511,12 @@ class SportsbetOddsIntegrator:
         except sqlite3.OperationalError:
             # Column may already exist
             pass
+        for column, definition in LIVE_ODDS_CAPTURE_COLUMNS.items():
+            try:
+                _ensure_column(cursor, "live_odds", column, definition)
+            except sqlite3.OperationalError:
+                # Column may already exist under concurrent setup.
+                pass
 
         conn.commit()
         conn.close()
@@ -416,10 +556,7 @@ class SportsbetOddsIntegrator:
         Lazily imports Playwright to avoid loading it during app startup.
         """
         # Optional: allow disabling any browser automation in prediction-only mode
-        if (
-            os.environ.get("PREDICTION_IMPORT_MODE", "prediction_only")
-            == "prediction_only"
-        ):
+        if os.environ.get("PREDICTION_IMPORT_MODE", "prediction_only") == "prediction_only":
             raise RuntimeError("Browser automation disabled in prediction_only mode")
         # Lazy import to avoid module_guard violations at startup
         global sync_playwright
@@ -507,18 +644,14 @@ class SportsbetOddsIntegrator:
                         ):
                             filtered_elements.append(elem)
                     race_elements = filtered_elements
-                    print(
-                        f"Found {len(race_elements)} potential races using link analysis"
-                    )
+                    print(f"Found {len(race_elements)} potential races using link analysis")
             except:
                 pass
 
         # Strategy 4: Generic search for elements with racing-related content
         if not race_elements:
             try:
-                all_elements = self.driver.find_elements(
-                    By.CSS_SELECTOR, "div, section, article"
-                )
+                all_elements = self.driver.find_elements(By.CSS_SELECTOR, "div, section, article")
                 for elem in all_elements:
                     try:
                         text = elem.text.strip().lower()
@@ -529,15 +662,11 @@ class SportsbetOddsIntegrator:
                             and len(text) < 500
                         ):
                             race_elements.append(elem)
-                            if (
-                                len(race_elements) >= 10
-                            ):  # Limit to avoid too many false positives
+                            if len(race_elements) >= 10:  # Limit to avoid too many false positives
                                 break
                     except:
                         continue
-                print(
-                    f"Found {len(race_elements)} potential races using content analysis"
-                )
+                print(f"Found {len(race_elements)} potential races using content analysis")
             except:
                 pass
 
@@ -551,9 +680,7 @@ class SportsbetOddsIntegrator:
             # Find JSON-LD script tags that contain SportsEvent data
             import re
 
-            json_pattern = (
-                r'\[\{"@context":"https://schema\.org".*?"@type":"SportsEvent".*?\}\]'
-            )
+            json_pattern = r'\[\{"@context":"https://schema\.org".*?"@type":"SportsEvent".*?\}\]'
             matches = re.search(json_pattern, page_source, re.DOTALL)
 
             if not matches:
@@ -597,9 +724,7 @@ class SportsbetOddsIntegrator:
                                     else venue_name.lower().replace(" ", "-")
                                 )
 
-                                race_id = (
-                                    f"{venue_slug}_{race_datetime.strftime('%Y%m%d')}"
-                                )
+                                race_id = f"{venue_slug}_{race_datetime.strftime('%Y%m%d')}"
 
                                 race_info = {
                                     "race_id": race_id,
@@ -615,9 +740,7 @@ class SportsbetOddsIntegrator:
                                 races.append(race_info)
 
                             except Exception as e:
-                                print(
-                                    f"⚠️  Error parsing race datetime for {venue_name}: {e}"
-                                )
+                                print(f"⚠️  Error parsing race datetime for {venue_name}: {e}")
                                 continue
 
                 print(f"✅ Extracted {len(races)} races from JSON-LD data")
@@ -667,11 +790,7 @@ class SportsbetOddsIntegrator:
                             time_match = re.match(r"(\d+)m\s*(\d+)?s?", second_line)
                             if time_match:
                                 minutes = int(time_match.group(1))
-                                seconds = (
-                                    int(time_match.group(2))
-                                    if time_match.group(2)
-                                    else 0
-                                )
+                                seconds = int(time_match.group(2)) if time_match.group(2) else 0
 
                                 race_datetime = datetime.now() + timedelta(
                                     minutes=minutes, seconds=seconds
@@ -768,9 +887,7 @@ class SportsbetOddsIntegrator:
                                     continue
 
                                 # Calculate race time
-                                race_datetime = current_time + timedelta(
-                                    minutes=minutes
-                                )
+                                race_datetime = current_time + timedelta(minutes=minutes)
 
                                 # Try to find the specific race link - look for meeting links first
                                 meeting_selectors = [
@@ -781,15 +898,11 @@ class SportsbetOddsIntegrator:
                                 ]
 
                                 race_url = None
-                                print(
-                                    f"      🔍 Looking for race/meeting links in row..."
-                                )
+                                print(f"      🔍 Looking for race/meeting links in row...")
 
                                 for selector in meeting_selectors:
                                     try:
-                                        race_links = row.find_elements(
-                                            By.CSS_SELECTOR, selector
-                                        )
+                                        race_links = row.find_elements(By.CSS_SELECTOR, selector)
                                         if race_links:
                                             print(
                                                 f"        📋 Found {len(race_links)} links with selector: {selector}"
@@ -798,9 +911,7 @@ class SportsbetOddsIntegrator:
                                             for j, link in enumerate(race_links[:3]):
                                                 href = link.get_attribute("href")
                                                 text = link.text.strip()[:50]
-                                                print(
-                                                    f"          {j+1}. {href} ('{text}')"
-                                                )
+                                                print(f"          {j+1}. {href} ('{text}')")
 
                                             # Try to match the countdown with the appropriate race link
                                             selected_url = None
@@ -810,9 +921,7 @@ class SportsbetOddsIntegrator:
                                             for link in race_links:
                                                 try:
                                                     href = link.get_attribute("href")
-                                                    link_text = (
-                                                        link.text.strip().lower()
-                                                    )
+                                                    link_text = link.text.strip().lower()
 
                                                     # Check if this link text contains our countdown
                                                     if (
@@ -825,8 +934,8 @@ class SportsbetOddsIntegrator:
                                                             r"/race-(\d+)-", href
                                                         )
                                                         if race_match:
-                                                            selected_race_number = (
-                                                                race_match.group(1)
+                                                            selected_race_number = race_match.group(
+                                                                1
                                                             )
                                                         print(
                                                             f"        🎯 Matched countdown {minutes}m with race: {href}"
@@ -837,48 +946,36 @@ class SportsbetOddsIntegrator:
 
                                             # Fallback: use race link by position (i-th countdown gets i-th race)
                                             if not selected_url and i < len(race_links):
-                                                selected_url = race_links[
-                                                    i
-                                                ].get_attribute("href")
+                                                selected_url = race_links[i].get_attribute("href")
                                                 race_match = re.search(
                                                     r"/race-(\d+)-", selected_url
                                                 )
                                                 if race_match:
-                                                    selected_race_number = (
-                                                        race_match.group(1)
-                                                    )
+                                                    selected_race_number = race_match.group(1)
                                                 print(
                                                     f"        📍 Using position-based selection: {selected_url}"
                                                 )
 
                                             # Final fallback: use first race link
                                             if not selected_url:
-                                                selected_url = race_links[
-                                                    0
-                                                ].get_attribute("href")
+                                                selected_url = race_links[0].get_attribute("href")
                                                 race_match = re.search(
                                                     r"/race-(\d+)-", selected_url
                                                 )
                                                 if race_match:
-                                                    selected_race_number = (
-                                                        race_match.group(1)
-                                                    )
+                                                    selected_race_number = race_match.group(1)
                                                 print(
                                                     f"        🔄 Using first race as fallback: {selected_url}"
                                                 )
 
                                             race_url = selected_url
-                                            race_number = selected_race_number or str(
-                                                i + 1
-                                            )
+                                            race_number = selected_race_number or str(i + 1)
                                             print(
                                                 f"        ✅ Selected URL: {race_url} (Race {race_number})"
                                             )
                                             break
                                     except Exception as e:
-                                        print(
-                                            f"        ⚠️  Error with selector {selector}: {e}"
-                                        )
+                                        print(f"        ⚠️  Error with selector {selector}: {e}")
                                         continue
 
                                 if not race_url:
@@ -893,9 +990,7 @@ class SportsbetOddsIntegrator:
 
                                 # Create race info
                                 venue_slug = venue_name.lower().replace(" ", "-")
-                                race_id = (
-                                    f"{venue_slug}_{current_time.strftime('%Y%m%d')}"
-                                )
+                                race_id = f"{venue_slug}_{current_time.strftime('%Y%m%d')}"
 
                                 race_info = {
                                     "race_id": race_id,
@@ -916,9 +1011,7 @@ class SportsbetOddsIntegrator:
                                 )
 
                             except Exception as e:
-                                print(
-                                    f"    ⚠️  Error processing countdown {minutes_str}: {e}"
-                                )
+                                print(f"    ⚠️  Error processing countdown {minutes_str}: {e}")
                                 continue
 
                 except Exception as e:
@@ -932,7 +1025,13 @@ class SportsbetOddsIntegrator:
             print(f"⚠️  Error extracting races from DOM: {e}")
             return []
 
-    def persist_odds(self, race_info: Dict, odds_data: List[Dict], market_type: str = "win", topN: Optional[int] = None) -> None:
+    def persist_odds(
+        self,
+        race_info: Dict,
+        odds_data: List[Dict],
+        market_type: str = "win",
+        topN: Optional[int] = None,
+    ) -> None:
         """Persist extracted odds to live_odds table.
         odds_data entries should include keys: dog_clean_name (or dog_name), odds_decimal, box_number (optional).
         """
@@ -945,6 +1044,9 @@ class SportsbetOddsIntegrator:
                 pass
             cur = conn.cursor()
             conn.execute("BEGIN")
+            for column, definition in LIVE_ODDS_CAPTURE_COLUMNS.items():
+                _ensure_column(cur, "live_odds", column, definition)
+            live_cols = _table_columns(cur, "live_odds")
             race_id = race_info.get("race_id")
             venue = race_info.get("venue")
             race_date = race_info.get("race_date")
@@ -964,12 +1066,33 @@ class SportsbetOddsIntegrator:
                     box = int(box) if box is not None else None
                 except Exception:
                     box = None
+                values = {
+                    "race_id": race_id,
+                    "venue": venue,
+                    "race_number": race_info.get("race_number"),
+                    "race_date": race_date,
+                    "race_time": race_time,
+                    "dog_name": r.get("dog_name"),
+                    "dog_clean_name": dog,
+                    "box_number": box,
+                    "odds_decimal": odds,
+                    "odds_fractional": r.get("odds_fractional", ""),
+                    "market_type": market_type,
+                    "source": "sportsbet",
+                    "is_current": 1,
+                    "topN": topN,
+                    "sportsbet_box_source": r.get("sportsbet_box_source"),
+                    "sportsbet_list_position": r.get("sportsbet_list_position"),
+                    "sportsbet_raw_runner_text": r.get("sportsbet_raw_runner_text"),
+                }
+                insert_values = {
+                    column: value for column, value in values.items() if column in live_cols
+                }
+                columns = list(insert_values.keys())
+                placeholders = ", ".join("?" for _ in columns)
                 cur.execute(
-                    """
-                    INSERT INTO live_odds (race_id, venue, race_date, race_time, dog_clean_name, box_number, odds_decimal, market_type, source, is_current, topN)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sportsbet', 1, ?)
-                    """,
-                    (race_id, venue, race_date, race_time, dog, box, odds, market_type, topN),
+                    f"INSERT INTO live_odds ({', '.join(columns)}) VALUES ({placeholders})",
+                    tuple(insert_values[column] for column in columns),
                 )
             conn.commit()
         except Exception as e:
@@ -985,6 +1108,177 @@ class SportsbetOddsIntegrator:
                     conn.close()
             except Exception:
                 pass
+
+    def append_pre_jump_odds_snapshot(
+        self,
+        race_info: Dict,
+        odds_data: Optional[List[Dict]] = None,
+        *,
+        market_type: str = "win",
+        topN: Optional[int] = None,
+        capture_mode: str = "manual_pre_jump_snapshot",
+        capture_timestamp: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Append a provenance-bearing live odds snapshot without updating old odds rows."""
+
+        market = str(market_type or "win").strip().lower()
+        capture_ts = capture_timestamp or datetime.now().isoformat(timespec="seconds")
+        source_url = (
+            race_info.get("venue_url") or race_info.get("sportsbet_url") or race_info.get("url")
+        )
+        preserve_race_id = bool(race_info.get("preserve_race_id"))
+        race_id = (
+            race_info.get("race_id")
+            if preserve_race_id
+            else (
+                self._canonical_race_id(
+                    race_info.get("venue"),
+                    race_info.get("race_date"),
+                    race_info.get("race_number"),
+                )
+                or race_info.get("race_id")
+            )
+        )
+        rows = list(odds_data if odds_data is not None else race_info.get("odds_data") or [])
+        report: Dict[str, Any] = {
+            "status": "DATA_MISSING",
+            "race_id": race_id,
+            "source_url": source_url,
+            "market_type": market,
+            "capture_timestamp": capture_ts,
+            "capture_mode": capture_mode,
+            "inserted_rows": 0,
+            "skipped_rows": 0,
+            "warnings": [],
+            "append_only": True,
+        }
+
+        if not race_id:
+            report["warnings"].append("race_id_missing")
+            return report
+        if market != "win":
+            report["status"] = "REJECTED"
+            report["warnings"].append(f"unsupported_market_type:{market}")
+            return report
+        if not source_url:
+            report["warnings"].append("source_url_missing")
+            return report
+        if _source_url_is_post_race(source_url):
+            report["status"] = "REJECTED"
+            report["warnings"].append("post_race_source_url_rejected")
+            return report
+        if not rows:
+            report["warnings"].append("no_odds_rows")
+            return report
+
+        conn = sqlite3.connect(self.db_path)
+        try:
+            try:
+                conn.execute("PRAGMA busy_timeout=2000")
+            except Exception:
+                pass
+            cursor = conn.cursor()
+            conn.execute("BEGIN")
+            for column, definition in LIVE_ODDS_CAPTURE_COLUMNS.items():
+                _ensure_column(cursor, "live_odds", column, definition)
+
+            race_datetime_str = None
+            if race_info.get("start_datetime"):
+                try:
+                    race_datetime_str = race_info["start_datetime"].isoformat()
+                except Exception:
+                    race_datetime_str = str(race_info["start_datetime"])
+
+            safe_upsert_race_metadata(
+                cursor,
+                race_id,
+                {
+                    "venue": race_info.get("venue"),
+                    "race_number": race_info.get("race_number", 0),
+                    "race_date": race_info.get("race_date"),
+                    "race_time": race_info.get("race_time"),
+                    "sportsbet_url": source_url,
+                    "url": source_url,
+                    "venue_slug": race_info.get("venue_slug", ""),
+                    "start_datetime": race_datetime_str,
+                    "race_datetime": race_datetime_str,
+                },
+            )
+
+            live_cols = _table_columns(cursor, "live_odds")
+            for row in rows:
+                dog_name = row.get("dog_name") or row.get("dog_clean_name")
+                clean_name = row.get("dog_clean_name") or dog_name
+                if not clean_name:
+                    report["skipped_rows"] += 1
+                    continue
+                try:
+                    odds = float(row.get("odds_decimal", 0.0))
+                except Exception:
+                    report["skipped_rows"] += 1
+                    continue
+                if odds <= 1.0:
+                    report["skipped_rows"] += 1
+                    continue
+                try:
+                    box_number = (
+                        int(row.get("box_number"))
+                        if row.get("box_number") not in (None, "")
+                        else None
+                    )
+                except Exception:
+                    box_number = None
+
+                values = {
+                    "race_id": race_id,
+                    "venue": race_info.get("venue"),
+                    "race_number": race_info.get("race_number", 0),
+                    "race_date": race_info.get("race_date"),
+                    "race_time": race_info.get("race_time"),
+                    "dog_name": dog_name,
+                    "dog_clean_name": clean_name,
+                    "box_number": box_number,
+                    "odds_decimal": odds,
+                    "odds_fractional": row.get("odds_fractional", ""),
+                    "market_type": market,
+                    "source": "sportsbet",
+                    "timestamp": capture_ts,
+                    "is_current": 1,
+                    "topN": topN,
+                    "source_url": source_url,
+                    "capture_timestamp": capture_ts,
+                    "capture_mode": capture_mode,
+                    "odds_level": "dog",
+                    "sportsbet_box_source": row.get("sportsbet_box_source"),
+                    "sportsbet_list_position": row.get("sportsbet_list_position"),
+                    "sportsbet_raw_runner_text": row.get("sportsbet_raw_runner_text"),
+                }
+                insert_values = {
+                    column: value for column, value in values.items() if column in live_cols
+                }
+                columns = list(insert_values.keys())
+                placeholders = ", ".join("?" for _ in columns)
+                cursor.execute(
+                    f"INSERT INTO live_odds ({', '.join(columns)}) VALUES ({placeholders})",
+                    tuple(insert_values[column] for column in columns),
+                )
+                report["inserted_rows"] += 1
+
+            conn.commit()
+            report["status"] = "SUCCESS" if report["inserted_rows"] else "DATA_MISSING"
+            if report["skipped_rows"]:
+                report["warnings"].append(f"skipped_invalid_rows:{report['skipped_rows']}")
+            return report
+        except Exception as exc:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            report["status"] = "FAILED"
+            report["warnings"].append(str(exc))
+            return report
+        finally:
+            conn.close()
 
     def _select_place_market(self) -> Optional[int]:
         """Try to switch UI to the Place/Top 3 market.
@@ -1024,9 +1318,7 @@ class SportsbetOddsIntegrator:
                     self.driver.execute_script("arguments[0].scrollIntoView(true);", el)
                     el.click()
                     # Small wait for content to update
-                    _ = WebDriverWait(self.driver, 5).until(
-                        lambda d: True
-                    )
+                    _ = WebDriverWait(self.driver, 5).until(lambda d: True)
                     t = (txt or "").lower()
                     if "top 3" in t or "top3" in t:
                         topN = 3
@@ -1046,9 +1338,7 @@ class SportsbetOddsIntegrator:
         try:
             venue_url = race_info.get("venue_url")
             if not venue_url:
-                print(
-                    f"⚠️  No venue URL for race {race_info['race_id']}, skipping odds extraction"
-                )
+                print(f"⚠️  No venue URL for race {race_info['race_id']}, skipping odds extraction")
                 return race_info
 
             # Construct full race URL
@@ -1061,7 +1351,11 @@ class SportsbetOddsIntegrator:
 
             # If we have a desired race number, try to resolve that specific race first
             try:
-                desired_rn = int(race_info.get("race_number")) if race_info.get("race_number") is not None else None
+                desired_rn = (
+                    int(race_info.get("race_number"))
+                    if race_info.get("race_number") is not None
+                    else None
+                )
             except Exception:
                 desired_rn = None
 
@@ -1069,17 +1363,27 @@ class SportsbetOddsIntegrator:
                 if re.search(rf"/race-{int(desired_rn)}(?:-|$)", full_url):
                     print(f"  🎯 Using supplied direct race URL R{desired_rn}: {full_url}")
                 else:
-                    specific = self.find_specific_race_from_meeting(full_url, desired_rn, expected_venue=race_info.get("venue"))
+                    specific = self.find_specific_race_from_meeting(
+                        full_url, desired_rn, expected_venue=race_info.get("venue")
+                    )
                     if specific:
                         full_url = specific
                         print(f"  🎯 Found specific race URL R{desired_rn}: {full_url}")
                     else:
-                        print(f"  ⚠️  Could not resolve specific race; falling back to next race selection")
+                        print(
+                            f"  ⚠️  Could not resolve specific race; falling back to next race selection"
+                        )
 
             # Check if this is a meeting page that needs further navigation
-            if "/meeting-" in full_url or "/greyhound-racing/" in full_url and "/race-" not in full_url:
+            if (
+                "/meeting-" in full_url
+                or "/greyhound-racing/" in full_url
+                and "/race-" not in full_url
+            ):
                 # Navigate to meeting page first to find individual race
-                individual_race_url = self.find_next_race_from_meeting(full_url, expected_venue=race_info.get("venue"))
+                individual_race_url = self.find_next_race_from_meeting(
+                    full_url, expected_venue=race_info.get("venue")
+                )
                 if individual_race_url:
                     full_url = individual_race_url
                     print(f"  🎯 Found individual race URL: {full_url}")
@@ -1096,7 +1400,9 @@ class SportsbetOddsIntegrator:
                 title = (self.driver.title or "").lower()
                 if ("/race-" not in current_url) and ("/meeting-" not in current_url):
                     # Try to discover a race link from this page
-                    discovered = self.find_next_race_from_meeting(current_url, expected_venue=race_info.get("venue"))
+                    discovered = self.find_next_race_from_meeting(
+                        current_url, expected_venue=race_info.get("venue")
+                    )
                     if discovered:
                         print(f"  🎯 Discovered race URL from venue page: {discovered}")
                         self.driver.get(discovered)
@@ -1106,8 +1412,7 @@ class SportsbetOddsIntegrator:
             # Wait for page to load
             try:
                 WebDriverWait(self.driver, 10).until(
-                    lambda driver: driver.execute_script("return document.readyState")
-                    == "complete"
+                    lambda driver: driver.execute_script("return document.readyState") == "complete"
                 )
             except TimeoutException:
                 print(f"  ⚠️  Timeout waiting for page to load")
@@ -1154,11 +1459,13 @@ class SportsbetOddsIntegrator:
                     try:
                         race_date_str = (
                             race_info.get("start_datetime") or datetime.now()
-                        ).strftime('%Y%m%d')
+                        ).strftime("%Y%m%d")
                     except Exception:
-                        race_date_str = datetime.now().strftime('%Y%m%d')
+                        race_date_str = datetime.now().strftime("%Y%m%d")
                     # Prefer discovered meeting slug for race_id if available
-                    meeting_slug_from_url = self._extract_meeting_slug_from_url(self.driver.current_url)
+                    meeting_slug_from_url = self._extract_meeting_slug_from_url(
+                        self.driver.current_url
+                    )
                     if meeting_slug_from_url:
                         race_info["meeting_slug"] = meeting_slug_from_url
                     slug_for_id = (
@@ -1166,9 +1473,7 @@ class SportsbetOddsIntegrator:
                         or race_info.get("venue_slug")
                         or race_info["venue"].lower().replace(" ", "-")
                     )
-                    race_info["race_id"] = (
-                        f"{slug_for_id}_r{race_number}_{race_date_str}"
-                    )
+                    race_info["race_id"] = f"{slug_for_id}_r{race_number}_{race_date_str}"
                     print(f"  📍 Updated race ID to: {race_info['race_id']}")
             else:
                 print(f"  ⚠️  No live odds found on race page (WIN market)")
@@ -1220,9 +1525,7 @@ class SportsbetOddsIntegrator:
                 )
                 print(f"    ✅ Price elements loaded successfully")
             except TimeoutException:
-                print(
-                    f"    ⚠️  Timeout waiting for price elements, trying alternative selectors..."
-                )
+                print(f"    ⚠️  Timeout waiting for price elements, trying alternative selectors...")
                 # Try alternative wait selectors
                 try:
                     WebDriverWait(self.driver, 5).until(
@@ -1269,7 +1572,9 @@ class SportsbetOddsIntegrator:
 
                 # Ensure element is in view (handles virtualization/lazy rendering)
                 try:
-                    self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", card)
+                    self.driver.execute_script(
+                        "arguments[0].scrollIntoView({block: 'center'});", card
+                    )
                 except Exception:
                     pass
 
@@ -1287,28 +1592,30 @@ class SportsbetOddsIntegrator:
                 # Add to results if we have both name and odds
                 if dog_name and odds_decimal > 0:
                     cleaned = self.clean_dog_name(dog_name)
+                    try:
+                        runner_text = card.text.strip()
+                    except Exception:
+                        runner_text = dog_name
+                    box_meta = sportsbet_runner_box_metadata(
+                        list_position=i + 1,
+                        runner_text=runner_text,
+                    )
                     odds_data.append(
                         {
                             "dog_name": dog_name,
                             "dog_clean_name": cleaned,
-                            "box_number": i + 1,
                             "odds_decimal": odds_decimal,
                             "odds_fractional": odds_text,
+                            **box_meta,
                         }
                     )
                     processed_names.add(cleaned)
                     successful_extractions += 1
-                    print(
-                        f"    ✅ Successfully extracted: {dog_name} - ${odds_decimal:.2f}"
-                    )
+                    print(f"    ✅ Successfully extracted: {dog_name} - ${odds_decimal:.2f}")
                 elif dog_name:
-                    print(
-                        f"    ⚠️  Found dog name '{dog_name}' but no odds for card {i+1}"
-                    )
+                    print(f"    ⚠️  Found dog name '{dog_name}' but no odds for card {i+1}")
                 elif odds_decimal > 0:
-                    print(
-                        f"    ⚠️  Found odds ${odds_decimal:.2f} but no dog name for card {i+1}"
-                    )
+                    print(f"    ⚠️  Found odds ${odds_decimal:.2f} but no dog name for card {i+1}")
                 else:
                     print(
                         f"    ❌ No data extracted from card {i+1} (likely scratched or loading issue)"
@@ -1347,9 +1654,7 @@ class SportsbetOddsIntegrator:
 
                 return odds_data
             else:
-                print(
-                    f"  ⚠️  No complete runner data extracted, trying fallback strategies..."
-                )
+                print(f"  ⚠️  No complete runner data extracted, trying fallback strategies...")
                 return self._extract_from_broader_containers()
 
         except Exception as e:
@@ -1379,9 +1684,7 @@ class SportsbetOddsIntegrator:
                 print(f"    📝 Found dog name (primary): '{raw_name}' -> '{dog_name}'")
                 return dog_name
         except Exception as e:
-            print(
-                f"    ⚠️  Primary dog name selector failed for card {card_number}: {e}"
-            )
+            print(f"    ⚠️  Primary dog name selector failed for card {card_number}: {e}")
 
         # Strategy 2: Fallback to .runnerInfo class
         try:
@@ -1393,9 +1696,7 @@ class SportsbetOddsIntegrator:
                     cleaned_name = re.sub(r"^\d+\.\s*", "", text)
                     if cleaned_name != text:
                         dog_name = cleaned_name
-                        print(
-                            f"    📝 Found dog name (runnerInfo): '{text}' -> '{dog_name}'"
-                        )
+                        print(f"    📝 Found dog name (runnerInfo): '{text}' -> '{dog_name}'")
                         return dog_name
         except Exception as e:
             print(f"    ⚠️  runnerInfo fallback failed for card {card_number}: {e}")
@@ -1414,9 +1715,7 @@ class SportsbetOddsIntegrator:
 
         # Strategy 4: Look for any data-automation-id containing 'name'
         try:
-            name_elements = card.find_elements(
-                By.CSS_SELECTOR, "[data-automation-id*='name']"
-            )
+            name_elements = card.find_elements(By.CSS_SELECTOR, "[data-automation-id*='name']")
             for elem in name_elements:
                 text = elem.text.strip()
                 if text and len(text) > 3 and len(text) < 30:
@@ -1428,9 +1727,7 @@ class SportsbetOddsIntegrator:
                         )
                         return dog_name
         except Exception as e:
-            print(
-                f"    ⚠️  automation-id name fallback failed for card {card_number}: {e}"
-            )
+            print(f"    ⚠️  automation-id name fallback failed for card {card_number}: {e}")
 
         # Strategy 5: Deep search in any span with reasonable text
         try:
@@ -1443,8 +1740,7 @@ class SportsbetOddsIntegrator:
                     and len(text) > 3
                     and len(text) < 30
                     and not re.match(r"^[\d\.\s/]+$", text)  # Not just numbers/odds
-                    and not text.lower()
-                    in ["bet", "win", "place", "show", "each way", "ew"]
+                    and not text.lower() in ["bet", "win", "place", "show", "each way", "ew"]
                     and re.search(r"[a-zA-Z]", text)
                 ):  # Contains letters
 
@@ -1452,9 +1748,7 @@ class SportsbetOddsIntegrator:
                     # Basic validation - should start with uppercase letter
                     if re.match(r"^[A-Z]", cleaned_name):
                         dog_name = cleaned_name
-                        print(
-                            f"    📝 Found dog name (deep search): '{text}' -> '{dog_name}'"
-                        )
+                        print(f"    📝 Found dog name (deep search): '{text}' -> '{dog_name}'")
                         return dog_name
         except Exception as e:
             print(f"    ⚠️  Deep search fallback failed for card {card_number}: {e}")
@@ -1472,9 +1766,7 @@ class SportsbetOddsIntegrator:
                         line
                         and len(line) > 3
                         and len(line) < 30
-                        and not re.match(
-                            r"^[\d\.\s/$]+$", line
-                        )  # Not just numbers/odds/symbols
+                        and not re.match(r"^[\d\.\s/$]+$", line)  # Not just numbers/odds/symbols
                         and re.search(r"[A-Za-z]{3,}", line)
                     ):  # Contains at least 3 letters
 
@@ -1518,21 +1810,18 @@ class SportsbetOddsIntegrator:
         """Extract odds with comprehensive fallback strategies"""
         By, WebDriverWait, EC, TimeoutException = self._selenium_primitives()
         import re  # Ensure regex available for pattern checks
+
         odds_decimal = 0.0
         odds_text = ""
 
         # Strategy 1: Primary selector (more permissive)
         try:
-            odds_element = card.find_element(
-                By.CSS_SELECTOR, "[data-automation-id*='price-text']"
-            )
+            odds_element = card.find_element(By.CSS_SELECTOR, "[data-automation-id*='price-text']")
             odds_text = odds_element.text.strip()
             if odds_text:
                 odds_decimal = self.parse_odds_to_decimal(odds_text)
                 if odds_decimal > 0:
-                    print(
-                        f"    💰 Found odds (primary): '{odds_text}' -> ${odds_decimal:.2f}"
-                    )
+                    print(f"    💰 Found odds (primary): '{odds_text}' -> ${odds_decimal:.2f}")
                     return odds_decimal, odds_text
         except Exception as e:
             print(f"    ⚠️  Primary odds selector failed for card {card_number}: {e}")
@@ -1544,18 +1833,14 @@ class SportsbetOddsIntegrator:
             if odds_text:
                 odds_decimal = self.parse_odds_to_decimal(odds_text)
                 if odds_decimal > 0:
-                    print(
-                        f"    💰 Found odds (price-button): '{odds_text}' -> ${odds_decimal:.2f}"
-                    )
+                    print(f"    💰 Found odds (price-button): '{odds_text}' -> ${odds_decimal:.2f}")
                     return odds_decimal, odds_text
         except Exception as e:
             print(f"    ⚠️  price-button fallback failed for card {card_number}: {e}")
 
         # Strategy 3: Fallback to span[class*='priceText']
         try:
-            price_spans = card.find_elements(
-                By.CSS_SELECTOR, "span[class*='priceText']"
-            )
+            price_spans = card.find_elements(By.CSS_SELECTOR, "span[class*='priceText']")
             for span in price_spans:
                 odds_text = span.text.strip()
                 if odds_text:
@@ -1571,9 +1856,7 @@ class SportsbetOddsIntegrator:
         # Strategy 4: Fallback to .priceContainer children
         try:
             price_container = card.find_element(By.CSS_SELECTOR, ".priceContainer")
-            price_elements = price_container.find_elements(
-                By.CSS_SELECTOR, "span, button, div"
-            )
+            price_elements = price_container.find_elements(By.CSS_SELECTOR, "span, button, div")
             for elem in price_elements:
                 odds_text = elem.text.strip()
                 if odds_text and re.match(r"^\d+\.\d{1,2}$", odds_text):
@@ -1627,14 +1910,15 @@ class SportsbetOddsIntegrator:
     def _extract_meeting_slug_from_url(self, url: str) -> Optional[str]:
         try:
             from urllib.parse import urlparse
+
             path = urlparse(url).path or ""
-            parts = [p for p in path.split('/') if p]
-            if 'greyhound-racing' in parts:
-                gi = parts.index('greyhound-racing')
+            parts = [p for p in path.split("/") if p]
+            if "greyhound-racing" in parts:
+                gi = parts.index("greyhound-racing")
                 if gi + 2 < len(parts):
                     slug = parts[gi + 2]
                     # Ensure this is a meeting slug (not race-*)
-                    if slug and not slug.startswith('race-') and 'meeting-' not in slug:
+                    if slug and not slug.startswith("race-") and "meeting-" not in slug:
                         return slug
         except Exception:
             return None
@@ -1654,7 +1938,9 @@ class SportsbetOddsIntegrator:
                 os.makedirs(debug_dir)
 
             # Save screenshot
-            screenshot_path = f"{debug_dir}/sportsbet_debug_{timestamp}_{successful_extractions}odds.png"
+            screenshot_path = (
+                f"{debug_dir}/sportsbet_debug_{timestamp}_{successful_extractions}odds.png"
+            )
             try:
                 self.driver.save_screenshot(screenshot_path)
                 print(f"    📸 Debug screenshot saved: {screenshot_path}")
@@ -1662,7 +1948,9 @@ class SportsbetOddsIntegrator:
                 print(f"    ⚠️  Could not save screenshot: {e}")
 
             # Save page source
-            source_path = f"{debug_dir}/sportsbet_debug_{timestamp}_{successful_extractions}odds.html"
+            source_path = (
+                f"{debug_dir}/sportsbet_debug_{timestamp}_{successful_extractions}odds.html"
+            )
             try:
                 with open(source_path, "w", encoding="utf-8") as f:
                     f.write(self.driver.page_source)
@@ -1692,17 +1980,13 @@ class SportsbetOddsIntegrator:
                 "[role='row']",  # ARIA row elements
             ]
 
-            print(
-                f"  🔍 Looking for broader containers that include both runner info and odds..."
-            )
+            print(f"  🔍 Looking for broader containers that include both runner info and odds...")
 
             potential_containers = []
             for selector in broader_selectors:
                 try:
                     elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                    print(
-                        f"    📊 Found {len(elements)} elements with selector: {selector}"
-                    )
+                    print(f"    📊 Found {len(elements)} elements with selector: {selector}")
 
                     # Test each element to see if it contains both runner info and odds
                     for elem in elements:
@@ -1728,9 +2012,7 @@ class SportsbetOddsIntegrator:
 
                             if has_runner_info and has_odds:
                                 potential_containers.append(elem)
-                                print(
-                                    f"      ✅ Found container with both runner info and odds"
-                                )
+                                print(f"      ✅ Found container with both runner info and odds")
 
                         except:
                             continue
@@ -1763,9 +2045,7 @@ class SportsbetOddsIntegrator:
 
                         for runner_elem in runner_elements:
                             runner_text = runner_elem.text.strip()
-                            extracted_name = self.extract_dog_name_from_text(
-                                runner_text
-                            )
+                            extracted_name = self.extract_dog_name_from_text(runner_text)
                             if extracted_name:
                                 temp_dog_name = extracted_name
                                 break
@@ -1808,9 +2088,7 @@ class SportsbetOddsIntegrator:
 
                         for runner_elem in runner_elements:
                             runner_text = runner_elem.text.strip()
-                            extracted_name = self.extract_dog_name_from_text(
-                                runner_text
-                            )
+                            extracted_name = self.extract_dog_name_from_text(runner_text)
                             if extracted_name:
                                 dog_name = extracted_name
                                 break
@@ -1827,12 +2105,8 @@ class SportsbetOddsIntegrator:
                                 if 1.01 <= potential_odds <= 50.0:
                                     # Verify this isn't a box number by checking parent context
                                     try:
-                                        parent_class = (
-                                            button.get_attribute("class") or ""
-                                        )
-                                        parent_element = button.find_element(
-                                            By.XPATH, ".."
-                                        )
+                                        parent_class = button.get_attribute("class") or ""
+                                        parent_element = button.find_element(By.XPATH, "..")
                                         parent_parent_class = (
                                             parent_element.get_attribute("class") or ""
                                         )
@@ -1859,16 +2133,22 @@ class SportsbetOddsIntegrator:
                                         break
 
                         if dog_name and odds_decimal > 0:
-                            print(
-                                f"    ✅ Container {i+1}: Found {dog_name} - ${odds_decimal:.2f}"
+                            print(f"    ✅ Container {i+1}: Found {dog_name} - ${odds_decimal:.2f}")
+                            try:
+                                runner_text = container.text.strip()
+                            except Exception:
+                                runner_text = expected_dog_name or dog_name
+                            box_meta = sportsbet_runner_box_metadata(
+                                list_position=i + 1,
+                                runner_text=runner_text,
                             )
                             odds_data.append(
                                 {
                                     "dog_name": dog_name,
                                     "dog_clean_name": self.clean_dog_name(dog_name),
-                                    "box_number": i + 1,
                                     "odds_decimal": odds_decimal,
                                     "odds_fractional": odds_text,
+                                    **box_meta,
                                 }
                             )
                         else:
@@ -1887,9 +2167,7 @@ class SportsbetOddsIntegrator:
                     return odds_data
 
             # FALLBACK: Original approach with individual runner elements
-            print(
-                f"  🔄 No broad containers found, falling back to individual runner elements..."
-            )
+            print(f"  🔄 No broad containers found, falling back to individual runner elements...")
 
             # Look for runner/dog cards with various selectors
             selectors_to_try = [
@@ -1944,24 +2222,17 @@ class SportsbetOddsIntegrator:
 
                                 # Must contain dog-related indicators
                                 has_dog_indicators = (
-                                    re.search(
-                                        r"\d+\.\s*[A-Z][a-z]+", elem_text
-                                    )  # "1. DogName"
+                                    re.search(r"\d+\.\s*[A-Z][a-z]+", elem_text)  # "1. DogName"
                                     or (
                                         "trainer" in elem_text_lower
                                         and (
-                                            "form" in elem_text_lower
-                                            or "speed" in elem_text_lower
+                                            "form" in elem_text_lower or "speed" in elem_text_lower
                                         )
                                     )
                                     or (
                                         re.search(r"\([1-8]\)", elem_text)
                                         and len(
-                                            [
-                                                line
-                                                for line in elem_text.split("\n")
-                                                if line.strip()
-                                            ]
+                                            [line for line in elem_text.split("\n") if line.strip()]
                                         )
                                         >= 3
                                     )
@@ -1971,9 +2242,7 @@ class SportsbetOddsIntegrator:
                                     continue
 
                                 # Extract potential dog name to avoid duplicates
-                                potential_name = self.extract_dog_name_from_text(
-                                    elem_text
-                                )
+                                potential_name = self.extract_dog_name_from_text(elem_text)
                                 if potential_name and potential_name not in seen_names:
                                     seen_names.add(potential_name)
                                     filtered_elements.append(elem)
@@ -2025,9 +2294,7 @@ class SportsbetOddsIntegrator:
                             ):  # Fractional like "5/2"
                                 parts = button_text.split("/")
                                 if len(parts) == 2:
-                                    odds_decimal = (
-                                        float(parts[0]) / float(parts[1])
-                                    ) + 1.0
+                                    odds_decimal = (float(parts[0]) / float(parts[1])) + 1.0
                                     odds_text = button_text
                                     print(
                                         f"      ✅ Found fractional odds in button: {odds_text} = {odds_decimal:.2f}"
@@ -2043,27 +2310,19 @@ class SportsbetOddsIntegrator:
                             print(
                                 f"    🔍 Found {len(odds_elements)} potential odds elements in runner"
                             )
-                            for j, elem in enumerate(
-                                odds_elements[:10]
-                            ):  # Check first 10
+                            for j, elem in enumerate(odds_elements[:10]):  # Check first 10
                                 elem_text = elem.text.strip()
                                 if elem_text and re.match(r"^\d+\.\d{1,2}$", elem_text):
                                     potential_odds = float(elem_text)
-                                    if (
-                                        1.01 <= potential_odds <= 50.0
-                                    ):  # Realistic odds range
+                                    if 1.01 <= potential_odds <= 50.0:  # Realistic odds range
                                         odds_decimal = potential_odds
                                         odds_text = elem_text
-                                        print(
-                                            f"      ✅ Found odds in element {j+1}: {odds_text}"
-                                        )
+                                        print(f"      ✅ Found odds in element {j+1}: {odds_text}")
                                         break
 
                         # Strategy 3: Look for odds in the runner text itself
                         if odds_decimal == 0.0:
-                            print(
-                                f"    🔍 Searching for odds patterns in runner text..."
-                            )
+                            print(f"    🔍 Searching for odds patterns in runner text...")
                             lines = runner_text.split("\n")
                             for line_num, line in enumerate(lines):
                                 line = line.strip()
@@ -2071,9 +2330,7 @@ class SportsbetOddsIntegrator:
                                 odds_matches = re.findall(r"(\d+\.\d{1,2})", line)
                                 for odds_match in odds_matches:
                                     potential_odds = float(odds_match)
-                                    if (
-                                        1.01 <= potential_odds <= 50.0
-                                    ):  # Realistic odds range
+                                    if 1.01 <= potential_odds <= 50.0:  # Realistic odds range
                                         odds_decimal = potential_odds
                                         odds_text = odds_match
                                         print(
@@ -2088,13 +2345,17 @@ class SportsbetOddsIntegrator:
 
                     if dog_name and odds_decimal > 0:
                         print(f"    ✅ Extracted: {dog_name} - ${odds_decimal:.2f}")
+                        box_meta = sportsbet_runner_box_metadata(
+                            list_position=i + 1,
+                            runner_text=runner_text,
+                        )
                         odds_data.append(
                             {
                                 "dog_name": dog_name,
                                 "dog_clean_name": self.clean_dog_name(dog_name),
-                                "box_number": i + 1,
                                 "odds_decimal": odds_decimal,
                                 "odds_fractional": odds_text,
+                                **box_meta,
                             }
                         )
                     else:
@@ -2161,9 +2422,7 @@ class SportsbetOddsIntegrator:
             buttons = runner.find_elements(By.CSS_SELECTOR, "button")
             for button in buttons:
                 button_text = button.text.strip()
-                if re.match(
-                    r"^\d+\.\d{1,2}$", button_text
-                ):  # Decimal odds like "2.50" or "2.5"
+                if re.match(r"^\d+\.\d{1,2}$", button_text):  # Decimal odds like "2.50" or "2.5"
                     potential_odds = float(button_text)
                     if 1.01 <= potential_odds <= 50.0:
                         odds_decimal = potential_odds
@@ -2287,13 +2546,29 @@ class SportsbetOddsIntegrator:
                         break
 
                 if dog_name:
-                    dog_names.append(dog_name)
+                    dog_names.append(
+                        {
+                            "dog_name": dog_name,
+                            "box_meta": sportsbet_runner_box_metadata(
+                                list_position=i + 1,
+                                runner_text=runner_text,
+                            ),
+                        }
+                    )
                     print(f"    Dog {i+1}: {dog_name}")
                 else:
                     # Try alternative extraction for this runner
                     alt_name = self._extract_dog_name_enhanced(runner_text)
                     if alt_name:
-                        dog_names.append(alt_name)
+                        dog_names.append(
+                            {
+                                "dog_name": alt_name,
+                                "box_meta": sportsbet_runner_box_metadata(
+                                    list_position=i + 1,
+                                    runner_text=runner_text,
+                                ),
+                            }
+                        )
                         print(f"    Dog {i+1}: {alt_name} (alternative extraction)")
 
             # Now find all buttons with decimal odds patterns
@@ -2342,9 +2617,7 @@ class SportsbetOddsIntegrator:
                             try:
                                 parent_class = button.get_attribute("class") or ""
                                 parent_element = button.find_element(By.XPATH, "..")
-                                parent_parent_class = (
-                                    parent_element.get_attribute("class") or ""
-                                )
+                                parent_parent_class = parent_element.get_attribute("class") or ""
 
                                 # Skip if it looks like box numbers (in tab containers)
                                 if (
@@ -2354,24 +2627,18 @@ class SportsbetOddsIntegrator:
                                     continue
 
                                 odds_buttons.append((button_text, odds_decimal))
-                                print(
-                                    f"      🎯 Found odds button: {button_text} (button #{i+1})"
-                                )
+                                print(f"      🎯 Found odds button: {button_text} (button #{i+1})")
                             except:
                                 # If we can't check the parent, still add it if it looks like odds
                                 odds_buttons.append((button_text, odds_decimal))
-                                print(
-                                    f"      🎯 Found odds button: {button_text} (button #{i+1})"
-                                )
+                                print(f"      🎯 Found odds button: {button_text} (button #{i+1})")
 
                     # Also try fractional odds like "3/2", "5/1"
                     elif re.match(r"^\d+/\d+$", button_text):
                         try:
                             parts = button_text.split("/")
                             if len(parts) == 2:
-                                numerator, denominator = float(parts[0]), float(
-                                    parts[1]
-                                )
+                                numerator, denominator = float(parts[0]), float(parts[1])
                                 odds_decimal = (numerator / denominator) + 1.0
                                 if 1.01 <= odds_decimal <= 50.0:
                                     odds_buttons.append((button_text, odds_decimal))
@@ -2395,16 +2662,18 @@ class SportsbetOddsIntegrator:
 
             for i in range(min_count):
                 if i < len(dog_names) and i < len(odds_buttons):
-                    dog_name = dog_names[i]
+                    dog_entry = dog_names[i]
+                    dog_name = dog_entry["dog_name"]
+                    box_meta = dog_entry["box_meta"]
                     odds_text, odds_decimal = odds_buttons[i]
 
                     odds_data.append(
                         {
                             "dog_name": dog_name,
                             "dog_clean_name": self.clean_dog_name(dog_name),
-                            "box_number": i + 1,
                             "odds_decimal": odds_decimal,
                             "odds_fractional": odds_text,
+                            **box_meta,
                         }
                     )
 
@@ -2435,9 +2704,7 @@ class SportsbetOddsIntegrator:
                     elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
                     if len(elements) > 1:  # Need at least header + data rows
                         rows = elements[1:]  # Skip header
-                        print(
-                            f"  📊 Found {len(rows)} table rows using selector: {selector}"
-                        )
+                        print(f"  📊 Found {len(rows)} table rows using selector: {selector}")
                         break
                 except:
                     continue
@@ -2448,9 +2715,7 @@ class SportsbetOddsIntegrator:
             for i, row in enumerate(rows[:8]):
                 try:
                     # Extract data from table cells
-                    cells = row.find_elements(
-                        By.CSS_SELECTOR, "td, [role='cell'], [class*='cell']"
-                    )
+                    cells = row.find_elements(By.CSS_SELECTOR, "td, [role='cell'], [class*='cell']")
 
                     if len(cells) >= 2:  # Need at least name and odds
                         dog_name = None
@@ -2476,13 +2741,21 @@ class SportsbetOddsIntegrator:
                         if dog_name and odds_text:
                             odds_decimal = self.parse_odds_to_decimal(odds_text)
                             if odds_decimal > 0:
+                                try:
+                                    row_text = row.text.strip()
+                                except Exception:
+                                    row_text = dog_name
+                                box_meta = sportsbet_runner_box_metadata(
+                                    list_position=i + 1,
+                                    runner_text=row_text,
+                                )
                                 odds_data.append(
                                     {
                                         "dog_name": dog_name,
                                         "dog_clean_name": self.clean_dog_name(dog_name),
-                                        "box_number": i + 1,
                                         "odds_decimal": odds_decimal,
                                         "odds_fractional": odds_text,
+                                        **box_meta,
                                     }
                                 )
 
@@ -2543,9 +2816,7 @@ class SportsbetOddsIntegrator:
                                 "more",
                             ]
                         )
-                        or re.search(
-                            r"[0-9]", dog_name
-                        )  # Names shouldn't contain numbers
+                        or re.search(r"[0-9]", dog_name)  # Names shouldn't contain numbers
                         or dog_name.isupper()
                         or dog_name.islower()  # Should be proper case
                         or len(re.findall(r"[AEIOU]", dog_name)) < 2
@@ -2571,13 +2842,18 @@ class SportsbetOddsIntegrator:
                     clean_name = self.clean_dog_name(dog_name)
                     if clean_name not in seen_names:
                         seen_names.add(clean_name)
+                        list_position = len(odds_data) + 1
+                        box_meta = sportsbet_runner_box_metadata(
+                            list_position=list_position,
+                            runner_text=dog_name,
+                        )
                         odds_data.append(
                             {
                                 "dog_name": dog_name,
                                 "dog_clean_name": clean_name,
-                                "box_number": len(odds_data) + 1,
                                 "odds_decimal": odds_decimal,
                                 "odds_fractional": odds_text,
+                                **box_meta,
                             }
                         )
 
@@ -2659,6 +2935,7 @@ class SportsbetOddsIntegrator:
     def _coerce_betting_to_non_betting(self, url: str) -> str:
         try:
             from urllib.parse import urlparse, urlunparse
+
             parsed = urlparse(url)
             path = parsed.path or ""
             if path.startswith("/betting/greyhound-racing/"):
@@ -2669,28 +2946,31 @@ class SportsbetOddsIntegrator:
             pass
         return url
 
-    def find_specific_race_from_meeting(self, meeting_url: str, target_race_number: int, expected_venue: Optional[str] = None) -> Optional[str]:
+    def find_specific_race_from_meeting(
+        self, meeting_url: str, target_race_number: int, expected_venue: Optional[str] = None
+    ) -> Optional[str]:
         """Navigate to the meeting page and find the URL for the specific race number.
         Prefers links under the same region/meeting slug when resolvable.
         """
         By, WebDriverWait, EC, TimeoutException = self._selenium_primitives()
         try:
             from urllib.parse import urlparse, urljoin
+
             coerced = self._coerce_betting_to_non_betting(meeting_url)
             # Reuse logic from find_next_race_from_meeting to determine region/slug and collect links
             parsed = urlparse(coerced)
             path = parsed.path or ""
-            parts = [p for p in path.split('/') if p]
+            parts = [p for p in path.split("/") if p]
             region = None
             meeting_slug = None
-            if 'greyhound-racing' in parts:
+            if "greyhound-racing" in parts:
                 try:
-                    gi = parts.index('greyhound-racing')
+                    gi = parts.index("greyhound-racing")
                     if gi + 1 < len(parts):
                         region = parts[gi + 1]
                     if gi + 2 < len(parts):
                         seg = parts[gi + 2]
-                        if seg and not seg.startswith('race-') and 'meeting-' not in seg:
+                        if seg and not seg.startswith("race-") and "meeting-" not in seg:
                             meeting_slug = seg
                 except ValueError:
                     pass
@@ -2698,7 +2978,12 @@ class SportsbetOddsIntegrator:
             # Always prefer non-betting meeting page if region/slug known
             candidates: list[tuple[str, str]] = []
             if region and meeting_slug:
-                candidates.append(("meeting", urljoin(self.base_url, f"/greyhound-racing/{region}/{meeting_slug}")))
+                candidates.append(
+                    (
+                        "meeting",
+                        urljoin(self.base_url, f"/greyhound-racing/{region}/{meeting_slug}"),
+                    )
+                )
             # Region main and coerced original as fallbacks
             if region:
                 candidates.append(("region", urljoin(self.base_url, f"/greyhound-racing/{region}")))
@@ -2713,6 +2998,7 @@ class SportsbetOddsIntegrator:
                 except TimeoutException:
                     pass
                 import time as _t
+
                 _t.sleep(1)
                 links = []
                 try:
@@ -2724,18 +3010,24 @@ class SportsbetOddsIntegrator:
                         href = el.get_attribute("href") or ""
                     except Exception:
                         continue
-                    if "/greyhound-racing/" not in href or f"/race-{int(target_race_number)}-" not in href:
+                    if (
+                        "/greyhound-racing/" not in href
+                        or f"/race-{int(target_race_number)}-" not in href
+                    ):
                         continue
                     if constrain and region:
                         if f"/greyhound-racing/{region}/" not in href:
                             continue
-                        if meeting_slug and f"/greyhound-racing/{region}/{meeting_slug}/" not in href:
+                        if (
+                            meeting_slug
+                            and f"/greyhound-racing/{region}/{meeting_slug}/" not in href
+                        ):
                             continue
                     links.append(href)
                 return links
 
             for kind, url in candidates:
-                constrain = (kind in ("meeting",))
+                constrain = kind in ("meeting",)
                 matches = _collect(url, constrain)
                 if matches:
                     # Return first match
@@ -2748,7 +3040,9 @@ class SportsbetOddsIntegrator:
             print(f"  ⚠️  Error selecting specific race: {e}")
             return None
 
-    def find_next_race_from_meeting(self, meeting_url: str, expected_venue: Optional[str] = None) -> Optional[str]:
+    def find_next_race_from_meeting(
+        self, meeting_url: str, expected_venue: Optional[str] = None
+    ) -> Optional[str]:
         """Navigate to meeting page and find the next available race URL.
         If expected_venue is provided, attempt to locate the meeting link on the region page
         whose text matches the venue's human-readable name.
@@ -2756,9 +3050,14 @@ class SportsbetOddsIntegrator:
         By, WebDriverWait, EC, TimeoutException = self._selenium_primitives()
         try:
             from urllib.parse import urlparse, urljoin
+
             # Lazy import to avoid hard dependency at module import time
             try:
-                from config.venue_mapping import normalize_venue, get_venue_full_name, get_venue_state
+                from config.venue_mapping import (
+                    normalize_venue,
+                    get_venue_full_name,
+                    get_venue_state,
+                )
             except Exception:
                 normalize_venue = lambda x: (x or "").strip().upper()
                 get_venue_full_name = lambda x: x
@@ -2767,18 +3066,18 @@ class SportsbetOddsIntegrator:
             # Derive region and meeting slug from incoming URL and prefer non-betting meeting page
             parsed = urlparse(meeting_url)
             path = parsed.path or ""
-            parts = [p for p in path.split('/') if p]
+            parts = [p for p in path.split("/") if p]
             region = None
             meeting_slug = None
-            if 'greyhound-racing' in parts:
+            if "greyhound-racing" in parts:
                 try:
-                    gi = parts.index('greyhound-racing')
+                    gi = parts.index("greyhound-racing")
                     if gi + 1 < len(parts):
                         region = parts[gi + 1]
                     if gi + 2 < len(parts):
                         seg = parts[gi + 2]
                         # Treat the next segment as the meeting slug if it isn't already a race/meeting page
-                        if seg and not seg.startswith('race-') and 'meeting-' not in seg:
+                        if seg and not seg.startswith("race-") and "meeting-" not in seg:
                             meeting_slug = seg
                 except ValueError:
                     pass
@@ -2796,34 +3095,44 @@ class SportsbetOddsIntegrator:
                 candidates.append(("coerced", coerced))
             # 1) Non-betting meeting page (scoped)
             if region and meeting_slug:
-                non_betting_meeting = urljoin(self.base_url, f"/greyhound-racing/{region}/{meeting_slug}")
+                non_betting_meeting = urljoin(
+                    self.base_url, f"/greyhound-racing/{region}/{meeting_slug}"
+                )
                 candidates.append(("meeting", non_betting_meeting))
             # 2) Try to resolve meeting slug by matching venue name on region page
             resolved_meeting_from_text = None
             if region and expected_venue:
                 expected_code = normalize_venue(expected_venue)
                 expected_name = get_venue_full_name(expected_code) or expected_code
+
                 # Normalize comparisons: lowercase and strip parenthesis content
                 def _norm(s: str) -> str:
                     import re as _re
+
                     s = (s or "").lower().strip()
                     s = _re.sub(r"\([^)]*\)", "", s)
                     s = s.replace("-", " ")
                     s = " ".join(s.split())
                     return s
+
                 expected_norm = _norm(expected_name)
                 region_main = urljoin(self.base_url, f"/greyhound-racing/{region}")
-                print(f"  🧭 Resolving meeting by text on region page: {region_main} (expect '{expected_name}')")
+                print(
+                    f"  🧭 Resolving meeting by text on region page: {region_main} (expect '{expected_name}')"
+                )
                 self.driver.get(region_main)
                 try:
                     WebDriverWait(self.driver, 10).until(
-                        lambda driver: driver.execute_script("return document.readyState") == "complete"
+                        lambda driver: driver.execute_script("return document.readyState")
+                        == "complete"
                     )
                 except TimeoutException:
                     pass
                 time.sleep(1)
                 try:
-                    anchors = self.driver.find_elements(By.CSS_SELECTOR, f"a[href^='/greyhound-racing/{region}/']")
+                    anchors = self.driver.find_elements(
+                        By.CSS_SELECTOR, f"a[href^='/greyhound-racing/{region}/']"
+                    )
                     best = None
                     for a in anchors:
                         try:
@@ -2852,12 +3161,12 @@ class SportsbetOddsIntegrator:
             if resolved_meeting_from_text:
                 try:
                     parsed_res = urlparse(resolved_meeting_from_text)
-                    rparts = [p for p in (parsed_res.path or "").split('/') if p]
-                    if 'greyhound-racing' in rparts:
-                        gi2 = rparts.index('greyhound-racing')
+                    rparts = [p for p in (parsed_res.path or "").split("/") if p]
+                    if "greyhound-racing" in rparts:
+                        gi2 = rparts.index("greyhound-racing")
                         if gi2 + 2 < len(rparts):
                             cand = rparts[gi2 + 2]
-                            if cand and not cand.startswith('race-') and 'meeting-' not in cand:
+                            if cand and not cand.startswith("race-") and "meeting-" not in cand:
                                 target_meeting_slug = cand
                 except Exception:
                     target_meeting_slug = None
@@ -2910,7 +3219,11 @@ class SportsbetOddsIntegrator:
                                 # Optionally constrain to the same meeting slug
                                 if require_meeting and region:
                                     slug_to_match = meeting_slug or target_meeting_slug
-                                    if slug_to_match and f"/greyhound-racing/{region}/{slug_to_match}/" not in href:
+                                    if (
+                                        slug_to_match
+                                        and f"/greyhound-racing/{region}/{slug_to_match}/"
+                                        not in href
+                                    ):
                                         continue
                                 filtered.append(el)
                             if filtered:
@@ -2927,7 +3240,11 @@ class SportsbetOddsIntegrator:
             race_links = []
             for kind, url in candidates:
                 # If we have a concrete meeting link (from slug or text), enforce meeting scoping
-                require_meeting = (kind in ("meeting", "original", "coerced")) and bool(meeting_slug or resolved_meeting_from_text or url.startswith(f"{self.base_url}/greyhound-racing/"))
+                require_meeting = (kind in ("meeting", "original", "coerced")) and bool(
+                    meeting_slug
+                    or resolved_meeting_from_text
+                    or url.startswith(f"{self.base_url}/greyhound-racing/")
+                )
                 race_links = _load_and_collect(url, require_meeting)
                 if race_links:
                     break
@@ -2958,8 +3275,7 @@ class SportsbetOddsIntegrator:
 
                     # Check if this looks like the next/current race
                     if any(
-                        keyword in countdown_text
-                        for keyword in ["next", "live", "now", "current"]
+                        keyword in countdown_text for keyword in ["next", "live", "now", "current"]
                     ):
                         print(f"    🎯 Found next/current race: {href}")
                         return href
@@ -2968,9 +3284,7 @@ class SportsbetOddsIntegrator:
                     countdown_match = re.search(r"(\d+)m(?:\s|$)", countdown_text)
                     if countdown_match:
                         minutes = int(countdown_match.group(1))
-                        if (
-                            minutes < shortest_countdown and minutes < 30
-                        ):  # Within 30 minutes
+                        if minutes < shortest_countdown and minutes < 30:  # Within 30 minutes
                             shortest_countdown = minutes
                             best_race_url = href
                             print(f"    ⏰ Found race in {minutes}min: {href}")
@@ -2980,9 +3294,7 @@ class SportsbetOddsIntegrator:
                     continue
 
             if best_race_url:
-                print(
-                    f"  ✅ Selected race with {shortest_countdown}min countdown: {best_race_url}"
-                )
+                print(f"  ✅ Selected race with {shortest_countdown}min countdown: {best_race_url}")
                 return best_race_url
 
             # Fallback: take the first race link if no countdown found
@@ -2999,9 +3311,7 @@ class SportsbetOddsIntegrator:
             print(f"  ⚠️  Error finding race from meeting page: {e}")
             return None
 
-    def extract_race_number_from_page(
-        self, expected_venue: str = None
-    ) -> Optional[int]:
+    def extract_race_number_from_page(self, expected_venue: str = None) -> Optional[int]:
         """Extract race number from the current page, venue-specific"""
         By, WebDriverWait, EC, TimeoutException = self._selenium_primitives()
         try:
@@ -3028,9 +3338,7 @@ class SportsbetOddsIntegrator:
                 for match in title_matches:
                     race_num = int(match)
                     if 1 <= race_num <= 20:
-                        print(
-                            f"  📍 Found race number {race_num} in venue-specific title"
-                        )
+                        print(f"  📍 Found race number {race_num} in venue-specific title")
                         return race_num
 
             # Strategy 3: Look for main race heading on the page
@@ -3071,18 +3379,12 @@ class SportsbetOddsIntegrator:
 
             if expected_venue:
                 venue_pattern = expected_venue.lower().replace(" ", r"[\s\-_]*")
-                json_pattern = (
-                    rf'.*{venue_pattern}.*"race(?:Number|Id|_number)?"\s*:\s*(\d+)'
-                )
-                source_matches = re.findall(
-                    json_pattern, page_source, re.IGNORECASE | re.DOTALL
-                )
+                json_pattern = rf'.*{venue_pattern}.*"race(?:Number|Id|_number)?"\s*:\s*(\d+)'
+                source_matches = re.findall(json_pattern, page_source, re.IGNORECASE | re.DOTALL)
                 for match in source_matches:
                     race_num = int(match)
                     if 1 <= race_num <= 20:
-                        print(
-                            f"  📍 Found race number {race_num} in venue-specific JSON"
-                        )
+                        print(f"  📍 Found race number {race_num} in venue-specific JSON")
                         return race_num
 
             # Strategy 5: Look for current race indicator
@@ -3099,9 +3401,7 @@ class SportsbetOddsIntegrator:
                     for elem in elements:
                         text = elem.text.strip()
                         if expected_venue and expected_venue.lower() in text.lower():
-                            matches = re.findall(
-                                r"(?:race\s*#?\s*|r\s*)(\d+)", text.lower()
-                            )
+                            matches = re.findall(r"(?:race\s*#?\s*|r\s*)(\d+)", text.lower())
                             for match in matches:
                                 race_num = int(match)
                                 if 1 <= race_num <= 20:
@@ -3127,9 +3427,7 @@ class SportsbetOddsIntegrator:
                     for elem in elements:
                         text = elem.text.strip()
                         if expected_venue and expected_venue.lower() in text.lower():
-                            matches = re.findall(
-                                r"(?:race\s*#?\s*|r\s*)(\d+)", text.lower()
-                            )
+                            matches = re.findall(r"(?:race\s*#?\s*|r\s*)(\d+)", text.lower())
                             for match in matches:
                                 race_num = int(match)
                                 if 1 <= race_num <= 20:
@@ -3140,9 +3438,7 @@ class SportsbetOddsIntegrator:
                 except:
                     continue
 
-            print(
-                f"  ⚠️  Could not extract race number from page for venue {expected_venue}"
-            )
+            print(f"  ⚠️  Could not extract race number from page for venue {expected_venue}")
             return None
 
         except Exception as e:
@@ -3223,9 +3519,7 @@ class SportsbetOddsIntegrator:
                             )
 
                 if not upcoming_races:
-                    print(
-                        "ℹ️  No upcoming races found in JSON-LD data, trying DOM extraction..."
-                    )
+                    print("ℹ️  No upcoming races found in JSON-LD data, trying DOM extraction...")
 
                     # Fallback: Extract from DOM elements with countdown timers
                     dom_races = self.extract_races_from_dom()
@@ -3254,14 +3548,10 @@ class SportsbetOddsIntegrator:
                         return []
 
                 # Now enhance each race with live odds by visiting individual race pages
-                print(
-                    f"🎯 Fetching live odds for {len(upcoming_races)} upcoming races..."
-                )
+                print(f"🎯 Fetching live odds for {len(upcoming_races)} upcoming races...")
                 races_with_odds = []
 
-                for i, race in enumerate(
-                    upcoming_races[:3]
-                ):  # Limit to first 3 upcoming races
+                for i, race in enumerate(upcoming_races[:3]):  # Limit to first 3 upcoming races
                     print(
                         f"🔄 Processing race {i+1}/{min(3, len(upcoming_races))}: {race['venue']}"
                     )
@@ -3362,9 +3652,7 @@ class SportsbetOddsIntegrator:
 
         try:
             # Find all runner cards
-            runners = race_card.find_elements(
-                By.CSS_SELECTOR, "[data-automation-id='race-runner']"
-            )
+            runners = race_card.find_elements(By.CSS_SELECTOR, "[data-automation-id='race-runner']")
 
             for i, runner in enumerate(runners):
                 try:
@@ -3382,14 +3670,22 @@ class SportsbetOddsIntegrator:
 
                     # Parse odds
                     odds_decimal = self.parse_odds_to_decimal(odds_text)
+                    try:
+                        runner_text = runner.text.strip()
+                    except Exception:
+                        runner_text = dog_name
+                    box_meta = sportsbet_runner_box_metadata(
+                        list_position=i + 1,
+                        runner_text=runner_text,
+                    )
 
                     odds_data.append(
                         {
                             "dog_name": dog_name,
                             "dog_clean_name": self.clean_dog_name(dog_name),
-                            "box_number": i + 1,
                             "odds_decimal": odds_decimal,
                             "odds_fractional": odds_text,
+                            **box_meta,
                         }
                     )
 
@@ -3452,18 +3748,17 @@ class SportsbetOddsIntegrator:
                 for i, dog in enumerate(odds_data[:8]):
                     print(f"    {i+1}. {dog['dog_name']}: ${dog['odds_decimal']:.2f}")
             else:
-                print(
-                    f"  ⚠️ {priority} - No odds extracted for {venue} (in {countdown}min)"
-                )
+                print(f"  ⚠️ {priority} - No odds extracted for {venue} (in {countdown}min)")
         except Exception as e:
             print(f"  ⚠️ Error in debug print: {e}")
 
     def _to_iso_date(self, s: str) -> str:
         try:
             from datetime import datetime as _dt
+
             ss = (s or "").strip()
             # Already ISO
-            if len(ss) >= 10 and ss[4] == '-' and ss[7] == '-':
+            if len(ss) >= 10 and ss[4] == "-" and ss[7] == "-":
                 return ss[:10]
             # Try common formats
             for fmt in ("%d %B %Y", "%d %b %Y", "%Y/%m/%d", "%d/%m/%Y", "%m/%d/%Y"):
@@ -3514,9 +3809,7 @@ class SportsbetOddsIntegrator:
             ) or race_info.get("race_id")
 
             sportsbet_url = (
-                race_info.get("venue_url")
-                or race_info.get("sportsbet_url")
-                or race_info.get("url")
+                race_info.get("venue_url") or race_info.get("sportsbet_url") or race_info.get("url")
             )
             safe_upsert_race_metadata(
                 cursor,
@@ -3554,26 +3847,33 @@ class SportsbetOddsIntegrator:
             )
 
             # Insert new odds (canonical id) for WIN market (default)
+            for column, definition in LIVE_ODDS_CAPTURE_COLUMNS.items():
+                _ensure_column(cursor, "live_odds", column, definition)
+            live_cols = _table_columns(cursor, "live_odds")
             for dog_odds in odds_data:
+                values = {
+                    "race_id": canonical_rid,
+                    "venue": race_info.get("venue"),
+                    "race_number": race_info.get("race_number", 0),
+                    "race_date": race_info.get("race_date"),
+                    "race_time": race_info.get("race_time"),
+                    "dog_name": dog_odds.get("dog_name"),
+                    "dog_clean_name": dog_odds.get("dog_clean_name"),
+                    "box_number": dog_odds.get("box_number"),
+                    "odds_decimal": float(dog_odds.get("odds_decimal", 0.0)),
+                    "odds_fractional": dog_odds.get("odds_fractional", ""),
+                    "sportsbet_box_source": dog_odds.get("sportsbet_box_source"),
+                    "sportsbet_list_position": dog_odds.get("sportsbet_list_position"),
+                    "sportsbet_raw_runner_text": dog_odds.get("sportsbet_raw_runner_text"),
+                }
+                insert_values = {
+                    column: value for column, value in values.items() if column in live_cols
+                }
+                columns = list(insert_values.keys())
+                placeholders = ", ".join("?" for _ in columns)
                 cursor.execute(
-                    """
-                    INSERT INTO live_odds 
-                    (race_id, venue, race_number, race_date, race_time, 
-                     dog_name, dog_clean_name, box_number, odds_decimal, odds_fractional)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                    (
-                        canonical_rid,
-                        race_info.get("venue"),
-                        race_info.get("race_number", 0),
-                        race_info.get("race_date"),
-                        race_info.get("race_time"),
-                        dog_odds.get("dog_name"),
-                        dog_odds.get("dog_clean_name"),
-                        dog_odds.get("box_number"),
-                        float(dog_odds.get("odds_decimal", 0.0)),
-                        dog_odds.get("odds_fractional", ""),
-                    ),
+                    f"INSERT INTO live_odds ({', '.join(columns)}) VALUES ({placeholders})",
+                    tuple(insert_values[column] for column in columns),
                 )
 
             conn.commit()
@@ -3708,9 +4008,7 @@ class SportsbetOddsIntegrator:
 
                 # Calculate value (predicted probability vs implied probability)
                 if implied_prob > 0:
-                    value_percentage = (
-                        (predicted_prob - implied_prob) / implied_prob
-                    ) * 100
+                    value_percentage = ((predicted_prob - implied_prob) / implied_prob) * 100
 
                     # Identify value bets (predicted probability > implied probability)
                     if value_percentage > 10:  # At least 10% value
@@ -3882,7 +4180,11 @@ class SportsbetOddsIntegrator:
                             race_dt = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M")
                         except ValueError:
                             # Fallback: 12-hour with AM/PM (with or without space)
-                            rt_norm = rt_upper.replace("AM", " AM").replace("PM", " PM").replace("  ", " ")
+                            rt_norm = (
+                                rt_upper.replace("AM", " AM")
+                                .replace("PM", " PM")
+                                .replace("  ", " ")
+                            )
                             datetime_str_12 = f"{date_str} {rt_norm}"
                             race_dt = datetime.strptime(datetime_str_12, "%Y-%m-%d %I:%M %p")
                         now = datetime.now()
@@ -3902,13 +4204,9 @@ class SportsbetOddsIntegrator:
                             )
                         )
                     except (ValueError, TypeError) as e:
-                        print(
-                            f"Error parsing race date/time {race_date} {race_time}: {e}"
-                        )
+                        print(f"Error parsing race date/time {race_date} {race_time}: {e}")
                         record["minutes_until_race"] = 999
-                        record["formatted_race_time"] = record.get(
-                            "race_time", "Unknown"
-                        )
+                        record["formatted_race_time"] = record.get("race_time", "Unknown")
                         record["time_status"] = "UNKNOWN"
                 else:
                     record["minutes_until_race"] = 999

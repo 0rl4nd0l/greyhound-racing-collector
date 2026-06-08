@@ -83,6 +83,49 @@ def test_csv_enrichment_marks_prefixed_first_form_row_as_explicit_history():
     assert "forward_filled_prefixed_row" in row["csv_historical_sources"]
 
 
+def test_csv_enrichment_drops_history_rows_on_or_after_target_date():
+    pipeline_module = _load_real_prediction_pipeline_v4()
+    pipeline = pipeline_module.PredictionPipelineV4.__new__(
+        pipeline_module.PredictionPipelineV4
+    )
+    raw_csv = pd.DataFrame(
+        [
+            {
+                "Dog Name": "1. Alpha Runner",
+                "PLC": 1,
+                "TIME": 20.1,
+                "DIST": 400,
+                "DATE": "2026-05-25",
+                "TRACK": "WPK",
+            },
+            {
+                "Dog Name": '""',
+                "PLC": 2,
+                "TIME": 20.3,
+                "DIST": 400,
+                "DATE": "2026-05-24",
+                "TRACK": "WPK",
+            },
+        ]
+    )
+    participants = pd.DataFrame(
+        [
+            {
+                "dog_clean_name": "Alpha Runner",
+                "box_number": 1,
+                "race_date": "2026-05-25",
+            }
+        ]
+    )
+
+    enriched = pipeline._enrich_with_csv_historical_data(participants, raw_csv)
+    row = enriched.iloc[0]
+
+    assert row["csv_historical_races"] == 1
+    assert row["csv_recent_form"] == 2
+    assert row["csv_history_rows_dropped_post_target"] == 1
+
+
 def test_map_csv_keeps_target_fields_separate_from_form_history():
     pipeline_module = _load_real_prediction_pipeline_v4()
     pipeline = pipeline_module.PredictionPipelineV4.__new__(
@@ -111,13 +154,16 @@ def test_map_csv_keeps_target_fields_separate_from_form_history():
     assert mapped["starting_price_source"].unique().tolist() == [
         "default_missing_target"
     ]
-    assert mapped["distance"].tolist() == [400.0] * 8
+    assert mapped["distance"].tolist() == [500.0] * 8
     assert mapped["distance_source"].unique().tolist() == [
-        "historical_form_mode_inferred"
+        "default_missing_target"
     ]
     assert mapped["grade"].unique().tolist() == ["G5"]
     assert mapped["parser_context"].unique().tolist() == ["embedded_form_history"]
     assert "embedded_form_history_detected" in mapped["target_field_warning"].iloc[0]
+    assert "historical_form_distance_mode_available:400" in mapped[
+        "target_field_warning"
+    ].iloc[0]
 
 
 def test_odds_name_key_matches_punctuation_and_case_variants():
