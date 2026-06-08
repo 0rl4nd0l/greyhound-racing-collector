@@ -1,0 +1,231 @@
+{
+  "active_shadow_matrix": {
+    "affected_features": {
+      "same_distance_same_grade_avg_time": {
+        "all_missing_in_train": true,
+        "holdout": {
+          "all_missing": false,
+          "present_pct": 0.052083333333333336,
+          "present_rows": 10,
+          "rows": 192,
+          "unique_present_values": 10
+        },
+        "overall": {
+          "all_missing": false,
+          "present_pct": 0.010604453870625663,
+          "present_rows": 10,
+          "rows": 943,
+          "unique_present_values": 10
+        },
+        "train": {
+          "all_missing": true,
+          "present_pct": 0.0,
+          "present_rows": 0,
+          "rows": 751,
+          "unique_present_values": 0
+        }
+      },
+      "same_distance_same_grade_best_time": {
+        "all_missing_in_train": true,
+        "holdout": {
+          "all_missing": false,
+          "present_pct": 0.052083333333333336,
+          "present_rows": 10,
+          "rows": 192,
+          "unique_present_values": 10
+        },
+        "overall": {
+          "all_missing": false,
+          "present_pct": 0.010604453870625663,
+          "present_rows": 10,
+          "rows": 943,
+          "unique_present_values": 10
+        },
+        "train": {
+          "all_missing": true,
+          "present_pct": 0.0,
+          "present_rows": 0,
+          "rows": 751,
+          "unique_present_values": 0
+        }
+      }
+    },
+    "feature_columns_exactly_78": true,
+    "feature_count": 78,
+    "history_status_counts": {
+      "db_history_rebuilt": 718,
+      "safe_history_unavailable": 225
+    },
+    "holdout_date_max": "2026-05-31",
+    "holdout_date_min": "2026-05-31",
+    "holdout_races": 25,
+    "holdout_rows": 192,
+    "matrix_audit_status": "PASS",
+    "overall_races": 132,
+    "overall_rows": 943,
+    "race_overlap_count": 0,
+    "schema_version": "active_shadow_repaired_matrix_summary_v1",
+    "source_paths": {
+      "clean_dataset": "artifacts/full_evidence_orchestration_20260525/isolated_challenger_box_bias_study_20260602/clean_official_dataset.jsonl",
+      "db": "greyhound_racing_data.db",
+      "repaired_packet": "artifacts/full_evidence_orchestration_20260525/bounded_target_grade_repair_20260603/repaired_pre_race_history_feature_packet.csv",
+      "schema": "outputs/milestone_6a_non_tgr_challenger_training_design/repaired_non_tgr_schema.json"
+    },
+    "sqlite_quick_check": "ok",
+    "target_context": {
+      "target_distance_safe": {
+        "holdout": {
+          "all_missing": false,
+          "present_pct": 1.0,
+          "present_rows": 192,
+          "rows": 192,
+          "unique_present_values": 11
+        },
+        "overall": {
+          "all_missing": false,
+          "present_pct": 0.2492046659597031,
+          "present_rows": 235,
+          "rows": 943,
+          "unique_present_values": 13
+        },
+        "train": {
+          "all_missing": false,
+          "present_pct": 0.05725699067909454,
+          "present_rows": 43,
+          "rows": 751,
+          "unique_present_values": 4
+        }
+      },
+      "target_grade_safe": {
+        "holdout": {
+          "all_missing": false,
+          "present_pct": 1.0,
+          "present_rows": 192,
+          "rows": 192,
+          "unique_present_values": 10
+        },
+        "overall": {
+          "all_missing": false,
+          "present_pct": 0.2492046659597031,
+          "present_rows": 235,
+          "rows": 943,
+          "unique_present_values": 11
+        },
+        "train": {
+          "all_missing": false,
+          "present_pct": 0.05725699067909454,
+          "present_rows": 43,
+          "rows": 751,
+          "unique_present_values": 3
+        }
+      }
+    },
+    "target_resolution_counts": {
+      "AMBIGUOUS": 137,
+      "MISSING": 571,
+      "SAFE": 235
+    },
+    "tgr_columns_present": [],
+    "train_date_max": "2026-05-27",
+    "train_date_min": "2025-09-10",
+    "train_races": 107,
+    "train_rows": 751
+  },
+  "db_state": {
+    "db_hash_unchanged": true,
+    "db_path": "greyhound_racing_data.db",
+    "db_sha256_after": "d2d9e8e482bed24c821140ebca02a9a14b18657a351da86a1e6cbdf7a7cd6e0b",
+    "db_sha256_before": "d2d9e8e482bed24c821140ebca02a9a14b18657a351da86a1e6cbdf7a7cd6e0b",
+    "expected_counts_match": true,
+    "expected_official_dog_rows": 1493,
+    "expected_official_races": 214,
+    "official_dog_rows_by_dog_race_data_thedogs_official": 1493,
+    "official_races_by_dog_race_data_thedogs_official": 214,
+    "quick_check": "ok",
+    "schema_version": "same_distance_same_grade_db_state_v1",
+    "sqlite_open_mode": "mode=ro",
+    "sqlite_query_only": true
+  },
+  "expanded_pool_context": {
+    "affected_features": {
+      "same_distance_same_grade_avg_time": {
+        "holdout": {
+          "all_missing": false,
+          "present_pct": 0.05649717514124294,
+          "present_rows": 10,
+          "rows": 177,
+          "unique_present_values": 10
+        },
+        "overall": {
+          "all_missing": false,
+          "present_pct": 0.007367716008037508,
+          "present_rows": 11,
+          "rows": 1493,
+          "unique_present_values": 11
+        },
+        "train": {
+          "all_missing": false,
+          "present_pct": 0.0007598784194528875,
+          "present_rows": 1,
+          "rows": 1316,
+          "unique_present_values": 1
+        }
+      },
+      "same_distance_same_grade_best_time": {
+        "holdout": {
+          "all_missing": false,
+          "present_pct": 0.05649717514124294,
+          "present_rows": 10,
+          "rows": 177,
+          "unique_present_values": 10
+        },
+        "overall": {
+          "all_missing": false,
+          "present_pct": 0.007367716008037508,
+          "present_rows": 11,
+          "rows": 1493,
+          "unique_present_values": 11
+        },
+        "train": {
+          "all_missing": false,
+          "present_pct": 0.0007598784194528875,
+          "present_rows": 1,
+          "rows": 1316,
+          "unique_present_values": 1
+        }
+      }
+    },
+    "note": "Expanded-pool context is newer DB-wide evidence, but the active shadow runner/training parity reports still use the 943-row shadow matrix audited as primary here.",
+    "official_counts": {
+      "official_dog_rows": 1493,
+      "official_races": 214,
+      "quick_check": "ok"
+    },
+    "source_dir": "artifacts/full_evidence_orchestration_20260525/expanded_pool_validation_and_tournament_20260607T161542+1000",
+    "split": {
+      "holdout_races": 25,
+      "holdout_rows": 177,
+      "race_overlap_count": 0,
+      "train_races": 189,
+      "train_rows": 1316
+    },
+    "status": {
+      "feature_population": "PASS",
+      "tournament": "PASS",
+      "validation": "PASS"
+    }
+  },
+  "generated_at": "2026-06-08T09:02:14+00:00",
+  "latest_forward_shadow_context": {
+    "activation_gate_final_status": "FEATURE_ACTIVATION_BLOCKED_KEEP_QUARANTINED",
+    "aggregate_artifact": "artifacts/full_evidence_orchestration_20260525/forward_shadow_result_aggregate_20260608T184904+1000/forward_shadow_result_aggregate_report.json",
+    "aggregate_final_status": "PARTIAL_AGGREGATE_PENDING_MORE_RESULTS",
+    "aggregate_joined_race_count": 37,
+    "coverage_gap_final_status": "TRAIN_LIVE_COVERAGE_GAP_AUDIT_COMPLETE_KEEP_QUARANTINED",
+    "live_race_count": 16,
+    "live_row_count": 125,
+    "status_artifact": "artifacts/full_evidence_orchestration_20260525/forward_shadow_status_20260608T184915+1000/forward_shadow_status_report.json",
+    "status_final_status": "CONTINUE_FORWARD_SHADOW_COLLECTION"
+  },
+  "schema_version": "same_distance_same_grade_affected_feature_population_v1"
+}
