@@ -1,0 +1,14 @@
+[Unit]
+Description=Greyhound shadow challenger calibration report-only sweep
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/l4nd0/greyhound_racing_collector
+Environment=PYTHONUNBUFFERED=1
+Environment=GREYHOUND_ALLOW_TGR=0
+ExecStart=/usr/bin/python3 /home/l4nd0/greyhound_racing_collector/scripts/run_forward_shadow_challenger_calibration.py --min-total-safe-joined-races 100 --min-train-races 40 --min-eval-races 20
+TimeoutStartSec=180
+Nice=10
+IOSchedulingClass=best-effort

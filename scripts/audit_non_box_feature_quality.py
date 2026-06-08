@@ -284,6 +284,50 @@ def vector_signature(values: list[Any]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
+def csv_delimiter_for_source(source_file_path: Path) -> str | None:
+    """Return an explicit delimiter for normalized race CSVs when known.
+
+    The fresh TheDogs form-guide captures are pipe-normalized, but pandas'
+    Python sniffer can mis-detect those files because the header contains
+    tokens such as ``Dog Name`` and ``1 SEC`` and the historical rows contain
+    punctuation/apostrophes. A bad delimiter makes reconstruction fail or
+    builds an empty mapped race, which then falsely reports all model-facing
+    target distances as zero. Prefer the verified sidecar delimiter and fall
+    back to a simple first-line count.
+    """
+
+    sidecar_path = Path(f"{source_file_path}.metadata.json")
+    try:
+        if sidecar_path.exists():
+            payload = load_json(sidecar_path)
+            delimiter = payload.get("normalized_delimiter") or payload.get("delimiter")
+            if delimiter in {"|", ",", "\t", ";"}:
+                return str(delimiter)
+    except Exception:
+        pass
+    try:
+        first_line = source_file_path.open("r", encoding="utf-8-sig").readline()
+        counts = {delimiter: first_line.count(delimiter) for delimiter in ("|", ",", "\t", ";")}
+        delimiter, count = max(counts.items(), key=lambda item: item[1])
+        if count > 0:
+            return delimiter
+    except Exception:
+        pass
+    return None
+
+
+def read_source_csv_for_reconstruction(source_file_path: Path) -> pd.DataFrame:
+    delimiter = csv_delimiter_for_source(source_file_path)
+    if delimiter is not None:
+        return pd.read_csv(
+            source_file_path,
+            sep=delimiter,
+            engine="python",
+            encoding="utf-8-sig",
+        )
+    return pd.read_csv(source_file_path, sep=None, engine="python", encoding="utf-8-sig")
+
+
 def numeric_default_features(feature_row: pd.Series, model_columns: list[str]) -> list[str]:
     defaults: list[str] = []
     for column in model_columns:
@@ -345,7 +389,7 @@ class FeatureReconstructor:
     def reconstruct(
         self, snapshot: dict[str, Any], source_file_path: Path
     ) -> tuple[pd.DataFrame, pd.DataFrame, list[str], list[str]]:
-        raw = pd.read_csv(source_file_path, sep=None, engine="python", encoding="utf-8-sig")
+        raw = read_source_csv_for_reconstruction(source_file_path)
         mapped = self.pipeline._map_csv_to_v4_format(raw, str(source_file_path))
         mapped, _dropped = self.strip_target_leakage_columns(mapped, allow_labels=False)
         mapped = self.pipeline._annotate_history_provenance(mapped)

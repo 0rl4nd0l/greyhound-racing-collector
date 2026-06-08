@@ -498,7 +498,7 @@ def classify_odds_snapshot_for_ev(
         "odds_captured_before_feature_freeze" in snapshot
         and snapshot.get("odds_captured_before_feature_freeze") is not True
     ):
-        return result("timestamp_after_prediction")
+        return result("timestamp_after_feature_freeze")
     if (
         "odds_captured_before_jump" in snapshot
         and snapshot.get("odds_captured_before_jump") is not True
@@ -617,6 +617,11 @@ def _runner_odds_quality_flags(
         _add_quality_flag(flags, "missing_odds_timestamp")
     if odds_snapshot.get("odds_captured_before_prediction") is not True:
         _add_quality_flag(flags, "odds_not_captured_before_prediction")
+    if (
+        "odds_captured_before_feature_freeze" in odds_snapshot
+        and odds_snapshot.get("odds_captured_before_feature_freeze") is not True
+    ):
+        _add_quality_flag(flags, "odds_not_captured_before_feature_freeze")
     if (
         "odds_captured_before_jump" in odds_snapshot
         and odds_snapshot.get("odds_captured_before_jump") is not True
@@ -751,6 +756,14 @@ def _snapshot_readiness(
         for row in priced_rows
         if row["odds_snapshot"].get("odds_captured_before_prediction") is not True
     )
+    not_before_feature_freeze_count = sum(
+        1
+        for row in priced_rows
+        if (
+            "odds_captured_before_feature_freeze" in row["odds_snapshot"]
+            and row["odds_snapshot"].get("odds_captured_before_feature_freeze") is not True
+        )
+    )
     not_before_jump_count = sum(
         1
         for row in priced_rows
@@ -796,6 +809,7 @@ def _snapshot_readiness(
         ),
         "priced_runners_have_odds_timestamps": missing_timestamp_count == 0,
         "priced_runners_captured_before_prediction": not_before_prediction_count == 0,
+        "priced_runners_captured_before_feature_freeze": not_before_feature_freeze_count == 0,
         "priced_runners_captured_before_jump": not_before_jump_count == 0,
         "missing_live_odds_explicit": missing_odds_explicit,
     }
@@ -812,6 +826,7 @@ def _snapshot_readiness(
             "stale_live_odds_count": stale_count,
             "missing_odds_timestamp_count": missing_timestamp_count,
             "odds_not_captured_before_prediction_count": not_before_prediction_count,
+            "odds_not_captured_before_feature_freeze_count": not_before_feature_freeze_count,
             "odds_not_captured_before_jump_count": not_before_jump_count,
         },
         "source_runner_completeness": source_report or None,

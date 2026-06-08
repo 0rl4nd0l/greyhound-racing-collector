@@ -81,6 +81,15 @@ def _header_value(row: Mapping[str, Any], names: Iterable[str]) -> Any:
     return None
 
 
+def _header_key(row: Mapping[str, Any], names: Iterable[str]) -> str | None:
+    lookup = {str(key).strip().lower(): key for key in row.keys()}
+    for name in names:
+        key = lookup.get(name.lower())
+        if key is not None:
+            return str(key)
+    return None
+
+
 def detect_csv_delimiter(content: str) -> str:
     """Detect the form-guide delimiter without accepting mixed structures."""
 
@@ -256,6 +265,175 @@ def participants_from_runner_rows(rows: Iterable[RunnerRow]) -> list[dict[str, A
         seen.add(key)
         participants.append({"box_number": row.box_number, "dog_name": row.dog_name})
     return participants
+
+
+def align_csv_text_to_canonical_final_runner_set(
+    content: str,
+    canonical_report: Mapping[str, Any] | None,
+    *,
+    source: str | None = None,
+) -> tuple[str, dict[str, Any]]:
+    """Return CSV text containing only canonical final starters.
+
+    The exported expert-form CSV may still contain scratched dogs and inactive
+    reserves. When TheDogs' canonical pre-race page identifies a promoted
+    reserve, prediction should run against the final box assignment rather than
+    the stale exported prefix. This helper rewrites only the target-runner
+    ``Dog Name`` prefix, preserves each selected dog's historical continuation
+    rows, and drops non-final starters.
+    """
+
+    canonical = dict(canonical_report or {})
+    participants = [
+        row
+        for row in canonical.get("final_runner_participants") or []
+        if isinstance(row, Mapping)
+        and _safe_int(row.get("box_number")) is not None
+        and clean_runner_name(row.get("dog_name") or "")
+    ]
+    report: dict[str, Any] = {
+        "schema_version": "canonical_runner_alignment_v1",
+        "status": "not_aligned",
+        "source": source,
+        "canonical_runner_set_status": canonical.get("canonical_runner_set_status"),
+        "canonical_source_url": canonical.get("final_runner_source_url"),
+        "source_runner_count": 0,
+        "canonical_runner_count": len(participants),
+        "prediction_runner_count": 0,
+        "dropped_participants": [],
+        "remapped_participants": [],
+        "missing_canonical_participants": [],
+        "duplicate_source_runner_names": [],
+        "reason": None,
+    }
+    if canonical.get("canonical_runner_set_status") != "available":
+        report["reason"] = "canonical_runner_set_not_available"
+        return content, report
+    if not participants:
+        report["reason"] = "canonical_final_participants_missing"
+        return content, report
+
+    delimiter = detect_csv_delimiter(content)
+    reader = csv.DictReader(io.StringIO(content), delimiter=delimiter)
+    fieldnames = list(reader.fieldnames or [])
+    if not fieldnames:
+        report["reason"] = "csv_header_missing"
+        return content, report
+
+    grouped: list[dict[str, Any]] = []
+    current: dict[str, Any] | None = None
+    for row in reader:
+        dog_key = _header_key(row, ("Dog Name", "dog_name", "runner", "name"))
+        raw_name = str(row.get(dog_key) if dog_key is not None else "").strip()
+        match = PRIMARY_RUNNER_RE.match(raw_name)
+        if match:
+            current = {
+                "source_box": int(match.group(1)),
+                "dog_name": clean_runner_name(raw_name),
+                "dog_name_key": dog_key,
+                "rows": [dict(row)],
+            }
+            grouped.append(current)
+        elif current is not None:
+            current["rows"].append(dict(row))
+
+    report["source_runner_count"] = len(grouped)
+    if not grouped:
+        report["reason"] = "source_runner_groups_missing"
+        return content, report
+
+    by_name: dict[str, list[dict[str, Any]]] = {}
+    for group in grouped:
+        by_name.setdefault(normalise_runner_name(group["dog_name"]), []).append(group)
+    duplicates = sorted(name for name, values in by_name.items() if name and len(values) > 1)
+    if duplicates:
+        report["duplicate_source_runner_names"] = duplicates
+        report["reason"] = "duplicate_source_runner_names"
+        return content, report
+
+    selected: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    missing: list[dict[str, Any]] = []
+    for participant in sorted(
+        participants,
+        key=lambda row: (_safe_int(row.get("box_number")) or 0, clean_runner_name(row.get("dog_name"))),
+    ):
+        final_box = _safe_int(participant.get("box_number"))
+        dog_name = clean_runner_name(participant.get("dog_name") or "")
+        name_key = normalise_runner_name(dog_name)
+        candidates = by_name.get(name_key) or []
+        original_box = _safe_int(participant.get("original_box_number"))
+        chosen = None
+        if original_box is not None:
+            chosen = next(
+                (group for group in candidates if group.get("source_box") == original_box),
+                None,
+            )
+        if chosen is None and len(candidates) == 1:
+            chosen = candidates[0]
+        if chosen is None:
+            missing.append(
+                {
+                    "box_number": final_box,
+                    "dog_name": dog_name,
+                    "original_box_number": original_box,
+                }
+            )
+            continue
+        selected.append((participant, chosen))
+
+    if missing:
+        report["missing_canonical_participants"] = missing
+        report["reason"] = "canonical_participant_missing_from_source_csv"
+        return content, report
+
+    used_ids = {id(group) for _participant, group in selected}
+    dropped = [
+        {"box_number": group["source_box"], "dog_name": group["dog_name"]}
+        for group in grouped
+        if id(group) not in used_ids
+    ]
+    report["dropped_participants"] = dropped
+
+    output = io.StringIO(newline="")
+    writer = csv.DictWriter(
+        output,
+        fieldnames=fieldnames,
+        delimiter=delimiter,
+        lineterminator="\n",
+        extrasaction="ignore",
+    )
+    writer.writeheader()
+    prediction_runner_count = 0
+    remapped: list[dict[str, Any]] = []
+    for participant, group in selected:
+        final_box = _safe_int(participant.get("box_number"))
+        canonical_name = clean_runner_name(participant.get("dog_name") or "")
+        source_box = _safe_int(group.get("source_box"))
+        rows = [dict(row) for row in group["rows"]]
+        dog_name_key = group.get("dog_name_key") or _header_key(rows[0], ("Dog Name", "dog_name", "runner", "name"))
+        if dog_name_key is None or final_box is None:
+            report["reason"] = "source_runner_group_missing_dog_name_column"
+            return content, report
+        rows[0][dog_name_key] = f"{final_box}. {canonical_name}"
+        if source_box != final_box:
+            remapped.append(
+                {
+                    "dog_name": canonical_name,
+                    "source_box_number": source_box,
+                    "final_box_number": final_box,
+                    "original_box_number": _safe_int(participant.get("original_box_number")),
+                }
+            )
+        writer.writerows(rows)
+        prediction_runner_count += 1
+
+    report["status"] = "aligned"
+    report["reason"] = None
+    report["prediction_runner_count"] = prediction_runner_count
+    report["remapped_participants"] = remapped
+    report["dropped_participants"] = dropped
+    report["delimiter"] = delimiter
+    return output.getvalue(), report
 
 
 def _iso_utc_now() -> str:
@@ -617,12 +795,22 @@ def verify_final_runner_set(
     source_participants = _source_participants(source_data)
     explicit_active_boxes = source_data.get("active_boxes")
     if explicit_active_boxes is None:
-        source_active_boxes = _int_list(row["box_number"] for row in source_participants)
+        source_active_boxes = _int_list(
+            row["box_number"]
+            for row in source_participants
+            if _safe_int(row.get("box_number")) is not None
+            and _safe_int(row.get("box_number")) <= 8
+        )
     else:
         source_active_boxes = _int_list(explicit_active_boxes)
     source_reserve_boxes = _int_list(
         source_data.get("reserve_boxes")
-        or [box for box in source_active_boxes if box > 8]
+        or [
+            row["box_number"]
+            for row in source_participants
+            if _safe_int(row.get("box_number")) is not None
+            and _safe_int(row.get("box_number")) > 8
+        ]
     )
     source_scratch_boxes = _int_list(source_data.get("scratched_boxes") or [])
 

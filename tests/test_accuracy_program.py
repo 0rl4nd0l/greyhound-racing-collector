@@ -204,7 +204,7 @@ def test_snapshot_odds_provenance_gate_rejects_unsafe_ev_inputs():
             None,
         ),
         (
-            "timestamp_after_prediction",
+            "timestamp_after_feature_freeze",
             {
                 "odds_timestamp": "2026-05-21T15:44:00",
                 "feature_freeze_timestamp": "2026-05-21T15:43:00",
@@ -280,6 +280,13 @@ def test_snapshot_odds_provenance_gate_rejects_unsafe_ev_inputs():
         )
         runner = snapshot["predictions"][0]
         assert runner["odds_match_status"] == expected_status
+        if expected_status == "timestamp_after_feature_freeze":
+            assert "odds_not_captured_before_feature_freeze" in runner["data_quality_flags"]
+            readiness = snapshot["snapshot_readiness"]
+            assert readiness["requirements"]["priced_runners_captured_before_prediction"] is True
+            assert readiness["requirements"]["priced_runners_captured_before_feature_freeze"] is False
+            assert readiness["counts"]["odds_not_captured_before_prediction_count"] == 0
+            assert readiness["counts"]["odds_not_captured_before_feature_freeze_count"] == 1
         if expected_ev is None:
             assert runner["ev_win"] is None
             assert runner["odds_exclusion_reason"] == expected_status

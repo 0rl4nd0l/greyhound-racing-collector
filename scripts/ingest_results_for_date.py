@@ -2,6 +2,9 @@
 """
 Official-first race results ingestion for upcoming-race CSVs.
 
+Default operator mode should be --dry-run. Database label writes require either
+--write-labels-approved or APPROVE_RESULT_LABEL_WRITE=true.
+
 Source order:
 1. TheDogs official race page, when accessible and parseable.
 2. Sportsbet results page top-four order as fallback.
@@ -15,6 +18,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import os
 import re
 import shutil
 import sqlite3
@@ -23,8 +27,8 @@ import time
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional
-from urllib.parse import urljoin
+from typing import Dict, Iterable, List, Mapping, Optional
+from urllib.parse import urljoin, urlparse
 
 import requests
 
@@ -62,6 +66,31 @@ THEDOGS_PUBLIC_HEADERS = {
 }
 
 
+def env_flag_enabled(name: str) -> bool:
+    return str(os.environ.get(name) or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+        "approved",
+    }
+
+
+def result_label_write_approved(args: argparse.Namespace) -> dict:
+    cli_approved = bool(getattr(args, "write_labels_approved", False))
+    env_approved = env_flag_enabled("APPROVE_RESULT_LABEL_WRITE")
+    approved = cli_approved or env_approved
+    return {
+        "approved": approved,
+        "status": "approved" if approved else "not_approved",
+        "sources": {
+            "cli_write_labels_approved": cli_approved,
+            "env_APPROVE_RESULT_LABEL_WRITE": env_approved,
+        },
+        "required_for": "official_result_label_writes",
+    }
+
+
 class _SeleniumByFallback:
     TAG_NAME = "tag name"
     CSS_SELECTOR = "css selector"
@@ -86,6 +115,8 @@ VENUE_TO_THEDOGS_SLUG = {
     "CAS": "casino",
     "CASO": "casino",
     "DAPT": "dapto",
+    "DARW": "darwin",
+    "GAWL": "gawler",
     "GRDN": "the-gardens",
     "GARD": "the-gardens",
     "HOB": "hobart",
@@ -155,6 +186,33 @@ def result_slug_from_url(url: str) -> Optional[str]:
     return re.sub(r"-\d+$", "", match.group(1)).lower()
 
 
+def thedogs_slug_from_race_url(url: str) -> Optional[str]:
+    try:
+        parts = [part for part in urlparse(str(url or "")).path.split("/") if part]
+    except Exception:
+        return None
+    try:
+        racing_index = parts.index("racing")
+    except ValueError:
+        return None
+    if len(parts) <= racing_index + 1:
+        return None
+    slug = parts[racing_index + 1].strip().lower()
+    return slug or None
+
+
+def thedogs_result_urls_from_race_url(url: str) -> List[str]:
+    parsed = urlparse(str(url or ""))
+    if not parsed.scheme or not parsed.netloc:
+        return []
+    base = parsed._replace(query="", fragment="").geturl().rstrip("/")
+    if not base:
+        return []
+    if base.endswith("/results"):
+        return [f"{base}?trial=false", base]
+    return [f"{base}/results?trial=false", f"{base}/results", f"{base}?trial=false", base]
+
+
 def parse_participants_from_csv(csv_path: Path) -> List[dict]:
     return participants_from_runner_rows(
         [
@@ -214,6 +272,21 @@ def _rug_box_from_markup(markup: str) -> Optional[int]:
         return int(match.group(1))
     except ValueError:
         return None
+
+
+def _clean_official_runner_name(value: str) -> Optional[str]:
+    text = re.sub(r"\s+", " ", str(value or "").strip())
+    text = re.sub(r"^\s*\d{1,2}\s*[\.\):-]\s*", "", text)
+    text = re.sub(r"\s+\d{1,2}\.\d{2}\s+T:\s+.*$", "", text)
+    text = re.sub(r"\s+T:\s+.*$", "", text)
+    return text or None
+
+
+def _terminal_status_from_text(value: str) -> Optional[str]:
+    status = re.sub(r"\s+", " ", str(value or "").strip().upper())
+    if status in {"FELL", "SCR", "L/SCR", "LSCR", "DNF", "DISQ"}:
+        return status
+    return None
 
 
 def rendered_text_from_html(markup: str) -> str:
@@ -298,6 +371,179 @@ def parse_thedogs_result_html(markup: str) -> Dict[int, int]:
                 continue
             positions.setdefault(box_number, position)
         return positions
+
+
+def parse_thedogs_result_html_runner_rows(markup: str) -> List[dict]:
+    """Parse official result rows with box, finish/status, and dog name.
+
+    This is a diagnostic companion to parse_thedogs_result_html. It does not
+    replace the existing position parser because label gates still rely on the
+    stricter box-to-position map.
+    """
+    if not str(markup or "").strip():
+        return []
+
+    try:
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(markup or "", "html.parser")
+        rows: List[dict] = []
+        for row in soup.select("table.race-runners--result tr.race-runner"):
+            position_cell = row.select_one("td.race-runners__finish-position")
+            box_cell = row.select_one("td.race-runners__box")
+            name_cell = row.select_one("td.race-runners__name")
+            if position_cell is None or box_cell is None:
+                continue
+
+            position_text = position_cell.get_text(" ", strip=True)
+            position = _strict_ordinal_to_position(position_text)
+            status = _terminal_status_from_text(position_text)
+
+            box_number = None
+            rug = box_cell.find(attrs={"name": re.compile(r"^rug_\d{1,2}$")})
+            if rug is not None:
+                box_number = _rug_box_from_markup(str(rug))
+            if box_number is None:
+                box_number = _rug_box_from_markup(str(box_cell))
+            if box_number is None:
+                continue
+
+            dog_name = (
+                _clean_official_runner_name(name_cell.get_text(" ", strip=True))
+                if name_cell is not None
+                else None
+            )
+            rows.append(
+                {
+                    "box_number": box_number,
+                    "finish_position": position,
+                    "dog_name": dog_name,
+                    "status": status,
+                }
+            )
+        return rows
+    except Exception:
+        rows = []
+        row_pattern = re.compile(
+            r"<tr\b(?=[^>]*\brace-runner\b)[^>]*>(?P<row>.*?)</tr>",
+            re.IGNORECASE | re.DOTALL,
+        )
+        position_pattern = re.compile(
+            r"<td\b(?=[^>]*\brace-runners__finish-position\b)[^>]*>(?P<value>.*?)</td>",
+            re.IGNORECASE | re.DOTALL,
+        )
+        box_pattern = re.compile(
+            r"<td\b(?=[^>]*\brace-runners__box\b)[^>]*>(?P<value>.*?)</td>",
+            re.IGNORECASE | re.DOTALL,
+        )
+        name_pattern = re.compile(
+            r"<td\b(?=[^>]*\brace-runners__name\b)[^>]*>(?P<value>.*?)</td>",
+            re.IGNORECASE | re.DOTALL,
+        )
+        for row_match in row_pattern.finditer(str(markup or "")):
+            row_markup = row_match.group("row")
+            position_match = position_pattern.search(row_markup)
+            box_match = box_pattern.search(row_markup)
+            if not position_match or not box_match:
+                continue
+            position_text = rendered_text_from_html(position_match.group("value"))
+            position = _strict_ordinal_to_position(position_text)
+            status = _terminal_status_from_text(position_text)
+            box_number = _rug_box_from_markup(box_match.group("value"))
+            if box_number is None:
+                continue
+            name_match = name_pattern.search(row_markup)
+            dog_name = (
+                _clean_official_runner_name(rendered_text_from_html(name_match.group("value")))
+                if name_match
+                else None
+            )
+            rows.append(
+                {
+                    "box_number": box_number,
+                    "finish_position": position,
+                    "dog_name": dog_name,
+                    "status": status,
+                }
+            )
+        return rows
+
+
+def parse_thedogs_result_html_terminal_statuses(markup: str) -> Dict[int, str]:
+    if not str(markup or "").strip():
+        return {}
+
+    try:
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(markup or "", "html.parser")
+        statuses: Dict[int, str] = {}
+        for row in soup.select("table.race-runners--result tr.race-runner"):
+            position_cell = row.select_one("td.race-runners__finish-position")
+            box_cell = row.select_one("td.race-runners__box")
+            if position_cell is None or box_cell is None:
+                continue
+
+            status = _terminal_status_from_text(position_cell.get_text(" ", strip=True))
+            if status is None:
+                continue
+
+            box_number = None
+            rug = box_cell.find(attrs={"name": re.compile(r"^rug_\d{1,2}$")})
+            if rug is not None:
+                box_number = _rug_box_from_markup(str(rug))
+            if box_number is None:
+                box_number = _rug_box_from_markup(str(box_cell))
+            if box_number is None:
+                continue
+
+            statuses.setdefault(box_number, status)
+        return statuses
+    except Exception:
+        statuses: Dict[int, str] = {}
+        row_pattern = re.compile(
+            r"<tr\b(?=[^>]*\brace-runner\b)[^>]*>(?P<row>.*?)</tr>",
+            re.IGNORECASE | re.DOTALL,
+        )
+        position_pattern = re.compile(
+            r"<td\b(?=[^>]*\brace-runners__finish-position\b)[^>]*>(?P<value>.*?)</td>",
+            re.IGNORECASE | re.DOTALL,
+        )
+        box_pattern = re.compile(
+            r"<td\b(?=[^>]*\brace-runners__box\b)[^>]*>(?P<value>.*?)</td>",
+            re.IGNORECASE | re.DOTALL,
+        )
+        for row_match in row_pattern.finditer(str(markup or "")):
+            row_markup = row_match.group("row")
+            position_match = position_pattern.search(row_markup)
+            box_match = box_pattern.search(row_markup)
+            if not position_match or not box_match:
+                continue
+            position_text = rendered_text_from_html(position_match.group("value"))
+            status = _terminal_status_from_text(position_text)
+            box_number = _rug_box_from_markup(box_match.group("value"))
+            if status is None or box_number is None:
+                continue
+            statuses.setdefault(box_number, status)
+        return statuses
+
+
+def thedogs_result_rows_present(markup: str) -> bool:
+    if not str(markup or "").strip():
+        return False
+    try:
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(markup or "", "html.parser")
+        return bool(soup.select("table.race-runners--result tr.race-runner"))
+    except Exception:
+        return bool(
+            re.search(
+                r"<tr\b(?=[^>]*\brace-runner\b)",
+                str(markup or ""),
+                re.IGNORECASE | re.DOTALL,
+            )
+        )
 
 
 def response_is_forbidden(status_code: Optional[int], title: str, text: str) -> bool:
@@ -396,6 +642,7 @@ class RaceCandidate:
     participant_source: str = "csv"
     csv_participants: Optional[List[dict]] = None
     runner_completeness: Optional[dict] = None
+    canonical_thedogs_url: Optional[str] = None
 
     @property
     def venue_code(self) -> str:
@@ -407,6 +654,9 @@ class RaceCandidate:
 
     @property
     def thedogs_slug(self) -> Optional[str]:
+        canonical_slug = thedogs_slug_from_race_url(self.canonical_thedogs_url or "")
+        if canonical_slug:
+            return canonical_slug
         key = self.venue_code.strip().upper().replace(" ", "_")
         if key in VENUE_TO_THEDOGS_SLUG:
             return VENUE_TO_THEDOGS_SLUG[key]
@@ -423,12 +673,40 @@ class SourceResult:
     raw_order: List[int]
     race_name: Optional[str] = None
     error: Optional[str] = None
+    terminal_status_by_box: Optional[Dict[int, str]] = None
 
     @property
     def winner_box(self) -> Optional[int]:
         if not self.positions_by_box:
             return None
         return sorted(self.positions_by_box.items(), key=lambda item: item[1])[0][0]
+
+
+def _source_result_diagnostic(result: SourceResult) -> dict:
+    return {
+        "source": result.source,
+        "status": result.status,
+        "source_url": result.source_url,
+        "error": result.error,
+        "raw_order": list(result.raw_order),
+        "terminal_statuses": [
+            {
+                "box_number": int(box),
+                "status": str(status),
+            }
+            for box, status in sorted((result.terminal_status_by_box or {}).items())
+        ],
+        "positions": [
+            {
+                "box_number": int(box),
+                "finish_position": int(position),
+            }
+            for box, position in sorted(
+                result.positions_by_box.items(),
+                key=lambda item: (item[1], item[0]),
+            )
+        ],
+    }
 
 
 def result_validation_error(candidate: RaceCandidate, result: SourceResult) -> Optional[str]:
@@ -479,6 +757,7 @@ class TheDogsResultFetcher:
             return []
 
         urls: List[str] = []
+        urls.extend(thedogs_result_urls_from_race_url(candidate.canonical_thedogs_url or ""))
         urls.extend(self._discover_meeting_race_urls(candidate))
         urls.extend(
             [
@@ -568,6 +847,7 @@ class TheDogsResultFetcher:
         markup: str,
     ) -> Optional[SourceResult]:
         positions = parse_thedogs_result_html(markup)
+        terminal_statuses = parse_thedogs_result_html_terminal_statuses(markup)
         if positions:
             ordered_boxes = [
                 box for box, _ in sorted(positions.items(), key=lambda item: item[1])
@@ -578,6 +858,16 @@ class TheDogsResultFetcher:
                 source_url=source_url,
                 positions_by_box=positions,
                 raw_order=ordered_boxes,
+                terminal_status_by_box=terminal_statuses,
+            )
+        if thedogs_result_rows_present(markup):
+            return SourceResult(
+                source="thedogs_official",
+                status="error",
+                source_url=source_url,
+                positions_by_box={},
+                raw_order=[],
+                error="thedogs_result_table_without_strict_positions",
             )
         return self._result_from_text(
             candidate,
@@ -850,6 +1140,13 @@ def _snapshot_identity(snapshot: dict) -> Optional[dict]:
         return None
     if snapshot.get("snapshot_state") != "pre_jump_feature_freeze":
         return None
+    readiness = snapshot.get("snapshot_readiness")
+    if not isinstance(readiness, dict) or readiness.get("status") != "READY":
+        return {
+            "_skip_reason": "snapshot_not_ready_for_result_labels",
+            "race_id": str(snapshot.get("race_id") or ""),
+            "snapshot_readiness": readiness if isinstance(readiness, dict) else None,
+        }
 
     race_id = str(snapshot.get("race_id") or "").strip()
     race_date = str(snapshot.get("race_date") or "").strip()
@@ -922,6 +1219,14 @@ def _snapshot_identity(snapshot: dict) -> Optional[dict]:
         "race_time": race_time,
         "start_datetime": start_datetime,
         "sportsbet_url": None,
+        "canonical_thedogs_url": (
+            str(
+                snapshot.get("canonical_race_url")
+                or snapshot.get("final_runner_set_source_url")
+                or ""
+            ).strip()
+            or None
+        ),
         "results_status": None,
         "winner_name": None,
         "source_file_path": str(snapshot.get("source_file_path") or "").strip() or None,
@@ -963,6 +1268,7 @@ def load_snapshot_candidate_rows(
                     "race_id": identity.get("race_id") or str(path),
                     "reason": str(identity["_skip_reason"]),
                     "runner_completeness": identity.get("runner_completeness"),
+                    "snapshot_readiness": identity.get("snapshot_readiness"),
                 }
             )
             continue
@@ -1008,6 +1314,7 @@ def load_candidates(
     race_ids: Iterable[str],
     now: Optional[datetime] = None,
     snapshot_dir: Optional[Path] = None,
+    require_ready_snapshot: bool = False,
 ) -> tuple[List[RaceCandidate], List[dict]]:
     race_id_filter = [race_id for race_id in race_ids if race_id]
     params: List[object] = [target_date]
@@ -1034,6 +1341,8 @@ def load_candidates(
     try:
         for row in conn.execute(query, params).fetchall():
             metadata_by_race_id[str(row["race_id"])] = _row_dict(row)
+            if require_ready_snapshot:
+                continue
             eligible, lifecycle_status = jumped_or_already_resulted(row, now=now)
             if not eligible:
                 skipped.append(
@@ -1129,6 +1438,9 @@ def load_candidates(
             sportsbet_url = row.get("sportsbet_url") or metadata_row.get("sportsbet_url")
             if isinstance(sportsbet_url, str):
                 sportsbet_url = sportsbet_url.strip() or None
+            canonical_thedogs_url = row.get("canonical_thedogs_url")
+            if isinstance(canonical_thedogs_url, str):
+                canonical_thedogs_url = canonical_thedogs_url.strip() or None
             candidate_race_ids.add(str(row["race_id"]))
             candidates.append(
                 RaceCandidate(
@@ -1145,7 +1457,28 @@ def load_candidates(
                     participant_source="snapshot",
                     csv_participants=csv_participants,
                     runner_completeness=row.get("runner_completeness") or csv_runner_completeness,
+                    canonical_thedogs_url=canonical_thedogs_url,
                 )
+            )
+
+    if require_ready_snapshot:
+        skipped_race_ids = {str(item.get("race_id")) for item in skipped}
+        for race_id in sorted(metadata_by_race_id):
+            if race_id in candidate_race_ids or race_id in skipped_race_ids:
+                continue
+            skipped.append(
+                {
+                    "race_id": race_id,
+                    "reason": "ready_prejump_snapshot_required",
+                }
+            )
+        if snapshot_dir is None or not snapshot_dir.exists():
+            skipped.append(
+                {
+                    "race_id": "__snapshot_dir__",
+                    "reason": "ready_prejump_snapshot_required_but_snapshot_dir_missing",
+                    "snapshot_dir": str(snapshot_dir) if snapshot_dir else None,
+                }
             )
 
     return candidates, skipped
@@ -1245,10 +1578,21 @@ def write_result(
         note_parts.append("source_errors=" + "|".join(source_errors))
     if result.raw_order:
         note_parts.append("box_order=" + ",".join(str(box) for box in result.raw_order))
+    terminal_statuses = {
+        str(int(box)): str(status)
+        for box, status in sorted((result.terminal_status_by_box or {}).items())
+    }
+    if terminal_statuses:
+        note_parts.append(
+            "terminal_statuses="
+            + ",".join(
+                f"{box}:{status}" for box, status in terminal_statuses.items()
+            )
+        )
     data_quality_note = "; ".join(note_parts)
 
     if dry_run:
-        return {
+        summary = {
             "race_id": candidate.race_id,
             "status": result.status,
             "source": result.source,
@@ -1256,6 +1600,9 @@ def write_result(
             "box_order": result.raw_order,
             "dry_run": True,
         }
+        if terminal_statuses:
+            summary["terminal_statuses"] = terminal_statuses
+        return summary
 
     metadata_seeded = ensure_race_metadata_row(conn, candidate)
 
@@ -1376,6 +1723,376 @@ def backup_db(db_path: Path) -> Path:
     return backup_path
 
 
+def _normalise_report_path(path: Path) -> str:
+    return str(path.expanduser().resolve())
+
+
+def _race_id_scope(race_ids: Iterable[str]) -> List[str]:
+    return sorted({str(race_id) for race_id in race_ids if race_id})
+
+
+def _report_scope(
+    *,
+    args: argparse.Namespace,
+    db_path: Path,
+    upcoming_dir: Path,
+    snapshot_dir: Optional[Path],
+) -> dict:
+    return {
+        "db_path": _normalise_report_path(db_path),
+        "date": args.date,
+        "upcoming_dir": _normalise_report_path(upcoming_dir),
+        "snapshot_dir": _normalise_report_path(snapshot_dir)
+        if snapshot_dir is not None
+        else None,
+        "race_ids": _race_id_scope(getattr(args, "race_id", []) or []),
+        "require_ready_snapshot": bool(getattr(args, "require_ready_snapshot", False)),
+    }
+
+
+def _candidate_race_ids(candidates: Iterable[RaceCandidate]) -> List[str]:
+    return sorted({candidate.race_id for candidate in candidates})
+
+
+def _candidate_boxes(candidate: RaceCandidate) -> set[int]:
+    boxes: set[int] = set()
+    for participant in candidate.participants:
+        try:
+            boxes.add(int(participant.get("box_number")))
+        except Exception:
+            continue
+    return boxes
+
+
+def _result_boxes(item: Mapping[str, object]) -> set[int]:
+    boxes: set[int] = set()
+    for value in item.get("box_order") or []:
+        try:
+            boxes.add(int(value))
+        except Exception:
+            continue
+    return boxes
+
+
+def _terminal_statuses(item: Mapping[str, object]) -> Dict[int, str]:
+    statuses: Dict[int, str] = {}
+    raw = item.get("terminal_statuses") or {}
+    if isinstance(raw, Mapping):
+        iterable = raw.items()
+    elif isinstance(raw, list):
+        pairs = []
+        for entry in raw:
+            if not isinstance(entry, Mapping):
+                continue
+            pairs.append((entry.get("box_number"), entry.get("status")))
+        iterable = pairs
+    else:
+        return statuses
+    for box, status in iterable:
+        try:
+            box_number = int(box)
+        except Exception:
+            continue
+        status_text = str(status or "").strip()
+        if status_text:
+            statuses[box_number] = status_text
+    return statuses
+
+
+def _label_write_blockers(
+    ingested: Iterable[dict],
+    candidates: Iterable[RaceCandidate],
+) -> List[dict]:
+    blockers: List[dict] = []
+    candidates_by_race_id = {candidate.race_id: candidate for candidate in candidates}
+    for item in ingested:
+        source = item.get("source")
+        status = item.get("status")
+        race_id = item.get("race_id")
+        if source == "thedogs_official" and status == RESULTED:
+            candidate = candidates_by_race_id.get(str(race_id))
+            expected_boxes = _candidate_boxes(candidate) if candidate else set()
+            observed_boxes = _result_boxes(item)
+            terminal_statuses = _terminal_statuses(item)
+            expected_terminal_statuses = {
+                box: status
+                for box, status in terminal_statuses.items()
+                if expected_boxes and box in expected_boxes
+            }
+            accounted_boxes = observed_boxes | set(expected_terminal_statuses)
+            if (
+                expected_terminal_statuses
+                and expected_boxes
+                and accounted_boxes == expected_boxes
+                and not (observed_boxes - expected_boxes)
+            ):
+                blockers.append(
+                    {
+                        "race_id": race_id,
+                        "source": source,
+                        "status": status,
+                        "reason": "label_write_requires_terminal_status_support",
+                        "terminal_statuses": {
+                            str(box): terminal_status
+                            for box, terminal_status in sorted(
+                                expected_terminal_statuses.items()
+                            )
+                        },
+                    }
+                )
+                continue
+            if expected_boxes and observed_boxes == expected_boxes:
+                continue
+            blockers.append(
+                {
+                    "race_id": race_id,
+                    "source": source,
+                    "status": status,
+                    "reason": "label_write_requires_complete_official_result_positions",
+                    "expected_box_count": len(expected_boxes),
+                    "result_box_count": len(observed_boxes),
+                    "missing_result_boxes": sorted(expected_boxes - observed_boxes),
+                    "unexpected_result_boxes": sorted(observed_boxes - expected_boxes),
+                }
+            )
+            continue
+        blockers.append(
+            {
+                "race_id": race_id,
+                "source": source,
+                "status": status,
+                "reason": "label_write_requires_complete_official_result",
+            }
+        )
+    return blockers
+
+
+def _build_report(
+    *,
+    args: argparse.Namespace,
+    db_path: Path,
+    upcoming_dir: Path,
+    snapshot_dir: Optional[Path],
+    write_approval: dict,
+    candidates: List[RaceCandidate],
+    skipped: List[dict],
+    ingested: List[dict],
+    failed: List[dict],
+    backup_path: Optional[Path],
+    dry_run_report_gate: Optional[dict] = None,
+) -> dict:
+    candidate_ids = _candidate_race_ids(candidates)
+    status = "SUCCESS"
+    if not candidates:
+        status = "DATA_MISSING"
+    if failed:
+        status = "FAILED"
+    label_write_blockers = _label_write_blockers(ingested, candidates)
+    clean_for_label_write = bool(
+        args.dry_run
+        and candidates
+        and not failed
+        and len(ingested) == len(candidates)
+        and not label_write_blockers
+    )
+    report = {
+        "schema_version": "official_result_ingest_report_v1",
+        "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "status": status,
+        "dry_run": bool(args.dry_run),
+        "scope": _report_scope(
+            args=args,
+            db_path=db_path,
+            upcoming_dir=upcoming_dir,
+            snapshot_dir=snapshot_dir,
+        ),
+        "candidate_count": len(candidates),
+        "candidate_race_ids": candidate_ids,
+        "skipped_count": len(skipped),
+        "skipped": skipped,
+        "ingested_count": len(ingested),
+        "ingested": ingested,
+        "failed_count": len(failed),
+        "failed": failed,
+        "label_write_blockers": label_write_blockers,
+        "backup_path": str(backup_path) if backup_path else None,
+        "result_label_write_approval": write_approval,
+        "dry_run_report_gate": dry_run_report_gate,
+        "clean_for_label_write": clean_for_label_write,
+    }
+    return report
+
+
+def _write_output_report(report: dict, output_path: Optional[str]) -> None:
+    if not output_path:
+        return
+    path = Path(output_path)
+    if not path.is_absolute():
+        path = REPO_ROOT / path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def validate_clean_dry_run_report(
+    *,
+    report_path: Optional[str],
+    args: argparse.Namespace,
+    db_path: Path,
+    upcoming_dir: Path,
+    snapshot_dir: Optional[Path],
+    candidate_race_ids: Iterable[str],
+) -> dict:
+    gate = {
+        "approved": False,
+        "status": "not_approved",
+        "report_path": report_path,
+        "required_for": "official_result_label_writes",
+    }
+    if not report_path:
+        gate["reason"] = "missing_approved_dry_run_report"
+        return gate
+
+    path = Path(report_path)
+    if not path.is_absolute():
+        path = REPO_ROOT / path
+    if not path.exists():
+        gate["reason"] = "approved_dry_run_report_not_found"
+        gate["resolved_report_path"] = str(path)
+        return gate
+
+    try:
+        report = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        gate["reason"] = f"approved_dry_run_report_unreadable:{type(exc).__name__}"
+        gate["resolved_report_path"] = str(path)
+        return gate
+
+    expected_scope = _report_scope(
+        args=args,
+        db_path=db_path,
+        upcoming_dir=upcoming_dir,
+        snapshot_dir=snapshot_dir,
+    )
+    observed_scope = report.get("scope") if isinstance(report, dict) else None
+    expected_candidate_ids = _race_id_scope(candidate_race_ids)
+    observed_candidate_ids = _race_id_scope(
+        report.get("candidate_race_ids") if isinstance(report, dict) else []
+    )
+    failures: List[str] = []
+    if not isinstance(report, dict):
+        failures.append("report_root_not_object")
+    else:
+        if report.get("schema_version") != "official_result_ingest_report_v1":
+            failures.append("schema_version_mismatch")
+        if report.get("dry_run") is not True:
+            failures.append("report_is_not_dry_run")
+        if report.get("status") != "SUCCESS":
+            failures.append("report_status_not_success")
+        if report.get("clean_for_label_write") is not True:
+            failures.append("report_not_clean_for_label_write")
+        if observed_scope != expected_scope:
+            failures.append("report_scope_mismatch")
+        if observed_candidate_ids != expected_candidate_ids:
+            failures.append("candidate_race_ids_mismatch")
+        if int(report.get("failed_count") or 0) != 0:
+            failures.append("dry_run_failed_count_nonzero")
+        if int(report.get("candidate_count") or 0) <= 0:
+            failures.append("dry_run_candidate_count_zero")
+        if int(report.get("ingested_count") or 0) != int(report.get("candidate_count") or 0):
+            failures.append("dry_run_ingested_count_mismatch")
+
+    gate.update(
+        {
+            "resolved_report_path": str(path),
+            "expected_scope": expected_scope,
+            "observed_scope": observed_scope,
+            "expected_candidate_race_ids": expected_candidate_ids,
+            "observed_candidate_race_ids": observed_candidate_ids,
+        }
+    )
+    if failures:
+        gate["reason"] = ",".join(failures)
+        return gate
+
+    gate["approved"] = True
+    gate["status"] = "approved"
+    return gate
+
+
+def _skip_reason_counts(skipped: Iterable[Mapping[str, object]]) -> Dict[str, int]:
+    counts: Dict[str, int] = {}
+    for item in skipped:
+        reason = str(item.get("reason") or "unknown")
+        counts[reason] = counts.get(reason, 0) + 1
+    return counts
+
+
+def build_label_write_readiness_report(
+    *,
+    args: argparse.Namespace,
+    db_path: Path,
+    upcoming_dir: Path,
+    snapshot_dir: Optional[Path],
+    write_approval: dict,
+    candidates: List[RaceCandidate],
+    skipped: List[dict],
+    dry_run_report_gate: dict,
+) -> dict:
+    planned_command = [
+        str(REPO_ROOT / ".venv/bin/python"),
+        "scripts/ingest_results_for_date.py",
+        "--db",
+        str(db_path),
+        "--date",
+        args.date,
+        "--upcoming-dir",
+        str(upcoming_dir),
+    ]
+    if snapshot_dir is not None:
+        planned_command.extend(["--snapshot-dir", str(snapshot_dir)])
+    if getattr(args, "require_ready_snapshot", False):
+        planned_command.append("--require-ready-snapshot")
+    if args.approved_dry_run_report:
+        planned_command.extend(["--approved-dry-run-report", args.approved_dry_run_report])
+    for race_id in getattr(args, "race_id", []) or []:
+        planned_command.extend(["--race-id", race_id])
+    planned_command.append("--write-labels-approved")
+    if getattr(args, "output", None):
+        planned_output = Path(args.output)
+        planned_command.extend(
+            [
+                "--output",
+                str(planned_output.with_name("result_label_write_report_if_approved.json")),
+            ]
+        )
+
+    ready = bool(dry_run_report_gate.get("approved") and candidates)
+    skipped_by_reason = _skip_reason_counts(skipped)
+    return {
+        "schema_version": "result_label_write_readiness_validation_v1",
+        "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "status": "READY_FOR_EXPLICIT_APPROVAL" if ready else "NOT_READY",
+        "scope": _report_scope(
+            args=args,
+            db_path=db_path,
+            upcoming_dir=upcoming_dir,
+            snapshot_dir=snapshot_dir,
+        ),
+        "candidate_count_loaded_for_write_scope": len(candidates),
+        "candidate_race_ids_loaded_for_write_scope": _candidate_race_ids(candidates),
+        "skipped_count_before_write_scope_validation": len(skipped),
+        "skipped_before_write_scope_validation_by_reason": skipped_by_reason,
+        "skipped_before_write_scope_validation": skipped,
+        "dry_run_report_gate": dry_run_report_gate,
+        "result_label_write_approval": write_approval,
+        "approval_required": True,
+        "required_cli_flag": "--write-labels-approved",
+        "required_env_var": "APPROVE_RESULT_LABEL_WRITE",
+        "planned_command_if_approved": planned_command,
+        "write_performed": False,
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Ingest race results with TheDogs official-first source order"
@@ -1404,11 +2121,65 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--dry-run", action="store_true", help="Parse but do not write")
     parser.add_argument(
+        "--output",
+        help="Optional JSON report path for dry-run/write evidence",
+    )
+    parser.add_argument(
+        "--write-labels-approved",
+        action="store_true",
+        help=(
+            "Approval gate for writing official result labels. Without this flag "
+            "or APPROVE_RESULT_LABEL_WRITE=true, non-dry-run execution exits "
+            "before fetching or mutating the database."
+        ),
+    )
+    parser.add_argument(
+        "--approved-dry-run-report",
+        help=(
+            "Required for non-dry-run label writes. Must point to a clean "
+            "official_result_ingest_report_v1 dry-run report for the same "
+            "date, DB, upcoming directory, snapshot directory, and race filter."
+        ),
+    )
+    parser.add_argument(
+        "--validate-label-write-readiness",
+        action="store_true",
+        help=(
+            "Read-only validation for a planned result label write. Validates "
+            "--approved-dry-run-report against the exact date, DB, upcoming "
+            "directory, snapshot directory, and race filter, writes the "
+            "readiness report to --output, then exits without fetching pages "
+            "or mutating the database."
+        ),
+    )
+    parser.add_argument(
+        "--require-ready-snapshot",
+        action="store_true",
+        help=(
+            "Only ingest labels for races backed by a result-free persisted "
+            "prediction_snapshot_v1 artifact with snapshot_readiness.status READY."
+        ),
+    )
+    parser.add_argument(
         "--no-headless",
         action="store_true",
         help="Show browser while fetching pages",
     )
     return parser
+
+
+def optional_browser_driver(headless: bool):
+    try:
+        from selenium.webdriver.common.by import By
+    except Exception as exc:  # noqa: BLE001 - CLI records dependency state in reports.
+        return None, _SeleniumByFallback, f"browser_unavailable:{type(exc).__name__}"
+
+    try:
+        from drivers import get_chrome_driver
+
+        return get_chrome_driver(headless=headless), By, None
+    except Exception as exc:  # noqa: BLE001 - keep official HTTP dry-runs usable.
+        return None, By, f"browser_unavailable:{type(exc).__name__}"
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -1423,6 +2194,20 @@ def main(argv: Optional[List[str]] = None) -> int:
     if not upcoming_dir.exists():
         print(f"ERROR upcoming directory not found: {upcoming_dir}", file=sys.stderr)
         return 2
+    write_approval = result_label_write_approved(args)
+    if (
+        not args.dry_run
+        and not args.validate_label_write_readiness
+        and not write_approval["approved"]
+    ):
+        print(
+            "ERROR result label writes require --write-labels-approved or "
+            "APPROVE_RESULT_LABEL_WRITE=true; rerun with --dry-run for fetch-only "
+            "official-first validation.",
+            file=sys.stderr,
+        )
+        print(json.dumps({"result_label_write_approval": write_approval}, sort_keys=True))
+        return 2
 
     candidates, skipped = load_candidates(
         db_path,
@@ -1430,13 +2215,82 @@ def main(argv: Optional[List[str]] = None) -> int:
         upcoming_dir,
         args.race_id,
         snapshot_dir=snapshot_dir,
+        require_ready_snapshot=bool(args.require_ready_snapshot),
     )
     print(f"Candidates: {len(candidates)}")
     if skipped:
         print(f"Skipped before fetch: {len(skipped)}")
         for item in skipped:
             print(f"SKIPPED {item}")
+    if args.validate_label_write_readiness:
+        dry_run_report_gate = validate_clean_dry_run_report(
+            report_path=args.approved_dry_run_report,
+            args=args,
+            db_path=db_path,
+            upcoming_dir=upcoming_dir,
+            snapshot_dir=snapshot_dir,
+            candidate_race_ids=_candidate_race_ids(candidates),
+        )
+        report = build_label_write_readiness_report(
+            args=args,
+            db_path=db_path,
+            upcoming_dir=upcoming_dir,
+            snapshot_dir=snapshot_dir,
+            write_approval=write_approval,
+            candidates=candidates,
+            skipped=skipped,
+            dry_run_report_gate=dry_run_report_gate,
+        )
+        _write_output_report(report, args.output)
+        print(json.dumps({"label_write_readiness": report}, sort_keys=True))
+        return 0 if report["status"] == "READY_FOR_EXPLICIT_APPROVAL" else 2
+    dry_run_report_gate = None
+    if not args.dry_run:
+        dry_run_report_gate = validate_clean_dry_run_report(
+            report_path=args.approved_dry_run_report,
+            args=args,
+            db_path=db_path,
+            upcoming_dir=upcoming_dir,
+            snapshot_dir=snapshot_dir,
+            candidate_race_ids=_candidate_race_ids(candidates),
+        )
+        if not dry_run_report_gate["approved"] and candidates:
+            print(
+                "ERROR result label writes require a clean prior --dry-run report "
+                "via --approved-dry-run-report.",
+                file=sys.stderr,
+            )
+            print(json.dumps({"dry_run_report_gate": dry_run_report_gate}, sort_keys=True))
+            report = _build_report(
+                args=args,
+                db_path=db_path,
+                upcoming_dir=upcoming_dir,
+                snapshot_dir=snapshot_dir,
+                write_approval=write_approval,
+                candidates=candidates,
+                skipped=skipped,
+                ingested=[],
+                failed=[],
+                backup_path=None,
+                dry_run_report_gate=dry_run_report_gate,
+            )
+            _write_output_report(report, args.output)
+            return 2
     if not candidates:
+        report = _build_report(
+            args=args,
+            db_path=db_path,
+            upcoming_dir=upcoming_dir,
+            snapshot_dir=snapshot_dir,
+            write_approval=write_approval,
+            candidates=candidates,
+            skipped=skipped,
+            ingested=[],
+            failed=[],
+            backup_path=None,
+            dry_run_report_gate=dry_run_report_gate,
+        )
+        _write_output_report(report, args.output)
         return 0
 
     backup_path = None
@@ -1444,10 +2298,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         backup_path = backup_db(db_path)
         print(f"Backup: {backup_path}")
 
-    from drivers import get_chrome_driver
-    from selenium.webdriver.common.by import By
-
-    driver = get_chrome_driver(headless=not args.no_headless)
+    driver, By, browser_error = optional_browser_driver(headless=not args.no_headless)
+    if browser_error:
+        print(f"Browser fallback unavailable: {browser_error}", file=sys.stderr)
     ingested: List[dict] = []
     failed: List[dict] = []
     try:
@@ -1456,7 +2309,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             by=By,
             http_session=_StatelessPublicHttpClient(),
         )
-        sportsbet = SportsbetResultFetcher(driver, args.date, by=By)
+        sportsbet = SportsbetResultFetcher(driver, args.date, by=By) if driver else None
 
         conn = sqlite3.connect(db_path)
         try:
@@ -1470,7 +2323,18 @@ def main(argv: Optional[List[str]] = None) -> int:
                     official.error = official_error
                 chosen = official if official_error is None else None
                 if chosen is None:
-                    fallback = sportsbet.fetch(candidate)
+                    fallback = (
+                        sportsbet.fetch(candidate)
+                        if sportsbet is not None
+                        else SourceResult(
+                            source="sportsbet_results_top4",
+                            status="error",
+                            source_url=None,
+                            positions_by_box={},
+                            raw_order=[],
+                            error=browser_error or "browser_unavailable",
+                        )
+                    )
                     attempts.append(fallback)
                     fallback_error = result_validation_error(candidate, fallback)
                     if fallback_error and not fallback.error:
@@ -1482,6 +2346,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                         {
                             "race_id": candidate.race_id,
                             "errors": [a.error for a in attempts if a.error],
+                            "attempts": [
+                                _source_result_diagnostic(attempt)
+                                for attempt in attempts
+                            ],
                         }
                     )
                     continue
@@ -1498,7 +2366,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         finally:
             conn.close()
     finally:
-        driver.quit()
+        if driver is not None:
+            driver.quit()
 
     print("\nINGEST SUMMARY")
     print(f"ingested={len(ingested)} failed={len(failed)} dry_run={args.dry_run}")
@@ -1510,6 +2379,21 @@ def main(argv: Optional[List[str]] = None) -> int:
         )
     for item in failed:
         print(f"FAILED {item}")
+
+    report = _build_report(
+        args=args,
+        db_path=db_path,
+        upcoming_dir=upcoming_dir,
+        snapshot_dir=snapshot_dir,
+        write_approval=write_approval,
+        candidates=candidates,
+        skipped=skipped,
+        ingested=ingested,
+        failed=failed,
+        backup_path=backup_path,
+        dry_run_report_gate=dry_run_report_gate,
+    )
+    _write_output_report(report, args.output)
 
     return 0
 

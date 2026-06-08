@@ -26,14 +26,15 @@ except Exception as _bs4_import_error:
 
 from utils.http_client import get_shared_session
 from utils.runner_completeness import (
-    analyze_csv_runner_completeness,
     analyze_csv_text_runner_completeness,
+    fetch_canonical_runner_set,
     quarantine_csv_content,
     quarantine_existing_file,
 )
 from utils.csv_metadata import (
     build_csv_download_provenance_payload,
     build_safe_target_metadata_payload,
+    existing_prejump_sidecar_contract_status,
     normalize_verified_thedogs_export_content,
     normalize_target_distance,
     normalize_target_grade,
@@ -131,6 +132,24 @@ class UpcomingRaceBrowser:
         )
         with open(metadata_path, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, indent=2, sort_keys=True)
+
+    def _existing_prejump_sidecar_contract_status(self, filepath) -> dict:
+        """Return whether an existing accepted CSV has the current pre-jump contract."""
+        return existing_prejump_sidecar_contract_status(filepath)
+
+    def _quarantine_existing_csv_and_sidecar(self, filepath, *, reason: str) -> dict:
+        csv_path = Path(filepath)
+        result = {"reason": reason, "csv_quarantine_path": None, "sidecar_quarantine_path": None}
+        if csv_path.exists():
+            result["csv_quarantine_path"] = str(
+                quarantine_existing_file(csv_path, reason=reason)
+            )
+        sidecar_path = Path(f"{filepath}.metadata.json")
+        if sidecar_path.exists():
+            result["sidecar_quarantine_path"] = str(
+                quarantine_existing_file(sidecar_path, reason=reason)
+            )
+        return result
 
     def _dedupe_artifact_path(self, path: Path) -> Path:
         if not path.exists():
@@ -987,7 +1006,11 @@ class UpcomingRaceBrowser:
 
             grade_element = header.select_one(".race-header__info__grade")
             grade_text = grade_element.get_text(" ", strip=True) if grade_element else ""
-            if not grade_text:
+            name_element = header.select_one(
+                ".race-header__info__name, .race-header__info__title, h1, h2"
+            )
+            name_text = name_element.get_text(" ", strip=True) if name_element else ""
+            if not grade_text and not name_text:
                 return {}
 
             distance = normalize_target_distance(grade_text)
@@ -996,7 +1019,7 @@ class UpcomingRaceBrowser:
             ).strip(" -–—|")
             grade = normalize_target_grade(grade_without_distance) or normalize_target_grade(
                 grade_text
-            )
+            ) or normalize_target_grade(name_text)
 
             header_found = {}
             if distance:
@@ -1053,6 +1076,10 @@ class UpcomingRaceBrowser:
                         }:
                             grade = normalize_target_grade(value)
                             if grade and "grade" not in found:
+                                found["grade"] = grade
+                        if normalized_key in {"name", "title"} and "grade" not in found:
+                            grade = normalize_target_grade(value)
+                            if grade:
                                 found["grade"] = grade
                     _walk_json(value, current_tied)
             elif isinstance(obj, list):
@@ -1235,10 +1262,30 @@ class UpcomingRaceBrowser:
             # Generate filename
             filename = f"Race {race_info['race_number']} - {race_info['venue']} - {race_info['date']}.csv"
             filepath = os.path.join(self.upcoming_dir, filename)
+            existing_quarantine_result = None
 
             # Check if already exists
             if os.path.exists(filepath):
-                return {"success": False, "error": f"File already exists: {filename}"}
+                existing_contract = self._existing_prejump_sidecar_contract_status(filepath)
+                if existing_contract.get("status") == "PASS":
+                    return {
+                        "success": True,
+                        "filename": filename,
+                        "filepath": filepath,
+                        "already_exists": True,
+                        "runner_completeness": existing_contract.get(
+                            "runner_completeness"
+                        ),
+                        "existing_prejump_sidecar_contract": existing_contract,
+                    }
+                existing_quarantine_result = self._quarantine_existing_csv_and_sidecar(
+                    filepath,
+                    reason="stale_prejump_sidecar_contract",
+                )
+                print(
+                    "   ⚠️ Existing CSV had missing/old pre-jump sidecar contract; "
+                    "quarantined and refreshing"
+                )
 
             # Find CSV download link
             csv_info = self.find_csv_download_link(soup, race_url)
@@ -1261,17 +1308,27 @@ class UpcomingRaceBrowser:
                         race_info={**race_info, "url": base_race_url},
                     )
                     if ef_success and os.path.exists(filepath):
-                        completeness = analyze_csv_runner_completeness(filepath)
-                        if not completeness.is_complete:
-                            quarantine_path = quarantine_existing_file(
+                        fallback_contract = self._existing_prejump_sidecar_contract_status(
+                            filepath
+                        )
+                        if fallback_contract.get("status") != "PASS":
+                            quarantine_result = self._quarantine_existing_csv_and_sidecar(
                                 filepath,
-                                reason="incomplete_runner_set",
+                                reason="fallback_prejump_sidecar_contract_failed",
                             )
                             return {
                                 "success": False,
-                                "error": "Incomplete runner set in downloaded CSV",
-                                "runner_completeness": completeness.as_dict(),
-                                "quarantine_path": str(quarantine_path),
+                                "error": (
+                                    "Expert-form fallback produced CSV without "
+                                    "valid pre-jump sidecar contract"
+                                ),
+                                "existing_prejump_sidecar_contract": fallback_contract,
+                                "quarantine": quarantine_result,
+                                **(
+                                    {"existing_quarantine": existing_quarantine_result}
+                                    if existing_quarantine_result
+                                    else {}
+                                ),
                             }
                         print(
                             f"   ✅ Fallback saved CSV via expert-form scraper: {filename}"
@@ -1280,7 +1337,15 @@ class UpcomingRaceBrowser:
                             "success": True,
                             "filename": filename,
                             "filepath": filepath,
-                            "runner_completeness": completeness.as_dict(),
+                            "runner_completeness": fallback_contract.get(
+                                "runner_completeness"
+                            ),
+                            "existing_prejump_sidecar_contract": fallback_contract,
+                            **(
+                                {"existing_quarantine": existing_quarantine_result}
+                                if existing_quarantine_result
+                                else {}
+                            ),
                         }
                     else:
                         print(
@@ -1289,7 +1354,10 @@ class UpcomingRaceBrowser:
                 except Exception as _ef_e:
                     print(f"   ⚠️ Expert-form fallback failed: {_ef_e}")
 
-                return {"success": False, "error": "No CSV download link found"}
+                result = {"success": False, "error": "No CSV download link found"}
+                if existing_quarantine_result:
+                    result["existing_quarantine"] = existing_quarantine_result
+                return result
 
             # Download CSV content
             content = None
@@ -1383,12 +1451,17 @@ class UpcomingRaceBrowser:
                 filename=filename,
                 allow_generic_fields=False,
             )
+            canonical_runner_set = fetch_canonical_runner_set(
+                race_url,
+                session=self.session,
+            )
             normalization = normalize_verified_thedogs_export_content(
                 content,
                 accepted_csv_path=filepath,
                 raw_export_path=raw_export_path,
                 sidecar_payload=preliminary_sidecar,
                 runner_completeness=completeness.as_dict(),
+                canonical_runner_set=canonical_runner_set,
             )
             normalization_metadata = {
                 key: value
@@ -1412,6 +1485,8 @@ class UpcomingRaceBrowser:
                     "error": (
                         "Incomplete runner set in downloaded CSV"
                         if "runner_set_not_complete" in reason
+                        else "Downloaded CSV failed canonical final runner-set alignment gate"
+                        if "final_runner_set_not_aligned" in reason
                         else "Downloaded CSV failed canonical TheDogs normalization gate"
                     ),
                     "runner_completeness": completeness.as_dict(),
@@ -1421,6 +1496,10 @@ class UpcomingRaceBrowser:
                 }
 
             normalized_content = str(normalization["normalized_content"])
+            accepted_completeness = analyze_csv_text_runner_completeness(
+                normalized_content,
+                source=f"accepted:{race_url}",
+            )
 
             # Save accepted canonical pipe-delimited file
             with open(filepath, "w", encoding="utf-8") as f:
@@ -1430,7 +1509,7 @@ class UpcomingRaceBrowser:
                 race_url=race_url,
                 csv_info=csv_info,
                 content=normalized_content,
-                completeness=completeness,
+                completeness=accepted_completeness,
                 race_info={**race_info, "url": race_url},
                 normalization=normalization_metadata,
             )
@@ -1441,9 +1520,15 @@ class UpcomingRaceBrowser:
                 "success": True,
                 "filename": filename,
                 "filepath": filepath,
-                "runner_completeness": completeness.as_dict(),
+                "runner_completeness": accepted_completeness.as_dict(),
+                "source_runner_completeness": completeness.as_dict(),
                 "normalization": normalization_metadata,
                 "raw_export_path": str(raw_export_path),
+                **(
+                    {"existing_quarantine": existing_quarantine_result}
+                    if existing_quarantine_result
+                    else {}
+                ),
             }
 
         except Exception as e:

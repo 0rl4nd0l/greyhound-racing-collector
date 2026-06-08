@@ -7,10 +7,13 @@ import pytest
 from scripts import validate_upcoming_races
 from scripts.capture_prediction_snapshot import _candidate_files
 from utils.csv_metadata import (
+    THEDOGS_EXPERT_FORM_COLUMNS,
     build_csv_download_provenance_payload,
+    build_safe_target_metadata_payload,
     normalize_verified_thedogs_export_content,
     verify_canonical_sidecar_target_metadata,
 )
+from utils.runner_completeness import analyze_csv_text_runner_completeness
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,6 +23,9 @@ REAL_COMMA_EXPORT = (
 )
 REAL_COMMA_SIDECAR = Path(f"{REAL_COMMA_EXPORT}.metadata.json")
 ACCEPTED_NAME = "Race 13 - BAL - 2026-05-27.csv"
+SYNTHETIC_RACE_URL = (
+    "https://www.thedogs.com.au/racing/test/2026-05-29/1/test-race?trial=false"
+)
 
 
 def _require_real_export_fixture() -> None:
@@ -81,6 +87,74 @@ def _normalise_fixture(tmp_path: Path) -> tuple[Path, dict, dict]:
     return accepted, result, final_sidecar
 
 
+def _synthetic_form_export(runners: list[tuple[int, str]], *, delimiter: str = ",") -> str:
+    rows = [list(THEDOGS_EXPERT_FORM_COLUMNS)]
+    for box_number, dog_name in runners:
+        rows.append(
+            [
+                f"{box_number}. {dog_name}",
+                "D",
+                "1",
+                str(box_number),
+                "30.0",
+                "400",
+                "2026-05-01",
+                "TEST",
+                "M",
+                "22.10",
+                "2.00",
+                "22.00",
+                "5.00",
+                "1.00",
+                "111",
+                "1",
+                "$2.00",
+            ]
+        )
+    return "\n".join(delimiter.join(row) for row in rows) + "\n"
+
+
+def _synthetic_sidecar() -> dict:
+    return {
+        "race_url": SYNTHETIC_RACE_URL,
+        "race_info": {
+            "race_number": 1,
+            "race_time_mapping_status": "exact_url_match",
+            "race_time_source": "canonical_race_url",
+            "url": SYNTHETIC_RACE_URL,
+        },
+        "target_distance": "400m",
+        "target_distance_source": "canonical_pre_race_page",
+        "target_grade": "Maiden",
+        "target_grade_source": "canonical_pre_race_page",
+        "metadata_is_leakage_safe": True,
+    }
+
+
+def _canonical_runner_set(runners: list[tuple[int, str]]) -> dict:
+    participants = [
+        {"box_number": box_number, "dog_name": dog_name}
+        for box_number, dog_name in runners
+    ]
+    return {
+        "schema_version": "canonical_pre_race_runner_set_v1",
+        "canonical_runner_set_status": "available",
+        "final_runner_source": "canonical_pre_race_page",
+        "final_runner_source_url": SYNTHETIC_RACE_URL,
+        "final_runner_boxes": [box_number for box_number, _dog_name in runners],
+        "final_runner_names": [dog_name for _box_number, dog_name in runners],
+        "final_runner_participants": participants,
+        "scratched_boxes": [],
+        "scratched_participants": [],
+        "reserve_boxes": [],
+        "vacant_boxes": [],
+        "race_number": 1,
+        "expected_race_number": 1,
+        "extraction_timestamp": "2026-05-29T07:00:00Z",
+        "ambiguous_reasons": [],
+    }
+
+
 def test_real_thedogs_comma_export_normalizes_to_pipe_with_provenance(tmp_path):
     accepted, result, sidecar = _normalise_fixture(tmp_path)
 
@@ -98,6 +172,225 @@ def test_real_thedogs_comma_export_normalizes_to_pipe_with_provenance(tmp_path):
 
     verified = verify_canonical_sidecar_target_metadata(accepted, race_number=13)
     assert verified["target_metadata_status"] == "verified"
+
+
+def test_provenance_payload_writes_flat_prejump_shadow_metadata_block(tmp_path):
+    runners = [
+        (1, "Alpha Runner"),
+        (2, "Bravo Runner"),
+        (3, "Charlie Runner"),
+        (4, "Delta Runner"),
+    ]
+    content = _synthetic_form_export(runners)
+    accepted = tmp_path / "Race 1 - TEST - 2026-05-29.csv"
+    raw = tmp_path / "raw_exports" / accepted.name
+    raw.parent.mkdir()
+    raw.write_text(content, encoding="utf-8")
+    sidecar = _synthetic_sidecar()
+    sidecar["race_info"].update(
+        {
+            "date": "2026-05-29",
+            "venue": "TEST",
+            "race_time": "11:15 AM",
+        }
+    )
+    completeness = analyze_csv_text_runner_completeness(content, source="synthetic")
+
+    result = normalize_verified_thedogs_export_content(
+        content,
+        accepted_csv_path=accepted,
+        raw_export_path=raw,
+        sidecar_payload=sidecar,
+        runner_completeness=completeness.as_dict(),
+        canonical_runner_set=_canonical_runner_set(runners),
+    )
+    assert result["normalization_status"] == "verified", result
+
+    final_sidecar = build_csv_download_provenance_payload(
+        filepath=accepted,
+        race_url=SYNTHETIC_RACE_URL,
+        csv_info={"type": "GET", "url": f"{SYNTHETIC_RACE_URL}/export-expert-form"},
+        content=result["normalized_content"],
+        completeness=analyze_csv_text_runner_completeness(
+            result["normalized_content"],
+            source="synthetic-normalized",
+        ),
+        race_info={
+            **sidecar["race_info"],
+            "target_distance": sidecar["target_distance"],
+            "target_distance_source": sidecar["target_distance_source"],
+            "target_grade": sidecar["target_grade"],
+            "target_grade_source": sidecar["target_grade_source"],
+            "metadata_is_leakage_safe": sidecar["metadata_is_leakage_safe"],
+        },
+        normalization={key: value for key, value in result.items() if key != "normalized_content"},
+        filename=accepted.name,
+        allow_generic_fields=False,
+    )
+
+    shadow_metadata = final_sidecar["prejump_shadow_metadata"]
+    assert shadow_metadata["status"] == "PASS"
+    assert shadow_metadata["race_date"] == "2026-05-29"
+    assert shadow_metadata["venue"] == "TEST"
+    assert shadow_metadata["race_number"] == 1
+    assert shadow_metadata["jump_time"] == "11:15 AM"
+    assert shadow_metadata["metadata_captured_at"]
+    assert shadow_metadata["target_distance_safe"] == "400m"
+    assert shadow_metadata["target_grade_safe"] == "Maiden"
+    assert shadow_metadata["source_url"] == SYNTHETIC_RACE_URL
+    assert shadow_metadata["runner_box_name_list"] == [
+        {"box_number": 1, "dog_name": "Alpha Runner"},
+        {"box_number": 2, "dog_name": "Bravo Runner"},
+        {"box_number": 3, "dog_name": "Charlie Runner"},
+        {"box_number": 4, "dog_name": "Delta Runner"},
+    ]
+    assert shadow_metadata["canonical_final_runner_alignment"]["status"] == "aligned"
+
+
+def test_prejump_shadow_metadata_fails_closed_for_non_thedogs_race_url(tmp_path):
+    runners = [
+        (1, "Alpha Runner"),
+        (2, "Bravo Runner"),
+        (3, "Charlie Runner"),
+        (4, "Delta Runner"),
+    ]
+    content = _synthetic_form_export(runners)
+    accepted = tmp_path / "Race 1 - TEST - 2026-05-29.csv"
+    sidecar = _synthetic_sidecar()
+    sidecar["race_info"].update(
+        {"date": "2026-05-29", "venue": "TEST", "race_time": "11:15 AM"}
+    )
+    normalization = normalize_verified_thedogs_export_content(
+        content,
+        accepted_csv_path=accepted,
+        raw_export_path=tmp_path / "raw_exports" / accepted.name,
+        sidecar_payload=sidecar,
+        runner_completeness=analyze_csv_text_runner_completeness(
+            content,
+            source="synthetic",
+        ).as_dict(),
+        canonical_runner_set=_canonical_runner_set(runners),
+    )
+
+    final_sidecar = build_csv_download_provenance_payload(
+        filepath=accepted,
+        race_url="https://example.com/racing/test/2026-05-29/1/result",
+        csv_info={"type": "GET", "url": "https://example.com/export-expert-form"},
+        content=normalization["normalized_content"],
+        completeness=analyze_csv_text_runner_completeness(
+            normalization["normalized_content"],
+            source="synthetic-normalized",
+        ),
+        race_info={
+            **sidecar["race_info"],
+            "target_distance": sidecar["target_distance"],
+            "target_distance_source": sidecar["target_distance_source"],
+            "target_grade": sidecar["target_grade"],
+            "target_grade_source": sidecar["target_grade_source"],
+            "metadata_is_leakage_safe": sidecar["metadata_is_leakage_safe"],
+        },
+        normalization={key: value for key, value in normalization.items() if key != "normalized_content"},
+        filename=accepted.name,
+        allow_generic_fields=False,
+    )
+
+    shadow_metadata = final_sidecar["prejump_shadow_metadata"]
+    assert shadow_metadata["status"] == "FAIL"
+    assert "source_url_not_thedogs" in shadow_metadata["fail_reasons"]
+
+
+@pytest.mark.parametrize(
+    ("source_url", "race_info_override", "expected_safe"),
+    [
+        (SYNTHETIC_RACE_URL, {}, True),
+        (None, {}, False),
+        ("https://example.com/racing/test/2026-05-29/1/test-race", {}, False),
+        (
+            "https://www.thedogs.com.au/racing/test/2026-05-29/1/results",
+            {},
+            False,
+        ),
+        (SYNTHETIC_RACE_URL, {"target_grade": None, "grade": None}, False),
+        (SYNTHETIC_RACE_URL, {"target_distance": None, "distance": None}, False),
+    ],
+)
+def test_safe_target_metadata_payload_requires_prejump_thedogs_source_and_complete_fields(
+    source_url,
+    race_info_override,
+    expected_safe,
+):
+    race_info = {
+        "target_distance": "400m",
+        "target_distance_source": "canonical_pre_race_page",
+        "target_grade": "Maiden",
+        "target_grade_source": "canonical_pre_race_page",
+    }
+    race_info.update(race_info_override)
+
+    payload = build_safe_target_metadata_payload(
+        race_info,
+        source_url=source_url,
+        allow_generic_fields=False,
+    )
+
+    assert payload["metadata_is_leakage_safe"] is expected_safe
+
+
+def test_prejump_shadow_metadata_fails_closed_for_unsafe_canonical_runner_url(tmp_path):
+    runners = [
+        (1, "Alpha Runner"),
+        (2, "Bravo Runner"),
+        (3, "Charlie Runner"),
+        (4, "Delta Runner"),
+    ]
+    content = _synthetic_form_export(runners)
+    accepted = tmp_path / "Race 1 - TEST - 2026-05-29.csv"
+    sidecar = _synthetic_sidecar()
+    sidecar["race_info"].update(
+        {"date": "2026-05-29", "venue": "TEST", "race_time": "11:15 AM"}
+    )
+    normalization = normalize_verified_thedogs_export_content(
+        content,
+        accepted_csv_path=accepted,
+        raw_export_path=tmp_path / "raw_exports" / accepted.name,
+        sidecar_payload=sidecar,
+        runner_completeness=analyze_csv_text_runner_completeness(
+            content,
+            source="synthetic",
+        ).as_dict(),
+        canonical_runner_set=_canonical_runner_set(runners),
+    )
+    normalization["canonical_runner_alignment"]["canonical_source_url"] = (
+        "https://www.thedogs.com.au/racing/test/2026-05-29/1/results"
+    )
+
+    final_sidecar = build_csv_download_provenance_payload(
+        filepath=accepted,
+        race_url=SYNTHETIC_RACE_URL,
+        csv_info={"type": "GET", "url": f"{SYNTHETIC_RACE_URL}/export-expert-form"},
+        content=normalization["normalized_content"],
+        completeness=analyze_csv_text_runner_completeness(
+            normalization["normalized_content"],
+            source="synthetic-normalized",
+        ),
+        race_info={
+            **sidecar["race_info"],
+            "target_distance": sidecar["target_distance"],
+            "target_distance_source": sidecar["target_distance_source"],
+            "target_grade": sidecar["target_grade"],
+            "target_grade_source": sidecar["target_grade_source"],
+            "metadata_is_leakage_safe": sidecar["metadata_is_leakage_safe"],
+        },
+        normalization={key: value for key, value in normalization.items() if key != "normalized_content"},
+        filename=accepted.name,
+        allow_generic_fields=False,
+    )
+
+    shadow_metadata = final_sidecar["prejump_shadow_metadata"]
+    assert shadow_metadata["status"] == "FAIL"
+    assert "canonical_runner_source_url_looks_post_result" in shadow_metadata[
+        "fail_reasons"
+    ]
 
 
 def test_normalized_csv_passes_upcoming_validator(tmp_path, monkeypatch):
@@ -237,3 +530,103 @@ def test_capture_candidates_ignore_raw_exports_directory(tmp_path):
     assert candidates == [accepted]
     assert raw.exists()
     assert raw not in candidates
+
+
+def test_canonical_final_runner_missing_from_source_rejects_normalization(tmp_path):
+    content = _synthetic_form_export(
+        [
+            (1, "Alpha Runner"),
+            (2, "Bravo Runner"),
+            (3, "Charlie Runner"),
+            (4, "Delta Runner"),
+        ]
+    )
+    runner_completeness = analyze_csv_text_runner_completeness(content).as_dict()
+
+    result = normalize_verified_thedogs_export_content(
+        content,
+        accepted_csv_path=tmp_path / "Race 1 - TST - 2026-05-29.csv",
+        raw_export_path=tmp_path / "raw_exports/Race 1 - TST - 2026-05-29.csv",
+        sidecar_payload=_synthetic_sidecar(),
+        runner_completeness=runner_completeness,
+        canonical_runner_set=_canonical_runner_set(
+            [
+                (1, "Alpha Runner"),
+                (2, "Bravo Runner"),
+                (3, "Charlie Runner"),
+                (4, "Delta Runner"),
+                (5, "Echo Runner"),
+            ]
+        ),
+    )
+
+    assert result["normalization_status"] == "rejected"
+    assert (
+        "final_runner_set_not_aligned:canonical_participant_missing_from_source_csv"
+        in result["normalization_failure_reason"]
+    )
+    assert result["normalization_verification"][
+        "canonical_runner_alignment_status"
+    ] == "not_aligned"
+    assert result["canonical_runner_alignment"]["missing_canonical_participants"] == [
+        {
+            "box_number": 5,
+            "dog_name": "Echo Runner",
+            "original_box_number": None,
+        }
+    ]
+    assert result["normalized_content"] is None
+
+
+def test_canonical_final_runner_alignment_normalizes_final_starters(tmp_path):
+    content = _synthetic_form_export(
+        [
+            (1, "Alpha Runner"),
+            (2, "Bravo Runner"),
+            (3, "Charlie Runner"),
+            (4, "Scratched Runner"),
+            (9, "Reserve Runner"),
+        ]
+    )
+    runner_completeness = analyze_csv_text_runner_completeness(content).as_dict()
+    canonical = _canonical_runner_set(
+        [
+            (1, "Alpha Runner"),
+            (2, "Bravo Runner"),
+            (3, "Charlie Runner"),
+            (4, "Reserve Runner"),
+        ]
+    )
+    canonical["final_runner_participants"][-1]["original_box_number"] = 9
+    canonical["scratched_boxes"] = [4]
+    canonical["scratched_participants"] = [
+        {"box_number": 4, "dog_name": "Scratched Runner"}
+    ]
+    canonical["reserve_boxes"] = [9]
+
+    result = normalize_verified_thedogs_export_content(
+        content,
+        accepted_csv_path=tmp_path / "Race 1 - TST - 2026-05-29.csv",
+        raw_export_path=tmp_path / "raw_exports/Race 1 - TST - 2026-05-29.csv",
+        sidecar_payload=_synthetic_sidecar(),
+        runner_completeness=runner_completeness,
+        canonical_runner_set=canonical,
+    )
+
+    assert result["normalization_status"] == "verified", result
+    assert result["raw_content_sha256"]
+    assert result["normalization_verification"][
+        "canonical_runner_alignment_status"
+    ] == "aligned"
+    assert result["normalization_verification"]["runner_set_status"] == "COMPLETE"
+    assert "4. Reserve Runner" in result["normalized_content"]
+    assert "4. Scratched Runner" not in result["normalized_content"]
+    assert "9. Reserve Runner" not in result["normalized_content"]
+    assert result["canonical_runner_alignment"]["remapped_participants"] == [
+        {
+            "dog_name": "Reserve Runner",
+            "source_box_number": 9,
+            "final_box_number": 4,
+            "original_box_number": 9,
+        }
+    ]

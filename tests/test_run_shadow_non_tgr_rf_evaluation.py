@@ -7,9 +7,11 @@ from pathlib import Path
 
 import pytest
 
+from scripts import run_shadow_non_tgr_rf_evaluation as shadow_eval
 from scripts.run_feature_recovery_execution_v1 import load_db_history
 from scripts.run_shadow_non_tgr_rf_evaluation import (
     ALLOWED_OUTPUT_PREFIXES,
+    DEFAULT_SCHEMA,
     FORBIDDEN_APPROVAL_ENV_VARS,
     POWER_GAMMA,
     active_features_for_loaded_model,
@@ -18,8 +20,10 @@ from scripts.run_shadow_non_tgr_rf_evaluation import (
     dataset_with_all_missing_train_policy,
     inactive_feature_policy_report,
     main,
+    parse_live_runner_identity,
     probability_sum_report,
     ranking_preservation_report,
+    same_distance_same_grade_history_provenance_report,
     train_eval_feature_parity_report,
     validate_schema_contract,
 )
@@ -72,6 +76,232 @@ def test_pytest_redirects_legacy_writable_connect_away_from_repo_root_db():
         assert _sha256(protected) == before_hash
 
 
+def test_parse_live_runner_identity_prefers_target_box_prefix():
+    assert parse_live_runner_identity("4. Paw Kiplin", "6") == ("Paw Kiplin", 4)
+    assert parse_live_runner_identity("Plain Runner", "8") == ("Plain Runner", 8)
+    assert parse_live_runner_identity("", "1") == ("", None)
+
+
+def test_live_feature_rows_ignore_embedded_history_rows_and_use_target_boxes(
+    tmp_path, monkeypatch
+):
+    race_file = tmp_path / "Race 1 - TEST - 2026-06-08.csv"
+    race_file.write_text(
+        "Dog Name|BOX|DATE|TRACK|DIST|G|TIME\n"
+        "1. Alpha Runner|8|2026-06-01|TEST|300|Grade 5|17.10\n"
+        "|3|2026-05-20|TEST|300|Grade 5|17.30\n"
+        "2. Bravo Runner|7|2026-06-01|TEST|300|Grade 5|17.20\n"
+        "|4|2026-05-20|TEST|300|Grade 5|17.40\n",
+        encoding="utf-8",
+    )
+
+    class DummyConnection:
+        def close(self):
+            return None
+
+    monkeypatch.setattr(shadow_eval, "sqlite_ro", lambda _path: DummyConnection())
+    monkeypatch.setattr(shadow_eval, "load_db_history", lambda _connection: {})
+
+    rows = shadow_eval.build_live_feature_rows(
+        input_paths=[race_file],
+        schema={"feature_columns": ["field_size", "box_number"]},
+        db_path=Path("unused.db"),
+    )
+
+    assert len(rows) == 2
+    assert [(row["dog_name"], row["box_number"], row["field_size"]) for row in rows] == [
+        ("Alpha Runner", 1, 2),
+        ("Bravo Runner", 2, 2),
+    ]
+    assert {row["race_date"] for row in rows} == {"2026-06-08"}
+    assert {row["venue"] for row in rows} == {"TEST"}
+    assert {row["race_number"] for row in rows} == {1}
+    assert all(row["target_distance_safe"] is None for row in rows)
+    assert all(row["target_grade_safe"] is None for row in rows)
+    assert all(row["target_metadata_from_sidecar"] is False for row in rows)
+
+
+def test_live_feature_rows_use_leakage_safe_sidecar_target_metadata_for_history_features(
+    tmp_path, monkeypatch
+):
+    race_file = tmp_path / "Race 4 - TRA - 2026-06-08.csv"
+    race_file.write_text(
+        "Dog Name|BOX\n"
+        "1. Alpha Runner|8\n",
+        encoding="utf-8",
+    )
+    race_file.with_name(race_file.name + ".metadata.json").write_text(
+        json.dumps(
+            {
+                "metadata_is_leakage_safe": True,
+                "metadata_source_url": "https://www.thedogs.com.au/racing/traralgon/2026-06-08/4/test?trial=false",
+                "target_distance": "350m",
+                "target_distance_source": "canonical_pre_race_page",
+                "target_grade": "Grade 5",
+                "target_grade_source": "canonical_pre_race_page",
+                "race_info": {
+                    "date": "2026-06-08",
+                    "venue": "TRA",
+                    "race_number": "4",
+                    "race_time": "11:15 AM",
+                    "url": "https://www.thedogs.com.au/racing/traralgon/2026-06-08/4/test?trial=false",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class DummyConnection:
+        def close(self):
+            return None
+
+    monkeypatch.setattr(shadow_eval, "sqlite_ro", lambda _path: DummyConnection())
+    monkeypatch.setattr(
+        shadow_eval,
+        "load_db_history",
+        lambda _connection: {
+            "alpha runner": [
+                {
+                    "race_date": "2026-06-01",
+                    "venue": "TRA",
+                    "distance_num": 350,
+                    "grade_normalized": "Grade 5",
+                    "time_num": 18.12,
+                    "finish_num": 1,
+                },
+                {
+                    "race_date": "2026-06-08",
+                    "venue": "TRA",
+                    "distance_num": 350,
+                    "grade_normalized": "Grade 5",
+                    "time_num": 17.99,
+                    "finish_num": 1,
+                },
+            ]
+        },
+    )
+
+    rows = shadow_eval.build_live_feature_rows(
+        input_paths=[race_file],
+        schema={
+            "feature_columns": [
+                "field_size",
+                "box_number",
+                "target_distance_safe",
+                "target_grade_safe",
+                "race_time_minutes_since_midnight",
+                "same_distance_same_grade_start_count",
+                "same_distance_same_grade_best_time",
+                "same_distance_same_grade_avg_time",
+            ]
+        },
+        db_path=Path("unused.db"),
+    )
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["race_date"] == "2026-06-08"
+    assert row["venue"] == "TRA"
+    assert row["race_number"] == 4
+    assert row["target_distance_safe"] == 350.0
+    assert row["target_grade_safe"] == "Grade 5"
+    assert row["race_time_minutes_since_midnight"] == 675
+    assert row["target_distance_source"] == "canonical_pre_race_page"
+    assert row["target_grade_source"] == "canonical_pre_race_page"
+    assert row["target_metadata_from_sidecar"] is True
+    assert row["same_distance_same_grade_start_count"] == 1
+    assert row["same_distance_same_grade_best_time"] == 18.12
+    assert row["same_distance_same_grade_avg_time"] == 18.12
+    assert row["same_distance_same_grade_history_status"] == "PASS"
+    assert row["same_distance_same_grade_history_source"] == "prior_dog_history"
+    assert row["same_distance_same_grade_history_cutoff"] == "strictly_before_target_race"
+    assert row["same_distance_same_grade_history_cutoff_basis"] == (
+        "race_date_less_than_target_race_date"
+    )
+    assert row["same_distance_same_grade_prior_history_rows_used"] == 1
+    assert row["same_distance_same_grade_target_race_rows_used"] == 0
+    assert row["same_distance_same_grade_post_outcome_rows_used"] == 0
+
+    report = same_distance_same_grade_history_provenance_report(rows)
+    assert report["status"] == "PASS"
+    assert report["target_race_rows_allowed"] == 0
+    best = report["by_feature"]["same_distance_same_grade_best_time"]
+    assert best["status"] == "PASS"
+    assert best["source"] == "prior_dog_history"
+    assert best["history_cutoff"] == "strictly_before_target_race"
+    assert best["prior_history_rows_used"] == 1
+    assert best["target_race_rows_used"] == 0
+    avg = report["by_feature"]["same_distance_same_grade_avg_time"]
+    assert avg["status"] == "PASS"
+
+
+def test_live_feature_rows_ignore_unsafe_sidecar_target_metadata(tmp_path, monkeypatch):
+    race_file = tmp_path / "Race 4 - TRA - 2026-06-08.csv"
+    race_file.write_text(
+        "Dog Name|BOX\n"
+        "1. Alpha Runner|1\n",
+        encoding="utf-8",
+    )
+    race_file.with_name(race_file.name + ".metadata.json").write_text(
+        json.dumps(
+            {
+                "metadata_is_leakage_safe": True,
+                "target_distance": "350m",
+                "target_distance_source": "result_page",
+                "target_grade": "Grade 5",
+                "target_grade_source": "embedded_form_history:G",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class DummyConnection:
+        def close(self):
+            return None
+
+    monkeypatch.setattr(shadow_eval, "sqlite_ro", lambda _path: DummyConnection())
+    monkeypatch.setattr(shadow_eval, "load_db_history", lambda _connection: {})
+
+    rows = shadow_eval.build_live_feature_rows(
+        input_paths=[race_file],
+        schema={"feature_columns": ["target_distance_safe", "target_grade_safe"]},
+        db_path=Path("unused.db"),
+    )
+
+    assert len(rows) == 1
+    assert rows[0]["target_distance_safe"] is None
+    assert rows[0]["target_grade_safe"] is None
+    assert rows[0]["target_metadata_from_sidecar"] is False
+    assert "unsafe_sidecar_target_distance:result_page" in rows[0][
+        "target_metadata_rejected_sources"
+    ]
+    assert "unsafe_sidecar_target_grade:embedded_form_history:G" in rows[0][
+        "target_metadata_rejected_sources"
+    ]
+
+
+def test_same_distance_history_provenance_report_keeps_unpopulated_features_blocked():
+    report = same_distance_same_grade_history_provenance_report(
+        [
+            {
+                "same_distance_same_grade_best_time": None,
+                "same_distance_same_grade_avg_time": "",
+                "same_distance_same_grade_history_cutoff": "strictly_before_target_race",
+                "same_distance_same_grade_target_race_rows_used": 0,
+                "same_distance_same_grade_post_outcome_rows_used": 0,
+            }
+        ]
+    )
+
+    assert report["status"] == "NOT_POPULATED"
+    assert report["by_feature"]["same_distance_same_grade_best_time"]["status"] == (
+        "NOT_POPULATED"
+    )
+    assert report["by_feature"]["same_distance_same_grade_avg_time"]["fail_reasons"] == [
+        "feature_not_populated"
+    ]
+
+
 def _parity_dataset():
     features = [
         "learned_num",
@@ -111,10 +341,7 @@ def _parity_dataset():
 
 
 def test_default_repaired_schema_has_78_features_and_no_tgr():
-    schema_path = Path(
-        "outputs/milestone_6a_non_tgr_challenger_training_design/repaired_non_tgr_schema.json"
-    )
-    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    schema = json.loads(DEFAULT_SCHEMA.read_text(encoding="utf-8"))
 
     audit = validate_schema_contract(schema)
 
@@ -432,4 +659,5 @@ def test_allowed_output_prefixes_are_shadow_only():
         "artifacts/full_evidence_orchestration_20260525/shadow_evaluation_",
         "artifacts/full_evidence_orchestration_20260525/shadow_reliability_population_hardening_v1_",
         "artifacts/full_evidence_orchestration_20260525/shadow_reliability_resume_after_db_recovery_",
+        "artifacts/full_evidence_orchestration_20260525/daily_race_ingest_shadow_",
     )

@@ -11,7 +11,6 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
-import html
 import json
 import math
 import os
@@ -32,7 +31,12 @@ ROOT_STR = str(ROOT)
 sys.path = [path for path in sys.path if path != ROOT_STR]
 sys.path.insert(0, ROOT_STR)
 
-from scripts.ingest_results_for_date import THEDOGS_PUBLIC_HEADERS  # noqa: E402
+from scripts.ingest_results_for_date import (  # noqa: E402
+    THEDOGS_PUBLIC_HEADERS,
+    parse_thedogs_result_html_runner_rows,
+    thedogs_result_rows_present,
+    thedogs_result_urls_from_race_url,
+)
 from utils.race_lifecycle import extract_target_metadata_from_filename  # noqa: E402
 
 
@@ -60,162 +64,6 @@ FINAL_STATUS_DB_BLOCKED = "BLOCKED_DB_STATE"
 
 
 FetchHtml = Callable[[str], Mapping[str, Any]]
-
-
-def _rendered_text_from_fragment(markup: str) -> str:
-    try:
-        from bs4 import BeautifulSoup
-
-        return BeautifulSoup(markup or "", "html.parser").get_text(" ", strip=True)
-    except Exception:
-        cleaned = re.sub(r"<br\s*/?>", " ", str(markup or ""), flags=re.IGNORECASE)
-        cleaned = re.sub(r"<[^>]+>", " ", cleaned)
-        cleaned = html.unescape(cleaned)
-        return re.sub(r"\s+", " ", cleaned).strip()
-
-
-def _rug_box_from_markup(markup: str) -> int | None:
-    for pattern in (
-        r"\brug[_-](?P<box>\d{1,2})\b",
-        r"\bbox[_-](?P<box>\d{1,2})\b",
-        r"\bdata-box=[\"'](?P<box>\d{1,2})[\"']",
-    ):
-        match = re.search(pattern, str(markup or ""), re.IGNORECASE)
-        if match:
-            return int(match.group("box"))
-    text_match = re.search(r"\b(?P<box>[1-8])\b", _rendered_text_from_fragment(markup))
-    return int(text_match.group("box")) if text_match else None
-
-
-def _finish_position_from_text(value: str) -> int | None:
-    match = re.search(r"\b(?P<position>\d{1,2})(?:st|nd|rd|th)?\b", str(value or ""), re.IGNORECASE)
-    if not match:
-        return None
-    position = int(match.group("position"))
-    return position if position > 0 else None
-
-
-def _terminal_status_from_text(value: str) -> str | None:
-    status = re.sub(r"\s+", " ", str(value or "").strip().upper())
-    if status in {"FELL", "SCR", "L/SCR", "LSCR", "DNF", "DISQ"}:
-        return status
-    return None
-
-
-def _clean_official_runner_name(value: str) -> str | None:
-    text = re.sub(r"\s+", " ", str(value or "").strip())
-    text = re.sub(r"^\s*\d{1,2}\s*[\.\):-]\s*", "", text)
-    text = re.sub(r"\s+\d{1,2}\.\d{2}\s+T:\s+.*$", "", text)
-    text = re.sub(r"\s+T:\s+.*$", "", text)
-    return text or None
-
-
-def thedogs_result_urls_from_race_url(url: str) -> list[str]:
-    parsed = urlparse(str(url or ""))
-    if not parsed.scheme or not parsed.netloc:
-        return []
-    base = parsed._replace(query="", fragment="").geturl().rstrip("/")
-    if not base:
-        return []
-    if base.endswith("/results"):
-        return [f"{base}?trial=false", base]
-    return [f"{base}/results?trial=false", f"{base}/results", f"{base}?trial=false", base]
-
-
-def parse_thedogs_result_html_runner_rows(markup: str) -> list[dict[str, Any]]:
-    if not str(markup or "").strip():
-        return []
-
-    try:
-        from bs4 import BeautifulSoup
-
-        soup = BeautifulSoup(markup or "", "html.parser")
-        rows: list[dict[str, Any]] = []
-        for row in soup.select("table.race-runners--result tr.race-runner"):
-            position_cell = row.select_one("td.race-runners__finish-position")
-            box_cell = row.select_one("td.race-runners__box")
-            name_cell = row.select_one("td.race-runners__name")
-            if box_cell is None or name_cell is None:
-                continue
-            position_text = position_cell.get_text(" ", strip=True) if position_cell else ""
-            box_number = _rug_box_from_markup(str(box_cell))
-            dog_name = _clean_official_runner_name(name_cell.get_text(" ", strip=True))
-            if box_number is None or not dog_name:
-                continue
-            rows.append(
-                {
-                    "box_number": box_number,
-                    "dog_name": dog_name,
-                    "finish_position": _finish_position_from_text(position_text),
-                    "status": _terminal_status_from_text(position_text),
-                }
-            )
-        return rows
-    except Exception:
-        rows = []
-        row_pattern = re.compile(
-            r"<tr\b(?=[^>]*\brace-runner\b)[^>]*>(?P<row>.*?)</tr>",
-            re.IGNORECASE | re.DOTALL,
-        )
-        cell_patterns = {
-            "position": re.compile(
-                r"<td\b(?=[^>]*\brace-runners__finish-position\b)[^>]*>(?P<value>.*?)</td>",
-                re.IGNORECASE | re.DOTALL,
-            ),
-            "box": re.compile(
-                r"<td\b(?=[^>]*\brace-runners__box\b)[^>]*>(?P<value>.*?)</td>",
-                re.IGNORECASE | re.DOTALL,
-            ),
-            "name": re.compile(
-                r"<td\b(?=[^>]*\brace-runners__name\b)[^>]*>(?P<value>.*?)</td>",
-                re.IGNORECASE | re.DOTALL,
-            ),
-        }
-        for row_match in row_pattern.finditer(str(markup or "")):
-            row_markup = row_match.group("row")
-            box_match = cell_patterns["box"].search(row_markup)
-            name_match = cell_patterns["name"].search(row_markup)
-            if not box_match or not name_match:
-                continue
-            position_match = cell_patterns["position"].search(row_markup)
-            position_text = (
-                _rendered_text_from_fragment(position_match.group("value"))
-                if position_match
-                else ""
-            )
-            box_number = _rug_box_from_markup(box_match.group("value"))
-            dog_name = _clean_official_runner_name(
-                _rendered_text_from_fragment(name_match.group("value"))
-            )
-            if box_number is None or not dog_name:
-                continue
-            rows.append(
-                {
-                    "box_number": box_number,
-                    "dog_name": dog_name,
-                    "finish_position": _finish_position_from_text(position_text),
-                    "status": _terminal_status_from_text(position_text),
-                }
-            )
-        return rows
-
-
-def thedogs_result_rows_present(markup: str) -> bool:
-    if not str(markup or "").strip():
-        return False
-    try:
-        from bs4 import BeautifulSoup
-
-        soup = BeautifulSoup(markup or "", "html.parser")
-        return bool(soup.select("table.race-runners--result tr.race-runner"))
-    except Exception:
-        return bool(
-            re.search(
-                r"<tr\b(?=[^>]*\brace-runner\b)",
-                str(markup or ""),
-                re.IGNORECASE | re.DOTALL,
-            )
-        )
 
 
 def now_id(now: datetime | None = None) -> str:

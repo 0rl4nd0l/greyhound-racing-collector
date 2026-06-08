@@ -7,7 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from accuracy_program.odds_coverage import analyze_odds_coverage, normalize_dog_name
+from accuracy_program.odds_coverage import (
+    analyze_odds_coverage,
+    normalize_dog_name,
+    summarize_read_only_odds_coverage_report,
+)
 from accuracy_program.snapshots import assert_no_result_fields, build_prediction_snapshot
 from scripts.evaluate_prediction_snapshots import (
     _snapshot_paths_from_manifests,
@@ -201,6 +205,89 @@ def test_odds_coverage_reports_normalized_identity_ambiguity_and_timestamp_quali
         row["mismatch_type"]: row["rows"] for row in report["venue_date_race_mismatches"]["counts"]
     }
     assert mismatch_counts["venue_date_race_resolves_different_race_id"] == 1
+
+
+def test_read_only_odds_coverage_summary_blocks_missing_source_and_stale_rows():
+    summary = summarize_read_only_odds_coverage_report(
+        {
+            "summary": {
+                "status": "SUCCESS",
+                "mode": "read_only_coverage_diagnostic",
+                "dog_level_win_odds_rows": 316,
+                "live_odds_rows": 1954,
+                "live_odds_races": 49,
+                "odds_history_rows": 757,
+                "races_with_dog_level_win_odds": 49,
+                "safe_direct_identity_matches": 98,
+                "safe_direct_identity_match_rate": 0.310126582278481,
+                "source_url_rows_checked": 316,
+                "source_url_rows_missing": 316,
+                "stale_current_win_rows": 316,
+                "stale_after_hours": 6.0,
+                "source_provenance": {
+                    "live_odds": [{"source": "sportsbet", "rows": 316}]
+                },
+                "odds_capture_performed": False,
+                "odds_used_for_shadow_scoring": False,
+                "shadow_model_input": False,
+                "db_write": False,
+                "ev_action": False,
+                "betting_action": False,
+            }
+        }
+    )
+
+    assert summary["readiness_status"] == "ODDS_COVERAGE_BLOCKED_REPORT_ONLY_EV_DISABLED"
+    assert summary["blocker_counts"] == {
+        "missing_source_url_rows": 316,
+        "stale_current_win_rows": 316,
+    }
+    assert summary["next_action"] == "CAPTURE_FRESH_DOG_LEVEL_ODDS_WITH_SOURCE_URLS"
+    assert summary["dog_level_win_odds_rows"] == 316
+    assert summary["odds_used_for_shadow_scoring"] is False
+    assert summary["db_write"] is False
+    assert summary["ev_action"] is False
+    assert summary["betting_action"] is False
+
+
+def test_read_only_odds_coverage_summary_is_ready_only_without_blockers():
+    summary = summarize_read_only_odds_coverage_report(
+        {
+            "summary": {
+                "status": "SUCCESS",
+                "dog_level_win_odds_rows": 8,
+                "source_url_rows_checked": 8,
+                "source_url_rows_missing": 0,
+                "stale_current_win_rows": 0,
+                "odds_used_for_shadow_scoring": False,
+                "db_write": False,
+                "ev_action": False,
+                "betting_action": False,
+            }
+        }
+    )
+
+    assert summary["readiness_status"] == "ODDS_COVERAGE_READY_REPORT_ONLY_EV_DISABLED"
+    assert summary["blocker_counts"] == {}
+    assert summary["next_action"] == "READY_FOR_REPORT_ONLY_ODDS_SNAPSHOT_JOIN_NO_EV_ACTION"
+    assert summary["odds_used_for_shadow_scoring"] is False
+    assert summary["db_write"] is False
+    assert summary["ev_action"] is False
+    assert summary["betting_action"] is False
+
+
+def test_read_only_odds_coverage_summary_reports_missing_diagnostic():
+    summary = summarize_read_only_odds_coverage_report(None)
+
+    assert summary["readiness_status"] == "ODDS_COVERAGE_BLOCKED_REPORT_ONLY_EV_DISABLED"
+    assert summary["blocker_counts"] == {
+        "odds_coverage_report_missing": 1,
+        "no_dog_level_win_odds_rows": 1,
+    }
+    assert summary["next_action"] == "WAIT_FOR_DAEMON_ODDS_COVERAGE_DIAGNOSTIC"
+    assert summary["db_write"] is False
+    assert summary["ev_action"] is False
+    assert summary["betting_action"] is False
 
 
 def test_prediction_snapshot_carries_odds_timestamp_provenance_and_readiness():

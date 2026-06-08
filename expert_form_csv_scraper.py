@@ -39,10 +39,13 @@ from utils.http_client import get_shared_session
 from utils.race_file_utils import RaceFileManager
 from utils.runner_completeness import (
     analyze_csv_text_runner_completeness,
+    fetch_canonical_runner_set,
     quarantine_csv_content,
+    quarantine_existing_file,
 )
 from utils.csv_metadata import (
     build_csv_download_provenance_payload,
+    existing_prejump_sidecar_contract_status,
     normalize_verified_thedogs_export_content,
 )
 
@@ -133,6 +136,20 @@ class ExpertFormCsvScraper:
         raw_path = self._dedupe_artifact_path(raw_dir / filename)
         raw_path.write_text(content, encoding="utf-8", newline="")
         return raw_path
+
+    def _quarantine_existing_csv_and_sidecar(self, filepath, *, reason: str) -> dict:
+        csv_path = Path(filepath)
+        result = {"reason": reason, "csv_quarantine_path": None, "sidecar_quarantine_path": None}
+        if csv_path.exists():
+            result["csv_quarantine_path"] = str(
+                quarantine_existing_file(csv_path, reason=reason)
+            )
+        sidecar_path = Path(f"{filepath}.metadata.json")
+        if sidecar_path.exists():
+            result["sidecar_quarantine_path"] = str(
+                quarantine_existing_file(sidecar_path, reason=reason)
+            )
+        return result
 
     def get_expert_form_url(self, race_url):
         """Convert a race URL to its expert-form URL"""
@@ -570,12 +587,17 @@ class ExpertFormCsvScraper:
                 filename=filename,
                 allow_generic_fields=False,
             )
+            canonical_runner_set = fetch_canonical_runner_set(
+                race_url,
+                session=self.session,
+            )
             normalization = normalize_verified_thedogs_export_content(
                 content,
                 accepted_csv_path=upcoming_filepath,
                 raw_export_path=raw_export_path,
                 sidecar_payload=preliminary_sidecar,
                 runner_completeness=completeness.as_dict(),
+                canonical_runner_set=canonical_runner_set,
             )
             normalization_metadata = {
                 key: value
@@ -599,6 +621,10 @@ class ExpertFormCsvScraper:
                 )
                 return False
             normalized_content = str(normalization["normalized_content"])
+            accepted_completeness = analyze_csv_text_runner_completeness(
+                normalized_content,
+                source=f"accepted:{race_url or filename}",
+            )
 
             # Save to download directory first (for backup/tracking)
             download_filepath = os.path.join(self.download_dir, filename)
@@ -618,7 +644,7 @@ class ExpertFormCsvScraper:
                 race_url=race_url,
                 csv_info={"type": "expert_form_csv_scraper", "url": race_url},
                 content=normalized_content,
-                completeness=completeness,
+                completeness=accepted_completeness,
                 race_info=race_info,
                 source="expert_form_csv_scraper",
                 normalization=normalization_metadata,
@@ -633,7 +659,9 @@ class ExpertFormCsvScraper:
 
             # Extract race info from filename and add to collected races
             match = re.match(
-                r"Race (\d+) - ([A-Z_]+) - (\d{4}-\d{2}-\d{2})\.csv", filename
+                r"Race\s+(\d+)\s*-\s*([A-Z0-9_]+(?:-[A-Z0-9_]+)*)\s*-\s*(\d{4}-\d{2}-\d{2})\.csv",
+                filename,
+                re.IGNORECASE,
             )
             if match:
                 race_number, venue, date_str = match.groups()
@@ -680,25 +708,34 @@ class ExpertFormCsvScraper:
                 str(race_info["race_number"]),
             )
 
-            # Check if already collected (cache hit)
-            if race_id in self.collected_races:
-                self.stats["cache_hits"] += 1
-                if self.verbose:
-                    self.safe_log(f"Race already collected: {race_id}")
-                return True
-
             # Generate compliant filename using deterministic builder
             filename = build_upcoming_csv_filename(
                 race_info["race_number"], race_info["venue"], formatted_date
             )
-
-            # Check if file already exists in output dir
             upcoming_path = os.path.join(self.output_dir, filename)
+
+            # Reuse local upcoming files only when the pre-jump sidecar contract is current.
             if os.path.exists(upcoming_path):
-                self.stats["cache_hits"] += 1
+                existing_contract = existing_prejump_sidecar_contract_status(upcoming_path)
+                if existing_contract.get("status") == "PASS":
+                    self.stats["cache_hits"] += 1
+                    if self.verbose:
+                        self.safe_log(f"File already exists in upcoming dir: {filename}")
+                    return True
+                self._quarantine_existing_csv_and_sidecar(
+                    upcoming_path,
+                    reason="stale_prejump_sidecar_contract",
+                )
+                self.safe_log(
+                    f"Existing upcoming CSV had stale pre-jump sidecar contract: {filename}",
+                    "WARNING",
+                )
+            elif race_id in self.collected_races:
                 if self.verbose:
-                    self.safe_log(f"File already exists in upcoming dir: {filename}")
-                return True
+                    self.safe_log(
+                        f"Race cache hit without reusable upcoming CSV; refreshing: {race_id}",
+                        "WARNING",
+                    )
 
             self.stats["fetches_attempted"] += 1
             self.safe_log(
@@ -713,6 +750,19 @@ class ExpertFormCsvScraper:
             )
 
             if success:
+                final_contract = existing_prejump_sidecar_contract_status(upcoming_path)
+                if final_contract.get("status") != "PASS":
+                    self._quarantine_existing_csv_and_sidecar(
+                        upcoming_path,
+                        reason="download_prejump_sidecar_contract_failed",
+                    )
+                    self.stats["fetches_failed"] += 1
+                    self.safe_log(
+                        "Downloaded CSV failed pre-jump sidecar contract: "
+                        f"{filename} {final_contract.get('reasons')}",
+                        "ERROR",
+                    )
+                    return False
                 self.collected_races.add(race_id)
                 self.stats["successful_saves"] += 1
                 self.safe_log(f"Successfully downloaded: {filename}", "SUCCESS")

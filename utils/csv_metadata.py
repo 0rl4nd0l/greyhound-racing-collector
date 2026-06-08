@@ -12,6 +12,12 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Union
+from urllib.parse import urlparse
+
+from utils.runner_completeness import (
+    align_csv_text_to_canonical_final_runner_set,
+    analyze_csv_text_runner_completeness,
+)
 
 # Optional heavy dependency - make pandas optional in constrained test envs
 try:
@@ -47,6 +53,7 @@ UNSAFE_TARGET_SOURCE_MARKERS = (
     "result_page",
     "sportsbet_result",
 )
+POST_RESULT_URL_MARKERS = ("result", "results", "dividend", "dividends", "payout", "payouts")
 FORM_GUIDE_SPEC_VERSION = "form_guide_pipe_v1"
 THEDOGS_EXPERT_FORM_COLUMNS = (
     "Dog Name",
@@ -98,8 +105,18 @@ def normalize_target_grade(value: Any) -> Optional[str]:
     patterns = (
         r"\b\d+(?:st|nd|rd|th)(?:/\d+(?:st|nd|rd|th))?\s+Grade\b",
         r"\bGrade\s*\d+\b",
+        r"\bNo\s+Grade\b",
+        r"\bNon\s+Graded\b",
+        r"^\s*Other(?:\s+\d{3,4}\s*m?)?\s*$",
+        r"\bNG\d+(?:-\d+)?\b",
+        r"\bM\d+(?:/M\d+)*\b",
+        r"^\s*PM(?:\s+\d{3,4}\s*m?)?\s*$",
+        r"\bR/?W\b",
+        r"\bN\s*[/.-]\s*P\b",
         r"\bG\d+\b",
         r"\bP\d+\b",
+        r"\b\d+\s*-\s*\d+\s+Win\b",
+        r"\bBest\s*8\b",
         r"\bMaiden\b",
         r"\bNovice\b",
         r"\bOpen\b",
@@ -107,16 +124,35 @@ def normalize_target_grade(value: Any) -> Optional[str]:
         r"\bRestricted\b",
         r"\bFree For All\b",
         r"\bFFA\b",
+        r"\bPathways\b",
+        r"\bInvitation(?:al)?\b",
+        r"\bSpecial\s+Event\b",
         r"\bGroup\s*\d+\b",
         r"\bFinal\b",
         r"\bHeat\b",
+        r"\bMasters\b",
     )
     for pattern in patterns:
         match = re.search(pattern, compact, re.I)
         if match:
             value = match.group(0).strip()
+            value = re.sub(r"\s*-\s*", "-", value)
             if re.fullmatch(r"(?:G|P)\d+", value, re.I):
                 return value.upper()
+            if re.fullmatch(r"NG\d+(?:-\d+)?", value, re.I):
+                return value.upper()
+            if re.fullmatch(r"M\d+(?:/M\d+)*", value, re.I):
+                return value.upper()
+            if re.fullmatch(r"PM(?:\s+\d{3,4}\s*m?)?", value, re.I):
+                return "PM"
+            if re.fullmatch(r"Other(?:\s+\d{3,4}\s*m?)?", value, re.I):
+                return "Other"
+            if re.fullmatch(r"R/?W", value, re.I):
+                return "R/W"
+            if re.fullmatch(r"N\s*[/.-]\s*P", value, re.I):
+                return "N/P"
+            if re.fullmatch(r"\d+-\d+\s+Win", value, re.I):
+                return re.sub(r"\bWIN\b", "Win", value.upper())
             if re.search(r"\d+(?:st|nd|rd|th)", value, re.I):
                 value = re.sub(
                     r"\b(\d+)(ST|ND|RD|TH)\b",
@@ -147,6 +183,35 @@ def is_canonical_sidecar_target_source(source: Any) -> bool:
     if not is_safe_sidecar_target_source(text):
         return False
     return text in CANONICAL_SIDECAR_TARGET_SOURCES
+
+
+def _is_thedogs_source_url(value: Any) -> bool:
+    text = str(value or "").strip()
+    if not text:
+        return False
+    try:
+        parsed = urlparse(text)
+    except Exception:
+        return False
+    host = parsed.netloc.lower().split("@")[-1].split(":")[0]
+    if parsed.scheme not in {"http", "https"} or not host:
+        return False
+    return host == "thedogs.com.au" or host.endswith(".thedogs.com.au")
+
+
+def _looks_post_result_source_url(value: Any) -> bool:
+    text = str(value or "").strip().lower()
+    if not text:
+        return False
+    try:
+        parsed = urlparse(text)
+        searchable = " ".join(
+            part for part in (parsed.path, parsed.query, parsed.fragment) if part
+        )
+    except Exception:
+        searchable = text
+    tokens = {token for token in re.split(r"[^a-z0-9]+", searchable) if token}
+    return bool(tokens.intersection(POST_RESULT_URL_MARKERS))
 
 
 def _safe_int(value: Any) -> Optional[int]:
@@ -400,14 +465,21 @@ def build_safe_target_metadata_payload(
         "metadata_is_leakage_safe": False,
         "metadata_source_url": source_url,
     }
+    source_url_safe = (
+        _is_thedogs_source_url(source_url)
+        and not _looks_post_result_source_url(source_url)
+    )
     if distance and is_safe_sidecar_target_source(distance_source):
         payload["target_distance"] = distance
         payload["target_distance_source"] = distance_source
-        payload["metadata_is_leakage_safe"] = True
     if grade and is_safe_sidecar_target_source(grade_source):
         payload["target_grade"] = grade
         payload["target_grade_source"] = grade_source
-        payload["metadata_is_leakage_safe"] = True
+    payload["metadata_is_leakage_safe"] = bool(
+        source_url_safe
+        and payload["target_distance"] is not None
+        and payload["target_grade"] is not None
+    )
     return payload
 
 
@@ -553,9 +625,11 @@ def build_csv_download_provenance_payload(
         csv_method = csv_info.get("type") or "unknown"
 
     race_info_dict = dict(race_info or {})
+    captured_at = _utc_timestamp()
     payload: Dict[str, Any] = {
         "schema_version": "form_guide_download_provenance_v1",
         "created_at": datetime.now().isoformat(timespec="seconds"),
+        "metadata_captured_at": captured_at,
         "race_url": race_url,
         "race_info": {
             key: value
@@ -599,7 +673,135 @@ def build_csv_download_provenance_payload(
     )
     if normalization:
         payload.update(dict(normalization))
+    payload["prejump_shadow_metadata"] = build_prejump_shadow_metadata_payload(payload)
     return payload
+
+
+def _participant_box_name_list(payload: Mapping[str, Any]) -> list[Dict[str, Any]]:
+    for key in ("runner_completeness_after_canonical_alignment", "runner_completeness"):
+        section = payload.get(key)
+        if not isinstance(section, Mapping):
+            continue
+        participants = section.get("participants")
+        if not isinstance(participants, list):
+            continue
+        rows: list[Dict[str, Any]] = []
+        for participant in participants:
+            if not isinstance(participant, Mapping):
+                continue
+            box_number = _safe_int(participant.get("box_number") or participant.get("box"))
+            dog_name = str(participant.get("dog_name") or participant.get("name") or "").strip()
+            if box_number is None or not dog_name:
+                continue
+            rows.append({"box_number": box_number, "dog_name": dog_name})
+        if rows:
+            return rows
+    return []
+
+
+def build_prejump_shadow_metadata_payload(payload: Mapping[str, Any]) -> Dict[str, Any]:
+    """Build an explicit pre-race metadata contract for shadow/live CSV sidecars."""
+
+    race_info = payload.get("race_info") if isinstance(payload.get("race_info"), Mapping) else {}
+    source_url = (
+        payload.get("metadata_source_url")
+        or payload.get("race_url")
+        or race_info.get("url")
+    )
+    distance_source = payload.get("target_distance_source")
+    grade_source = payload.get("target_grade_source")
+    target_distance = normalize_target_distance(payload.get("target_distance"))
+    target_grade = normalize_target_grade(payload.get("target_grade"))
+    participants = _participant_box_name_list(payload)
+    alignment = (
+        payload.get("canonical_runner_alignment")
+        if isinstance(payload.get("canonical_runner_alignment"), Mapping)
+        else {}
+    )
+    canonical_runner_source_url = (
+        alignment.get("canonical_source_url")
+        or alignment.get("canonical_runner_source_url")
+        or alignment.get("canonical_runner_set_source_url")
+        or alignment.get("source_url")
+    )
+    fail_reasons: list[str] = []
+    if payload.get("metadata_is_leakage_safe") is not True:
+        fail_reasons.append("metadata_is_leakage_safe_not_true")
+    if not target_distance or not is_safe_sidecar_target_source(distance_source):
+        fail_reasons.append("target_distance_missing_or_unsafe")
+    if not target_grade or not is_safe_sidecar_target_source(grade_source):
+        fail_reasons.append("target_grade_missing_or_unsafe")
+    if not (race_info.get("date") or payload.get("race_date")):
+        fail_reasons.append("race_date_missing")
+    if not (race_info.get("venue") or payload.get("venue")):
+        fail_reasons.append("venue_missing")
+    if _safe_int(race_info.get("race_number") or payload.get("race_number")) is None:
+        fail_reasons.append("race_number_missing")
+    if not (
+        race_info.get("race_time")
+        or race_info.get("jump_time")
+        or payload.get("jump_time")
+        or payload.get("jump_datetime")
+    ):
+        fail_reasons.append("jump_time_missing")
+    if not source_url:
+        fail_reasons.append("source_url_missing")
+    elif not _is_thedogs_source_url(source_url):
+        fail_reasons.append("source_url_not_thedogs")
+    elif _looks_post_result_source_url(source_url):
+        fail_reasons.append("source_url_looks_post_result")
+    if not participants:
+        fail_reasons.append("runner_box_name_list_missing")
+    if alignment:
+        if alignment.get("status") != "aligned":
+            fail_reasons.append("canonical_runner_alignment_not_aligned")
+        if alignment.get("canonical_runner_set_status") != "available":
+            fail_reasons.append("canonical_runner_set_not_available")
+        if not canonical_runner_source_url:
+            fail_reasons.append("canonical_runner_source_url_missing")
+        elif not _is_thedogs_source_url(canonical_runner_source_url):
+            fail_reasons.append("canonical_runner_source_url_not_thedogs")
+        elif _looks_post_result_source_url(canonical_runner_source_url):
+            fail_reasons.append("canonical_runner_source_url_looks_post_result")
+    else:
+        fail_reasons.append("canonical_runner_alignment_missing")
+
+    return {
+        "schema_version": "prejump_shadow_metadata_v1",
+        "status": "PASS" if not fail_reasons else "FAIL",
+        "fail_reasons": fail_reasons,
+        "metadata_is_leakage_safe": payload.get("metadata_is_leakage_safe") is True,
+        "race_date": race_info.get("date") or payload.get("race_date"),
+        "venue": race_info.get("venue") or payload.get("venue"),
+        "race_number": _safe_int(race_info.get("race_number") or payload.get("race_number")),
+        "jump_time": (
+            race_info.get("race_time")
+            or race_info.get("jump_time")
+            or payload.get("jump_time")
+            or payload.get("jump_datetime")
+        ),
+        "metadata_captured_at": (
+            payload.get("metadata_captured_at")
+            or payload.get("created_at")
+            or payload.get("generated_at")
+        ),
+        "distance": target_distance,
+        "grade": target_grade,
+        "target_distance_safe": target_distance,
+        "target_distance_source": str(distance_source) if distance_source not in (None, "") else None,
+        "target_grade_safe": target_grade,
+        "target_grade_source": str(grade_source) if grade_source not in (None, "") else None,
+        "source_url": str(source_url) if source_url not in (None, "") else None,
+        "runner_box_name_list": participants,
+        "canonical_final_runner_alignment": {
+            "status": alignment.get("status"),
+            "canonical_runner_set_status": alignment.get("canonical_runner_set_status"),
+            "canonical_runner_count": alignment.get("canonical_runner_count"),
+            "prediction_runner_count": alignment.get("prediction_runner_count"),
+            "source_url": canonical_runner_source_url,
+            "reason": alignment.get("reason"),
+        },
+    }
 
 
 def normalize_verified_thedogs_export_content(
@@ -609,6 +811,7 @@ def normalize_verified_thedogs_export_content(
     raw_export_path: Union[str, os.PathLike],
     sidecar_payload: Mapping[str, Any],
     runner_completeness: Optional[Mapping[str, Any]] = None,
+    canonical_runner_set: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Normalize only verified canonical TheDogs export data to pipe format."""
 
@@ -643,11 +846,47 @@ def normalize_verified_thedogs_export_content(
             "normalized_content": None,
         }
 
+    content_for_normalization = content
+    effective_delimiter = original_delimiter
+    effective_runner_completeness: Optional[Mapping[str, Any]] = runner_completeness
+    canonical_alignment: Optional[Dict[str, Any]] = None
+    if canonical_runner_set is not None:
+        aligned_content, canonical_alignment = align_csv_text_to_canonical_final_runner_set(
+            content,
+            canonical_runner_set,
+            source=str(accepted_csv_path),
+        )
+        base["canonical_runner_alignment"] = canonical_alignment
+        if canonical_alignment.get("status") == "aligned":
+            content_for_normalization = aligned_content
+            effective_delimiter = (
+                detect_form_guide_delimiter(content_for_normalization) or original_delimiter
+            )
+            rows, parse_error = _read_form_guide_rows(
+                content_for_normalization,
+                effective_delimiter,
+            )
+            if parse_error:
+                return {
+                    **base,
+                    "delimiter_status": "rejected",
+                    "normalization_status": "rejected",
+                    "normalization_failure_reason": parse_error,
+                    "normalized_content": None,
+                }
+            effective_runner_completeness = analyze_csv_text_runner_completeness(
+                content_for_normalization,
+                source=str(accepted_csv_path),
+            ).as_dict()
+            base["runner_completeness_after_canonical_alignment"] = (
+                dict(effective_runner_completeness)
+            )
+
     schema_ok, schema_reasons = _validate_thedogs_export_rows(
         rows,
         accepted_csv_path=accepted_csv_path,
     )
-    runner_status = dict(runner_completeness or {}).get("status")
+    runner_status = dict(effective_runner_completeness or {}).get("status")
     metadata_verification = verify_canonical_sidecar_payload(
         sidecar_payload,
         csv_path=accepted_csv_path,
@@ -665,11 +904,36 @@ def normalize_verified_thedogs_export_content(
         "canonical_url_race_number": metadata_verification.get("canonical_url_race_number"),
         "capture_race_number": metadata_verification.get("capture_race_number"),
     }
+    if canonical_alignment is not None:
+        verification.update(
+            {
+                "canonical_runner_set_status": canonical_alignment.get(
+                    "canonical_runner_set_status"
+                ),
+                "canonical_runner_alignment_status": canonical_alignment.get("status"),
+                "canonical_runner_alignment_reason": canonical_alignment.get("reason"),
+                "canonical_runner_count": canonical_alignment.get(
+                    "canonical_runner_count"
+                ),
+                "canonical_prediction_runner_count": canonical_alignment.get(
+                    "prediction_runner_count"
+                ),
+            }
+        )
     failure_reasons: list[str] = []
     if not schema_ok:
         failure_reasons.extend(schema_reasons)
     if runner_status != "COMPLETE":
         failure_reasons.append(f"runner_set_not_complete:{runner_status or 'missing'}")
+    if (
+        canonical_alignment is not None
+        and canonical_alignment.get("canonical_runner_set_status") == "available"
+        and canonical_alignment.get("status") != "aligned"
+    ):
+        failure_reasons.append(
+            "final_runner_set_not_aligned:"
+            + str(canonical_alignment.get("reason") or "unknown")
+        )
     if metadata_verification.get("target_metadata_status") != "verified":
         failure_reasons.append(
             "target_metadata_not_verified:"
@@ -687,14 +951,21 @@ def normalize_verified_thedogs_export_content(
         }
 
     normalized_content = _rows_to_pipe_text(rows)
+    normalization_action = (
+        "already_pipe" if original_delimiter == PIPE_DELIMITER else "converted_to_pipe"
+    )
+    if canonical_alignment is not None and canonical_alignment.get("status") == "aligned":
+        normalization_action = (
+            "canonical_aligned_already_pipe"
+            if original_delimiter == PIPE_DELIMITER
+            else "canonical_aligned_and_converted_to_pipe"
+        )
     return {
         **base,
         "delimiter_status": "verified",
         "normalization_status": "verified",
         "normalization_failure_reason": None,
-        "normalization_action": (
-            "already_pipe" if original_delimiter == PIPE_DELIMITER else "converted_to_pipe"
-        ),
+        "normalization_action": normalization_action,
         "normalization_verification": verification,
         "normalized_content": normalized_content,
     }
@@ -704,8 +975,8 @@ def load_safe_sidecar_target_metadata(csv_path: Union[str, os.PathLike]) -> Dict
     """Read leakage-safe target metadata from a CSV sidecar, if present.
 
     Existing sidecars may include race_info distance/grade without provenance. Those are
-    intentionally ignored until a sidecar carries explicit top-level target fields and a
-    safe source.
+    intentionally ignored until a sidecar carries explicit target fields, safe source
+    labels, and a pre-race TheDogs source URL.
     """
 
     sidecar_path = f"{csv_path}.metadata.json"
@@ -725,16 +996,67 @@ def load_safe_sidecar_target_metadata(csv_path: Union[str, os.PathLike]) -> Dict
             payload = json.load(handle)
     except Exception:
         return default
+    if not isinstance(payload, Mapping):
+        return default
 
-    leakage_safe = bool(payload.get("metadata_is_leakage_safe"))
+    shadow_metadata = (
+        payload.get("prejump_shadow_metadata")
+        if isinstance(payload.get("prejump_shadow_metadata"), Mapping)
+        else {}
+    )
     rejected = list(payload.get("rejected_metadata_sources") or [])
     result = dict(default)
-    result["metadata_source_url"] = payload.get("metadata_source_url") or payload.get(
-        "race_url"
+    source_url = (
+        payload.get("metadata_source_url")
+        or payload.get("race_url")
+        or shadow_metadata.get("source_url")
+    )
+    result["metadata_source_url"] = source_url
+
+    source_url_safe = False
+    if not source_url:
+        rejected.append("source_url_missing")
+    elif not _is_thedogs_source_url(source_url):
+        rejected.append("source_url_not_thedogs")
+    elif _looks_post_result_source_url(source_url):
+        rejected.append("source_url_looks_post_result")
+    else:
+        source_url_safe = True
+
+    shadow_contract_safe = True
+    if shadow_metadata:
+        shadow_status = shadow_metadata.get("status")
+        if shadow_status != "PASS":
+            fail_reasons = shadow_metadata.get("fail_reasons")
+            if isinstance(fail_reasons, list) and fail_reasons:
+                reason_text = ",".join(str(reason) for reason in fail_reasons)
+            else:
+                reason_text = str(shadow_status or "unknown")
+            rejected.append(f"prejump_shadow_metadata_failed:{reason_text}")
+            shadow_contract_safe = False
+
+    leakage_safe = (
+        (
+            bool(payload.get("metadata_is_leakage_safe"))
+            or (
+                shadow_metadata.get("status") == "PASS"
+                and shadow_metadata.get("metadata_is_leakage_safe") is True
+            )
+        )
+        and source_url_safe
+        and shadow_contract_safe
     )
 
-    distance_source = payload.get("target_distance_source") or "sidecar_target_metadata"
-    distance = normalize_target_distance(payload.get("target_distance"))
+    distance_source = (
+        payload.get("target_distance_source")
+        or shadow_metadata.get("target_distance_source")
+        or "sidecar_target_metadata"
+    )
+    distance = normalize_target_distance(
+        payload.get("target_distance")
+        or shadow_metadata.get("target_distance_safe")
+        or shadow_metadata.get("distance")
+    )
     if distance and leakage_safe and is_safe_sidecar_target_source(distance_source):
         result["target_distance"] = distance
         result["target_distance_source"] = str(distance_source)
@@ -742,8 +1064,16 @@ def load_safe_sidecar_target_metadata(csv_path: Union[str, os.PathLike]) -> Dict
     elif payload.get("target_distance") not in (None, ""):
         rejected.append(f"unsafe_sidecar_target_distance:{distance_source}")
 
-    grade_source = payload.get("target_grade_source") or "sidecar_target_metadata"
-    grade = normalize_target_grade(payload.get("target_grade"))
+    grade_source = (
+        payload.get("target_grade_source")
+        or shadow_metadata.get("target_grade_source")
+        or "sidecar_target_metadata"
+    )
+    grade = normalize_target_grade(
+        payload.get("target_grade")
+        or shadow_metadata.get("target_grade_safe")
+        or shadow_metadata.get("grade")
+    )
     if grade and leakage_safe and is_safe_sidecar_target_source(grade_source):
         result["target_grade"] = grade
         result["target_grade_source"] = str(grade_source)
@@ -754,6 +1084,199 @@ def load_safe_sidecar_target_metadata(csv_path: Union[str, os.PathLike]) -> Dict
     if rejected:
         result["rejected_metadata_sources"] = rejected
     return result
+
+
+def existing_prejump_sidecar_contract_status(
+    csv_path: Union[str, os.PathLike],
+) -> Dict[str, Any]:
+    """Return whether an accepted pre-jump CSV can be safely reused."""
+
+    path = Path(csv_path)
+    sidecar_path = Path(f"{path}.metadata.json")
+    report: Dict[str, Any] = {
+        "schema_version": "existing_prejump_sidecar_contract_status_v1",
+        "csv_path": str(path),
+        "sidecar_path": str(sidecar_path),
+        "status": "FAIL",
+        "reasons": [],
+        "runner_completeness": None,
+    }
+    if not path.exists():
+        report["reasons"].append("csv_missing")
+        return report
+    try:
+        completeness = analyze_csv_text_runner_completeness(
+            path.read_text(encoding="utf-8-sig", errors="replace"),
+            source=str(path),
+        )
+    except Exception as exc:
+        report["reasons"].append(f"csv_unreadable:{type(exc).__name__}")
+        completeness = None
+    if completeness is not None:
+        report["runner_completeness"] = completeness.as_dict()
+        if not completeness.is_complete:
+            report["reasons"].append(
+                "existing_csv_runner_set_incomplete:"
+                + ",".join(completeness.reasons)
+            )
+
+    if not sidecar_path.exists():
+        report["reasons"].append("sidecar_metadata_missing")
+        return report
+    try:
+        payload = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        report["reasons"].append(f"sidecar_metadata_unreadable:{type(exc).__name__}")
+        return report
+    if not isinstance(payload, Mapping):
+        report["reasons"].append("sidecar_metadata_not_object")
+        return report
+
+    shadow_metadata = payload.get("prejump_shadow_metadata")
+    if not isinstance(shadow_metadata, Mapping):
+        report["reasons"].append("prejump_shadow_metadata_missing")
+        shadow_metadata = {}
+    elif shadow_metadata.get("status") != "PASS":
+        report["reasons"].append("prejump_shadow_metadata_not_pass")
+
+    required_fields = {
+        "race_date": shadow_metadata.get("race_date"),
+        "venue": shadow_metadata.get("venue"),
+        "race_number": shadow_metadata.get("race_number"),
+        "jump_time": shadow_metadata.get("jump_time"),
+        "metadata_captured_at": shadow_metadata.get("metadata_captured_at")
+        or payload.get("metadata_captured_at"),
+        "target_distance_safe": shadow_metadata.get("target_distance_safe")
+        or payload.get("target_distance"),
+        "target_grade_safe": shadow_metadata.get("target_grade_safe")
+        or payload.get("target_grade"),
+        "source_url": shadow_metadata.get("source_url") or payload.get("race_url"),
+    }
+    missing = [
+        field_name
+        for field_name, value in required_fields.items()
+        if value in (None, "")
+    ]
+    if missing:
+        report["reasons"].append("missing_required_fields:" + ",".join(missing))
+    if not any(
+        field in missing for field in ("race_date", "jump_time", "metadata_captured_at")
+    ):
+        capture_dt = _parse_prejump_contract_timestamp(
+            required_fields.get("metadata_captured_at")
+        )
+        if capture_dt is None:
+            report["reasons"].append("metadata_captured_at_unparseable")
+        else:
+            jump_dt, jump_error = _parse_prejump_contract_jump_datetime(
+                race_date=required_fields.get("race_date"),
+                jump_time=required_fields.get("jump_time"),
+                capture_dt=capture_dt,
+            )
+            if jump_dt is None:
+                report["reasons"].append(
+                    f"metadata_capture_timing_unverified:{jump_error or 'unknown'}"
+                )
+            elif (jump_dt - capture_dt).total_seconds() <= 0:
+                report["reasons"].append("metadata_captured_at_not_before_jump")
+    report["reasons"].extend(
+        _prejump_contract_url_reasons(
+            required_fields.get("source_url"),
+            field_name="source_url",
+        )
+    )
+
+    runners = shadow_metadata.get("runner_box_name_list")
+    if not isinstance(runners, list) or not runners:
+        report["reasons"].append("runner_box_name_list_missing")
+
+    alignment = shadow_metadata.get("canonical_final_runner_alignment")
+    if not isinstance(alignment, Mapping):
+        report["reasons"].append("canonical_final_runner_alignment_missing")
+    else:
+        if alignment.get("status") != "aligned":
+            report["reasons"].append("canonical_final_runner_alignment_not_aligned")
+        if alignment.get("canonical_runner_set_status") != "available":
+            report["reasons"].append("canonical_runner_set_not_available")
+        if not alignment.get("source_url"):
+            report["reasons"].append("canonical_runner_source_url_missing")
+        else:
+            report["reasons"].extend(
+                _prejump_contract_url_reasons(
+                    alignment.get("source_url"),
+                    field_name="canonical_runner_source_url",
+                )
+            )
+
+    if not report["reasons"]:
+        report["status"] = "PASS"
+    return report
+
+
+def _parse_prejump_contract_timestamp(value: Any) -> datetime | None:
+    if value in (None, ""):
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = f"{text[:-1]}+00:00"
+    if len(text) >= 5 and text[-5] in {"+", "-"} and text[-4:].isdigit():
+        text = f"{text[:-5]}{text[-5:-2]}:{text[-2:]}"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=datetime.now().astimezone().tzinfo)
+    return parsed
+
+
+def _parse_prejump_contract_jump_datetime(
+    *,
+    race_date: Any,
+    jump_time: Any,
+    capture_dt: datetime,
+) -> tuple[datetime | None, str | None]:
+    try:
+        parsed_date = datetime.strptime(str(race_date).strip()[:10], "%Y-%m-%d").date()
+    except Exception:
+        return None, "race_date_unparseable"
+    text = str(jump_time or "").strip()
+    if not text:
+        return None, "jump_time_missing"
+    normalized = text
+    if len(normalized) >= 5 and normalized[-5] in {"+", "-"} and normalized[-4:].isdigit():
+        normalized = f"{normalized[:-5]}{normalized[-5:-2]}:{normalized[-2:]}"
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        parsed = None
+    if parsed is not None:
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=capture_dt.tzinfo)
+        return parsed, None
+    for fmt in ("%I:%M %p", "%I:%M%p", "%H:%M", "%H:%M:%S"):
+        try:
+            parsed_time = datetime.strptime(text.upper(), fmt).time()
+        except ValueError:
+            continue
+        return (
+            datetime.combine(parsed_date, parsed_time).replace(tzinfo=capture_dt.tzinfo),
+            None,
+        )
+    return None, "jump_time_unparseable"
+
+
+def _prejump_contract_url_reasons(value: Any, *, field_name: str) -> list[str]:
+    text = str(value or "").strip()
+    if not text:
+        return []
+    if not _is_thedogs_source_url(text):
+        return [f"{field_name}_not_thedogs"]
+    if _looks_post_result_source_url(text):
+        return [f"{field_name}_looks_post_result"]
+    return []
 
 
 def parse_race_csv_meta(file_path: str) -> Dict[str, Any]:

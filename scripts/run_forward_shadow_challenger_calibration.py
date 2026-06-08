@@ -270,6 +270,38 @@ def flatten(races: Sequence[Sequence[Mapping[str, Any]]]) -> list[dict[str, Any]
     return [dict(row) for rows in races for row in rows]
 
 
+def metric_cohort_fields(races: Sequence[Sequence[Mapping[str, Any]]]) -> dict[str, Any]:
+    race_ids = [race_key(rows[0]) for rows in races if rows]
+    race_ids_hash = hashlib.sha256(
+        json.dumps(race_ids, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    ).hexdigest()
+    return {
+        "evaluation_cohort_id": f"forward_shadow_challenger_eval:{race_ids_hash}",
+        "metric_cohort_id": f"forward_shadow_challenger_eval:{race_ids_hash}",
+        "safe_joined_race_ids_hash": race_ids_hash,
+        "safe_joined_race_ids_count": len(race_ids),
+    }
+
+
+def activation_metric_payload(
+    metrics: Mapping[str, Any],
+    *,
+    metric_role: str,
+    cohort_fields: Mapping[str, Any],
+    source_fields: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload = dict(metrics)
+    payload.update(cohort_fields)
+    payload.update(source_fields or {})
+    payload.update(
+        {
+            "schema_version": "forward_shadow_activation_metrics_v1",
+            "metric_role": metric_role,
+        }
+    )
+    return payload
+
+
 def top_pick(rows: Sequence[Mapping[str, Any]], probability_key: str) -> Mapping[str, Any]:
     return sorted(
         rows,
@@ -605,7 +637,31 @@ def build_report(
         input_probability_key=input_probability_key,
         output_probability_key="candidate_probability",
     )
-    candidate_eval = metric_summary(candidate_eval_races, "candidate_probability")
+    eval_cohort_fields = metric_cohort_fields(eval_races)
+    baseline_eval = activation_metric_payload(
+        baseline_eval,
+        metric_role="baseline_eval",
+        cohort_fields=eval_cohort_fields,
+        source_fields={
+            "source_safe_exact_joined_race_count": len(safe_races),
+            "source_safe_exact_joined_runner_count": len(flatten(safe_races)),
+            "source_train_race_count": len(train_races),
+            "source_eval_race_count": len(eval_races),
+            "source_generated_at": generated_at.isoformat(),
+        },
+    )
+    candidate_eval = activation_metric_payload(
+        metric_summary(candidate_eval_races, "candidate_probability"),
+        metric_role="candidate_eval",
+        cohort_fields=eval_cohort_fields,
+        source_fields={
+            "source_safe_exact_joined_race_count": len(safe_races),
+            "source_safe_exact_joined_runner_count": len(flatten(safe_races)),
+            "source_train_race_count": len(train_races),
+            "source_eval_race_count": len(eval_races),
+            "source_generated_at": generated_at.isoformat(),
+        },
+    )
     protected_after = dict(protected_after or protected_hashes())
     blockers = activation_blockers(
         total_races=len(safe_races),
@@ -716,6 +772,17 @@ def run_challenger_calibration(
         protected_before=protected_before,
     )
     write_json(output_dir / "challenger_calibration_report.json", report)
+    baseline_activation_metrics = dict(report.get("baseline_eval_metrics") or {})
+    candidate_activation_metrics = dict(report.get("candidate_eval_metrics") or {})
+    source_report = relpath(output_dir / "challenger_calibration_report.json")
+    baseline_activation_metrics["source_report"] = source_report
+    candidate_activation_metrics["source_report"] = source_report
+    baseline_activation_metrics["source_final_status"] = report.get("final_status")
+    candidate_activation_metrics["source_final_status"] = report.get("final_status")
+    baseline_activation_metrics["source_activation_blockers"] = report.get("activation_blockers") or []
+    candidate_activation_metrics["source_activation_blockers"] = report.get("activation_blockers") or []
+    write_json(output_dir / "baseline_eval_metrics_for_activation.json", baseline_activation_metrics)
+    write_json(output_dir / "candidate_eval_metrics_for_activation.json", candidate_activation_metrics)
     write_json(output_dir / "challenger_activation_gate.json", {
         "schema_version": "forward_shadow_challenger_activation_gate_v1",
         "final_status": report["final_status"],

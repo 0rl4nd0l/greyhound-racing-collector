@@ -109,6 +109,27 @@ def test_challenger_uses_only_exact_joined_races_and_writes_report_only(tmp_path
     assert report["production_activation_allowed"] is False
     assert report["no_write_guarantees"]["db_write"] is False
     assert report["no_write_guarantees"]["registry_mutation"] is False
+    baseline_activation_metrics = json.loads(
+        (output_dir / "baseline_eval_metrics_for_activation.json").read_text()
+    )
+    candidate_activation_metrics = json.loads(
+        (output_dir / "candidate_eval_metrics_for_activation.json").read_text()
+    )
+    assert baseline_activation_metrics["schema_version"] == "forward_shadow_activation_metrics_v1"
+    assert candidate_activation_metrics["schema_version"] == "forward_shadow_activation_metrics_v1"
+    assert baseline_activation_metrics["metric_role"] == "baseline_eval"
+    assert candidate_activation_metrics["metric_role"] == "candidate_eval"
+    assert baseline_activation_metrics["metric_cohort_id"] == candidate_activation_metrics["metric_cohort_id"]
+    assert baseline_activation_metrics["safe_joined_race_ids_hash"] == candidate_activation_metrics["safe_joined_race_ids_hash"]
+    assert baseline_activation_metrics["safe_joined_race_ids_count"] == 1
+    assert baseline_activation_metrics["source_report"].endswith("challenger_calibration_report.json")
+    assert baseline_activation_metrics["source_safe_exact_joined_race_count"] == 2
+    assert candidate_activation_metrics["source_safe_exact_joined_race_count"] == 2
+    assert baseline_activation_metrics["source_train_race_count"] == 1
+    assert candidate_activation_metrics["source_eval_race_count"] == 1
+    assert baseline_activation_metrics["source_final_status"] == challenger.FINAL_READY
+    assert candidate_activation_metrics["source_activation_blockers"] == []
+    assert baseline_activation_metrics["source_generated_at"]
     assert report["rejected_joined_races"] == [
         {
             "race_id": "Race 3",

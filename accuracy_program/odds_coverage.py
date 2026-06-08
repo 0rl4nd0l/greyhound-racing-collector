@@ -111,6 +111,74 @@ def _counter_dict(counter: Counter[str]) -> dict[str, int]:
     return dict(sorted(counter.items(), key=lambda item: (-item[1], item[0])))
 
 
+def summarize_read_only_odds_coverage_report(
+    report: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Normalize daemon odds coverage into one report-only readiness shape."""
+
+    report = report or {}
+    summary = report.get("summary") if isinstance(report.get("summary"), Mapping) else report
+    dog_level_rows = int(summary.get("dog_level_win_odds_rows") or 0)
+    source_url_missing = int(summary.get("source_url_rows_missing") or 0)
+    stale_rows = int(summary.get("stale_current_win_rows") or 0)
+    blocker_counts: dict[str, int] = {}
+    if not report:
+        blocker_counts["odds_coverage_report_missing"] = 1
+    if dog_level_rows <= 0:
+        blocker_counts["no_dog_level_win_odds_rows"] = 1
+    if source_url_missing > 0:
+        blocker_counts["missing_source_url_rows"] = source_url_missing
+    if stale_rows > 0:
+        blocker_counts["stale_current_win_rows"] = stale_rows
+
+    if not report:
+        next_action = "WAIT_FOR_DAEMON_ODDS_COVERAGE_DIAGNOSTIC"
+    elif dog_level_rows <= 0:
+        next_action = "COLLECT_EXACT_DOG_LEVEL_WIN_ODDS_REPORT_ONLY"
+    elif source_url_missing > 0 and stale_rows > 0:
+        next_action = "CAPTURE_FRESH_DOG_LEVEL_ODDS_WITH_SOURCE_URLS"
+    elif source_url_missing > 0:
+        next_action = "CAPTURE_ODDS_SOURCE_URL_PROVENANCE"
+    elif stale_rows > 0:
+        next_action = "REFRESH_DOG_LEVEL_ODDS_WITHIN_TTL"
+    else:
+        next_action = "READY_FOR_REPORT_ONLY_ODDS_SNAPSHOT_JOIN_NO_EV_ACTION"
+
+    return {
+        "status": summary.get("status"),
+        "mode": summary.get("mode"),
+        "readiness_status": (
+            "ODDS_COVERAGE_READY_REPORT_ONLY_EV_DISABLED"
+            if not blocker_counts
+            else "ODDS_COVERAGE_BLOCKED_REPORT_ONLY_EV_DISABLED"
+        ),
+        "blocker_counts": blocker_counts,
+        "next_action": next_action,
+        "dog_level_win_odds_rows": dog_level_rows,
+        "live_odds_rows": int(summary.get("live_odds_rows") or 0),
+        "live_odds_races": int(summary.get("live_odds_races") or 0),
+        "odds_history_rows": int(summary.get("odds_history_rows") or 0),
+        "races_with_dog_level_win_odds": int(
+            summary.get("races_with_dog_level_win_odds") or 0
+        ),
+        "safe_direct_identity_matches": int(
+            summary.get("safe_direct_identity_matches") or 0
+        ),
+        "safe_direct_identity_match_rate": summary.get("safe_direct_identity_match_rate"),
+        "source_url_rows_checked": int(summary.get("source_url_rows_checked") or 0),
+        "source_url_rows_missing": source_url_missing,
+        "stale_current_win_rows": stale_rows,
+        "stale_after_hours": summary.get("stale_after_hours"),
+        "source_provenance": summary.get("source_provenance") or {},
+        "odds_capture_performed": bool(summary.get("odds_capture_performed")),
+        "odds_used_for_shadow_scoring": bool(summary.get("odds_used_for_shadow_scoring")),
+        "shadow_model_input": bool(summary.get("shadow_model_input")),
+        "db_write": bool(summary.get("db_write")),
+        "ev_action": bool(summary.get("ev_action")),
+        "betting_action": bool(summary.get("betting_action")),
+    }
+
+
 def _runner_null_ev_reason(
     runner: Mapping[str, Any],
     odds_eligibility: Mapping[str, Any],
@@ -277,6 +345,9 @@ def analyze_snapshot_odds_coverage(
         "stale_odds_rows": status_counts.get("stale_beyond_ttl", 0),
         "missing_timestamp_rows": status_counts.get("missing_timestamp", 0),
         "timestamp_after_prediction_rows": status_counts.get("timestamp_after_prediction", 0),
+        "timestamp_after_feature_freeze_rows": status_counts.get(
+            "timestamp_after_feature_freeze", 0
+        ),
         "timestamp_after_jump_rows": status_counts.get("timestamp_after_jump", 0),
         "null_ev_reason_rows": rows,
     }
