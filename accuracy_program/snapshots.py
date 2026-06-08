@@ -5,10 +5,13 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Mapping
 from urllib.parse import urlparse
+
+from accuracy_program.calibration import power_normalize_prediction_group
 
 try:
     from config.venue_mapping import normalize_venue
@@ -655,6 +658,66 @@ def _metadata_source_detail(row: Mapping[str, Any]) -> Any:
     return detail or None
 
 
+def _ev_readiness(predictions: list[dict[str, Any]]) -> dict[str, Any]:
+    """Summarize whether captured odds are trustworthy enough to expose EV."""
+
+    priced_count = 0
+    eligible_count = 0
+    ev_present_count = 0
+    ev_leak_count = 0
+    exclusion_counts: Counter[str] = Counter()
+    for row in predictions:
+        odds = row.get("odds")
+        has_odds = odds is not None
+        if has_odds:
+            priced_count += 1
+        match_status = str(row.get("odds_match_status") or "")
+        provenance_status = str(row.get("odds_provenance_status") or "")
+        eligible = (
+            has_odds
+            and match_status == "valid_pre_jump_dog_odds"
+            and provenance_status == "complete"
+        )
+        if eligible:
+            eligible_count += 1
+        ev_present = row.get("ev_win") is not None
+        if ev_present:
+            ev_present_count += 1
+        if ev_present and not eligible:
+            ev_leak_count += 1
+        if has_odds and not eligible:
+            reason = (
+                row.get("odds_exclusion_reason")
+                or row.get("odds_match_status")
+                or "unknown_odds_exclusion"
+            )
+            exclusion_counts[str(reason)] += 1
+        if not has_odds:
+            exclusion_counts["missing_live_odds"] += 1
+
+    runner_count = len(predictions)
+    requirements = {
+        "all_runners_priced": runner_count > 0 and priced_count == runner_count,
+        "all_priced_odds_ev_eligible": priced_count > 0 and eligible_count == priced_count,
+        "ev_present_only_for_eligible_odds": ev_leak_count == 0,
+        "ev_null_for_unpriced_or_ineligible": (
+            ev_present_count == eligible_count
+        ),
+    }
+    return {
+        "schema_version": "ev_readiness_v1",
+        "status": "EV_READY" if all(requirements.values()) else "EV_NOT_READY",
+        "runner_count": runner_count,
+        "priced_runner_count": priced_count,
+        "ev_eligible_runner_count": eligible_count,
+        "ev_present_runner_count": ev_present_count,
+        "ev_null_runner_count": runner_count - ev_present_count,
+        "ev_leak_count": ev_leak_count,
+        "odds_exclusion_counts": dict(sorted(exclusion_counts.items())),
+        "requirements": requirements,
+    }
+
+
 def _snapshot_readiness(
     predictions: list[dict[str, Any]],
     *,
@@ -707,6 +770,7 @@ def _snapshot_readiness(
     source_verified = bool(source_report)
     final_runner_report = dict(final_runner_set_verification or {})
     final_runner_status = str(final_runner_report.get("final_runner_set_status") or "")
+    ev_readiness = _ev_readiness(predictions)
     requirements = {
         "result_free": True,
         "pre_jump_lifecycle": lifecycle_status == "upcoming_not_jumped",
@@ -753,6 +817,7 @@ def _snapshot_readiness(
         "source_runner_completeness": source_report or None,
         "prediction_runner_match": runner_match if source_verified else None,
         "final_runner_set_verification": final_runner_report or None,
+        "ev_readiness": ev_readiness,
     }
 
 
@@ -883,6 +948,54 @@ def _prediction_rows(
     return snapshot_rows
 
 
+def _apply_report_only_calibration(
+    predictions: list[dict[str, Any]],
+    calibration: Mapping[str, Any],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    algorithm = str(calibration.get("algorithm") or "")
+    if algorithm != "power_normalize_per_race":
+        raise ValueError("unsupported_report_only_calibration_algorithm")
+    input_key = str(calibration.get("input_probability_key") or "win_prob_norm")
+    output_key = str(
+        calibration.get("output_probability_key")
+        or "calibrated_win_prob_report_only"
+    )
+    output_rank_key = str(
+        calibration.get("output_rank_key")
+        or "calibrated_predicted_rank_report_only"
+    )
+    alpha = calibration.get("alpha")
+    original_probabilities = [row.get(input_key) for row in predictions]
+    original_ranks = [row.get("predicted_rank") for row in predictions]
+    calibrated = power_normalize_prediction_group(
+        predictions,
+        alpha=alpha,
+        input_key=input_key,
+        output_key=output_key,
+        output_rank_key=output_rank_key,
+    )
+    return calibrated, {
+        "algorithm": algorithm,
+        "alpha": float(alpha),
+        "input_probability_key": input_key,
+        "output_probability_key": output_key,
+        "output_rank_key": output_rank_key,
+        "status": "APPLIED_REPORT_ONLY",
+        "canonical_probabilities_unchanged": (
+            [row.get(input_key) for row in calibrated] == original_probabilities
+        ),
+        "canonical_ranks_unchanged": (
+            [row.get("predicted_rank") for row in calibrated] == original_ranks
+        ),
+        "uses_labels_at_runtime": False,
+        "uses_odds_at_runtime": False,
+        "model_artifact_written": False,
+        "registry_mutation_allowed": False,
+        "promotion_allowed": False,
+        "betting_allowed": False,
+    }
+
+
 def _race_identity(prediction_result: Mapping[str, Any], lifecycle_data: Mapping[str, Any]) -> dict[str, Any]:
     race_context = _as_dict(prediction_result.get("race_context"))
     race_date = (
@@ -926,6 +1039,7 @@ def build_prediction_snapshot(
     stale_odds_after_minutes: float = 30.0,
     source_runner_completeness: Mapping[str, Any] | None = None,
     final_runner_set_verification: Mapping[str, Any] | None = None,
+    report_only_calibration: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a result-free snapshot record from an already computed prediction.
 
@@ -974,6 +1088,19 @@ def build_prediction_snapshot(
     source_runner_completeness = dict(source_runner_completeness or {})
     frozen_participants = list(source_runner_completeness.get("participants") or [])
     final_runner_set_verification = dict(final_runner_set_verification or {})
+    prediction_rows = _prediction_rows(
+        prediction_result,
+        prediction_timestamp=timestamp,
+        feature_freeze_timestamp=feature_freeze,
+        jump_datetime=str(jump_datetime) if jump_datetime else None,
+        stale_odds_after_minutes=stale_odds_after_minutes,
+    )
+    report_only_calibration_state: dict[str, Any] | None = None
+    if report_only_calibration is not None:
+        prediction_rows, report_only_calibration_state = _apply_report_only_calibration(
+            prediction_rows,
+            report_only_calibration,
+        )
 
     snapshot = {
         "schema_version": "prediction_snapshot_v1",
@@ -997,13 +1124,7 @@ def build_prediction_snapshot(
             if lifecycle_status == "upcoming_not_jumped"
             else "not_bet_qualified_lifecycle"
         ),
-        "predictions": _prediction_rows(
-            prediction_result,
-            prediction_timestamp=timestamp,
-            feature_freeze_timestamp=feature_freeze,
-            jump_datetime=str(jump_datetime) if jump_datetime else None,
-            stale_odds_after_minutes=stale_odds_after_minutes,
-        ),
+        "predictions": prediction_rows,
         "source_runner_completeness": source_runner_completeness or None,
         "expected_runner_count": source_runner_completeness.get("runner_count"),
         "frozen_participants": frozen_participants,
@@ -1017,6 +1138,8 @@ def build_prediction_snapshot(
             "source_file_path": source_file_path,
         },
     }
+    if report_only_calibration_state is not None:
+        snapshot["report_only_calibration"] = report_only_calibration_state
     if final_runner_set_verification:
         snapshot.update(
             {
