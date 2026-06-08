@@ -35,7 +35,7 @@ from config.paths import ARCHIVE_DIR, UPCOMING_RACES_DIR
 log = get_component_logger()
 
 API_PATTERN = re.compile(
-    r"^Race\s+(\d{1,2})\s*[–-]\s*([A-Z_]+)\s*[–-]\s*(\d{4}-\d{2}-\d{2})\.csv$",
+    r"^Race\s+(\d{1,2})\s*[–-]\s*([A-Z0-9_]+(?:-[A-Z0-9_]+)*)\s*[–-]\s*(\d{4}-\d{2}-\d{2})\.csv$",
     re.IGNORECASE,
 )
 

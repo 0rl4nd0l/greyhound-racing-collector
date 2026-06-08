@@ -462,7 +462,10 @@ class UpcomingRaceBrowser:
         """Extract race information from CSV filename (e.g., 'Race 1 - BROKEN-HILL - 2025-07-27.csv')"""
         try:
             # Pattern: Race {number} - {venue} - {date}.csv
-            pattern = r"Race (\d+) - ([A-Z-]+) - (\d{4}-\d{2}-\d{2})\.csv"
+            pattern = (
+                r"Race\s+(\d+)\s*-\s*([A-Z0-9_]+(?:-[A-Z0-9_]+)*)\s*-\s*"
+                r"(\d{4}-\d{2}-\d{2})\.csv"
+            )
             match = re.match(pattern, filename)
 
             if not match:

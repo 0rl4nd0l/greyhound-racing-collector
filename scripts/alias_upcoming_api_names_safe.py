@@ -19,7 +19,7 @@ RE_VENUE_UPCOMING = re.compile(
     r"Upcoming_([A-Z_]{2,5})_(\d{4}-\d{2}-\d{2})_(\d{1,2})", re.IGNORECASE
 )
 RE_API = re.compile(
-    r"^Race\s+(\d{1,2})\s*[–-]\s*([A-Z_]+)\s*[–-]\s*(\d{4}-\d{2}-\d{2})\.csv$",
+    r"^Race\s+(\d{1,2})\s*[–-]\s*([A-Z0-9_]+(?:-[A-Z0-9_]+)*)\s*[–-]\s*(\d{4}-\d{2}-\d{2})\.csv$",
     re.IGNORECASE,
 )
 

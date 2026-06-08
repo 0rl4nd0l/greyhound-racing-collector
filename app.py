@@ -6538,11 +6538,12 @@ def api_upcoming_races_csv():
                     race_date = parts[3]
                 else:
                     # Pattern C: "Race 1 - AP_K - 2025-08-04.csv" and similar
+                    venue_pattern = r"([A-Z0-9_/]+(?:-[A-Z0-9_/]+)*)"
                     pattern1 = (
-                        r"Race\s+(\d+)\s*-\s*([A-Z_/]+)\s*-\s*(\d{1,2}\s+\w+\s+\d{4})"
+                        rf"Race\s+(\d+)\s*-\s*{venue_pattern}\s*-\s*(\d{{1,2}}\s+\w+\s+\d{{4}})"
                     )
                     pattern2 = (
-                        r"Race\s+(\d+)\s*-\s*([A-Z_/]+)\s*-\s*(\d{4}-\d{2}-\d{2})"
+                        rf"Race\s+(\d+)\s*-\s*{venue_pattern}\s*-\s*(\d{{4}}-\d{{2}}-\d{{2}})"
                     )
                     match1 = re.search(pattern1, filename, re.IGNORECASE)
                     match2 = re.search(pattern2, filename, re.IGNORECASE)
@@ -18224,7 +18225,7 @@ def _extract_csv_metadata(file_path):
 
     # Regex pattern to match: "Race {number} – {venue} – {date}.csv"
     # The en dash (–) is different from hyphen (-)
-    pattern = r"Race\s+(\d+)\s*[–-]\s*([A-Z_]+)\s*[–-]\s*(\d{4}-\d{2}-\d{2})\.csv"
+    pattern = r"Race\s+(\d+)\s*[–-]\s*([A-Z0-9_]+(?:-[A-Z0-9_]+)*)\s*[–-]\s*(\d{4}-\d{2}-\d{2})\.csv"
 
     match = re.match(pattern, filename, re.IGNORECASE)
     if match:
