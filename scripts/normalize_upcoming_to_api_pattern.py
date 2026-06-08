@@ -23,7 +23,7 @@ ARCHIVE_DIRS = [
 ]
 
 API_PATTERN = re.compile(
-    r"^Race\s+(\d{1,2})\s*[–-]\s*([A-Z_]+)\s*[–-]\s*(\d{4}-\d{2}-\d{2})\.csv$",
+    r"^Race\s+(\d{1,2})\s*[–-]\s*([A-Z0-9_]+(?:-[A-Z0-9_]+)*)\s*[–-]\s*(\d{4}-\d{2}-\d{2})\.csv$",
     re.IGNORECASE,
 )
 

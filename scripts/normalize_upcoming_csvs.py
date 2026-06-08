@@ -33,7 +33,10 @@ from typing import Dict, List, Optional, Tuple
 
 DATE_RE = re.compile(r"(\d{4}-\d{2}-\d{2})")
 # Filename contract: "Race {num} - {VENUE} - YYYY-MM-DD.csv" (hyphen or en dash)
-FILENAME_PATTERN = re.compile(r"^Race\s+(\d{1,2})\s*[–-]\s*([A-Z_]+)\s*[–-]\s*(\d{4}-\d{2}-\d{2})\.csv$", re.IGNORECASE)
+FILENAME_PATTERN = re.compile(
+    r"^Race\s+(\d{1,2})\s*[–-]\s*([A-Z0-9_]+(?:-[A-Z0-9_]+)*)\s*[–-]\s*(\d{4}-\d{2}-\d{2})\.csv$",
+    re.IGNORECASE,
+)
 
 
 @dataclass

@@ -905,7 +905,9 @@ def _extract_from_filename(filename: str) -> Optional[Dict[str, Any]]:
     )  # Remove extension
 
     # Pattern 1: "Race 11 - TAREE - 2025-08-02" (ISO date format)
-    pattern1 = r"Race\s+(\d+)\s*-\s*([A-Z_]+)\s*-\s*(\d{4}-\d{2}-\d{2})"
+    venue_pattern = r"([A-Z0-9_]+(?:-[A-Z0-9_]+)*)"
+
+    pattern1 = rf"Race\s+(\d+)\s*-\s*{venue_pattern}\s*-\s*(\d{{4}}-\d{{2}}-\d{{2}})"
     match1 = re.search(pattern1, clean_name, re.IGNORECASE)
 
     if match1:
@@ -917,7 +919,7 @@ def _extract_from_filename(filename: str) -> Optional[Dict[str, Any]]:
         }
 
     # Pattern 2: "Race 5 - GEE - 08 July 2025" (human readable date)
-    pattern2 = r"Race\s+(\d+)\s*-\s*([A-Z_]+)\s*-\s*(\d{1,2})\s+(\w+)\s+(\d{4})"
+    pattern2 = rf"Race\s+(\d+)\s*-\s*{venue_pattern}\s*-\s*(\d{{1,2}})\s+(\w+)\s+(\d{{4}})"
     match2 = re.search(pattern2, clean_name, re.IGNORECASE)
 
     if match2:
@@ -933,7 +935,7 @@ def _extract_from_filename(filename: str) -> Optional[Dict[str, Any]]:
             }
 
     # Pattern 3: Try to extract just race number and venue if date parsing fails
-    pattern3 = r"Race\s+(\d+)\s*-\s*([A-Z_]+)"
+    pattern3 = rf"Race\s+(\d+)\s*-\s*{venue_pattern}"
     match3 = re.search(pattern3, clean_name, re.IGNORECASE)
 
     if match3:
