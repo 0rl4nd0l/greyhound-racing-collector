@@ -76,6 +76,31 @@ def _snapshot_files(paths: Iterable[str]) -> list[Path]:
     return files
 
 
+def _snapshot_paths_from_manifests(paths: Iterable[str]) -> list[str]:
+    snapshot_paths: list[str] = []
+    for raw in paths:
+        manifest = Path(raw)
+        with manifest.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                text = line.strip()
+                if not text or text.startswith("#"):
+                    continue
+                snapshot_paths.append(text)
+    return snapshot_paths
+
+
+def _snapshot_instance_id(race_id: Any, path: str | Path) -> str:
+    race_part = str(race_id or "DATA_MISSING")
+    return f"{race_part}|snapshot:{Path(path)}"
+
+
+def _is_prediction_snapshot_artifact(value: Mapping[str, Any]) -> bool:
+    return (
+        value.get("schema_version") == "prediction_snapshot_v1"
+        and isinstance(value.get("predictions"), list)
+    )
+
+
 def _norm_name(value: Any) -> str:
     import re
 
@@ -328,15 +353,21 @@ def _snapshot_provenance_report(snapshots: Iterable[Mapping[str, Any]]) -> dict[
 
 def _corpus_readiness_report(
     *,
-    files_found: int,
+    json_files_scanned: int,
+    prediction_snapshot_files: int,
+    skipped_non_snapshot_artifacts: list[dict[str, str]],
     rejected_snapshots: list[dict[str, str]],
     readiness_status_counts: Counter[str],
     readiness_failures: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    if files_found == 0:
+    if prediction_snapshot_files == 0:
         return {
             "status": "DATA_MISSING",
             "reason": "no_frozen_pre_jump_snapshot_files_found",
+            "json_files_scanned": json_files_scanned,
+            "snapshot_files": prediction_snapshot_files,
+            "non_snapshot_artifacts_skipped": len(skipped_non_snapshot_artifacts),
+            "skipped_non_snapshot_artifacts": skipped_non_snapshot_artifacts[:25],
             "durable_pre_jump_snapshot_requirements": sorted(
                 DURABLE_SNAPSHOT_REQUIREMENTS
             ),
@@ -344,7 +375,10 @@ def _corpus_readiness_report(
     if rejected_snapshots or readiness_status_counts.get("NOT_READY", 0):
         return {
             "status": "NOT_READY",
-            "snapshot_files": files_found,
+            "json_files_scanned": json_files_scanned,
+            "snapshot_files": prediction_snapshot_files,
+            "non_snapshot_artifacts_skipped": len(skipped_non_snapshot_artifacts),
+            "skipped_non_snapshot_artifacts": skipped_non_snapshot_artifacts[:25],
             "readiness_status_counts": dict(readiness_status_counts),
             "rejected_snapshots": rejected_snapshots,
             "readiness_failures": readiness_failures[:25],
@@ -354,7 +388,10 @@ def _corpus_readiness_report(
         }
     return {
         "status": "READY",
-        "snapshot_files": files_found,
+        "json_files_scanned": json_files_scanned,
+        "snapshot_files": prediction_snapshot_files,
+        "non_snapshot_artifacts_skipped": len(skipped_non_snapshot_artifacts),
+        "skipped_non_snapshot_artifacts": skipped_non_snapshot_artifacts[:25],
         "readiness_status_counts": dict(readiness_status_counts),
         "durable_pre_jump_snapshot_requirements": sorted(
             DURABLE_SNAPSHOT_REQUIREMENTS
@@ -613,7 +650,10 @@ def _runner_rows(snapshot: Mapping[str, Any], conn: sqlite3.Connection) -> tuple
                 "box_number": box,
                 "race_date": metadata.get("race_date") or snapshot.get("race_date"),
                 "venue": metadata.get("venue"),
-                "distance": metadata.get("distance"),
+                "distance": metadata.get("distance") or snapshot.get("target_distance"),
+                "target_distance": snapshot.get("target_distance") or metadata.get("distance"),
+                "target_grade": snapshot.get("target_grade"),
+                "model_version": snapshot.get("model_version"),
                 "win_prob_norm": _safe_float(runner.get("win_prob_norm")),
                 "actual_win": int(label["actual_win"]),
                 "finish_position": label.get("finish_position"),
@@ -841,6 +881,7 @@ def _failure_mode_diagnostics(rows: list[Mapping[str, Any]]) -> dict[str, Any]:
                 "result_detail_quality": top_pick.get("result_detail_quality"),
                 "venue": top_pick.get("venue"),
                 "distance": top_pick.get("distance"),
+                "target_grade": top_pick.get("target_grade"),
                 "field_size": len(ranked),
                 "winner_name": winner.get("dog_name"),
                 "winner_box": winner.get("box_number"),
@@ -949,15 +990,33 @@ def _failure_mode_diagnostics(rows: list[Mapping[str, Any]]) -> dict[str, Any]:
         },
         "venue_breakdown": _group_breakdown(race_summaries, "venue"),
         "distance_breakdown": distance_breakdown,
+        "grade_breakdown": _group_breakdown(race_summaries, "target_grade"),
         "label_quality_breakdown": label_breakdown,
         "complete_vs_partial_labels": label_group_breakdown,
     }
 
 
-def _arm_rows_from_market(rows: list[Mapping[str, Any]], arm: str) -> list[dict[str, Any]]:
+def _race_outcome_id(row: Mapping[str, Any]) -> str:
+    return str(row.get("label_race_id") or row.get("race_id") or "DATA_MISSING")
+
+
+def _evaluation_group_id(
+    row: Mapping[str, Any],
+    *,
+    group_key: str = "race_id",
+) -> str:
+    return str(row.get(group_key) or row.get("race_id") or "DATA_MISSING")
+
+
+def _arm_rows_from_market(
+    rows: list[Mapping[str, Any]],
+    arm: str,
+    *,
+    group_key: str = "race_id",
+) -> list[dict[str, Any]]:
     by_race: dict[str, list[Mapping[str, Any]]] = {}
     for row in rows:
-        by_race.setdefault(str(row.get("race_id")), []).append(row)
+        by_race.setdefault(_evaluation_group_id(row, group_key=group_key), []).append(row)
 
     out: list[dict[str, Any]] = []
     for race_rows in by_race.values():
@@ -988,14 +1047,251 @@ def _arm_rows_from_market(rows: list[Mapping[str, Any]], arm: str) -> list[dict[
     return out
 
 
-def evaluate_snapshots(db_path: str, snapshot_paths: list[str]) -> dict[str, Any]:
+def _metrics_by_arm(
+    rows: list[Mapping[str, Any]],
+    *,
+    group_key: str = "race_id",
+) -> dict[str, Any]:
+    if not rows:
+        return {}
+    metrics: dict[str, Any] = {
+        "model_only": score_predictions(rows, race_id_key=group_key)
+    }
+    market_rows = _arm_rows_from_market(rows, "market_implied", group_key=group_key)
+    if market_rows:
+        metrics["market_implied"] = score_predictions(
+            market_rows,
+            race_id_key=group_key,
+        )
+    blend_rows = _arm_rows_from_market(rows, "simple_blend_50", group_key=group_key)
+    if blend_rows:
+        metrics["simple_blend_50"] = score_predictions(
+            blend_rows,
+            race_id_key=group_key,
+        )
+    return metrics
+
+
+def _clean_official_evaluation_rows(
+    rows: list[Mapping[str, Any]],
+) -> tuple[list[Mapping[str, Any]], list[dict[str, Any]]]:
+    by_race: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+    for row in rows:
+        by_race[_evaluation_group_id(row, group_key="snapshot_instance_id")].append(row)
+
+    clean_rows: list[Mapping[str, Any]] = []
+    excluded: list[dict[str, Any]] = []
+    for snapshot_instance_id, race_rows in sorted(by_race.items()):
+        race_ids = sorted({_race_outcome_id(row) for row in race_rows})
+        reasons: list[str] = []
+        if any(row.get("label_quality") != "official_or_complete_result" for row in race_rows):
+            reasons.append("label_quality_not_official_or_complete")
+        if any(row.get("result_detail_quality") != "finish_position" for row in race_rows):
+            reasons.append("result_detail_not_full_finish_position")
+        if any(row.get("finish_position") is None for row in race_rows):
+            reasons.append("finish_position_missing")
+        winner_count = sum(int(row.get("actual_win") or 0) for row in race_rows)
+        if winner_count != 1:
+            reasons.append(f"winner_count_not_one:{winner_count}")
+        if reasons:
+            excluded.append(
+                {
+                    "race_id": race_ids[0] if race_ids else "DATA_MISSING",
+                    "snapshot_instance_id": snapshot_instance_id,
+                    "reasons": reasons,
+                    "label_quality": sorted(
+                        {str(row.get("label_quality") or "DATA_MISSING") for row in race_rows}
+                    ),
+                    "result_detail_quality": sorted(
+                        {
+                            str(row.get("result_detail_quality") or "DATA_MISSING")
+                            for row in race_rows
+                        }
+                    ),
+                }
+            )
+            continue
+        clean_rows.extend(race_rows)
+
+    return clean_rows, excluded
+
+
+def _clean_official_evaluation_report(
+    clean_rows: list[Mapping[str, Any]],
+    excluded: list[Mapping[str, Any]],
+    *,
+    metrics_by_arm: Mapping[str, Any],
+) -> dict[str, Any]:
+    clean_race_ids = sorted({_race_outcome_id(row) for row in clean_rows})
+    clean_snapshot_instance_ids = sorted(
+        {
+            _evaluation_group_id(row, group_key="snapshot_instance_id")
+            for row in clean_rows
+        }
+    )
+    excluded_reason_counts: Counter[str] = Counter()
+    for item in excluded:
+        for reason in item.get("reasons") or []:
+            excluded_reason_counts[str(reason)] += 1
+    return {
+        "status": "SUCCESS" if clean_rows else "DATA_MISSING",
+        "requirements": [
+            "snapshot_result_free",
+            "snapshot_readiness_ready",
+            "label_quality_official_or_complete_result",
+            "finish_position_labels_for_all_runners",
+            "exactly_one_winner_per_snapshot_instance",
+        ],
+        "races_evaluated": len(clean_race_ids),
+        "snapshot_instances_evaluated": len(clean_snapshot_instance_ids),
+        "runner_rows_evaluated": len(clean_rows),
+        "race_ids": clean_race_ids,
+        "snapshot_instance_ids": clean_snapshot_instance_ids,
+        "excluded_races": list(excluded)[:25],
+        "excluded_reason_counts": dict(sorted(excluded_reason_counts.items())),
+        "metrics_by_arm": dict(metrics_by_arm),
+    }
+
+
+def _model_quality_diagnosis(
+    rows: list[Mapping[str, Any]],
+    *,
+    metrics_by_arm: Mapping[str, Any],
+    clean_official_rows: list[Mapping[str, Any]],
+    clean_official_metrics_by_arm: Mapping[str, Any],
+    provenance_report: Mapping[str, Any],
+    min_retrain_races: int = 100,
+) -> dict[str, Any]:
+    by_race: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+    for row in rows:
+        by_race[_evaluation_group_id(row, group_key="snapshot_instance_id")].append(row)
+
+    top_pick_boxes: Counter[str] = Counter()
+    winner_boxes: Counter[str] = Counter()
+    for race_rows in by_race.values():
+        ranked = sorted(
+            race_rows,
+            key=lambda row: _safe_float(row.get("win_prob_norm")) or 0.0,
+            reverse=True,
+        )
+        if ranked:
+            top_pick_boxes[str(ranked[0].get("box_number") or "DATA_MISSING")] += 1
+        for row in ranked:
+            if int(row.get("actual_win") or 0) == 1:
+                winner_boxes[str(row.get("box_number") or "DATA_MISSING")] += 1
+                break
+
+    model_metrics = (
+        metrics_by_arm.get("model_only")
+        if isinstance(metrics_by_arm.get("model_only"), Mapping)
+        else {}
+    )
+    clean_model_metrics = (
+        clean_official_metrics_by_arm.get("model_only")
+        if isinstance(clean_official_metrics_by_arm.get("model_only"), Mapping)
+        else {}
+    )
+    snapshot_instances_evaluated = int(
+        model_metrics.get("races_evaluated") or len(by_race)
+    )
+    clean_official_snapshot_instances_evaluated = int(
+        clean_model_metrics.get("races_evaluated")
+        or len(
+            {
+                _evaluation_group_id(row, group_key="snapshot_instance_id")
+                for row in clean_official_rows
+            }
+        )
+    )
+    races_evaluated = len({_race_outcome_id(row) for row in rows})
+    clean_official_races_evaluated = len(
+        {_race_outcome_id(row) for row in clean_official_rows}
+    )
+    no_history_rows = 0
+    history_counts = provenance_report.get("history_source_distribution")
+    if isinstance(history_counts, Mapping):
+        no_history_rows = sum(
+            int(count or 0)
+            for source, count in history_counts.items()
+            if "no_usable_history" in str(source)
+        )
+
+    retrain_ready = clean_official_races_evaluated >= min_retrain_races
+    return {
+        "status": "SUCCESS" if rows else "DATA_MISSING",
+        "races_evaluated": races_evaluated,
+        "snapshot_instances_evaluated": snapshot_instances_evaluated,
+        "runner_rows_evaluated": len(rows),
+        "clean_official_races_evaluated": clean_official_races_evaluated,
+        "clean_official_snapshot_instances_evaluated": (
+            clean_official_snapshot_instances_evaluated
+        ),
+        "clean_official_runner_rows_evaluated": len(clean_official_rows),
+        "feature_missingness": {
+            "history_source_distribution": provenance_report.get(
+                "history_source_distribution", {}
+            ),
+            "no_usable_history_runner_rows": no_history_rows,
+            "distance_source_distribution": provenance_report.get(
+                "distance_source_distribution", {}
+            ),
+            "grade_source_distribution": provenance_report.get(
+                "grade_source_distribution", {}
+            ),
+            "metadata_is_leakage_safe_distribution": provenance_report.get(
+                "metadata_is_leakage_safe_distribution", {}
+            ),
+        },
+        "box_bias": {
+            "top_pick_box_distribution": dict(sorted(top_pick_boxes.items())),
+            "winner_box_distribution": dict(sorted(winner_boxes.items())),
+        },
+        "calibration": {
+            "brier": model_metrics.get("brier"),
+            "log_loss": model_metrics.get("log_loss"),
+            "calibration": model_metrics.get("calibration"),
+            "reliability_bins": model_metrics.get("reliability_bins"),
+        },
+        "clean_official_calibration": {
+            "brier": clean_model_metrics.get("brier"),
+            "log_loss": clean_model_metrics.get("log_loss"),
+            "calibration": clean_model_metrics.get("calibration"),
+            "reliability_bins": clean_model_metrics.get("reliability_bins"),
+        },
+        "retrain_gate": {
+            "status": "READY_FOR_REVIEW" if retrain_ready else "NOT_READY",
+            "minimum_clean_evaluated_races": min_retrain_races,
+            "clean_official_evaluated_races": clean_official_races_evaluated,
+            "reason": (
+                None
+                if retrain_ready
+                else "insufficient_clean_official_evaluated_corpus_for_leakage_safe_retrain"
+            ),
+            "action_taken": "none",
+        },
+        "promotion_gate": {
+            "status": "REPORT_ONLY",
+            "reason": "promotion requires a separately approved challenger evaluation",
+            "action_taken": "none",
+        },
+    }
+
+
+def evaluate_snapshots(
+    db_path: str,
+    snapshot_paths: list[str],
+    *,
+    include_dataset_rows: bool = False,
+) -> dict[str, Any]:
     files = _snapshot_files(snapshot_paths)
     if not files:
         return {
             "status": "DATA_MISSING",
             "reason": "no_snapshot_files_found",
             "snapshot_corpus_readiness": _corpus_readiness_report(
-                files_found=0,
+                json_files_scanned=0,
+                prediction_snapshot_files=0,
+                skipped_non_snapshot_artifacts=[],
                 rejected_snapshots=[],
                 readiness_status_counts=Counter(),
                 readiness_failures=[],
@@ -1008,13 +1304,26 @@ def evaluate_snapshots(db_path: str, snapshot_paths: list[str]) -> dict[str, Any
     label_quality_counts: Counter[str] = Counter()
     readiness_status_counts: Counter[str] = Counter()
     rejected_snapshots: list[dict[str, str]] = []
+    skipped_non_snapshot_artifacts: list[dict[str, str]] = []
     readiness_failures: list[dict[str, Any]] = []
     loaded_snapshots: list[Mapping[str, Any]] = []
+    prediction_snapshot_files = 0
 
     with _open_readonly(db_path) as conn:
         for path in files:
             try:
                 snapshot = json.loads(path.read_text(encoding="utf-8"))
+                if not isinstance(snapshot, Mapping):
+                    skipped_non_snapshot_artifacts.append(
+                        {"path": str(path), "reason": "json_root_not_object"}
+                    )
+                    continue
+                if not _is_prediction_snapshot_artifact(snapshot):
+                    skipped_non_snapshot_artifacts.append(
+                        {"path": str(path), "reason": "not_prediction_snapshot_v1"}
+                    )
+                    continue
+                prediction_snapshot_files += 1
                 assert_no_result_fields(snapshot)
             except Exception as exc:
                 rejected_snapshots.append({"path": str(path), "reason": str(exc)})
@@ -1034,11 +1343,19 @@ def evaluate_snapshots(db_path: str, snapshot_paths: list[str]) -> dict[str, Any
                 continue
             lifecycle_counts[str(snapshot.get("lifecycle_status") or "unknown")] += 1
             race_rows, summary = _runner_rows(snapshot, conn)
+            for row in race_rows:
+                row["snapshot_path"] = str(path)
+                row["snapshot_instance_id"] = _snapshot_instance_id(
+                    row.get("race_id"),
+                    path,
+                )
             rows.extend(race_rows)
             label_quality_counts[str(summary.get("label_quality") or "unknown")] += 1
 
     corpus_readiness = _corpus_readiness_report(
-        files_found=len(files),
+        json_files_scanned=len(files),
+        prediction_snapshot_files=prediction_snapshot_files,
+        skipped_non_snapshot_artifacts=skipped_non_snapshot_artifacts,
         rejected_snapshots=rejected_snapshots,
         readiness_status_counts=readiness_status_counts,
         readiness_failures=readiness_failures,
@@ -1050,7 +1367,11 @@ def evaluate_snapshots(db_path: str, snapshot_paths: list[str]) -> dict[str, Any
         return {
             "status": "DATA_MISSING",
             "reason": "no_scorable_snapshot_rows_with_labels",
-            "snapshot_files": len(files),
+            "json_files_scanned": len(files),
+            "snapshot_files": prediction_snapshot_files,
+            "non_snapshot_artifacts_skipped": len(skipped_non_snapshot_artifacts),
+            "skipped_non_snapshot_artifacts": skipped_non_snapshot_artifacts,
+            "snapshots_rejected": len(rejected_snapshots),
             "rejected_snapshots": rejected_snapshots,
             "snapshot_corpus_readiness": corpus_readiness,
             "snapshot_provenance_report": provenance_report,
@@ -1059,17 +1380,33 @@ def evaluate_snapshots(db_path: str, snapshot_paths: list[str]) -> dict[str, Any
             "metrics_by_arm": {},
         }
 
-    metrics_by_arm = {"model_only": score_predictions(scorable_rows)}
-    market_rows = _arm_rows_from_market(scorable_rows, "market_implied")
-    if market_rows:
-        metrics_by_arm["market_implied"] = score_predictions(market_rows)
-    blend_rows = _arm_rows_from_market(scorable_rows, "simple_blend_50")
-    if blend_rows:
-        metrics_by_arm["simple_blend_50"] = score_predictions(blend_rows)
+    metrics_by_arm = _metrics_by_arm(scorable_rows, group_key="snapshot_instance_id")
+    clean_official_rows, clean_official_excluded = _clean_official_evaluation_rows(
+        scorable_rows
+    )
+    clean_official_metrics_by_arm = _metrics_by_arm(
+        clean_official_rows,
+        group_key="snapshot_instance_id",
+    )
+    clean_official_evaluation = _clean_official_evaluation_report(
+        clean_official_rows,
+        clean_official_excluded,
+        metrics_by_arm=clean_official_metrics_by_arm,
+    )
+    model_quality_diagnosis = _model_quality_diagnosis(
+        scorable_rows,
+        metrics_by_arm=metrics_by_arm,
+        clean_official_rows=clean_official_rows,
+        clean_official_metrics_by_arm=clean_official_metrics_by_arm,
+        provenance_report=provenance_report,
+    )
 
-    return {
+    report = {
         "status": "SUCCESS",
-        "snapshot_files": len(files),
+        "json_files_scanned": len(files),
+        "snapshot_files": prediction_snapshot_files,
+        "non_snapshot_artifacts_skipped": len(skipped_non_snapshot_artifacts),
+        "skipped_non_snapshot_artifacts": skipped_non_snapshot_artifacts,
         "snapshots_rejected": len(rejected_snapshots),
         "rejected_snapshots": rejected_snapshots,
         "snapshot_corpus_readiness": corpus_readiness,
@@ -1079,11 +1416,23 @@ def evaluate_snapshots(db_path: str, snapshot_paths: list[str]) -> dict[str, Any
         "snapshot_provenance_report": provenance_report,
         "ev_roi_coverage": _ev_roi_coverage(scorable_rows),
         "metrics_by_arm": metrics_by_arm,
+        "clean_official_evaluation": clean_official_evaluation,
         "failure_mode_diagnostics": _failure_mode_diagnostics(scorable_rows),
+        "model_quality_diagnosis": model_quality_diagnosis,
         "calibration_blending_decision": (
             "report_only: no calibration/blending deployment is made by this script"
         ),
     }
+    if include_dataset_rows:
+        report["evaluation_dataset_rows"] = scorable_rows
+    return report
+
+
+def _write_dataset_jsonl(path: Path, rows: list[Mapping[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(dict(row), sort_keys=True) + "\n")
 
 
 def main() -> int:
@@ -1091,14 +1440,49 @@ def main() -> int:
     parser.add_argument("--db", default="greyhound_racing_data.db")
     parser.add_argument(
         "--snapshots",
-        nargs="+",
-        required=True,
+        nargs="*",
+        default=[],
         help="Snapshot JSON files or directories",
     )
+    parser.add_argument(
+        "--snapshots-manifest",
+        action="append",
+        default=[],
+        help=(
+            "Text file containing snapshot JSON files or directories, one per "
+            "line. Blank lines and # comments are ignored."
+        ),
+    )
     parser.add_argument("--output", help="Optional JSON output path")
+    parser.add_argument(
+        "--dataset-output",
+        help="Optional JSONL path for joined snapshot-label evaluation rows",
+    )
+    parser.add_argument(
+        "--include-dataset-rows",
+        action="store_true",
+        help="Include joined dataset rows in the printed/output JSON report",
+    )
     args = parser.parse_args()
+    snapshot_paths = list(args.snapshots) + _snapshot_paths_from_manifests(
+        args.snapshots_manifest
+    )
+    if not snapshot_paths:
+        parser.error("at least one --snapshots path or --snapshots-manifest is required")
 
-    report = evaluate_snapshots(args.db, args.snapshots)
+    report = evaluate_snapshots(
+        args.db,
+        snapshot_paths,
+        include_dataset_rows=bool(args.dataset_output or args.include_dataset_rows),
+    )
+    dataset_rows = report.get("evaluation_dataset_rows")
+    if args.dataset_output and isinstance(dataset_rows, list):
+        dataset_path = Path(args.dataset_output)
+        _write_dataset_jsonl(dataset_path, dataset_rows)
+        report["evaluation_dataset_output"] = str(dataset_path)
+        report["evaluation_dataset_rows_written"] = len(dataset_rows)
+        if not args.include_dataset_rows:
+            report.pop("evaluation_dataset_rows", None)
     text = json.dumps(report, indent=2, sort_keys=True)
     print(text)
     if args.output:
