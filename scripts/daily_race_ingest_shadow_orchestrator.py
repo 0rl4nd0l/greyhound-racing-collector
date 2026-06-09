@@ -68,7 +68,10 @@ DEFAULT_OUTPUT_PARENT = ROOT / "artifacts/full_evidence_orchestration_20260525"
 DEFAULT_INPUT_DIRS = (ROOT / "upcoming_races",)
 DEFAULT_ALL_MISSING_TRAIN_POLICY = "quarantine_feature"
 DEFAULT_SCORE_COMMAND_MODE = "auto"
-UV_SCORE_LIVE_PACKAGES = ("joblib", "scikit-learn", "numpy")
+# The locked shadow RandomForest artifact was pickled with sklearn 1.7.2.
+# Floating scikit-learn breaks live scoring when uv resolves a newer version.
+SHADOW_MODEL_SKLEARN_VERSION = "1.7.2"
+UV_SCORE_LIVE_PACKAGES = ("joblib", f"scikit-learn=={SHADOW_MODEL_SKLEARN_VERSION}", "numpy")
 DAILY_OUTPUT_PREFIX = "artifacts/full_evidence_orchestration_20260525/daily_race_ingest_shadow_"
 EXPECTED_OFFICIAL_RACES = 214
 EXPECTED_OFFICIAL_DOG_ROWS = 1493
