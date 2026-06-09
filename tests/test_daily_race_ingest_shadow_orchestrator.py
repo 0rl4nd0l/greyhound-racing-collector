@@ -920,7 +920,8 @@ def test_score_live_command_auto_falls_back_to_uv_when_current_python_lacks_ml_d
     assert command[:2] == ["/usr/bin/uv", "run"]
     assert "--with" in command
     assert "joblib" in command
-    assert "scikit-learn" in command
+    assert "scikit-learn" not in command
+    assert f"scikit-learn=={orchestrator.SHADOW_MODEL_SKLEARN_VERSION}" in command
     assert "numpy" in command
     assert "python" in command
     assert command[command.index("python") + 1].endswith(
