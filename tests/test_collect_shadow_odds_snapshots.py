@@ -295,6 +295,22 @@ def test_collect_shadow_odds_snapshot_marks_exact_dog_box_odds_eligible(tmp_path
     assert gate["status"] == "READY_FOR_REPORT_ONLY_ODDS_REVIEW_NO_EV_OUTPUT"
     assert gate["ev_output_allowed"] is False
     assert gate["betting_action_allowed"] is False
+    research_gate = report["odds_research_gate"]
+    assert research_gate["status"] == odds.ODDS_RESEARCH_BLOCKED_PROVENANCE
+    assert research_gate["complete_valid_prejump_odds_races"] == 1
+    assert research_gate["minimum_complete_valid_prejump_odds_races"] == 100
+    assert research_gate["blocker_counts"] == {
+        "complete_valid_prejump_odds_races_below_min": 99
+    }
+    assert research_gate["source_url_coverage_pct"] == 100.0
+    assert research_gate["odds_used_for_shadow_scoring"] is False
+    assert research_gate["ev_diagnostics_report_only_allowed"] is False
+    assert report["odds_augmented_challenger"]["final_status"] == (
+        odds.ODDS_AUGMENTED_MODEL_BLOCKED
+    )
+    assert report["report_only_ev_diagnostics"]["status"] == (
+        "EV_DIAGNOSTICS_BLOCKED_ODDS_RESEARCH_GATE"
+    )
     policy = report["odds_research_readiness"]["odds_research_gate_policy"]
     assert policy["source_requirements"]["trusted_source_required"] is True
     assert policy["timing_requirements"]["captured_before_prediction_required"] is True
@@ -311,6 +327,9 @@ def test_collect_shadow_odds_snapshot_marks_exact_dog_box_odds_eligible(tmp_path
     assert rows[0]["odds_snapshot"]["odds_stale_at_prediction"] is False
     assert (output_dir / "shadow_odds_snapshot.csv").exists()
     assert (output_dir / "shadow_odds_race_coverage.json").exists()
+    assert (output_dir / "odds_research_gate_report.json").exists()
+    assert (output_dir / "odds_augmented_challenger_report.json").exists()
+    assert (output_dir / "report_only_ev_diagnostics.json").exists()
     assert (output_dir / "SUMMARY.md").exists()
     assert race_coverage["races_with_complete_valid_prejump_odds"] == 1
     race = race_coverage["races"][0]
@@ -325,6 +344,70 @@ def test_collect_shadow_odds_snapshot_marks_exact_dog_box_odds_eligible(tmp_path
     assert race["odds_analysis_blockers"] == []
     assert race["ev_calculation_status"] == "DISABLED_REPORT_ONLY_NO_EV_OUTPUT"
     assert race["odds_source_url_count"] == 1
+
+
+def test_odds_research_gate_ready_requires_100_complete_valid_source_url_races():
+    predictions = []
+    rows = []
+    race_reports = []
+    for index in range(100):
+        race_id = f"Race {index + 1} - TEST - 2026-06-09"
+        predictions.append({"race_id": race_id, "dog_name": "Alpha Runner", "box": 1})
+        rows.append(
+            {
+                "race_id": race_id,
+                "dog_name": "Alpha Runner",
+                "box": 1,
+                "odds_candidate_count": 1,
+                "odds_match_status": "valid_pre_jump_dog_odds",
+                "shadow_rf_calibrated_probability": 0.42,
+                "odds_snapshot": {
+                    "market_odds_win": 3.0,
+                    "odds_provenance": {
+                        "source_url": f"https://www.sportsbet.com.au/race-{index + 1}",
+                    },
+                },
+            }
+        )
+        race_reports.append(
+            {
+                "race_id": race_id,
+                "complete_valid_prejump_odds": True,
+                "odds_analysis_status": "ODDS_ANALYSIS_READY_REPORT_ONLY_EV_DISABLED",
+                "odds_analysis_blockers": [],
+            }
+        )
+    race_coverage = {
+        "race_count": 100,
+        "races": race_reports,
+        "races_with_complete_valid_prejump_odds": 100,
+    }
+    readiness = {
+        "status": "ODDS_ANALYSIS_READY_REPORT_ONLY_EV_DISABLED",
+        "blocker_counts": {},
+    }
+
+    gate = odds.odds_research_gate_report(
+        predictions=predictions,
+        rows=rows,
+        race_coverage=race_coverage,
+        odds_research_readiness=readiness,
+        collection_status=odds.FINAL_COLLECTED,
+        generated_at=datetime.fromisoformat("2026-06-09T00:10:00+10:00"),
+    )
+    ev = odds.report_only_ev_diagnostics(gate=gate, rows=rows)
+
+    assert gate["status"] == odds.ODDS_RESEARCH_READY_REPORT_ONLY
+    assert gate["blocker_counts"] == {}
+    assert gate["source_url_coverage_pct"] == 100.0
+    assert gate["odds_model_input_report_only_allowed"] is True
+    assert gate["odds_used_for_shadow_scoring"] is False
+    assert gate["betting_action_allowed"] is False
+    assert ev["status"] == "EV_DIAGNOSTICS_REPORT_ONLY"
+    assert ev["ev_rows"] == 100
+    assert ev["positive_ev_rows"] == 100
+    assert ev["betting_action_allowed"] is False
+    assert ev["ev_can_override_accuracy_gate"] is False
 
 
 def test_collect_shadow_odds_snapshot_records_missing_odds_without_ev(tmp_path, monkeypatch):

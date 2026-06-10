@@ -1,0 +1,331 @@
+{
+  "all_races_complete_valid_prejump_odds": false,
+  "blocked_races": [
+    {
+      "blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "duplicate_odds_rows": 0,
+      "missing_odds_rows": 7,
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "predicted_runner_count": 7,
+      "race_id": "Race 1 - BEN - 2026-06-10",
+      "valid_pre_jump_dog_odds_rows": 0
+    },
+    {
+      "blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "duplicate_odds_rows": 0,
+      "missing_odds_rows": 7,
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "predicted_runner_count": 7,
+      "race_id": "Race 1 - GUNNEDAH - 2026-06-10",
+      "valid_pre_jump_dog_odds_rows": 0
+    },
+    {
+      "blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "duplicate_odds_rows": 0,
+      "missing_odds_rows": 8,
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "predicted_runner_count": 8,
+      "race_id": "Race 1 - LADBROKES-Q1-LAKESIDE - 2026-06-10",
+      "valid_pre_jump_dog_odds_rows": 0
+    },
+    {
+      "blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "duplicate_odds_rows": 0,
+      "missing_odds_rows": 7,
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "predicted_runner_count": 7,
+      "race_id": "Race 10 - SAL - 2026-06-10",
+      "valid_pre_jump_dog_odds_rows": 0
+    },
+    {
+      "blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "duplicate_odds_rows": 0,
+      "missing_odds_rows": 8,
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "predicted_runner_count": 8,
+      "race_id": "Race 10 - TEMORA - 2026-06-10",
+      "valid_pre_jump_dog_odds_rows": 0
+    },
+    {
+      "blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "duplicate_odds_rows": 0,
+      "missing_odds_rows": 7,
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "predicted_runner_count": 7,
+      "race_id": "Race 11 - TEMORA - 2026-06-10",
+      "valid_pre_jump_dog_odds_rows": 0
+    },
+    {
+      "blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "duplicate_odds_rows": 0,
+      "missing_odds_rows": 7,
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "predicted_runner_count": 7,
+      "race_id": "Race 12 - TEMORA - 2026-06-10",
+      "valid_pre_jump_dog_odds_rows": 0
+    },
+    {
+      "blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "duplicate_odds_rows": 0,
+      "missing_odds_rows": 7,
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "predicted_runner_count": 7,
+      "race_id": "Race 2 - BEN - 2026-06-10",
+      "valid_pre_jump_dog_odds_rows": 0
+    },
+    {
+      "blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "duplicate_odds_rows": 0,
+      "missing_odds_rows": 6,
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "predicted_runner_count": 6,
+      "race_id": "Race 2 - GUNNEDAH - 2026-06-10",
+      "valid_pre_jump_dog_odds_rows": 0
+    },
+    {
+      "blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "duplicate_odds_rows": 0,
+      "missing_odds_rows": 8,
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "predicted_runner_count": 8,
+      "race_id": "Race 2 - LADBROKES-Q1-LAKESIDE - 2026-06-10",
+      "valid_pre_jump_dog_odds_rows": 0
+    },
+    {
+      "blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "duplicate_odds_rows": 0,
+      "missing_odds_rows": 7,
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "predicted_runner_count": 7,
+      "race_id": "Race 3 - BEN - 2026-06-10",
+      "valid_pre_jump_dog_odds_rows": 0
+    },
+    {
+      "blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "duplicate_odds_rows": 0,
+      "missing_odds_rows": 7,
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "predicted_runner_count": 7,
+      "race_id": "Race 4 - BEN - 2026-06-10",
+      "valid_pre_jump_dog_odds_rows": 0
+    },
+    {
+      "blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "duplicate_odds_rows": 0,
+      "missing_odds_rows": 6,
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "predicted_runner_count": 6,
+      "race_id": "Race 7 - MURRAY-BRIDGE-STRAIGHT - 2026-06-10",
+      "valid_pre_jump_dog_odds_rows": 0
+    },
+    {
+      "blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "duplicate_odds_rows": 0,
+      "missing_odds_rows": 6,
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "predicted_runner_count": 6,
+      "race_id": "Race 8 - MURRAY-BRIDGE-STRAIGHT - 2026-06-10",
+      "valid_pre_jump_dog_odds_rows": 0
+    },
+    {
+      "blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "duplicate_odds_rows": 0,
+      "missing_odds_rows": 8,
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "predicted_runner_count": 8,
+      "race_id": "Race 9 - CAPALABA - 2026-06-10",
+      "valid_pre_jump_dog_odds_rows": 0
+    },
+    {
+      "blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "duplicate_odds_rows": 0,
+      "missing_odds_rows": 7,
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "predicted_runner_count": 7,
+      "race_id": "Race 9 - TEMORA - 2026-06-10",
+      "valid_pre_jump_dog_odds_rows": 0
+    }
+  ],
+  "blocker_counts": {
+    "incomplete_valid_prejump_odds": 16,
+    "missing_odds_rows": 16
+  },
+  "collection_status": "SHADOW_ODDS_SNAPSHOT_NO_MATCHES",
+  "ev_calculation_status": "DISABLED_REPORT_ONLY_NO_EV_OUTPUT",
+  "ev_output_rows": 0,
+  "ev_research_gate": {
+    "betting_action_allowed": false,
+    "blocker_counts": {
+      "incomplete_valid_prejump_odds": 16,
+      "missing_odds_rows": 16
+    },
+    "ev_output_allowed": false,
+    "odds_used_for_shadow_scoring": false,
+    "requires_complete_valid_prejump_odds": true,
+    "status": "BLOCKED_REPORT_ONLY_NO_EV_OUTPUT"
+  },
+  "no_write_guarantees": {
+    "betting_action": false,
+    "db_write": false,
+    "ev_output": false,
+    "label_write": false,
+    "prediction_snapshot_write": false,
+    "production_model_mutation": false,
+    "production_prediction_write": false,
+    "registry_mutation": false,
+    "tgr_enabled": false,
+    "training": false
+  },
+  "odds_research_gate_policy": {
+    "candidate_scope": {
+      "current_only_default": true,
+      "market_type": "win",
+      "minimum_decimal_odds": ">1.0",
+      "odds_level": "dog"
+    },
+    "coverage_requirements": {
+      "all_predicted_runners_must_have_valid_prejump_odds": true,
+      "complete_valid_prejump_odds_required_for_odds_research_ready": true,
+      "minimum_complete_valid_prejump_odds_races": 100,
+      "source_url_coverage_required_pct": 100.0,
+      "unsafe_or_partial_odds_joins_counted": false
+    },
+    "ev_policy": {
+      "betting_action_allowed": false,
+      "ev_diagnostics_allowed_after_research_gate": true,
+      "ev_output_allowed": false,
+      "odds_used_for_shadow_scoring": false,
+      "status": "REPORT_ONLY_NO_EV_OUTPUT"
+    },
+    "identity_requirements": {
+      "ambiguous_box_source_rejected": true,
+      "box_match_required": true,
+      "dog_name_match_required": true,
+      "duplicate_odds_rows_rejected": true,
+      "fuzzy_only_match_rejected": true,
+      "low_confidence_match_rejected": true,
+      "race_identity_required": "exact_or_canonical_equivalent"
+    },
+    "schema_version": "shadow_odds_research_gate_policy_v1",
+    "source_requirements": {
+      "post_race_or_sp_markets_rejected": true,
+      "post_race_source_tables_rejected": true,
+      "source_url_required": true,
+      "trusted_source_required": true
+    },
+    "timing_requirements": {
+      "captured_before_feature_freeze_required_when_available": true,
+      "captured_before_jump_required_when_available": true,
+      "captured_before_prediction_required": true,
+      "odds_timestamp_required": true,
+      "stale_beyond_ttl_rejected": true,
+      "stale_odds_after_minutes_default": 30.0
+    }
+  },
+  "odds_research_next_action": "COLLECT_EXACT_PREJUMP_DOG_ODDS_FOR_ALL_RUNNERS",
+  "odds_used_for_shadow_scoring": false,
+  "prediction_rows": 113,
+  "race_count": 16,
+  "race_status_counts": {
+    "ODDS_ANALYSIS_BLOCKED": 16
+  },
+  "races_with_complete_valid_prejump_odds": 0,
+  "schema_version": "shadow_odds_research_readiness_v1",
+  "status": "ODDS_ANALYSIS_BLOCKED"
+}

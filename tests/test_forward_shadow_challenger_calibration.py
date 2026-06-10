@@ -104,8 +104,18 @@ def test_challenger_uses_only_exact_joined_races_and_writes_report_only(tmp_path
     )
 
     assert result["final_status"] == challenger.FINAL_READY
+    assert result["stage2_forward_shadow_status"] == (
+        challenger.STAGE2_FORWARD_SHADOW_READY_FOR_REVIEW
+    )
     report = json.loads((output_dir / "challenger_calibration_report.json").read_text())
+    stage2_metrics = json.loads((output_dir / "stage2_forward_joined_metrics.json").read_text())
     assert report["safe_exact_joined_race_count"] == 2
+    assert stage2_metrics["status"] == challenger.STAGE2_FORWARD_SHADOW_READY_FOR_REVIEW
+    assert stage2_metrics["safe_exact_joined_race_count"] == 2
+    assert stage2_metrics["rejected_joined_races_excluded_count"] == 1
+    assert stage2_metrics["unsafe_or_pending_races_counted"] is False
+    assert stage2_metrics["odds_used_for_shadow_scoring"] is False
+    assert stage2_metrics["ev_output"] is False
     assert report["production_activation_allowed"] is False
     assert report["no_write_guarantees"]["db_write"] is False
     assert report["no_write_guarantees"]["registry_mutation"] is False

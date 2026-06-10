@@ -1,0 +1,25 @@
+{
+  "active_model_replacement_allowed": false,
+  "calibration": {
+    "formula": "p_i_cal = p_i^2.4 / sum_j(p_j^2.4)",
+    "gamma": 2.4,
+    "method": "power",
+    "method_key": "power_gamma_2.4",
+    "rank_preserving": true
+  },
+  "model_family": "RandomForest",
+  "output_mode": "shadow_only",
+  "production_pointer_update_allowed": false,
+  "promotion_allowed": false,
+  "registry_mutation": false,
+  "schema": {
+    "feature_columns_sha256": "badf65ad82d6a0672f9009f8b6d4bff01f9e7c67ebc8e37327aa4fc56937e1c0",
+    "feature_count": 78,
+    "path": "accuracy_program/repaired_non_tgr_schema.json",
+    "schema_version": "milestone_6a_repaired_non_tgr_schema_v1"
+  },
+  "schema_audit_status": "PASS",
+  "schema_version": "shadow_candidate_definition_v1",
+  "source_label_policy": "canonical clean official labels only",
+  "tgr_enabled": false
+}

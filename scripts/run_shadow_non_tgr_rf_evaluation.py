@@ -70,6 +70,8 @@ CALIBRATION_METHOD_KEY = "power_gamma_2.4"
 POWER_GAMMA = 2.4
 SHADOW_MODEL_FAMILY = "RandomForest"
 SHADOW_OUTPUT_MODE = "shadow_only"
+STAGE2_FORWARD_SHADOW_COLLECTING = "STAGE2_FORWARD_SHADOW_COLLECTING"
+STAGE2_FORWARD_SHADOW_READY_FOR_REVIEW = "STAGE2_FORWARD_SHADOW_READY_FOR_REVIEW"
 ALL_MISSING_TRAIN_POLICIES = ("report_only", "quarantine_feature", "fail")
 WATCHED_PARITY_FEATURES = (
     "same_distance_same_grade_best_time",
@@ -250,6 +252,39 @@ def protected_path_verification(before: Mapping[str, Any]) -> dict[str, Any]:
             "champion_artifact_overwrite": False,
         },
     }
+
+
+def write_jsonl_file(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(dict(row), sort_keys=True) + "\n")
+
+
+def stage2_shadow_prediction_rows(
+    predictions: Sequence[Mapping[str, Any]],
+    *,
+    stage2_status: str,
+) -> list[dict[str, Any]]:
+    rows = []
+    for prediction in predictions:
+        item = dict(prediction)
+        item.update(
+            {
+                "schema_version": "stage2_shadow_prediction_v1",
+                "stage2_forward_shadow_status": stage2_status,
+                "stage2_challenger_family": SHADOW_MODEL_FAMILY,
+                "stage2_challenger_key": "shadow_calibrated_rf_power_gamma_2_4",
+                "odds_used_for_shadow_scoring": False,
+                "ev_output": False,
+                "betting_action": False,
+                "production_prediction_write": False,
+                "registry_mutation": False,
+                "production_pointer_update": False,
+            }
+        )
+        rows.append(item)
+    return rows
 
 
 def validate_schema_contract(schema: Mapping[str, Any]) -> dict[str, Any]:
@@ -2225,7 +2260,14 @@ def score_live(args: argparse.Namespace) -> int:
                 }
             )
         prediction_timestamp = datetime.now().astimezone()
+        stage2_status = STAGE2_FORWARD_SHADOW_COLLECTING
+        stage2_predictions = stage2_shadow_prediction_rows(
+            predictions,
+            stage2_status=stage2_status,
+        )
         write_json(output_dir / "shadow_predictions.json", predictions)
+        write_jsonl_file(output_dir / "shadow_predictions.jsonl", stage2_predictions)
+        write_jsonl_file(output_dir / "stage2_shadow_predictions.jsonl", stage2_predictions)
         write_csv(
             output_dir / "shadow_predictions.csv",
             predictions,
@@ -2253,6 +2295,10 @@ def score_live(args: argparse.Namespace) -> int:
             "input_files": [shadow_relpath(path) for path in input_paths],
             "prediction_rows": len(predictions),
             "feature_rows": shadow_relpath(output_dir / "shadow_feature_rows.json"),
+            "shadow_predictions_jsonl": shadow_relpath(output_dir / "shadow_predictions.jsonl"),
+            "stage2_shadow_predictions_jsonl": shadow_relpath(
+                output_dir / "stage2_shadow_predictions.jsonl"
+            ),
             "same_distance_same_grade_history_provenance": shadow_relpath(
                 output_dir / "same_distance_same_grade_history_provenance.json"
             ),
@@ -2268,6 +2314,10 @@ def score_live(args: argparse.Namespace) -> int:
             "tgr_enabled": False,
             "registry_mutation": False,
             "production_prediction_write": False,
+            "stage2_forward_shadow_status": stage2_status,
+            "stage2_forward_shadow_ready_for_review_status": STAGE2_FORWARD_SHADOW_READY_FOR_REVIEW,
+            "stage2_forward_shadow_collecting_status": STAGE2_FORWARD_SHADOW_COLLECTING,
+            "odds_used_for_shadow_scoring": False,
             "betting_output": False,
             "ev_output": False,
         }

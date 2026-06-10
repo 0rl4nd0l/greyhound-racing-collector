@@ -74,6 +74,8 @@ BASELINE_ALPHA = 1.0
 FINAL_READY = "CHALLENGER_CALIBRATION_REPORT_ONLY_READY_FOR_REVIEW"
 FINAL_BLOCKED = "CHALLENGER_CALIBRATION_BLOCKED_KEEP_BASELINE"
 FINAL_NO_SAFE_JOINS = "CHALLENGER_CALIBRATION_NO_SAFE_JOINED_RACES"
+STAGE2_FORWARD_SHADOW_COLLECTING = "STAGE2_FORWARD_SHADOW_COLLECTING"
+STAGE2_FORWARD_SHADOW_READY_FOR_REVIEW = "STAGE2_FORWARD_SHADOW_READY_FOR_REVIEW"
 
 
 @dataclass(frozen=True)
@@ -731,6 +733,35 @@ def no_write_guarantees() -> dict[str, bool]:
     }
 
 
+def stage2_forward_joined_metrics(report: Mapping[str, Any]) -> dict[str, Any]:
+    ready = report.get("final_status") == FINAL_READY
+    return {
+        "schema_version": "stage2_forward_joined_metrics_v1",
+        "status": (
+            STAGE2_FORWARD_SHADOW_READY_FOR_REVIEW
+            if ready
+            else STAGE2_FORWARD_SHADOW_COLLECTING
+        ),
+        "source_report_status": report.get("final_status"),
+        "safe_exact_joined_race_count": report.get("safe_exact_joined_race_count", 0),
+        "safe_exact_joined_runner_count": report.get("safe_exact_joined_runner_count", 0),
+        "train_race_count": report.get("train_race_count", 0),
+        "eval_race_count": report.get("eval_race_count", 0),
+        "baseline_forward_shadow_metrics": report.get("baseline_eval_metrics") or {},
+        "stage2_challenger_forward_shadow_metrics": report.get("candidate_eval_metrics") or {},
+        "activation_blockers": report.get("activation_blockers") or [],
+        "rejected_joined_races_excluded_count": len(report.get("rejected_joined_races") or []),
+        "duplicate_joined_race_ids_seen_count": len(report.get("duplicate_joined_race_ids_seen") or []),
+        "unsafe_or_pending_races_counted": False,
+        "odds_used_for_shadow_scoring": False,
+        "ev_output": False,
+        "betting_action": False,
+        "tgr_enabled": False,
+        "promotion_allowed": False,
+        "no_write_guarantees": no_write_guarantees(),
+    }
+
+
 def build_summary(report: Mapping[str, Any]) -> str:
     return "\n".join(
         [
@@ -772,6 +803,8 @@ def run_challenger_calibration(
         protected_before=protected_before,
     )
     write_json(output_dir / "challenger_calibration_report.json", report)
+    stage2_metrics = stage2_forward_joined_metrics(report)
+    write_json(output_dir / "stage2_forward_joined_metrics.json", stage2_metrics)
     baseline_activation_metrics = dict(report.get("baseline_eval_metrics") or {})
     candidate_activation_metrics = dict(report.get("candidate_eval_metrics") or {})
     source_report = relpath(output_dir / "challenger_calibration_report.json")
@@ -801,6 +834,7 @@ def run_challenger_calibration(
         "eval_race_count": report.get("eval_race_count"),
         "candidate_alpha": report.get("candidate_alpha"),
         "activation_blockers": report.get("activation_blockers") or [],
+        "stage2_forward_shadow_status": stage2_metrics["status"],
         "protected_paths_unchanged": report.get("protected_paths_unchanged"),
     }
 

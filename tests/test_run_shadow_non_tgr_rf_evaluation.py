@@ -14,6 +14,7 @@ from scripts.run_shadow_non_tgr_rf_evaluation import (
     DEFAULT_SCHEMA,
     FORBIDDEN_APPROVAL_ENV_VARS,
     POWER_GAMMA,
+    STAGE2_FORWARD_SHADOW_COLLECTING,
     active_features_for_loaded_model,
     apply_power_gamma_by_race,
     assert_shadow_output_dir_safe,
@@ -24,6 +25,7 @@ from scripts.run_shadow_non_tgr_rf_evaluation import (
     probability_sum_report,
     ranking_preservation_report,
     same_distance_same_grade_history_provenance_report,
+    stage2_shadow_prediction_rows,
     train_eval_feature_parity_report,
     validate_schema_contract,
 )
@@ -465,6 +467,41 @@ def test_power_gamma_2p4_normalizes_and_preserves_ranking():
     assert sums["max_abs_error"] == pytest.approx(0.0)
     assert ranking["status"] == "PASS"
     assert [row["shadow_rf_calibrated_rank"] for row in calibrated[:3]] == [1, 2, 3]
+
+
+def test_stage2_prediction_rows_are_shadow_only_and_do_not_use_odds_or_ev():
+    rows = stage2_shadow_prediction_rows(
+        [
+            {
+                "race_id": "Race 1 - TEST - 2026-06-10",
+                "dog_name": "Alpha Runner",
+                "box": 1,
+                "shadow_rf_calibrated_probability": 0.62,
+                "predicted_rank": 1,
+            }
+        ],
+        stage2_status=STAGE2_FORWARD_SHADOW_COLLECTING,
+    )
+
+    assert rows == [
+        {
+            "schema_version": "stage2_shadow_prediction_v1",
+            "race_id": "Race 1 - TEST - 2026-06-10",
+            "dog_name": "Alpha Runner",
+            "box": 1,
+            "shadow_rf_calibrated_probability": 0.62,
+            "predicted_rank": 1,
+            "stage2_forward_shadow_status": STAGE2_FORWARD_SHADOW_COLLECTING,
+            "stage2_challenger_family": "RandomForest",
+            "stage2_challenger_key": "shadow_calibrated_rf_power_gamma_2_4",
+            "odds_used_for_shadow_scoring": False,
+            "ev_output": False,
+            "betting_action": False,
+            "production_prediction_write": False,
+            "registry_mutation": False,
+            "production_pointer_update": False,
+        }
+    ]
 
 
 def test_train_eval_parity_detects_all_missing_train_present_holdout_features():

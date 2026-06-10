@@ -41,6 +41,11 @@ OUTPUT_PREFIX = "artifacts/full_evidence_orchestration_20260525/shadow_odds_snap
 EXPECTED_OFFICIAL_RACES = 214
 EXPECTED_OFFICIAL_DOG_ROWS = 1493
 DEFAULT_STALE_ODDS_AFTER_MINUTES = 30.0
+MIN_COMPLETE_VALID_PREJUMP_ODDS_RACES = 100
+ODDS_RESEARCH_BLOCKED_PROVENANCE = "ODDS_RESEARCH_BLOCKED_PROVENANCE"
+ODDS_RESEARCH_READY_REPORT_ONLY = "ODDS_RESEARCH_READY_REPORT_ONLY"
+ODDS_AUGMENTED_MODEL_BLOCKED = "ODDS_AUGMENTED_MODEL_BLOCKED"
+ODDS_AUGMENTED_MODEL_READY_FOR_PR_REVIEW = "ODDS_AUGMENTED_MODEL_READY_FOR_PR_REVIEW"
 PROTECTED_PATHS = (
     ROOT / "greyhound_racing_data.db",
     ROOT / "greyhound_racing_data_writable.db",
@@ -133,9 +138,13 @@ ODDS_RESEARCH_GATE_POLICY = {
     "coverage_requirements": {
         "complete_valid_prejump_odds_required_for_odds_research_ready": True,
         "all_predicted_runners_must_have_valid_prejump_odds": True,
+        "minimum_complete_valid_prejump_odds_races": MIN_COMPLETE_VALID_PREJUMP_ODDS_RACES,
+        "source_url_coverage_required_pct": 100.0,
+        "unsafe_or_partial_odds_joins_counted": False,
     },
     "ev_policy": {
         "ev_output_allowed": False,
+        "ev_diagnostics_allowed_after_research_gate": True,
         "betting_action_allowed": False,
         "odds_used_for_shadow_scoring": False,
         "status": "REPORT_ONLY_NO_EV_OUTPUT",
@@ -918,6 +927,217 @@ def odds_research_readiness_report(
     }
 
 
+def _counter_add_dict(counter: Counter[str], values: Mapping[str, Any]) -> None:
+    for key, value in values.items():
+        try:
+            amount = int(value or 0)
+        except (TypeError, ValueError):
+            amount = 1
+        if amount:
+            counter[str(key)] += amount
+
+
+def odds_research_gate_report(
+    *,
+    predictions: Sequence[Mapping[str, Any]],
+    rows: Sequence[Mapping[str, Any]],
+    race_coverage: Mapping[str, Any],
+    odds_research_readiness: Mapping[str, Any],
+    collection_status: str,
+    generated_at: datetime,
+    min_complete_valid_prejump_odds_races: int = MIN_COMPLETE_VALID_PREJUMP_ODDS_RACES,
+) -> dict[str, Any]:
+    blocker_counts: Counter[str] = Counter()
+    _counter_add_dict(blocker_counts, odds_research_readiness.get("blocker_counts") or {})
+
+    race_count = int(race_coverage.get("race_count") or 0)
+    complete_valid_races = int(
+        race_coverage.get("races_with_complete_valid_prejump_odds") or 0
+    )
+    source_url_rows_checked = 0
+    source_url_rows_missing = 0
+    valid_prejump_rows = 0
+    valid_prejump_rows_with_source_url = 0
+    unsafe_or_rejected_rows = 0
+    for row in rows:
+        has_candidate = int(row.get("odds_candidate_count") or 0) > 0
+        if has_candidate:
+            source_url_rows_checked += 1
+            if not _odds_source_url(row):
+                source_url_rows_missing += 1
+        if row.get("odds_match_status") == "valid_pre_jump_dog_odds":
+            valid_prejump_rows += 1
+            if _odds_source_url(row):
+                valid_prejump_rows_with_source_url += 1
+        elif has_candidate or row.get("odds_match_status") not in (None, "", "no_odds_row"):
+            unsafe_or_rejected_rows += 1
+
+    source_url_coverage_pct = (
+        100.0 * (source_url_rows_checked - source_url_rows_missing) / source_url_rows_checked
+        if source_url_rows_checked
+        else None
+    )
+    valid_source_url_coverage_pct = (
+        100.0 * valid_prejump_rows_with_source_url / valid_prejump_rows
+        if valid_prejump_rows
+        else None
+    )
+    if not predictions:
+        blocker_counts["no_shadow_predictions"] += 1
+    if collection_status in {FINAL_DB_BLOCKED, FINAL_ODDS_UNAVAILABLE}:
+        blocker_counts[f"collection_status:{collection_status}"] += 1
+    if complete_valid_races < min_complete_valid_prejump_odds_races:
+        blocker_counts["complete_valid_prejump_odds_races_below_min"] += (
+            min_complete_valid_prejump_odds_races - complete_valid_races
+        )
+    if source_url_rows_missing > 0:
+        blocker_counts["source_url_coverage_not_100_pct"] += source_url_rows_missing
+    if valid_prejump_rows and valid_prejump_rows_with_source_url != valid_prejump_rows:
+        blocker_counts["valid_prejump_source_url_coverage_not_100_pct"] += (
+            valid_prejump_rows - valid_prejump_rows_with_source_url
+        )
+    if odds_research_readiness.get("status") != "ODDS_ANALYSIS_READY_REPORT_ONLY_EV_DISABLED":
+        blocker_counts["odds_research_readiness_not_batch_ready"] += 1
+
+    status = (
+        ODDS_RESEARCH_READY_REPORT_ONLY
+        if not blocker_counts
+        else ODDS_RESEARCH_BLOCKED_PROVENANCE
+    )
+    complete_valid_race_ids = [
+        race.get("race_id")
+        for race in race_coverage.get("races") or []
+        if race.get("complete_valid_prejump_odds") is True
+    ]
+    return {
+        "schema_version": "odds_research_gate_report_v1",
+        "generated_at": generated_at.isoformat(),
+        "status": status,
+        "collection_status": collection_status,
+        "minimum_complete_valid_prejump_odds_races": min_complete_valid_prejump_odds_races,
+        "race_count": race_count,
+        "prediction_rows": len(predictions),
+        "complete_valid_prejump_odds_races": complete_valid_races,
+        "complete_valid_prejump_odds_race_ids": complete_valid_race_ids,
+        "valid_prejump_dog_odds_rows": valid_prejump_rows,
+        "source_url_rows_checked": source_url_rows_checked,
+        "source_url_rows_missing": source_url_rows_missing,
+        "source_url_coverage_pct": source_url_coverage_pct,
+        "valid_prejump_rows_with_source_url": valid_prejump_rows_with_source_url,
+        "valid_prejump_source_url_coverage_pct": valid_source_url_coverage_pct,
+        "unsafe_or_rejected_odds_rows": unsafe_or_rejected_rows,
+        "unsafe_or_partial_odds_joins_counted": False,
+        "blocker_counts": dict(sorted(blocker_counts.items())),
+        "blocked": bool(blocker_counts),
+        "odds_used_for_shadow_scoring": False,
+        "odds_model_input_report_only_allowed": status == ODDS_RESEARCH_READY_REPORT_ONLY,
+        "ev_diagnostics_report_only_allowed": status == ODDS_RESEARCH_READY_REPORT_ONLY,
+        "ev_output_allowed": status == ODDS_RESEARCH_READY_REPORT_ONLY,
+        "betting_action_allowed": False,
+        "promotion_allowed": False,
+        "policy": ODDS_RESEARCH_GATE_POLICY,
+        "new_statuses": {
+            "blocked": ODDS_RESEARCH_BLOCKED_PROVENANCE,
+            "ready_report_only": ODDS_RESEARCH_READY_REPORT_ONLY,
+        },
+    }
+
+
+def odds_augmented_challenger_report_from_gate(
+    gate: Mapping[str, Any],
+) -> dict[str, Any]:
+    gate_ready = gate.get("status") == ODDS_RESEARCH_READY_REPORT_ONLY
+    blockers = dict(gate.get("blocker_counts") or {})
+    if gate_ready:
+        blockers["joined_forward_results_required_for_accuracy_comparison"] = 1
+        blockers["odds_augmented_model_comparison_not_run_by_snapshot_collector"] = 1
+    return {
+        "schema_version": "odds_augmented_challenger_report_v1",
+        "final_status": ODDS_AUGMENTED_MODEL_BLOCKED,
+        "ready_status_name": ODDS_AUGMENTED_MODEL_READY_FOR_PR_REVIEW,
+        "odds_research_gate_status": gate.get("status"),
+        "activation_blockers": dict(sorted(blockers.items())),
+        "models_required_when_gate_passes": [
+            "stage2_no_odds_challenger",
+            "market_only_implied_probability_baseline",
+            "odds_augmented_challenger",
+            "probability_blend_calibration_candidate",
+        ],
+        "metrics_required": [
+            "top1",
+            "top3",
+            "mean_winner_rank",
+            "brier",
+            "logloss",
+            "calibration_slope_intercept",
+            "box1_top_pick_share",
+            "probability_sum_error",
+        ],
+        "promotion_boundary": {
+            "promotion_pr_allowed": False,
+            "direct_registry_mutation_allowed": False,
+            "production_pointer_update_allowed": False,
+            "odds_can_override_failed_accuracy_gate": False,
+            "ev_can_override_failed_accuracy_gate": False,
+        },
+        "odds_used_for_shadow_scoring": False,
+        "ev_output_allowed": False,
+        "betting_action_allowed": False,
+        "report_only": True,
+    }
+
+
+def report_only_ev_diagnostics(
+    *,
+    gate: Mapping[str, Any],
+    rows: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    if gate.get("status") != ODDS_RESEARCH_READY_REPORT_ONLY:
+        return {
+            "schema_version": "report_only_ev_diagnostics_v1",
+            "status": "EV_DIAGNOSTICS_BLOCKED_ODDS_RESEARCH_GATE",
+            "odds_research_gate_status": gate.get("status"),
+            "blocker_counts": dict(gate.get("blocker_counts") or {}),
+            "ev_rows": 0,
+            "positive_ev_rows": 0,
+            "negative_ev_rows": 0,
+            "betting_advice": False,
+            "stakes": False,
+            "betting_action_allowed": False,
+            "promotion_signal": False,
+            "ev_can_override_accuracy_gate": False,
+        }
+
+    ev_values: list[float] = []
+    for row in rows:
+        if row.get("odds_match_status") != "valid_pre_jump_dog_odds":
+            continue
+        probability = row.get("shadow_rf_calibrated_probability")
+        snapshot = row.get("odds_snapshot") if isinstance(row.get("odds_snapshot"), Mapping) else {}
+        odds_decimal = snapshot.get("market_odds_win")
+        try:
+            ev_values.append(float(probability) * float(odds_decimal) - 1.0)
+        except (TypeError, ValueError):
+            continue
+    return {
+        "schema_version": "report_only_ev_diagnostics_v1",
+        "status": "EV_DIAGNOSTICS_REPORT_ONLY",
+        "odds_research_gate_status": gate.get("status"),
+        "ev_rows": len(ev_values),
+        "positive_ev_rows": sum(1 for value in ev_values if value > 0),
+        "negative_ev_rows": sum(1 for value in ev_values if value < 0),
+        "zero_ev_rows": sum(1 for value in ev_values if value == 0),
+        "mean_ev": sum(ev_values) / len(ev_values) if ev_values else None,
+        "min_ev": min(ev_values) if ev_values else None,
+        "max_ev": max(ev_values) if ev_values else None,
+        "betting_advice": False,
+        "stakes": False,
+        "betting_action_allowed": False,
+        "promotion_signal": False,
+        "ev_can_override_accuracy_gate": False,
+    }
+
+
 def collect_shadow_odds_snapshot(
     *,
     shadow_run_dir: Path,
@@ -1038,6 +1258,16 @@ def collect_shadow_odds_snapshot(
         collection_status=status,
         odds_source_report=odds_source_report,
     )
+    odds_gate = odds_research_gate_report(
+        predictions=predictions,
+        rows=rows,
+        race_coverage=race_coverage,
+        odds_research_readiness=odds_research_readiness,
+        collection_status=status,
+        generated_at=generated_at,
+    )
+    odds_augmented_report = odds_augmented_challenger_report_from_gate(odds_gate)
+    ev_diagnostics = report_only_ev_diagnostics(gate=odds_gate, rows=rows)
     report = {
         "schema_version": "shadow_odds_snapshot_report_v1",
         "generated_at": generated_at.isoformat(),
@@ -1060,7 +1290,17 @@ def collect_shadow_odds_snapshot(
         "odds_exclusion_reason_distribution": dict(sorted(exclusion_counts.items())),
         "odds_source_report": odds_source_report,
         "odds_research_readiness": odds_research_readiness,
+        "odds_research_gate": odds_gate,
+        "odds_augmented_challenger": odds_augmented_report,
+        "report_only_ev_diagnostics": ev_diagnostics,
         "race_coverage_path": relpath(output_dir / "shadow_odds_race_coverage.json"),
+        "odds_research_gate_report_path": relpath(output_dir / "odds_research_gate_report.json"),
+        "odds_augmented_challenger_report_path": relpath(
+            output_dir / "odds_augmented_challenger_report.json"
+        ),
+        "report_only_ev_diagnostics_path": relpath(
+            output_dir / "report_only_ev_diagnostics.json"
+        ),
         "races_with_any_odds_candidates": race_coverage["races_with_any_odds_candidates"],
         "races_with_complete_odds_candidate_coverage": race_coverage[
             "races_with_complete_odds_candidate_coverage"
@@ -1099,6 +1339,9 @@ def collect_shadow_odds_snapshot(
     write_csv(output_dir / "shadow_odds_snapshot.csv", rows)
     write_json(output_dir / "shadow_odds_race_coverage.json", race_coverage)
     write_json(output_dir / "shadow_odds_research_readiness.json", odds_research_readiness)
+    write_json(output_dir / "odds_research_gate_report.json", odds_gate)
+    write_json(output_dir / "odds_augmented_challenger_report.json", odds_augmented_report)
+    write_json(output_dir / "report_only_ev_diagnostics.json", ev_diagnostics)
     write_json(output_dir / "shadow_odds_snapshot_report.json", report)
     write_text(output_dir / "final_status.txt", f"{status}\n")
     write_text(
@@ -1114,7 +1357,10 @@ def collect_shadow_odds_snapshot(
                 f"- Valid pre-jump dog odds rows: `{report['valid_pre_jump_dog_odds_rows']}`",
                 f"- Races with complete valid pre-jump odds: `{report['races_with_complete_valid_prejump_odds']}`",
                 f"- Odds analysis status: `{odds_research_readiness['status']}`",
+                f"- Odds research gate: `{odds_gate['status']}`",
                 f"- Odds analysis blockers: `{odds_research_readiness['blocker_counts']}`",
+                f"- Odds gate blockers: `{odds_gate['blocker_counts']}`",
+                f"- Odds-augmented model status: `{odds_augmented_report['final_status']}`",
                 f"- EV output rows: `0`",
                 f"- Protected paths unchanged: `{report['protected_paths_unchanged']}`",
                 "",

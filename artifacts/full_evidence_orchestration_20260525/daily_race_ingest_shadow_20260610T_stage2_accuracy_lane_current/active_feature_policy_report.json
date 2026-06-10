@@ -1,0 +1,16 @@
+{
+  "active_feature_count": 73,
+  "all_missing_train_policy": "quarantine_feature",
+  "inactive_features_due_to_train_all_missing": [
+    "race_time_minutes_since_midnight",
+    "track_condition",
+    "weather",
+    "same_distance_same_grade_best_time",
+    "same_distance_same_grade_avg_time"
+  ],
+  "model_path": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-high-accuracy-refinement-v1-20260610/artifacts/full_evidence_orchestration_20260525/shadow_evaluation_high_accuracy_stage2_20260610T_live_evidence/shadow_randomforest_model.joblib",
+  "reason": "shadow_training_report_loaded_next_to_model",
+  "schema_feature_count": 78,
+  "schema_version": "loaded_shadow_model_feature_policy_v1",
+  "source": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-high-accuracy-refinement-v1-20260610/artifacts/full_evidence_orchestration_20260525/shadow_evaluation_high_accuracy_stage2_20260610T_live_evidence/shadow_training_report.json"
+}
