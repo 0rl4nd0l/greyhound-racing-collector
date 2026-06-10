@@ -1324,6 +1324,58 @@ def shadow_odds_snapshot_status_from_autopilot(
     }
 
 
+def live_odds_capture_packet_from_autopilot(
+    autopilot_output_dir: Path | None,
+) -> dict[str, Any]:
+    if autopilot_output_dir is None:
+        return {
+            "schema_version": "shadow_daemon_live_odds_capture_packet_summary_v1",
+            "status": "MISSING_AUTOPILOT_OUTPUT",
+            "packet_path": None,
+            "verified_prejump_race_count": None,
+            "capture_window_offsets_minutes": [],
+            "approval_required": True,
+            "can_capture_live_odds_now": False,
+            "hard_stops": ["autopilot_output_missing"],
+            "no_write_guarantees": dict(NO_WRITE_GUARANTEES),
+        }
+    packet_path = autopilot_output_dir / "live_odds_capture_approval_packet.json"
+    packet = load_json(packet_path)
+    if not packet:
+        return {
+            "schema_version": "shadow_daemon_live_odds_capture_packet_summary_v1",
+            "status": "MISSING_LIVE_ODDS_CAPTURE_APPROVAL_PACKET",
+            "packet_path": relpath(packet_path),
+            "verified_prejump_race_count": None,
+            "capture_window_offsets_minutes": [],
+            "approval_required": True,
+            "can_capture_live_odds_now": False,
+            "hard_stops": ["live_odds_capture_approval_packet_missing"],
+            "no_write_guarantees": dict(NO_WRITE_GUARANTEES),
+        }
+    return {
+        "schema_version": "shadow_daemon_live_odds_capture_packet_summary_v1",
+        "status": packet.get("status"),
+        "packet_path": relpath(packet_path),
+        "verified_prejump_race_count": packet.get("verified_prejump_race_count"),
+        "capture_window_offsets_minutes": packet.get("capture_window_offsets_minutes") or [],
+        "approval_required": packet.get("approval_required"),
+        "can_capture_live_odds_now": packet.get("can_capture_live_odds_now", False),
+        "hard_stops": packet.get("hard_stops") or [],
+        "write_scope": packet.get("write_scope"),
+        "required_provenance_fields": packet.get("required_provenance_fields") or [],
+        "planned_live_odds_capture_command": packet.get(
+            "planned_live_odds_capture_command"
+        )
+        or [],
+        "approved_live_odds_capture_command_template": packet.get(
+            "approved_live_odds_capture_command_template"
+        )
+        or [],
+        "no_write_guarantees": packet.get("no_write_guarantees") or dict(NO_WRITE_GUARANTEES),
+    }
+
+
 def next_prejump_refresh_window_from_autopilot(
     autopilot_output_dir: Path | None,
 ) -> dict[str, Any] | None:
@@ -1604,6 +1656,29 @@ def build_read_only_odds_coverage_report(
         timestamp_quality = (coverage.get("timestamp_quality") or {}).get("live_odds_current_win") or {}
         source_url_quality = coverage.get("source_url_quality") or {}
         dog_level_rows = int(counts.get("dog_level_win_odds_rows") or 0)
+        race_id_mismatch_rows = sum(
+            int(row.get("rows") or 0)
+            for row in (coverage.get("venue_date_race_mismatches") or {}).get(
+                "counts"
+            )
+            or []
+        )
+        old_odds_row_audit = {
+            "mode": "read_only_old_odds_audit",
+            "stale_rows": int(timestamp_quality.get("stale_rows") or 0),
+            "missing_source_url_rows": int(
+                source_url_quality.get("rows_missing_source_url") or 0
+            ),
+            "race_id_mismatch_rows": race_id_mismatch_rows,
+            "dog_name_box_conflict_rows": int(
+                safe.get("dog_name_box_conflict_rows") or 0
+            ),
+            "ambiguous_strict_identity_rows": int(
+                safe.get("ambiguous_strict_identity_rows") or 0
+            ),
+            "db_write": False,
+            "odds_capture_performed": False,
+        }
         summary.update(
             {
                 "status": "SUCCESS" if dog_level_rows else "NO_CURRENT_DOG_LEVEL_WIN_ODDS",
@@ -1634,12 +1709,14 @@ def build_read_only_odds_coverage_report(
                     source_url_quality.get("post_race_source_url_rows") or 0
                 ),
                 "source_provenance": coverage.get("source_provenance") or {},
+                "old_odds_row_audit": old_odds_row_audit,
             }
         )
         payload = {
             "schema_version": "shadow_daemon_read_only_odds_coverage_report_v1",
             "summary": summary,
             "coverage": coverage,
+            "old_odds_row_audit": old_odds_row_audit,
             "no_write_guarantees": {
                 "odds_capture_performed": False,
                 "odds_used_for_shadow_scoring": False,
@@ -1651,10 +1728,18 @@ def build_read_only_odds_coverage_report(
         }
     except Exception as exc:
         summary["error"] = f"{type(exc).__name__}:{exc}"
+        summary["old_odds_row_audit"] = {
+            "mode": "read_only_old_odds_audit",
+            "status": "DATA_MISSING",
+            "reason": "odds_coverage_analysis_failed",
+            "db_write": False,
+            "odds_capture_performed": False,
+        }
         payload = {
             "schema_version": "shadow_daemon_read_only_odds_coverage_report_v1",
             "summary": summary,
             "coverage": None,
+            "old_odds_row_audit": summary["old_odds_row_audit"],
             "no_write_guarantees": {
                 "odds_capture_performed": False,
                 "odds_used_for_shadow_scoring": False,
@@ -2392,6 +2477,7 @@ def build_final_summary(
     next_prejump_refresh_window: Mapping[str, Any] | None = None,
     prejump_metadata_status: Mapping[str, Any] | None = None,
     prejump_metadata_trend: Mapping[str, Any] | None = None,
+    live_odds_capture_packet: Mapping[str, Any] | None = None,
 ) -> str:
     feature_activation_gate = feature_activation_gate or {}
     odds_coverage = odds_coverage or {}
@@ -2402,6 +2488,7 @@ def build_final_summary(
     next_prejump_race = next_prejump_refresh_window.get("next_race") or {}
     prejump_metadata_status = prejump_metadata_status or {}
     prejump_metadata_trend = prejump_metadata_trend or {}
+    live_odds_capture_packet = live_odds_capture_packet or {}
     return "\n".join(
         [
             "# Shadow Autopilot Daemonization V1",
@@ -2428,6 +2515,10 @@ def build_final_summary(
             f"- Shadow odds races after feature freeze: `{shadow_odds_snapshot.get('races_with_post_feature_freeze_odds_rows')}`",
             f"- Shadow odds EV output rows: `{shadow_odds_snapshot.get('ev_output_rows')}`",
             f"- Odds used for shadow scoring: `{odds_coverage.get('odds_used_for_shadow_scoring')}`",
+            f"- Live odds capture approval: `{live_odds_capture_packet.get('status')}`",
+            f"- Live odds verified races: `{live_odds_capture_packet.get('verified_prejump_race_count')}`",
+            f"- Live odds capture windows: `{live_odds_capture_packet.get('capture_window_offsets_minutes')}`",
+            f"- Live odds can capture now: `{live_odds_capture_packet.get('can_capture_live_odds_now')}`",
             f"- Observability: `{observability_status.get('status')}`",
             f"- Prediction rows observed: `{observability_status.get('prediction_rows')}`",
             f"- Cycle activity: `{cycle_activity.get('status')}`",
@@ -2676,6 +2767,7 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
             daily_manifest = load_json(daily_shadow_run_dir / "shadow_manifest.json") if daily_shadow_run_dir else None
     feature_activation_gate = feature_activation_gate_status_from_autopilot(autopilot_output_dir)
     shadow_odds_snapshot = shadow_odds_snapshot_status_from_autopilot(autopilot_output_dir)
+    live_odds_capture_packet = live_odds_capture_packet_from_autopilot(autopilot_output_dir)
     next_prejump_refresh_window = next_prejump_refresh_window_from_autopilot(autopilot_output_dir)
     prejump_metadata_status = prejump_metadata_status_from_daily_run(daily_shadow_run_dir)
     prejump_metadata_trend = build_prejump_metadata_trend_report(
@@ -2700,6 +2792,7 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
         "timer_file": service_info.get("timer_path"),
         "lock_path": relpath(lock_path),
         "odds_coverage_report": odds_coverage.get("report_path"),
+        "live_odds_capture_approval_packet": live_odds_capture_packet.get("packet_path"),
     }
     if shadow_odds_snapshot:
         sources["shadow_odds_snapshot_status"] = shadow_odds_snapshot.get("status_path")
@@ -2723,6 +2816,7 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
         status_report=status_report,
         sources=sources,
         odds_snapshot_status=shadow_odds_snapshot,
+        live_odds_capture_packet=live_odds_capture_packet,
     )
     if daily_manifest:
         score_live_manifest = daily_manifest.get("score_live_manifest") or {}
@@ -2738,6 +2832,11 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
         dashboard["kept_quarantined_features"] = feature_activation_gate.get("kept_quarantined_features") or []
         dashboard["activation_allowed_features"] = feature_activation_gate.get("activation_allowed_features") or []
     dashboard["odds_coverage"] = odds_coverage
+    dashboard["live_odds_capture_approval"] = live_odds_capture_packet
+    dashboard["live_odds_capture_approval_status"] = live_odds_capture_packet.get("status")
+    dashboard["live_odds_capture_verified_prejump_races"] = live_odds_capture_packet.get(
+        "verified_prejump_race_count"
+    )
     if shadow_odds_snapshot:
         dashboard["shadow_odds_snapshot"] = shadow_odds_snapshot
         dashboard["shadow_odds_snapshot_status"] = shadow_odds_snapshot.get("status")
@@ -2787,12 +2886,24 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
         timeseries=aggregate_timeseries,
         readiness={"decision": "NEED_MORE_RESULTS"},
         odds_snapshot_status=shadow_odds_snapshot,
+        live_odds_capture_packet=live_odds_capture_packet,
     )
     if feature_activation_gate:
         daily_status["feature_activation_gate_status"] = feature_activation_gate.get("status")
         daily_status["kept_quarantined_features"] = feature_activation_gate.get("kept_quarantined_features") or []
         daily_status["activation_allowed_features"] = feature_activation_gate.get("activation_allowed_features") or []
     daily_status["odds_coverage_status"] = odds_coverage.get("status")
+    daily_status["live_odds_capture_approval_status"] = live_odds_capture_packet.get("status")
+    daily_status["live_odds_capture_verified_prejump_races"] = live_odds_capture_packet.get(
+        "verified_prejump_race_count"
+    )
+    daily_status["live_odds_capture_window_offsets_minutes"] = live_odds_capture_packet.get(
+        "capture_window_offsets_minutes"
+    )
+    daily_status["live_odds_capture_can_capture_now"] = live_odds_capture_packet.get(
+        "can_capture_live_odds_now",
+        False,
+    )
     daily_status["prejump_metadata_trend_status"] = prejump_metadata_trend.get("status")
     daily_status["prejump_metadata_verified_rate"] = prejump_metadata_trend.get(
         "verified_metadata_rate"
@@ -2865,6 +2976,14 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
         "feature_activation_gate_status": None if feature_activation_gate is None else feature_activation_gate.get("status"),
         "read_only_odds_coverage_checked": True,
         "odds_coverage_status": odds_coverage.get("status"),
+        "live_odds_capture_approval_status": live_odds_capture_packet.get("status"),
+        "live_odds_capture_verified_prejump_races": live_odds_capture_packet.get(
+            "verified_prejump_race_count"
+        ),
+        "live_odds_capture_can_capture_now": live_odds_capture_packet.get(
+            "can_capture_live_odds_now",
+            False,
+        ),
         "shadow_odds_snapshot_status": None
         if shadow_odds_snapshot is None
         else shadow_odds_snapshot.get("status"),
@@ -2955,6 +3074,7 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
     write_json(output_dir / "protected_path_validation.json", protected_validation)
     if shadow_odds_snapshot:
         write_json(output_dir / "shadow_odds_snapshot_status.json", shadow_odds_snapshot)
+    write_json(output_dir / "live_odds_capture_approval_packet.json", live_odds_capture_packet)
     write_json(output_dir / "observability_status.json", observability["status"])
     write_json(output_dir / "prediction_provenance_report.json", observability["provenance"])
     write_json(output_dir / "model_provenance_card.json", observability["model_card"])
@@ -2989,6 +3109,7 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
         "observability_event_log.jsonl",
         "odds_coverage_report.json",
         "shadow_odds_snapshot_status.json",
+        "live_odds_capture_approval_packet.json",
         "prejump_metadata_trend_report.json",
         "readiness_summary.md",
         "verification_results.txt",
@@ -3028,6 +3149,9 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
                 f"odds_coverage_status={odds_coverage.get('status')}",
                 f"shadow_odds_snapshot_status={None if shadow_odds_snapshot is None else shadow_odds_snapshot.get('status')}",
                 f"shadow_odds_snapshot_ev_output_rows={None if shadow_odds_snapshot is None else shadow_odds_snapshot.get('ev_output_rows', 0)}",
+                f"live_odds_capture_approval_status={live_odds_capture_packet.get('status')}",
+                f"live_odds_capture_verified_prejump_races={live_odds_capture_packet.get('verified_prejump_race_count')}",
+                f"live_odds_capture_can_capture_now={live_odds_capture_packet.get('can_capture_live_odds_now')}",
                 f"odds_capture_performed=False",
                 f"odds_used_for_shadow_scoring=False",
                 f"next_prejump_refresh_status={None if next_prejump_refresh_window is None else next_prejump_refresh_window.get('status')}",
@@ -3075,6 +3199,7 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
             next_prejump_refresh_window=next_prejump_refresh_window,
             prejump_metadata_status=prejump_metadata_status,
             prejump_metadata_trend=prejump_metadata_trend,
+            live_odds_capture_packet=live_odds_capture_packet,
         ),
     )
     state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -3090,6 +3215,10 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
         if feature_activation_gate is None
         else feature_activation_gate.get("status"),
         "last_odds_coverage_status": odds_coverage.get("status"),
+        "last_live_odds_capture_approval_status": live_odds_capture_packet.get("status"),
+        "last_live_odds_capture_verified_prejump_races": live_odds_capture_packet.get(
+            "verified_prejump_race_count"
+        ),
         "last_shadow_odds_snapshot_status": None
         if shadow_odds_snapshot is None
         else shadow_odds_snapshot.get("status"),
@@ -3154,6 +3283,10 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
         if feature_activation_gate is None
         else feature_activation_gate.get("status"),
         "odds_coverage_status": odds_coverage.get("status"),
+        "live_odds_capture_approval_status": live_odds_capture_packet.get("status"),
+        "live_odds_capture_verified_prejump_race_count": live_odds_capture_packet.get(
+            "verified_prejump_race_count"
+        ),
         "shadow_odds_snapshot_status": None
         if shadow_odds_snapshot is None
         else shadow_odds_snapshot.get("status"),

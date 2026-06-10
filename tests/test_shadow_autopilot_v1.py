@@ -269,6 +269,140 @@ def test_shadow_odds_snapshot_status_surfaces_race_level_coverage():
     assert status["odds_analysis_blocker_counts"] == {}
 
 
+def test_live_odds_capture_approval_packet_plans_fixed_windows_for_verified_races(tmp_path):
+    daily_dir = tmp_path / "daily"
+    upcoming_dir = tmp_path / "upcoming"
+    daily_dir.mkdir()
+    upcoming_dir.mkdir()
+    autopilot.write_json(
+        daily_dir / "prejump_metadata_report.json",
+        {
+            "schema_version": "daily_shadow_prejump_metadata_report_v1",
+            "status": "PASS",
+            "eligible_count": 1,
+            "eligible_with_verified_prejump_metadata": 1,
+            "malformed_prejump_metadata_count": 0,
+            "required_fields": [
+                "race_date",
+                "venue",
+                "race_number",
+                "runner_box_name_list",
+                "source_url",
+                "canonical_runner_source_url",
+                "csv_sidecar_runner_identity",
+                "canonical_final_runner_alignment",
+            ],
+            "target_metadata_readiness": {
+                "target_metadata_capture_status": "READY",
+                "all_current_future_inputs_verified": True,
+            },
+            "files": [
+                {
+                    "bucket": "eligible",
+                    "path": "upcoming/Race 1 - WPK - 2026-06-10.csv",
+                    "race_date": "2026-06-10",
+                    "venue": "WPK",
+                    "race_number": 1,
+                    "jump_datetime": "2026-06-10T15:00:00+10:00",
+                    "source_url": "https://www.thedogs.com.au/racing/wentworth-park/2026-06-10/1/test",
+                    "canonical_runner_source_url": "https://www.thedogs.com.au/racing/wentworth-park/2026-06-10/1/test",
+                    "runner_count": 8,
+                    "sidecar_status": "PASS",
+                    "metadata_is_leakage_safe": True,
+                    "csv_sidecar_runner_identity_verified": True,
+                    "canonical_runner_alignment_verified": True,
+                }
+            ],
+        },
+    )
+
+    packet = autopilot.build_live_odds_capture_approval_packet(
+        generated_at=datetime.fromisoformat("2026-06-10T14:00:00+10:00"),
+        daily_shadow_run_dir=daily_dir,
+        upcoming_dir=upcoming_dir,
+        db_path=Path("greyhound_racing_data.db"),
+        output_path=Path("artifacts/full_evidence_orchestration_20260525/live_odds_capture_report.json"),
+        limit=16,
+    )
+
+    assert packet["status"] == "AWAITING_EXPLICIT_APPROVAL_READY_FOR_LIVE_ODDS"
+    assert packet["approval_required"] is True
+    assert packet["can_capture_live_odds_now"] is False
+    assert packet["capture_window_offsets_minutes"] == [60, 30, 10, 2]
+    assert packet["verified_prejump_race_count"] == 1
+    assert packet["races"][0]["canonical_race_identity"] == "Race 1 - WPK - 2026-06-10"
+    assert packet["races"][0]["runner_set_validation"]["status"] == "PASS"
+    assert [row["offset_minutes"] for row in packet["races"][0]["capture_windows"]] == [
+        60,
+        30,
+        10,
+        2,
+    ]
+    assert packet["races"][0]["capture_windows"][0]["target_capture_at"].startswith(
+        "2026-06-10T14:00:00"
+    )
+    assert "--capture-live-odds" in packet["planned_live_odds_capture_command"]
+    assert "--approve-live-odds-capture" not in packet["planned_live_odds_capture_command"]
+    assert "--approve-live-odds-capture" in packet["approved_live_odds_capture_command_template"]
+    assert "--persist" not in packet["approved_live_odds_capture_command_template"]
+    assert packet["write_scope"] == "append_only_live_odds_rows"
+    assert packet["no_write_guarantees"]["db_write"] is False
+    assert "canonical_race_identity" in packet["required_provenance_fields"]
+    assert "sportsbet_source_url" in packet["required_provenance_fields"]
+    assert "runner_name_box_match_status" in packet["required_provenance_fields"]
+
+
+def test_live_odds_capture_approval_packet_fails_closed_without_verified_races(tmp_path):
+    daily_dir = tmp_path / "daily"
+    upcoming_dir = tmp_path / "upcoming"
+    daily_dir.mkdir()
+    upcoming_dir.mkdir()
+    autopilot.write_json(
+        daily_dir / "prejump_metadata_report.json",
+        {
+            "schema_version": "daily_shadow_prejump_metadata_report_v1",
+            "status": "PASS",
+            "eligible_count": 1,
+            "eligible_with_verified_prejump_metadata": 0,
+            "malformed_prejump_metadata_count": 0,
+            "target_metadata_readiness": {
+                "target_metadata_capture_status": "BLOCKED",
+                "all_current_future_inputs_verified": False,
+            },
+            "files": [
+                {
+                    "bucket": "eligible",
+                    "path": "upcoming/Race 1 - WPK - 2026-06-10.csv",
+                    "race_date": "2026-06-10",
+                    "venue": "WPK",
+                    "race_number": 1,
+                    "jump_datetime": "2026-06-10T15:00:00+10:00",
+                    "runner_count": 8,
+                    "sidecar_status": "PASS",
+                    "metadata_is_leakage_safe": True,
+                    "csv_sidecar_runner_identity_verified": True,
+                    "canonical_runner_alignment_verified": False,
+                }
+            ],
+        },
+    )
+
+    packet = autopilot.build_live_odds_capture_approval_packet(
+        generated_at=datetime.fromisoformat("2026-06-10T14:00:00+10:00"),
+        daily_shadow_run_dir=daily_dir,
+        upcoming_dir=upcoming_dir,
+        db_path=Path("greyhound_racing_data.db"),
+        output_path=Path("artifacts/full_evidence_orchestration_20260525/live_odds_capture_report.json"),
+        limit=16,
+    )
+
+    assert packet["status"] == "NOT_READY"
+    assert packet["can_capture_live_odds_now"] is False
+    assert "verified_prejump_race_count_zero" in packet["hard_stops"]
+    assert "target_metadata_capture_not_ready" in packet["hard_stops"]
+    assert packet["no_write_guarantees"]["db_write"] is False
+
+
 def _waiting_refresh_report():
     return {
         "status": "SUCCESS",

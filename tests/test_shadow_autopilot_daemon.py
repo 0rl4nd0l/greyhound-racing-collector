@@ -1135,6 +1135,32 @@ def test_final_summary_includes_prejump_metadata_trend():
     assert "Trend verified metadata rate: `1.0`" in summary
 
 
+def test_live_odds_capture_packet_from_autopilot_surfaces_approval_artifact(tmp_path):
+    autopilot_dir = tmp_path / "shadow_autopilot_v1_test"
+    autopilot_dir.mkdir()
+    packet_path = autopilot_dir / "live_odds_capture_approval_packet.json"
+    daemon.write_json(
+        packet_path,
+        {
+            "status": "AWAITING_EXPLICIT_APPROVAL_READY_FOR_LIVE_ODDS",
+            "verified_prejump_race_count": 2,
+            "capture_window_offsets_minutes": [60, 30, 10, 2],
+            "can_capture_live_odds_now": False,
+            "approval_required": True,
+            "no_write_guarantees": {"db_write": False},
+        },
+    )
+
+    packet = daemon.live_odds_capture_packet_from_autopilot(autopilot_dir)
+
+    assert packet["status"] == "AWAITING_EXPLICIT_APPROVAL_READY_FOR_LIVE_ODDS"
+    assert packet["packet_path"].endswith("live_odds_capture_approval_packet.json")
+    assert packet["verified_prejump_race_count"] == 2
+    assert packet["capture_window_offsets_minutes"] == [60, 30, 10, 2]
+    assert packet["can_capture_live_odds_now"] is False
+    assert packet["no_write_guarantees"]["db_write"] is False
+
+
 def test_read_only_odds_coverage_report_does_not_mutate_db(tmp_path):
     db_path = tmp_path / "odds.db"
     with sqlite3.connect(db_path) as conn:
@@ -1212,6 +1238,10 @@ def test_read_only_odds_coverage_report_does_not_mutate_db(tmp_path):
     assert summary["odds_used_for_shadow_scoring"] is False
     assert summary["dog_level_win_odds_rows"] == 1
     assert summary["safe_direct_identity_matches"] == 1
+    assert summary["old_odds_row_audit"]["stale_rows"] == 0
+    assert summary["old_odds_row_audit"]["missing_source_url_rows"] == 0
+    assert summary["old_odds_row_audit"]["race_id_mismatch_rows"] == 0
+    assert summary["old_odds_row_audit"]["dog_name_box_conflict_rows"] == 0
     assert (tmp_path / "packet" / "odds_coverage_report.json").exists()
 
 
@@ -1231,6 +1261,27 @@ def test_final_summary_includes_odds_coverage_diagnostic():
 
     assert "Odds coverage diagnostic: `SUCCESS`" in summary
     assert "Odds used for shadow scoring: `False`" in summary
+
+
+def test_final_summary_includes_live_odds_capture_packet():
+    summary = daemon.build_final_summary(
+        verdict="DAEMON_READY",
+        dashboard={"safe_joined_races": 84, "pending_races": 237, "unsafe_matches": 14},
+        readiness={"decision": "NEED_MORE_RESULTS", "outstanding_blockers": []},
+        automated_join_report={"rejoin_attempt_count": 8, "rejoin_safe_joined_count_sum": 0},
+        alert_report={"status": "NO_ALERTS_TRIGGERED", "triggered_alerts": []},
+        service_validation={"service_files_present": True, "timer_frequency": "15min"},
+        live_odds_capture_packet={
+            "status": "AWAITING_EXPLICIT_APPROVAL_READY_FOR_LIVE_ODDS",
+            "verified_prejump_race_count": 2,
+            "capture_window_offsets_minutes": [60, 30, 10, 2],
+            "can_capture_live_odds_now": False,
+        },
+    )
+
+    assert "Live odds capture approval: `AWAITING_EXPLICIT_APPROVAL_READY_FOR_LIVE_ODDS`" in summary
+    assert "Live odds verified races: `2`" in summary
+    assert "Live odds capture windows: `[60, 30, 10, 2]`" in summary
 
 
 def test_final_summary_includes_shadow_odds_snapshot_status():

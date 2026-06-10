@@ -597,6 +597,64 @@ def test_live_odds_capture_requires_explicit_approval(tmp_path, monkeypatch):
     }
 
 
+def test_approved_live_odds_capture_uses_append_only_loader(tmp_path, monkeypatch):
+    db_path = tmp_path / "greyhound.sqlite"
+    sqlite3.connect(db_path).close()
+    calls = {}
+
+    def fake_ensure_odds_for_target_race(
+        db_path_arg,
+        venue,
+        race_number,
+        race_date,
+        *,
+        allow_auto_scrape_odds,
+        append_only,
+    ):
+        calls.update(
+            {
+                "db_path": db_path_arg,
+                "venue": venue,
+                "race_number": race_number,
+                "race_date": race_date,
+                "allow_auto_scrape_odds": allow_auto_scrape_odds,
+                "append_only": append_only,
+            }
+        )
+        return {"status": "SUCCESS", "success": True, "append_only": append_only}
+
+    import odds_auto_integrator
+
+    monkeypatch.setattr(
+        odds_auto_integrator,
+        "ensure_odds_for_target_race",
+        fake_ensure_odds_for_target_race,
+    )
+    lifecycle = RaceLifecycle(
+        status=UPCOMING_NOT_JUMPED,
+        status_reason="jump_time_after_now_no_result",
+        race_date="2026-05-29",
+        venue="TEST",
+        race_number=1,
+        jump_time="15:00",
+        jump_datetime="2026-05-29T15:00:00+10:00",
+        source_path=str(tmp_path / "Race 1 - TEST - 2026-05-29.csv"),
+    )
+
+    report = capture_module._capture_live_odds_for_lifecycle(
+        db_path=db_path,
+        lifecycle=lifecycle,
+    )
+
+    assert report == {"status": "SUCCESS", "success": True, "append_only": True}
+    assert calls["db_path"] == str(db_path)
+    assert calls["venue"] == "TEST"
+    assert calls["race_number"] == 1
+    assert calls["race_date"] == "2026-05-29"
+    assert calls["allow_auto_scrape_odds"] is True
+    assert calls["append_only"] is True
+
+
 def test_approved_live_odds_capture_still_reports_ev_not_ready_for_bad_provenance(
     tmp_path, monkeypatch
 ):

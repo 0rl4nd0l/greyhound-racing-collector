@@ -20,7 +20,7 @@ import shutil
 import subprocess
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -64,6 +64,17 @@ NO_WRITE_GUARANTEES = {
     "calibration_method_change": False,
     "feature_engineering": False,
 }
+FIXED_PREJUMP_ODDS_CAPTURE_WINDOWS_MINUTES = (60, 30, 10, 2)
+LIVE_ODDS_CAPTURE_REQUIRED_PROVENANCE_FIELDS = (
+    "canonical_race_identity",
+    "sportsbet_source_url",
+    "sportsbet_source_race_identity",
+    "scrape_timestamp",
+    "market_type",
+    "dog_level_win_odds",
+    "sportsbet_box_source",
+    "runner_name_box_match_status",
+)
 
 
 def now_id(now: datetime | None = None) -> str:
@@ -306,6 +317,240 @@ def build_shadow_odds_snapshot_status(
         "ev_calculation_status": "DISABLED_REPORT_ONLY_NO_EV_OUTPUT",
         "protected_paths_unchanged": report.get("protected_paths_unchanged"),
         "no_write_guarantees": dict(NO_WRITE_GUARANTEES),
+    }
+
+
+def parse_datetime_or_none(value: Any) -> datetime | None:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if normalized.endswith("Z"):
+        normalized = f"{normalized[:-1]}+00:00"
+    try:
+        return datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+
+
+def compare_datetimes(left: datetime, right: datetime) -> tuple[datetime, datetime]:
+    if left.tzinfo is None and right.tzinfo is not None:
+        left = left.replace(tzinfo=right.tzinfo)
+    elif left.tzinfo is not None and right.tzinfo is None:
+        right = right.replace(tzinfo=left.tzinfo)
+    elif left.tzinfo is not None and right.tzinfo is not None:
+        right = right.astimezone(left.tzinfo)
+    return left, right
+
+
+def canonical_race_identity(row: Mapping[str, Any]) -> str | None:
+    race_date = str(row.get("race_date") or "")[:10]
+    venue = str(row.get("venue") or "").strip().upper()
+    race_number = row.get("race_number")
+    if not race_date or not venue or race_number in (None, ""):
+        return None
+    return f"Race {race_number} - {venue} - {race_date}"
+
+
+def runner_set_validation_for_metadata_row(row: Mapping[str, Any]) -> dict[str, Any]:
+    reasons: list[str] = []
+    if str(row.get("bucket") or "") != "eligible":
+        reasons.append("not_eligible_prejump_file")
+    if int(row.get("runner_count") or 0) <= 0:
+        reasons.append("runner_count_missing_or_zero")
+    if row.get("sidecar_status") != "PASS":
+        reasons.append("csv_sidecar_status_not_pass")
+    if row.get("metadata_is_leakage_safe") is not True:
+        reasons.append("metadata_not_leakage_safe")
+    if row.get("csv_sidecar_runner_identity_verified") is not True:
+        reasons.append("csv_sidecar_runner_identity_not_verified")
+    if row.get("canonical_runner_alignment_verified") is not True:
+        reasons.append("canonical_runner_alignment_not_verified")
+    if not row.get("source_url"):
+        reasons.append("source_url_missing")
+    if not row.get("canonical_runner_source_url"):
+        reasons.append("canonical_runner_source_url_missing")
+    return {
+        "status": "PASS" if not reasons else "BLOCKED",
+        "reasons": reasons,
+        "runner_count": int(row.get("runner_count") or 0),
+        "csv_sidecar_runner_identity_verified": row.get(
+            "csv_sidecar_runner_identity_verified"
+        )
+        is True,
+        "canonical_runner_alignment_verified": row.get(
+            "canonical_runner_alignment_verified"
+        )
+        is True,
+        "metadata_is_leakage_safe": row.get("metadata_is_leakage_safe") is True,
+    }
+
+
+def fixed_capture_windows_for_metadata_row(
+    row: Mapping[str, Any],
+    *,
+    generated_at: datetime,
+) -> list[dict[str, Any]]:
+    jump_at = parse_datetime_or_none(row.get("jump_datetime") or row.get("jump_time_iso"))
+    windows: list[dict[str, Any]] = []
+    for offset in FIXED_PREJUMP_ODDS_CAPTURE_WINDOWS_MINUTES:
+        window: dict[str, Any] = {"offset_minutes": offset}
+        if jump_at is None:
+            window.update(
+                {
+                    "target_capture_at": None,
+                    "seconds_until_target": None,
+                    "status": "DATA_MISSING_JUMP_TIME",
+                }
+            )
+        else:
+            target = jump_at - timedelta(minutes=offset)
+            target_cmp, generated_cmp = compare_datetimes(target, generated_at)
+            jump_cmp, generated_for_jump = compare_datetimes(jump_at, generated_at)
+            if generated_for_jump >= jump_cmp:
+                status = "MISSED_AFTER_JUMP"
+            elif generated_cmp < target_cmp:
+                status = "PENDING"
+            else:
+                status = "DUE_NOW_OR_PASSED_PRE_JUMP"
+            window.update(
+                {
+                    "target_capture_at": target.isoformat(),
+                    "seconds_until_target": round((target_cmp - generated_cmp).total_seconds()),
+                    "status": status,
+                }
+            )
+        windows.append(window)
+    return windows
+
+
+def build_live_odds_capture_approval_packet(
+    *,
+    generated_at: datetime,
+    daily_shadow_run_dir: Path | None,
+    upcoming_dir: Path,
+    db_path: Path,
+    output_path: Path,
+    limit: int,
+) -> dict[str, Any]:
+    report_path = (
+        daily_shadow_run_dir / "prejump_metadata_report.json"
+        if daily_shadow_run_dir is not None
+        else None
+    )
+    report = load_json(report_path)
+    hard_stops: list[str] = []
+    rows = report.get("files") if report else None
+    if report is None:
+        hard_stops.append("prejump_metadata_report_missing")
+        rows = []
+    elif not isinstance(rows, list):
+        hard_stops.append("prejump_metadata_files_missing")
+        rows = []
+
+    readiness = report.get("target_metadata_readiness") if isinstance(report, Mapping) else {}
+    if (
+        not isinstance(readiness, Mapping)
+        or readiness.get("target_metadata_capture_status") != "READY"
+        or readiness.get("all_current_future_inputs_verified") is not True
+    ):
+        hard_stops.append("target_metadata_capture_not_ready")
+
+    race_packets: list[dict[str, Any]] = []
+    for row in rows or []:
+        if not isinstance(row, Mapping):
+            continue
+        validation = runner_set_validation_for_metadata_row(row)
+        if validation.get("status") != "PASS":
+            continue
+        race_packets.append(
+            {
+                "race_id": canonical_race_identity(row),
+                "canonical_race_identity": canonical_race_identity(row),
+                "venue": row.get("venue"),
+                "race_number": row.get("race_number"),
+                "race_date": row.get("race_date"),
+                "jump_datetime": row.get("jump_datetime") or row.get("jump_time_iso"),
+                "thedogs_source_url": row.get("source_url"),
+                "canonical_runner_source_url": row.get("canonical_runner_source_url"),
+                "runner_count": int(row.get("runner_count") or 0),
+                "runner_set_validation": validation,
+                "capture_windows": fixed_capture_windows_for_metadata_row(
+                    row,
+                    generated_at=generated_at,
+                ),
+            }
+        )
+
+    if not race_packets:
+        hard_stops.append("verified_prejump_race_count_zero")
+
+    planned_command = [
+        sys.executable,
+        str(ROOT / "scripts/capture_prediction_snapshot.py"),
+        "--db",
+        str(db_path),
+        "--upcoming-dir",
+        str(upcoming_dir),
+        "--snapshot-dir",
+        str(ROOT / "artifacts/prediction_snapshots"),
+        "--limit",
+        str(limit or len(race_packets) or 1),
+        "--capture-live-odds",
+        "--output",
+        str(output_path),
+    ]
+    approved_command = list(planned_command)
+    approved_command.insert(approved_command.index("--output"), "--approve-live-odds-capture")
+
+    no_write_guarantees = dict(NO_WRITE_GUARANTEES)
+    no_write_guarantees.update(
+        {
+            "odds_used_for_shadow_scoring": False,
+            "betting_action": False,
+            "ev_action": False,
+            "snapshot_write": False,
+            "model_training": False,
+        }
+    )
+    return {
+        "schema_version": "shadow_live_odds_capture_approval_packet_v1",
+        "generated_at": generated_at.isoformat(),
+        "status": "NOT_READY"
+        if hard_stops
+        else "AWAITING_EXPLICIT_APPROVAL_READY_FOR_LIVE_ODDS",
+        "approval_required": True,
+        "approval_gate": "operator_explicit_live_odds_capture_approval",
+        "required_cli_flag": "--approve-live-odds-capture",
+        "required_env_var": "APPROVE_LIVE_ODDS_CAPTURE=true",
+        "can_capture_live_odds_now": False,
+        "hard_stops": sorted(set(hard_stops)),
+        "write_scope": "append_only_live_odds_rows",
+        "append_only_required": True,
+        "fixed_capture_windows_required": True,
+        "capture_window_offsets_minutes": list(FIXED_PREJUMP_ODDS_CAPTURE_WINDOWS_MINUTES),
+        "prejump_metadata_report": relpath(report_path),
+        "verified_prejump_race_count": len(race_packets),
+        "races": race_packets,
+        "required_provenance_fields": list(LIVE_ODDS_CAPTURE_REQUIRED_PROVENANCE_FIELDS),
+        "provenance_requirements": {
+            "canonical_race_identity": "Race number, venue, and date from verified target metadata.",
+            "sportsbet_source_url": "Sportsbet source URL captured with every appended row.",
+            "sportsbet_source_race_identity": "Sportsbet venue/date/race identity used for source matching.",
+            "scrape_timestamp": "Timestamp of the odds scrape before jump.",
+            "market_type": "WIN market only for dog-level odds capture.",
+            "dog_level_win_odds": "One WIN price per final runner where available.",
+            "sportsbet_box_source": "Box source extracted from Sportsbet runner text or metadata.",
+            "runner_name_box_match_status": "Name and box validation status before append.",
+        },
+        "planned_live_odds_capture_command": planned_command,
+        "approved_live_odds_capture_command_template": approved_command,
+        "no_write_guarantees": no_write_guarantees,
     }
 
 
@@ -600,6 +845,7 @@ def build_dashboard(
     sources: Mapping[str, Any],
     refresh_report: Mapping[str, Any] | None = None,
     odds_snapshot_status: Mapping[str, Any] | None = None,
+    live_odds_capture_packet: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     calibration = (aggregate_calibration or {}).get("slope_intercept") or {}
     probability_error = metric_from_source(
@@ -693,6 +939,25 @@ def build_dashboard(
                 "odds_analysis_blocker_counts"
             )
             or {},
+        },
+        "live_odds_capture_approval": {
+            "status": (live_odds_capture_packet or {}).get("status"),
+            "packet_path": (live_odds_capture_packet or {}).get("packet_path"),
+            "verified_prejump_race_count": (live_odds_capture_packet or {}).get(
+                "verified_prejump_race_count",
+                0,
+            ),
+            "capture_window_offsets_minutes": (live_odds_capture_packet or {}).get(
+                "capture_window_offsets_minutes",
+                [],
+            ),
+            "approval_required": (live_odds_capture_packet or {}).get(
+                "approval_required"
+            ),
+            "can_capture_live_odds_now": (live_odds_capture_packet or {}).get(
+                "can_capture_live_odds_now",
+                False,
+            ),
         },
         "sources": dict(sources),
         "no_write_guarantees": dict(NO_WRITE_GUARANTEES),
@@ -989,6 +1254,7 @@ def build_daily_status(
     timeseries: Sequence[Mapping[str, Any]],
     readiness: Mapping[str, Any],
     odds_snapshot_status: Mapping[str, Any] | None = None,
+    live_odds_capture_packet: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     current = dict(timeseries[-1]) if timeseries else {}
     previous = dict(timeseries[-2]) if len(timeseries) >= 2 else None
@@ -1023,6 +1289,19 @@ def build_daily_status(
             0,
         ),
         "ev_output_rows": (odds_snapshot_status or {}).get("ev_output_rows", 0),
+        "live_odds_capture_approval_status": (live_odds_capture_packet or {}).get(
+            "status"
+        ),
+        "live_odds_capture_verified_prejump_races": (
+            live_odds_capture_packet or {}
+        ).get("verified_prejump_race_count", 0),
+        "live_odds_capture_window_offsets_minutes": (
+            live_odds_capture_packet or {}
+        ).get("capture_window_offsets_minutes", []),
+        "live_odds_capture_can_capture_now": (live_odds_capture_packet or {}).get(
+            "can_capture_live_odds_now",
+            False,
+        ),
         "odds_analysis_status": (odds_snapshot_status or {}).get(
             "odds_analysis_status"
         ),
@@ -1057,9 +1336,15 @@ def summary_markdown(
     result_join_status: Mapping[str, Any],
     activation_gate_status: Mapping[str, Any] | None = None,
     odds_snapshot_status: Mapping[str, Any] | None = None,
+    live_odds_capture_packet: Mapping[str, Any] | None = None,
 ) -> str:
     activation_status = activation_gate_status or {}
     odds_status = odds_snapshot_status or dashboard.get("odds_snapshot") or {}
+    live_odds_status = (
+        live_odds_capture_packet
+        or dashboard.get("live_odds_capture_approval")
+        or {}
+    )
     next_window = dashboard.get("next_prejump_refresh_window") or {}
     next_race = next_window.get("next_race") or {}
     return "\n".join(
@@ -1096,6 +1381,13 @@ def summary_markdown(
             f"- Races with complete valid pre-jump odds: `{odds_status.get('races_with_complete_valid_prejump_odds')}`",
             f"- Races with missing odds rows: `{odds_status.get('races_with_missing_odds_rows')}`",
             f"- EV output rows: `{odds_status.get('ev_output_rows')}`",
+            "",
+            "## Live Odds Capture Approval",
+            f"- Status: `{live_odds_status.get('status')}`",
+            f"- Verified pre-jump races: `{live_odds_status.get('verified_prejump_race_count')}`",
+            f"- Capture windows: `{live_odds_status.get('capture_window_offsets_minutes')}`",
+            f"- Approval required: `{live_odds_status.get('approval_required')}`",
+            f"- Can capture now: `{live_odds_status.get('can_capture_live_odds_now')}`",
             "",
             "## Feature Activation Gate",
             f"- Status: `{activation_status.get('status')}`",
@@ -1180,6 +1472,9 @@ def daily_status_markdown(daily_status: Mapping[str, Any]) -> str:
         f"Races with complete valid pre-jump odds: `{daily_status.get('races_with_complete_valid_prejump_odds')}`",
         f"Races with missing odds rows: `{daily_status.get('races_with_missing_odds_rows')}`",
         f"EV output rows: `{daily_status.get('ev_output_rows')}`",
+        f"Live odds capture approval: `{daily_status.get('live_odds_capture_approval_status')}`",
+        f"Live odds verified races: `{daily_status.get('live_odds_capture_verified_prejump_races')}`",
+        f"Live odds capture windows: `{daily_status.get('live_odds_capture_window_offsets_minutes')}`",
         f"Cumulative safe joined races: `{daily_status.get('cumulative_safe_joined_races')}`",
         f"Closer to promotion review: `{daily_status.get('closer_to_promotion_review')}`",
         f"Readiness decision: `{daily_status.get('readiness_decision')}`",
@@ -1515,6 +1810,17 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
     status_report = load_json(status_dir / "forward_shadow_status_report.json")
     daily_manifest = load_json(daily_dir / "shadow_manifest.json") if daily_dir else None
     refresh_report = load_json(output_dir / "refresh_prejump_report.json")
+    live_odds_capture_packet_path = output_dir / "live_odds_capture_approval_packet.json"
+    live_odds_capture_packet = build_live_odds_capture_approval_packet(
+        generated_at=generated_at,
+        daily_shadow_run_dir=daily_dir,
+        upcoming_dir=refresh_dir,
+        db_path=args.db,
+        output_path=output_dir / "live_odds_capture_report.json",
+        limit=args.refresh_limit,
+    )
+    live_odds_capture_packet["packet_path"] = relpath(live_odds_capture_packet_path)
+    write_json(live_odds_capture_packet_path, live_odds_capture_packet)
 
     sources = {
         "autopilot_output_dir": relpath(output_dir),
@@ -1529,6 +1835,7 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
         "shadow_odds_snapshot_status": relpath(output_dir / "shadow_odds_snapshot_status.json"),
         "feature_activation_gate": activation_gate_status.get("output_dir"),
         "feature_activation_gate_status": relpath(output_dir / "feature_activation_gate_status.json"),
+        "live_odds_capture_approval_packet": relpath(live_odds_capture_packet_path),
     }
     dashboard = build_dashboard(
         generated_at=generated_at,
@@ -1540,6 +1847,7 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
         sources=sources,
         refresh_report=refresh_report,
         odds_snapshot_status=odds_snapshot_status,
+        live_odds_capture_packet=live_odds_capture_packet,
     )
     result_join_status = build_result_join_status(
         generated_at=generated_at,
@@ -1573,6 +1881,7 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
         timeseries=aggregate_timeseries,
         readiness=readiness,
         odds_snapshot_status=odds_snapshot_status,
+        live_odds_capture_packet=live_odds_capture_packet,
     )
 
     protected_after = protected_hashes()
@@ -1615,6 +1924,7 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             "result_join_status.json",
             "shadow_odds_snapshot_status.json",
             "feature_activation_gate_status.json",
+            "live_odds_capture_approval_packet.json",
             "cumulative_join_history.json",
             "drift_report.json",
             "promotion_readiness_tracker.json",
@@ -1635,6 +1945,7 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             "phase_1_shadow_orchestration": relpath(output_dir / "shadow_orchestration_report.json"),
             "phase_2_result_join": relpath(output_dir / "result_join_status.json"),
             "phase_2b_odds_snapshot": relpath(output_dir / "shadow_odds_snapshot_status.json"),
+            "phase_2c_live_odds_capture_approval_packet": relpath(live_odds_capture_packet_path),
             "phase_3_dashboard": relpath(output_dir / "shadow_dashboard.json"),
             "phase_4_drift": relpath(output_dir / "drift_report.json"),
             "phase_5_readiness": relpath(output_dir / "promotion_readiness_tracker.json"),
@@ -1655,6 +1966,7 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
         output_dir / "result_join_status.json",
         output_dir / "shadow_odds_snapshot_status.json",
         output_dir / "feature_activation_gate_status.json",
+        output_dir / "live_odds_capture_approval_packet.json",
         output_dir / "cumulative_join_history.json",
         output_dir / "drift_report.json",
         output_dir / "promotion_readiness_tracker.json",
@@ -1686,6 +1998,9 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
                 f"shadow_odds_snapshot_status={odds_snapshot_status.get('status')}",
                 f"shadow_odds_snapshot_ev_output_rows={odds_snapshot_status.get('ev_output_rows')}",
                 f"feature_activation_gate_status={activation_gate_status.get('status')}",
+                f"live_odds_capture_approval_status={live_odds_capture_packet.get('status')}",
+                f"live_odds_capture_verified_prejump_races={live_odds_capture_packet.get('verified_prejump_race_count')}",
+                f"live_odds_capture_db_write={live_odds_capture_packet.get('no_write_guarantees', {}).get('db_write')}",
                 f"next_prejump_refresh_status={dashboard.get('next_prejump_refresh_status')}",
                 f"recommended_rerun_after_local={dashboard.get('recommended_rerun_after_local')}",
                 f"protected_paths_unchanged={protected_paths_unchanged}",
@@ -1705,6 +2020,7 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             result_join_status=result_join_status,
             activation_gate_status=activation_gate_status,
             odds_snapshot_status=odds_snapshot_status,
+            live_odds_capture_packet=live_odds_capture_packet,
         ),
     )
     write_json(output_dir / "output_manifest.json", output_manifest(output_dir))
@@ -1717,6 +2033,10 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
         "unsafe_matches": dashboard.get("unsafe_matches"),
         "readiness_decision": readiness.get("decision"),
         "feature_activation_gate_status": activation_gate_status.get("status"),
+        "live_odds_capture_approval_status": live_odds_capture_packet.get("status"),
+        "live_odds_capture_verified_prejump_race_count": live_odds_capture_packet.get(
+            "verified_prejump_race_count"
+        ),
         "shadow_odds_snapshot_status": odds_snapshot_status.get("status"),
         "shadow_odds_snapshot_valid_prejump_rows": odds_snapshot_status.get(
             "valid_pre_jump_dog_odds_rows"
