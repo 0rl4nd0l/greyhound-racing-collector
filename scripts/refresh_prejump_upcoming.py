@@ -17,7 +17,7 @@ import sys
 from collections import Counter
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 ROOT = Path(__file__).resolve().parents[1]
 ROOT_STR = str(ROOT)
@@ -256,14 +256,47 @@ def select_prejump_races(
             record["selected"] = False
             record["excluded_reason"] = "excluded_race_id"
             record["bucket"] = "excluded_race_id"
-    selected = [
-        race
-        for race, record in zip(races, records)
-        if record["selected"] and race.get("url")
-    ]
+    selected_pairs = sorted(
+        (
+            (race, record)
+            for race, record in zip(races, records)
+            if record["selected"] and race.get("url")
+        ),
+        key=lambda pair: (
+            float(pair[1].get("minutes_to_jump"))
+            if isinstance(pair[1].get("minutes_to_jump"), (int, float))
+            else float("inf"),
+            str(pair[1].get("venue") or ""),
+            int(pair[1].get("race_number") or 0),
+            str(pair[1].get("race_id") or ""),
+        ),
+    )
     if limit and limit > 0:
-        selected = selected[:limit]
+        selected_pairs = selected_pairs[:limit]
+    for selection_order, (_, record) in enumerate(selected_pairs, start=1):
+        record["selection_order"] = selection_order
+    selected = [race for race, _ in selected_pairs]
     return selected, records
+
+
+def selected_prejump_records(
+    records: Sequence[Mapping[str, Any]],
+    *,
+    limit: int = 0,
+) -> list[Mapping[str, Any]]:
+    selected = sorted(
+        (record for record in records if record.get("selected")),
+        key=lambda record: (
+            int(record.get("selection_order") or 999999),
+            float(record.get("minutes_to_jump"))
+            if isinstance(record.get("minutes_to_jump"), (int, float))
+            else float("inf"),
+            str(record.get("venue") or ""),
+            int(record.get("race_number") or 0),
+            str(record.get("race_id") or ""),
+        ),
+    )
+    return selected[:limit] if limit and limit > 0 else selected
 
 
 def refresh_timing_summary(
@@ -428,9 +461,9 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
             min_minutes=float(args.min_minutes),
             max_minutes=float(args.max_minutes),
         ),
-        "selected_races": [
-            record for record in records if record["selected"]
-        ][: int(args.limit) if int(args.limit) > 0 else None],
+        "selected_races": list(
+            selected_prejump_records(records, limit=int(args.limit))
+        ),
         "downloads": downloads,
         **artifact_counts,
         "artifact_counts": artifact_counts,

@@ -943,7 +943,9 @@ def test_score_live_subprocess_env_removes_repo_root_pythonpath():
 
 def test_daily_manifest_records_generated_and_score_live_timing(tmp_path):
     score_dir = tmp_path / "shadow_score_live"
+    output_dir = tmp_path / "daily_shadow"
     score_dir.mkdir()
+    output_dir.mkdir()
     (score_dir / "shadow_manifest.json").write_text(
         json.dumps(
             {
@@ -951,13 +953,29 @@ def test_daily_manifest_records_generated_and_score_live_timing(tmp_path):
                 "generated_at": "2026-06-09T00:10:00+10:00",
                 "prediction_timestamp": "2026-06-09T00:10:00+10:00",
                 "feature_freeze_timestamp": "2026-06-09T00:05:00+10:00",
+                "stage2_forward_shadow_status": "STAGE2_FORWARD_SHADOW_COLLECTING",
             }
         ),
         encoding="utf-8",
     )
+    (score_dir / "shadow_feature_rows.json").write_text(
+        json.dumps(
+            [
+                {
+                    "race_id": "Race 1 - TEST - 2026-06-09",
+                    "source_csv": "upcoming/Race 1 - TEST - 2026-06-09.csv",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (output_dir / "stage2_shadow_predictions.jsonl").write_text(
+        json.dumps({"race_id": "Race 1 - TEST - 2026-06-09", "box": 1}) + "\n",
+        encoding="utf-8",
+    )
 
     orchestrator.write_manifest(
-        output_dir=tmp_path / "daily_shadow",
+        output_dir=output_dir,
         generated_at=datetime.fromisoformat("2026-06-09T00:12:00+10:00"),
         mode="full-dry-run",
         db_report={
@@ -982,6 +1000,15 @@ def test_daily_manifest_records_generated_and_score_live_timing(tmp_path):
     assert manifest["score_live_manifest"]["feature_freeze_timestamp"] == (
         "2026-06-09T00:05:00+10:00"
     )
+    assert manifest["stage2_shadow_predictions_jsonl"].endswith(
+        "daily_shadow/stage2_shadow_predictions.jsonl"
+    )
+    assert manifest["stage2_prediction_rows"] == 1
+    assert manifest["stage2_forward_shadow_status"] == "STAGE2_FORWARD_SHADOW_COLLECTING"
+    assert manifest["shadow_feature_rows_json"].endswith(
+        "daily_shadow/shadow_feature_rows.json"
+    )
+    assert (output_dir / "shadow_feature_rows.json").exists()
 
 
 def test_staging_uses_explicit_source_path_and_copies_sidecar(tmp_path):

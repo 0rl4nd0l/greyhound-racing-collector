@@ -173,6 +173,96 @@ class UpcomingRaceBrowser:
         raw_path.write_text(content, encoding="utf-8", newline="")
         return raw_path
 
+    def _detect_non_csv_export_payload(self, content, content_type: str = "") -> str | None:
+        if isinstance(content, bytes):
+            prefix = content[:256].lstrip()
+            text_prefix = prefix.decode("latin-1", errors="ignore")
+        else:
+            text_prefix = str(content or "")[:256].lstrip("\ufeff\x00 \t\r\n")
+        lowered_type = str(content_type or "").lower()
+        if text_prefix.startswith("%PDF-") or "application/pdf" in lowered_type:
+            return "pdf_masquerading_as_csv"
+        return None
+
+    def _try_expert_form_fallback(
+        self,
+        *,
+        race_url: str,
+        filename: str,
+        filepath: str,
+        race_info: dict,
+        existing_quarantine_result=None,
+        fallback_trigger: str | None = None,
+        rejected_export: dict | None = None,
+    ):
+        try:
+            print("   🔁 Fallback: attempting expert-form scraper path")
+            from expert_form_csv_scraper import ExpertFormCsvScraper
+
+            # Normalize first to avoid duplicated expert-form segments.
+            base_race_url, _ef_url = self._normalize_race_url(race_url)
+
+            scraper = ExpertFormCsvScraper(max_workers=1, verbose=False)
+            # Pass the base race URL; scraper will derive the expert-form URL.
+            ef_success = scraper.download_csv_from_expert_form(
+                base_race_url,
+                filename,
+                race_info={**race_info, "url": base_race_url},
+            )
+            if ef_success and os.path.exists(filepath):
+                fallback_contract = self._existing_prejump_sidecar_contract_status(
+                    filepath
+                )
+                if fallback_contract.get("status") != "PASS":
+                    quarantine_result = self._quarantine_existing_csv_and_sidecar(
+                        filepath,
+                        reason="fallback_prejump_sidecar_contract_failed",
+                    )
+                    result = {
+                        "success": False,
+                        "error": (
+                            "Expert-form fallback produced CSV without "
+                            "valid pre-jump sidecar contract"
+                        ),
+                        "existing_prejump_sidecar_contract": fallback_contract,
+                        "quarantine": quarantine_result,
+                        **(
+                            {"existing_quarantine": existing_quarantine_result}
+                            if existing_quarantine_result
+                            else {}
+                        ),
+                    }
+                    if fallback_trigger:
+                        result["fallback_trigger"] = fallback_trigger
+                    if rejected_export:
+                        result["rejected_export"] = rejected_export
+                    return result
+                print(f"   ✅ Fallback saved CSV via expert-form scraper: {filename}")
+                result = {
+                    "success": True,
+                    "filename": filename,
+                    "filepath": filepath,
+                    "runner_completeness": fallback_contract.get(
+                        "runner_completeness"
+                    ),
+                    "existing_prejump_sidecar_contract": fallback_contract,
+                    **(
+                        {"existing_quarantine": existing_quarantine_result}
+                        if existing_quarantine_result
+                        else {}
+                    ),
+                }
+                if fallback_trigger:
+                    result["fallback_trigger"] = fallback_trigger
+                if rejected_export:
+                    result["rejected_export"] = rejected_export
+                return result
+            else:
+                print("   ❌ Expert-form fallback did not produce a CSV; continuing to fail")
+        except Exception as _ef_e:
+            print(f"   ⚠️ Expert-form fallback failed: {_ef_e}")
+        return None
+
     def _normalize_race_url(self, race_url: str):
         """Return a tuple of (base_race_url, expert_form_url) with fragments/queries removed and expert-form deduped.
 
@@ -1291,68 +1381,16 @@ class UpcomingRaceBrowser:
             csv_info = self.find_csv_download_link(soup, race_url)
 
             if not csv_info:
-                # Fallback: try the dedicated expert-form scraper which knows how to submit
-                # the export form and save the CSV directly to UPCOMING_RACES_DIR.
-                try:
-                    print("   🔁 Fallback: attempting expert-form scraper path")
-                    from expert_form_csv_scraper import ExpertFormCsvScraper
-
-                    # Normalize first to avoid duplicated expert-form segments
-                    base_race_url, _ef_url = self._normalize_race_url(race_url)
-
-                    scraper = ExpertFormCsvScraper(max_workers=1, verbose=False)
-                    # Pass the base race URL; scraper will derive the expert-form URL
-                    ef_success = scraper.download_csv_from_expert_form(
-                        base_race_url,
-                        filename,
-                        race_info={**race_info, "url": base_race_url},
-                    )
-                    if ef_success and os.path.exists(filepath):
-                        fallback_contract = self._existing_prejump_sidecar_contract_status(
-                            filepath
-                        )
-                        if fallback_contract.get("status") != "PASS":
-                            quarantine_result = self._quarantine_existing_csv_and_sidecar(
-                                filepath,
-                                reason="fallback_prejump_sidecar_contract_failed",
-                            )
-                            return {
-                                "success": False,
-                                "error": (
-                                    "Expert-form fallback produced CSV without "
-                                    "valid pre-jump sidecar contract"
-                                ),
-                                "existing_prejump_sidecar_contract": fallback_contract,
-                                "quarantine": quarantine_result,
-                                **(
-                                    {"existing_quarantine": existing_quarantine_result}
-                                    if existing_quarantine_result
-                                    else {}
-                                ),
-                            }
-                        print(
-                            f"   ✅ Fallback saved CSV via expert-form scraper: {filename}"
-                        )
-                        return {
-                            "success": True,
-                            "filename": filename,
-                            "filepath": filepath,
-                            "runner_completeness": fallback_contract.get(
-                                "runner_completeness"
-                            ),
-                            "existing_prejump_sidecar_contract": fallback_contract,
-                            **(
-                                {"existing_quarantine": existing_quarantine_result}
-                                if existing_quarantine_result
-                                else {}
-                            ),
-                        }
-                    else:
-                        print(
-                            "   ❌ Expert-form fallback did not produce a CSV; continuing to fail"
-                        )
-                except Exception as _ef_e:
-                    print(f"   ⚠️ Expert-form fallback failed: {_ef_e}")
+                fallback = self._try_expert_form_fallback(
+                    race_url=race_url,
+                    filename=filename,
+                    filepath=filepath,
+                    race_info=race_info,
+                    existing_quarantine_result=existing_quarantine_result,
+                    fallback_trigger="no_csv_download_link",
+                )
+                if fallback is not None:
+                    return fallback
 
                 result = {"success": False, "error": "No CSV download link found"}
                 if existing_quarantine_result:
@@ -1362,6 +1400,7 @@ class UpcomingRaceBrowser:
             # Download CSV content
             content = None
             csv_response = None
+            csv_content_type = ""
             try:
                 if isinstance(csv_info, dict) and csv_info.get("type") == "direct_csv":
                     # We already have the CSV data
@@ -1399,6 +1438,7 @@ class UpcomingRaceBrowser:
                         }
                     
                     if csv_response:
+                        csv_content_type = csv_response.headers.get("content-type", "")
                         content = csv_response.text
                     else:
                         return {"success": False, "error": "No CSV content received"}
@@ -1416,6 +1456,41 @@ class UpcomingRaceBrowser:
                 return {"success": False, "error": "CSV has insufficient data"}
 
             raw_export_path = self._write_raw_export(filename, content)
+            non_csv_reason = self._detect_non_csv_export_payload(
+                content,
+                csv_content_type,
+            )
+            if non_csv_reason:
+                quarantine_path = quarantine_csv_content(
+                    content,
+                    self.upcoming_dir,
+                    filename,
+                    reason=non_csv_reason,
+                )
+                rejected_export = {
+                    "reason": non_csv_reason,
+                    "raw_export_path": str(raw_export_path),
+                    "quarantine_path": str(quarantine_path),
+                    "content_type": csv_content_type,
+                }
+                fallback = self._try_expert_form_fallback(
+                    race_url=race_url,
+                    filename=filename,
+                    filepath=filepath,
+                    race_info=race_info,
+                    existing_quarantine_result=existing_quarantine_result,
+                    fallback_trigger=non_csv_reason,
+                    rejected_export=rejected_export,
+                )
+                if fallback is not None:
+                    return fallback
+                return {
+                    "success": False,
+                    "error": "Downloaded export was PDF, not CSV",
+                    "raw_export_path": str(raw_export_path),
+                    "quarantine_path": str(quarantine_path),
+                    "rejected_export": rejected_export,
+                }
 
             # Check for expected headers
             first_line = lines[0].lower()

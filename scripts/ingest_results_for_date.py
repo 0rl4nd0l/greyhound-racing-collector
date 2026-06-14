@@ -673,7 +673,9 @@ class SourceResult:
     raw_order: List[int]
     race_name: Optional[str] = None
     error: Optional[str] = None
+    dog_names_by_box: Optional[Dict[int, str]] = None
     terminal_status_by_box: Optional[Dict[int, str]] = None
+    attempted_urls: Optional[List[dict]] = None
 
     @property
     def winner_box(self) -> Optional[int]:
@@ -683,7 +685,7 @@ class SourceResult:
 
 
 def _source_result_diagnostic(result: SourceResult) -> dict:
-    return {
+    diagnostic = {
         "source": result.source,
         "status": result.status,
         "source_url": result.source_url,
@@ -700,6 +702,12 @@ def _source_result_diagnostic(result: SourceResult) -> dict:
             {
                 "box_number": int(box),
                 "finish_position": int(position),
+                **(
+                    {"dog_name": result.dog_names_by_box.get(int(box))}
+                    if result.dog_names_by_box
+                    and result.dog_names_by_box.get(int(box))
+                    else {}
+                ),
             }
             for box, position in sorted(
                 result.positions_by_box.items(),
@@ -707,6 +715,37 @@ def _source_result_diagnostic(result: SourceResult) -> dict:
             )
         ],
     }
+    if result.dog_names_by_box:
+        diagnostic["dog_names_by_box"] = {
+            str(int(box)): str(name)
+            for box, name in sorted(result.dog_names_by_box.items())
+            if str(name or "").strip()
+        }
+    if result.attempted_urls:
+        diagnostic["attempted_urls"] = list(result.attempted_urls)
+    return diagnostic
+
+
+def finish_positions_follow_competition_ranking(positions: Iterable[int]) -> bool:
+    values = sorted(int(position) for position in positions if position is not None)
+    if not values:
+        return False
+
+    expected_position = 1
+    index = 0
+    while index < len(values):
+        position = values[index]
+        if position != expected_position:
+            return False
+
+        tied_count = 1
+        while index + tied_count < len(values) and values[index + tied_count] == position:
+            tied_count += 1
+
+        index += tied_count
+        expected_position += tied_count
+
+    return True
 
 
 def result_validation_error(candidate: RaceCandidate, result: SourceResult) -> Optional[str]:
@@ -736,8 +775,10 @@ def result_validation_error(candidate: RaceCandidate, result: SourceResult) -> O
     ]
     if 1 not in finish_positions:
         return "missing_first_place_result"
-    if len(finish_positions) != len(set(finish_positions)):
-        return "duplicate_finish_positions"
+    if finish_positions.count(1) > 1:
+        return "duplicate_first_place_results"
+    if not finish_positions_follow_competition_ranking(finish_positions):
+        return "finish_positions_not_competition_ranked"
     if result.winner_box is None:
         return "missing_winner_box"
     return None
@@ -848,6 +889,12 @@ class TheDogsResultFetcher:
     ) -> Optional[SourceResult]:
         positions = parse_thedogs_result_html(markup)
         terminal_statuses = parse_thedogs_result_html_terminal_statuses(markup)
+        runner_rows = parse_thedogs_result_html_runner_rows(markup)
+        dog_names_by_box = {
+            int(row["box_number"]): str(row.get("dog_name") or "")
+            for row in runner_rows
+            if row.get("box_number") is not None and str(row.get("dog_name") or "").strip()
+        }
         if positions:
             ordered_boxes = [
                 box for box, _ in sorted(positions.items(), key=lambda item: item[1])
@@ -858,6 +905,7 @@ class TheDogsResultFetcher:
                 source_url=source_url,
                 positions_by_box=positions,
                 raw_order=ordered_boxes,
+                dog_names_by_box=dog_names_by_box,
                 terminal_status_by_box=terminal_statuses,
             )
         if thedogs_result_rows_present(markup):
@@ -880,6 +928,7 @@ class TheDogsResultFetcher:
             return None
 
         last_error = None
+        attempted_urls: List[dict] = []
         for url in urls:
             try:
                 response = self.http_session.get(
@@ -891,19 +940,40 @@ class TheDogsResultFetcher:
                 markup = getattr(response, "text", "") or ""
                 text = rendered_text_from_html(markup)
                 status_code = getattr(response, "status_code", None)
+                attempted_row = {
+                    "url": url,
+                    "final_url": getattr(response, "url", url),
+                    "status_code": status_code,
+                }
                 if response_is_forbidden(status_code, title_from_html(markup), text):
                     last_error = "thedogs_403_forbidden"
+                    attempted_row["error"] = last_error
+                    attempted_urls.append(attempted_row)
                     break
                 if status_code and status_code >= 400:
                     last_error = f"thedogs_http_{status_code}"
+                    attempted_row["error"] = last_error
+                    attempted_urls.append(attempted_row)
                     continue
 
                 result = self._result_from_html(candidate, getattr(response, "url", url), markup)
                 if result:
+                    attempted_row["result"] = result.status
+                    attempted_urls.append(attempted_row)
                     return result
                 last_error = "no_thedogs_positions_found"
+                attempted_row["error"] = last_error
+                attempted_urls.append(attempted_row)
             except Exception as exc:
                 last_error = f"thedogs_http_error:{type(exc).__name__}"
+                attempted_urls.append(
+                    {
+                        "url": url,
+                        "final_url": url,
+                        "status_code": None,
+                        "error": last_error,
+                    }
+                )
 
         if last_error:
             return SourceResult(
@@ -913,6 +983,7 @@ class TheDogsResultFetcher:
                 positions_by_box={},
                 raw_order=[],
                 error=last_error,
+                attempted_urls=attempted_urls,
             )
         return None
 
@@ -936,6 +1007,7 @@ class TheDogsResultFetcher:
             return http_result
 
         last_error = None
+        attempted_urls: List[dict] = list(http_result.attempted_urls or []) if http_result else []
         if http_result and http_result.error:
             last_error = http_result.error
         for url in urls:
@@ -946,6 +1018,15 @@ class TheDogsResultFetcher:
                 text = self.driver.find_element(self.by.TAG_NAME, "body").text
                 if response_is_forbidden(None, title, text):
                     last_error = "thedogs_403_forbidden"
+                    attempted_urls.append(
+                        {
+                            "url": url,
+                            "final_url": url,
+                            "status_code": None,
+                            "error": last_error,
+                            "surface": "selenium",
+                        }
+                    )
                     break
                 page_source = getattr(self.driver, "page_source", None)
                 result = (
@@ -956,8 +1037,26 @@ class TheDogsResultFetcher:
                 if result:
                     return result
                 last_error = "no_thedogs_positions_found"
+                attempted_urls.append(
+                    {
+                        "url": url,
+                        "final_url": url,
+                        "status_code": None,
+                        "error": last_error,
+                        "surface": "selenium",
+                    }
+                )
             except Exception as exc:
                 last_error = f"thedogs_error:{type(exc).__name__}"
+                attempted_urls.append(
+                    {
+                        "url": url,
+                        "final_url": url,
+                        "status_code": None,
+                        "error": last_error,
+                        "surface": "selenium",
+                    }
+                )
 
         return SourceResult(
             source="thedogs_official",
@@ -966,6 +1065,7 @@ class TheDogsResultFetcher:
             positions_by_box={},
             raw_order=[],
             error=last_error or "thedogs_unknown_error",
+            attempted_urls=attempted_urls,
         )
 
 
@@ -1594,10 +1694,36 @@ def write_result(
     if dry_run:
         summary = {
             "race_id": candidate.race_id,
+            "venue": candidate.venue,
+            "race_number": candidate.race_number,
+            "race_date": candidate.race_date,
+            "race_time": candidate.race_time,
+            "start_datetime": candidate.start_datetime,
             "status": result.status,
             "source": result.source,
+            "source_url": result.source_url,
             "winner_name": winner_name,
+            "winner_box": winner_box,
             "box_order": result.raw_order,
+            "positions": [
+                {
+                    "box_number": int(box),
+                    "finish_position": int(position),
+                    "dog_name": box_to_name.get(int(box)),
+                }
+                for box, position in sorted(
+                    result.positions_by_box.items(),
+                    key=lambda item: (item[1], item[0]),
+                )
+            ],
+            "participants": [
+                {
+                    "box_number": int(participant["box_number"]),
+                    "dog_name": participant["dog_name"],
+                }
+                for participant in candidate.participants
+            ],
+            "participant_source": candidate.participant_source,
             "dry_run": True,
         }
         if terminal_statuses:
