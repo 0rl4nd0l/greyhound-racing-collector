@@ -54,6 +54,33 @@ UNSAFE_TARGET_SOURCE_MARKERS = (
     "sportsbet_result",
 )
 POST_RESULT_URL_MARKERS = ("result", "results", "dividend", "dividends", "payout", "payouts")
+WEATHER_TRACK_PLACEHOLDERS = {
+    "",
+    "-",
+    "--",
+    "n/a",
+    "na",
+    "none",
+    "null",
+    "unknown",
+    "tba",
+    "tbd",
+    "to be advised",
+    "to be confirmed",
+}
+TRACK_CONDITION_FIELDS = (
+    "track_condition",
+    "track condition",
+    "trackCondition",
+    "trackConditionText",
+)
+WEATHER_FIELDS = (
+    "weather",
+    "weather_condition",
+    "weather condition",
+    "weatherCondition",
+    "weatherConditionText",
+)
 FORM_GUIDE_SPEC_VERSION = "form_guide_pipe_v1"
 THEDOGS_EXPERT_FORM_COLUMNS = (
     "Dog Name",
@@ -162,6 +189,175 @@ def normalize_target_grade(value: Any) -> Optional[str]:
                 return re.sub(r"\bGRADE\b", "Grade", value)
             return value.upper() if value.upper() == "FFA" else value.title()
     return None
+
+
+def normalize_weather_track_text(value: Any) -> Optional[str]:
+    """Normalize explicit pre-race weather/track text and reject placeholders."""
+
+    if value is None:
+        return None
+    text = re.sub(r"\s+", " ", str(value).strip())
+    if not text:
+        return None
+    if text.lower() in WEATHER_TRACK_PLACEHOLDERS:
+        return None
+    return text
+
+
+def _first_named_value(mapping: Mapping[str, Any], fields: tuple[str, ...]) -> Any:
+    lower_map = {str(key).lower(): key for key in mapping.keys()}
+    for field in fields:
+        actual = lower_map.get(field.lower())
+        if actual is None:
+            continue
+        value = mapping.get(actual)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _weather_track_source_url(payload: Mapping[str, Any], race_info: Mapping[str, Any]) -> Any:
+    return (
+        payload.get("metadata_source_url")
+        or payload.get("race_url")
+        or race_info.get("url")
+    )
+
+
+def _safe_pre_race_context(payload: Mapping[str, Any], race_info: Mapping[str, Any]) -> bool:
+    source_url = _weather_track_source_url(payload, race_info)
+    return (
+        (
+            payload.get("metadata_is_leakage_safe") is True
+            or payload.get("weather_track_metadata_is_leakage_safe") is True
+        )
+        and _is_thedogs_source_url(source_url)
+        and not _looks_post_result_source_url(source_url)
+    )
+
+
+def build_safe_weather_track_metadata_payload(
+    race_info: Optional[Mapping[str, Any]] = None,
+    *,
+    source_url: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Build leakage-safe weather/track metadata from explicit pre-race fields only."""
+
+    race_info_dict = dict(race_info or {})
+    payload: Dict[str, Any] = {
+        "track_condition": None,
+        "weather": None,
+        "weather_condition": None,
+        "weather_track_metadata_source": None,
+        "weather_track_metadata_is_leakage_safe": False,
+        "rejected_weather_track_metadata_sources": [],
+    }
+    source_url_safe = (
+        _is_thedogs_source_url(source_url)
+        and not _looks_post_result_source_url(source_url)
+    )
+    if not source_url_safe:
+        payload["rejected_weather_track_metadata_sources"].append(
+            "source_url_missing_or_not_pre_race_thedogs"
+        )
+        return payload
+
+    track_condition = normalize_weather_track_text(
+        _first_named_value(race_info_dict, TRACK_CONDITION_FIELDS)
+    )
+    weather = normalize_weather_track_text(_first_named_value(race_info_dict, WEATHER_FIELDS))
+    if not track_condition:
+        payload["rejected_weather_track_metadata_sources"].append(
+            "track_condition_missing_or_placeholder"
+        )
+    if not weather:
+        payload["rejected_weather_track_metadata_sources"].append(
+            "weather_missing_or_placeholder"
+        )
+    if track_condition:
+        payload["track_condition"] = track_condition
+    if weather:
+        payload["weather"] = weather
+        payload["weather_condition"] = weather
+    if track_condition or weather:
+        payload["weather_track_metadata_source"] = "canonical_pre_race_page"
+        payload["weather_track_metadata_is_leakage_safe"] = True
+    return payload
+
+
+def safe_weather_track_metadata_from_payload(payload: Mapping[str, Any]) -> Dict[str, Any]:
+    """Extract sidecar weather/track metadata without consulting result, odds, or history fields."""
+
+    default: Dict[str, Any] = {
+        "track_condition": None,
+        "weather": None,
+        "weather_condition": None,
+        "weather_track_metadata_source": None,
+        "weather_track_metadata_is_leakage_safe": False,
+        "rejected_weather_track_metadata_sources": [],
+    }
+    if not isinstance(payload, Mapping):
+        return {
+            **default,
+            "rejected_weather_track_metadata_sources": ["sidecar_not_object"],
+        }
+
+    race_info = payload.get("race_info") if isinstance(payload.get("race_info"), Mapping) else {}
+    rejected = list(payload.get("rejected_weather_track_metadata_sources") or [])
+    if not _safe_pre_race_context(payload, race_info):
+        rejected.append("sidecar_not_verified_pre_race_context")
+        return {**default, "rejected_weather_track_metadata_sources": rejected}
+
+    track_condition = normalize_weather_track_text(
+        _first_named_value(payload, TRACK_CONDITION_FIELDS)
+        or _first_named_value(race_info, TRACK_CONDITION_FIELDS)
+    )
+    weather = normalize_weather_track_text(
+        _first_named_value(payload, WEATHER_FIELDS)
+        or _first_named_value(race_info, WEATHER_FIELDS)
+    )
+    if not track_condition:
+        rejected.append("track_condition_missing_or_placeholder")
+    if not weather:
+        rejected.append("weather_missing_or_placeholder")
+
+    return {
+        "track_condition": track_condition,
+        "weather": weather,
+        "weather_condition": weather,
+        "weather_track_metadata_source": payload.get("weather_track_metadata_source")
+        or "canonical_pre_race_page",
+        "weather_track_metadata_is_leakage_safe": bool(track_condition or weather),
+        "rejected_weather_track_metadata_sources": rejected,
+    }
+
+
+def load_safe_weather_track_metadata(csv_path: Union[str, os.PathLike]) -> Dict[str, Any]:
+    """Read leakage-safe weather/track metadata from a CSV sidecar, if present."""
+
+    sidecar_path = _sidecar_path(csv_path)
+    default = {
+        "track_condition": None,
+        "weather": None,
+        "weather_condition": None,
+        "weather_track_metadata_source": None,
+        "weather_track_metadata_is_leakage_safe": False,
+        "rejected_weather_track_metadata_sources": [],
+    }
+    if not os.path.exists(sidecar_path):
+        return {
+            **default,
+            "rejected_weather_track_metadata_sources": ["sidecar_metadata_missing"],
+        }
+    try:
+        with open(sidecar_path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except Exception:
+        return {
+            **default,
+            "rejected_weather_track_metadata_sources": ["sidecar_metadata_unreadable"],
+        }
+    return safe_weather_track_metadata_from_payload(payload)
 
 
 def is_safe_sidecar_target_source(source: Any) -> bool:
@@ -645,9 +841,12 @@ def build_csv_download_provenance_payload(
                 "race_time_mapping_status",
                 "race_time_source",
                 "title",
+                "track_condition",
                 "url",
                 "venue",
                 "venue_name",
+                "weather",
+                "weather_condition",
             }
             and value not in (None, "")
         },
@@ -669,6 +868,12 @@ def build_csv_download_provenance_payload(
             source_url=race_url,
             source="canonical_pre_race_page",
             allow_generic_fields=allow_generic_fields,
+        )
+    )
+    payload.update(
+        build_safe_weather_track_metadata_payload(
+            race_info_dict,
+            source_url=race_url,
         )
     )
     if normalization:

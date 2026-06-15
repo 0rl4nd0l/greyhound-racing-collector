@@ -70,6 +70,7 @@ CALIBRATION_METHOD_KEY = "power_gamma_2.4"
 POWER_GAMMA = 2.4
 SHADOW_MODEL_FAMILY = "RandomForest"
 SHADOW_OUTPUT_MODE = "shadow_only"
+EXPECTED_SHADOW_FEATURE_COUNT = 103
 ALL_MISSING_TRAIN_POLICIES = ("report_only", "quarantine_feature", "fail")
 WATCHED_PARITY_FEATURES = (
     "same_distance_same_grade_best_time",
@@ -268,8 +269,10 @@ def validate_schema_contract(schema: Mapping[str, Any]) -> dict[str, Any]:
     )
     duplicate_features = sorted(feature for feature, count in Counter(features).items() if count > 1)
     fail_reasons: list[str] = []
-    if len(features) != 78:
-        fail_reasons.append(f"feature_count_not_78:{len(features)}")
+    if len(features) != EXPECTED_SHADOW_FEATURE_COUNT:
+        fail_reasons.append(
+            f"feature_count_not_{EXPECTED_SHADOW_FEATURE_COUNT}:{len(features)}"
+        )
     if tgr_columns:
         fail_reasons.append(f"tgr_columns_present:{len(tgr_columns)}")
     if hard_exclusions:
@@ -591,7 +594,10 @@ def build_shadow_feature_matrix(
             "db": shadow_relpath(db_path),
         },
         "label_audit": label_audit,
-        "feature_columns_exactly_78": len(dataset["features"]) == 78,
+        "feature_columns_match_expected_count": (
+            len(dataset["features"]) == EXPECTED_SHADOW_FEATURE_COUNT
+        ),
+        "expected_feature_count": EXPECTED_SHADOW_FEATURE_COUNT,
         "tgr_columns_present": [feature for feature in dataset["features"] if feature.startswith("tgr_")],
         "hard_exclusions_present": sorted(
             set(dataset["features"]).intersection(HARD_EXCLUDED_FEATURE_NAMES)
@@ -1711,6 +1717,15 @@ def csv_value(row: Mapping[str, Any], *names: str) -> Any:
     return None
 
 
+def usable_metadata_text(value: Any) -> str | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if text.lower() in {"unknown", "n/a", "na", "none", "null", "-"}:
+        return None
+    return text
+
+
 def parse_live_runner_identity(raw_dog_name: Any, raw_box: Any) -> tuple[str, int | None]:
     dog_name_text = str(raw_dog_name or "").strip()
     if not dog_name_text:
@@ -1773,9 +1788,86 @@ def load_live_sidecar_context(path: Path) -> dict[str, Any]:
             or payload.get("race_url")
             or race_info.get("url")
         )
+        context["track_condition"] = usable_metadata_text(
+            payload.get("track_condition") or race_info.get("track_condition")
+        )
+        context["weather"] = usable_metadata_text(
+            payload.get("weather") or race_info.get("weather")
+        )
     elif race_info:
         context["rejected_metadata_sources"].append("sidecar_race_info_not_leakage_safe")
     return context
+
+
+def canonical_weather_track_metadata(
+    connection: Any,
+    *,
+    race_date: str | None,
+    venue: str,
+    race_number: int | None,
+) -> dict[str, Any]:
+    if not race_date or not venue or race_number is None or not hasattr(connection, "execute"):
+        return {"status": "MISSING", "reason": "insufficient_target_identity"}
+    try:
+        columns = {
+            str(row[1])
+            for row in connection.execute("PRAGMA table_info(race_metadata)").fetchall()
+        }
+    except Exception:
+        return {"status": "MISSING", "reason": "race_metadata_schema_unavailable"}
+    required = {"race_id", "venue", "race_number", "race_date"}
+    if not required.issubset(columns):
+        return {"status": "MISSING", "reason": "race_metadata_identity_columns_missing"}
+
+    select_fields = ["race_id", "venue", "race_number", "race_date"]
+    select_fields.append("track_condition" if "track_condition" in columns else "NULL AS track_condition")
+    select_fields.append("weather" if "weather" in columns else "NULL AS weather")
+    select_fields.append(
+        "weather_condition" if "weather_condition" in columns else "NULL AS weather_condition"
+    )
+    if "race_time" in columns:
+        select_fields.append("race_time")
+    if "url" in columns:
+        select_fields.append("url")
+    if "data_source" in columns:
+        select_fields.append("data_source")
+
+    try:
+        rows = [
+            dict(row)
+            for row in connection.execute(
+                f"""
+                SELECT {", ".join(select_fields)}
+                FROM race_metadata
+                WHERE race_date = ? AND upper(venue) = upper(?) AND race_number = ?
+                """,
+                (race_date, venue, race_number),
+            )
+        ]
+    except Exception:
+        return {"status": "MISSING", "reason": "race_metadata_lookup_failed"}
+    if not rows:
+        return {"status": "MISSING", "reason": "no_canonical_race_metadata_match"}
+    if len(rows) != 1:
+        return {
+            "status": "AMBIGUOUS",
+            "reason": f"ambiguous_canonical_race_metadata_matches:{len(rows)}",
+            "candidate_count": len(rows),
+        }
+
+    row = rows[0]
+    return {
+        "status": "SAFE",
+        "reason": "unique_date_venue_race_number_metadata_match",
+        "source": "canonical_race_metadata_unique_date_venue_race_number",
+        "source_race_id": row.get("race_id"),
+        "source_url": row.get("url"),
+        "data_source": row.get("data_source"),
+        "track_condition": usable_metadata_text(row.get("track_condition")),
+        "weather": usable_metadata_text(row.get("weather"))
+        or usable_metadata_text(row.get("weather_condition")),
+        "race_time": row.get("race_time"),
+    }
 
 
 def input_files_from_path(path: Path) -> list[Path]:
@@ -1965,146 +2057,168 @@ def build_live_feature_rows(
     connection = sqlite_ro(db_path)
     try:
         history_index = load_db_history(connection)
+        output: list[dict[str, Any]] = []
+        for path in input_paths:
+            rows = load_live_csv(path)
+            filename_metadata = extract_target_metadata_from_filename(path.name)
+            sidecar_context = load_live_sidecar_context(path)
+            sidecar_race_info = sidecar_context.get("race_info") or {}
+            runner_rows = []
+            for raw in rows:
+                dog_name, box = parse_live_runner_identity(
+                    csv_value(raw, "dog_name", "Dog Name", "dog", "runner", "runner_name"),
+                    csv_value(raw, "box_number", "box", "Box"),
+                )
+                if dog_name:
+                    runner_rows.append((raw, dog_name, box))
+            field_size = len(runner_rows)
+            race_id_default = path.stem
+            for raw, dog_name, box in runner_rows:
+                race_id = str(csv_value(raw, "race_id", "Race ID", "race") or race_id_default)
+                race_date = parse_date(
+                    csv_value(raw, "target_race_date", "race_date_safe")
+                    or sidecar_race_info.get("date")
+                    or filename_metadata.get("race_date")
+                    or path.name
+                )
+                venue = str(
+                    csv_value(raw, "target_venue", "venue_safe", "race_venue")
+                    or sidecar_race_info.get("venue")
+                    or filename_metadata.get("venue")
+                    or ""
+                )
+                race_number = (
+                    safe_int(csv_value(raw, "target_race_number", "race_number_safe"))
+                    or safe_int(sidecar_race_info.get("race_number"))
+                    or safe_int(filename_metadata.get("race_number"))
+                    or parse_race_number(race_id)
+                )
+                canonical_context = canonical_weather_track_metadata(
+                    connection,
+                    race_date=race_date,
+                    venue=venue,
+                    race_number=race_number,
+                )
+                track_condition = (
+                    usable_metadata_text(csv_value(raw, "track_condition", "Track Condition"))
+                    or sidecar_context.get("track_condition")
+                    or canonical_context.get("track_condition")
+                )
+                weather = (
+                    usable_metadata_text(csv_value(raw, "weather", "Weather"))
+                    or sidecar_context.get("weather")
+                    or canonical_context.get("weather")
+                )
+                race_time = (
+                    csv_value(raw, "race_time", "jump_time", "Race Time")
+                    or sidecar_race_info.get("race_time")
+                    or canonical_context.get("race_time")
+                )
+                target_distance = safe_float(
+                    csv_value(raw, "target_distance_safe", "target_distance", "race_distance")
+                    or sidecar_context.get("target_distance")
+                )
+                target_grade = normalize_grade(
+                    csv_value(raw, "target_grade_safe", "target_grade", "race_grade")
+                    or sidecar_context.get("target_grade")
+                )
+                target_distance_source = (
+                    "explicit_csv_target_field"
+                    if csv_value(raw, "target_distance_safe", "target_distance", "race_distance")
+                    not in (None, "")
+                    else sidecar_context.get("target_distance_source")
+                )
+                target_grade_source = (
+                    "explicit_csv_target_field"
+                    if csv_value(raw, "target_grade_safe", "target_grade", "race_grade")
+                    not in (None, "")
+                    else sidecar_context.get("target_grade_source")
+                )
+                target = {"distance": target_distance, "grade": target_grade}
+                row_features = {feature: None for feature in features}
+                row_features.update(
+                    {
+                        "field_size": field_size,
+                        "box_number": box,
+                        "box_band_inside": 1 if box in (1, 2) else 0,
+                        "box_band_middle": 1 if box in (3, 4, 5, 6) else 0,
+                        "box_band_outside": 1 if box is not None and box >= 7 else 0,
+                        "target_distance_safe": target_distance,
+                        "target_distance_source_is_safe": 1 if target_distance is not None else 0,
+                        "target_distance_missing": 0 if target_distance is not None else 1,
+                        "target_grade_safe": target_grade,
+                        "target_grade_normalized": target_grade,
+                        "target_grade_missing": 0 if target_grade else 1,
+                        "target_grade_vocab_known": 1 if target_grade else 0,
+                        "target_grade_provenance_safe": 1 if target_grade else 0,
+                        "venue": venue,
+                        "race_number": race_number,
+                        "race_time_minutes_since_midnight": parse_datetime_minutes(race_time),
+                        "track_condition": track_condition,
+                        "weather": weather,
+                        "target_month": safe_int((race_date or "").split("-")[1]) if race_date else None,
+                        "target_day_of_week": datetime.fromisoformat(race_date).weekday()
+                        if race_date
+                        else None,
+                        "target_distance_band_sprint": 1
+                        if target_distance is not None and target_distance < 450
+                        else 0
+                        if target_distance is not None
+                        else None,
+                        "target_distance_band_middle": 1
+                        if target_distance is not None and 450 <= target_distance < 650
+                        else 0
+                        if target_distance is not None
+                        else None,
+                        "target_distance_band_staying": 1
+                        if target_distance is not None and target_distance >= 650
+                        else 0
+                        if target_distance is not None
+                        else None,
+                    }
+                )
+                dog_history = [
+                    row
+                    for row in history_index.get(clean_name(dog_name), [])
+                    if race_date and str(row.get("race_date") or "") < race_date
+                ]
+                add_history_features(row_features, dog_history, target, race_date, venue)
+                history_provenance = same_distance_same_grade_live_row_provenance(
+                    history_rows=dog_history,
+                    target=target,
+                )
+                output_row = {
+                    "race_id": race_id,
+                    "shadow_race_group_id": f"{path.as_posix()}::{race_id}",
+                    "source_csv": shadow_relpath(path),
+                    "race_date": race_date,
+                    "venue": venue,
+                    "dog_name": dog_name,
+                    "box_number": box,
+                    "target_distance_source": target_distance_source,
+                    "target_grade_source": target_grade_source,
+                    "target_metadata_source_url": sidecar_context.get("metadata_source_url"),
+                    "target_weather_track_metadata_status": canonical_context.get("status"),
+                    "target_weather_track_metadata_source": canonical_context.get("source"),
+                    "target_weather_track_metadata_reason": canonical_context.get("reason"),
+                    "target_weather_track_source_race_id": canonical_context.get("source_race_id"),
+                    "target_metadata_from_sidecar": bool(
+                        sidecar_context.get("metadata_is_leakage_safe")
+                        and (
+                            sidecar_context.get("target_distance")
+                            or sidecar_context.get("target_grade")
+                        )
+                    ),
+                    "target_metadata_rejected_sources": sidecar_context.get(
+                        "rejected_metadata_sources", []
+                    ),
+                }
+                output_row.update(history_provenance)
+                output_row.update(row_features)
+                output.append(output_row)
+        return output
     finally:
         connection.close()
-    output: list[dict[str, Any]] = []
-    for path in input_paths:
-        rows = load_live_csv(path)
-        filename_metadata = extract_target_metadata_from_filename(path.name)
-        sidecar_context = load_live_sidecar_context(path)
-        sidecar_race_info = sidecar_context.get("race_info") or {}
-        runner_rows = []
-        for raw in rows:
-            dog_name, box = parse_live_runner_identity(
-                csv_value(raw, "dog_name", "Dog Name", "dog", "runner", "runner_name"),
-                csv_value(raw, "box_number", "box", "Box"),
-            )
-            if dog_name:
-                runner_rows.append((raw, dog_name, box))
-        field_size = len(runner_rows)
-        race_id_default = path.stem
-        for raw, dog_name, box in runner_rows:
-            race_id = str(csv_value(raw, "race_id", "Race ID", "race") or race_id_default)
-            race_date = parse_date(
-                csv_value(raw, "target_race_date", "race_date_safe")
-                or sidecar_race_info.get("date")
-                or filename_metadata.get("race_date")
-                or path.name
-            )
-            venue = str(
-                csv_value(raw, "target_venue", "venue_safe", "race_venue")
-                or sidecar_race_info.get("venue")
-                or filename_metadata.get("venue")
-                or ""
-            )
-            race_number = (
-                safe_int(csv_value(raw, "target_race_number", "race_number_safe"))
-                or safe_int(sidecar_race_info.get("race_number"))
-                or safe_int(filename_metadata.get("race_number"))
-                or parse_race_number(race_id)
-            )
-            target_distance = safe_float(
-                csv_value(raw, "target_distance_safe", "target_distance", "race_distance")
-                or sidecar_context.get("target_distance")
-            )
-            target_grade = normalize_grade(
-                csv_value(raw, "target_grade_safe", "target_grade", "race_grade")
-                or sidecar_context.get("target_grade")
-            )
-            target_distance_source = (
-                "explicit_csv_target_field"
-                if csv_value(raw, "target_distance_safe", "target_distance", "race_distance")
-                not in (None, "")
-                else sidecar_context.get("target_distance_source")
-            )
-            target_grade_source = (
-                "explicit_csv_target_field"
-                if csv_value(raw, "target_grade_safe", "target_grade", "race_grade")
-                not in (None, "")
-                else sidecar_context.get("target_grade_source")
-            )
-            target = {"distance": target_distance, "grade": target_grade}
-            row_features = {feature: None for feature in features}
-            row_features.update(
-                {
-                    "field_size": field_size,
-                    "box_number": box,
-                    "box_band_inside": 1 if box in (1, 2) else 0,
-                    "box_band_middle": 1 if box in (3, 4, 5, 6) else 0,
-                    "box_band_outside": 1 if box is not None and box >= 7 else 0,
-                    "target_distance_safe": target_distance,
-                    "target_distance_source_is_safe": 1 if target_distance is not None else 0,
-                    "target_distance_missing": 0 if target_distance is not None else 1,
-                    "target_grade_safe": target_grade,
-                    "target_grade_normalized": target_grade,
-                    "target_grade_missing": 0 if target_grade else 1,
-                    "target_grade_vocab_known": 1 if target_grade else 0,
-                    "target_grade_provenance_safe": 1 if target_grade else 0,
-                    "venue": venue,
-                    "race_number": race_number,
-                    "race_time_minutes_since_midnight": parse_datetime_minutes(
-                        csv_value(raw, "race_time", "jump_time", "Race Time")
-                        or sidecar_race_info.get("race_time")
-                    ),
-                    "track_condition": csv_value(raw, "track_condition", "Track Condition"),
-                    "weather": csv_value(raw, "weather", "Weather"),
-                    "target_month": safe_int((race_date or "").split("-")[1]) if race_date else None,
-                    "target_day_of_week": datetime.fromisoformat(race_date).weekday()
-                    if race_date
-                    else None,
-                    "target_distance_band_sprint": 1
-                    if target_distance is not None and target_distance < 450
-                    else 0
-                    if target_distance is not None
-                    else None,
-                    "target_distance_band_middle": 1
-                    if target_distance is not None and 450 <= target_distance < 650
-                    else 0
-                    if target_distance is not None
-                    else None,
-                    "target_distance_band_staying": 1
-                    if target_distance is not None and target_distance >= 650
-                    else 0
-                    if target_distance is not None
-                    else None,
-                }
-            )
-            dog_history = [
-                row
-                for row in history_index.get(clean_name(dog_name), [])
-                if race_date and str(row.get("race_date") or "") < race_date
-            ]
-            add_history_features(row_features, dog_history, target, race_date, venue)
-            history_provenance = same_distance_same_grade_live_row_provenance(
-                history_rows=dog_history,
-                target=target,
-            )
-            output_row = {
-                "race_id": race_id,
-                "shadow_race_group_id": f"{path.as_posix()}::{race_id}",
-                "source_csv": shadow_relpath(path),
-                "race_date": race_date,
-                "venue": venue,
-                "dog_name": dog_name,
-                "box_number": box,
-                "target_distance_source": target_distance_source,
-                "target_grade_source": target_grade_source,
-                "target_metadata_source_url": sidecar_context.get("metadata_source_url"),
-                "target_metadata_from_sidecar": bool(
-                    sidecar_context.get("metadata_is_leakage_safe")
-                    and (
-                        sidecar_context.get("target_distance")
-                        or sidecar_context.get("target_grade")
-                    )
-                ),
-                "target_metadata_rejected_sources": sidecar_context.get(
-                    "rejected_metadata_sources", []
-                ),
-            }
-            output_row.update(history_provenance)
-            output_row.update(row_features)
-            output.append(output_row)
-    return output
 
 
 def score_live(args: argparse.Namespace) -> int:

@@ -195,10 +195,11 @@ def _json_default(value: Any) -> Any:
 
 
 def assert_output_dir_safe(output_dir: Path, repo_root: Path = ROOT) -> Path:
-    resolved = output_dir.resolve()
-    root = repo_root.resolve()
+    logical = output_dir if output_dir.is_absolute() else repo_root / output_dir
+    logical = logical.absolute()
+    root = repo_root.absolute()
     try:
-        relative = resolved.relative_to(root)
+        relative = logical.relative_to(root)
     except ValueError as exc:
         raise ValueError("output_dir_must_be_inside_repo") from exc
     relative_text = relative.as_posix()
@@ -208,7 +209,25 @@ def assert_output_dir_safe(output_dir: Path, repo_root: Path = ROOT) -> Path:
     required_parent = "artifacts/full_evidence_orchestration_20260525"
     if not relative_text.startswith(required_parent + "/"):
         raise ValueError(f"output_dir_must_be_under:{required_parent}")
-    return resolved
+    return logical
+
+
+def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    return {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+
+
+def _column_expr(
+    alias: str,
+    columns: set[str],
+    column: str,
+    *,
+    fallback: str | None = None,
+) -> str:
+    if column in columns:
+        return f"{alias}.{column}"
+    if fallback and fallback in columns:
+        return f"{alias}.{fallback} AS {column}"
+    return f"NULL AS {column}"
 
 
 def _write_json(path: Path, payload: Any) -> None:
@@ -408,24 +427,48 @@ def _group_rows(rows: list[dict[str, Any]], key: str) -> dict[str, list[dict[str
 def _histories_by_dog(db_path: Path) -> dict[str, list[dict[str, Any]]]:
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
+        dog_columns = _table_columns(conn, "dog_race_data")
+        race_columns = _table_columns(conn, "race_metadata")
+        order_start = "r.start_datetime" if "start_datetime" in race_columns else "r.race_date"
+        finish_where = (
+            "d.finish_position"
+            if "finish_position" in dog_columns
+            else "d.placing"
+            if "placing" in dog_columns
+            else "NULL"
+        )
         rows = conn.execute(
             """
             SELECT
-                d.dog_clean_name,
-                d.dog_name,
-                d.finish_position,
-                d.individual_time,
-                r.distance,
-                r.race_date,
-                r.start_datetime,
-                r.venue,
-                r.race_id
+                {dog_clean_name},
+                {dog_name},
+                {finish_position},
+                {individual_time},
+                {grade},
+                {distance},
+                {race_date},
+                {start_datetime},
+                {venue},
+                {race_id}
             FROM dog_race_data d
             JOIN race_metadata r ON d.race_id = r.race_id
             WHERE r.race_date IS NOT NULL
-              AND d.finish_position IS NOT NULL
-            ORDER BY r.race_date DESC, r.start_datetime DESC, r.race_id DESC
-            """
+              AND {finish_where} IS NOT NULL
+            ORDER BY r.race_date DESC, {order_start} DESC, r.race_id DESC
+            """.format(
+                dog_clean_name=_column_expr("d", dog_columns, "dog_clean_name"),
+                dog_name=_column_expr("d", dog_columns, "dog_name", fallback="dog_clean_name"),
+                finish_position=_column_expr("d", dog_columns, "finish_position", fallback="placing"),
+                individual_time=_column_expr("d", dog_columns, "individual_time"),
+                grade=_column_expr("r", race_columns, "grade"),
+                distance=_column_expr("r", race_columns, "distance"),
+                race_date=_column_expr("r", race_columns, "race_date"),
+                start_datetime=_column_expr("r", race_columns, "start_datetime"),
+                venue=_column_expr("r", race_columns, "venue"),
+                race_id=_column_expr("r", race_columns, "race_id"),
+                order_start=order_start,
+                finish_where=finish_where,
+            )
         ).fetchall()
 
     histories: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -455,13 +498,29 @@ def _resolve_target_metadata(
             "candidate_count": 0,
         }
 
+    race_columns = _table_columns(conn, "race_metadata")
     candidates = conn.execute(
         """
-        SELECT race_id, race_date, venue, race_number, grade, distance, start_datetime
+        SELECT
+            {race_id},
+            {race_date},
+            {venue},
+            {race_number},
+            {grade},
+            {distance},
+            {start_datetime}
         FROM race_metadata
         WHERE race_date = ? AND venue = ?
         ORDER BY race_id ASC
-        """,
+        """.format(
+            race_id=_column_expr("race_metadata", race_columns, "race_id"),
+            race_date=_column_expr("race_metadata", race_columns, "race_date"),
+            venue=_column_expr("race_metadata", race_columns, "venue"),
+            race_number=_column_expr("race_metadata", race_columns, "race_number"),
+            grade=_column_expr("race_metadata", race_columns, "grade"),
+            distance=_column_expr("race_metadata", race_columns, "distance"),
+            start_datetime=_column_expr("race_metadata", race_columns, "start_datetime"),
+        ),
         (race_date, venue),
     ).fetchall()
     candidate_rows = [dict(candidate) for candidate in candidates]
@@ -542,15 +601,31 @@ def _resolve_target_grade_metadata(
                 "target_grade_vocab_status": "MISSING",
             }
 
+        race_columns = _table_columns(conn, "race_metadata")
         candidate_rows = [
             dict(candidate)
             for candidate in conn.execute(
                 """
-                SELECT race_id, race_date, venue, race_number, grade, distance, start_datetime
+                SELECT
+                    {race_id},
+                    {race_date},
+                    {venue},
+                    {race_number},
+                    {grade},
+                    {distance},
+                    {start_datetime}
                 FROM race_metadata
                 WHERE race_date = ? AND venue = ?
                 ORDER BY race_id ASC
-                """,
+                """.format(
+                    race_id=_column_expr("race_metadata", race_columns, "race_id"),
+                    race_date=_column_expr("race_metadata", race_columns, "race_date"),
+                    venue=_column_expr("race_metadata", race_columns, "venue"),
+                    race_number=_column_expr("race_metadata", race_columns, "race_number"),
+                    grade=_column_expr("race_metadata", race_columns, "grade"),
+                    distance=_column_expr("race_metadata", race_columns, "distance"),
+                    start_datetime=_column_expr("race_metadata", race_columns, "start_datetime"),
+                ),
                 (race_date, venue),
             ).fetchall()
         ]

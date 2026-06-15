@@ -48,6 +48,8 @@ CREATE_STAGING_SQL = {
         race_name TEXT,
         grade TEXT,
         distance TEXT,
+        track_condition TEXT,
+        weather TEXT,
         field_size INTEGER,
         extraction_timestamp TEXT,
         data_source TEXT
@@ -83,7 +85,32 @@ def ensure_staging_tables(conn: sqlite3.Connection) -> None:
     cur = conn.cursor()
     for sql in CREATE_STAGING_SQL.values():
         cur.executescript(sql)
+    _ensure_columns(
+        conn,
+        "csv_race_metadata_staging",
+        {
+            "track_condition": "TEXT",
+            "weather": "TEXT",
+        },
+    )
     conn.commit()
+
+
+def _table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
+    try:
+        return {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table_name})")}
+    except sqlite3.Error:
+        return set()
+
+
+def _ensure_columns(
+    conn: sqlite3.Connection, table_name: str, columns: Dict[str, str]
+) -> None:
+    existing = _table_columns(conn, table_name)
+    for column_name, column_type in columns.items():
+        if column_name in existing:
+            continue
+        conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
 
 
 def upsert_race_metadata(
@@ -94,8 +121,9 @@ def upsert_race_metadata(
     cur.execute(
         """
         INSERT OR REPLACE INTO csv_race_metadata_staging (
-            race_id, venue, race_number, race_date, race_name, grade, distance, field_size, extraction_timestamp, data_source
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 'csv_stage')
+            race_id, venue, race_number, race_date, race_name, grade, distance,
+            track_condition, weather, field_size, extraction_timestamp, data_source
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 'csv_stage')
         """,
         (
             meta.race_id,
@@ -105,38 +133,75 @@ def upsert_race_metadata(
             meta.race_name,
             meta.grade,
             meta.distance,
+            meta.track_condition,
+            meta.weather,
             field_size,
         ),
     )
 
     # Upsert into canonical table; COALESCE to avoid overwriting non-null with null
-    cur.execute(
-        """
-        INSERT INTO race_metadata (
-            race_id, venue, race_number, race_date, race_name, grade, distance, field_size, extraction_timestamp, data_source
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 'csv_stage')
-        ON CONFLICT(race_id) DO UPDATE SET
-            venue              = excluded.venue,
-            race_number        = excluded.race_number,
-            race_date          = excluded.race_date,
-            race_name          = COALESCE(excluded.race_name, race_metadata.race_name),
-            grade              = COALESCE(excluded.grade, race_metadata.grade),
-            distance           = COALESCE(excluded.distance, race_metadata.distance),
-            field_size         = excluded.field_size,
-            extraction_timestamp = excluded.extraction_timestamp,
-            data_source        = COALESCE(excluded.data_source, race_metadata.data_source)
-        """,
-        (
-            meta.race_id,
-            meta.venue,
-            meta.race_number,
-            meta.race_date,
-            meta.race_name,
-            meta.grade,
-            meta.distance,
-            field_size,
-        ),
-    )
+    race_metadata_columns = _table_columns(conn, "race_metadata")
+    if {"track_condition", "weather"}.issubset(race_metadata_columns):
+        cur.execute(
+            """
+            INSERT INTO race_metadata (
+                race_id, venue, race_number, race_date, race_name, grade, distance,
+                track_condition, weather, field_size, extraction_timestamp, data_source
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 'csv_stage')
+            ON CONFLICT(race_id) DO UPDATE SET
+                venue              = excluded.venue,
+                race_number        = excluded.race_number,
+                race_date          = excluded.race_date,
+                race_name          = COALESCE(excluded.race_name, race_metadata.race_name),
+                grade              = COALESCE(excluded.grade, race_metadata.grade),
+                distance           = COALESCE(excluded.distance, race_metadata.distance),
+                track_condition    = COALESCE(excluded.track_condition, race_metadata.track_condition),
+                weather            = COALESCE(excluded.weather, race_metadata.weather),
+                field_size         = excluded.field_size,
+                extraction_timestamp = excluded.extraction_timestamp,
+                data_source        = COALESCE(excluded.data_source, race_metadata.data_source)
+            """,
+            (
+                meta.race_id,
+                meta.venue,
+                meta.race_number,
+                meta.race_date,
+                meta.race_name,
+                meta.grade,
+                meta.distance,
+                meta.track_condition,
+                meta.weather,
+                field_size,
+            ),
+        )
+    else:
+        cur.execute(
+            """
+            INSERT INTO race_metadata (
+                race_id, venue, race_number, race_date, race_name, grade, distance, field_size, extraction_timestamp, data_source
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 'csv_stage')
+            ON CONFLICT(race_id) DO UPDATE SET
+                venue              = excluded.venue,
+                race_number        = excluded.race_number,
+                race_date          = excluded.race_date,
+                race_name          = COALESCE(excluded.race_name, race_metadata.race_name),
+                grade              = COALESCE(excluded.grade, race_metadata.grade),
+                distance           = COALESCE(excluded.distance, race_metadata.distance),
+                field_size         = excluded.field_size,
+                extraction_timestamp = excluded.extraction_timestamp,
+                data_source        = COALESCE(excluded.data_source, race_metadata.data_source)
+            """,
+            (
+                meta.race_id,
+                meta.venue,
+                meta.race_number,
+                meta.race_date,
+                meta.race_name,
+                meta.grade,
+                meta.distance,
+                field_size,
+            ),
+        )
     conn.commit()
 
 
