@@ -4806,6 +4806,144 @@ def build_feature_activation_provenance_audit(
     }
 
 
+def summarize_same_distance_history_provenance(
+    same_distance_history_provenance: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    report = same_distance_history_provenance or {}
+    by_feature = report.get("by_feature") if isinstance(report.get("by_feature"), Mapping) else {}
+    return {
+        "status": report.get("status") or "NOT_VERIFIED",
+        "feature_rows": report.get("feature_rows"),
+        "required_source": report.get("required_source") or "prior_dog_history",
+        "required_history_cutoff": report.get("required_history_cutoff")
+        or "strictly_before_target_race",
+        "target_race_rows_allowed": report.get("target_race_rows_allowed", 0),
+        "post_outcome_rows_allowed": report.get("post_outcome_rows_allowed", 0),
+        "fail_reasons": list(report.get("fail_reasons") or []),
+        "by_feature": {
+            feature: {
+                "status": (by_feature.get(feature) or {}).get("status"),
+                "present_rows": (by_feature.get(feature) or {}).get("present_rows"),
+                "prior_history_rows_used": (by_feature.get(feature) or {}).get(
+                    "prior_history_rows_used"
+                ),
+                "source": (by_feature.get(feature) or {}).get("source"),
+                "history_cutoff": (by_feature.get(feature) or {}).get("history_cutoff"),
+                "target_race_rows_used": (by_feature.get(feature) or {}).get(
+                    "target_race_rows_used"
+                ),
+                "post_outcome_rows_used": (by_feature.get(feature) or {}).get(
+                    "post_outcome_rows_used"
+                ),
+                "fail_reasons": list((by_feature.get(feature) or {}).get("fail_reasons") or []),
+            }
+            for feature in WATCHED_QUARANTINED_FEATURES
+        },
+    }
+
+
+def build_feature_activation_data_availability_status(
+    *,
+    activation_report: Mapping[str, Any] | None,
+    same_distance_history_provenance: Mapping[str, Any] | None,
+    inputs: Mapping[str, Path | None],
+) -> dict[str, Any]:
+    report = activation_report or {}
+    thresholds = report.get("thresholds") if isinstance(report.get("thresholds"), Mapping) else {}
+    features = {
+        str(row.get("feature")): row
+        for row in report.get("features") or []
+        if isinstance(row, Mapping) and row.get("feature")
+    }
+    same_distance_summary = summarize_same_distance_history_provenance(
+        same_distance_history_provenance
+    )
+    candidate_metrics_path = inputs.get("candidate_metrics")
+    any_allowed = bool(report.get("activation_allowed_features"))
+    any_quarantined = bool(report.get("kept_quarantined_features"))
+    if not report:
+        status = "FEATURE_ACTIVATION_GATE_NOT_RUN"
+    elif any_allowed and not any_quarantined:
+        status = "FEATURE_ACTIVATION_DATA_READY_REPORT_ONLY"
+    else:
+        status = "FEATURE_ACTIVATION_DATA_STILL_MISSING_KEEP_QUARANTINED"
+
+    return {
+        "schema_version": "shadow_autopilot_feature_activation_data_availability_v1",
+        "status": status,
+        "candidate_metric_comparison_status": (
+            "AVAILABLE" if candidate_metrics_path else "MISSING_OR_STALE"
+        ),
+        "candidate_metrics_path": relpath(candidate_metrics_path),
+        "fail_reason_summary": report.get("fail_reason_summary") or {},
+        "same_distance_history": same_distance_summary,
+        "next_data_requirement": {
+            "mode": "report_only_training_eval_packet",
+            "min_train_present_rows": thresholds.get("min_train_present_rows"),
+            "min_train_present_pct": thresholds.get("min_train_present_pct"),
+            "min_train_unique_present_values": thresholds.get(
+                "min_train_unique_present_values"
+            ),
+            "min_holdout_present_rows": thresholds.get("min_holdout_present_rows"),
+            "min_holdout_present_pct": thresholds.get("min_holdout_present_pct"),
+            "min_holdout_unique_present_values": thresholds.get(
+                "min_holdout_unique_present_values"
+            ),
+            "required_candidate_metric_comparison": True,
+            "history_cutoff": "strictly_before_target_race",
+            "source": "prior_dog_history",
+        },
+        "by_feature": {
+            feature: {
+                "decision": (features.get(feature) or {}).get("decision"),
+                "fail_reasons": list((features.get(feature) or {}).get("fail_reasons") or []),
+                "train_present_rows": (
+                    ((features.get(feature) or {}).get("parity") or {}).get(
+                        "train_present_rows"
+                    )
+                ),
+                "train_rows": (
+                    ((features.get(feature) or {}).get("parity") or {}).get("train_rows")
+                ),
+                "train_present_pct": (
+                    ((features.get(feature) or {}).get("parity") or {}).get(
+                        "train_present_pct"
+                    )
+                ),
+                "train_unique_present_values": (
+                    ((features.get(feature) or {}).get("parity") or {}).get(
+                        "train_unique_present_values"
+                    )
+                ),
+                "holdout_present_rows": (
+                    ((features.get(feature) or {}).get("parity") or {}).get(
+                        "holdout_present_rows"
+                    )
+                ),
+                "holdout_rows": (
+                    ((features.get(feature) or {}).get("parity") or {}).get("holdout_rows")
+                ),
+                "holdout_present_pct": (
+                    ((features.get(feature) or {}).get("parity") or {}).get(
+                        "holdout_present_pct"
+                    )
+                ),
+                "holdout_unique_present_values": (
+                    ((features.get(feature) or {}).get("parity") or {}).get(
+                        "holdout_unique_present_values"
+                    )
+                ),
+                "live_same_distance_history": (
+                    same_distance_summary.get("by_feature") or {}
+                ).get(feature)
+                or {},
+            }
+            for feature in WATCHED_QUARANTINED_FEATURES
+        },
+        "no_write_guarantees": dict(NO_WRITE_GUARANTEES),
+    }
+
+
 def feature_activation_gate_inputs(
     *,
     daily_dir: Path | None,
@@ -5537,6 +5675,9 @@ def summary_markdown(
     live_odds_capture_packet: Mapping[str, Any] | None = None,
 ) -> str:
     activation_status = activation_gate_status or {}
+    activation_data = activation_status.get("data_availability_status") or {}
+    same_distance_history = activation_data.get("same_distance_history") or {}
+    fail_summary = activation_data.get("fail_reason_summary") or {}
     odds_status = odds_snapshot_status or dashboard.get("odds_snapshot") or {}
     live_odds_status = (
         live_odds_capture_packet
@@ -5739,6 +5880,11 @@ def summary_markdown(
             f"- Output: `{activation_status.get('output_dir')}`",
             f"- Activation allowed: `{activation_status.get('activation_allowed_features')}`",
             f"- Kept quarantined: `{activation_status.get('kept_quarantined_features')}`",
+            f"- Data availability: `{activation_data.get('status')}`",
+            f"- Candidate metric comparison: `{activation_data.get('candidate_metric_comparison_status')}`",
+            f"- Blocker counts: `{fail_summary.get('reason_counts')}`",
+            f"- Same-distance history status: `{same_distance_history.get('status')}`",
+            f"- Same-distance feature rows: `{same_distance_history.get('feature_rows')}`",
             "",
             "## Readiness",
             f"- Decision: `{readiness.get('decision')}`",
@@ -7076,21 +7222,34 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             reason="prejump_metadata_report_missing",
             inputs=activation_gate_inputs,
         )
+        activation_gate_status["data_availability_status"] = (
+            build_feature_activation_data_availability_status(
+                activation_report=None,
+                same_distance_history_provenance=None,
+                inputs=activation_gate_inputs,
+            )
+        )
     elif not activation_gate_inputs.get("parity_report"):
         activation_gate_status = feature_activation_gate_status_for_skip(
             generated_at=generated_at,
             reason="train_eval_feature_parity_report_missing",
             inputs=activation_gate_inputs,
         )
+        activation_gate_status["data_availability_status"] = (
+            build_feature_activation_data_availability_status(
+                activation_report=None,
+                same_distance_history_provenance=None,
+                inputs=activation_gate_inputs,
+            )
+        )
     else:
         protected_mid_unchanged = protected_hashes() == protected_before
+        same_distance_history_provenance = load_json(
+            activation_gate_inputs["same_distance_history_provenance"]
+        ) if activation_gate_inputs.get("same_distance_history_provenance") else None
         provenance_audit = build_feature_activation_provenance_audit(
             prejump_metadata_report=load_json(daily_dir / "prejump_metadata_report.json"),
-            same_distance_history_provenance=load_json(
-                activation_gate_inputs["same_distance_history_provenance"]
-            )
-            if activation_gate_inputs.get("same_distance_history_provenance")
-            else None,
+            same_distance_history_provenance=same_distance_history_provenance,
             protected_paths_unchanged=protected_mid_unchanged,
             generated_at=generated_at,
         )
@@ -7138,6 +7297,12 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             or [],
             "kept_quarantined_features": activation_report.get("kept_quarantined_features")
             or list(WATCHED_QUARANTINED_FEATURES),
+            "fail_reason_summary": activation_report.get("fail_reason_summary") or {},
+            "data_availability_status": build_feature_activation_data_availability_status(
+                activation_report=activation_report,
+                same_distance_history_provenance=same_distance_history_provenance,
+                inputs=activation_gate_inputs,
+            ),
             "no_write_guarantees": dict(NO_WRITE_GUARANTEES),
         }
     write_json(output_dir / "feature_activation_gate_status.json", activation_gate_status)

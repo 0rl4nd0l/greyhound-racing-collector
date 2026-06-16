@@ -282,6 +282,147 @@ def _clean_official_runner_name(value: str) -> Optional[str]:
     return text or None
 
 
+def _result_identity_name(value: object) -> str:
+    text = re.sub(r"\s+", " ", str(value or "").strip())
+    return re.sub(r"[^a-z0-9]+", "", text.casefold())
+
+
+PROMOTED_RESERVE_RESULT_BOXES = {9, 10}
+PROMOTED_RESERVE_NON_NAME_SUFFIXES = frozenset({"NBT"})
+
+
+def _reserve_from_box(value: object) -> Optional[int]:
+    match = re.search(r"\(\s*from\s+box\s+(\d{1,2})\s*\)\s*$", str(value or ""), re.I)
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return None
+
+
+def _clean_promoted_reserve_name(value: object) -> Optional[str]:
+    text = re.sub(r"\s+", " ", str(value or "").strip())
+    text = re.sub(
+        r"\s+\d{1,2}\.\d{2}\s*(?=\(\s*from\s+box\s+\d{1,2}\s*\)\s*$)",
+        "",
+        text,
+        flags=re.I,
+    )
+    text = re.sub(r"\s*\(\s*from\s+box\s+\d{1,2}\s*\)\s*$", "", text, flags=re.I)
+    for suffix in PROMOTED_RESERVE_NON_NAME_SUFFIXES:
+        text = re.sub(rf"\s+{re.escape(suffix)}\s*$", "", text, flags=re.I)
+    return _clean_official_runner_name(text)
+
+
+def remap_promoted_reserve_runner_rows(
+    official_rows: List[dict],
+    participants: List[dict],
+) -> dict:
+    """Map promoted reserve result rows back to verified frozen boxes."""
+
+    participant_by_box: Dict[int, str] = {}
+    for participant in participants or []:
+        try:
+            box = int(participant.get("box_number"))
+        except Exception:
+            continue
+        name = str(participant.get("dog_name") or "").strip()
+        if box and name:
+            participant_by_box[box] = name
+
+    participant_boxes = set(participant_by_box)
+    remap_by_original: Dict[int, dict] = {}
+    target_counts: Dict[int, int] = {}
+    rejected: List[dict] = []
+    for row in official_rows or []:
+        try:
+            original_box = int(row.get("box_number") or 0)
+        except Exception:
+            continue
+        target_box = _reserve_from_box(row.get("dog_name"))
+        if (
+            not original_box
+            or target_box is None
+            or target_box not in participant_boxes
+            or original_box not in PROMOTED_RESERVE_RESULT_BOXES
+            or original_box in participant_boxes
+            or row.get("finish_position") is None
+        ):
+            continue
+        cleaned_name = _clean_promoted_reserve_name(row.get("dog_name"))
+        expected_name = participant_by_box.get(target_box)
+        if _result_identity_name(cleaned_name) != _result_identity_name(expected_name):
+            rejected.append(
+                {
+                    "original_box_number": original_box,
+                    "target_box_number": target_box,
+                    "official_dog_name": row.get("dog_name"),
+                    "cleaned_official_dog_name": cleaned_name,
+                    "expected_dog_name": expected_name,
+                    "reason": "promoted_reserve_name_mismatch",
+                }
+            )
+            continue
+        target_counts[target_box] = target_counts.get(target_box, 0) + 1
+        remap_by_original[original_box] = {
+            "original_box_number": original_box,
+            "target_box_number": target_box,
+            "official_dog_name": row.get("dog_name"),
+            "cleaned_official_dog_name": cleaned_name,
+            "expected_dog_name": expected_name,
+            "source": "thedogs_result_from_box_note",
+        }
+
+    ambiguous_targets = {box for box, count in target_counts.items() if count > 1}
+    for original_box, remap in list(remap_by_original.items()):
+        if remap["target_box_number"] in ambiguous_targets:
+            rejected.append({**remap, "reason": "duplicate_promoted_reserve_target_box"})
+            remap_by_original.pop(original_box, None)
+
+    promoted_target_boxes = {item["target_box_number"] for item in remap_by_original.values()}
+    remapped_rows: List[dict] = []
+    ignored_terminal_rows: List[dict] = []
+    for row in official_rows or []:
+        try:
+            box = int(row.get("box_number") or 0)
+        except Exception:
+            remapped_rows.append(dict(row))
+            continue
+        status = str(row.get("status") or "").upper()
+        if (
+            box in promoted_target_boxes
+            and status in {"SCR", "L/SCR", "LSCR"}
+            and row.get("finish_position") is None
+        ):
+            ignored_terminal_rows.append(
+                {
+                    "box_number": box,
+                    "status": status,
+                    "dog_name": row.get("dog_name"),
+                    "reason": "replaced_by_promoted_reserve_from_box_note",
+                }
+            )
+            continue
+        remap = remap_by_original.get(box)
+        if remap:
+            updated = dict(row)
+            updated["original_box_number"] = box
+            updated["box_number"] = remap["target_box_number"]
+            updated["dog_name"] = remap["cleaned_official_dog_name"]
+            updated["reserve_box_remap_source"] = remap["source"]
+            remapped_rows.append(updated)
+        else:
+            remapped_rows.append(dict(row))
+
+    return {
+        "rows": remapped_rows,
+        "remappings": list(remap_by_original.values()),
+        "ignored_terminal_status_rows": ignored_terminal_rows,
+        "rejected_remappings": rejected,
+    }
+
+
 def _terminal_status_from_text(value: str) -> Optional[str]:
     status = re.sub(r"\s+", " ", str(value or "").strip().upper())
     if status in {"FELL", "SCR", "L/SCR", "LSCR", "DNF", "DISQ"}:
@@ -676,6 +817,9 @@ class SourceResult:
     dog_names_by_box: Optional[Dict[int, str]] = None
     terminal_status_by_box: Optional[Dict[int, str]] = None
     attempted_urls: Optional[List[dict]] = None
+    reserve_box_remappings: Optional[List[dict]] = None
+    ignored_terminal_status_rows: Optional[List[dict]] = None
+    rejected_reserve_box_remappings: Optional[List[dict]] = None
 
     @property
     def winner_box(self) -> Optional[int]:
@@ -698,6 +842,9 @@ def _source_result_diagnostic(result: SourceResult) -> dict:
             }
             for box, status in sorted((result.terminal_status_by_box or {}).items())
         ],
+        "reserve_box_remappings": list(result.reserve_box_remappings or []),
+        "ignored_terminal_status_rows": list(result.ignored_terminal_status_rows or []),
+        "rejected_reserve_box_remappings": list(result.rejected_reserve_box_remappings or []),
         "positions": [
             {
                 "box_number": int(box),
@@ -887,12 +1034,28 @@ class TheDogsResultFetcher:
         source_url: str,
         markup: str,
     ) -> Optional[SourceResult]:
-        positions = parse_thedogs_result_html(markup)
-        terminal_statuses = parse_thedogs_result_html_terminal_statuses(markup)
         runner_rows = parse_thedogs_result_html_runner_rows(markup)
+        reserve_remap = remap_promoted_reserve_runner_rows(
+            runner_rows,
+            candidate.participants,
+        )
+        remapped_rows = reserve_remap["rows"]
+        positions = {
+            int(row["box_number"]): int(row["finish_position"])
+            for row in remapped_rows
+            if row.get("box_number") is not None and row.get("finish_position") is not None
+        }
+        terminal_statuses = {
+            int(row["box_number"]): str(row["status"])
+            for row in remapped_rows
+            if row.get("box_number") is not None and row.get("status")
+        }
+        if not runner_rows:
+            positions = parse_thedogs_result_html(markup)
+            terminal_statuses = parse_thedogs_result_html_terminal_statuses(markup)
         dog_names_by_box = {
             int(row["box_number"]): str(row.get("dog_name") or "")
-            for row in runner_rows
+            for row in remapped_rows
             if row.get("box_number") is not None and str(row.get("dog_name") or "").strip()
         }
         if positions:
@@ -907,6 +1070,9 @@ class TheDogsResultFetcher:
                 raw_order=ordered_boxes,
                 dog_names_by_box=dog_names_by_box,
                 terminal_status_by_box=terminal_statuses,
+                reserve_box_remappings=reserve_remap["remappings"],
+                ignored_terminal_status_rows=reserve_remap["ignored_terminal_status_rows"],
+                rejected_reserve_box_remappings=reserve_remap["rejected_remappings"],
             )
         if thedogs_result_rows_present(markup):
             return SourceResult(
