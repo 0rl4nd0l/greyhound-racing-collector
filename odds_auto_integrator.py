@@ -424,6 +424,113 @@ def _auto_scrape_odds_allowed(
         return False, f"feature flag unavailable: {exc}"
 
 
+def fetch_odds_for_target_race(
+    db_path: str,
+    venue: Any,
+    race_number: int | None,
+    race_date: Any = None,
+    allow_auto_scrape_odds: bool | None = None,
+) -> dict[str, Any]:
+    """Fetch current Sportsbet odds for a target race without writing DB rows."""
+
+    allowed, opt_in_source = _auto_scrape_odds_allowed(allow_auto_scrape_odds)
+    summary: dict[str, Any] = {
+        "success": False,
+        "win_count": 0,
+        "place_count": 0,
+        "warnings": [],
+        "race_id": None,
+        "alias_race_id": None,
+        "opt_in_source": opt_in_source,
+        "discovery_method": None,
+        "race_info": None,
+        "odds_data": [],
+    }
+    if not allowed:
+        summary["warnings"].append(f"auto odds scraping disabled; {opt_in_source}")
+        return summary
+    if not race_number:
+        summary["warnings"].append("race_number missing")
+        return summary
+
+    target_date = _iso_date(race_date)
+    target_names = _target_names(venue)
+
+    from sportsbet_odds_integrator import SportsbetOddsIntegrator
+
+    print(
+        "🔄 Auto odds fetch enabled "
+        f"because {opt_in_source}; target={venue} R{race_number} {target_date}"
+    )
+    integrator = SportsbetOddsIntegrator(
+        db_path,
+        allow_auto_scrape_odds=True,
+        setup_database=False,
+    )
+    try:
+        if not integrator.setup_driver():
+            summary["warnings"].append("selenium driver unavailable")
+            return summary
+        driver = integrator.driver
+        driver.get(integrator.greyhound_url)
+
+        time.sleep(5)
+        anchors = driver.find_elements("css selector", "a[href*='greyhound-racing']")
+        selected = None
+        for anchor in anchors:
+            href = anchor.get_attribute("href") or ""
+            text = (anchor.text or "").strip()
+            parsed = _parse_anchor(text, href, target_date)
+            if not parsed:
+                continue
+            if int(parsed["race_number"]) != int(race_number):
+                continue
+            if target_names and _norm(parsed["venue"]) not in target_names:
+                continue
+            selected = parsed
+            break
+        if not selected:
+            selected = _resolve_target_race_from_meeting(
+                integrator,
+                driver,
+                venue,
+                int(race_number),
+                target_date,
+            )
+            if selected:
+                summary["discovery_method"] = "sportsbet_meeting_exact_race"
+            else:
+                summary["warnings"].append(
+                    f"target race not visible on Sportsbet landing or meeting pages: venue={venue} race={race_number}"
+                )
+                return summary
+        else:
+            summary["discovery_method"] = "sportsbet_landing"
+
+        enhanced = integrator.get_race_odds_from_page(selected)
+        source_race_id = integrator._canonical_race_id(
+            enhanced.get("venue"), enhanced.get("race_date"), enhanced.get("race_number")
+        ) or enhanced.get("race_id")
+        alias = _alias_race_id(int(race_number), venue, target_date)
+        odds_data = list(enhanced.get("odds_data") or [])
+        summary.update(
+            {
+                "success": bool(odds_data),
+                "race_id": source_race_id,
+                "alias_race_id": alias,
+                "win_count": len(odds_data),
+                "place_count": len(enhanced.get("odds_data_place") or []),
+                "race_info": enhanced,
+                "odds_data": odds_data,
+            }
+        )
+        if not summary["success"]:
+            summary["warnings"].append("race found but no win odds extracted")
+        return summary
+    finally:
+        integrator.close_driver()
+
+
 def ensure_odds_for_target_race(
     db_path: str,
     venue: Any,

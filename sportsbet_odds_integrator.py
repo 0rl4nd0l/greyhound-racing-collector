@@ -292,6 +292,7 @@ class SportsbetOddsIntegrator:
         db_path="greyhound_racing_data.db",
         allow_auto_scrape_odds: Optional[bool] = None,
         dom_fallback_card_limit: Optional[int] = None,
+        setup_database: bool = True,
     ):
         self.db_path = db_path
         self.allow_auto_scrape_odds = allow_auto_scrape_odds
@@ -309,7 +310,8 @@ class SportsbetOddsIntegrator:
         self.odds_cache = {}
         self.update_interval = 30  # seconds
         self.setup_session()
-        self.setup_database()
+        if setup_database:
+            self.setup_database()
 
     def _dom_fallback_odds_allowed(self) -> Tuple[bool, str]:
         if self.allow_auto_scrape_odds is not None:
@@ -1118,6 +1120,7 @@ class SportsbetOddsIntegrator:
         topN: Optional[int] = None,
         capture_mode: str = "manual_pre_jump_snapshot",
         capture_timestamp: Optional[str] = None,
+        write_race_metadata: bool = True,
     ) -> Dict[str, Any]:
         """Append a provenance-bearing live odds snapshot without updating old odds rows."""
 
@@ -1189,21 +1192,22 @@ class SportsbetOddsIntegrator:
                 except Exception:
                     race_datetime_str = str(race_info["start_datetime"])
 
-            safe_upsert_race_metadata(
-                cursor,
-                race_id,
-                {
-                    "venue": race_info.get("venue"),
-                    "race_number": race_info.get("race_number", 0),
-                    "race_date": race_info.get("race_date"),
-                    "race_time": race_info.get("race_time"),
-                    "sportsbet_url": source_url,
-                    "url": source_url,
-                    "venue_slug": race_info.get("venue_slug", ""),
-                    "start_datetime": race_datetime_str,
-                    "race_datetime": race_datetime_str,
-                },
-            )
+            if write_race_metadata:
+                safe_upsert_race_metadata(
+                    cursor,
+                    race_id,
+                    {
+                        "venue": race_info.get("venue"),
+                        "race_number": race_info.get("race_number", 0),
+                        "race_date": race_info.get("race_date"),
+                        "race_time": race_info.get("race_time"),
+                        "sportsbet_url": source_url,
+                        "url": source_url,
+                        "venue_slug": race_info.get("venue_slug", ""),
+                        "start_datetime": race_datetime_str,
+                        "race_datetime": race_datetime_str,
+                    },
+                )
 
             live_cols = _table_columns(cursor, "live_odds")
             for row in rows:
