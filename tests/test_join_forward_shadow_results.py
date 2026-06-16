@@ -188,6 +188,133 @@ def test_classify_join_rejects_fuzzy_name_mismatch():
     assert "dog_name_mismatch_after_exact_badge_stripping" in report["identity_errors"]
 
 
+def test_classify_join_remaps_promoted_reserve_from_box_note():
+    predictions = [
+        _prediction("Race 9 - HOBT - 2026-06-16", "Over Is Over", 1, 0.6, 1),
+        _prediction("Race 9 - HOBT - 2026-06-16", "Make Waves", 8, 0.4, 2),
+    ]
+    official_rows = [
+        _official(1, "Over Is Over", 1),
+        _official(10, "Make Waves 19.50 (from box 8)", 2),
+        _official(8, "Original Box Eight", None, "SCR"),
+    ]
+
+    report = joiner.classify_result_identity_join(
+        race_id="Race 9 - HOBT - 2026-06-16",
+        prediction_rows=predictions,
+        official_rows=official_rows,
+    )
+
+    assert report["status"] == "SAFE_EXACT_BOX_AND_NAME_MATCH"
+    assert report["winner_box"] == 1
+    assert report["official_runner_rows"] == [
+        _official(1, "Over Is Over", 1),
+        {
+            "box_number": 8,
+            "dog_name": "Make Waves",
+            "finish_position": 2,
+            "status": None,
+            "original_box_number": 10,
+            "reserve_box_remap_source": "thedogs_result_from_box_note",
+        },
+    ]
+    assert report["reserve_box_remappings"] == [
+        {
+            "original_box_number": 10,
+            "target_box_number": 8,
+            "official_dog_name": "Make Waves 19.50 (from box 8)",
+            "cleaned_official_dog_name": "Make Waves",
+            "expected_dog_name": "Make Waves",
+            "source": "thedogs_result_from_box_note",
+        }
+    ]
+    assert report["ignored_terminal_status_rows"] == [
+        {
+            "box_number": 8,
+            "status": "SCR",
+            "dog_name": "Original Box Eight",
+            "reason": "replaced_by_promoted_reserve_from_box_note",
+        }
+    ]
+
+
+def test_classify_join_remaps_promoted_reserve_with_nbt_suffix():
+    predictions = [
+        _prediction("Race 9 - HOBT - 2026-06-16", "Over Is Over", 1, 0.6, 1),
+        _prediction("Race 9 - HOBT - 2026-06-16", "Juneau Rest", 4, 0.3, 2),
+        _prediction("Race 9 - HOBT - 2026-06-16", "Make Waves", 8, 0.1, 3),
+    ]
+    official_rows = [
+        _official(1, "Over Is Over", 1),
+        _official(9, "Juneau Rest NBT (from box 4)", 2),
+        _official(10, "Make Waves 19.50 (from box 8)", 3),
+        _official(4, "Original Box Four", None, "SCR"),
+        _official(8, "Original Box Eight", None, "SCR"),
+    ]
+
+    report = joiner.classify_result_identity_join(
+        race_id="Race 9 - HOBT - 2026-06-16",
+        prediction_rows=predictions,
+        official_rows=official_rows,
+    )
+
+    assert report["status"] == "SAFE_EXACT_BOX_AND_NAME_MATCH"
+    assert report["winner_box"] == 1
+    assert report["official_runner_rows"] == [
+        _official(1, "Over Is Over", 1),
+        {
+            "box_number": 4,
+            "dog_name": "Juneau Rest",
+            "finish_position": 2,
+            "status": None,
+            "original_box_number": 9,
+            "reserve_box_remap_source": "thedogs_result_from_box_note",
+        },
+        {
+            "box_number": 8,
+            "dog_name": "Make Waves",
+            "finish_position": 3,
+            "status": None,
+            "original_box_number": 10,
+            "reserve_box_remap_source": "thedogs_result_from_box_note",
+        },
+    ]
+    assert [row["target_box_number"] for row in report["reserve_box_remappings"]] == [4, 8]
+    assert [row["box_number"] for row in report["ignored_terminal_status_rows"]] == [4, 8]
+
+
+def test_classify_join_rejects_promoted_reserve_name_mismatch():
+    predictions = [
+        _prediction("Race 9 - HOBT - 2026-06-16", "Over Is Over", 1, 0.6, 1),
+        _prediction("Race 9 - HOBT - 2026-06-16", "Make Waves", 8, 0.4, 2),
+    ]
+    official_rows = [
+        _official(1, "Over Is Over", 1),
+        _official(10, "Wrong Runner 19.50 (from box 8)", 2),
+    ]
+
+    report = joiner.classify_result_identity_join(
+        race_id="Race 9 - HOBT - 2026-06-16",
+        prediction_rows=predictions,
+        official_rows=official_rows,
+    )
+
+    assert report["status"] == "UNSAFE_QUARANTINED"
+    assert "missing_predicted_boxes_in_official_result" in report["identity_errors"]
+    assert "extra_official_non_scratch_boxes_outside_prediction_set" in report["identity_errors"]
+    assert report["reserve_box_remappings"] == []
+    assert report["rejected_reserve_box_remappings"] == [
+        {
+            "original_box_number": 10,
+            "target_box_number": 8,
+            "official_dog_name": "Wrong Runner 19.50 (from box 8)",
+            "cleaned_official_dog_name": "Wrong Runner",
+            "expected_dog_name": "Make Waves",
+            "reason": "promoted_reserve_name_mismatch",
+        }
+    ]
+
+
 def test_join_forward_shadow_results_writes_partial_artifact_with_stub_fetcher(tmp_path, monkeypatch):
     monkeypatch.setattr(joiner, "ROOT", tmp_path)
     monkeypatch.setattr(

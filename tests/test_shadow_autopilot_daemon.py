@@ -616,6 +616,16 @@ def test_feature_activation_gate_status_from_autopilot_packet(tmp_path):
                 "same_distance_same_grade_best_time",
                 "same_distance_same_grade_avg_time",
             ],
+            "fail_reason_summary": {
+                "reason_counts": {"all_missing_in_train": 2}
+            },
+            "data_availability_status": {
+                "status": "FEATURE_ACTIVATION_DATA_STILL_MISSING_KEEP_QUARANTINED",
+                "same_distance_history": {
+                    "status": "PASS",
+                    "feature_rows": 122,
+                },
+            },
             "inputs": {"parity_report": "train_eval_feature_parity_report.json"},
             "no_write_guarantees": {"training": False, "db_write": False},
         },
@@ -630,6 +640,12 @@ def test_feature_activation_gate_status_from_autopilot_packet(tmp_path):
         "same_distance_same_grade_best_time",
         "same_distance_same_grade_avg_time",
     ]
+    assert status["fail_reason_summary"]["reason_counts"]["all_missing_in_train"] == 2
+    assert (
+        status["data_availability_status"]["status"]
+        == "FEATURE_ACTIVATION_DATA_STILL_MISSING_KEEP_QUARANTINED"
+    )
+    assert status["data_availability_status"]["same_distance_history"]["feature_rows"] == 122
     assert status["no_write_guarantees"]["training"] is False
 
 
@@ -835,11 +851,23 @@ def test_final_summary_includes_feature_activation_gate_status():
                 "same_distance_same_grade_best_time",
                 "same_distance_same_grade_avg_time",
             ],
+            "data_availability_status": {
+                "status": "FEATURE_ACTIVATION_DATA_STILL_MISSING_KEEP_QUARANTINED",
+                "fail_reason_summary": {
+                    "reason_counts": {"all_missing_in_train": 2}
+                },
+                "same_distance_history": {
+                    "status": "PASS",
+                    "feature_rows": 122,
+                },
+            },
         },
     )
 
     assert "FEATURE_ACTIVATION_BLOCKED_KEEP_QUARANTINED" in summary
     assert "same_distance_same_grade_avg_time" in summary
+    assert "Feature data availability: `FEATURE_ACTIVATION_DATA_STILL_MISSING_KEEP_QUARANTINED`" in summary
+    assert "Same-distance feature rows: `122`" in summary
 
 
 def test_final_summary_includes_shadow_odds_race_coverage():

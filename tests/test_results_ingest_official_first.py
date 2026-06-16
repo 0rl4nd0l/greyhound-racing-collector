@@ -192,6 +192,206 @@ def test_thedogs_result_html_preserves_non_finish_statuses(tmp_path):
     assert result.terminal_status_by_box == {5: "FELL", 9: "L/SCR"}
 
 
+def test_thedogs_result_html_remaps_promoted_reserve_from_box_note(tmp_path):
+    module = _load_ingest_module()
+    candidate = _candidate(module, tmp_path)
+    markup = """
+    <table class="race-runners race-runners--result">
+      <tr class="accordion__anchor race-runner">
+        <td class="race-runners__finish-position">1st</td>
+        <td class="race-runners__box"><sprite-svg name="rug_6"></sprite-svg></td>
+        <td class="race-runners__name"><a>Foxtrot Runner</a></td>
+      </tr>
+      <tr class="accordion__anchor race-runner">
+        <td class="race-runners__finish-position">2nd</td>
+        <td class="race-runners__box"><sprite-svg name="rug_10"></sprite-svg></td>
+        <td class="race-runners__name"><a>Hotel Runner 19.50 (from box 8)</a></td>
+      </tr>
+      <tr class="accordion__anchor race-runner race-runner--scratched">
+        <td class="race-runners__finish-position">SCR</td>
+        <td class="race-runners__box"><sprite-svg name="rug_8"></sprite-svg></td>
+        <td class="race-runners__name"><a>Original Box Eight</a></td>
+      </tr>
+    </table>
+    """
+
+    result = module.TheDogsResultFetcher(
+        driver=None,
+        wait_seconds=0,
+    )._result_from_html(candidate, "https://www.thedogs.test/race", markup)
+
+    assert result is not None
+    assert result.positions_by_box == {6: 1, 8: 2}
+    assert result.terminal_status_by_box == {}
+    assert result.reserve_box_remappings == [
+        {
+            "original_box_number": 10,
+            "target_box_number": 8,
+            "official_dog_name": "Hotel Runner 19.50 (from box 8)",
+            "cleaned_official_dog_name": "Hotel Runner",
+            "expected_dog_name": "Hotel Runner",
+            "source": "thedogs_result_from_box_note",
+        }
+    ]
+    assert result.ignored_terminal_status_rows == [
+        {
+            "box_number": 8,
+            "status": "SCR",
+            "dog_name": "Original Box Eight",
+            "reason": "replaced_by_promoted_reserve_from_box_note",
+        }
+    ]
+    assert module.result_validation_error(candidate, result) is None
+
+
+def test_thedogs_result_html_remaps_promoted_reserve_with_nbt_suffix(tmp_path):
+    module = _load_ingest_module()
+    candidate = _candidate(module, tmp_path)
+    markup = """
+    <table class="race-runners race-runners--result">
+      <tr class="accordion__anchor race-runner">
+        <td class="race-runners__finish-position">1st</td>
+        <td class="race-runners__box"><sprite-svg name="rug_6"></sprite-svg></td>
+        <td class="race-runners__name"><a>Foxtrot Runner</a></td>
+      </tr>
+      <tr class="accordion__anchor race-runner">
+        <td class="race-runners__finish-position">2nd</td>
+        <td class="race-runners__box"><sprite-svg name="rug_9"></sprite-svg></td>
+        <td class="race-runners__name"><a>Delta Runner NBT (from box 4)</a></td>
+      </tr>
+      <tr class="accordion__anchor race-runner">
+        <td class="race-runners__finish-position">3rd</td>
+        <td class="race-runners__box"><sprite-svg name="rug_10"></sprite-svg></td>
+        <td class="race-runners__name"><a>Hotel Runner 19.50 (from box 8)</a></td>
+      </tr>
+      <tr class="accordion__anchor race-runner race-runner--scratched">
+        <td class="race-runners__finish-position">SCR</td>
+        <td class="race-runners__box"><sprite-svg name="rug_4"></sprite-svg></td>
+        <td class="race-runners__name"><a>Original Box Four</a></td>
+      </tr>
+      <tr class="accordion__anchor race-runner race-runner--scratched">
+        <td class="race-runners__finish-position">SCR</td>
+        <td class="race-runners__box"><sprite-svg name="rug_8"></sprite-svg></td>
+        <td class="race-runners__name"><a>Original Box Eight</a></td>
+      </tr>
+    </table>
+    """
+
+    result = module.TheDogsResultFetcher(
+        driver=None,
+        wait_seconds=0,
+    )._result_from_html(candidate, "https://www.thedogs.test/race", markup)
+
+    assert result is not None
+    assert result.positions_by_box == {6: 1, 4: 2, 8: 3}
+    assert result.terminal_status_by_box == {}
+    assert result.reserve_box_remappings == [
+        {
+            "original_box_number": 9,
+            "target_box_number": 4,
+            "official_dog_name": "Delta Runner NBT (from box 4)",
+            "cleaned_official_dog_name": "Delta Runner",
+            "expected_dog_name": "Delta Runner",
+            "source": "thedogs_result_from_box_note",
+        },
+        {
+            "original_box_number": 10,
+            "target_box_number": 8,
+            "official_dog_name": "Hotel Runner 19.50 (from box 8)",
+            "cleaned_official_dog_name": "Hotel Runner",
+            "expected_dog_name": "Hotel Runner",
+            "source": "thedogs_result_from_box_note",
+        },
+    ]
+    assert result.ignored_terminal_status_rows == [
+        {
+            "box_number": 4,
+            "status": "SCR",
+            "dog_name": "Original Box Four",
+            "reason": "replaced_by_promoted_reserve_from_box_note",
+        },
+        {
+            "box_number": 8,
+            "status": "SCR",
+            "dog_name": "Original Box Eight",
+            "reason": "replaced_by_promoted_reserve_from_box_note",
+        },
+    ]
+    assert module.result_validation_error(candidate, result) is None
+
+
+def test_thedogs_result_html_rejects_promoted_reserve_name_mismatch(tmp_path):
+    module = _load_ingest_module()
+    candidate = _candidate(module, tmp_path)
+    markup = """
+    <table class="race-runners race-runners--result">
+      <tr class="accordion__anchor race-runner">
+        <td class="race-runners__finish-position">1st</td>
+        <td class="race-runners__box"><sprite-svg name="rug_6"></sprite-svg></td>
+        <td class="race-runners__name"><a>Foxtrot Runner</a></td>
+      </tr>
+      <tr class="accordion__anchor race-runner">
+        <td class="race-runners__finish-position">2nd</td>
+        <td class="race-runners__box"><sprite-svg name="rug_10"></sprite-svg></td>
+        <td class="race-runners__name"><a>Wrong Runner 19.50 (from box 8)</a></td>
+      </tr>
+    </table>
+    """
+
+    result = module.TheDogsResultFetcher(
+        driver=None,
+        wait_seconds=0,
+    )._result_from_html(candidate, "https://www.thedogs.test/race", markup)
+
+    assert result is not None
+    assert result.positions_by_box == {6: 1, 10: 2}
+    assert result.reserve_box_remappings == []
+    assert result.rejected_reserve_box_remappings == [
+        {
+            "original_box_number": 10,
+            "target_box_number": 8,
+            "official_dog_name": "Wrong Runner 19.50 (from box 8)",
+            "cleaned_official_dog_name": "Wrong Runner",
+            "expected_dog_name": "Hotel Runner",
+            "reason": "promoted_reserve_name_mismatch",
+        }
+    ]
+    assert (
+        module.result_validation_error(candidate, result)
+        == "result_boxes_not_in_participants:10"
+    )
+
+
+def test_promoted_reserve_remap_rejects_duplicate_target_box(tmp_path):
+    module = _load_ingest_module()
+    candidate = _candidate(module, tmp_path)
+
+    remap = module.remap_promoted_reserve_runner_rows(
+        [
+            {
+                "box_number": 9,
+                "dog_name": "Hotel Runner 19.50 (from box 8)",
+                "finish_position": 2,
+                "status": None,
+            },
+            {
+                "box_number": 10,
+                "dog_name": "Hotel Runner 19.51 (from box 8)",
+                "finish_position": 3,
+                "status": None,
+            },
+        ],
+        candidate.participants,
+    )
+
+    assert remap["remappings"] == []
+    assert [row["reason"] for row in remap["rejected_remappings"]] == [
+        "duplicate_promoted_reserve_target_box",
+        "duplicate_promoted_reserve_target_box",
+    ]
+    assert [row["box_number"] for row in remap["rows"]] == [9, 10]
+
+
 def test_result_validation_rejects_official_boxes_outside_local_participants(tmp_path):
     module = _load_ingest_module()
     candidate = _candidate(module, tmp_path)
@@ -251,6 +451,9 @@ def test_source_result_diagnostic_preserves_failed_attempt_context(tmp_path):
         "error": "missing_first_place_result",
         "raw_order": [6, 4, 7],
         "terminal_statuses": [],
+        "reserve_box_remappings": [],
+        "ignored_terminal_status_rows": [],
+        "rejected_reserve_box_remappings": [],
         "positions": [
             {"box_number": 6, "finish_position": 2},
             {"box_number": 4, "finish_position": 5},

@@ -34,6 +34,7 @@ sys.path.insert(0, ROOT_STR)
 from scripts.ingest_results_for_date import (  # noqa: E402
     THEDOGS_PUBLIC_HEADERS,
     parse_thedogs_result_html_runner_rows,
+    remap_promoted_reserve_runner_rows,
     thedogs_result_rows_present,
     thedogs_result_urls_from_race_url,
 )
@@ -397,6 +398,16 @@ def classify_result_identity_join(
     race_url: str | None = None,
     result_url: str | None = None,
 ) -> dict[str, Any]:
+    participant_rows = [
+        {"box_number": row.get("box"), "dog_name": row.get("dog_name")}
+        for row in prediction_rows
+    ]
+    reserve_remap = remap_promoted_reserve_runner_rows(
+        [dict(row) for row in official_rows],
+        participant_rows,
+    )
+    official_rows = reserve_remap["rows"]
+
     by_box: dict[int, Mapping[str, Any]] = {}
     duplicate_boxes: list[int] = []
     for official in official_rows:
@@ -476,6 +487,9 @@ def classify_result_identity_join(
         "race_url": race_url,
         "result_url": result_url,
         "official_runner_rows": [dict(row) for row in official_rows],
+        "reserve_box_remappings": reserve_remap["remappings"],
+        "ignored_terminal_status_rows": reserve_remap["ignored_terminal_status_rows"],
+        "rejected_reserve_box_remappings": reserve_remap["rejected_remappings"],
         "duplicate_official_boxes": duplicate_boxes,
         "missing_predicted_boxes": missing_predicted_boxes,
         "extra_official_boxes": extra_official_boxes,
@@ -1034,6 +1048,9 @@ def join_forward_shadow_results(
                 "identity_status": identity["status"],
                 "identity_errors": identity["identity_errors"],
                 "official_runner_rows": identity["official_runner_rows"],
+                "reserve_box_remappings": identity["reserve_box_remappings"],
+                "ignored_terminal_status_rows": identity["ignored_terminal_status_rows"],
+                "rejected_reserve_box_remappings": identity["rejected_reserve_box_remappings"],
                 "duplicate_official_boxes": identity["duplicate_official_boxes"],
                 "missing_predicted_boxes": identity["missing_predicted_boxes"],
                 "extra_official_boxes": identity["extra_official_boxes"],
@@ -1059,6 +1076,11 @@ def join_forward_shadow_results(
                     ],
                     "disallowed_extra_official_boxes": identity[
                         "disallowed_extra_official_boxes"
+                    ],
+                    "reserve_box_remappings": identity["reserve_box_remappings"],
+                    "ignored_terminal_status_rows": identity["ignored_terminal_status_rows"],
+                    "rejected_reserve_box_remappings": identity[
+                        "rejected_reserve_box_remappings"
                     ],
                     "name_mismatches": identity["name_mismatches"],
                     "official_runner_rows": identity["official_runner_rows"],
@@ -1108,6 +1130,7 @@ def join_forward_shadow_results(
             "normalization": "casefold whitespace/punctuation normalization with deterministic stripping of known non-name result badges only",
             "stripped_non_name_badges": sorted(NON_NAME_RESULT_BADGES),
             "extra_official_boxes": "allowed only when official terminal status is SCR/L-SCR/LSCR and box was absent from the pre-jump prediction field",
+            "promoted_reserve_boxes": "TheDogs result rugs 9/10 may be remapped to a frozen participant box only with a source '(from box N)' note and exact cleaned dog-name match",
             "nonwinner_missing_finish_position": "allowed after exact runner identity and exactly one official winner are established",
             "prejump_runner_set": "prediction sidecars may carry canonical pre-jump final-starter alignment evidence; it is reported with every race attempt and unsafe match",
         },

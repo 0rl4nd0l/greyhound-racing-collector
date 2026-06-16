@@ -1,0 +1,78 @@
+{
+  "schema_version": "live_daemon_data_availability_quarantine_repair_decision_v1",
+  "generated_at": "2026-06-16T16:37:46+10:00",
+  "decision": "PARTIAL_REPORT_ONLY_DAEMON_DATA_AVAILABILITY_REPAIR_READY_KEEP_FEATURES_QUARANTINED",
+  "scope": "current live daemon data availability and quarantined feature observability",
+  "no_write_guarantees": {
+    "training": false,
+    "production_promotion": false,
+    "registry_mutation": false,
+    "production_pointer_update": false,
+    "db_write": false,
+    "label_write": false,
+    "snapshot_or_manifest_mutation": false,
+    "odds_or_ev_fabrication": false,
+    "market_or_result_leakage": false
+  },
+  "subagent_findings": {
+    "live_collection": {
+      "raw_live_odds_rows": 11325,
+      "raw_live_odds_races": 595,
+      "latest_capture": "2026-06-16T16:17:02.996394+10:00",
+      "latest_cycle_joined_races": 0,
+      "cumulative_safe_joined_races": 442,
+      "cumulative_pending_races": 75,
+      "cumulative_unsafe_matches": 70,
+      "finding": "The daemon is collecting raw odds, but safe joined evidence was blocked by official-result availability/join issues and identity quarantines."
+    },
+    "official_results": {
+      "blocked_reserve_races": 2,
+      "blocked_mapping_pairs": 3,
+      "root_cause": "TheDogs official result rows can report promoted reserves under rugs 9/10 with a source '(from box N)' note while the frozen pre-jump participant remains at box N.",
+      "fix": "Parser and forward-shadow join now remap only source-backed TheDogs reserve rugs 9/10 to a frozen participant box when the cleaned official dog name exactly matches the frozen participant."
+    },
+    "quarantined_features": {
+      "features": [
+        "same_distance_same_grade_best_time",
+        "same_distance_same_grade_avg_time"
+      ],
+      "train_present_rows": 0,
+      "train_rows": 751,
+      "holdout_present_rows": 10,
+      "holdout_rows": 192,
+      "live_same_distance_present_rows": 6,
+      "live_same_distance_feature_rows": 122,
+      "decision": "keep_quarantined",
+      "reason": "Feature activation still lacks train coverage and a current report-only candidate metric comparison."
+    }
+  },
+  "code_changes": [
+    "scripts/ingest_results_for_date.py: source-backed promoted reserve remap before result validation, with accept/reject diagnostics",
+    "scripts/join_forward_shadow_results.py: same promoted reserve remap in forward-shadow join classification and identity reports",
+    "scripts/shadow_autopilot_v1.py: feature activation data-availability status with live same-distance provenance and blocker counts",
+    "scripts/shadow_autopilot_daemon.py: daemon summary pass-through for feature data-availability status"
+  ],
+  "remaining_data_gaps": [
+    {
+      "gap": "same_distance_same_grade_train_coverage",
+      "current": "0/751 train rows present for both watched same-grade timing features",
+      "required_next_step": "Build a report-only historical training/eval packet with safe pre-race target grade/distance and strict prior-history provenance."
+    },
+    {
+      "gap": "feature_activation_candidate_metrics",
+      "current": "candidate metric comparison missing or stale versus the current 442-race aggregate",
+      "required_next_step": "Run a fresh report-only challenger activation metric comparison after train coverage is nonzero and provenance passes."
+    },
+    {
+      "gap": "odds_identity_normalization",
+      "current": "raw odds are growing, but strict identity metadata still rejects many rows",
+      "required_next_step": "Normalize odds race IDs and attach canonical race metadata/source URLs at ingest/join boundaries without weakening pre-jump timing checks."
+    },
+    {
+      "gap": "same_cycle_result_artifact_flow",
+      "current": "latest live sibling daemon collected valid official result rows but same-cycle join still reported official_result_rows_not_present",
+      "required_next_step": "In the runtime variant that has autonomous official result artifacts, route report-only valid official-result artifacts into the same-cycle join input without DB writes."
+    }
+  ],
+  "decision_rationale": "The repair should reduce reserve-box quarantines in the current join/parser path and improve operator visibility into quarantined feature blockers. It does not activate the same-grade timing features, train, promote, write labels, mutate registries, or fabricate odds/EV."
+}

@@ -1251,6 +1251,8 @@ def feature_activation_gate_status_from_autopilot(
         "provenance_audit": status.get("provenance_audit"),
         "activation_allowed_features": status.get("activation_allowed_features") or [],
         "kept_quarantined_features": status.get("kept_quarantined_features") or [],
+        "fail_reason_summary": status.get("fail_reason_summary") or {},
+        "data_availability_status": status.get("data_availability_status") or {},
         "inputs": status.get("inputs") or {},
         "no_write_guarantees": status.get("no_write_guarantees") or {},
     }
@@ -2402,6 +2404,9 @@ def build_final_summary(
     next_prejump_race = next_prejump_refresh_window.get("next_race") or {}
     prejump_metadata_status = prejump_metadata_status or {}
     prejump_metadata_trend = prejump_metadata_trend or {}
+    activation_data = feature_activation_gate.get("data_availability_status") or {}
+    activation_fail_summary = activation_data.get("fail_reason_summary") or {}
+    same_distance_history = activation_data.get("same_distance_history") or {}
     return "\n".join(
         [
             "# Shadow Autopilot Daemonization V1",
@@ -2420,6 +2425,10 @@ def build_final_summary(
             f"- Probability sum: `{dashboard.get('probability_sum_status')}`",
             f"- Feature activation gate: `{feature_activation_gate.get('status')}`",
             f"- Kept quarantined features: `{feature_activation_gate.get('kept_quarantined_features') or []}`",
+            f"- Feature data availability: `{activation_data.get('status')}`",
+            f"- Feature blocker counts: `{activation_fail_summary.get('reason_counts')}`",
+            f"- Same-distance history status: `{same_distance_history.get('status')}`",
+            f"- Same-distance feature rows: `{same_distance_history.get('feature_rows')}`",
             f"- Odds coverage diagnostic: `{odds_coverage.get('status')}`",
             f"- Shadow odds snapshot: `{shadow_odds_snapshot.get('status')}`",
             f"- Shadow odds snapshot valid rows: `{shadow_odds_snapshot.get('valid_pre_jump_dog_odds_rows')}`",
