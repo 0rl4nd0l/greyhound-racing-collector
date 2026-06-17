@@ -3056,6 +3056,36 @@ def test_full_daemon_odds_window_defer_decision_allows_refresh_action():
     assert decision["due_capture_window_count"] == 1
 
 
+def test_full_daemon_odds_window_defer_decision_defers_future_pending_capture_after_refresh():
+    state = {
+        "updated_at": "2026-06-18T09:24:59+10:00",
+        "next_meaningful_action": "REFRESH_UPCOMING_RACE_WINDOW",
+        "next_meaningful_action_at": "2026-06-18T09:24:59+10:00",
+        "next_preferred_window": {
+            "status": "OPEN_NOW",
+            "next_window_closes_at": "2026-06-18T10:08:00+10:00",
+        },
+        "odds_capture_fixed_window_schedule": {
+            "next_pending_capture_at": "2026-06-18T09:38:00+10:00",
+            "status_counts": {"DUE": 1, "PENDING": 3},
+            "schedule_reconciled_with_direct_capture": True,
+            "schedule_reconciliation_reason": (
+                "direct_capture_all_ready_races_already_captured"
+            ),
+        },
+    }
+
+    decision = daemon.full_daemon_odds_window_defer_decision(
+        state,
+        current_time=daemon.datetime.fromisoformat("2026-06-18T09:32:00+10:00"),
+    )
+
+    assert decision["should_defer"] is True
+    assert decision["reason"] == "odds_capture_window_open_or_imminent"
+    assert decision["next_meaningful_action"] == "REFRESH_UPCOMING_RACE_WINDOW"
+    assert decision["next_pending_capture_at"] == "2026-06-18T09:38:00+10:00"
+
+
 def test_full_daemon_odds_window_defer_decision_ignores_closed_stale_state():
     state = {
         "next_meaningful_action": "RUN_ODDS_CAPTURE_NOW",
