@@ -231,6 +231,53 @@ def test_result_validation_rejects_local_subset_without_first_place(tmp_path):
     assert error == "missing_first_place_result"
 
 
+def test_result_validation_allows_official_dead_heat_below_first_place(tmp_path):
+    module = _load_ingest_module()
+    candidate = _candidate(module, tmp_path)
+    result = module.SourceResult(
+        source="thedogs_official",
+        status="resulted",
+        source_url="https://www.thedogs.com.au/racing/hobart/2026-06-11/1",
+        positions_by_box={6: 1, 8: 2, 1: 3, 4: 3, 2: 5},
+        raw_order=[6, 8, 1, 4, 2],
+    )
+
+    assert module.result_validation_error(candidate, result) is None
+    assert result.winner_box == 6
+
+
+def test_result_validation_rejects_non_competition_rank_positions(tmp_path):
+    module = _load_ingest_module()
+    candidate = _candidate(module, tmp_path)
+    result = module.SourceResult(
+        source="thedogs_official",
+        status="resulted",
+        source_url="https://www.thedogs.com.au/racing/cannington/2026-06-13/7",
+        positions_by_box={4: 1, 5: 2, 6: 2, 7: 2, 2: 3, 8: 3, 3: 6},
+        raw_order=[4, 5, 6, 7, 2, 8, 3],
+    )
+
+    assert module.result_validation_error(candidate, result) == (
+        "finish_positions_not_competition_ranked"
+    )
+
+
+def test_result_validation_rejects_duplicate_first_place(tmp_path):
+    module = _load_ingest_module()
+    candidate = _candidate(module, tmp_path)
+    result = module.SourceResult(
+        source="thedogs_official",
+        status="resulted",
+        source_url="https://www.thedogs.com.au/racing/hobart/2026-06-11/1",
+        positions_by_box={6: 1, 8: 1, 1: 3, 4: 4, 2: 5},
+        raw_order=[6, 8, 1, 4, 2],
+    )
+
+    assert module.result_validation_error(result=result, candidate=candidate) == (
+        "duplicate_first_place_results"
+    )
+
+
 def test_source_result_diagnostic_preserves_failed_attempt_context(tmp_path):
     module = _load_ingest_module()
     result = module.SourceResult(
@@ -251,12 +298,75 @@ def test_source_result_diagnostic_preserves_failed_attempt_context(tmp_path):
         "error": "missing_first_place_result",
         "raw_order": [6, 4, 7],
         "terminal_statuses": [],
+        "reserve_box_remappings": [],
+        "ignored_terminal_status_rows": [],
+        "rejected_reserve_box_remappings": [],
         "positions": [
             {"box_number": 6, "finish_position": 2},
             {"box_number": 4, "finish_position": 5},
             {"box_number": 7, "finish_position": 7},
         ],
     }
+
+
+def test_source_result_diagnostic_preserves_official_dog_names_by_box(tmp_path):
+    module = _load_ingest_module()
+    result = module.SourceResult(
+        source="thedogs_official",
+        status="resulted",
+        source_url="https://www.thedogs.com.au/racing/taree/2026-06-13/7",
+        positions_by_box={2: 1, 9: 2},
+        raw_order=[2, 9],
+        dog_names_by_box={2: "Riverside Levi", 9: "Reserve Runner"},
+    )
+
+    diagnostic = module._source_result_diagnostic(result)
+
+    assert diagnostic["dog_names_by_box"] == {
+        "2": "Riverside Levi",
+        "9": "Reserve Runner",
+    }
+    assert diagnostic["positions"] == [
+        {
+            "box_number": 2,
+            "finish_position": 1,
+            "dog_name": "Riverside Levi",
+        },
+        {
+            "box_number": 9,
+            "finish_position": 2,
+            "dog_name": "Reserve Runner",
+        },
+    ]
+
+
+def test_dry_run_result_summary_preserves_official_source_and_positions(tmp_path):
+    module = _load_ingest_module()
+    candidate = _candidate(module, tmp_path)
+    result = module.SourceResult(
+        source="thedogs_official",
+        status="resulted",
+        source_url="https://www.thedogs.com.au/racing/warragul/2026-05-21/4/results",
+        positions_by_box={6: 1, 8: 2},
+        raw_order=[6, 8],
+    )
+    db_path, conn = _make_ingest_db(tmp_path)
+    try:
+        summary = module.write_result(conn, candidate, result, [result], dry_run=True)
+    finally:
+        conn.close()
+
+    assert db_path.exists()
+    assert summary["race_id"] == "Race 4 - WRGL - 2026-05-21"
+    assert summary["source"] == "thedogs_official"
+    assert summary["source_url"].endswith("/results")
+    assert summary["winner_box"] == 6
+    assert summary["winner_name"] == "Foxtrot Runner"
+    assert summary["positions"] == [
+        {"box_number": 6, "finish_position": 1, "dog_name": "Foxtrot Runner"},
+        {"box_number": 8, "finish_position": 2, "dog_name": "Hotel Runner"},
+    ]
+    assert summary["participant_source"] == "csv"
 
 
 def _make_ingest_db(tmp_path):
@@ -725,6 +835,15 @@ def test_thedogs_http_404_is_reported_without_selenium_fallback(tmp_path):
     assert result.status == "error"
     assert result.error == "thedogs_http_404"
     assert result.positions_by_box == {}
+    assert result.attempted_urls
+    assert {
+        "url": "https://www.thedogs.com.au/racing/warragul/2026-05-21/4/results?trial=false",
+        "final_url": "https://www.thedogs.com.au/racing/warragul/2026-05-21/4/results?trial=false",
+        "status_code": 404,
+        "error": "thedogs_http_404",
+    } in result.attempted_urls
+    diagnostic = module._source_result_diagnostic(result)
+    assert diagnostic["attempted_urls"] == result.attempted_urls
 
 
 def test_thedogs_public_http_client_is_stateless(monkeypatch):
@@ -1173,15 +1292,23 @@ def test_result_ingest_main_dry_run_can_use_official_http_without_selenium(
     assert report["status"] == "SUCCESS"
     assert report["dry_run"] is True
     assert report["clean_for_label_write"] is True
-    assert report["ingested"] == [
-        {
-            "box_order": [1, 2, 3, 4],
-            "dry_run": True,
-            "race_id": race_id,
-            "source": "thedogs_official",
-            "status": "resulted",
-            "winner_name": "Alpha Runner",
-        }
+    assert len(report["ingested"]) == 1
+    ingested = report["ingested"][0]
+    assert ingested["box_order"] == [1, 2, 3, 4]
+    assert ingested["dry_run"] is True
+    assert ingested["race_id"] == race_id
+    assert ingested["source"] == "thedogs_official"
+    assert ingested["status"] == "resulted"
+    assert ingested["winner_name"] == "Alpha Runner"
+    assert ingested["winner_box"] == 1
+    assert ingested["source_url"].endswith(
+        "/racing/warragul/2026-05-21/4/barn-function-area?trial=false"
+    )
+    assert ingested["positions"] == [
+        {"box_number": 1, "finish_position": 1, "dog_name": "Alpha Runner"},
+        {"box_number": 2, "finish_position": 2, "dog_name": "Bravo Runner"},
+        {"box_number": 3, "finish_position": 3, "dog_name": "Charlie Runner"},
+        {"box_number": 4, "finish_position": 4, "dog_name": "Delta Runner"},
     ]
 
 

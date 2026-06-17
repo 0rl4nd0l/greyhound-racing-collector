@@ -336,6 +336,58 @@ def test_safe_target_metadata_payload_requires_prejump_thedogs_source_and_comple
     assert payload["metadata_is_leakage_safe"] is expected_safe
 
 
+def test_provenance_payload_writes_only_safe_weather_track_metadata(tmp_path):
+    accepted = tmp_path / "Race 1 - TEST - 2026-05-29.csv"
+    race_info = {
+        "date": "2026-05-29",
+        "venue": "TEST",
+        "race_number": 1,
+        "race_time": "11:15 AM",
+        "url": SYNTHETIC_RACE_URL,
+        "target_distance": "400m",
+        "target_distance_source": "canonical_pre_race_page",
+        "target_grade": "Maiden",
+        "target_grade_source": "canonical_pre_race_page",
+        "track_condition": "Soft",
+        "weather_condition": "Overcast",
+    }
+
+    payload = build_csv_download_provenance_payload(
+        filepath=accepted,
+        race_url=SYNTHETIC_RACE_URL,
+        csv_info={"type": "GET", "url": f"{SYNTHETIC_RACE_URL}/export-expert-form"},
+        content="Dog Name|BOX\n1. Alpha Runner|1\n",
+        completeness={"participants": [{"box_number": 1, "dog_name": "Alpha Runner"}]},
+        race_info=race_info,
+        allow_generic_fields=False,
+    )
+
+    assert payload["track_condition"] == "Soft"
+    assert payload["weather"] == "Overcast"
+    assert payload["weather_condition"] == "Overcast"
+    assert payload["weather_track_metadata_source"] == "canonical_pre_race_page"
+    assert payload["weather_track_metadata_is_leakage_safe"] is True
+    assert payload["race_info"]["track_condition"] == "Soft"
+    assert payload["race_info"]["weather_condition"] == "Overcast"
+
+    unsafe_payload = build_csv_download_provenance_payload(
+        filepath=accepted,
+        race_url="https://www.thedogs.com.au/racing/test/2026-05-29/1/results",
+        csv_info={"type": "GET", "url": f"{SYNTHETIC_RACE_URL}/export-expert-form"},
+        content="Dog Name|BOX\n1. Alpha Runner|1\n",
+        completeness={"participants": [{"box_number": 1, "dog_name": "Alpha Runner"}]},
+        race_info={**race_info, "track_condition": "0.0", "weather_condition": "20.0"},
+        allow_generic_fields=False,
+    )
+
+    assert unsafe_payload["track_condition"] is None
+    assert unsafe_payload["weather"] is None
+    assert unsafe_payload["weather_track_metadata_is_leakage_safe"] is False
+    assert "source_url_looks_post_result" in unsafe_payload[
+        "rejected_weather_track_metadata_sources"
+    ]
+
+
 def test_prejump_shadow_metadata_fails_closed_for_unsafe_canonical_runner_url(tmp_path):
     runners = [
         (1, "Alpha Runner"),

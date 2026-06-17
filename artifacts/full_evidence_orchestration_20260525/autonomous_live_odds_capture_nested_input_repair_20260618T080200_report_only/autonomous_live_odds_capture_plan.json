@@ -1,0 +1,264 @@
+{
+  "accepted_sportsbet_box_sources": [
+    "explicit_dom",
+    "runner_text"
+  ],
+  "capture_window_offsets_minutes": [
+    60,
+    30,
+    10,
+    2
+  ],
+  "generated_at": "2026-06-18T08:02:00+10:00",
+  "input_dirs": [
+    "artifacts/full_evidence_orchestration_20260525/daily_race_ingest_shadow_20260618T080200+1000_daemon_autopilot/eligible_inputs"
+  ],
+  "limit": null,
+  "no_write_guarantees": {
+    "active_model_replacement": false,
+    "betting_or_ev_action": false,
+    "db_write": false,
+    "label_write": false,
+    "odds_history_write": false,
+    "production_pointer_update": false,
+    "production_promotion": false,
+    "race_metadata_write": false,
+    "registry_mutation": false,
+    "snapshot_rewrite": false,
+    "tgr_enabled": false,
+    "training": false
+  },
+  "races": [
+    {
+      "blockers": [
+        "before_first_capture_window"
+      ],
+      "capture_window_minutes": null,
+      "csv_path": "artifacts/full_evidence_orchestration_20260525/daily_race_ingest_shadow_20260618T080200+1000_daemon_autopilot/eligible_inputs/source_0001/Race 1 - SHEPPARTON - 2026-06-18.csv",
+      "expected_runners": [
+        {
+          "box_number": 1,
+          "dog_name": "Mask Of Zorro",
+          "identity": "MASKOFZORRO"
+        },
+        {
+          "box_number": 2,
+          "dog_name": "Shooters Project",
+          "identity": "SHOOTERSPROJECT"
+        },
+        {
+          "box_number": 3,
+          "dog_name": "Hartland Ash",
+          "identity": "HARTLANDASH"
+        },
+        {
+          "box_number": 4,
+          "dog_name": "Scroll Up",
+          "identity": "SCROLLUP"
+        },
+        {
+          "box_number": 5,
+          "dog_name": "Shima Lexie",
+          "identity": "SHIMALEXIE"
+        },
+        {
+          "box_number": 6,
+          "dog_name": "Sustainable",
+          "identity": "SUSTAINABLE"
+        },
+        {
+          "box_number": 7,
+          "dog_name": "Preparation",
+          "identity": "PREPARATION"
+        },
+        {
+          "box_number": 8,
+          "dog_name": "Moe",
+          "identity": "MOE"
+        }
+      ],
+      "jump_datetime": "2026-06-18T10:08:00+10:00",
+      "minutes_to_jump": 126.0,
+      "race_date": "2026-06-18",
+      "race_id": "Race 1 - SHEPPARTON - 2026-06-18",
+      "race_number": 1,
+      "race_time": "10:08",
+      "runner_set_validation": {
+        "csv_runner_count": 8,
+        "expected_runners": [
+          {
+            "box_number": 1,
+            "dog_name": "Mask Of Zorro",
+            "identity": "MASKOFZORRO"
+          },
+          {
+            "box_number": 2,
+            "dog_name": "Shooters Project",
+            "identity": "SHOOTERSPROJECT"
+          },
+          {
+            "box_number": 3,
+            "dog_name": "Hartland Ash",
+            "identity": "HARTLANDASH"
+          },
+          {
+            "box_number": 4,
+            "dog_name": "Scroll Up",
+            "identity": "SCROLLUP"
+          },
+          {
+            "box_number": 5,
+            "dog_name": "Shima Lexie",
+            "identity": "SHIMALEXIE"
+          },
+          {
+            "box_number": 6,
+            "dog_name": "Sustainable",
+            "identity": "SUSTAINABLE"
+          },
+          {
+            "box_number": 7,
+            "dog_name": "Preparation",
+            "identity": "PREPARATION"
+          },
+          {
+            "box_number": 8,
+            "dog_name": "Moe",
+            "identity": "MOE"
+          }
+        ],
+        "extra_csv_boxes": [],
+        "missing_csv_boxes": [],
+        "name_mismatches": [],
+        "reasons": [],
+        "runner_count": 8,
+        "sidecar_runner_count": 8,
+        "status": "PASS"
+      },
+      "schema_version": "autonomous_live_odds_capture_plan_item_v1",
+      "sidecar_path": "artifacts/full_evidence_orchestration_20260525/daily_race_ingest_shadow_20260618T080200+1000_daemon_autopilot/eligible_inputs/source_0001/Race 1 - SHEPPARTON - 2026-06-18.csv.metadata.json",
+      "status": "NO_DUE_WINDOW",
+      "thedogs_source_url": "https://www.thedogs.com.au/racing/shepparton/2026-06-18/1/14-races-today-250-rank?trial=false",
+      "venue": "SHEPPARTON",
+      "window_status": "before_first_capture_window"
+    },
+    {
+      "blockers": [
+        "before_first_capture_window"
+      ],
+      "capture_window_minutes": null,
+      "csv_path": "artifacts/full_evidence_orchestration_20260525/daily_race_ingest_shadow_20260618T080200+1000_daemon_autopilot/eligible_inputs/source_0002/Race 2 - SHEPPARTON - 2026-06-18.csv",
+      "expected_runners": [
+        {
+          "box_number": 1,
+          "dog_name": "Critically",
+          "identity": "CRITICALLY"
+        },
+        {
+          "box_number": 2,
+          "dog_name": "Lil Cockatoo",
+          "identity": "LILCOCKATOO"
+        },
+        {
+          "box_number": 3,
+          "dog_name": "Scott Redacted",
+          "identity": "SCOTTREDACTED"
+        },
+        {
+          "box_number": 4,
+          "dog_name": "Candy Pops",
+          "identity": "CANDYPOPS"
+        },
+        {
+          "box_number": 5,
+          "dog_name": "Indiana Icon",
+          "identity": "INDIANAICON"
+        },
+        {
+          "box_number": 6,
+          "dog_name": "Knife Edge",
+          "identity": "KNIFEEDGE"
+        },
+        {
+          "box_number": 7,
+          "dog_name": "Having A Look",
+          "identity": "HAVINGALOOK"
+        },
+        {
+          "box_number": 8,
+          "dog_name": "Cash In Space",
+          "identity": "CASHINSPACE"
+        }
+      ],
+      "jump_datetime": "2026-06-18T10:27:00+10:00",
+      "minutes_to_jump": 145.0,
+      "race_date": "2026-06-18",
+      "race_id": "Race 2 - SHEPPARTON - 2026-06-18",
+      "race_number": 2,
+      "race_time": "10:27",
+      "runner_set_validation": {
+        "csv_runner_count": 8,
+        "expected_runners": [
+          {
+            "box_number": 1,
+            "dog_name": "Critically",
+            "identity": "CRITICALLY"
+          },
+          {
+            "box_number": 2,
+            "dog_name": "Lil Cockatoo",
+            "identity": "LILCOCKATOO"
+          },
+          {
+            "box_number": 3,
+            "dog_name": "Scott Redacted",
+            "identity": "SCOTTREDACTED"
+          },
+          {
+            "box_number": 4,
+            "dog_name": "Candy Pops",
+            "identity": "CANDYPOPS"
+          },
+          {
+            "box_number": 5,
+            "dog_name": "Indiana Icon",
+            "identity": "INDIANAICON"
+          },
+          {
+            "box_number": 6,
+            "dog_name": "Knife Edge",
+            "identity": "KNIFEEDGE"
+          },
+          {
+            "box_number": 7,
+            "dog_name": "Having A Look",
+            "identity": "HAVINGALOOK"
+          },
+          {
+            "box_number": 8,
+            "dog_name": "Cash In Space",
+            "identity": "CASHINSPACE"
+          }
+        ],
+        "extra_csv_boxes": [],
+        "missing_csv_boxes": [],
+        "name_mismatches": [],
+        "reasons": [],
+        "runner_count": 8,
+        "sidecar_runner_count": 8,
+        "status": "PASS"
+      },
+      "schema_version": "autonomous_live_odds_capture_plan_item_v1",
+      "sidecar_path": "artifacts/full_evidence_orchestration_20260525/daily_race_ingest_shadow_20260618T080200+1000_daemon_autopilot/eligible_inputs/source_0002/Race 2 - SHEPPARTON - 2026-06-18.csv.metadata.json",
+      "status": "NO_DUE_WINDOW",
+      "thedogs_source_url": "https://www.thedogs.com.au/racing/shepparton/2026-06-18/2/sportsbet-more-places-250-rank?trial=false",
+      "venue": "SHEPPARTON",
+      "window_status": "before_first_capture_window"
+    }
+  ],
+  "ready_count": 0,
+  "schema_version": "autonomous_live_odds_capture_plan_v1",
+  "status_counts": {
+    "NO_DUE_WINDOW": 2
+  }
+}

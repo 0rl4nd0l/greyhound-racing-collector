@@ -573,6 +573,111 @@ def test_unavailable_target_metadata_fails_closed():
     assert metadata == {}
 
 
+def test_canonical_pre_race_page_weather_track_are_safe_metadata():
+    browser = UpcomingRaceBrowser()
+    soup = BeautifulSoup(
+        """
+        <html>
+          <body>
+            <section class="race-card">
+              <dl>
+                <dt>Track Condition</dt><dd>Soft</dd>
+                <dt>Weather</dt><dd>Overcast</dd>
+              </dl>
+            </section>
+            <table class="runner-form">
+              <tr><th>Track</th><td>Good</td></tr>
+              <tr><th>Weather</th><td>Fine</td></tr>
+            </table>
+          </body>
+        </html>
+        """,
+        "html.parser",
+    )
+
+    metadata = browser._extract_safe_weather_track_metadata_from_page(
+        soup,
+        "https://www.thedogs.com.au/racing/the-meadows/2026-05-21/7/example",
+    )
+
+    assert metadata["track_condition"] == "Soft"
+    assert metadata["weather"] == "Overcast"
+    assert metadata["weather_condition"] == "Overcast"
+    assert metadata["weather_track_metadata_source"] == "canonical_pre_race_page"
+    assert metadata["weather_track_metadata_is_leakage_safe"] is True
+
+
+def test_result_table_weather_track_metadata_is_rejected():
+    browser = UpcomingRaceBrowser()
+    soup = BeautifulSoup(
+        """
+        <html>
+          <body>
+            <table class="results-table">
+              <tr><th>Track Condition</th><td>Soft</td></tr>
+              <tr><th>Weather</th><td>Overcast</td></tr>
+            </table>
+          </body>
+        </html>
+        """,
+        "html.parser",
+    )
+
+    metadata = browser._extract_safe_weather_track_metadata_from_page(
+        soup,
+        "https://www.thedogs.com.au/racing/the-meadows/2026-05-21/7/example",
+    )
+
+    assert metadata == {}
+
+
+def test_csv_provenance_writer_records_extracted_weather_track_metadata(tmp_path):
+    path = tmp_path / "Race 7 - MEA - 2026-05-21.csv"
+    path.write_text(
+        "Dog Name,Box\n"
+        "1. Runner One,1\n",
+        encoding="utf-8",
+    )
+    browser = UpcomingRaceBrowser()
+    soup = BeautifulSoup(
+        """
+        <section class="race-card">
+          <dl>
+            <dt>Track Condition</dt><dd>Soft</dd>
+            <dt>Weather</dt><dd>Overcast</dd>
+          </dl>
+        </section>
+        """,
+        "html.parser",
+    )
+    weather_track = browser._extract_safe_weather_track_metadata_from_page(
+        soup,
+        "https://www.thedogs.com.au/racing/the-meadows/2026-05-21/7/example",
+    )
+
+    browser._write_csv_provenance(
+        str(path),
+        race_url="https://www.thedogs.com.au/racing/the-meadows/2026-05-21/7/example",
+        csv_info={"type": "direct_csv", "url": "https://example.test/export.csv"},
+        content=path.read_text(encoding="utf-8"),
+        completeness=type("Completeness", (), {"as_dict": lambda self: {"status": "COMPLETE"}})(),
+        race_info={
+            "date": "2026-05-21",
+            "venue": "MEA",
+            "race_number": "7",
+            "race_time": "8:15 PM",
+            "metadata_is_leakage_safe": True,
+            **weather_track,
+        },
+    )
+
+    sidecar = json.loads(path.with_suffix(path.suffix + ".metadata.json").read_text())
+    assert sidecar["track_condition"] == "Soft"
+    assert sidecar["weather"] == "Overcast"
+    assert sidecar["weather_track_metadata_source"] == "canonical_pre_race_page"
+    assert sidecar["weather_track_metadata_is_leakage_safe"] is True
+
+
 def test_csv_provenance_writer_records_safe_target_metadata(tmp_path):
     path = tmp_path / "Race 7 - MEA - 2026-05-21.csv"
     path.write_text(

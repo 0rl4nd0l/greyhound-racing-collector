@@ -306,6 +306,401 @@ def build_runtime_state(
                 "last_recommended_rerun_after_local"
             ),
             "last_next_prejump_race": daemon_state.get("last_next_prejump_race"),
+            "last_autonomous_live_odds_next_window_opens_at": daemon_state.get(
+                "last_autonomous_live_odds_next_window_opens_at"
+            ),
+            "last_autonomous_live_odds_recommended_rerun_after_local": daemon_state.get(
+                "last_autonomous_live_odds_recommended_rerun_after_local"
+            ),
+            "last_autonomous_live_odds_next_race_id": daemon_state.get(
+                "last_autonomous_live_odds_next_race_id"
+            ),
+            "last_odds_capture_next_meaningful_action": daemon_state.get(
+                "last_odds_capture_next_meaningful_action"
+            ),
+            "last_odds_capture_next_meaningful_action_at": daemon_state.get(
+                "last_odds_capture_next_meaningful_action_at"
+            ),
+            "last_autonomous_live_odds_next_prejump_window": daemon_state.get(
+                "last_autonomous_live_odds_next_prejump_window"
+            ),
+            "last_autonomous_official_result_capture_status": daemon_state.get(
+                "last_autonomous_official_result_capture_status"
+            ),
+            "last_autonomous_official_result_capture_attempted": daemon_state.get(
+                "last_autonomous_official_result_capture_attempted"
+            ),
+            "last_autonomous_official_result_race_rows": daemon_state.get(
+                "last_autonomous_official_result_race_rows"
+            ),
+            "last_autonomous_official_result_runner_rows": daemon_state.get(
+                "last_autonomous_official_result_runner_rows"
+            ),
+            "last_autonomous_official_result_quarantine_rows": daemon_state.get(
+                "last_autonomous_official_result_quarantine_rows"
+            ),
+            "last_autonomous_official_result_quarantined_race_ids": (
+                daemon_state.get("last_autonomous_official_result_quarantined_race_ids")
+                or []
+            ),
+            "last_autonomous_official_result_quarantine_reason_counts": (
+                daemon_state.get(
+                    "last_autonomous_official_result_quarantine_reason_counts"
+                )
+                or {}
+            ),
+            "last_autonomous_official_result_quarantine_error_counts": (
+                daemon_state.get(
+                    "last_autonomous_official_result_quarantine_error_counts"
+                )
+                or {}
+            ),
+            "last_autonomous_official_result_quarantine_result_boxes_not_in_participants_counts": (
+                daemon_state.get(
+                    "last_autonomous_official_result_quarantine_result_boxes_not_in_participants_counts"
+                )
+                or {}
+            ),
+            "last_autonomous_official_result_quarantine_runner_set_mismatch_samples": (
+                daemon_state.get(
+                    "last_autonomous_official_result_quarantine_runner_set_mismatch_samples"
+                )
+                or []
+            ),
+            "last_autonomous_official_result_skipped_reason_counts": (
+                daemon_state.get("last_autonomous_official_result_skipped_reason_counts")
+                or {}
+            ),
+            "last_autonomous_official_result_awaiting_jump_race_count": daemon_state.get(
+                "last_autonomous_official_result_awaiting_jump_race_count"
+            ),
+            "last_autonomous_official_result_awaiting_jump_race_ids": (
+                daemon_state.get("last_autonomous_official_result_awaiting_jump_race_ids")
+                or []
+            ),
+            "last_autonomous_official_result_awaiting_jump_next_recheck_after_local": (
+                daemon_state.get(
+                    "last_autonomous_official_result_awaiting_jump_next_recheck_after_local"
+                )
+            ),
+            "last_autonomous_official_result_evidence_db_ingest_status": (
+                daemon_state.get(
+                    "last_autonomous_official_result_evidence_db_ingest_status"
+                )
+            ),
+            "last_autonomous_official_result_evidence_db_execute": daemon_state.get(
+                "last_autonomous_official_result_evidence_db_execute"
+            ),
+            "last_autonomous_official_result_evidence_db_write_performed": daemon_state.get(
+                "last_autonomous_official_result_evidence_db_write_performed"
+            ),
+            "last_autonomous_official_result_evidence_valid_race_rows": daemon_state.get(
+                "last_autonomous_official_result_evidence_valid_race_rows"
+            ),
+            "last_autonomous_official_result_evidence_valid_runner_rows": daemon_state.get(
+                "last_autonomous_official_result_evidence_valid_runner_rows"
+            ),
+            "last_autonomous_official_result_evidence_blocked_race_rows": daemon_state.get(
+                "last_autonomous_official_result_evidence_blocked_race_rows"
+            ),
+            "last_autonomous_official_result_evidence_blocked_runner_rows": daemon_state.get(
+                "last_autonomous_official_result_evidence_blocked_runner_rows"
+            ),
+            "last_autonomous_official_result_evidence_inserted_race_rows": daemon_state.get(
+                "last_autonomous_official_result_evidence_inserted_race_rows"
+            ),
+            "last_autonomous_official_result_evidence_inserted_runner_rows": daemon_state.get(
+                "last_autonomous_official_result_evidence_inserted_runner_rows"
+            ),
+            "last_autonomous_official_result_evidence_blocker_reason_counts": (
+                daemon_state.get(
+                    "last_autonomous_official_result_evidence_blocker_reason_counts"
+                )
+                or {}
+            ),
+            "last_autonomous_official_result_evidence_inserted_rows": daemon_state.get(
+                "last_autonomous_official_result_evidence_inserted_rows"
+            ),
+            "last_live_odds_backlog_unresolved_race_count": daemon_state.get(
+                "last_live_odds_backlog_unresolved_race_count"
+            ),
+            "last_live_odds_backlog_unresolved_reason_counts": daemon_state.get(
+                "last_live_odds_backlog_unresolved_reason_counts"
+            )
+            or {},
+            "last_live_odds_backlog_unresolved_recovery_action_counts": (
+                daemon_state.get(
+                    "last_live_odds_backlog_unresolved_recovery_action_counts"
+                )
+                or {}
+            ),
+            "last_live_odds_backlog_unresolved_alias_status_counts": daemon_state.get(
+                "last_live_odds_backlog_unresolved_alias_status_counts"
+            )
+            or {},
+            "last_live_odds_backlog_retryable_exact_shadow_match_race_count": (
+                daemon_state.get(
+                    "last_live_odds_backlog_retryable_exact_shadow_match_race_count"
+                )
+            ),
+            "last_live_odds_backlog_no_exact_shadow_match_race_count": daemon_state.get(
+                "last_live_odds_backlog_no_exact_shadow_match_race_count"
+            ),
+            "last_live_odds_backlog_retryable_exact_shadow_match_race_ids": (
+                daemon_state.get(
+                    "last_live_odds_backlog_retryable_exact_shadow_match_race_ids"
+                )
+                or []
+            ),
+            "last_live_odds_backlog_no_exact_shadow_match_race_ids": daemon_state.get(
+                "last_live_odds_backlog_no_exact_shadow_match_race_ids"
+            )
+            or [],
+            "last_live_odds_backlog_recovery_queue_path": daemon_state.get(
+                "last_live_odds_backlog_recovery_queue_path"
+            ),
+            "last_live_odds_backlog_recovery_queue_diagnostic_only": daemon_state.get(
+                "last_live_odds_backlog_recovery_queue_diagnostic_only"
+            ),
+            "last_live_odds_backlog_recovery_queue_join_acceptance_changed": (
+                daemon_state.get(
+                    "last_live_odds_backlog_recovery_queue_join_acceptance_changed"
+                )
+            ),
+            "last_live_odds_backlog_recovery_queue_db_write_performed": (
+                daemon_state.get("last_live_odds_backlog_recovery_queue_db_write_performed")
+            ),
+            "last_live_odds_backlog_awaiting_official_result_evidence_race_count": (
+                daemon_state.get(
+                    "last_live_odds_backlog_awaiting_official_result_evidence_race_count"
+                )
+            ),
+            "last_live_odds_backlog_awaiting_official_result_evidence_race_ids": (
+                daemon_state.get(
+                    "last_live_odds_backlog_awaiting_official_result_evidence_race_ids"
+                )
+                or []
+            ),
+            "last_live_odds_backlog_awaiting_official_result_evidence_authorized_action": (
+                daemon_state.get(
+                    "last_live_odds_backlog_awaiting_official_result_evidence_authorized_action"
+                )
+            ),
+            "last_live_odds_backlog_awaiting_official_result_recheck_ready_race_count": (
+                daemon_state.get(
+                    "last_live_odds_backlog_awaiting_official_result_recheck_ready_race_count"
+                )
+            ),
+            "last_live_odds_backlog_runner_set_validation_path": daemon_state.get(
+                "last_live_odds_backlog_runner_set_validation_path"
+            ),
+            "last_live_odds_backlog_runner_set_validation_retryable_race_count": (
+                daemon_state.get(
+                    "last_live_odds_backlog_runner_set_validation_retryable_race_count"
+                )
+            ),
+            "last_live_odds_backlog_runner_set_validation_exact_match_race_count": (
+                daemon_state.get(
+                    "last_live_odds_backlog_runner_set_validation_exact_match_race_count"
+                )
+            ),
+            "last_live_odds_backlog_runner_set_validation_blocked_race_count": (
+                daemon_state.get(
+                    "last_live_odds_backlog_runner_set_validation_blocked_race_count"
+                )
+            ),
+            "last_live_odds_backlog_runner_set_validation_diagnostic_only": (
+                daemon_state.get(
+                    "last_live_odds_backlog_runner_set_validation_diagnostic_only"
+                )
+            ),
+            "last_live_odds_backlog_runner_set_validation_join_authorized": (
+                daemon_state.get("last_live_odds_backlog_runner_set_validation_join_authorized")
+            ),
+            "last_live_odds_backlog_runner_set_validation_db_write_performed": (
+                daemon_state.get(
+                    "last_live_odds_backlog_runner_set_validation_db_write_performed"
+                )
+            ),
+            "last_live_odds_backlog_join_eligibility_packet_path": daemon_state.get(
+                "last_live_odds_backlog_join_eligibility_packet_path"
+            ),
+            "last_live_odds_backlog_join_eligibility_evaluated_race_count": (
+                daemon_state.get(
+                    "last_live_odds_backlog_join_eligibility_evaluated_race_count"
+                )
+            ),
+            "last_live_odds_backlog_join_eligibility_eligible_report_only_race_count": (
+                daemon_state.get(
+                    "last_live_odds_backlog_join_eligibility_eligible_report_only_race_count"
+                )
+            ),
+            "last_live_odds_backlog_join_eligibility_blocked_race_count": (
+                daemon_state.get(
+                    "last_live_odds_backlog_join_eligibility_blocked_race_count"
+                )
+            ),
+            "last_live_odds_backlog_join_eligibility_diagnostic_only": daemon_state.get(
+                "last_live_odds_backlog_join_eligibility_diagnostic_only"
+            ),
+            "last_live_odds_backlog_join_eligibility_join_authorized": daemon_state.get(
+                "last_live_odds_backlog_join_eligibility_join_authorized"
+            ),
+            "last_live_odds_backlog_join_eligibility_db_write_performed": (
+                daemon_state.get(
+                    "last_live_odds_backlog_join_eligibility_db_write_performed"
+                )
+            ),
+            "last_live_odds_backlog_join_eligibility_awaiting_official_result_recheck_ready_race_count": (
+                daemon_state.get(
+                    "last_live_odds_backlog_join_eligibility_awaiting_official_result_recheck_ready_race_count"
+                )
+            ),
+            "last_rolling_model_comparison_status": daemon_state.get(
+                "last_rolling_model_comparison_status"
+            ),
+            "last_rolling_model_comparison_sample_races": daemon_state.get(
+                "last_rolling_model_comparison_sample_races"
+            ),
+            "last_rolling_model_comparison_best_candidate": daemon_state.get(
+                "last_rolling_model_comparison_best_candidate"
+            ),
+            "last_rolling_model_comparison_source_rejected_live_odds_candidate_count": (
+                daemon_state.get(
+                    "last_rolling_model_comparison_source_rejected_live_odds_candidate_count"
+                )
+            ),
+            "last_rolling_model_comparison_source_rows_with_rejected_live_odds_candidates": (
+                daemon_state.get(
+                    "last_rolling_model_comparison_source_rows_with_rejected_live_odds_candidates"
+                )
+            ),
+            "last_rolling_model_comparison_source_rejected_live_odds_candidate_reason_counts": (
+                daemon_state.get(
+                    "last_rolling_model_comparison_source_rejected_live_odds_candidate_reason_counts"
+                )
+                or {}
+            ),
+            "last_high_accuracy_refinement_status": daemon_state.get(
+                "last_high_accuracy_refinement_status"
+            ),
+            "last_high_accuracy_promotion_pr_gate_status": daemon_state.get(
+                "last_high_accuracy_promotion_pr_gate_status"
+            ),
+            "last_high_accuracy_unified_evidence_eligible_rows": daemon_state.get(
+                "last_high_accuracy_unified_evidence_eligible_rows"
+            ),
+            "last_promotion_distance_status": daemon_state.get(
+                "last_promotion_distance_status"
+            ),
+            "last_promotion_distance_promotion_ready": daemon_state.get(
+                "last_promotion_distance_promotion_ready"
+            ),
+            "last_promotion_distance_sample_race_count": daemon_state.get(
+                "last_promotion_distance_sample_race_count"
+            ),
+            "last_promotion_distance_sample_runner_rows": daemon_state.get(
+                "last_promotion_distance_sample_runner_rows"
+            ),
+            "last_promotion_distance_best_candidate_key": daemon_state.get(
+                "last_promotion_distance_best_candidate_key"
+            ),
+            "last_promotion_distance_best_non_market_candidate_key": daemon_state.get(
+                "last_promotion_distance_best_non_market_candidate_key"
+            ),
+            "last_promotion_distance_blockers": daemon_state.get(
+                "last_promotion_distance_blockers"
+            )
+            or [],
+            "last_promotion_distance_source_rejected_live_odds_candidate_count": (
+                daemon_state.get(
+                    "last_promotion_distance_source_rejected_live_odds_candidate_count"
+                )
+            ),
+            "last_promotion_distance_source_rows_with_rejected_live_odds_candidates": (
+                daemon_state.get(
+                    "last_promotion_distance_source_rows_with_rejected_live_odds_candidates"
+                )
+            ),
+            "last_promotion_distance_source_rejected_live_odds_candidate_reason_counts": (
+                daemon_state.get(
+                    "last_promotion_distance_source_rejected_live_odds_candidate_reason_counts"
+                )
+                or {}
+            ),
+            "last_promotion_distance_source_exclusion_reason_counts": (
+                daemon_state.get("last_promotion_distance_source_exclusion_reason_counts")
+                or {}
+            ),
+            "last_promotion_distance_source_odds_exclusion_reason_counts": (
+                daemon_state.get(
+                    "last_promotion_distance_source_odds_exclusion_reason_counts"
+                )
+                or {}
+            ),
+            "last_promotion_distance_source_official_result_evidence_db_missing_race_ids": (
+                daemon_state.get(
+                    "last_promotion_distance_source_official_result_evidence_db_missing_race_ids"
+                )
+                or []
+            ),
+            "last_promotion_distance_source_official_result_evidence_db_requested_race_count": (
+                daemon_state.get(
+                    "last_promotion_distance_source_official_result_evidence_db_requested_race_count"
+                )
+            ),
+            "last_promotion_distance_source_official_result_evidence_db_races_with_rows": (
+                daemon_state.get(
+                    "last_promotion_distance_source_official_result_evidence_db_races_with_rows"
+                )
+                or []
+            ),
+            "last_promotion_distance_source_official_result_runner_paths": (
+                daemon_state.get(
+                    "last_promotion_distance_source_official_result_runner_paths"
+                )
+                or []
+            ),
+            "last_promotion_distance_official_result_coverage_requested_race_count": (
+                daemon_state.get(
+                    "last_promotion_distance_official_result_coverage_requested_race_count"
+                )
+            ),
+            "last_promotion_distance_official_result_coverage_requested_race_count_source": (
+                daemon_state.get(
+                    "last_promotion_distance_official_result_coverage_requested_race_count_source"
+                )
+            ),
+            "last_promotion_distance_official_result_coverage_legacy_requested_race_count_without_ids": (
+                daemon_state.get(
+                    "last_promotion_distance_official_result_coverage_legacy_requested_race_count_without_ids"
+                )
+            ),
+            "last_promotion_distance_official_result_coverage_races_with_rows_count": (
+                daemon_state.get(
+                    "last_promotion_distance_official_result_coverage_races_with_rows_count"
+                )
+            ),
+            "last_promotion_distance_official_result_coverage_missing_race_count": (
+                daemon_state.get(
+                    "last_promotion_distance_official_result_coverage_missing_race_count"
+                )
+            ),
+            "last_promotion_distance_official_result_coverage_missing_exclusion_count": (
+                daemon_state.get(
+                    "last_promotion_distance_official_result_coverage_missing_exclusion_count"
+                )
+            ),
+            "last_promotion_distance_official_result_runner_path_count": (
+                daemon_state.get(
+                    "last_promotion_distance_official_result_runner_path_count"
+                )
+            ),
+            "last_promotion_distance_official_result_runner_paths_source_field": (
+                daemon_state.get(
+                    "last_promotion_distance_official_result_runner_paths_source_field"
+                )
+            ),
             "last_feature_activation_gate_status": daemon_state.get(
                 "last_feature_activation_gate_status"
             ),
@@ -313,6 +708,211 @@ def build_runtime_state(
                 "last_shadow_odds_snapshot_status"
             ),
             "last_prejump_metadata_status": daemon_state.get("last_prejump_metadata_status"),
+            "last_best_aggregate_unified_evidence_status": daemon_state.get(
+                "last_best_aggregate_unified_evidence_status"
+            ),
+            "last_best_aggregate_unified_evidence_eligible_rows": daemon_state.get(
+                "last_best_aggregate_unified_evidence_eligible_rows"
+            ),
+            "last_best_aggregate_unified_rejected_live_odds_candidate_count": (
+                daemon_state.get(
+                    "last_best_aggregate_unified_rejected_live_odds_candidate_count"
+                )
+            ),
+            "last_best_aggregate_unified_rows_with_rejected_live_odds_candidates": (
+                daemon_state.get(
+                    "last_best_aggregate_unified_rows_with_rejected_live_odds_candidates"
+                )
+            ),
+            "last_best_aggregate_unified_rejected_live_odds_candidate_reason_counts": (
+                daemon_state.get(
+                    "last_best_aggregate_unified_rejected_live_odds_candidate_reason_counts"
+                )
+                or {}
+            ),
+            "last_rejoin_unified_evidence_status": daemon_state.get(
+                "last_rejoin_unified_evidence_status"
+            ),
+            "last_rejoin_unified_rejected_live_odds_candidate_count": daemon_state.get(
+                "last_rejoin_unified_rejected_live_odds_candidate_count"
+            ),
+            "last_rejoin_unified_rows_with_rejected_live_odds_candidates": daemon_state.get(
+                "last_rejoin_unified_rows_with_rejected_live_odds_candidates"
+            ),
+            "last_rejoin_unified_rejected_live_odds_candidate_reason_counts": (
+                daemon_state.get(
+                    "last_rejoin_unified_rejected_live_odds_candidate_reason_counts"
+                )
+                or {}
+            ),
+            "last_rejoin_rolling_model_comparison_status": daemon_state.get(
+                "last_rejoin_rolling_model_comparison_status"
+            ),
+            "last_rejoin_rolling_model_comparison_sample_races": daemon_state.get(
+                "last_rejoin_rolling_model_comparison_sample_races"
+            ),
+            "last_rejoin_high_accuracy_refinement_status": daemon_state.get(
+                "last_rejoin_high_accuracy_refinement_status"
+            ),
+            "last_rejoin_pre_race_gated_challenger_status": daemon_state.get(
+                "last_rejoin_pre_race_gated_challenger_status"
+            ),
+            "last_rejoin_pre_race_gated_challenger_promotion_ready": daemon_state.get(
+                "last_rejoin_pre_race_gated_challenger_promotion_ready"
+            ),
+            "last_rejoin_rank_first_hypothesis_review_status": daemon_state.get(
+                "last_rejoin_rank_first_hypothesis_review_status"
+            ),
+            "last_rejoin_rank_first_hypothesis_candidate_count": daemon_state.get(
+                "last_rejoin_rank_first_hypothesis_candidate_count"
+            ),
+            "last_rejoin_rank_first_hypothesis_evaluated_candidate_count": (
+                daemon_state.get(
+                    "last_rejoin_rank_first_hypothesis_evaluated_candidate_count"
+                )
+            ),
+            "last_rejoin_rank_first_hypothesis_best_candidate_key": daemon_state.get(
+                "last_rejoin_rank_first_hypothesis_best_candidate_key"
+            ),
+            "last_rejoin_rank_first_hypothesis_directional_read_ready": daemon_state.get(
+                "last_rejoin_rank_first_hypothesis_directional_read_ready"
+            ),
+            "last_rejoin_time_split_gated_challenger_status": daemon_state.get(
+                "last_rejoin_time_split_gated_challenger_status"
+            ),
+            "last_rejoin_time_split_gated_challenger_promotion_ready": daemon_state.get(
+                "last_rejoin_time_split_gated_challenger_promotion_ready"
+            ),
+            "last_rejoin_market_residual_challenger_status": daemon_state.get(
+                "last_rejoin_market_residual_challenger_status"
+            ),
+            "last_rejoin_market_residual_challenger_promotion_ready": daemon_state.get(
+                "last_rejoin_market_residual_challenger_promotion_ready"
+            ),
+            "last_rejoin_market_residual_regime_audit_status": daemon_state.get(
+                "last_rejoin_market_residual_regime_audit_status"
+            ),
+            "last_rejoin_market_residual_regime_audit_promotion_ready": (
+                daemon_state.get(
+                    "last_rejoin_market_residual_regime_audit_promotion_ready"
+                )
+            ),
+            "last_rejoin_market_residual_rank_first_hypothesis_status": (
+                daemon_state.get(
+                    "last_rejoin_market_residual_rank_first_hypothesis_status"
+                )
+            ),
+            "last_rejoin_rank_first_hypothesis_watchlist_status": daemon_state.get(
+                "last_rejoin_rank_first_hypothesis_watchlist_status"
+            ),
+            "last_rejoin_rank_first_hypothesis_watchlist_candidate_count": (
+                daemon_state.get(
+                    "last_rejoin_rank_first_hypothesis_watchlist_candidate_count"
+                )
+            ),
+            "last_rejoin_rank_first_hypothesis_watchlist_directional_ready_candidate_count": (
+                daemon_state.get(
+                    "last_rejoin_rank_first_hypothesis_watchlist_directional_ready_candidate_count"
+                )
+            ),
+            "last_rejoin_rank_first_hypothesis_watchlist_best_candidate": (
+                daemon_state.get(
+                    "last_rejoin_rank_first_hypothesis_watchlist_best_candidate"
+                )
+            ),
+            "last_rejoin_rank_first_hypothesis_watchlist_best_status": daemon_state.get(
+                "last_rejoin_rank_first_hypothesis_watchlist_best_status"
+            ),
+            "last_rejoin_rank_first_hypothesis_watchlist_best_distinct_samples": (
+                daemon_state.get(
+                    "last_rejoin_rank_first_hypothesis_watchlist_best_distinct_samples"
+                )
+            ),
+            "last_rejoin_promotion_distance_status": daemon_state.get(
+                "last_rejoin_promotion_distance_status"
+            ),
+            "last_rejoin_promotion_distance_promotion_ready": daemon_state.get(
+                "last_rejoin_promotion_distance_promotion_ready"
+            ),
+            "last_rejoin_promotion_distance_blockers": daemon_state.get(
+                "last_rejoin_promotion_distance_blockers"
+            )
+            or [],
+            "last_rejoin_promotion_distance_source_exclusion_reason_counts": (
+                daemon_state.get(
+                    "last_rejoin_promotion_distance_source_exclusion_reason_counts"
+                )
+                or {}
+            ),
+            "last_rejoin_promotion_distance_source_odds_exclusion_reason_counts": (
+                daemon_state.get(
+                    "last_rejoin_promotion_distance_source_odds_exclusion_reason_counts"
+                )
+                or {}
+            ),
+            "last_rejoin_promotion_distance_source_official_result_evidence_db_missing_race_ids": (
+                daemon_state.get(
+                    "last_rejoin_promotion_distance_source_official_result_evidence_db_missing_race_ids"
+                )
+                or []
+            ),
+            "last_rejoin_promotion_distance_source_official_result_evidence_db_requested_race_count": (
+                daemon_state.get(
+                    "last_rejoin_promotion_distance_source_official_result_evidence_db_requested_race_count"
+                )
+            ),
+            "last_rejoin_promotion_distance_source_official_result_evidence_db_races_with_rows": (
+                daemon_state.get(
+                    "last_rejoin_promotion_distance_source_official_result_evidence_db_races_with_rows"
+                )
+                or []
+            ),
+            "last_rejoin_promotion_distance_source_official_result_runner_paths": (
+                daemon_state.get(
+                    "last_rejoin_promotion_distance_source_official_result_runner_paths"
+                )
+                or []
+            ),
+            "last_rejoin_promotion_distance_official_result_coverage_requested_race_count": (
+                daemon_state.get(
+                    "last_rejoin_promotion_distance_official_result_coverage_requested_race_count"
+                )
+            ),
+            "last_rejoin_promotion_distance_official_result_coverage_requested_race_count_source": (
+                daemon_state.get(
+                    "last_rejoin_promotion_distance_official_result_coverage_requested_race_count_source"
+                )
+            ),
+            "last_rejoin_promotion_distance_official_result_coverage_legacy_requested_race_count_without_ids": (
+                daemon_state.get(
+                    "last_rejoin_promotion_distance_official_result_coverage_legacy_requested_race_count_without_ids"
+                )
+            ),
+            "last_rejoin_promotion_distance_official_result_coverage_races_with_rows_count": (
+                daemon_state.get(
+                    "last_rejoin_promotion_distance_official_result_coverage_races_with_rows_count"
+                )
+            ),
+            "last_rejoin_promotion_distance_official_result_coverage_missing_race_count": (
+                daemon_state.get(
+                    "last_rejoin_promotion_distance_official_result_coverage_missing_race_count"
+                )
+            ),
+            "last_rejoin_promotion_distance_official_result_coverage_missing_exclusion_count": (
+                daemon_state.get(
+                    "last_rejoin_promotion_distance_official_result_coverage_missing_exclusion_count"
+                )
+            ),
+            "last_rejoin_promotion_distance_official_result_runner_path_count": (
+                daemon_state.get(
+                    "last_rejoin_promotion_distance_official_result_runner_path_count"
+                )
+            ),
+            "last_rejoin_promotion_distance_official_result_runner_paths_source_field": (
+                daemon_state.get(
+                    "last_rejoin_promotion_distance_official_result_runner_paths_source_field"
+                )
+            ),
             "updated_at": daemon_state.get("updated_at"),
         },
         "daemon_output": {
@@ -339,6 +939,16 @@ def build_summary(report: Mapping[str, Any]) -> str:
     daemon = report.get("daemon") or {}
     daily = report.get("daily_shadow_run") or {}
     next_race = daemon.get("last_next_prejump_race") or {}
+    odds_next_window = daemon.get("last_autonomous_live_odds_next_prejump_window") or {}
+    if not isinstance(odds_next_window, Mapping):
+        odds_next_window = {}
+    odds_next_race = odds_next_window.get("next_race") or {}
+    if not isinstance(odds_next_race, Mapping):
+        odds_next_race = {}
+    odds_next_race_id = (
+        daemon.get("last_autonomous_live_odds_next_race_id")
+        or odds_next_race.get("race_id")
+    )
     return "\n".join(
         [
             "# Forward Shadow Runtime State",
@@ -352,6 +962,142 @@ def build_summary(report: Mapping[str, Any]) -> str:
             f"- Next pre-jump status: `{daemon.get('last_next_prejump_refresh_status')}`",
             f"- Recommended rerun after: `{daemon.get('last_recommended_rerun_after_local')}`",
             f"- Next race: `{next_race.get('race_id')}` at `{next_race.get('jump_datetime')}`",
+            f"- Autonomous odds next window opens: `{daemon.get('last_autonomous_live_odds_next_window_opens_at')}`",
+            f"- Autonomous odds rerun after: `{daemon.get('last_autonomous_live_odds_recommended_rerun_after_local')}`",
+            f"- Autonomous odds next race: `{odds_next_race_id}`",
+            f"- Autonomous odds next action: `{daemon.get('last_odds_capture_next_meaningful_action')}` at `{daemon.get('last_odds_capture_next_meaningful_action_at')}`",
+            f"- Autonomous official result capture: `{daemon.get('last_autonomous_official_result_capture_status')}`",
+            f"- Autonomous official result capture attempted: `{daemon.get('last_autonomous_official_result_capture_attempted')}`",
+            f"- Autonomous official result race rows: `{daemon.get('last_autonomous_official_result_race_rows')}`",
+            f"- Autonomous official result runner rows: `{daemon.get('last_autonomous_official_result_runner_rows')}`",
+            f"- Autonomous official result quarantine rows: `{daemon.get('last_autonomous_official_result_quarantine_rows')}`",
+            f"- Autonomous official result quarantined race IDs: `{daemon.get('last_autonomous_official_result_quarantined_race_ids')}`",
+            f"- Autonomous official result quarantine reasons: `{daemon.get('last_autonomous_official_result_quarantine_reason_counts')}`",
+            f"- Autonomous official result quarantine errors: `{daemon.get('last_autonomous_official_result_quarantine_error_counts')}`",
+            f"- Autonomous official result quarantine result boxes not in participants: `{daemon.get('last_autonomous_official_result_quarantine_result_boxes_not_in_participants_counts')}`",
+            f"- Autonomous official result quarantine runner-set mismatch samples: `{daemon.get('last_autonomous_official_result_quarantine_runner_set_mismatch_samples')}`",
+            f"- Autonomous official result skipped reasons: `{daemon.get('last_autonomous_official_result_skipped_reason_counts')}`",
+            f"- Autonomous official result awaiting-jump races: `{daemon.get('last_autonomous_official_result_awaiting_jump_race_count')}`",
+            f"- Autonomous official result awaiting-jump race IDs: `{daemon.get('last_autonomous_official_result_awaiting_jump_race_ids')}`",
+            f"- Autonomous official result next recheck: `{daemon.get('last_autonomous_official_result_awaiting_jump_next_recheck_after_local')}`",
+            f"- Autonomous official result evidence DB ingest: `{daemon.get('last_autonomous_official_result_evidence_db_ingest_status')}`",
+            f"- Autonomous official result evidence DB execute: `{daemon.get('last_autonomous_official_result_evidence_db_execute')}`",
+            f"- Autonomous official result evidence DB write performed: `{daemon.get('last_autonomous_official_result_evidence_db_write_performed')}`",
+            f"- Autonomous official result evidence valid race rows: `{daemon.get('last_autonomous_official_result_evidence_valid_race_rows')}`",
+            f"- Autonomous official result evidence valid runner rows: `{daemon.get('last_autonomous_official_result_evidence_valid_runner_rows')}`",
+            f"- Autonomous official result evidence blocked race rows: `{daemon.get('last_autonomous_official_result_evidence_blocked_race_rows')}`",
+            f"- Autonomous official result evidence blocked runner rows: `{daemon.get('last_autonomous_official_result_evidence_blocked_runner_rows')}`",
+            f"- Autonomous official result evidence inserted race rows: `{daemon.get('last_autonomous_official_result_evidence_inserted_race_rows')}`",
+            f"- Autonomous official result evidence inserted runner rows: `{daemon.get('last_autonomous_official_result_evidence_inserted_runner_rows')}`",
+            f"- Autonomous official result evidence blocker reasons: `{daemon.get('last_autonomous_official_result_evidence_blocker_reason_counts')}`",
+            f"- Autonomous official result evidence inserted rows: `{daemon.get('last_autonomous_official_result_evidence_inserted_rows')}`",
+            f"- Live odds backlog unresolved races: `{daemon.get('last_live_odds_backlog_unresolved_race_count')}`",
+            f"- Live odds backlog unresolved reasons: `{daemon.get('last_live_odds_backlog_unresolved_reason_counts')}`",
+            f"- Live odds backlog recovery actions: `{daemon.get('last_live_odds_backlog_unresolved_recovery_action_counts')}`",
+            f"- Live odds backlog alias statuses: `{daemon.get('last_live_odds_backlog_unresolved_alias_status_counts')}`",
+            f"- Live odds backlog retryable exact-shadow matches: `{daemon.get('last_live_odds_backlog_retryable_exact_shadow_match_race_count')}`",
+            f"- Live odds backlog no exact shadow match: `{daemon.get('last_live_odds_backlog_no_exact_shadow_match_race_count')}`",
+            f"- Live odds backlog retryable exact-shadow race IDs: `{daemon.get('last_live_odds_backlog_retryable_exact_shadow_match_race_ids')}`",
+            f"- Live odds backlog no-exact-shadow race IDs: `{daemon.get('last_live_odds_backlog_no_exact_shadow_match_race_ids')}`",
+            f"- Live odds backlog recovery queue: `{daemon.get('last_live_odds_backlog_recovery_queue_path')}`",
+            f"- Live odds backlog recovery queue diagnostic only: `{daemon.get('last_live_odds_backlog_recovery_queue_diagnostic_only')}`",
+            f"- Live odds backlog recovery queue changed join acceptance: `{daemon.get('last_live_odds_backlog_recovery_queue_join_acceptance_changed')}`",
+            f"- Live odds backlog recovery queue DB write performed: `{daemon.get('last_live_odds_backlog_recovery_queue_db_write_performed')}`",
+            f"- Live odds backlog awaiting official-result evidence races: `{daemon.get('last_live_odds_backlog_awaiting_official_result_evidence_race_count')}`",
+            f"- Live odds backlog awaiting official-result evidence race IDs: `{daemon.get('last_live_odds_backlog_awaiting_official_result_evidence_race_ids')}`",
+            f"- Live odds backlog awaiting official-result authorized action: `{daemon.get('last_live_odds_backlog_awaiting_official_result_evidence_authorized_action')}`",
+            f"- Live odds backlog awaiting official-result recheck-ready races: `{daemon.get('last_live_odds_backlog_awaiting_official_result_recheck_ready_race_count')}`",
+            f"- Live odds backlog runner-set validation: `{daemon.get('last_live_odds_backlog_runner_set_validation_path')}`",
+            f"- Live odds backlog runner-set retryable races: `{daemon.get('last_live_odds_backlog_runner_set_validation_retryable_race_count')}`",
+            f"- Live odds backlog runner-set exact matches: `{daemon.get('last_live_odds_backlog_runner_set_validation_exact_match_race_count')}`",
+            f"- Live odds backlog runner-set blocked races: `{daemon.get('last_live_odds_backlog_runner_set_validation_blocked_race_count')}`",
+            f"- Live odds backlog runner-set validation diagnostic only: `{daemon.get('last_live_odds_backlog_runner_set_validation_diagnostic_only')}`",
+            f"- Live odds backlog runner-set join authorized: `{daemon.get('last_live_odds_backlog_runner_set_validation_join_authorized')}`",
+            f"- Live odds backlog runner-set DB write performed: `{daemon.get('last_live_odds_backlog_runner_set_validation_db_write_performed')}`",
+            f"- Live odds backlog join eligibility packet: `{daemon.get('last_live_odds_backlog_join_eligibility_packet_path')}`",
+            f"- Live odds backlog join eligibility evaluated races: `{daemon.get('last_live_odds_backlog_join_eligibility_evaluated_race_count')}`",
+            f"- Live odds backlog join eligibility report-only races: `{daemon.get('last_live_odds_backlog_join_eligibility_eligible_report_only_race_count')}`",
+            f"- Live odds backlog join eligibility blocked races: `{daemon.get('last_live_odds_backlog_join_eligibility_blocked_race_count')}`",
+            f"- Live odds backlog join eligibility diagnostic only: `{daemon.get('last_live_odds_backlog_join_eligibility_diagnostic_only')}`",
+            f"- Live odds backlog join eligibility join authorized: `{daemon.get('last_live_odds_backlog_join_eligibility_join_authorized')}`",
+            f"- Live odds backlog join eligibility DB write performed: `{daemon.get('last_live_odds_backlog_join_eligibility_db_write_performed')}`",
+            f"- Rolling model comparison: `{daemon.get('last_rolling_model_comparison_status')}`",
+            f"- Rolling model comparison sample races: `{daemon.get('last_rolling_model_comparison_sample_races')}`",
+            f"- Rolling model comparison best candidate: `{daemon.get('last_rolling_model_comparison_best_candidate')}`",
+            f"- Rolling model comparison source rejected live odds candidates: `{daemon.get('last_rolling_model_comparison_source_rejected_live_odds_candidate_count')}`",
+            f"- Rolling model comparison source rows with rejected live odds candidates: `{daemon.get('last_rolling_model_comparison_source_rows_with_rejected_live_odds_candidates')}`",
+            f"- Rolling model comparison source rejected live odds candidate reasons: `{daemon.get('last_rolling_model_comparison_source_rejected_live_odds_candidate_reason_counts')}`",
+            f"- High-accuracy refinement: `{daemon.get('last_high_accuracy_refinement_status')}`",
+            f"- High-accuracy PR gate: `{daemon.get('last_high_accuracy_promotion_pr_gate_status')}`",
+            f"- High-accuracy unified eligible rows: `{daemon.get('last_high_accuracy_unified_evidence_eligible_rows')}`",
+            f"- Promotion distance: `{daemon.get('last_promotion_distance_status')}`",
+            f"- Promotion distance promotion ready: `{daemon.get('last_promotion_distance_promotion_ready')}`",
+            f"- Promotion distance sample races: `{daemon.get('last_promotion_distance_sample_race_count')}`",
+            f"- Promotion distance sample runner rows: `{daemon.get('last_promotion_distance_sample_runner_rows')}`",
+            f"- Promotion distance best candidate: `{daemon.get('last_promotion_distance_best_candidate_key')}`",
+            f"- Promotion distance best non-market candidate: `{daemon.get('last_promotion_distance_best_non_market_candidate_key')}`",
+            f"- Promotion distance blockers: `{daemon.get('last_promotion_distance_blockers') or []}`",
+            f"- Promotion distance source rejected live odds candidates: `{daemon.get('last_promotion_distance_source_rejected_live_odds_candidate_count')}`",
+            f"- Promotion distance source rows with rejected live odds candidates: `{daemon.get('last_promotion_distance_source_rows_with_rejected_live_odds_candidates')}`",
+            f"- Promotion distance source rejected live odds candidate reasons: `{daemon.get('last_promotion_distance_source_rejected_live_odds_candidate_reason_counts')}`",
+            f"- Promotion distance source exclusion reasons: `{daemon.get('last_promotion_distance_source_exclusion_reason_counts')}`",
+            f"- Promotion distance source odds exclusion reasons: `{daemon.get('last_promotion_distance_source_odds_exclusion_reason_counts')}`",
+            f"- Promotion distance source official-result missing race IDs: `{daemon.get('last_promotion_distance_source_official_result_evidence_db_missing_race_ids')}`",
+            f"- Promotion distance source official-result requested race count: `{daemon.get('last_promotion_distance_source_official_result_evidence_db_requested_race_count')}`",
+            f"- Promotion distance source official-result races with rows: `{daemon.get('last_promotion_distance_source_official_result_evidence_db_races_with_rows')}`",
+            f"- Promotion distance official-result coverage requested races: `{daemon.get('last_promotion_distance_official_result_coverage_requested_race_count')}`",
+            f"- Promotion distance official-result requested race count source: `{daemon.get('last_promotion_distance_official_result_coverage_requested_race_count_source')}`",
+            f"- Promotion distance official-result legacy requested race count without IDs: `{daemon.get('last_promotion_distance_official_result_coverage_legacy_requested_race_count_without_ids')}`",
+            f"- Promotion distance official-result coverage races with rows: `{daemon.get('last_promotion_distance_official_result_coverage_races_with_rows_count')}`",
+            f"- Promotion distance official-result coverage missing races: `{daemon.get('last_promotion_distance_official_result_coverage_missing_race_count')}`",
+            f"- Promotion distance official-result missing exclusions: `{daemon.get('last_promotion_distance_official_result_coverage_missing_exclusion_count')}`",
+            f"- Promotion distance official-result runner path count: `{daemon.get('last_promotion_distance_official_result_runner_path_count')}`",
+            f"- Promotion distance official-result runner paths source: `{daemon.get('last_promotion_distance_official_result_runner_paths_source_field')}`",
+            f"- Best aggregate unified evidence: `{daemon.get('last_best_aggregate_unified_evidence_status')}`",
+            f"- Best aggregate unified eligible rows: `{daemon.get('last_best_aggregate_unified_evidence_eligible_rows')}`",
+            f"- Best aggregate unified rejected live odds candidates: `{daemon.get('last_best_aggregate_unified_rejected_live_odds_candidate_count')}`",
+            f"- Best aggregate unified rows with rejected live odds candidates: `{daemon.get('last_best_aggregate_unified_rows_with_rejected_live_odds_candidates')}`",
+            f"- Best aggregate unified rejected live odds candidate reasons: `{daemon.get('last_best_aggregate_unified_rejected_live_odds_candidate_reason_counts')}`",
+            f"- Rejoin unified evidence: `{daemon.get('last_rejoin_unified_evidence_status')}`",
+            f"- Rejoin rejected live odds candidates: `{daemon.get('last_rejoin_unified_rejected_live_odds_candidate_count')}`",
+            f"- Rejoin rows with rejected live odds candidates: `{daemon.get('last_rejoin_unified_rows_with_rejected_live_odds_candidates')}`",
+            f"- Rejoin rejected live odds candidate reasons: `{daemon.get('last_rejoin_unified_rejected_live_odds_candidate_reason_counts')}`",
+            f"- Rejoin rolling comparison: `{daemon.get('last_rejoin_rolling_model_comparison_status')}`",
+            f"- Rejoin rolling comparison sample races: `{daemon.get('last_rejoin_rolling_model_comparison_sample_races')}`",
+            f"- Rejoin high-accuracy packet: `{daemon.get('last_rejoin_high_accuracy_refinement_status')}`",
+            f"- Rejoin pre-race gated challenger: `{daemon.get('last_rejoin_pre_race_gated_challenger_status')}`",
+            f"- Rejoin pre-race gated challenger promotion ready: `{daemon.get('last_rejoin_pre_race_gated_challenger_promotion_ready')}`",
+            f"- Rejoin rank-first hypothesis review: `{daemon.get('last_rejoin_rank_first_hypothesis_review_status')}`",
+            f"- Rejoin rank-first hypothesis candidates: `{daemon.get('last_rejoin_rank_first_hypothesis_candidate_count')}`",
+            f"- Rejoin rank-first hypothesis evaluated candidates: `{daemon.get('last_rejoin_rank_first_hypothesis_evaluated_candidate_count')}`",
+            f"- Rejoin rank-first hypothesis best candidate: `{daemon.get('last_rejoin_rank_first_hypothesis_best_candidate_key')}`",
+            f"- Rejoin rank-first hypothesis directional ready: `{daemon.get('last_rejoin_rank_first_hypothesis_directional_read_ready')}`",
+            f"- Rejoin time-split gated challenger: `{daemon.get('last_rejoin_time_split_gated_challenger_status')}`",
+            f"- Rejoin time-split gated challenger promotion ready: `{daemon.get('last_rejoin_time_split_gated_challenger_promotion_ready')}`",
+            f"- Rejoin market residual challenger: `{daemon.get('last_rejoin_market_residual_challenger_status')}`",
+            f"- Rejoin market residual challenger promotion ready: `{daemon.get('last_rejoin_market_residual_challenger_promotion_ready')}`",
+            f"- Rejoin market residual regime audit: `{daemon.get('last_rejoin_market_residual_regime_audit_status')}`",
+            f"- Rejoin market residual regime audit promotion ready: `{daemon.get('last_rejoin_market_residual_regime_audit_promotion_ready')}`",
+            f"- Rejoin market residual rank-first hypothesis: `{daemon.get('last_rejoin_market_residual_rank_first_hypothesis_status')}`",
+            f"- Rejoin rank-first watchlist: `{daemon.get('last_rejoin_rank_first_hypothesis_watchlist_status')}`",
+            f"- Rejoin rank-first watchlist candidates: `{daemon.get('last_rejoin_rank_first_hypothesis_watchlist_candidate_count')}`",
+            f"- Rejoin rank-first watchlist directional-ready candidates: `{daemon.get('last_rejoin_rank_first_hypothesis_watchlist_directional_ready_candidate_count')}`",
+            f"- Rejoin rank-first watchlist best candidate: `{daemon.get('last_rejoin_rank_first_hypothesis_watchlist_best_candidate')}`",
+            f"- Rejoin rank-first watchlist best status: `{daemon.get('last_rejoin_rank_first_hypothesis_watchlist_best_status')}`",
+            f"- Rejoin rank-first watchlist best distinct samples: `{daemon.get('last_rejoin_rank_first_hypothesis_watchlist_best_distinct_samples')}`",
+            f"- Rejoin promotion distance: `{daemon.get('last_rejoin_promotion_distance_status')}`",
+            f"- Rejoin promotion distance promotion ready: `{daemon.get('last_rejoin_promotion_distance_promotion_ready')}`",
+            f"- Rejoin promotion distance blockers: `{daemon.get('last_rejoin_promotion_distance_blockers') or []}`",
+            f"- Rejoin promotion distance source exclusion reasons: `{daemon.get('last_rejoin_promotion_distance_source_exclusion_reason_counts')}`",
+            f"- Rejoin promotion distance source official-result missing race IDs: `{daemon.get('last_rejoin_promotion_distance_source_official_result_evidence_db_missing_race_ids')}`",
+            f"- Rejoin promotion distance official-result coverage requested races: `{daemon.get('last_rejoin_promotion_distance_official_result_coverage_requested_race_count')}`",
+            f"- Rejoin promotion distance official-result requested race count source: `{daemon.get('last_rejoin_promotion_distance_official_result_coverage_requested_race_count_source')}`",
+            f"- Rejoin promotion distance official-result legacy requested race count without IDs: `{daemon.get('last_rejoin_promotion_distance_official_result_coverage_legacy_requested_race_count_without_ids')}`",
+            f"- Rejoin promotion distance official-result coverage races with rows: `{daemon.get('last_rejoin_promotion_distance_official_result_coverage_races_with_rows_count')}`",
+            f"- Rejoin promotion distance official-result coverage missing races: `{daemon.get('last_rejoin_promotion_distance_official_result_coverage_missing_race_count')}`",
+            f"- Rejoin promotion distance official-result missing exclusions: `{daemon.get('last_rejoin_promotion_distance_official_result_coverage_missing_exclusion_count')}`",
+            f"- Rejoin promotion distance official-result runner path count: `{daemon.get('last_rejoin_promotion_distance_official_result_runner_path_count')}`",
+            f"- Rejoin promotion distance official-result runner paths source: `{daemon.get('last_rejoin_promotion_distance_official_result_runner_paths_source_field')}`",
             f"- Daily run: `{daily.get('daily_shadow_run_dir')}`",
             f"- Daily status: `{daily.get('final_status')}`",
             f"- Same-distance provenance: `{(daily.get('same_distance_history_provenance') or {}).get('status')}`",

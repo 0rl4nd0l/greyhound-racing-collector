@@ -204,7 +204,7 @@ def test_download_refreshes_existing_csv_with_stale_sidecar_contract(
     from upcoming_race_browser import UpcomingRaceBrowser
 
     br = UpcomingRaceBrowser()
-    race_url = "https://www.thedogs.com.au/racing/test/2026-06-09/1/test?trial=false"
+    race_url = "https://www.thedogs.com.au/racing/test/2030-06-09/1/test?trial=false"
     runners = [
         (1, "Alpha Runner"),
         (2, "Bravo Runner"),
@@ -212,7 +212,7 @@ def test_download_refreshes_existing_csv_with_stale_sidecar_contract(
         (4, "Delta Runner"),
     ]
     csv_content = _synthetic_thedogs_export(runners)
-    filename = "Race 1 - TEST - 2026-06-09.csv"
+    filename = "Race 1 - TEST - 2030-06-09.csv"
     existing_path = Path(br.upcoming_dir) / filename
     existing_path.write_text("Dog Name|BOX\n1. Old Runner|1\n", encoding="utf-8")
     existing_sidecar = Path(f"{existing_path}.metadata.json")
@@ -232,7 +232,7 @@ def test_download_refreshes_existing_csv_with_stale_sidecar_contract(
         lambda soup, url: {
             "race_number": "1",
             "venue": "TEST",
-            "date": "2026-06-09",
+            "date": "2030-06-09",
             "race_time": "11:15 PM",
             "race_time_source": "canonical_race_url",
             "race_time_mapping_status": "exact_url_match",
@@ -294,9 +294,9 @@ def test_download_refreshes_existing_csv_with_stale_sidecar_contract(
     assert validation["status"] == "PASS", validation
     contract = existing_prejump_sidecar_contract_status(existing_path)
     assert contract["status"] == "PASS", contract
-    sidecar["metadata_captured_at"] = "2026-06-09T23:16:00+10:00"
+    sidecar["metadata_captured_at"] = "2030-06-09T23:16:00+10:00"
     sidecar["prejump_shadow_metadata"]["metadata_captured_at"] = (
-        "2026-06-09T23:16:00+10:00"
+        "2030-06-09T23:16:00+10:00"
     )
     existing_sidecar.write_text(json.dumps(sidecar), encoding="utf-8")
     post_jump_contract = existing_prejump_sidecar_contract_status(existing_path)
@@ -389,6 +389,107 @@ def test_download_fallback_quarantines_csv_without_valid_prejump_sidecar(
     assert Path(result["quarantine"]["csv_quarantine_path"]).exists()
     assert Path(result["quarantine"]["sidecar_quarantine_path"]).exists()
     assert not (Path(br.upcoming_dir) / filename).exists()
+
+
+def test_download_pdf_masquerading_as_csv_tries_expert_form_fallback(
+    monkeypatch,
+    _isolate_upcoming_dir,
+):
+    import upcoming_race_browser as browser_module
+    from upcoming_race_browser import UpcomingRaceBrowser
+
+    br = UpcomingRaceBrowser()
+    race_url = "https://www.thedogs.com.au/racing/taree/2026-06-13/9/example?trial=false"
+    filename = "Race 9 - TAREE - 2026-06-13.csv"
+
+    monkeypatch.setattr(
+        br,
+        "find_csv_download_link",
+        lambda soup, url: {"type": "direct_csv", "data": "%PDF-1.5\nnot a csv\n"},
+    )
+    monkeypatch.setattr(
+        br,
+        "extract_detailed_race_info",
+        lambda soup, url: {
+            "race_number": "9",
+            "venue": "TAREE",
+            "date": "2026-06-13",
+            "race_time": "10:15 AM",
+            "race_time_source": "canonical_race_url",
+            "race_time_mapping_status": "exact_url_match",
+        },
+    )
+    monkeypatch.setattr(
+        br,
+        "_extract_safe_target_metadata_from_page",
+        lambda soup, url: {
+            "target_distance": "300m",
+            "target_distance_source": "canonical_pre_race_page",
+            "target_grade": "5th Grade",
+            "target_grade_source": "canonical_pre_race_page",
+            "metadata_is_leakage_safe": True,
+            "metadata_source_url": race_url,
+        },
+    )
+    monkeypatch.setattr(
+        br,
+        "_existing_prejump_sidecar_contract_status",
+        lambda filepath: {
+            "status": "PASS",
+            "runner_completeness": {"status": "COMPLETE"},
+        },
+    )
+    monkeypatch.setattr(
+        browser_module,
+        "bs4",
+        types.SimpleNamespace(BeautifulSoup=lambda content, parser: object()),
+    )
+
+    class _Resp:
+        status_code = 200
+        content = b"<html><title>Race 9</title></html>"
+        text = "<html><title>Race 9</title></html>"
+        headers = {}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(
+        br,
+        "session",
+        types.SimpleNamespace(get=lambda url, timeout=30: _Resp()),
+    )
+
+    calls = []
+
+    class _FakeExpertFormCsvScraper:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def download_csv_from_expert_form(self, base_race_url, target_filename, race_info=None):
+            calls.append((base_race_url, target_filename, race_info))
+            assert target_filename == filename
+            filepath = Path(os.environ["UPCOMING_RACES_DIR"]) / target_filename
+            filepath.write_text("Dog Name|BOX\n1. Alpha Runner|1\n", encoding="utf-8")
+            Path(f"{filepath}.metadata.json").write_text(
+                json.dumps({"schema_version": "valid_prejump_sidecar"}),
+                encoding="utf-8",
+            )
+            return True
+
+    fake_module = types.ModuleType("expert_form_csv_scraper")
+    fake_module.ExpertFormCsvScraper = _FakeExpertFormCsvScraper
+    monkeypatch.setitem(sys.modules, "expert_form_csv_scraper", fake_module)
+
+    result = br.download_race_csv(race_url)
+
+    assert result["success"] is True, result
+    assert calls
+    assert result["fallback_trigger"] == "pdf_masquerading_as_csv"
+    assert result["rejected_export"]["reason"] == "pdf_masquerading_as_csv"
+    assert Path(result["rejected_export"]["raw_export_path"]).exists()
+    assert Path(result["rejected_export"]["quarantine_path"]).exists()
+    assert Path(result["filepath"]).exists()
 
 
 def test_expert_form_scraper_rejects_success_without_valid_prejump_sidecar(

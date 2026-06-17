@@ -1,0 +1,19 @@
+{
+  "betting_action_allowed": false,
+  "betting_advice": false,
+  "blocker_counts": {
+    "complete_valid_prejump_odds_races_below_min": 100,
+    "incomplete_valid_prejump_odds": 16,
+    "missing_odds_rows": 16,
+    "odds_research_readiness_not_batch_ready": 1
+  },
+  "ev_can_override_accuracy_gate": false,
+  "ev_rows": 0,
+  "negative_ev_rows": 0,
+  "odds_research_gate_status": "ODDS_RESEARCH_BLOCKED_PROVENANCE",
+  "positive_ev_rows": 0,
+  "promotion_signal": false,
+  "schema_version": "report_only_ev_diagnostics_v1",
+  "stakes": false,
+  "status": "EV_DIAGNOSTICS_BLOCKED_ODDS_RESEARCH_GATE"
+}

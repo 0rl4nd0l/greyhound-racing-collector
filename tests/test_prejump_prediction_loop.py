@@ -406,6 +406,48 @@ def test_refresh_selection_filters_prejump_window():
     assert timing["minutes_until_window_closes"] == 25.0
 
 
+def test_refresh_selection_prioritizes_nearest_due_races_before_limit():
+    now = datetime(2026, 5, 29, 13, 0, tzinfo=ZoneInfo("Australia/Melbourne"))
+    races = [
+        {
+            "url": "https://example.test/r1",
+            "date": "2026-05-29",
+            "race_time": "1:55 PM",
+            "race_number": 1,
+            "venue": "TEST",
+        },
+        {
+            "url": "https://example.test/r2",
+            "date": "2026-05-29",
+            "race_time": "1:05 PM",
+            "race_number": 2,
+            "venue": "TEST",
+        },
+        {
+            "url": "https://example.test/r3",
+            "date": "2026-05-29",
+            "race_time": "1:30 PM",
+            "race_number": 3,
+            "venue": "TEST",
+        },
+    ]
+
+    selected, records = select_prejump_races(
+        races,
+        now=now,
+        min_minutes=0,
+        max_minutes=60,
+        limit=2,
+    )
+
+    assert [race["race_number"] for race in selected] == [2, 3]
+    selected_records = [record for record in records if record.get("selection_order")]
+    assert [(record["race_number"], record["selection_order"]) for record in selected_records] == [
+        (2, 1),
+        (3, 2),
+    ]
+
+
 def test_refresh_timing_summary_reports_next_future_window():
     now = datetime(2026, 5, 29, 13, 0, tzinfo=ZoneInfo("Australia/Melbourne"))
     races = [

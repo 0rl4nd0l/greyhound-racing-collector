@@ -1,0 +1,39 @@
+{
+  "activation_blockers": {
+    "complete_valid_prejump_odds_races_below_min": 100,
+    "incomplete_valid_prejump_odds": 16,
+    "missing_odds_rows": 16,
+    "odds_research_readiness_not_batch_ready": 1
+  },
+  "betting_action_allowed": false,
+  "ev_output_allowed": false,
+  "final_status": "ODDS_AUGMENTED_MODEL_BLOCKED",
+  "metrics_required": [
+    "top1",
+    "top3",
+    "mean_winner_rank",
+    "brier",
+    "logloss",
+    "calibration_slope_intercept",
+    "box1_top_pick_share",
+    "probability_sum_error"
+  ],
+  "models_required_when_gate_passes": [
+    "stage2_no_odds_challenger",
+    "market_only_implied_probability_baseline",
+    "odds_augmented_challenger",
+    "probability_blend_calibration_candidate"
+  ],
+  "odds_research_gate_status": "ODDS_RESEARCH_BLOCKED_PROVENANCE",
+  "odds_used_for_shadow_scoring": false,
+  "promotion_boundary": {
+    "direct_registry_mutation_allowed": false,
+    "ev_can_override_failed_accuracy_gate": false,
+    "odds_can_override_failed_accuracy_gate": false,
+    "production_pointer_update_allowed": false,
+    "promotion_pr_allowed": false
+  },
+  "ready_status_name": "ODDS_AUGMENTED_MODEL_READY_FOR_PR_REVIEW",
+  "report_only": true,
+  "schema_version": "odds_augmented_challenger_report_v1"
+}

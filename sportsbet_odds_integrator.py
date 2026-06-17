@@ -67,6 +67,9 @@ POST_RACE_SOURCE_URL_MARKERS = ("dividend", "payout", "result")
 SPORTSBET_LIST_POSITION_BOX_SOURCE = "list_position_fallback"
 SPORTSBET_RUNNER_TEXT_BOX_SOURCE = "runner_text"
 SPORTSBET_EXPLICIT_DOM_BOX_SOURCE = "explicit_dom"
+SPORTSBET_RUNNER_HEADER_RE = re.compile(
+    r"^\s*(\d{1,2})\s*[.)]\s+[A-Za-z][A-Za-z'. -]+(?:\s*\((\d{1,2})\))?\s*$"
+)
 
 
 def _race_metadata_columns(cursor: sqlite3.Cursor) -> set[str]:
@@ -126,10 +129,23 @@ def parse_sportsbet_runner_box_from_text(raw_text: Any) -> Optional[int]:
 
     lines = [line.strip() for line in re.split(r"[\r\n]+", text) if line.strip()]
     for line in lines:
-        # Sportsbet race cards render greyhounds like "6. Memories" and "(6)".
+        # Sportsbet can render reserves as "9. High Rollin' (6)"; the
+        # parenthesized value is the final box and the leading value is the
+        # reserve/runner number.
+        remapped_match = re.match(
+            r"^\s*\d{1,2}\s*[.)]\s+[A-Za-z][A-Za-z'. -]+\s*\((\d{1,2})\)\s*$",
+            line,
+        )
+        if remapped_match:
+            box = _safe_runner_box(remapped_match.group(1))
+            if box is not None:
+                return box
+
+        # Sportsbet race cards render ordinary greyhounds like "6. Memories".
         for pattern in (
-            r"^\s*(\d{1,2})\s*[.)]\s+[A-Za-z][A-Za-z' -]+(?:\s*\(\d{1,2}\))?\s*$",
-            r"^\s*[A-Za-z][A-Za-z' -]+\s*\((\d{1,2})\)\s*$",
+            r"^\s*(\d{1,2})\s*[.)]\s+[A-Za-z][A-Za-z'. -]+\s*$",
+            r"^\s*[A-Za-z][A-Za-z'. -]+\s*\((\d{1,2})\)\s*$",
+            r"^\s*\((\d{1,2})\)\s*$",
         ):
             match = re.match(pattern, line)
             if match:
@@ -146,6 +162,20 @@ def parse_sportsbet_runner_box_from_text(raw_text: Any) -> Optional[int]:
     if attr_match:
         return _safe_runner_box(attr_match.group(1))
     return None
+
+
+def sportsbet_runner_header_count(raw_text: Any) -> int:
+    """Count explicit runner headers in a Sportsbet text block."""
+
+    text = str(raw_text or "").replace("\xa0", " ")
+    count = 0
+    for line in [line.strip() for line in re.split(r"[\r\n]+", text) if line.strip()]:
+        match = SPORTSBET_RUNNER_HEADER_RE.match(line)
+        if not match:
+            continue
+        if _safe_runner_box(match.group(2) or match.group(1)) is not None:
+            count += 1
+    return count
 
 
 def sportsbet_runner_box_metadata(
@@ -292,6 +322,7 @@ class SportsbetOddsIntegrator:
         db_path="greyhound_racing_data.db",
         allow_auto_scrape_odds: Optional[bool] = None,
         dom_fallback_card_limit: Optional[int] = None,
+        setup_database: bool = True,
     ):
         self.db_path = db_path
         self.allow_auto_scrape_odds = allow_auto_scrape_odds
@@ -309,7 +340,8 @@ class SportsbetOddsIntegrator:
         self.odds_cache = {}
         self.update_interval = 30  # seconds
         self.setup_session()
-        self.setup_database()
+        if setup_database:
+            self.setup_database()
 
     def _dom_fallback_odds_allowed(self) -> Tuple[bool, str]:
         if self.allow_auto_scrape_odds is not None:
@@ -1118,6 +1150,7 @@ class SportsbetOddsIntegrator:
         topN: Optional[int] = None,
         capture_mode: str = "manual_pre_jump_snapshot",
         capture_timestamp: Optional[str] = None,
+        write_race_metadata: bool = True,
     ) -> Dict[str, Any]:
         """Append a provenance-bearing live odds snapshot without updating old odds rows."""
 
@@ -1189,21 +1222,22 @@ class SportsbetOddsIntegrator:
                 except Exception:
                     race_datetime_str = str(race_info["start_datetime"])
 
-            safe_upsert_race_metadata(
-                cursor,
-                race_id,
-                {
-                    "venue": race_info.get("venue"),
-                    "race_number": race_info.get("race_number", 0),
-                    "race_date": race_info.get("race_date"),
-                    "race_time": race_info.get("race_time"),
-                    "sportsbet_url": source_url,
-                    "url": source_url,
-                    "venue_slug": race_info.get("venue_slug", ""),
-                    "start_datetime": race_datetime_str,
-                    "race_datetime": race_datetime_str,
-                },
-            )
+            if write_race_metadata:
+                safe_upsert_race_metadata(
+                    cursor,
+                    race_id,
+                    {
+                        "venue": race_info.get("venue"),
+                        "race_number": race_info.get("race_number", 0),
+                        "race_date": race_info.get("race_date"),
+                        "race_time": race_info.get("race_time"),
+                        "sportsbet_url": source_url,
+                        "url": source_url,
+                        "venue_slug": race_info.get("venue_slug", ""),
+                        "start_datetime": race_datetime_str,
+                        "race_datetime": race_datetime_str,
+                    },
+                )
 
             live_cols = _table_columns(cursor, "live_odds")
             for row in rows:
@@ -1596,6 +1630,12 @@ class SportsbetOddsIntegrator:
                         runner_text = card.text.strip()
                     except Exception:
                         runner_text = dog_name
+                    if sportsbet_runner_header_count(runner_text) > 1:
+                        print(
+                            "    ⚠️  Skipping concatenated Sportsbet runner block; "
+                            "falling back to narrower extraction"
+                        )
+                        continue
                     box_meta = sportsbet_runner_box_metadata(
                         list_position=i + 1,
                         runner_text=runner_text,
@@ -2138,6 +2178,12 @@ class SportsbetOddsIntegrator:
                                 runner_text = container.text.strip()
                             except Exception:
                                 runner_text = expected_dog_name or dog_name
+                            if sportsbet_runner_header_count(runner_text) > 1:
+                                print(
+                                    "    ⚠️  Skipping broad container with multiple runner "
+                                    "headers; not a dog-level odds row"
+                                )
+                                continue
                             box_meta = sportsbet_runner_box_metadata(
                                 list_position=i + 1,
                                 runner_text=runner_text,
@@ -2345,6 +2391,12 @@ class SportsbetOddsIntegrator:
 
                     if dog_name and odds_decimal > 0:
                         print(f"    ✅ Extracted: {dog_name} - ${odds_decimal:.2f}")
+                        if sportsbet_runner_header_count(runner_text) > 1:
+                            print(
+                                "    ⚠️  Skipping concatenated runner text block; "
+                                "not a dog-level odds row"
+                            )
+                            continue
                         box_meta = sportsbet_runner_box_metadata(
                             list_position=i + 1,
                             runner_text=runner_text,
@@ -2546,6 +2598,12 @@ class SportsbetOddsIntegrator:
                         break
 
                 if dog_name:
+                    if sportsbet_runner_header_count(runner_text) > 1:
+                        print(
+                            f"    ⚠️  Skipping runner text block {i+1}; contains multiple "
+                            "Sportsbet runner headers"
+                        )
+                        continue
                     dog_names.append(
                         {
                             "dog_name": dog_name,

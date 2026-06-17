@@ -1,0 +1,90 @@
+{
+  "aggregate_brier": 0.12214717269689963,
+  "aggregate_logloss": 1.9739230281412494,
+  "aggregate_reliability_bins": [
+    {
+      "bin_end": 0.1,
+      "bin_start": 0.0,
+      "count": 1991,
+      "mean_predicted_probability": 0.06567199581820705,
+      "observed_rate": 0.09794073329984933
+    },
+    {
+      "bin_end": 0.2,
+      "bin_start": 0.1,
+      "count": 1797,
+      "mean_predicted_probability": 0.14101694903761822,
+      "observed_rate": 0.15080690038953812
+    },
+    {
+      "bin_end": 0.3,
+      "bin_start": 0.2,
+      "count": 598,
+      "mean_predicted_probability": 0.2427634421991636,
+      "observed_rate": 0.21070234113712374
+    },
+    {
+      "bin_end": 0.4,
+      "bin_start": 0.3,
+      "count": 244,
+      "mean_predicted_probability": 0.3395822509471309,
+      "observed_rate": 0.19672131147540983
+    },
+    {
+      "bin_end": 0.5,
+      "bin_start": 0.4,
+      "count": 86,
+      "mean_predicted_probability": 0.4440154612848836,
+      "observed_rate": 0.23255813953488372
+    },
+    {
+      "bin_end": 0.6,
+      "bin_start": 0.5,
+      "count": 26,
+      "mean_predicted_probability": 0.5366938952307693,
+      "observed_rate": 0.2692307692307692
+    },
+    {
+      "bin_end": 0.7,
+      "bin_start": 0.6,
+      "count": 5,
+      "mean_predicted_probability": 0.64393706496,
+      "observed_rate": 0.4
+    },
+    {
+      "bin_end": 0.8,
+      "bin_start": 0.7,
+      "count": 2,
+      "mean_predicted_probability": 0.7249674832499999,
+      "observed_rate": 0.0
+    },
+    {
+      "bin_end": 0.9,
+      "bin_start": 0.8,
+      "count": 0,
+      "mean_predicted_probability": null,
+      "observed_rate": null
+    },
+    {
+      "bin_end": 1.0,
+      "bin_start": 0.9,
+      "count": 0,
+      "mean_predicted_probability": null,
+      "observed_rate": null
+    }
+  ],
+  "aggregate_safe_joined_race_count": 669,
+  "aggregate_safe_joined_runner_count": 4749,
+  "aggregate_slope_intercept": {
+    "intercept": -0.9455460047520626,
+    "method": "logistic_regression_on_logit_probability",
+    "negative_labels": 4080,
+    "positive_labels": 669,
+    "sample_size": 4749,
+    "slope": 0.45012385349850625,
+    "status": "computed"
+  },
+  "current_probability_sum_max_error": 2.220446049250313e-16,
+  "current_probability_sum_status": "PASS",
+  "schema_version": "prediction_accuracy_system_calibration_review_v1"
+}

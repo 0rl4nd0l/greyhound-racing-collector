@@ -1,0 +1,15 @@
+[Unit]
+Description=Greyhound autonomous live odds capture
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610
+Environment=PYTHONUNBUFFERED=1
+Environment=GREYHOUND_ALLOW_TGR=0
+Environment=PATH=/home/l4nd0/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/usr/bin/python3 /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/scripts/shadow_autopilot_daemon.py run-odds-capture-once --days-ahead 1 --refresh-limit 8 --odds-capture-refresh-limit 8 --skip-primary-refresh --db /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/greyhound_racing_data.db --lock-path /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/artifacts/full_evidence_orchestration_20260525/shadow_autopilot_daemon_runtime/shadow_autopilot.lock --state-path /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/shadow_autopilot_daemon_runtime/odds_capture_state.json --timeout-seconds 600
+TimeoutStartSec=1200
+Nice=10
+IOSchedulingClass=best-effort

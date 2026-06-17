@@ -1,0 +1,771 @@
+{
+  "collection_status": "SHADOW_ODDS_SNAPSHOT_NO_MATCHES",
+  "race_count": 16,
+  "races": [
+    {
+      "complete_odds_candidate_coverage": false,
+      "complete_valid_prejump_odds": false,
+      "duplicate_odds_rows": 0,
+      "ev_calculation_status": "DISABLED_REPORT_ONLY_NO_EV_OUTPUT",
+      "ev_eligible_rows": 0,
+      "missing_odds_rows": 7,
+      "missing_source_url_rows": 0,
+      "odds_analysis_blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "odds_analysis_status": "ODDS_ANALYSIS_BLOCKED",
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "odds_exclusion_reason_distribution": {
+        "no_odds_row": 7
+      },
+      "odds_match_status_distribution": {
+        "no_odds_row": 7
+      },
+      "odds_source_url_count": 0,
+      "odds_source_urls": [],
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "post_race_or_sp_only_rows": 0,
+      "predicted_runner_count": 7,
+      "race_context": {
+        "jump_datetime": null,
+        "jump_time": "2:27 PM",
+        "jump_time_iso": null,
+        "race_date": "2026-06-10",
+        "race_id": "Race 1 - BEN - 2026-06-10",
+        "race_number": 1,
+        "race_time": null,
+        "runner_count": 7,
+        "source_url": "https://www.thedogs.com.au/racing/bendigo/2026-06-10/1/bendigo-advertiser?trial=false",
+        "venue": "BEN"
+      },
+      "race_id": "Race 1 - BEN - 2026-06-10",
+      "runner_rows_checked": 7,
+      "runner_rows_with_odds_candidates": 0,
+      "stale_odds_rows": 0,
+      "total_odds_candidate_count": 0,
+      "untrusted_source_rows": 0,
+      "valid_pre_jump_dog_odds_rows": 0
+    },
+    {
+      "complete_odds_candidate_coverage": false,
+      "complete_valid_prejump_odds": false,
+      "duplicate_odds_rows": 0,
+      "ev_calculation_status": "DISABLED_REPORT_ONLY_NO_EV_OUTPUT",
+      "ev_eligible_rows": 0,
+      "missing_odds_rows": 7,
+      "missing_source_url_rows": 0,
+      "odds_analysis_blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "odds_analysis_status": "ODDS_ANALYSIS_BLOCKED",
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "odds_exclusion_reason_distribution": {
+        "no_odds_row": 7
+      },
+      "odds_match_status_distribution": {
+        "no_odds_row": 7
+      },
+      "odds_source_url_count": 0,
+      "odds_source_urls": [],
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "post_race_or_sp_only_rows": 0,
+      "predicted_runner_count": 7,
+      "race_context": {
+        "jump_datetime": null,
+        "jump_time": "3:12 PM",
+        "jump_time_iso": null,
+        "race_date": "2026-06-10",
+        "race_id": "Race 1 - GUNNEDAH - 2026-06-10",
+        "race_number": 1,
+        "race_time": null,
+        "runner_count": 7,
+        "source_url": "https://www.thedogs.com.au/racing/gunnedah/2026-06-10/1/welcome-to-gunnedah-greyhounds-maiden?trial=false",
+        "venue": "GUNNEDAH"
+      },
+      "race_id": "Race 1 - GUNNEDAH - 2026-06-10",
+      "runner_rows_checked": 7,
+      "runner_rows_with_odds_candidates": 0,
+      "stale_odds_rows": 0,
+      "total_odds_candidate_count": 0,
+      "untrusted_source_rows": 0,
+      "valid_pre_jump_dog_odds_rows": 0
+    },
+    {
+      "complete_odds_candidate_coverage": false,
+      "complete_valid_prejump_odds": false,
+      "duplicate_odds_rows": 0,
+      "ev_calculation_status": "DISABLED_REPORT_ONLY_NO_EV_OUTPUT",
+      "ev_eligible_rows": 0,
+      "missing_odds_rows": 8,
+      "missing_source_url_rows": 0,
+      "odds_analysis_blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "odds_analysis_status": "ODDS_ANALYSIS_BLOCKED",
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "odds_exclusion_reason_distribution": {
+        "no_odds_row": 8
+      },
+      "odds_match_status_distribution": {
+        "no_odds_row": 8
+      },
+      "odds_source_url_count": 0,
+      "odds_source_urls": [],
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "post_race_or_sp_only_rows": 0,
+      "predicted_runner_count": 8,
+      "race_context": {
+        "jump_datetime": null,
+        "jump_time": "2:59 PM",
+        "jump_time_iso": null,
+        "race_date": "2026-06-10",
+        "race_id": "Race 1 - LADBROKES-Q1-LAKESIDE - 2026-06-10",
+        "race_number": 1,
+        "race_time": null,
+        "runner_count": 8,
+        "source_url": "https://www.thedogs.com.au/racing/ladbrokes-q1-lakeside/2026-06-10/1/independent-liquor-group?trial=false",
+        "venue": "LADBROKES-Q1-LAKESIDE"
+      },
+      "race_id": "Race 1 - LADBROKES-Q1-LAKESIDE - 2026-06-10",
+      "runner_rows_checked": 8,
+      "runner_rows_with_odds_candidates": 0,
+      "stale_odds_rows": 0,
+      "total_odds_candidate_count": 0,
+      "untrusted_source_rows": 0,
+      "valid_pre_jump_dog_odds_rows": 0
+    },
+    {
+      "complete_odds_candidate_coverage": false,
+      "complete_valid_prejump_odds": false,
+      "duplicate_odds_rows": 0,
+      "ev_calculation_status": "DISABLED_REPORT_ONLY_NO_EV_OUTPUT",
+      "ev_eligible_rows": 0,
+      "missing_odds_rows": 7,
+      "missing_source_url_rows": 0,
+      "odds_analysis_blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "odds_analysis_status": "ODDS_ANALYSIS_BLOCKED",
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "odds_exclusion_reason_distribution": {
+        "no_odds_row": 7
+      },
+      "odds_match_status_distribution": {
+        "no_odds_row": 7
+      },
+      "odds_source_url_count": 0,
+      "odds_source_urls": [],
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "post_race_or_sp_only_rows": 0,
+      "predicted_runner_count": 7,
+      "race_context": {
+        "jump_datetime": null,
+        "jump_time": "2:37 PM",
+        "jump_time_iso": null,
+        "race_date": "2026-06-10",
+        "race_id": "Race 10 - SAL - 2026-06-10",
+        "race_number": 10,
+        "race_time": null,
+        "runner_count": 7,
+        "source_url": "https://www.thedogs.com.au/racing/sale/2026-06-10/10/sportsbet-fast-form?trial=false",
+        "venue": "SAL"
+      },
+      "race_id": "Race 10 - SAL - 2026-06-10",
+      "runner_rows_checked": 7,
+      "runner_rows_with_odds_candidates": 0,
+      "stale_odds_rows": 0,
+      "total_odds_candidate_count": 0,
+      "untrusted_source_rows": 0,
+      "valid_pre_jump_dog_odds_rows": 0
+    },
+    {
+      "complete_odds_candidate_coverage": false,
+      "complete_valid_prejump_odds": false,
+      "duplicate_odds_rows": 0,
+      "ev_calculation_status": "DISABLED_REPORT_ONLY_NO_EV_OUTPUT",
+      "ev_eligible_rows": 0,
+      "missing_odds_rows": 8,
+      "missing_source_url_rows": 0,
+      "odds_analysis_blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "odds_analysis_status": "ODDS_ANALYSIS_BLOCKED",
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "odds_exclusion_reason_distribution": {
+        "no_odds_row": 8
+      },
+      "odds_match_status_distribution": {
+        "no_odds_row": 8
+      },
+      "odds_source_url_count": 0,
+      "odds_source_urls": [],
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "post_race_or_sp_only_rows": 0,
+      "predicted_runner_count": 8,
+      "race_context": {
+        "jump_datetime": null,
+        "jump_time": "2:52 PM",
+        "jump_time_iso": null,
+        "race_date": "2026-06-10",
+        "race_id": "Race 10 - TEMORA - 2026-06-10",
+        "race_number": 10,
+        "race_time": null,
+        "runner_count": 8,
+        "source_url": "https://www.thedogs.com.au/racing/temora/2026-06-10/10/alan-rands-electrical?trial=false",
+        "venue": "TEMORA"
+      },
+      "race_id": "Race 10 - TEMORA - 2026-06-10",
+      "runner_rows_checked": 8,
+      "runner_rows_with_odds_candidates": 0,
+      "stale_odds_rows": 0,
+      "total_odds_candidate_count": 0,
+      "untrusted_source_rows": 0,
+      "valid_pre_jump_dog_odds_rows": 0
+    },
+    {
+      "complete_odds_candidate_coverage": false,
+      "complete_valid_prejump_odds": false,
+      "duplicate_odds_rows": 0,
+      "ev_calculation_status": "DISABLED_REPORT_ONLY_NO_EV_OUTPUT",
+      "ev_eligible_rows": 0,
+      "missing_odds_rows": 7,
+      "missing_source_url_rows": 0,
+      "odds_analysis_blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "odds_analysis_status": "ODDS_ANALYSIS_BLOCKED",
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "odds_exclusion_reason_distribution": {
+        "no_odds_row": 7
+      },
+      "odds_match_status_distribution": {
+        "no_odds_row": 7
+      },
+      "odds_source_url_count": 0,
+      "odds_source_urls": [],
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "post_race_or_sp_only_rows": 0,
+      "predicted_runner_count": 7,
+      "race_context": {
+        "jump_datetime": null,
+        "jump_time": "3:16 PM",
+        "jump_time_iso": null,
+        "race_date": "2026-06-10",
+        "race_id": "Race 11 - TEMORA - 2026-06-10",
+        "race_number": 11,
+        "race_time": null,
+        "runner_count": 7,
+        "source_url": "https://www.thedogs.com.au/racing/temora/2026-06-10/11/ag-n-vet-temora?trial=false",
+        "venue": "TEMORA"
+      },
+      "race_id": "Race 11 - TEMORA - 2026-06-10",
+      "runner_rows_checked": 7,
+      "runner_rows_with_odds_candidates": 0,
+      "stale_odds_rows": 0,
+      "total_odds_candidate_count": 0,
+      "untrusted_source_rows": 0,
+      "valid_pre_jump_dog_odds_rows": 0
+    },
+    {
+      "complete_odds_candidate_coverage": false,
+      "complete_valid_prejump_odds": false,
+      "duplicate_odds_rows": 0,
+      "ev_calculation_status": "DISABLED_REPORT_ONLY_NO_EV_OUTPUT",
+      "ev_eligible_rows": 0,
+      "missing_odds_rows": 7,
+      "missing_source_url_rows": 0,
+      "odds_analysis_blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "odds_analysis_status": "ODDS_ANALYSIS_BLOCKED",
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "odds_exclusion_reason_distribution": {
+        "no_odds_row": 7
+      },
+      "odds_match_status_distribution": {
+        "no_odds_row": 7
+      },
+      "odds_source_url_count": 0,
+      "odds_source_urls": [],
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "post_race_or_sp_only_rows": 0,
+      "predicted_runner_count": 7,
+      "race_context": {
+        "jump_datetime": null,
+        "jump_time": "3:34 PM",
+        "jump_time_iso": null,
+        "race_date": "2026-06-10",
+        "race_id": "Race 12 - TEMORA - 2026-06-10",
+        "race_number": 12,
+        "race_time": null,
+        "runner_count": 7,
+        "source_url": "https://www.thedogs.com.au/racing/temora/2026-06-10/12/southwest-fuel-temora-masters?trial=false",
+        "venue": "TEMORA"
+      },
+      "race_id": "Race 12 - TEMORA - 2026-06-10",
+      "runner_rows_checked": 7,
+      "runner_rows_with_odds_candidates": 0,
+      "stale_odds_rows": 0,
+      "total_odds_candidate_count": 0,
+      "untrusted_source_rows": 0,
+      "valid_pre_jump_dog_odds_rows": 0
+    },
+    {
+      "complete_odds_candidate_coverage": false,
+      "complete_valid_prejump_odds": false,
+      "duplicate_odds_rows": 0,
+      "ev_calculation_status": "DISABLED_REPORT_ONLY_NO_EV_OUTPUT",
+      "ev_eligible_rows": 0,
+      "missing_odds_rows": 7,
+      "missing_source_url_rows": 0,
+      "odds_analysis_blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "odds_analysis_status": "ODDS_ANALYSIS_BLOCKED",
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "odds_exclusion_reason_distribution": {
+        "no_odds_row": 7
+      },
+      "odds_match_status_distribution": {
+        "no_odds_row": 7
+      },
+      "odds_source_url_count": 0,
+      "odds_source_urls": [],
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "post_race_or_sp_only_rows": 0,
+      "predicted_runner_count": 7,
+      "race_context": {
+        "jump_datetime": null,
+        "jump_time": "2:44 PM",
+        "jump_time_iso": null,
+        "race_date": "2026-06-10",
+        "race_id": "Race 2 - BEN - 2026-06-10",
+        "race_number": 2,
+        "race_time": null,
+        "runner_count": 7,
+        "source_url": "https://www.thedogs.com.au/racing/bendigo/2026-06-10/2/hip-pocket-bendigo?trial=false",
+        "venue": "BEN"
+      },
+      "race_id": "Race 2 - BEN - 2026-06-10",
+      "runner_rows_checked": 7,
+      "runner_rows_with_odds_candidates": 0,
+      "stale_odds_rows": 0,
+      "total_odds_candidate_count": 0,
+      "untrusted_source_rows": 0,
+      "valid_pre_jump_dog_odds_rows": 0
+    },
+    {
+      "complete_odds_candidate_coverage": false,
+      "complete_valid_prejump_odds": false,
+      "duplicate_odds_rows": 0,
+      "ev_calculation_status": "DISABLED_REPORT_ONLY_NO_EV_OUTPUT",
+      "ev_eligible_rows": 0,
+      "missing_odds_rows": 6,
+      "missing_source_url_rows": 0,
+      "odds_analysis_blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "odds_analysis_status": "ODDS_ANALYSIS_BLOCKED",
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "odds_exclusion_reason_distribution": {
+        "no_odds_row": 6
+      },
+      "odds_match_status_distribution": {
+        "no_odds_row": 6
+      },
+      "odds_source_url_count": 0,
+      "odds_source_urls": [],
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "post_race_or_sp_only_rows": 0,
+      "predicted_runner_count": 6,
+      "race_context": {
+        "jump_datetime": null,
+        "jump_time": "3:27 PM",
+        "jump_time_iso": null,
+        "race_date": "2026-06-10",
+        "race_id": "Race 2 - GUNNEDAH - 2026-06-10",
+        "race_number": 2,
+        "race_time": null,
+        "runner_count": 6,
+        "source_url": "https://www.thedogs.com.au/racing/gunnedah/2026-06-10/2/mark-hughes-foundation?trial=false",
+        "venue": "GUNNEDAH"
+      },
+      "race_id": "Race 2 - GUNNEDAH - 2026-06-10",
+      "runner_rows_checked": 6,
+      "runner_rows_with_odds_candidates": 0,
+      "stale_odds_rows": 0,
+      "total_odds_candidate_count": 0,
+      "untrusted_source_rows": 0,
+      "valid_pre_jump_dog_odds_rows": 0
+    },
+    {
+      "complete_odds_candidate_coverage": false,
+      "complete_valid_prejump_odds": false,
+      "duplicate_odds_rows": 0,
+      "ev_calculation_status": "DISABLED_REPORT_ONLY_NO_EV_OUTPUT",
+      "ev_eligible_rows": 0,
+      "missing_odds_rows": 8,
+      "missing_source_url_rows": 0,
+      "odds_analysis_blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "odds_analysis_status": "ODDS_ANALYSIS_BLOCKED",
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "odds_exclusion_reason_distribution": {
+        "no_odds_row": 8
+      },
+      "odds_match_status_distribution": {
+        "no_odds_row": 8
+      },
+      "odds_source_url_count": 0,
+      "odds_source_urls": [],
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "post_race_or_sp_only_rows": 0,
+      "predicted_runner_count": 8,
+      "race_context": {
+        "jump_datetime": null,
+        "jump_time": "3:19 PM",
+        "jump_time_iso": null,
+        "race_date": "2026-06-10",
+        "race_id": "Race 2 - LADBROKES-Q1-LAKESIDE - 2026-06-10",
+        "race_number": 2,
+        "race_time": null,
+        "runner_count": 8,
+        "source_url": "https://www.thedogs.com.au/racing/ladbrokes-q1-lakeside/2026-06-10/2/rosewood-veterinary-service?trial=false",
+        "venue": "LADBROKES-Q1-LAKESIDE"
+      },
+      "race_id": "Race 2 - LADBROKES-Q1-LAKESIDE - 2026-06-10",
+      "runner_rows_checked": 8,
+      "runner_rows_with_odds_candidates": 0,
+      "stale_odds_rows": 0,
+      "total_odds_candidate_count": 0,
+      "untrusted_source_rows": 0,
+      "valid_pre_jump_dog_odds_rows": 0
+    },
+    {
+      "complete_odds_candidate_coverage": false,
+      "complete_valid_prejump_odds": false,
+      "duplicate_odds_rows": 0,
+      "ev_calculation_status": "DISABLED_REPORT_ONLY_NO_EV_OUTPUT",
+      "ev_eligible_rows": 0,
+      "missing_odds_rows": 7,
+      "missing_source_url_rows": 0,
+      "odds_analysis_blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "odds_analysis_status": "ODDS_ANALYSIS_BLOCKED",
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "odds_exclusion_reason_distribution": {
+        "no_odds_row": 7
+      },
+      "odds_match_status_distribution": {
+        "no_odds_row": 7
+      },
+      "odds_source_url_count": 0,
+      "odds_source_urls": [],
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "post_race_or_sp_only_rows": 0,
+      "predicted_runner_count": 7,
+      "race_context": {
+        "jump_datetime": null,
+        "jump_time": "3:02 PM",
+        "jump_time_iso": null,
+        "race_date": "2026-06-10",
+        "race_id": "Race 3 - BEN - 2026-06-10",
+        "race_number": 3,
+        "race_time": null,
+        "runner_count": 7,
+        "source_url": "https://www.thedogs.com.au/racing/bendigo/2026-06-10/3/goldfields-catering?trial=false",
+        "venue": "BEN"
+      },
+      "race_id": "Race 3 - BEN - 2026-06-10",
+      "runner_rows_checked": 7,
+      "runner_rows_with_odds_candidates": 0,
+      "stale_odds_rows": 0,
+      "total_odds_candidate_count": 0,
+      "untrusted_source_rows": 0,
+      "valid_pre_jump_dog_odds_rows": 0
+    },
+    {
+      "complete_odds_candidate_coverage": false,
+      "complete_valid_prejump_odds": false,
+      "duplicate_odds_rows": 0,
+      "ev_calculation_status": "DISABLED_REPORT_ONLY_NO_EV_OUTPUT",
+      "ev_eligible_rows": 0,
+      "missing_odds_rows": 7,
+      "missing_source_url_rows": 0,
+      "odds_analysis_blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "odds_analysis_status": "ODDS_ANALYSIS_BLOCKED",
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "odds_exclusion_reason_distribution": {
+        "no_odds_row": 7
+      },
+      "odds_match_status_distribution": {
+        "no_odds_row": 7
+      },
+      "odds_source_url_count": 0,
+      "odds_source_urls": [],
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "post_race_or_sp_only_rows": 0,
+      "predicted_runner_count": 7,
+      "race_context": {
+        "jump_datetime": null,
+        "jump_time": "3:24 PM",
+        "jump_time_iso": null,
+        "race_date": "2026-06-10",
+        "race_id": "Race 4 - BEN - 2026-06-10",
+        "race_number": 4,
+        "race_time": null,
+        "runner_count": 7,
+        "source_url": "https://www.thedogs.com.au/racing/bendigo/2026-06-10/4/jarrod-larkin-concreting?trial=false",
+        "venue": "BEN"
+      },
+      "race_id": "Race 4 - BEN - 2026-06-10",
+      "runner_rows_checked": 7,
+      "runner_rows_with_odds_candidates": 0,
+      "stale_odds_rows": 0,
+      "total_odds_candidate_count": 0,
+      "untrusted_source_rows": 0,
+      "valid_pre_jump_dog_odds_rows": 0
+    },
+    {
+      "complete_odds_candidate_coverage": false,
+      "complete_valid_prejump_odds": false,
+      "duplicate_odds_rows": 0,
+      "ev_calculation_status": "DISABLED_REPORT_ONLY_NO_EV_OUTPUT",
+      "ev_eligible_rows": 0,
+      "missing_odds_rows": 6,
+      "missing_source_url_rows": 0,
+      "odds_analysis_blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "odds_analysis_status": "ODDS_ANALYSIS_BLOCKED",
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "odds_exclusion_reason_distribution": {
+        "no_odds_row": 6
+      },
+      "odds_match_status_distribution": {
+        "no_odds_row": 6
+      },
+      "odds_source_url_count": 0,
+      "odds_source_urls": [],
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "post_race_or_sp_only_rows": 0,
+      "predicted_runner_count": 6,
+      "race_context": {
+        "jump_datetime": null,
+        "jump_time": "2:22 PM",
+        "jump_time_iso": null,
+        "race_date": "2026-06-10",
+        "race_id": "Race 7 - MURRAY-BRIDGE-STRAIGHT - 2026-06-10",
+        "race_number": 7,
+        "race_time": null,
+        "runner_count": 6,
+        "source_url": "https://www.thedogs.com.au/racing/murray-bridge-straight/2026-06-10/7/grsa-com-au-n-p-stake-pr2-division1?trial=false",
+        "venue": "MURRAY-BRIDGE-STRAIGHT"
+      },
+      "race_id": "Race 7 - MURRAY-BRIDGE-STRAIGHT - 2026-06-10",
+      "runner_rows_checked": 6,
+      "runner_rows_with_odds_candidates": 0,
+      "stale_odds_rows": 0,
+      "total_odds_candidate_count": 0,
+      "untrusted_source_rows": 0,
+      "valid_pre_jump_dog_odds_rows": 0
+    },
+    {
+      "complete_odds_candidate_coverage": false,
+      "complete_valid_prejump_odds": false,
+      "duplicate_odds_rows": 0,
+      "ev_calculation_status": "DISABLED_REPORT_ONLY_NO_EV_OUTPUT",
+      "ev_eligible_rows": 0,
+      "missing_odds_rows": 6,
+      "missing_source_url_rows": 0,
+      "odds_analysis_blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "odds_analysis_status": "ODDS_ANALYSIS_BLOCKED",
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "odds_exclusion_reason_distribution": {
+        "no_odds_row": 6
+      },
+      "odds_match_status_distribution": {
+        "no_odds_row": 6
+      },
+      "odds_source_url_count": 0,
+      "odds_source_urls": [],
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "post_race_or_sp_only_rows": 0,
+      "predicted_runner_count": 6,
+      "race_context": {
+        "jump_datetime": null,
+        "jump_time": "2:41 PM",
+        "jump_time_iso": null,
+        "race_date": "2026-06-10",
+        "race_id": "Race 8 - MURRAY-BRIDGE-STRAIGHT - 2026-06-10",
+        "race_number": 8,
+        "race_time": null,
+        "runner_count": 6,
+        "source_url": "https://www.thedogs.com.au/racing/murray-bridge-straight/2026-06-10/8/first-national-real-estate-murray-bridge-stake-pr2?trial=false",
+        "venue": "MURRAY-BRIDGE-STRAIGHT"
+      },
+      "race_id": "Race 8 - MURRAY-BRIDGE-STRAIGHT - 2026-06-10",
+      "runner_rows_checked": 6,
+      "runner_rows_with_odds_candidates": 0,
+      "stale_odds_rows": 0,
+      "total_odds_candidate_count": 0,
+      "untrusted_source_rows": 0,
+      "valid_pre_jump_dog_odds_rows": 0
+    },
+    {
+      "complete_odds_candidate_coverage": false,
+      "complete_valid_prejump_odds": false,
+      "duplicate_odds_rows": 0,
+      "ev_calculation_status": "DISABLED_REPORT_ONLY_NO_EV_OUTPUT",
+      "ev_eligible_rows": 0,
+      "missing_odds_rows": 8,
+      "missing_source_url_rows": 0,
+      "odds_analysis_blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "odds_analysis_status": "ODDS_ANALYSIS_BLOCKED",
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "odds_exclusion_reason_distribution": {
+        "no_odds_row": 8
+      },
+      "odds_match_status_distribution": {
+        "no_odds_row": 8
+      },
+      "odds_source_url_count": 0,
+      "odds_source_urls": [],
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "post_race_or_sp_only_rows": 0,
+      "predicted_runner_count": 8,
+      "race_context": {
+        "jump_datetime": null,
+        "jump_time": "2:31 PM",
+        "jump_time_iso": null,
+        "race_date": "2026-06-10",
+        "race_id": "Race 9 - CAPALABA - 2026-06-10",
+        "race_number": 9,
+        "race_time": null,
+        "runner_count": 8,
+        "source_url": "https://www.thedogs.com.au/racing/capalaba/2026-06-10/9/just-greyhound-photos?trial=false",
+        "venue": "CAPALABA"
+      },
+      "race_id": "Race 9 - CAPALABA - 2026-06-10",
+      "runner_rows_checked": 8,
+      "runner_rows_with_odds_candidates": 0,
+      "stale_odds_rows": 0,
+      "total_odds_candidate_count": 0,
+      "untrusted_source_rows": 0,
+      "valid_pre_jump_dog_odds_rows": 0
+    },
+    {
+      "complete_odds_candidate_coverage": false,
+      "complete_valid_prejump_odds": false,
+      "duplicate_odds_rows": 0,
+      "ev_calculation_status": "DISABLED_REPORT_ONLY_NO_EV_OUTPUT",
+      "ev_eligible_rows": 0,
+      "missing_odds_rows": 7,
+      "missing_source_url_rows": 0,
+      "odds_analysis_blockers": [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds"
+      ],
+      "odds_analysis_status": "ODDS_ANALYSIS_BLOCKED",
+      "odds_coverage_status": "NO_ODDS_COVERAGE",
+      "odds_exclusion_reason_distribution": {
+        "no_odds_row": 7
+      },
+      "odds_match_status_distribution": {
+        "no_odds_row": 7
+      },
+      "odds_source_url_count": 0,
+      "odds_source_urls": [],
+      "post_feature_freeze_odds_rows": 0,
+      "post_jump_odds_rows": 0,
+      "post_prediction_odds_rows": 0,
+      "post_race_or_sp_only_rows": 0,
+      "predicted_runner_count": 7,
+      "race_context": {
+        "jump_datetime": null,
+        "jump_time": "2:34 PM",
+        "jump_time_iso": null,
+        "race_date": "2026-06-10",
+        "race_id": "Race 9 - TEMORA - 2026-06-10",
+        "race_number": 9,
+        "race_time": null,
+        "runner_count": 7,
+        "source_url": "https://www.thedogs.com.au/racing/temora/2026-06-10/9/choppa-s-concreting?trial=false",
+        "venue": "TEMORA"
+      },
+      "race_id": "Race 9 - TEMORA - 2026-06-10",
+      "runner_rows_checked": 7,
+      "runner_rows_with_odds_candidates": 0,
+      "stale_odds_rows": 0,
+      "total_odds_candidate_count": 0,
+      "untrusted_source_rows": 0,
+      "valid_pre_jump_dog_odds_rows": 0
+    }
+  ],
+  "races_with_any_odds_candidates": 0,
+  "races_with_complete_odds_candidate_coverage": 0,
+  "races_with_complete_valid_prejump_odds": 0,
+  "races_with_duplicate_odds_rows": 0,
+  "races_with_missing_odds_rows": 16,
+  "races_with_missing_source_url_rows": 0,
+  "races_with_post_feature_freeze_odds_rows": 0,
+  "races_with_post_jump_odds_rows": 0,
+  "races_with_post_prediction_odds_rows": 0,
+  "races_with_post_race_or_sp_only_rows": 0,
+  "races_with_stale_odds_rows": 0,
+  "races_with_untrusted_source_rows": 0,
+  "schema_version": "shadow_odds_race_coverage_v1"
+}

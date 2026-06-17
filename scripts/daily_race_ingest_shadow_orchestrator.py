@@ -71,7 +71,12 @@ DEFAULT_SCORE_COMMAND_MODE = "auto"
 # The locked shadow RandomForest artifact was pickled with sklearn 1.7.2.
 # Floating scikit-learn breaks live scoring when uv resolves a newer version.
 SHADOW_MODEL_SKLEARN_VERSION = "1.7.2"
-UV_SCORE_LIVE_PACKAGES = ("joblib", f"scikit-learn=={SHADOW_MODEL_SKLEARN_VERSION}", "numpy")
+UV_SCORE_LIVE_PACKAGES = (
+    "joblib",
+    f"scikit-learn=={SHADOW_MODEL_SKLEARN_VERSION}",
+    "numpy",
+    "requests",
+)
 DAILY_OUTPUT_PREFIX = "artifacts/full_evidence_orchestration_20260525/daily_race_ingest_shadow_"
 EXPECTED_OFFICIAL_RACES = 214
 EXPECTED_OFFICIAL_DOG_ROWS = 1493
@@ -1294,6 +1299,13 @@ def write_jsonl(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
             handle.write(json.dumps(row, sort_keys=True) + "\n")
 
 
+def count_jsonl_rows(path: Path) -> int:
+    if not path.exists():
+        return 0
+    with path.open("r", encoding="utf-8") as handle:
+        return sum(1 for line in handle if line.strip())
+
+
 def read_prediction_rows(score_output_dir: Path) -> list[dict[str, Any]]:
     predictions_path = score_output_dir / "shadow_predictions.json"
     if not predictions_path.exists():
@@ -1379,6 +1391,7 @@ def pending_results_from_predictions(
 
 def write_empty_prediction_outputs(output_dir: Path) -> None:
     write_jsonl(output_dir / "shadow_predictions.jsonl", [])
+    write_jsonl(output_dir / "stage2_shadow_predictions.jsonl", [])
     write_csv(output_dir / "shadow_predictions.csv", [], PREDICTION_COLUMNS)
 
 
@@ -1423,6 +1436,13 @@ def write_manifest(
     if score_output_dir is not None and (score_output_dir / "shadow_manifest.json").exists():
         score_manifest = load_json(score_output_dir / "shadow_manifest.json")
     score_manifest_data = score_manifest if isinstance(score_manifest, Mapping) else {}
+    stage2_path = output_dir / "stage2_shadow_predictions.jsonl"
+    stage2_rows = count_jsonl_rows(stage2_path)
+    feature_rows_path = output_dir / "shadow_feature_rows.json"
+    if not feature_rows_path.exists() and score_output_dir is not None:
+        score_feature_rows_path = score_output_dir / "shadow_feature_rows.json"
+        if score_feature_rows_path.exists():
+            shutil.copy2(score_feature_rows_path, feature_rows_path)
     metadata_report = prejump_metadata_report_from_classification(classification)
     manifest = {
         "schema_version": "daily_shadow_manifest_v1",
@@ -1462,6 +1482,14 @@ def write_manifest(
         "all_missing_train_policy": all_missing_train_policy,
         "shadow_model": shadow_relpath(shadow_model) if shadow_model else None,
         "shadow_training_allowed": shadow_model is None,
+        "stage2_shadow_predictions_jsonl": (
+            shadow_relpath(stage2_path) if stage2_path.exists() else None
+        ),
+        "stage2_prediction_rows": stage2_rows,
+        "shadow_feature_rows_json": (
+            shadow_relpath(feature_rows_path) if feature_rows_path.exists() else None
+        ),
+        "stage2_forward_shadow_status": score_manifest_data.get("stage2_forward_shadow_status"),
         "calibration_method": CALIBRATION_METHOD_KEY,
         "tgr_enabled": False,
         "output_mode": SHADOW_OUTPUT_MODE,
@@ -1726,6 +1754,13 @@ def main(argv: list[str] | None = None) -> int:
                     )
                 else:
                     write_csv(output_dir / "shadow_predictions.csv", predictions, PREDICTION_COLUMNS)
+                if (score_output_dir / "stage2_shadow_predictions.jsonl").exists():
+                    shutil.copy2(
+                        score_output_dir / "stage2_shadow_predictions.jsonl",
+                        output_dir / "stage2_shadow_predictions.jsonl",
+                    )
+                else:
+                    write_jsonl(output_dir / "stage2_shadow_predictions.jsonl", [])
                 copy_shadow_feature_audit_reports(score_output_dir, output_dir)
 
                 probability_report = probability_sum_report_from_predictions(predictions)

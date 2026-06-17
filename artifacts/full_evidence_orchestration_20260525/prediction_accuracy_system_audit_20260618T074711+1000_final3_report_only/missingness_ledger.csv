@@ -1,0 +1,8 @@
+metric,present_count,total_rows,present_pct,status,reason
+feature_row_joined,16,16,1.0,PASS,
+official_label_joined,0,16,0.0,DATA_MISSING,
+strict_prejump_odds_joined,0,16,0.0,DATA_MISSING,
+weather_present,16,16,1.0,PASS,feature inactive if train all-missing
+track_condition_present,16,16,1.0,PASS,feature inactive if train all-missing
+race_time_minutes_since_midnight_present,16,16,1.0,PASS,feature inactive if train all-missing
+expert_form_sidecar_present,16,16,1.0,PASS,

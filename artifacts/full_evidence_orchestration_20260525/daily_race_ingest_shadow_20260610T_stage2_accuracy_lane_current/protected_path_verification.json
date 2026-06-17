@@ -1,0 +1,115 @@
+{
+  "after": {
+    "artifacts/prediction_snapshots/manifest.jsonl": {
+      "bytes": 4207,
+      "exists": true,
+      "sha256": "1a4a21ae1ffcc084f85b8193a3081d4d149fc58d562e02a8a62a8df5601d0e39",
+      "type": "file"
+    },
+    "docs/model_contracts/v4_feature_contract.json": {
+      "exists": false,
+      "type": "missing"
+    },
+    "greyhound_racing_data.db": {
+      "exists": false,
+      "type": "missing"
+    },
+    "greyhound_racing_data_writable.db": {
+      "exists": false,
+      "type": "missing"
+    },
+    "model_registry/best_metadata.json": {
+      "exists": false,
+      "type": "missing"
+    },
+    "model_registry/current_production.json": {
+      "exists": false,
+      "type": "missing"
+    },
+    "models": {
+      "exists": false,
+      "type": "missing"
+    },
+    "predictions": {
+      "exists": true,
+      "file_count": 1,
+      "listing_sha256": "1b5691adf067440e165663bc830259c944834f0c30c25abf40db3d57600d29cb",
+      "total_bytes": 297,
+      "type": "directory"
+    },
+    "processed_manifest.json": {
+      "exists": false,
+      "type": "missing"
+    }
+  },
+  "before": {
+    "artifacts/prediction_snapshots/manifest.jsonl": {
+      "bytes": 4207,
+      "exists": true,
+      "sha256": "1a4a21ae1ffcc084f85b8193a3081d4d149fc58d562e02a8a62a8df5601d0e39",
+      "type": "file"
+    },
+    "docs/model_contracts/v4_feature_contract.json": {
+      "exists": false,
+      "type": "missing"
+    },
+    "greyhound_racing_data.db": {
+      "exists": false,
+      "type": "missing"
+    },
+    "greyhound_racing_data_writable.db": {
+      "exists": false,
+      "type": "missing"
+    },
+    "model_registry/best_metadata.json": {
+      "exists": false,
+      "type": "missing"
+    },
+    "model_registry/current_production.json": {
+      "exists": false,
+      "type": "missing"
+    },
+    "models": {
+      "exists": false,
+      "type": "missing"
+    },
+    "predictions": {
+      "exists": true,
+      "file_count": 1,
+      "listing_sha256": "1b5691adf067440e165663bc830259c944834f0c30c25abf40db3d57600d29cb",
+      "total_bytes": 297,
+      "type": "directory"
+    },
+    "processed_manifest.json": {
+      "exists": false,
+      "type": "missing"
+    }
+  },
+  "forbidden_actions": {
+    "active_model_replacement": false,
+    "betting_action": false,
+    "champion_artifact_overwrite": false,
+    "db_writes": false,
+    "ev_action": false,
+    "existing_manifest_rewrite": false,
+    "label_writes": false,
+    "production_pointer_update": false,
+    "production_prediction_endpoint_mutation": false,
+    "registry_mutation": false,
+    "snapshot_rewrite": false,
+    "tgr_enablement": false
+  },
+  "protected_paths": [
+    "greyhound_racing_data.db",
+    "greyhound_racing_data_writable.db",
+    "model_registry/best_metadata.json",
+    "docs/model_contracts/v4_feature_contract.json",
+    "model_registry/current_production.json",
+    "processed_manifest.json",
+    "artifacts/prediction_snapshots/manifest.jsonl",
+    "models",
+    "predictions"
+  ],
+  "protected_paths_unchanged": true,
+  "schema_version": "shadow_protected_path_verification_v1"
+}

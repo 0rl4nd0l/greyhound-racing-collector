@@ -1,0 +1,5 @@
+db_status=PASS
+quick_check=ok
+official_races=214
+official_dog_rows=1493
+protected_paths_unchanged=True

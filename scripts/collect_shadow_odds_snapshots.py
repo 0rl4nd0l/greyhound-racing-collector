@@ -41,6 +41,17 @@ OUTPUT_PREFIX = "artifacts/full_evidence_orchestration_20260525/shadow_odds_snap
 EXPECTED_OFFICIAL_RACES = 214
 EXPECTED_OFFICIAL_DOG_ROWS = 1493
 DEFAULT_STALE_ODDS_AFTER_MINUTES = 30.0
+MIN_COMPLETE_VALID_PREJUMP_ODDS_RACES = 100
+EXPECTED_PREJUMP_CAPTURE_MODES = (
+    "autonomous_prejump_t60m",
+    "autonomous_prejump_t30m",
+    "autonomous_prejump_t10m",
+    "autonomous_prejump_t2m",
+)
+ODDS_RESEARCH_BLOCKED_PROVENANCE = "ODDS_RESEARCH_BLOCKED_PROVENANCE"
+ODDS_RESEARCH_READY_REPORT_ONLY = "ODDS_RESEARCH_READY_REPORT_ONLY"
+ODDS_AUGMENTED_MODEL_BLOCKED = "ODDS_AUGMENTED_MODEL_BLOCKED"
+ODDS_AUGMENTED_MODEL_READY_FOR_PR_REVIEW = "ODDS_AUGMENTED_MODEL_READY_FOR_PR_REVIEW"
 PROTECTED_PATHS = (
     ROOT / "greyhound_racing_data.db",
     ROOT / "greyhound_racing_data_writable.db",
@@ -133,9 +144,13 @@ ODDS_RESEARCH_GATE_POLICY = {
     "coverage_requirements": {
         "complete_valid_prejump_odds_required_for_odds_research_ready": True,
         "all_predicted_runners_must_have_valid_prejump_odds": True,
+        "minimum_complete_valid_prejump_odds_races": MIN_COMPLETE_VALID_PREJUMP_ODDS_RACES,
+        "source_url_coverage_required_pct": 100.0,
+        "unsafe_or_partial_odds_joins_counted": False,
     },
     "ev_policy": {
         "ev_output_allowed": False,
+        "ev_diagnostics_allowed_after_research_gate": True,
         "betting_action_allowed": False,
         "odds_used_for_shadow_scoring": False,
         "status": "REPORT_ONLY_NO_EV_OUTPUT",
@@ -455,6 +470,14 @@ def manifest_timestamp(
     manifest: Mapping[str, Any],
     paths: Sequence[Sequence[str]],
 ) -> datetime | None:
+    value, _source = manifest_timestamp_with_source(manifest, paths)
+    return value
+
+
+def manifest_timestamp_with_source(
+    manifest: Mapping[str, Any],
+    paths: Sequence[Sequence[str]],
+) -> tuple[datetime | None, str | None]:
     for path in paths:
         current: Any = manifest
         for key in path:
@@ -464,8 +487,8 @@ def manifest_timestamp(
             current = current.get(key)
         parsed = parse_timestamp(current)
         if parsed is not None:
-            return parsed
-    return None
+            return parsed, ".".join(path)
+    return None, None
 
 
 def seconds_between(later: datetime | None, earlier: datetime | None) -> float | None:
@@ -537,6 +560,182 @@ def candidate_rows_for_prediction(
             record["_match_basis"] = "race_id_box_name" if direct_race_id else "venue_date_race_box_name"
             candidates.append(record)
     return candidates
+
+
+def candidate_sort_timestamp(row: Mapping[str, Any]) -> datetime | None:
+    return parse_timestamp(row.get("timestamp") or row.get("capture_timestamp"))
+
+
+def candidate_sort_key(row: Mapping[str, Any]) -> tuple[int, str, int]:
+    parsed = candidate_sort_timestamp(row)
+    return (
+        1 if parsed is not None else 0,
+        parsed.isoformat() if parsed is not None else "",
+        int(row.get("id") or 0),
+    )
+
+
+def candidate_capture_slot_key(row: Mapping[str, Any]) -> tuple[Any, ...]:
+    """Group rows from the same exact capture event for duplicate detection."""
+
+    return (
+        str(row.get("race_id") or "").strip(),
+        safe_int(row.get("box_number")),
+        normalize_dog_name(row.get("dog_clean_name") or row.get("dog_name")),
+        str(row.get("capture_mode") or "").strip(),
+        str(row.get("timestamp") or row.get("capture_timestamp") or "").strip(),
+    )
+
+
+def candidate_capture_mode_counts(
+    candidates: Sequence[Mapping[str, Any]],
+) -> dict[str, int]:
+    counts = Counter(
+        str(row.get("capture_mode") or "").strip()
+        for row in candidates
+        if str(row.get("capture_mode") or "").strip()
+    )
+    return dict(sorted(counts.items()))
+
+
+def selected_candidate_for_prediction(
+    candidates: Sequence[Mapping[str, Any]],
+    *,
+    prediction: Mapping[str, Any],
+    prediction_time: datetime,
+    feature_freeze_time: datetime | None,
+    jump_time: datetime | None,
+    stale_odds_after_minutes: float = DEFAULT_STALE_ODDS_AFTER_MINUTES,
+) -> tuple[
+    Mapping[str, Any] | None,
+    dict[str, Any] | None,
+    dict[str, Any],
+    dict[str, Any],
+]:
+    """Select one exact capture-window sample without treating all windows as duplicates."""
+
+    if not candidates:
+        eligibility = classify_odds_snapshot_for_ev(
+            {
+                "dog_name": prediction.get("dog_name"),
+                "box_number": prediction.get("box"),
+            },
+            {},
+            snapshot_race_id=prediction.get("race_id"),
+        )
+        return None, {}, eligibility, {
+            "raw_candidate_count": 0,
+            "selected_candidate_count": 0,
+            "duplicate_candidate_count": 0,
+            "ignored_candidate_count": 0,
+            "selection_status": "no_candidate",
+            "raw_capture_mode_distribution": {},
+            "unique_capture_mode_distribution": {},
+            "valid_capture_mode_distribution": {},
+        }
+
+    slot_counts = Counter(candidate_capture_slot_key(row) for row in candidates)
+    unique_candidates = [
+        row for row in candidates if slot_counts[candidate_capture_slot_key(row)] == 1
+    ]
+    duplicate_candidate_count = len(candidates) - len(unique_candidates)
+    raw_capture_mode_distribution = candidate_capture_mode_counts(candidates)
+    unique_capture_mode_distribution = candidate_capture_mode_counts(unique_candidates)
+
+    classified: list[tuple[Mapping[str, Any], dict[str, Any], dict[str, Any]]] = []
+    for candidate in unique_candidates:
+        snapshot = odds_snapshot_from_row(
+            candidate,
+            prediction_time=prediction_time,
+            feature_freeze_time=feature_freeze_time,
+            jump_time=jump_time,
+            duplicate_count=1,
+            stale_odds_after_minutes=stale_odds_after_minutes,
+        )
+        eligibility = classify_odds_snapshot_for_ev(
+            {
+                "dog_name": prediction.get("dog_name"),
+                "box_number": prediction.get("box"),
+            },
+            snapshot,
+            snapshot_race_id=prediction.get("race_id"),
+        )
+        classified.append((candidate, snapshot, eligibility))
+
+    valid = [
+        item
+        for item in classified
+        if item[2].get("odds_match_status") == "valid_pre_jump_dog_odds"
+    ]
+    valid_capture_mode_distribution = candidate_capture_mode_counts(
+        [item[0] for item in valid]
+    )
+    if valid:
+        selected, snapshot, eligibility = max(
+            valid,
+            key=lambda item: candidate_sort_key(item[0]),
+        )
+        selection = {
+            "raw_candidate_count": len(candidates),
+            "selected_candidate_count": 1,
+            "duplicate_candidate_count": duplicate_candidate_count,
+            "ignored_candidate_count": len(candidates) - 1,
+            "selection_status": (
+                "selected_latest_valid_prejump_capture"
+                if len(candidates) > 1
+                else "selected_single_candidate"
+            ),
+            "raw_capture_mode_distribution": raw_capture_mode_distribution,
+            "unique_capture_mode_distribution": unique_capture_mode_distribution,
+            "valid_capture_mode_distribution": valid_capture_mode_distribution,
+        }
+        return selected, snapshot, eligibility, selection
+
+    if classified:
+        selected, snapshot, eligibility = max(
+            classified,
+            key=lambda item: candidate_sort_key(item[0]),
+        )
+        selection = {
+            "raw_candidate_count": len(candidates),
+            "selected_candidate_count": 1,
+            "duplicate_candidate_count": duplicate_candidate_count,
+            "ignored_candidate_count": len(candidates) - 1,
+            "selection_status": "selected_latest_rejected_unique_capture",
+            "raw_capture_mode_distribution": raw_capture_mode_distribution,
+            "unique_capture_mode_distribution": unique_capture_mode_distribution,
+            "valid_capture_mode_distribution": valid_capture_mode_distribution,
+        }
+        return selected, snapshot, eligibility, selection
+
+    selected = candidates[0]
+    snapshot = odds_snapshot_from_row(
+        selected,
+        prediction_time=prediction_time,
+        feature_freeze_time=feature_freeze_time,
+        jump_time=jump_time,
+        duplicate_count=len(candidates),
+        stale_odds_after_minutes=stale_odds_after_minutes,
+    )
+    eligibility = classify_odds_snapshot_for_ev(
+        {
+            "dog_name": prediction.get("dog_name"),
+            "box_number": prediction.get("box"),
+        },
+        snapshot,
+        snapshot_race_id=prediction.get("race_id"),
+    )
+    selection = {
+        "raw_candidate_count": len(candidates),
+        "selected_candidate_count": len(candidates),
+        "duplicate_candidate_count": len(candidates),
+        "ignored_candidate_count": 0,
+        "selection_status": "blocked_duplicate_capture_slot",
+        "raw_capture_mode_distribution": raw_capture_mode_distribution,
+        "unique_capture_mode_distribution": unique_capture_mode_distribution,
+        "valid_capture_mode_distribution": {},
+    }
+    return selected, snapshot, eligibility, selection
 
 
 def safe_int(value: Any) -> int | None:
@@ -623,6 +822,49 @@ def _odds_source_url(row: Mapping[str, Any]) -> str | None:
     )
     source_url = provenance.get("source_url")
     return str(source_url) if source_url not in (None, "") else None
+
+
+def _selected_capture_mode(row: Mapping[str, Any]) -> str | None:
+    snapshot = row.get("odds_snapshot") if isinstance(row.get("odds_snapshot"), Mapping) else {}
+    provenance = (
+        snapshot.get("odds_provenance")
+        if isinstance(snapshot.get("odds_provenance"), Mapping)
+        else {}
+    )
+    mode = provenance.get("capture_mode")
+    return str(mode).strip() if mode not in (None, "") else None
+
+
+def _count_mapping(value: Any) -> Mapping[str, Any]:
+    return value if isinstance(value, Mapping) else {}
+
+
+def _sum_count_mappings(
+    rows: Sequence[Mapping[str, Any]],
+    key: str,
+) -> dict[str, int]:
+    counts: Counter[str] = Counter()
+    for row in rows:
+        for mode, amount in _count_mapping(row.get(key)).items():
+            try:
+                count = int(amount or 0)
+            except (TypeError, ValueError):
+                count = 1
+            if count:
+                counts[str(mode)] += count
+    return dict(sorted(counts.items()))
+
+
+def _expected_capture_modes_with_full_runner_coverage(
+    counts: Mapping[str, int],
+    *,
+    prediction_count: int,
+) -> list[str]:
+    return [
+        mode
+        for mode in EXPECTED_PREJUMP_CAPTURE_MODES
+        if prediction_count > 0 and int(counts.get(mode) or 0) >= prediction_count
+    ]
 
 
 def race_odds_coverage_report(
@@ -716,6 +958,63 @@ def race_odds_coverage_report(
 
         source_urls = sorted({url for row in race_rows for url in [_odds_source_url(row)] if url})
         status_counts = Counter(str(row.get("odds_match_status") or "unknown") for row in race_rows)
+        raw_capture_mode_counts = _sum_count_mappings(
+            race_rows, "odds_raw_capture_mode_distribution"
+        )
+        unique_capture_mode_counts = _sum_count_mappings(
+            race_rows, "odds_unique_capture_mode_distribution"
+        )
+        valid_capture_mode_counts = _sum_count_mappings(
+            race_rows, "odds_valid_capture_mode_distribution"
+        )
+        selected_capture_mode_counts = Counter(
+            mode for row in race_rows for mode in [_selected_capture_mode(row)] if mode
+        )
+        selected_valid_capture_mode_counts = Counter(
+            mode
+            for row in race_rows
+            if row.get("odds_match_status") == "valid_pre_jump_dog_odds"
+            for mode in [_selected_capture_mode(row)]
+            if mode
+        )
+        present_expected_modes = sorted(
+            mode
+            for mode in EXPECTED_PREJUMP_CAPTURE_MODES
+            if selected_capture_mode_counts.get(mode, 0) > 0
+        )
+        valid_expected_modes = sorted(
+            mode
+            for mode in EXPECTED_PREJUMP_CAPTURE_MODES
+            if selected_valid_capture_mode_counts.get(mode, 0) > 0
+        )
+        missing_expected_modes = [
+            mode
+            for mode in EXPECTED_PREJUMP_CAPTURE_MODES
+            if selected_capture_mode_counts.get(mode, 0) <= 0
+        ]
+        missing_valid_expected_modes = [
+            mode
+            for mode in EXPECTED_PREJUMP_CAPTURE_MODES
+            if selected_valid_capture_mode_counts.get(mode, 0) <= 0
+        ]
+        raw_complete_expected_modes = _expected_capture_modes_with_full_runner_coverage(
+            raw_capture_mode_counts,
+            prediction_count=prediction_count,
+        )
+        valid_complete_expected_modes = _expected_capture_modes_with_full_runner_coverage(
+            valid_capture_mode_counts,
+            prediction_count=prediction_count,
+        )
+        raw_missing_complete_expected_modes = [
+            mode
+            for mode in EXPECTED_PREJUMP_CAPTURE_MODES
+            if mode not in raw_complete_expected_modes
+        ]
+        valid_missing_complete_expected_modes = [
+            mode
+            for mode in EXPECTED_PREJUMP_CAPTURE_MODES
+            if mode not in valid_complete_expected_modes
+        ]
         race_reports.append(
             {
                 "race_id": race_id,
@@ -745,6 +1044,39 @@ def race_odds_coverage_report(
                 "ev_calculation_status": "DISABLED_REPORT_ONLY_NO_EV_OUTPUT",
                 "odds_match_status_distribution": dict(sorted(status_counts.items())),
                 "odds_exclusion_reason_distribution": dict(sorted(exclusion_counts.items())),
+                "expected_prejump_capture_modes": list(EXPECTED_PREJUMP_CAPTURE_MODES),
+                "raw_capture_mode_distribution": raw_capture_mode_counts,
+                "unique_capture_mode_distribution": unique_capture_mode_counts,
+                "valid_capture_mode_distribution": valid_capture_mode_counts,
+                "raw_complete_expected_prejump_capture_modes": raw_complete_expected_modes,
+                "raw_missing_complete_expected_prejump_capture_modes": (
+                    raw_missing_complete_expected_modes
+                ),
+                "valid_complete_expected_prejump_capture_modes": (
+                    valid_complete_expected_modes
+                ),
+                "valid_missing_complete_expected_prejump_capture_modes": (
+                    valid_missing_complete_expected_modes
+                ),
+                "selected_capture_mode_distribution": dict(
+                    sorted(selected_capture_mode_counts.items())
+                ),
+                "selected_valid_capture_mode_distribution": dict(
+                    sorted(selected_valid_capture_mode_counts.items())
+                ),
+                "selected_expected_prejump_capture_modes_present": present_expected_modes,
+                "selected_expected_prejump_capture_modes_missing": missing_expected_modes,
+                "selected_valid_expected_prejump_capture_modes_present": valid_expected_modes,
+                "selected_valid_expected_prejump_capture_modes_missing": (
+                    missing_valid_expected_modes
+                ),
+                "selected_expected_prejump_window_complete": (
+                    not missing_expected_modes and bool(EXPECTED_PREJUMP_CAPTURE_MODES)
+                ),
+                "selected_valid_expected_prejump_window_complete": (
+                    not missing_valid_expected_modes
+                    and bool(EXPECTED_PREJUMP_CAPTURE_MODES)
+                ),
                 "odds_source_urls": source_urls,
                 "odds_source_url_count": len(source_urls),
             }
@@ -804,6 +1136,7 @@ def odds_research_readiness_report(
     blocker_counts: Counter[str] = Counter()
     race_status_counts: Counter[str] = Counter()
     blocked_races: list[dict[str, Any]] = []
+    timing_aligned_prediction_rerun_races: list[dict[str, Any]] = []
 
     if not predictions:
         blocker_counts["no_shadow_predictions"] += 1
@@ -820,6 +1153,42 @@ def odds_research_readiness_report(
         blockers = [str(item) for item in race.get("odds_analysis_blockers") or []]
         for blocker in blockers:
             blocker_counts[blocker] += 1
+        raw_missing_expected_modes = list(
+            race.get("raw_missing_complete_expected_prejump_capture_modes") or []
+        )
+        raw_windows_complete = (
+            bool(EXPECTED_PREJUMP_CAPTURE_MODES)
+            and "raw_missing_complete_expected_prejump_capture_modes" in race
+            and not raw_missing_expected_modes
+        )
+        if (
+            "timestamp_after_prediction" in blockers
+            and raw_windows_complete
+            and race.get("complete_valid_prejump_odds") is not True
+        ):
+            timing_aligned_prediction_rerun_races.append(
+                {
+                    "race_id": race.get("race_id"),
+                    "reason": "raw_expected_prejump_windows_complete_but_after_prediction",
+                    "raw_capture_mode_distribution": race.get(
+                        "raw_capture_mode_distribution"
+                    ),
+                    "valid_capture_mode_distribution": race.get(
+                        "valid_capture_mode_distribution"
+                    ),
+                    "raw_complete_expected_prejump_capture_modes": race.get(
+                        "raw_complete_expected_prejump_capture_modes"
+                    ),
+                    "valid_complete_expected_prejump_capture_modes": race.get(
+                        "valid_complete_expected_prejump_capture_modes"
+                    ),
+                    "post_prediction_odds_rows": race.get("post_prediction_odds_rows"),
+                    "predicted_runner_count": race.get("predicted_runner_count"),
+                    "valid_pre_jump_dog_odds_rows": race.get(
+                        "valid_pre_jump_dog_odds_rows"
+                    ),
+                }
+            )
         if blockers:
             blocked_races.append(
                 {
@@ -838,6 +1207,30 @@ def odds_research_readiness_report(
                         "post_feature_freeze_odds_rows"
                     ),
                     "post_jump_odds_rows": race.get("post_jump_odds_rows"),
+                    "raw_capture_mode_distribution": race.get(
+                        "raw_capture_mode_distribution"
+                    ),
+                    "valid_capture_mode_distribution": race.get(
+                        "valid_capture_mode_distribution"
+                    ),
+                    "raw_missing_complete_expected_prejump_capture_modes": race.get(
+                        "raw_missing_complete_expected_prejump_capture_modes"
+                    ),
+                    "valid_missing_complete_expected_prejump_capture_modes": race.get(
+                        "valid_missing_complete_expected_prejump_capture_modes"
+                    ),
+                    "selected_capture_mode_distribution": race.get(
+                        "selected_capture_mode_distribution"
+                    ),
+                    "selected_valid_capture_mode_distribution": race.get(
+                        "selected_valid_capture_mode_distribution"
+                    ),
+                    "selected_expected_prejump_capture_modes_missing": race.get(
+                        "selected_expected_prejump_capture_modes_missing"
+                    ),
+                    "selected_valid_expected_prejump_capture_modes_missing": race.get(
+                        "selected_valid_expected_prejump_capture_modes_missing"
+                    ),
                     "blockers": blockers,
                 }
             )
@@ -862,6 +1255,8 @@ def odds_research_readiness_report(
         next_action = "COLLECT_EXACT_PREJUMP_DOG_ODDS_FOR_ALL_RUNNERS"
     elif blocker_counts.get("duplicate_odds_rows"):
         next_action = "FIX_ODDS_DEDUPLICATION_OR_IDENTITY_PROVENANCE"
+    elif timing_aligned_prediction_rerun_races:
+        next_action = "RERUN_FORWARD_SHADOW_AFTER_ODDS_CAPTURE_FOR_TIMING_ALIGNED_EVIDENCE"
     elif blocker_counts.get("timestamp_after_prediction"):
         next_action = "CAPTURE_ODDS_BEFORE_SHADOW_PREDICTION_AND_FEATURE_FREEZE"
     elif blocker_counts.get("timestamp_after_feature_freeze"):
@@ -899,6 +1294,22 @@ def odds_research_readiness_report(
         "blocker_counts": dict(sorted(blocker_counts.items())),
         "race_status_counts": dict(sorted(race_status_counts.items())),
         "blocked_races": blocked_races,
+        "timing_aligned_prediction_rerun_required": bool(
+            timing_aligned_prediction_rerun_races
+        ),
+        "timing_aligned_prediction_rerun_race_count": len(
+            timing_aligned_prediction_rerun_races
+        ),
+        "timing_aligned_prediction_rerun_races": timing_aligned_prediction_rerun_races,
+        "timing_aligned_prediction_rerun_reason_counts": (
+            {
+                "raw_expected_prejump_windows_complete_but_after_prediction": len(
+                    timing_aligned_prediction_rerun_races
+                )
+            }
+            if timing_aligned_prediction_rerun_races
+            else {}
+        ),
         "odds_research_gate_policy": ODDS_RESEARCH_GATE_POLICY,
         "odds_research_next_action": next_action,
         "ev_research_gate": {
@@ -915,6 +1326,249 @@ def odds_research_readiness_report(
         "ev_output_rows": 0,
         "odds_used_for_shadow_scoring": False,
         "no_write_guarantees": NO_WRITE_GUARANTEES,
+    }
+
+
+def _counter_add_dict(counter: Counter[str], values: Mapping[str, Any]) -> None:
+    for key, value in values.items():
+        try:
+            amount = int(value or 0)
+        except (TypeError, ValueError):
+            amount = 1
+        if amount:
+            counter[str(key)] += amount
+
+
+def odds_research_gate_report(
+    *,
+    predictions: Sequence[Mapping[str, Any]],
+    rows: Sequence[Mapping[str, Any]],
+    race_coverage: Mapping[str, Any],
+    odds_research_readiness: Mapping[str, Any],
+    collection_status: str,
+    generated_at: datetime,
+    min_complete_valid_prejump_odds_races: int = MIN_COMPLETE_VALID_PREJUMP_ODDS_RACES,
+) -> dict[str, Any]:
+    blocker_counts: Counter[str] = Counter()
+    _counter_add_dict(blocker_counts, odds_research_readiness.get("blocker_counts") or {})
+
+    race_count = int(race_coverage.get("race_count") or 0)
+    complete_valid_races = int(
+        race_coverage.get("races_with_complete_valid_prejump_odds") or 0
+    )
+    source_url_rows_checked = 0
+    source_url_rows_missing = 0
+    valid_prejump_rows = 0
+    valid_prejump_rows_with_source_url = 0
+    unsafe_or_rejected_rows = 0
+    for row in rows:
+        has_candidate = int(row.get("odds_candidate_count") or 0) > 0
+        if has_candidate:
+            source_url_rows_checked += 1
+            if not _odds_source_url(row):
+                source_url_rows_missing += 1
+        if row.get("odds_match_status") == "valid_pre_jump_dog_odds":
+            valid_prejump_rows += 1
+            if _odds_source_url(row):
+                valid_prejump_rows_with_source_url += 1
+        elif has_candidate or row.get("odds_match_status") not in (None, "", "no_odds_row"):
+            unsafe_or_rejected_rows += 1
+
+    source_url_coverage_pct = (
+        100.0 * (source_url_rows_checked - source_url_rows_missing) / source_url_rows_checked
+        if source_url_rows_checked
+        else None
+    )
+    valid_source_url_coverage_pct = (
+        100.0 * valid_prejump_rows_with_source_url / valid_prejump_rows
+        if valid_prejump_rows
+        else None
+    )
+    if not predictions:
+        blocker_counts["no_shadow_predictions"] += 1
+    if collection_status in {FINAL_DB_BLOCKED, FINAL_ODDS_UNAVAILABLE}:
+        blocker_counts[f"collection_status:{collection_status}"] += 1
+    if complete_valid_races < min_complete_valid_prejump_odds_races:
+        blocker_counts["complete_valid_prejump_odds_races_below_min"] += (
+            min_complete_valid_prejump_odds_races - complete_valid_races
+        )
+    if source_url_rows_missing > 0:
+        blocker_counts["source_url_coverage_not_100_pct"] += source_url_rows_missing
+    if valid_prejump_rows and valid_prejump_rows_with_source_url != valid_prejump_rows:
+        blocker_counts["valid_prejump_source_url_coverage_not_100_pct"] += (
+            valid_prejump_rows - valid_prejump_rows_with_source_url
+        )
+    if odds_research_readiness.get("status") != "ODDS_ANALYSIS_READY_REPORT_ONLY_EV_DISABLED":
+        blocker_counts["odds_research_readiness_not_batch_ready"] += 1
+
+    status = (
+        ODDS_RESEARCH_READY_REPORT_ONLY
+        if not blocker_counts
+        else ODDS_RESEARCH_BLOCKED_PROVENANCE
+    )
+    complete_valid_race_ids = [
+        race.get("race_id")
+        for race in race_coverage.get("races") or []
+        if race.get("complete_valid_prejump_odds") is True
+    ]
+    incomplete_valid_prejump_races = [
+        {
+            "race_id": race.get("race_id"),
+            "odds_coverage_status": race.get("odds_coverage_status"),
+            "valid_pre_jump_dog_odds_rows": race.get("valid_pre_jump_dog_odds_rows"),
+            "predicted_runner_count": race.get("predicted_runner_count"),
+            "selected_capture_mode_distribution": race.get(
+                "selected_capture_mode_distribution"
+            ),
+            "selected_valid_capture_mode_distribution": race.get(
+                "selected_valid_capture_mode_distribution"
+            ),
+            "raw_capture_mode_distribution": race.get("raw_capture_mode_distribution"),
+            "valid_capture_mode_distribution": race.get("valid_capture_mode_distribution"),
+            "raw_missing_complete_expected_prejump_capture_modes": race.get(
+                "raw_missing_complete_expected_prejump_capture_modes"
+            ),
+            "valid_missing_complete_expected_prejump_capture_modes": race.get(
+                "valid_missing_complete_expected_prejump_capture_modes"
+            ),
+            "selected_expected_prejump_capture_modes_missing": race.get(
+                "selected_expected_prejump_capture_modes_missing"
+            ),
+            "selected_valid_expected_prejump_capture_modes_missing": race.get(
+                "selected_valid_expected_prejump_capture_modes_missing"
+            ),
+            "odds_analysis_blockers": list(race.get("odds_analysis_blockers") or []),
+        }
+        for race in race_coverage.get("races") or []
+        if race.get("complete_valid_prejump_odds") is not True
+    ]
+    return {
+        "schema_version": "odds_research_gate_report_v1",
+        "generated_at": generated_at.isoformat(),
+        "status": status,
+        "collection_status": collection_status,
+        "minimum_complete_valid_prejump_odds_races": min_complete_valid_prejump_odds_races,
+        "race_count": race_count,
+        "prediction_rows": len(predictions),
+        "complete_valid_prejump_odds_races": complete_valid_races,
+        "complete_valid_prejump_odds_race_ids": complete_valid_race_ids,
+        "incomplete_valid_prejump_odds_races": incomplete_valid_prejump_races,
+        "valid_prejump_dog_odds_rows": valid_prejump_rows,
+        "source_url_rows_checked": source_url_rows_checked,
+        "source_url_rows_missing": source_url_rows_missing,
+        "source_url_coverage_pct": source_url_coverage_pct,
+        "valid_prejump_rows_with_source_url": valid_prejump_rows_with_source_url,
+        "valid_prejump_source_url_coverage_pct": valid_source_url_coverage_pct,
+        "unsafe_or_rejected_odds_rows": unsafe_or_rejected_rows,
+        "unsafe_or_partial_odds_joins_counted": False,
+        "blocker_counts": dict(sorted(blocker_counts.items())),
+        "blocked": bool(blocker_counts),
+        "odds_used_for_shadow_scoring": False,
+        "odds_model_input_report_only_allowed": status == ODDS_RESEARCH_READY_REPORT_ONLY,
+        "ev_diagnostics_report_only_allowed": status == ODDS_RESEARCH_READY_REPORT_ONLY,
+        "ev_output_allowed": status == ODDS_RESEARCH_READY_REPORT_ONLY,
+        "betting_action_allowed": False,
+        "promotion_allowed": False,
+        "policy": ODDS_RESEARCH_GATE_POLICY,
+        "new_statuses": {
+            "blocked": ODDS_RESEARCH_BLOCKED_PROVENANCE,
+            "ready_report_only": ODDS_RESEARCH_READY_REPORT_ONLY,
+        },
+    }
+
+
+def odds_augmented_challenger_report_from_gate(
+    gate: Mapping[str, Any],
+) -> dict[str, Any]:
+    gate_ready = gate.get("status") == ODDS_RESEARCH_READY_REPORT_ONLY
+    blockers = dict(gate.get("blocker_counts") or {})
+    if gate_ready:
+        blockers["joined_forward_results_required_for_accuracy_comparison"] = 1
+        blockers["odds_augmented_model_comparison_not_run_by_snapshot_collector"] = 1
+    return {
+        "schema_version": "odds_augmented_challenger_report_v1",
+        "final_status": ODDS_AUGMENTED_MODEL_BLOCKED,
+        "ready_status_name": ODDS_AUGMENTED_MODEL_READY_FOR_PR_REVIEW,
+        "odds_research_gate_status": gate.get("status"),
+        "activation_blockers": dict(sorted(blockers.items())),
+        "models_required_when_gate_passes": [
+            "stage2_no_odds_challenger",
+            "market_only_implied_probability_baseline",
+            "odds_augmented_challenger",
+            "probability_blend_calibration_candidate",
+        ],
+        "metrics_required": [
+            "top1",
+            "top3",
+            "mean_winner_rank",
+            "brier",
+            "logloss",
+            "calibration_slope_intercept",
+            "box1_top_pick_share",
+            "probability_sum_error",
+        ],
+        "promotion_boundary": {
+            "promotion_pr_allowed": False,
+            "direct_registry_mutation_allowed": False,
+            "production_pointer_update_allowed": False,
+            "odds_can_override_failed_accuracy_gate": False,
+            "ev_can_override_failed_accuracy_gate": False,
+        },
+        "odds_used_for_shadow_scoring": False,
+        "ev_output_allowed": False,
+        "betting_action_allowed": False,
+        "report_only": True,
+    }
+
+
+def report_only_ev_diagnostics(
+    *,
+    gate: Mapping[str, Any],
+    rows: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    if gate.get("status") != ODDS_RESEARCH_READY_REPORT_ONLY:
+        return {
+            "schema_version": "report_only_ev_diagnostics_v1",
+            "status": "EV_DIAGNOSTICS_BLOCKED_ODDS_RESEARCH_GATE",
+            "odds_research_gate_status": gate.get("status"),
+            "blocker_counts": dict(gate.get("blocker_counts") or {}),
+            "ev_rows": 0,
+            "positive_ev_rows": 0,
+            "negative_ev_rows": 0,
+            "betting_advice": False,
+            "stakes": False,
+            "betting_action_allowed": False,
+            "promotion_signal": False,
+            "ev_can_override_accuracy_gate": False,
+        }
+
+    ev_values: list[float] = []
+    for row in rows:
+        if row.get("odds_match_status") != "valid_pre_jump_dog_odds":
+            continue
+        probability = row.get("shadow_rf_calibrated_probability")
+        snapshot = row.get("odds_snapshot") if isinstance(row.get("odds_snapshot"), Mapping) else {}
+        odds_decimal = snapshot.get("market_odds_win")
+        try:
+            ev_values.append(float(probability) * float(odds_decimal) - 1.0)
+        except (TypeError, ValueError):
+            continue
+    return {
+        "schema_version": "report_only_ev_diagnostics_v1",
+        "status": "EV_DIAGNOSTICS_REPORT_ONLY",
+        "odds_research_gate_status": gate.get("status"),
+        "ev_rows": len(ev_values),
+        "positive_ev_rows": sum(1 for value in ev_values if value > 0),
+        "negative_ev_rows": sum(1 for value in ev_values if value < 0),
+        "zero_ev_rows": sum(1 for value in ev_values if value == 0),
+        "mean_ev": sum(ev_values) / len(ev_values) if ev_values else None,
+        "min_ev": min(ev_values) if ev_values else None,
+        "max_ev": max(ev_values) if ev_values else None,
+        "betting_advice": False,
+        "stakes": False,
+        "betting_action_allowed": False,
+        "promotion_signal": False,
+        "ev_can_override_accuracy_gate": False,
     }
 
 
@@ -936,7 +1590,7 @@ def collect_shadow_odds_snapshot(
     predictions = read_jsonl(shadow_predictions_path(shadow_run_dir))
     contexts = load_race_contexts(shadow_run_dir)
     manifest = read_json(shadow_run_dir / "shadow_manifest.json")
-    prediction_time = manifest_timestamp(
+    prediction_time, prediction_time_source = manifest_timestamp_with_source(
         manifest,
         (
             ("prediction_timestamp",),
@@ -944,8 +1598,11 @@ def collect_shadow_odds_snapshot(
             ("score_live_manifest", "generated_at"),
             ("generated_at",),
         ),
-    ) or generated_at
-    feature_freeze_time = manifest_timestamp(
+    )
+    if prediction_time is None:
+        prediction_time = generated_at
+        prediction_time_source = "collector_generated_at_fallback"
+    feature_freeze_time, feature_freeze_time_source = manifest_timestamp_with_source(
         manifest,
         (
             ("feature_freeze_timestamp",),
@@ -976,36 +1633,52 @@ def collect_shadow_odds_snapshot(
                             prediction,
                             current_only=current_only,
                         )
-                        duplicate_count = len(candidates)
-                        selected = candidates[0] if candidates else None
-                        odds_snapshot = (
-                            odds_snapshot_from_row(
-                                selected,
+                        _selected, odds_snapshot, eligibility, selection = (
+                            selected_candidate_for_prediction(
+                                candidates,
+                                prediction=prediction,
                                 prediction_time=prediction_time,
                                 feature_freeze_time=feature_freeze_time,
                                 jump_time=parse_jump_datetime(
                                     contexts.get(str(prediction.get("race_id") or ""))
                                 ),
-                                duplicate_count=duplicate_count,
                                 stale_odds_after_minutes=stale_odds_after_minutes,
                             )
-                            if selected
-                            else {}
-                        )
-                        runner = {
-                            "dog_name": prediction.get("dog_name"),
-                            "box_number": prediction.get("box"),
-                        }
-                        eligibility = classify_odds_snapshot_for_ev(
-                            runner,
-                            odds_snapshot,
-                            snapshot_race_id=prediction.get("race_id"),
                         )
                         row = {
                             **prediction,
                             "schema_version": "shadow_odds_snapshot_runner_v1",
                             "race_context": contexts.get(str(prediction.get("race_id") or "")) or {},
-                            "odds_candidate_count": duplicate_count,
+                            "odds_effective_prediction_timestamp": (
+                                prediction_time.isoformat()
+                            ),
+                            "odds_effective_prediction_timestamp_source": (
+                                prediction_time_source
+                            ),
+                            "odds_effective_feature_freeze_timestamp": (
+                                feature_freeze_time.isoformat()
+                                if feature_freeze_time is not None
+                                else None
+                            ),
+                            "odds_effective_feature_freeze_timestamp_source": (
+                                feature_freeze_time_source
+                            ),
+                            "odds_candidate_count": selection["selected_candidate_count"],
+                            "odds_raw_candidate_count": selection["raw_candidate_count"],
+                            "odds_duplicate_candidate_count": selection[
+                                "duplicate_candidate_count"
+                            ],
+                            "odds_ignored_candidate_count": selection["ignored_candidate_count"],
+                            "odds_selection_status": selection["selection_status"],
+                            "odds_raw_capture_mode_distribution": selection[
+                                "raw_capture_mode_distribution"
+                            ],
+                            "odds_unique_capture_mode_distribution": selection[
+                                "unique_capture_mode_distribution"
+                            ],
+                            "odds_valid_capture_mode_distribution": selection[
+                                "valid_capture_mode_distribution"
+                            ],
                             "odds_snapshot": odds_snapshot,
                             "odds_match_status": eligibility.get("odds_match_status"),
                             "odds_match_method": eligibility.get("odds_match_method"),
@@ -1038,6 +1711,16 @@ def collect_shadow_odds_snapshot(
         collection_status=status,
         odds_source_report=odds_source_report,
     )
+    odds_gate = odds_research_gate_report(
+        predictions=predictions,
+        rows=rows,
+        race_coverage=race_coverage,
+        odds_research_readiness=odds_research_readiness,
+        collection_status=status,
+        generated_at=generated_at,
+    )
+    odds_augmented_report = odds_augmented_challenger_report_from_gate(odds_gate)
+    ev_diagnostics = report_only_ev_diagnostics(gate=odds_gate, rows=rows)
     report = {
         "schema_version": "shadow_odds_snapshot_report_v1",
         "generated_at": generated_at.isoformat(),
@@ -1047,6 +1730,12 @@ def collect_shadow_odds_snapshot(
         "db_state": db_state,
         "current_only": current_only,
         "stale_odds_after_minutes": stale_odds_after_minutes,
+        "effective_prediction_timestamp": prediction_time.isoformat(),
+        "effective_prediction_timestamp_source": prediction_time_source,
+        "effective_feature_freeze_timestamp": (
+            feature_freeze_time.isoformat() if feature_freeze_time is not None else None
+        ),
+        "effective_feature_freeze_timestamp_source": feature_freeze_time_source,
         "prediction_rows": len(predictions),
         "race_count": race_count,
         "runner_rows": len(rows),
@@ -1060,7 +1749,17 @@ def collect_shadow_odds_snapshot(
         "odds_exclusion_reason_distribution": dict(sorted(exclusion_counts.items())),
         "odds_source_report": odds_source_report,
         "odds_research_readiness": odds_research_readiness,
+        "odds_research_gate": odds_gate,
+        "odds_augmented_challenger": odds_augmented_report,
+        "report_only_ev_diagnostics": ev_diagnostics,
         "race_coverage_path": relpath(output_dir / "shadow_odds_race_coverage.json"),
+        "odds_research_gate_report_path": relpath(output_dir / "odds_research_gate_report.json"),
+        "odds_augmented_challenger_report_path": relpath(
+            output_dir / "odds_augmented_challenger_report.json"
+        ),
+        "report_only_ev_diagnostics_path": relpath(
+            output_dir / "report_only_ev_diagnostics.json"
+        ),
         "races_with_any_odds_candidates": race_coverage["races_with_any_odds_candidates"],
         "races_with_complete_odds_candidate_coverage": race_coverage[
             "races_with_complete_odds_candidate_coverage"
@@ -1099,6 +1798,9 @@ def collect_shadow_odds_snapshot(
     write_csv(output_dir / "shadow_odds_snapshot.csv", rows)
     write_json(output_dir / "shadow_odds_race_coverage.json", race_coverage)
     write_json(output_dir / "shadow_odds_research_readiness.json", odds_research_readiness)
+    write_json(output_dir / "odds_research_gate_report.json", odds_gate)
+    write_json(output_dir / "odds_augmented_challenger_report.json", odds_augmented_report)
+    write_json(output_dir / "report_only_ev_diagnostics.json", ev_diagnostics)
     write_json(output_dir / "shadow_odds_snapshot_report.json", report)
     write_text(output_dir / "final_status.txt", f"{status}\n")
     write_text(
@@ -1114,7 +1816,10 @@ def collect_shadow_odds_snapshot(
                 f"- Valid pre-jump dog odds rows: `{report['valid_pre_jump_dog_odds_rows']}`",
                 f"- Races with complete valid pre-jump odds: `{report['races_with_complete_valid_prejump_odds']}`",
                 f"- Odds analysis status: `{odds_research_readiness['status']}`",
+                f"- Odds research gate: `{odds_gate['status']}`",
                 f"- Odds analysis blockers: `{odds_research_readiness['blocker_counts']}`",
+                f"- Odds gate blockers: `{odds_gate['blocker_counts']}`",
+                f"- Odds-augmented model status: `{odds_augmented_report['final_status']}`",
                 f"- EV output rows: `0`",
                 f"- Protected paths unchanged: `{report['protected_paths_unchanged']}`",
                 "",
