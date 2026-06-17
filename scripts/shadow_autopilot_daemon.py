@@ -2856,10 +2856,12 @@ def full_daemon_odds_window_defer_decision(
         and action_at is not None
         and action_at <= horizon_at
     )
-    pending_imminent = pending_at is not None and pending_at <= horizon_at
+    pending_imminent = (
+        pending_at is not None and current_time <= pending_at <= horizon_at
+    )
     due_count = int((schedule.get("status_counts") or {}).get("DUE") or 0)
     should_defer = bool(
-        not refresh_action_requested
+        not (refresh_action_requested and not pending_imminent)
         and (window_open or fresh_open_multi_race_state)
         and (
             action_due_now
