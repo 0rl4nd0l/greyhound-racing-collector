@@ -18,7 +18,7 @@ import re
 import shutil
 import sys
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -62,7 +62,10 @@ from scripts.run_feature_recovery_execution_v1 import (  # noqa: E402
     write_json,
     write_text,
 )
-from utils.csv_metadata import load_safe_sidecar_target_metadata  # noqa: E402
+from utils.csv_metadata import (  # noqa: E402
+    load_safe_sidecar_target_metadata,
+    load_safe_weather_track_metadata,
+)
 from utils.race_lifecycle import extract_target_metadata_from_filename  # noqa: E402
 
 
@@ -1764,8 +1767,42 @@ def load_live_csv(path: Path) -> list[dict[str, str]]:
         return [dict(row) for row in csv.DictReader(handle, delimiter=delimiter)]
 
 
+def race_time_iso_from_sidecar(race_date: Any, race_time: Any) -> str | None:
+    date_text = str(race_date or "").strip()
+    time_text = str(race_time or "").strip()
+    if not time_text:
+        return None
+
+    iso_candidate = time_text.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(iso_candidate)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone(timedelta(hours=10)))
+        return parsed.isoformat(timespec="seconds")
+    except Exception:
+        pass
+
+    if not date_text:
+        return None
+    for fmt in ("%I:%M %p", "%H:%M", "%H:%M:%S"):
+        try:
+            parsed_time = datetime.strptime(time_text.upper(), fmt).time()
+            parsed = datetime.fromisoformat(date_text).replace(
+                hour=parsed_time.hour,
+                minute=parsed_time.minute,
+                second=parsed_time.second,
+                microsecond=0,
+                tzinfo=timezone(timedelta(hours=10)),
+            )
+            return parsed.isoformat(timespec="seconds")
+        except Exception:
+            continue
+    return None
+
+
 def load_live_sidecar_context(path: Path) -> dict[str, Any]:
     safe_target = load_safe_sidecar_target_metadata(path)
+    safe_weather_track = load_safe_weather_track_metadata(path)
     context: dict[str, Any] = {
         "target_distance": safe_target.get("target_distance"),
         "target_distance_source": safe_target.get("target_distance_source"),
@@ -1775,6 +1812,24 @@ def load_live_sidecar_context(path: Path) -> dict[str, Any]:
         "metadata_source_url": safe_target.get("metadata_source_url"),
         "race_info": {},
         "rejected_metadata_sources": list(safe_target.get("rejected_metadata_sources") or []),
+        "track_condition": safe_weather_track.get("track_condition"),
+        "weather": safe_weather_track.get("weather"),
+        "weather_condition": safe_weather_track.get("weather_condition"),
+        "weather_track_metadata_source": safe_weather_track.get(
+            "weather_track_metadata_source"
+        ),
+        "weather_track_metadata_is_leakage_safe": bool(
+            safe_weather_track.get("weather_track_metadata_is_leakage_safe")
+        ),
+        "weather_track_metadata_source_url": safe_weather_track.get("metadata_source_url"),
+        "weather_track_metadata_captured_at": safe_weather_track.get(
+            "metadata_captured_at"
+        ),
+        "weather_track_metadata_race_date": safe_weather_track.get("race_date"),
+        "weather_track_metadata_race_time": safe_weather_track.get("race_time"),
+        "rejected_weather_track_metadata_sources": list(
+            safe_weather_track.get("rejected_weather_track_metadata_sources") or []
+        ),
     }
     sidecar_path = Path(f"{path}.metadata.json")
     if not sidecar_path.exists():
@@ -2008,6 +2063,13 @@ def build_live_feature_rows(
         filename_metadata = extract_target_metadata_from_filename(path.name)
         sidecar_context = load_live_sidecar_context(path)
         sidecar_race_info = sidecar_context.get("race_info") or {}
+        weather_track_safe = bool(
+            sidecar_context.get("weather_track_metadata_is_leakage_safe")
+        )
+        safe_track_condition = (
+            sidecar_context.get("track_condition") if weather_track_safe else None
+        )
+        safe_weather = sidecar_context.get("weather") if weather_track_safe else None
         runner_rows = []
         for raw in rows:
             dog_name, box = parse_live_runner_identity(
@@ -2058,6 +2120,11 @@ def build_live_feature_rows(
                 not in (None, "")
                 else sidecar_context.get("target_grade_source")
             )
+            weather_track_race_time = race_time_iso_from_sidecar(
+                sidecar_context.get("weather_track_metadata_race_date") or race_date,
+                sidecar_context.get("weather_track_metadata_race_time")
+                or sidecar_race_info.get("race_time"),
+            )
             target = {"distance": target_distance, "grade": target_grade}
             row_features = {feature: None for feature in features}
             row_features.update(
@@ -2081,8 +2148,8 @@ def build_live_feature_rows(
                         csv_value(raw, "race_time", "jump_time", "Race Time")
                         or sidecar_race_info.get("race_time")
                     ),
-                    "track_condition": csv_value(raw, "track_condition", "Track Condition"),
-                    "weather": csv_value(raw, "weather", "Weather"),
+                    "track_condition": safe_track_condition,
+                    "weather": safe_weather,
                     "target_month": safe_int((race_date or "").split("-")[1]) if race_date else None,
                     "target_day_of_week": datetime.fromisoformat(race_date).weekday()
                     if race_date
@@ -2134,6 +2201,33 @@ def build_live_feature_rows(
                 ),
                 "target_metadata_rejected_sources": sidecar_context.get(
                     "rejected_metadata_sources", []
+                ),
+                "metadata_is_leakage_safe": bool(
+                    weather_track_safe and (safe_track_condition or safe_weather)
+                ),
+                "source_url": sidecar_context.get("weather_track_metadata_source_url"),
+                "collection_timestamp": sidecar_context.get(
+                    "weather_track_metadata_captured_at"
+                ),
+                "race_time": weather_track_race_time,
+                "track_condition_source_backed": bool(
+                    weather_track_safe
+                    and safe_track_condition
+                    and sidecar_context.get("weather_track_metadata_source_url")
+                ),
+                "weather_source_backed": bool(
+                    weather_track_safe
+                    and safe_weather
+                    and sidecar_context.get("weather_track_metadata_source_url")
+                ),
+                "weather_track_metadata_from_sidecar": bool(
+                    weather_track_safe and (safe_track_condition or safe_weather)
+                ),
+                "weather_track_metadata_source": sidecar_context.get(
+                    "weather_track_metadata_source"
+                ),
+                "weather_track_metadata_rejected_sources": sidecar_context.get(
+                    "rejected_weather_track_metadata_sources", []
                 ),
             }
             output_row.update(history_provenance)

@@ -33,11 +33,13 @@ from utils.runner_completeness import (
 )
 from utils.csv_metadata import (
     build_csv_download_provenance_payload,
+    build_safe_weather_track_metadata_payload,
     build_safe_target_metadata_payload,
     existing_prejump_sidecar_contract_status,
     normalize_verified_thedogs_export_content,
     normalize_target_distance,
     normalize_target_grade,
+    normalize_weather_track_text,
 )
 
 # Prefer centralized venue normalization if available
@@ -1300,6 +1302,110 @@ class UpcomingRaceBrowser:
             if value not in (None, "", "default_missing_target")
         }
 
+    def _extract_safe_weather_track_metadata_from_page(self, soup, race_url):
+        """Extract explicit current-race weather/track metadata from a pre-race page."""
+
+        if soup is None:
+            return {}
+
+        found = {}
+
+        def _candidate_texts(element):
+            candidates = []
+            try:
+                candidates.append(element.get_text(" ", strip=True))
+                sibling = element.find_next_sibling()
+                if sibling is not None:
+                    candidates.append(sibling.get_text(" ", strip=True))
+                parent = element.parent
+                if parent is not None:
+                    candidates.append(parent.get_text(" ", strip=True))
+            except Exception:
+                pass
+            return [text for text in candidates if text]
+
+        def _is_unsafe_metadata_context(element):
+            try:
+                if element.find_parent("table") is not None:
+                    return True
+                for node in [element, *list(element.parents)]:
+                    attrs = " ".join(
+                        [
+                            " ".join(node.get("class", []))
+                            if isinstance(node.get("class"), list)
+                            else str(node.get("class", "")),
+                            str(node.get("id", "")),
+                        ]
+                    ).lower()
+                    if any(
+                        marker in attrs
+                        for marker in (
+                            "result",
+                            "dividend",
+                            "payout",
+                            "runner-form",
+                            "form-guide",
+                            "race-runners",
+                        )
+                    ):
+                        return True
+            except Exception:
+                return True
+            return False
+
+        def _extract_labeled(label_patterns):
+            try:
+                for element in soup.find_all(True):
+                    if _is_unsafe_metadata_context(element):
+                        continue
+                    text = element.get_text(" ", strip=True)
+                    if not text:
+                        continue
+                    has_child_elements = element.find(True) is not None
+                    for label_pattern in label_patterns:
+                        if not has_child_elements:
+                            direct = re.search(
+                                rf"\b{label_pattern}\b\s*[:\-]?\s+([A-Za-z ]{{1,40}})",
+                                text,
+                                re.I,
+                            )
+                            if direct:
+                                value = normalize_weather_track_text(direct.group(1))
+                                if value:
+                                    return value
+                        if re.fullmatch(rf"\s*{label_pattern}\s*", text, re.I):
+                            for candidate in _candidate_texts(element):
+                                if candidate == text:
+                                    continue
+                                value = normalize_weather_track_text(candidate)
+                                if value:
+                                    return value
+            except Exception:
+                return None
+            return None
+
+        track_condition = _extract_labeled(
+            (r"Track\s+Condition", r"Track", r"Going")
+        )
+        weather = _extract_labeled((r"Weather\s+Condition", r"Weather"))
+        if track_condition:
+            found["track_condition"] = track_condition
+        if weather:
+            found["weather_condition"] = weather
+
+        metadata = build_safe_weather_track_metadata_payload(
+            found,
+            source_url=race_url,
+        )
+        if metadata.get("weather_track_metadata_is_leakage_safe") is not True:
+            return {}
+        return {
+            key: value
+            for key, value in metadata.items()
+            if key != "rejected_weather_track_metadata_sources"
+            and value not in (None, "")
+        }
+
     def download_race_csv(self, race_url):
         """Download CSV form guide for a specific race"""
         try:
@@ -1338,6 +1444,9 @@ class UpcomingRaceBrowser:
                 return {"success": False, "error": "Could not extract race information"}
             race_info.update(
                 self._extract_safe_target_metadata_from_page(soup, race_url)
+            )
+            race_info.update(
+                self._extract_safe_weather_track_metadata_from_page(soup, race_url)
             )
             if not race_info.get("race_time"):
                 exact_race_time = self._extract_formatted_race_time(soup)
