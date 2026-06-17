@@ -126,6 +126,20 @@ def test_build_capture_plan_selects_due_window_for_verified_sidecar(tmp_path):
     ]
 
 
+def test_build_capture_plan_discovers_nested_daemon_eligible_inputs(tmp_path):
+    input_dir = tmp_path / "eligible_inputs"
+    _write_capture_input(input_dir / "source_0001")
+
+    plan = _plan(input_dir)
+
+    assert plan["ready_count"] == 1
+    assert plan["status_counts"] == {"READY_TO_CAPTURE": 1}
+    assert plan["races"][0]["race_id"] == "Race 1 - WPK - 2026-06-10"
+    assert plan["races"][0]["csv_path"].endswith(
+        "eligible_inputs/source_0001/Race 1 - WPK - 2026-06-10.csv"
+    )
+
+
 def test_build_capture_plan_prioritizes_imminent_windows_before_limit(tmp_path):
     input_dir = tmp_path / "upcoming"
     _write_capture_input(

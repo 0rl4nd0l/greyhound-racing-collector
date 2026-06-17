@@ -1,0 +1,23 @@
+{
+  "active_attempt": null,
+  "attempt_count": 2,
+  "generated_at": "2026-06-18T08:13:30.346331+10:00",
+  "no_write_guarantees": {
+    "active_model_replacement": false,
+    "betting_or_ev_action": false,
+    "label_write": false,
+    "odds_history_write": false,
+    "production_pointer_update": false,
+    "production_promotion": false,
+    "race_metadata_write": false,
+    "registry_mutation": false,
+    "snapshot_rewrite": false,
+    "tgr_enabled": false,
+    "training": false
+  },
+  "schema_version": "autonomous_live_odds_capture_progress_v1",
+  "status_counts": {
+    "PLANNED_NOT_EXECUTED": 1,
+    "SKIPPED_NOT_READY": 1
+  }
+}

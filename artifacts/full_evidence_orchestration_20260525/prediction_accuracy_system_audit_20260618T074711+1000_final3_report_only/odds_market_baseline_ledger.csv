@@ -1,0 +1,4 @@
+scope,runner_rows,race_count,valid_prejump_odds_rows,complete_valid_odds_races,market_metrics_status,market_top1,market_top3,market_logloss,shadow_top1_same_rows,shadow_top3_same_rows,shadow_logloss_same_rows,notes
+current_shadow_rows,16,2,0,0,DATA_MISSING_LABELS_OR_PROBABILITIES,,,,,,,current row labels may be pending
+current_expert_form_sidecar_rows,16,2,0,,DATA_MISSING_LABELS_OR_PROBABILITIES,,,,,,,Expert Form sidecar rows use the same strict pre-jump odds join
+promotion_distance_rolling_sample,760,109,,,AVAILABLE,,,,,,,best_candidate=stage2_market_blend_50; best_non_market=stage2_market_blend_50

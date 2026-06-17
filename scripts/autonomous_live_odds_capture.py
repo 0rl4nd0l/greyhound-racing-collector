@@ -657,8 +657,13 @@ def build_capture_plan(
     limit: int | None = None,
 ) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
+    seen_csv_paths: set[Path] = set()
     for input_dir in input_dirs:
-        for csv_path in sorted(Path(input_dir).glob("*.csv")):
+        for csv_path in sorted(Path(input_dir).rglob("*.csv")):
+            logical_path = csv_path.resolve()
+            if logical_path in seen_csv_paths:
+                continue
+            seen_csv_paths.add(logical_path)
             rows.append(build_plan_item(csv_path, current_time))
     rows = sorted(rows, key=capture_plan_priority_key)
     if limit is not None:

@@ -923,6 +923,7 @@ def test_score_live_command_auto_falls_back_to_uv_when_current_python_lacks_ml_d
     assert "scikit-learn" not in command
     assert f"scikit-learn=={orchestrator.SHADOW_MODEL_SKLEARN_VERSION}" in command
     assert "numpy" in command
+    assert "requests" in command
     assert "python" in command
     assert command[command.index("python") + 1].endswith(
         "scripts/run_shadow_non_tgr_rf_evaluation.py"

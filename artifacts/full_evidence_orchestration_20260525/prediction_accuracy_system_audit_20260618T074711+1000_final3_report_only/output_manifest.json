@@ -1,0 +1,62 @@
+[
+  {
+    "bytes": 976,
+    "path": "artifacts/full_evidence_orchestration_20260525/prediction_accuracy_system_audit_20260618T074711+1000_final3_report_only/BOARD_READY_RECOMMENDATION.md",
+    "sha256": "0e7c238ff728c2b071f3eb78050766497270742c9b296fd2edd4df5a3bcb0e0b"
+  },
+  {
+    "bytes": 715,
+    "path": "artifacts/full_evidence_orchestration_20260525/prediction_accuracy_system_audit_20260618T074711+1000_final3_report_only/SUMMARY.md",
+    "sha256": "d54bc85b2302a04b6be6b3857949f7969dd6a2bd27aa90c21ddc823f64b9642c"
+  },
+  {
+    "bytes": 2356,
+    "path": "artifacts/full_evidence_orchestration_20260525/prediction_accuracy_system_audit_20260618T074711+1000_final3_report_only/blocker_ranking.csv",
+    "sha256": "9d553f6cf4cc8b4260072da2c65a5362df01f266826166887490c4931a247964"
+  },
+  {
+    "bytes": 2346,
+    "path": "artifacts/full_evidence_orchestration_20260525/prediction_accuracy_system_audit_20260618T074711+1000_final3_report_only/calibration_report.json",
+    "sha256": "0a62bb6bfaf96c0e4f611be092710f30e38eaa23c65fb3f5e284fb3c6f9bf7f7"
+  },
+  {
+    "bytes": 2159,
+    "path": "artifacts/full_evidence_orchestration_20260525/prediction_accuracy_system_audit_20260618T074711+1000_final3_report_only/data_point_provenance_ledger.csv",
+    "sha256": "05988e1414616d4c247211ab7b289f10ce08ba7c1546f008b93ce610232cc0c7"
+  },
+  {
+    "bytes": 2642,
+    "path": "artifacts/full_evidence_orchestration_20260525/prediction_accuracy_system_audit_20260618T074711+1000_final3_report_only/feature_family_coverage_utility.csv",
+    "sha256": "fda182585cdb28a969a16eb8ae45abf467a867f58c02c9b0f1daeb2207a3c568"
+  },
+  {
+    "bytes": 22,
+    "path": "artifacts/full_evidence_orchestration_20260525/prediction_accuracy_system_audit_20260618T074711+1000_final3_report_only/final_status.txt",
+    "sha256": "81bdfd9b9887ddd1899ebe890a8725d7079c9ffc775795e8b2464e9bb7c5efbe"
+  },
+  {
+    "bytes": 3339,
+    "path": "artifacts/full_evidence_orchestration_20260525/prediction_accuracy_system_audit_20260618T074711+1000_final3_report_only/joined_runner_evaluation.csv",
+    "sha256": "fb89e50bde2bca65f1ce57d2fa99c093785eb72c9de1eeedf441bcd9ee4a350a"
+  },
+  {
+    "bytes": 480,
+    "path": "artifacts/full_evidence_orchestration_20260525/prediction_accuracy_system_audit_20260618T074711+1000_final3_report_only/missingness_ledger.csv",
+    "sha256": "91cf43abf56cd3d7a9520c5e7fc1344308b5962fe5400b48a70a095327bc8cf1"
+  },
+  {
+    "bytes": 611,
+    "path": "artifacts/full_evidence_orchestration_20260525/prediction_accuracy_system_audit_20260618T074711+1000_final3_report_only/odds_market_baseline_ledger.csv",
+    "sha256": "f2e5a055a4a4263bd7b9b6cb3e454a99cbbe8e1eb6c94553f137bfb64a07c914"
+  },
+  {
+    "bytes": 121748,
+    "path": "artifacts/full_evidence_orchestration_20260525/prediction_accuracy_system_audit_20260618T074711+1000_final3_report_only/prediction_accuracy_system_audit_report.json",
+    "sha256": "4cfa581a69e36b49c2eff42119b31085ba8f5238dbd4d70afefdc12b36728a05"
+  },
+  {
+    "bytes": 2016,
+    "path": "artifacts/full_evidence_orchestration_20260525/prediction_accuracy_system_audit_20260618T074711+1000_final3_report_only/slice_metrics.json",
+    "sha256": "6a607e574bc85749140f50a2c6bb9d8ab9279ada641e35b12f4344e77ea5f0a6"
+  }
+]
