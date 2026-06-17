@@ -2557,9 +2557,12 @@ def direct_capture_all_ready_races_already_captured(
         for status, count in dict(odds_status.get("status_counts") or {}).items()
         if int_or_zero(count) > 0
     }
+    ignored_statuses = {"SKIPPED_NOT_READY"}
+    handled_count = int_or_zero(status_counts.get("SKIPPED_ALREADY_CAPTURED"))
     return (
-        set(status_counts) == {"SKIPPED_ALREADY_CAPTURED"}
-        and status_counts["SKIPPED_ALREADY_CAPTURED"] >= ready_count
+        bool(handled_count)
+        and set(status_counts).issubset({"SKIPPED_ALREADY_CAPTURED"} | ignored_statuses)
+        and handled_count >= ready_count
     )
 
 
@@ -2583,10 +2586,12 @@ def direct_capture_all_ready_races_handled_after_append(
         if int_or_zero(count) > 0
     }
     handled_statuses = {"APPENDED", "SKIPPED_ALREADY_CAPTURED"}
+    ignored_statuses = {"SKIPPED_NOT_READY"}
+    handled_count = sum(int_or_zero(status_counts.get(status)) for status in handled_statuses)
     return (
         bool(status_counts.get("APPENDED"))
-        and set(status_counts).issubset(handled_statuses)
-        and sum(status_counts.values()) >= ready_count
+        and set(status_counts).issubset(handled_statuses | ignored_statuses)
+        and handled_count >= ready_count
     )
 
 

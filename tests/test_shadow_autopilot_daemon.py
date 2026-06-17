@@ -2478,6 +2478,34 @@ def test_run_odds_capture_once_reconciles_all_ready_handled_after_append(
     ] == "direct_capture_all_ready_races_handled_after_append"
 
 
+def test_direct_capture_reconciliation_ignores_not_ready_rows():
+    already_captured_status = {
+        "status": "AUTONOMOUS_LIVE_ODDS_CAPTURE_NO_ELIGIBLE_WINDOWS",
+        "inserted_live_odds_rows": 0,
+        "ready_count": 1,
+        "status_counts": {
+            "SKIPPED_ALREADY_CAPTURED": 1,
+            "SKIPPED_NOT_READY": 1,
+        },
+    }
+    appended_status = {
+        "status": "AUTONOMOUS_LIVE_ODDS_CAPTURE_APPENDED",
+        "inserted_live_odds_rows": 8,
+        "ready_count": 1,
+        "blocked_attempt_count": 0,
+        "blocked_attempts": [],
+        "status_counts": {
+            "APPENDED": 1,
+            "SKIPPED_NOT_READY": 1,
+        },
+    }
+
+    assert daemon.direct_capture_all_ready_races_already_captured(
+        already_captured_status
+    )
+    assert daemon.direct_capture_all_ready_races_handled_after_append(appended_status)
+
+
 def test_run_odds_capture_once_waits_from_recent_future_window_state(
     tmp_path, monkeypatch
 ):
