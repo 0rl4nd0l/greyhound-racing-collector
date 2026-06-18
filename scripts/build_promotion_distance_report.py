@@ -26,6 +26,8 @@ ROOT_STR = str(ROOT)
 sys.path = [path for path in sys.path if path != ROOT_STR]
 sys.path.insert(0, ROOT_STR)
 
+from scripts import build_promotion_gate_contract_audit_packet as gate_contract_audit  # noqa: E402
+
 OUTPUT_PREFIX = (
     "artifacts/full_evidence_orchestration_20260525/"
     "promotion_distance_report_"
@@ -35,6 +37,15 @@ SUMMARY_FILE = "SUMMARY.md"
 MIN_ROLLING_RACES_FOR_REVIEW = 100
 MIN_RESIDUAL_TRIGGERED_RACES_FOR_DIRECTIONAL_READ = 10
 TARGET_TOP1_MARGIN_VS_MARKET = 0.02
+PROMOTION_GATE_CONTRACT_POLICY = "dual_baseline_market_rank_primary_safety"
+EXPECTED_PROMOTION_SELECTED_STAGE = "odds_augmented_model_research"
+EXPECTED_PULL_REQUEST_BOUNDARY = {
+    "promotion_pr_allowed": True,
+    "direct_local_switch_allowed": False,
+    "local_registry_mutation_allowed": False,
+    "production_pointer_update_allowed": False,
+    "requires_human_pr_review": True,
+}
 
 NO_WRITE_GUARANTEES = {
     "training": False,
@@ -169,6 +180,109 @@ def metric_gap_to_target(delta: float | None, target: float) -> float | None:
     return max(0.0, target - delta)
 
 
+def high_accuracy_gate_contract_blockers(high_gate: Mapping[str, Any]) -> list[str]:
+    blockers: list[str] = []
+    if high_gate.get("status") != "READY_FOR_PR_DRAFT":
+        blockers.append(f"high_accuracy_gate_not_ready:{high_gate.get('status')}")
+    blockers.extend(string_list(high_gate.get("blockers")))
+    selected_stage = high_gate.get("selected_stage")
+    if selected_stage != EXPECTED_PROMOTION_SELECTED_STAGE:
+        blockers.append(f"high_accuracy_selected_stage_not_supported:{selected_stage}")
+    boundary = mapping(high_gate.get("pull_request_boundary"))
+    for key, expected in EXPECTED_PULL_REQUEST_BOUNDARY.items():
+        if boundary.get(key) is not expected:
+            blockers.append(
+                f"high_accuracy_pull_request_boundary_invalid:{key}="
+                f"{boundary.get(key)}"
+            )
+    return list(dict.fromkeys(blockers))
+
+
+def gate_contract_candidate_summary(
+    *,
+    rolling: Mapping[str, Any],
+    high_gate: Mapping[str, Any],
+    target_top1_margin_vs_market: float,
+) -> dict[str, Any]:
+    audit = gate_contract_audit.build_report(
+        rolling_report=rolling,
+        thresholds=gate_contract_audit.GateAuditThresholds(
+            min_market_top1_delta=0.0,
+        ),
+    )
+    policy = next(
+        (
+            row
+            for row in audit.get("policy_summaries") or []
+            if mapping(row).get("policy_key") == PROMOTION_GATE_CONTRACT_POLICY
+        ),
+        {},
+    )
+    policy = mapping(policy)
+    selected_candidate = high_gate.get("selected_candidate")
+    audit_candidate = policy.get("selected_candidate")
+    row = next(
+        (
+            item
+            for item in audit.get("candidate_gate_matrix") or []
+            if mapping(item).get("candidate_key") == selected_candidate
+        ),
+        {},
+    )
+    row = mapping(row)
+    blocker_text = str(row.get(f"{PROMOTION_GATE_CONTRACT_POLICY}_blockers") or "")
+    candidate_blockers = [item for item in blocker_text.split(";") if item]
+    blockers: list[str] = []
+    if audit.get("final_status") != "REPORT_ONLY_GATE_CHANGE_CANDIDATE":
+        blockers.append(
+            f"gate_contract_audit_not_ready:{audit.get('final_status')}"
+        )
+    if policy.get("status") != "PASS":
+        blockers.append(f"gate_contract_policy_not_pass:{PROMOTION_GATE_CONTRACT_POLICY}")
+    if not selected_candidate:
+        blockers.append("high_accuracy_selected_candidate_missing")
+    if selected_candidate and not row:
+        blockers.append(f"selected_candidate_gate_matrix_row_missing:{selected_candidate}")
+    if selected_candidate and selected_candidate != audit_candidate:
+        blockers.append(
+            "high_accuracy_selected_candidate_not_audit_selected:"
+            f"{selected_candidate}!={audit_candidate}"
+        )
+    blockers.extend(candidate_blockers)
+    top1_delta = finite_float(row.get("market_top1_delta"))
+    return {
+        "schema_version": "promotion_distance_gate_contract_candidate_v1",
+        "status": "PASS" if not blockers else "BLOCKED",
+        "audit_final_status": audit.get("final_status"),
+        "policy_key": PROMOTION_GATE_CONTRACT_POLICY,
+        "policy_status": policy.get("status"),
+        "selected_candidate": selected_candidate,
+        "audit_selected_candidate": audit_candidate,
+        "candidate_minus_market": {
+            "top1": top1_delta,
+            "top3": finite_float(row.get("market_top3_delta")),
+            "mean_winner_rank": finite_float(
+                row.get("market_mean_winner_rank_delta")
+            ),
+            "brier": finite_float(row.get("market_brier_delta")),
+            "logloss": finite_float(row.get("market_logloss_delta")),
+            "box1_top_pick_share": finite_float(
+                row.get("market_box1_top_pick_share_delta")
+            ),
+            "calibration_distance": finite_float(
+                row.get("market_calibration_distance_delta")
+            ),
+        },
+        "target_top1_margin_vs_market": target_top1_margin_vs_market,
+        "top1_margin_gap_to_target": metric_gap_to_target(
+            top1_delta,
+            target_top1_margin_vs_market,
+        ),
+        "top1_target_is_advisory_when_gate_contract_passes": True,
+        "blockers": list(dict.fromkeys(blockers)),
+    }
+
+
 def official_result_coverage_summary(rolling: Mapping[str, Any]) -> dict[str, Any]:
     direct = mapping(rolling.get("official_result_coverage"))
     missing_race_ids = string_list(
@@ -252,17 +366,30 @@ def build_report(
     residual_floor = finite_int(
         residual.get("minimum_triggered_races_for_directional_read")
     ) or min_residual_triggered_races
+    gate_contract_candidate = gate_contract_candidate_summary(
+        rolling=rolling,
+        high_gate=high_gate,
+        target_top1_margin_vs_market=target_top1_margin_vs_market,
+    )
+    gate_contract_passed = gate_contract_candidate.get("status") == "PASS"
 
     blockers: list[str] = []
-    if high_gate.get("status") != "READY_FOR_PR_DRAFT":
-        blockers.extend(str(item) for item in high_gate.get("blockers") or [])
+    blockers.extend(high_accuracy_gate_contract_blockers(high_gate))
     if sample_races < min_rolling_races:
         blockers.append("rolling_sample_below_review_floor")
-    if (non_market_top1_delta or 0.0) < target_top1_margin_vs_market:
+    if not gate_contract_passed:
+        blockers.extend(
+            f"gate_contract_candidate_blocker:{blocker}"
+            for blocker in string_list(gate_contract_candidate.get("blockers"))
+        )
+    if (
+        not gate_contract_passed
+        and (non_market_top1_delta or 0.0) < target_top1_margin_vs_market
+    ):
         blockers.append("best_non_market_top1_margin_below_target")
-    if residual_triggered < residual_floor:
+    if not gate_contract_passed and residual_triggered < residual_floor:
         blockers.append("predeclared_residual_trigger_count_below_directional_floor")
-    if (residual_top1_delta or 0.0) <= 0.0:
+    if not gate_contract_passed and (residual_top1_delta or 0.0) <= 0.0:
         blockers.append("predeclared_residual_top1_not_above_market")
     blockers = list(dict.fromkeys(blockers))
 
@@ -335,7 +462,17 @@ def build_report(
                 non_market_top1_delta,
                 target_top1_margin_vs_market,
             ),
+            "selected_gate_contract_candidate_key": gate_contract_candidate.get(
+                "selected_candidate"
+            ),
+            "selected_gate_contract_candidate_minus_market": dict(
+                mapping(gate_contract_candidate.get("candidate_minus_market"))
+            ),
+            "selected_gate_contract_top1_margin_gap": (
+                gate_contract_candidate.get("top1_margin_gap_to_target")
+            ),
         },
+        "gate_contract_candidate": gate_contract_candidate,
         "predeclared_residual_candidate": {
             "candidate_key": residual.get("candidate_key"),
             "status": residual.get("status"),
@@ -352,13 +489,14 @@ def build_report(
                 0.000000001,
             ),
             "blockers": list(residual.get("blockers") or []),
+            "promotion_blocking": not gate_contract_passed,
         },
         "promotion_gate": {
             "status": high_gate.get("status"),
             "blockers": list(high_gate.get("blockers") or []),
         },
         "blockers": blockers,
-        "promotion_ready": False,
+        "promotion_ready": not blockers,
         "no_write_guarantees": dict(NO_WRITE_GUARANTEES),
     }
     write_json(output_dir / REPORT_FILE, report)
@@ -372,6 +510,7 @@ def summary_markdown(report: Mapping[str, Any]) -> str:
     rolling = report.get("rolling_sample") or {}
     official_result = report.get("official_result_coverage") or {}
     market = report.get("market_benchmark") or {}
+    gate_contract = report.get("gate_contract_candidate") or {}
     residual = report.get("predeclared_residual_candidate") or {}
     gate = report.get("promotion_gate") or {}
     return "\n".join(
@@ -399,10 +538,17 @@ def summary_markdown(report: Mapping[str, Any]) -> str:
             f"- Best candidate: `{market.get('best_candidate_key')}`",
             f"- Best non-market candidate: `{market.get('best_non_market_candidate_key')}`",
             f"- Best non-market top1 gap to target margin: `{market.get('best_non_market_top1_margin_gap')}`",
+            f"- Gate-contract candidate: `{gate_contract.get('selected_candidate')}`",
+            f"- Gate-contract candidate status: `{gate_contract.get('status')}`",
+            f"- Gate-contract policy: `{gate_contract.get('policy_key')}`",
+            f"- Gate-contract candidate minus market: `{gate_contract.get('candidate_minus_market')}`",
+            f"- Gate-contract top1 gap to target margin: `{gate_contract.get('top1_margin_gap_to_target')}`",
+            f"- Gate-contract blockers: `{gate_contract.get('blockers')}`",
             f"- Residual candidate: `{residual.get('candidate_key')}`",
             f"- Residual triggered races: `{residual.get('triggered_race_count')}` / `{residual.get('minimum_triggered_races_for_directional_read')}`",
             f"- Residual races needed: `{residual.get('triggered_races_needed_for_directional_read')}`",
             f"- Residual directional read ready: `{residual.get('directional_read_ready')}`",
+            f"- Residual promotion blocking: `{residual.get('promotion_blocking')}`",
             f"- Promotion gate: `{gate.get('status')}`",
             f"- Blockers: `{report.get('blockers')}`",
             "",
