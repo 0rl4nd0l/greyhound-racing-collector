@@ -41,6 +41,9 @@ from utils.csv_metadata import (
     normalize_target_grade,
     normalize_weather_track_text,
 )
+from utils.expert_form_metadata import build_expert_form_metadata_payload
+from utils.prejump_sportsbet import collect_sportsbet_track_metadata
+from utils.prejump_weather import collect_open_meteo_weather_metadata
 
 # Prefer centralized venue normalization if available
 try:
@@ -1406,6 +1409,172 @@ class UpcomingRaceBrowser:
             and value not in (None, "")
         }
 
+    def _collect_safe_weather_metadata_from_forecast(self, race_info):
+        """Collect source-backed weather metadata without inventing track condition."""
+
+        if race_info.get("weather") or race_info.get("weather_condition"):
+            return {}
+        metadata = collect_open_meteo_weather_metadata(race_info, session=self.session)
+        if metadata.get("weather_track_metadata_is_leakage_safe") is True:
+            return {
+                key: value
+                for key, value in metadata.items()
+                if value not in (None, "", [])
+            }
+        rejected = metadata.get("rejected_weather_track_metadata_sources")
+        if rejected:
+            return {"rejected_weather_track_metadata_sources": list(rejected)}
+        return {}
+
+    def _collect_safe_track_metadata_from_sportsbet(self, race_info):
+        """Collect source-backed Sportsbet track metadata without inventing weather."""
+
+        if race_info.get("track_condition"):
+            return {}
+        metadata = collect_sportsbet_track_metadata(race_info, session=self.session)
+        if metadata.get("weather_track_metadata_is_leakage_safe") is True:
+            return {
+                key: value
+                for key, value in metadata.items()
+                if value not in (None, "", [])
+            }
+        rejected = metadata.get("rejected_weather_track_metadata_sources")
+        if rejected:
+            return {"rejected_weather_track_metadata_sources": list(rejected)}
+        return {}
+
+    def _merge_safe_weather_track_metadata(self, race_info, metadata):
+        """Merge partial safe weather/track metadata while preserving source URLs."""
+
+        if not metadata:
+            return
+        rejected = metadata.get("rejected_weather_track_metadata_sources")
+        if rejected:
+            current = list(race_info.get("rejected_weather_track_metadata_sources") or [])
+            race_info["rejected_weather_track_metadata_sources"] = sorted(
+                set([*current, *list(rejected)])
+            )
+        if metadata.get("weather_track_metadata_is_leakage_safe") is not True:
+            return
+
+        for key in ("track_condition", "weather", "weather_condition"):
+            if metadata.get(key) not in (None, "") and race_info.get(key) in (None, ""):
+                race_info[key] = metadata[key]
+
+        existing_source = race_info.get("weather_track_metadata_source")
+        incoming_source = metadata.get("weather_track_metadata_source")
+        if not incoming_source:
+            return
+
+        def _parts(value):
+            return [
+                part.strip()
+                for part in re.split(r"\s*\+\s*|\s*,\s*", str(value or ""))
+                if part.strip()
+            ]
+
+        sources = []
+        for part in [*_parts(existing_source), *_parts(incoming_source)]:
+            if part not in sources:
+                sources.append(part)
+        race_info["weather_track_metadata_source"] = "+".join(sources)
+        race_info["weather_track_metadata_is_leakage_safe"] = True
+
+        existing_url = race_info.get("weather_track_metadata_source_url")
+        incoming_url = metadata.get("weather_track_metadata_source_url")
+        if len(sources) == 1:
+            race_info["weather_track_metadata_source_url"] = incoming_url or existing_url
+        else:
+            url_map = {}
+            if isinstance(existing_url, dict):
+                url_map.update(existing_url)
+            elif existing_url and existing_source:
+                for part in _parts(existing_source):
+                    url_map[part] = existing_url
+            if isinstance(incoming_url, dict):
+                url_map.update(incoming_url)
+            elif incoming_url and incoming_source:
+                for part in _parts(incoming_source):
+                    url_map[part] = incoming_url
+            race_info["weather_track_metadata_source_url"] = {
+                part: url_map[part] for part in sources if url_map.get(part)
+            }
+
+        existing_detail = race_info.get("weather_track_metadata_detail")
+        incoming_detail = metadata.get("weather_track_metadata_detail")
+        if incoming_detail not in (None, ""):
+            detail = {}
+            if isinstance(existing_detail, dict):
+                if len(sources) > 1 and existing_source and not any(
+                    part in existing_detail for part in _parts(existing_source)
+                ):
+                    for part in _parts(existing_source):
+                        detail[part] = dict(existing_detail)
+                else:
+                    detail.update(existing_detail)
+            if len(sources) == 1:
+                detail.update(incoming_detail if isinstance(incoming_detail, dict) else {})
+            elif isinstance(incoming_detail, dict):
+                detail[str(incoming_source)] = incoming_detail
+            race_info["weather_track_metadata_detail"] = detail
+
+    def _collect_expert_form_metadata(self, race_url, race_info):
+        """Collect structured Expert Form page metadata for the CSV sidecar."""
+
+        base_race_url, expert_form_url = self._normalize_race_url(race_url)
+        response = None
+        try:
+            response = self.session.get(
+                expert_form_url,
+                timeout=15,
+                headers={
+                    "Referer": base_race_url,
+                    "Origin": self.base_url,
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Upgrade-Insecure-Requests": "1",
+                    "Sec-Fetch-Site": "same-origin",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-Dest": "document",
+                    "DNT": "1",
+                },
+            )
+            if response.status_code != 200:
+                return {
+                    "schema_version": "thedogs_expert_form_metadata_v1",
+                    "source": "thedogs_expert_form_page",
+                    "source_url": expert_form_url,
+                    "metadata_is_leakage_safe": False,
+                    "runner_count": 0,
+                    "runners": [],
+                    "rejected_reasons": [
+                        f"expert_form_source_fetch_failed:{response.status_code}"
+                    ],
+                }
+            return build_expert_form_metadata_payload(
+                response.text,
+                race_info=race_info,
+                source_url=expert_form_url,
+            )
+        except Exception as exc:
+            return {
+                "schema_version": "thedogs_expert_form_metadata_v1",
+                "source": "thedogs_expert_form_page",
+                "source_url": expert_form_url,
+                "metadata_is_leakage_safe": False,
+                "runner_count": 0,
+                "runners": [],
+                "rejected_reasons": [
+                    f"expert_form_source_fetch_failed:{type(exc).__name__}"
+                ],
+            }
+        finally:
+            if response is not None:
+                try:
+                    response.close()
+                except Exception:
+                    pass
+
     def download_race_csv(self, race_url):
         """Download CSV form guide for a specific race"""
         try:
@@ -1457,6 +1626,20 @@ class UpcomingRaceBrowser:
                 else:
                     race_info["race_time_source"] = "canonical_race_url"
                     race_info["race_time_mapping_status"] = "missing_race_time"
+            self._merge_safe_weather_track_metadata(
+                race_info,
+                self._collect_safe_track_metadata_from_sportsbet(
+                    {**race_info, "url": race_url}
+                ),
+            )
+            self._merge_safe_weather_track_metadata(
+                race_info,
+                self._collect_safe_weather_metadata_from_forecast(race_info)
+            )
+            race_info["expert_form_metadata"] = self._collect_expert_form_metadata(
+                race_url,
+                {**race_info, "url": race_url},
+            )
 
             # Generate filename
             filename = f"Race {race_info['race_number']} - {race_info['venue']} - {race_info['date']}.csv"

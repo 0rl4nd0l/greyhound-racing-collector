@@ -251,7 +251,7 @@ def safe_float(value: Any) -> float | None:
     text = str(value).strip()
     if not text:
         return None
-    match = re.search(r"-?\d+(?:\.\d+)?", text)
+    match = re.search(r"-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?", text)
     if not match:
         return None
     try:

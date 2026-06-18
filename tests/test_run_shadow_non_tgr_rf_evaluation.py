@@ -352,6 +352,129 @@ def test_live_feature_rows_reject_unsafe_weather_track_sources_and_placeholders(
     assert "source_url_looks_post_result" in row["weather_track_metadata_rejected_sources"]
 
 
+def test_live_feature_rows_accept_open_meteo_weather_sidecar(tmp_path, monkeypatch):
+    race_file = tmp_path / "Race 4 - TRA - 2026-06-08.csv"
+    race_file.write_text(
+        "Dog Name|BOX\n"
+        "1. Alpha Runner|8\n",
+        encoding="utf-8",
+    )
+    race_url = "https://www.thedogs.com.au/racing/traralgon/2026-06-08/4/test?trial=false"
+    weather_url = "https://api.open-meteo.com/v1/forecast?latitude=-38.18&longitude=146.53"
+    race_file.with_name(race_file.name + ".metadata.json").write_text(
+        json.dumps(
+            {
+                "metadata_is_leakage_safe": True,
+                "metadata_captured_at": "2026-06-08T00:30:00Z",
+                "metadata_source_url": race_url,
+                "race_url": race_url,
+                "weather": "Overcast",
+                "weather_condition": "Overcast",
+                "weather_track_metadata_source": "open_meteo_forecast_api",
+                "weather_track_metadata_source_url": weather_url,
+                "weather_track_metadata_is_leakage_safe": True,
+                "race_info": {
+                    "date": "2026-06-08",
+                    "venue": "TRA",
+                    "race_number": "4",
+                    "race_time": "11:15 AM",
+                    "url": race_url,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class DummyConnection:
+        def close(self):
+            return None
+
+    monkeypatch.setattr(shadow_eval, "sqlite_ro", lambda _path: DummyConnection())
+    monkeypatch.setattr(shadow_eval, "load_db_history", lambda _connection: {})
+
+    rows = shadow_eval.build_live_feature_rows(
+        input_paths=[race_file],
+        schema={"feature_columns": ["track_condition", "weather"]},
+        db_path=Path("unused.db"),
+    )
+
+    row = rows[0]
+    assert row["track_condition"] is None
+    assert row["weather"] == "Overcast"
+    assert row["weather_source_backed"] is True
+    assert row["track_condition_source_backed"] is False
+    assert row["weather_track_metadata_from_sidecar"] is True
+    assert row["source_url"] == weather_url
+
+
+def test_live_feature_rows_accept_combined_sportsbet_track_and_weather_sidecar(
+    tmp_path, monkeypatch
+):
+    race_file = tmp_path / "Race 9 - SAL - 2026-06-08.csv"
+    race_file.write_text(
+        "Dog Name|BOX\n"
+        "1. Alpha Runner|8\n",
+        encoding="utf-8",
+    )
+    race_url = "https://www.thedogs.com.au/racing/sale/2026-06-08/9/test?trial=false"
+    sportsbet_url = (
+        "https://www.sportsbet.com.au/apigw/sportsbook-racing/"
+        "Sportsbook/Racing/NextEvents?racingFilters=GH_DOMESTIC"
+    )
+    weather_url = "https://api.open-meteo.com/v1/forecast?latitude=-38.10&longitude=147.07"
+    source_urls = {
+        "sportsbet_pre_race_page": sportsbet_url,
+        "open_meteo_forecast_api": weather_url,
+    }
+    race_file.with_name(race_file.name + ".metadata.json").write_text(
+        json.dumps(
+            {
+                "metadata_is_leakage_safe": True,
+                "metadata_captured_at": "2026-06-08T00:30:00Z",
+                "metadata_source_url": race_url,
+                "race_url": race_url,
+                "weather": "Overcast",
+                "weather_condition": "Overcast",
+                "track_condition": "Good",
+                "weather_track_metadata_source": (
+                    "sportsbet_pre_race_page+open_meteo_forecast_api"
+                ),
+                "weather_track_metadata_source_url": source_urls,
+                "weather_track_metadata_is_leakage_safe": True,
+                "race_info": {
+                    "date": "2026-06-08",
+                    "venue": "SAL",
+                    "race_number": "9",
+                    "race_time": "11:15 AM",
+                    "url": race_url,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class DummyConnection:
+        def close(self):
+            return None
+
+    monkeypatch.setattr(shadow_eval, "sqlite_ro", lambda _path: DummyConnection())
+    monkeypatch.setattr(shadow_eval, "load_db_history", lambda _connection: {})
+
+    rows = shadow_eval.build_live_feature_rows(
+        input_paths=[race_file],
+        schema={"feature_columns": ["track_condition", "weather"]},
+        db_path=Path("unused.db"),
+    )
+
+    row = rows[0]
+    assert row["track_condition"] == "Good"
+    assert row["weather"] == "Overcast"
+    assert row["track_condition_source_backed"] is True
+    assert row["weather_source_backed"] is True
+    assert row["weather_track_metadata_from_sidecar"] is True
+    assert row["source_url"] == source_urls
+
+
 def test_live_feature_rows_reject_post_jump_weather_track_capture_time(
     tmp_path, monkeypatch
 ):
@@ -456,6 +579,69 @@ def test_live_feature_rows_require_explicit_weather_track_safe_flag(
     assert "weather_track_metadata_is_leakage_safe_not_true" in row[
         "weather_track_metadata_rejected_sources"
     ]
+
+
+def test_live_feature_rows_populate_same_distance_same_grade_from_form_history(
+    tmp_path, monkeypatch
+):
+    race_file = tmp_path / "Race 4 - TRA - 2026-06-08.csv"
+    race_file.write_text(
+        "Dog Name|BOX|DIST|DATE|TRACK|G|TIME|PLC|WGT|1 SEC|MGN\n"
+        "1. Alpha Runner|8|400|2026-06-01|TRA|Grade 5|22.10|1|31.2|6.10|0.5\n"
+        "|7|400|2026-05-24|TRA|Grade 5|22.40|2|31.0|6.20|1.0\n"
+        "|6|330|2026-05-10|TRA|Grade 5|19.90|3|30.9|6.00|2.0\n",
+        encoding="utf-8",
+    )
+    race_url = "https://www.thedogs.com.au/racing/traralgon/2026-06-08/4/test?trial=false"
+    race_file.with_name(race_file.name + ".metadata.json").write_text(
+        json.dumps(
+            {
+                "metadata_is_leakage_safe": True,
+                "metadata_captured_at": "2026-06-08T00:30:00Z",
+                "metadata_source_url": race_url,
+                "race_url": race_url,
+                "target_distance": "400m",
+                "target_distance_source": "canonical_pre_race_page",
+                "target_grade": "Grade 5",
+                "target_grade_source": "canonical_pre_race_page",
+                "race_info": {
+                    "date": "2026-06-08",
+                    "venue": "TRA",
+                    "race_number": "4",
+                    "race_time": "11:15 AM",
+                    "url": race_url,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class DummyConnection:
+        def close(self):
+            return None
+
+    monkeypatch.setattr(shadow_eval, "sqlite_ro", lambda _path: DummyConnection())
+    monkeypatch.setattr(shadow_eval, "load_db_history", lambda _connection: {})
+
+    rows = shadow_eval.build_live_feature_rows(
+        input_paths=[race_file],
+        schema={
+            "feature_columns": [
+                "same_distance_same_grade_best_time",
+                "same_distance_same_grade_avg_time",
+                "same_distance_same_grade_start_count",
+            ]
+        },
+        db_path=Path("unused.db"),
+    )
+
+    row = rows[0]
+    assert row["same_distance_same_grade_start_count"] == 2
+    assert row["same_distance_same_grade_best_time"] == 22.10
+    assert row["same_distance_same_grade_avg_time"] == pytest.approx(22.25)
+    assert row["same_distance_same_grade_history_status"] == "PASS"
+    assert row["same_distance_same_grade_prior_history_rows_used"] == 2
+    assert row["same_distance_same_grade_target_race_rows_used"] == 0
 
 
 def test_live_feature_rows_ignore_unsafe_sidecar_target_metadata(tmp_path, monkeypatch):

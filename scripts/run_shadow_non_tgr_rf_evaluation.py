@@ -62,6 +62,7 @@ from scripts.run_feature_recovery_execution_v1 import (  # noqa: E402
     write_json,
     write_text,
 )
+from utils.expert_form_metadata import safe_expert_form_metadata_from_payload  # noqa: E402
 from utils.csv_metadata import (  # noqa: E402
     load_safe_sidecar_target_metadata,
     load_safe_weather_track_metadata,
@@ -1767,6 +1768,93 @@ def load_live_csv(path: Path) -> list[dict[str, str]]:
         return [dict(row) for row in csv.DictReader(handle, delimiter=delimiter)]
 
 
+def live_form_history_by_dog(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    target_race_date: str | None,
+) -> dict[str, list[dict[str, Any]]]:
+    """Parse pre-jump expert-form history rows embedded in the live CSV."""
+
+    history: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    current_dog = ""
+    for raw in rows:
+        dog_cell = csv_value(raw, "dog_name", "Dog Name", "dog", "runner", "runner_name")
+        if dog_cell not in (None, ""):
+            current_dog, _box = parse_live_runner_identity(dog_cell, csv_value(raw, "box", "BOX"))
+        if not current_dog:
+            continue
+        row_date = parse_date(csv_value(raw, "DATE", "date", "race_date"))
+        if not row_date:
+            continue
+        if target_race_date and row_date >= target_race_date:
+            continue
+        dog_key = clean_name(current_dog)
+        history_row = {
+            "dog_name": current_dog,
+            "dog_key": dog_key,
+            "race_date": row_date,
+            "venue": str(csv_value(raw, "TRACK", "track", "venue") or "").strip(),
+            "distance": csv_value(raw, "DIST", "distance"),
+            "distance_num": safe_float(csv_value(raw, "DIST", "distance")),
+            "grade": csv_value(raw, "G", "grade"),
+            "grade_normalized": normalize_grade(csv_value(raw, "G", "grade")),
+            "finish_position": csv_value(raw, "PLC", "placing", "finish_position"),
+            "finish_num": safe_int(csv_value(raw, "PLC", "placing", "finish_position")),
+            "box_number": safe_int(csv_value(raw, "BOX", "box")),
+            "weight": csv_value(raw, "WGT", "weight"),
+            "weight_num": safe_float(csv_value(raw, "WGT", "weight")),
+            "individual_time": csv_value(raw, "TIME", "time"),
+            "time_num": safe_float(csv_value(raw, "TIME", "time")),
+            "sectional_1st": csv_value(raw, "1 SEC", "sectional_1st"),
+            "sectional_1st_num": safe_float(csv_value(raw, "1 SEC", "sectional_1st")),
+            "beaten_margin": csv_value(raw, "MGN", "margin", "beaten_margin"),
+            "margin_num": safe_float(csv_value(raw, "MGN", "margin", "beaten_margin")),
+            "history_source": "prejump_form_history",
+        }
+        history[dog_key].append(history_row)
+    for dog_rows in history.values():
+        dog_rows.sort(
+            key=lambda row: (
+                str(row.get("race_date") or ""),
+                safe_int(row.get("box_number")) or 0,
+                str(row.get("venue") or ""),
+            )
+        )
+    return dict(history)
+
+
+def merge_prior_history_rows(
+    db_rows: Sequence[Mapping[str, Any]],
+    form_rows: Sequence[Mapping[str, Any]],
+) -> list[Mapping[str, Any]]:
+    merged: dict[tuple[Any, ...], Mapping[str, Any]] = {}
+    for row in list(db_rows) + list(form_rows):
+        key = (
+            row.get("race_date"),
+            str(row.get("venue") or "").upper(),
+            safe_float(row.get("distance_num")),
+            normalize_grade(row.get("grade_normalized") or row.get("grade")),
+            safe_float(row.get("time_num")),
+            safe_int(row.get("finish_num")),
+        )
+        existing = merged.get(key)
+        if existing is None:
+            merged[key] = row
+            continue
+        if safe_float(existing.get("time_num")) is None and safe_float(row.get("time_num")) is not None:
+            merged[key] = row
+    out = list(merged.values())
+    out.sort(
+        key=lambda row: (
+            str(row.get("race_date") or ""),
+            safe_int(row.get("race_number")) or 0,
+            str(row.get("race_id") or ""),
+            str(row.get("venue") or ""),
+        )
+    )
+    return out
+
+
 def race_time_iso_from_sidecar(race_date: Any, race_time: Any) -> str | None:
     date_text = str(race_date or "").strip()
     time_text = str(race_time or "").strip()
@@ -1821,7 +1909,10 @@ def load_live_sidecar_context(path: Path) -> dict[str, Any]:
         "weather_track_metadata_is_leakage_safe": bool(
             safe_weather_track.get("weather_track_metadata_is_leakage_safe")
         ),
-        "weather_track_metadata_source_url": safe_weather_track.get("metadata_source_url"),
+        "weather_track_metadata_source_url": safe_weather_track.get(
+            "weather_track_metadata_source_url"
+        )
+        or safe_weather_track.get("metadata_source_url"),
         "weather_track_metadata_captured_at": safe_weather_track.get(
             "metadata_captured_at"
         ),
@@ -1842,6 +1933,7 @@ def load_live_sidecar_context(path: Path) -> dict[str, Any]:
     if not isinstance(payload, Mapping):
         context["rejected_metadata_sources"].append("sidecar_not_object")
         return context
+    context["expert_form_metadata"] = safe_expert_form_metadata_from_payload(payload)
     race_info = payload.get("race_info") if isinstance(payload.get("race_info"), Mapping) else {}
     if payload.get("metadata_is_leakage_safe") is True:
         context["race_info"] = {
@@ -1866,6 +1958,127 @@ def load_live_sidecar_context(path: Path) -> dict[str, Any]:
     elif race_info:
         context["rejected_metadata_sources"].append("sidecar_race_info_not_leakage_safe")
     return context
+
+
+def expert_form_runner_features(
+    *,
+    expert_form_metadata: Mapping[str, Any],
+    dog_name: str,
+    box_number: int | None,
+) -> dict[str, Any]:
+    """Flatten safe Expert Form sidecar metadata for one live runner row."""
+
+    rejected = list(expert_form_metadata.get("rejected_reasons") or [])
+    base: dict[str, Any] = {
+        "expert_form_metadata_from_sidecar": False,
+        "expert_form_metadata_source_url": expert_form_metadata.get("source_url"),
+        "expert_form_metadata_captured_at": expert_form_metadata.get("captured_at"),
+        "expert_form_metadata_rejected_reasons": rejected,
+    }
+    if expert_form_metadata.get("metadata_is_leakage_safe") is not True:
+        return base
+    runners = expert_form_metadata.get("runners")
+    if not isinstance(runners, Sequence):
+        return {
+            **base,
+            "expert_form_metadata_rejected_reasons": [
+                *rejected,
+                "expert_form_runners_not_sequence",
+            ],
+        }
+    target_key = clean_name(dog_name)
+    runner = next(
+        (
+            item
+            for item in runners
+            if isinstance(item, Mapping)
+            and clean_name(item.get("dog_name")) == target_key
+        ),
+        None,
+    )
+    if not isinstance(runner, Mapping):
+        return {
+            **base,
+            "expert_form_metadata_rejected_reasons": [
+                *rejected,
+                "expert_form_runner_not_found",
+            ],
+        }
+
+    career = runner.get("career") if isinstance(runner.get("career"), Mapping) else {}
+    track_distance = (
+        runner.get("track_distance")
+        if isinstance(runner.get("track_distance"), Mapping)
+        else {}
+    )
+    greyhound = (
+        runner.get("greyhound") if isinstance(runner.get("greyhound"), Mapping) else {}
+    )
+    trainer = runner.get("trainer") if isinstance(runner.get("trainer"), Mapping) else {}
+    best_other = runner.get("best_win_times_other_tracks")
+    if not isinstance(best_other, list):
+        best_other = []
+    best_other_times = [
+        safe_float(item.get("time"))
+        for item in best_other
+        if isinstance(item, Mapping) and safe_float(item.get("time")) is not None
+    ]
+    distance_counts = (
+        runner.get("winning_distance_counts")
+        if isinstance(runner.get("winning_distance_counts"), Mapping)
+        else {}
+    )
+    box_history = (
+        runner.get("box_history")
+        if isinstance(runner.get("box_history"), Mapping)
+        else {}
+    )
+    current_box_history = (
+        box_history.get(str(box_number))
+        if box_number is not None and isinstance(box_history.get(str(box_number)), Mapping)
+        else {}
+    )
+    return {
+        **base,
+        "expert_form_metadata_from_sidecar": True,
+        "expert_form_grade": runner.get("grade"),
+        "expert_form_trainer_name": trainer.get("name"),
+        "expert_form_trainer_district": trainer.get("district"),
+        "expert_form_owner": runner.get("owner"),
+        "expert_form_colour": greyhound.get("colour"),
+        "expert_form_sex": greyhound.get("sex"),
+        "expert_form_date_of_birth": greyhound.get("date_of_birth"),
+        "expert_form_sire": greyhound.get("sire"),
+        "expert_form_dam": greyhound.get("dam"),
+        "expert_form_career_starts": safe_int(career.get("starts")),
+        "expert_form_career_wins": safe_int(career.get("wins")),
+        "expert_form_career_seconds": safe_int(career.get("seconds")),
+        "expert_form_career_thirds": safe_int(career.get("thirds")),
+        "expert_form_track_distance_starts": safe_int(track_distance.get("starts")),
+        "expert_form_track_distance_wins": safe_int(track_distance.get("wins")),
+        "expert_form_track_distance_seconds": safe_int(track_distance.get("seconds")),
+        "expert_form_track_distance_thirds": safe_int(track_distance.get("thirds")),
+        "expert_form_win_percent": safe_float(runner.get("win_percent")),
+        "expert_form_place_percent": safe_float(runner.get("place_percent")),
+        "expert_form_prize_money": safe_float(runner.get("prize_money")),
+        "expert_form_track_distance_best_time": safe_float(track_distance.get("best_time")),
+        "expert_form_track_distance_best_time_date": track_distance.get("best_time_date"),
+        "expert_form_track_distance_best_first_split": safe_float(
+            track_distance.get("best_first_split")
+        ),
+        "expert_form_best_other_track_count": len(best_other),
+        "expert_form_best_other_track_min_time": min(best_other_times)
+        if best_other_times
+        else None,
+        "expert_form_distance_wins_under_400": safe_int(distance_counts.get("<400")),
+        "expert_form_distance_wins_400_plus": safe_int(distance_counts.get("400+")),
+        "expert_form_distance_wins_500_plus": safe_int(distance_counts.get("500+")),
+        "expert_form_distance_wins_600_plus": safe_int(distance_counts.get("600+")),
+        "expert_form_distance_wins_700_plus": safe_int(distance_counts.get("700+")),
+        "expert_form_current_box_starts": safe_int(current_box_history.get("starts")),
+        "expert_form_current_box_wins": safe_int(current_box_history.get("wins")),
+        "expert_form_current_box_places": safe_int(current_box_history.get("places")),
+    }
 
 
 def input_files_from_path(path: Path) -> list[Path]:
@@ -2063,6 +2276,7 @@ def build_live_feature_rows(
         filename_metadata = extract_target_metadata_from_filename(path.name)
         sidecar_context = load_live_sidecar_context(path)
         sidecar_race_info = sidecar_context.get("race_info") or {}
+        expert_form_metadata = sidecar_context.get("expert_form_metadata") or {}
         weather_track_safe = bool(
             sidecar_context.get("weather_track_metadata_is_leakage_safe")
         )
@@ -2080,6 +2294,7 @@ def build_live_feature_rows(
                 runner_rows.append((raw, dog_name, box))
         field_size = len(runner_rows)
         race_id_default = path.stem
+        embedded_history_cache: dict[str | None, dict[str, list[dict[str, Any]]]] = {}
         for raw, dog_name, box in runner_rows:
             race_id = str(csv_value(raw, "race_id", "Race ID", "race") or race_id_default)
             race_date = parse_date(
@@ -2088,6 +2303,12 @@ def build_live_feature_rows(
                 or filename_metadata.get("race_date")
                 or path.name
             )
+            if race_date not in embedded_history_cache:
+                embedded_history_cache[race_date] = live_form_history_by_dog(
+                    rows,
+                    target_race_date=race_date,
+                )
+            embedded_history_by_dog = embedded_history_cache[race_date]
             venue = str(
                 csv_value(raw, "target_venue", "venue_safe", "race_venue")
                 or sidecar_race_info.get("venue")
@@ -2171,16 +2392,26 @@ def build_live_feature_rows(
                     else None,
                 }
             )
-            dog_history = [
+            db_history = [
                 row
                 for row in history_index.get(clean_name(dog_name), [])
                 if race_date and str(row.get("race_date") or "") < race_date
             ]
+            embedded_history = embedded_history_by_dog.get(clean_name(dog_name), [])
+            dog_history = merge_prior_history_rows(db_history, embedded_history)
             add_history_features(row_features, dog_history, target, race_date, venue)
             history_provenance = same_distance_same_grade_live_row_provenance(
                 history_rows=dog_history,
                 target=target,
             )
+            expert_features = expert_form_runner_features(
+                expert_form_metadata=expert_form_metadata,
+                dog_name=dog_name,
+                box_number=box,
+            )
+            for feature_name, feature_value in expert_features.items():
+                if feature_name in row_features:
+                    row_features[feature_name] = feature_value
             output_row = {
                 "race_id": race_id,
                 "shadow_race_group_id": f"{path.as_posix()}::{race_id}",
@@ -2232,6 +2463,7 @@ def build_live_feature_rows(
             }
             output_row.update(history_provenance)
             output_row.update(row_features)
+            output_row.update(expert_features)
             output.append(output_row)
     return output
 
