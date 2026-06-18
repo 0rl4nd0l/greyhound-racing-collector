@@ -440,6 +440,168 @@ def test_market_only_rolling_winner_cannot_open_model_promotion_pr_gate():
     assert result["final_status"] == packet.FINAL_BLOCKED
 
 
+def test_rolling_gate_contract_can_select_non_rank_first_market_safe_candidate():
+    odds_gate_report = {
+        "status": packet.ODDS_RESEARCH_BLOCKED_PROVENANCE,
+        "complete_valid_prejump_odds_races": 3,
+        "odds_used_for_shadow_scoring": False,
+    }
+    primary = _metrics(
+        races=120,
+        candidate_key="primary_shadow",
+        family="baseline",
+        top1=0.30,
+        top3=0.60,
+        mean_winner_rank=3.0,
+        brier=0.80,
+        logloss=1.70,
+        slope=1.0,
+        intercept=0.0,
+        box1=0.16,
+    )
+    market = _metrics(
+        races=120,
+        candidate_key="market_only_implied",
+        family="market_only",
+        top1=0.44,
+        top3=0.80,
+        mean_winner_rank=2.35,
+        brier=0.70,
+        logloss=1.50,
+        slope=0.90,
+        intercept=-0.10,
+        box1=0.20,
+    )
+    rank_first = _metrics(
+        races=120,
+        candidate_key="stage2_market_blend_40",
+        family="odds_augmented_blend",
+        top1=0.49,
+        top3=0.77,
+        mean_winner_rank=2.30,
+        brier=0.72,
+        logloss=1.55,
+        slope=1.50,
+        intercept=0.70,
+        box1=0.19,
+    )
+    dual_baseline_candidate = _metrics(
+        races=120,
+        candidate_key="stage2_market_blend_85",
+        family="odds_augmented_blend",
+        top1=0.448,
+        top3=0.816,
+        mean_winner_rank=2.27,
+        brier=0.69,
+        logloss=1.48,
+        slope=0.95,
+        intercept=0.05,
+        box1=0.21,
+    )
+    strict_candidate = _metrics(
+        races=120,
+        candidate_key="stage2_market_blend_90",
+        family="odds_augmented_blend",
+        top1=0.44,
+        top3=0.82,
+        mean_winner_rank=2.30,
+        brier=0.69,
+        logloss=1.49,
+        slope=0.98,
+        intercept=0.02,
+        box1=0.20,
+    )
+    rolling_report = {
+        "final_status": packet.ROLLING_MODEL_COMPARISON_READY_FOR_REVIEW,
+        "sample_scope": "unified",
+        "sample_race_count": 120,
+        "minimum_races_for_review": 100,
+        "sample_floor_met": True,
+        "races_needed_for_review": 0,
+        "candidate_count": 5,
+        "best_candidate_key": "stage2_market_blend_40",
+        "best_non_baseline_candidate_key": "stage2_market_blend_40",
+        "best_non_market_candidate_key": "stage2_market_blend_40",
+        "rank_first_sort": [
+            "stage2_market_blend_40",
+            "stage2_market_blend_85",
+            "stage2_market_blend_90",
+        ],
+        "baseline_metrics": primary,
+        "market_metrics": market,
+        "candidate_metrics": rank_first,
+        "candidate_metrics_by_key": {
+            "primary_shadow": primary | {"status": "EVALUATED"},
+            "market_only_implied": market | {"status": "EVALUATED"},
+            "stage2_market_blend_40": rank_first | {"status": "EVALUATED"},
+            "stage2_market_blend_85": dual_baseline_candidate
+            | {"status": "EVALUATED"},
+            "stage2_market_blend_90": strict_candidate | {"status": "EVALUATED"},
+        },
+    }
+
+    result = packet.build_packet(
+        odds_gate_report=odds_gate_report,
+        odds_augmented_report=rolling_report,
+        thresholds=packet.AccuracyGateThresholds(min_safe_joined_races=100),
+        generated_at=datetime(2026, 6, 18, 5, 0, tzinfo=timezone.utc),
+        protected_before={},
+        protected_after={},
+    )
+
+    odds_stage = result["stages"]["odds_augmented_model"]
+    gate = odds_stage["gate"]
+    assert odds_stage["status"] == packet.ODDS_AUGMENTED_MODEL_READY_FOR_PR_REVIEW
+    assert odds_stage["candidate_key"] == "stage2_market_blend_85"
+    assert gate["status"] == "PASS"
+    assert gate["gate_contract_policy"] == (
+        packet.ODDS_AUGMENTED_GATE_CONTRACT_POLICY
+    )
+    assert gate["rank_first_gate_status"] == "BLOCKED"
+    assert "metric_regressed:calibration_slope_intercept" in gate[
+        "rank_first_gate_blockers"
+    ]
+    assert odds_stage["gate_contract_selection"]["selected_candidate"] == (
+        "stage2_market_blend_85"
+    )
+    assert odds_stage["gate_contract_selection"]["final_status"] == (
+        "REPORT_ONLY_GATE_CHANGE_CANDIDATE"
+    )
+    assert result["promotion_pr_gate"]["status"] == "READY_FOR_PR_DRAFT"
+    assert result["promotion_pr_gate"]["selected_candidate"] == (
+        "stage2_market_blend_85"
+    )
+    assert result["promotion_pr_gate"]["pull_request_boundary"][
+        "production_pointer_update_allowed"
+    ] is False
+    summary = packet.build_summary(result)
+    assert (
+        "- Odds gate contract selected candidate: `stage2_market_blend_85`"
+        in summary
+    )
+    blocked_by_distance = packet.build_packet(
+        odds_gate_report=odds_gate_report,
+        odds_augmented_report=rolling_report,
+        promotion_distance_report={
+            "final_status": "PROMOTION_DISTANCE_BLOCKED",
+            "promotion_ready": False,
+            "blockers": ["predeclared_residual_top1_not_above_market"],
+        },
+        thresholds=packet.AccuracyGateThresholds(min_safe_joined_races=100),
+        generated_at=datetime(2026, 6, 18, 5, 0, tzinfo=timezone.utc),
+        protected_before={},
+        protected_after={},
+    )
+    assert blocked_by_distance["promotion_pr_gate"]["status"] == "BLOCKED"
+    assert "promotion_distance_not_ready:PROMOTION_DISTANCE_BLOCKED" in (
+        blocked_by_distance["promotion_pr_gate"]["blockers"]
+    )
+    assert (
+        "promotion_distance_blocker:predeclared_residual_top1_not_above_market"
+        in blocked_by_distance["promotion_pr_gate"]["blockers"]
+    )
+
+
 def test_collecting_rolling_comparison_does_not_bypass_latest_odds_gate():
     odds_gate_report = {
         "status": packet.ODDS_RESEARCH_BLOCKED_PROVENANCE,

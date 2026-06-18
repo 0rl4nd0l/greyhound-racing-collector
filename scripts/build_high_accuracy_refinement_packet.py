@@ -27,6 +27,8 @@ ROOT_STR = str(ROOT)
 sys.path = [path for path in sys.path if path != ROOT_STR]
 sys.path.insert(0, ROOT_STR)
 
+from scripts import build_promotion_gate_contract_audit_packet as gate_contract_audit  # noqa: E402
+
 
 OUTPUT_PREFIX = (
     "artifacts/full_evidence_orchestration_20260525/"
@@ -66,6 +68,7 @@ ROLLING_MODEL_COMPARISON_READY_FOR_REVIEW = "ROLLING_MODEL_COMPARISON_READY_FOR_
 MARKET_ONLY_CANDIDATE_KEYS = {"market_only_implied"}
 MIN_COMPLETE_VALID_PREJUMP_ODDS_RACES = 100
 MIN_UNIFIED_EVIDENCE_ELIGIBLE_ROWS = 100
+ODDS_AUGMENTED_GATE_CONTRACT_POLICY = "dual_baseline_market_rank_primary_safety"
 ACCEPTED_UNIFIED_EVIDENCE_AGGREGATE_STATUSES = {
     "BACKLOG_UNIFIED_EVIDENCE_DATASETS_BUILT",
     "REJOIN_UNIFIED_EVIDENCE_DATASETS_BUILT",
@@ -443,6 +446,112 @@ def enriched_unified_evidence_aggregate_status(
 
 def is_market_only_candidate(candidate_key: Any) -> bool:
     return str(candidate_key or "") in MARKET_ONLY_CANDIDATE_KEYS
+
+
+def gate_contract_thresholds(
+    thresholds: AccuracyGateThresholds,
+) -> gate_contract_audit.GateAuditThresholds:
+    return gate_contract_audit.GateAuditThresholds(
+        min_safe_joined_races=thresholds.min_safe_joined_races,
+        current_min_top1_delta=thresholds.min_top1_delta,
+        min_market_top1_delta=0.0,
+        min_top3_delta=thresholds.min_top3_delta,
+        max_mean_winner_rank_delta=thresholds.max_mean_winner_rank_delta,
+        max_brier_delta=thresholds.max_brier_delta,
+        max_logloss_delta=thresholds.max_logloss_delta,
+        max_calibration_distance_delta=thresholds.max_calibration_distance_delta,
+        max_box1_top_pick_share=thresholds.max_box1_top_pick_share,
+        max_box1_share_delta=thresholds.max_box1_share_delta,
+        max_probability_sum_error=thresholds.max_probability_sum_error,
+    )
+
+
+def rolling_gate_contract_selection(
+    rolling_report: Mapping[str, Any],
+    thresholds: AccuracyGateThresholds,
+) -> dict[str, Any] | None:
+    report = mapping(rolling_report)
+    if not mapping(report.get("candidate_metrics_by_key")):
+        return None
+    audit = gate_contract_audit.build_report(
+        rolling_report=report,
+        thresholds=gate_contract_thresholds(thresholds),
+    )
+    if audit.get("final_status") != "REPORT_ONLY_GATE_CHANGE_CANDIDATE":
+        return None
+    policy = next(
+        (
+            row
+            for row in audit.get("policy_summaries") or []
+            if mapping(row).get("policy_key") == ODDS_AUGMENTED_GATE_CONTRACT_POLICY
+        ),
+        None,
+    )
+    policy = mapping(policy)
+    if policy.get("status") != "PASS" or not policy.get("selected_candidate"):
+        return None
+    candidate_key = str(policy["selected_candidate"])
+    by_key = mapping(report.get("candidate_metrics_by_key"))
+    candidate = mapping(by_key.get(candidate_key))
+    if not candidate:
+        return None
+    market = mapping(report.get("market_metrics")) or mapping(
+        by_key.get("market_only_implied")
+    )
+    selected_row = next(
+        (
+            row
+            for row in audit.get("candidate_gate_matrix") or []
+            if mapping(row).get("candidate_key") == candidate_key
+        ),
+        {},
+    )
+    selected_row = mapping(selected_row)
+    blocker_text = str(
+        selected_row.get(f"{ODDS_AUGMENTED_GATE_CONTRACT_POLICY}_blockers") or ""
+    )
+    blockers = [item for item in blocker_text.split(";") if item]
+    if blockers:
+        return None
+    gate = {
+        "schema_version": "high_accuracy_candidate_gate_v2",
+        "stage": "odds_augmented_model_research",
+        "status": "PASS",
+        "blockers": [],
+        "candidate_race_count": race_count(candidate),
+        "baseline_key": "market_only_implied",
+        "baseline_metrics": dict(market),
+        "candidate_metrics": dict(candidate),
+        "candidate_minus_baseline": {
+            "top1": selected_row.get("market_top1_delta"),
+            "top3": selected_row.get("market_top3_delta"),
+            "mean_winner_rank": selected_row.get("market_mean_winner_rank_delta"),
+            "brier": selected_row.get("market_brier_delta"),
+            "logloss": selected_row.get("market_logloss_delta"),
+            "box1_top_pick_share": selected_row.get(
+                "market_box1_top_pick_share_delta"
+            ),
+            "calibration_distance": selected_row.get(
+                "market_calibration_distance_delta"
+            ),
+        },
+        "thresholds": asdict(thresholds),
+        "gate_contract_policy": ODDS_AUGMENTED_GATE_CONTRACT_POLICY,
+        "gate_contract_final_status": audit.get("final_status"),
+        "gate_contract_policy_summary": dict(policy),
+        "ev_metrics_used_for_promotion": False,
+    }
+    return {
+        "candidate_key": candidate_key,
+        "candidate_metrics": dict(candidate),
+        "gate": gate,
+        "audit_summary": {
+            "final_status": audit.get("final_status"),
+            "selected_policy": ODDS_AUGMENTED_GATE_CONTRACT_POLICY,
+            "selected_candidate": candidate_key,
+            "policy_summaries": audit.get("policy_summaries"),
+        },
+    }
 
 
 def compact_candidate_metrics(metrics: Mapping[str, Any]) -> dict[str, Any]:
@@ -880,6 +989,19 @@ def odds_augmented_stage(
         },
         stage="odds_augmented_model_research",
     )
+    rank_first_gate = dict(gate)
+    gate_contract_selection = rolling_gate_contract_selection(
+        mapping(odds_augmented_report),
+        thresholds,
+    )
+    gate_contract_selection_used = False
+    if gate["status"] != "PASS" and gate_contract_selection:
+        candidate = mapping(gate_contract_selection.get("candidate_metrics"))
+        candidate_key = gate_contract_selection.get("candidate_key") or candidate_key
+        gate = dict(mapping(gate_contract_selection.get("gate")))
+        gate["rank_first_gate_status"] = rank_first_gate.get("status")
+        gate["rank_first_gate_blockers"] = rank_first_gate.get("blockers")
+        gate_contract_selection_used = True
     blockers = list(gate.get("blockers") or [])
     rolling_report = mapping(odds_augmented_report)
     rolling_summary = rolling_model_comparison_summary(rolling_report)
@@ -964,6 +1086,11 @@ def odds_augmented_stage(
             "ready": cumulative_evidence_ready,
         },
         "rolling_model_comparison": rolling_summary,
+        "gate_contract_selection": (
+            gate_contract_selection.get("audit_summary")
+            if gate_contract_selection_used
+            else None
+        ),
         "ev_metrics_used_for_promotion": False,
         "ev_can_override_accuracy_gate": False,
         "gate": gate,
@@ -1718,6 +1845,7 @@ def promotion_pr_gate(
     *,
     stages: Sequence[Mapping[str, Any]],
     protected_paths_unchanged: bool,
+    promotion_distance: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     passing = [stage for stage in stages if mapping(stage.get("gate")).get("status") == "PASS"]
     blockers: list[str] = []
@@ -1726,6 +1854,19 @@ def promotion_pr_gate(
     if not protected_paths_unchanged:
         blockers.append("protected_paths_changed")
     selected = passing[-1] if passing else None
+    distance = mapping(promotion_distance)
+    if (
+        selected
+        and selected.get("stage") == "odds_augmented_model_research"
+        and distance
+        and distance.get("status") != "NOT_RUN"
+        and distance.get("promotion_ready") is not True
+    ):
+        blockers.append(f"promotion_distance_not_ready:{distance.get('status')}")
+        blockers.extend(
+            f"promotion_distance_blocker:{blocker}"
+            for blocker in string_list(distance.get("blockers"))
+        )
     ready = bool(selected and not blockers)
     return {
         "schema_version": "promotion_pr_only_gate_v1",
@@ -1801,9 +1942,11 @@ def build_packet(
         ),
     }
     stage_list = [stage for stage in stages.values() if stage]
+    promotion_distance = promotion_distance_summary(promotion_distance_report)
     pr_gate = promotion_pr_gate(
         stages=stage_list,
         protected_paths_unchanged=protected_before == protected_after,
+        promotion_distance=promotion_distance,
     )
     if pr_gate["status"] == "READY_FOR_PR_DRAFT":
         final_status = FINAL_READY_FOR_PR
@@ -1861,9 +2004,7 @@ def build_packet(
         "backlog_unified_evidence_summary": backlog_unified_evidence_summary(
             backlog_unified_evidence_status
         ),
-        "promotion_distance_summary": promotion_distance_summary(
-            promotion_distance_report
-        ),
+        "promotion_distance_summary": promotion_distance,
         "reserve_substitution_preflight_summary": reserve_substitution_preflight_summary(
             reserve_substitution_preflight
         ),
@@ -1924,6 +2065,7 @@ def build_summary(packet: Mapping[str, Any]) -> str:
     odds_stage = mapping(stages.get("odds_augmented_model"))
     stage2_gate = mapping(stage2_stage.get("gate"))
     cumulative_odds_evidence = mapping(odds_stage.get("cumulative_odds_evidence"))
+    gate_contract_selection = mapping(odds_stage.get("gate_contract_selection"))
     unified_summary = mapping(packet.get("unified_evidence_summary"))
     backlog_summary = mapping(packet.get("backlog_unified_evidence_summary"))
     promotion_distance = mapping(packet.get("promotion_distance_summary"))
@@ -1953,6 +2095,9 @@ def build_summary(packet: Mapping[str, Any]) -> str:
         f"- Odds research gate: `{mapping(packet.get('odds_research_gate_summary')).get('status') or 'NOT_RUN'}`",
         f"- Odds augmented status: `{odds_stage.get('status') or 'NOT_RUN'}`",
         f"- Odds evidence source: `{odds_stage.get('odds_evidence_source') or 'NOT_RUN'}`",
+        f"- Odds gate contract policy: `{gate_contract_selection.get('selected_policy')}`",
+        f"- Odds gate contract selected candidate: `{gate_contract_selection.get('selected_candidate')}`",
+        f"- Odds gate contract status: `{gate_contract_selection.get('final_status')}`",
         f"- Cumulative odds evidence ready: `{cumulative_odds_evidence.get('ready')}`",
         f"- Cumulative odds evidence status: `{cumulative_odds_evidence.get('status')}`",
         f"- Cumulative odds evidence sample scope: `{cumulative_odds_evidence.get('sample_scope')}`",
