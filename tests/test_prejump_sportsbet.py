@@ -71,6 +71,90 @@ def test_sportsbet_track_metadata_accepts_matched_pre_race_event():
     assert session.calls
 
 
+def test_sportsbet_track_metadata_accepts_sandown_park_alias():
+    event = _sale_r9_event(
+        id=10597910,
+        competitionName="Sandown Park",
+        raceNumber=7,
+        startTime=int(
+            datetime(
+                2026, 6, 18, 21, 19, tzinfo=ZoneInfo("Australia/Melbourne")
+            ).timestamp()
+        ),
+    )
+    session = FakeSportsbetSession([event])
+
+    metadata = collect_sportsbet_track_metadata(
+        {
+            "date": "2026-06-18",
+            "venue": "SAN",
+            "race_number": "7",
+            "race_time": "9:19 PM",
+            "url": "https://www.thedogs.com.au/racing/sandown/2026-06-18/7/example",
+        },
+        session=session,
+    )
+
+    assert metadata["track_condition"] == "Good"
+    assert metadata["weather_track_metadata_detail"]["competition_name"] == "Sandown Park"
+
+
+def test_sportsbet_track_metadata_interprets_thedogs_display_time_for_wa():
+    event = _sale_r9_event(
+        id=10597786,
+        competitionName="Mandurah",
+        raceNumber=6,
+        startTime=int(
+            datetime(
+                2026, 6, 18, 21, 12, tzinfo=ZoneInfo("Australia/Melbourne")
+            ).timestamp()
+        ),
+    )
+    session = FakeSportsbetSession([event])
+
+    metadata = collect_sportsbet_track_metadata(
+        {
+            "date": "2026-06-18",
+            "venue": "MAND",
+            "race_number": "6",
+            "race_time": "9:12 PM",
+            "url": "https://www.thedogs.com.au/racing/mandurah/2026-06-18/6/example",
+        },
+        session=session,
+    )
+
+    assert metadata["track_condition"] == "Good"
+    assert metadata["weather_track_metadata_detail"]["event_id"] == 10597786
+
+
+def test_sportsbet_track_metadata_accepts_ap_k_underscore_code():
+    event = _sale_r9_event(
+        id=10598043,
+        competitionName="Angle Park",
+        raceNumber=7,
+        startTime=int(
+            datetime(
+                2026, 6, 18, 21, 28, tzinfo=ZoneInfo("Australia/Melbourne")
+            ).timestamp()
+        ),
+    )
+    session = FakeSportsbetSession([event])
+
+    metadata = collect_sportsbet_track_metadata(
+        {
+            "date": "2026-06-18",
+            "venue": "AP_K",
+            "race_number": "7",
+            "race_time": "9:28 PM",
+            "url": "https://www.thedogs.com.au/racing/angle-park/2026-06-18/7/example",
+        },
+        session=session,
+    )
+
+    assert metadata["track_condition"] == "Good"
+    assert metadata["weather_track_metadata_detail"]["competition_name"] == "Angle Park"
+
+
 def test_sportsbet_track_metadata_rejects_mismatched_jump_time():
     session = FakeSportsbetSession([_sale_r9_event()])
 

@@ -39,6 +39,7 @@ from utils.csv_metadata import (
     normalize_verified_thedogs_export_content,
     normalize_target_distance,
     normalize_target_grade,
+    normalize_track_condition_text,
     normalize_weather_track_text,
 )
 from utils.expert_form_metadata import build_expert_form_metadata_payload
@@ -1373,14 +1374,14 @@ class UpcomingRaceBrowser:
                                 re.I,
                             )
                             if direct:
-                                value = normalize_weather_track_text(direct.group(1))
+                                value = normalize_track_condition_text(direct.group(1))
                                 if value:
                                     return value
                         if re.fullmatch(rf"\s*{label_pattern}\s*", text, re.I):
                             for candidate in _candidate_texts(element):
                                 if candidate == text:
                                     continue
-                                value = normalize_weather_track_text(candidate)
+                                value = normalize_track_condition_text(candidate)
                                 if value:
                                     return value
             except Exception:
@@ -1388,7 +1389,7 @@ class UpcomingRaceBrowser:
             return None
 
         track_condition = _extract_labeled(
-            (r"Track\s+Condition", r"Track", r"Going")
+            (r"Track\s+Condition", r"Track")
         )
         weather = _extract_labeled((r"Weather\s+Condition", r"Weather"))
         if track_condition:

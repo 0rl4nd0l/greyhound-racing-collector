@@ -27,6 +27,7 @@ class VenueWeatherLocation:
 
 VENUE_WEATHER_LOCATIONS: dict[str, VenueWeatherLocation] = {
     "AP_K": VenueWeatherLocation("AP_K", "Angle Park", -34.8468, 138.5390, "Australia/Adelaide"),
+    "AP-K": VenueWeatherLocation("AP_K", "Angle Park", -34.8468, 138.5390, "Australia/Adelaide"),
     "ANGLE-PARK": VenueWeatherLocation("AP_K", "Angle Park", -34.8468, 138.5390, "Australia/Adelaide"),
     "BAL": VenueWeatherLocation("BAL", "Ballarat", -37.5622, 143.8503, "Australia/Melbourne"),
     "BALLARAT": VenueWeatherLocation("BAL", "Ballarat", -37.5622, 143.8503, "Australia/Melbourne"),
@@ -73,6 +74,7 @@ VENUE_WEATHER_LOCATIONS: dict[str, VenueWeatherLocation] = {
     "MURRAY-BRIDGE-STRAIGHT": VenueWeatherLocation("MURR", "Murray Bridge", -35.1167, 139.2667, "Australia/Adelaide"),
     "NOR": VenueWeatherLocation("NOR", "Northam", -31.6500, 116.6667, "Australia/Perth"),
     "NORTHAM": VenueWeatherLocation("NOR", "Northam", -31.6500, 116.6667, "Australia/Perth"),
+    "NOWRA": VenueWeatherLocation("NOWRA", "Nowra", -34.8750, 150.6000, "Australia/Sydney"),
     "RICH": VenueWeatherLocation("RICH", "Richmond", -33.6000, 150.7500, "Australia/Sydney"),
     "RICHMOND": VenueWeatherLocation("RICH", "Richmond", -33.6000, 150.7500, "Australia/Sydney"),
     "ROCK": VenueWeatherLocation("ROCK", "Rockhampton", -23.3833, 150.5167, "Australia/Brisbane"),
@@ -98,6 +100,7 @@ VENUE_WEATHER_LOCATIONS: dict[str, VenueWeatherLocation] = {
     "WPK": VenueWeatherLocation("WPK", "Wentworth Park", -33.8721, 151.1949, "Australia/Sydney"),
     "WENTWORTH-PARK": VenueWeatherLocation("WPK", "Wentworth Park", -33.8721, 151.1949, "Australia/Sydney"),
 }
+DEFAULT_PREJUMP_DISPLAY_TIMEZONE = "Australia/Melbourne"
 
 WEATHER_CODE_LABELS = {
     0: "Clear",
@@ -135,6 +138,8 @@ def venue_weather_location(venue: Any) -> VenueWeatherLocation | None:
     text = str(venue or "").strip().upper()
     if not text:
         return None
+    if text in VENUE_WEATHER_LOCATIONS:
+        return VENUE_WEATHER_LOCATIONS[text]
     variants = {
         text,
         text.replace("_", "-"),
@@ -149,24 +154,33 @@ def venue_weather_location(venue: Any) -> VenueWeatherLocation | None:
     return None
 
 
+def _prejump_display_timezone(value: Any = None) -> str:
+    text = str(value or "").strip()
+    return text or DEFAULT_PREJUMP_DISPLAY_TIMEZONE
+
+
 def _parse_race_datetime(
     race_date: Any,
     race_time: Any,
     timezone_name: str,
+    *,
+    source_timezone: Any = None,
 ) -> datetime | None:
     date_text = str(race_date or "").strip()[:10]
     time_text = str(race_time or "").strip().upper().replace(".", ":")
     if not date_text or not time_text:
         return None
+    display_timezone = _prejump_display_timezone(source_timezone)
     for fmt in ("%I:%M %p", "%I:%M%p", "%H:%M", "%H%M", "%H:%M:%S"):
         try:
             parsed_time = datetime.strptime(time_text, fmt).time()
             parsed_date = datetime.strptime(date_text, "%Y-%m-%d").date()
-            return datetime.combine(
+            display_dt = datetime.combine(
                 parsed_date,
                 parsed_time,
-                tzinfo=ZoneInfo(timezone_name),
+                tzinfo=ZoneInfo(display_timezone),
             )
+            return display_dt.astimezone(ZoneInfo(timezone_name))
         except ValueError:
             continue
     return None
@@ -207,13 +221,23 @@ def collect_open_meteo_weather_metadata(
     venue = race_info.get("venue") or race_info.get("venue_name")
     race_date = race_info.get("date") or race_info.get("race_date")
     race_time = race_info.get("race_time") or race_info.get("jump_time")
+    race_time_timezone = (
+        race_info.get("race_time_timezone")
+        or race_info.get("jump_time_timezone")
+        or race_info.get("display_timezone")
+    )
     location = venue_weather_location(venue)
     rejected: list[str] = []
     if location is None:
         return {
             "rejected_weather_track_metadata_sources": ["weather_venue_not_mapped"],
         }
-    race_dt = _parse_race_datetime(race_date, race_time, location.timezone)
+    race_dt = _parse_race_datetime(
+        race_date,
+        race_time,
+        location.timezone,
+        source_timezone=race_time_timezone,
+    )
     if race_dt is None:
         return {
             "rejected_weather_track_metadata_sources": ["weather_race_time_unparseable"],
@@ -298,6 +322,9 @@ def collect_open_meteo_weather_metadata(
         "latitude": location.latitude,
         "longitude": location.longitude,
         "timezone": location.timezone,
+        "race_time_display_timezone": _prejump_display_timezone(race_time_timezone),
+        "race_time_venue_timezone": location.timezone,
+        "race_time_venue_local": race_dt.isoformat(),
         "forecast_time": str(hourly["time"][idx]),
         "weather_code": weather_code,
         "temperature_2m": _at(hourly, "temperature_2m", idx),

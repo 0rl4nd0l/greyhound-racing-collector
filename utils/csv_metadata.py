@@ -72,6 +72,23 @@ WEATHER_TRACK_PLACEHOLDERS = {
     "20.0",
     "50.0",
 }
+TRACK_CONDITION_ALLOWED_PATTERNS = (
+    r"good(?:\s*\d+)?",
+    r"fast",
+    r"slow",
+    r"heavy(?:\s*\d+)?",
+    r"soft(?:\s*\d+)?",
+    r"dead(?:\s*\d+)?",
+    r"firm(?:\s*\d+)?",
+    r"wet",
+    r"muddy",
+    r"sloppy",
+    r"fair",
+    r"excellent",
+    r"normal",
+    r"rain\s+affected",
+    r"weather\s+affected",
+)
 SAFE_WEATHER_TRACK_SOURCES = {
     "canonical_pre_race_page",
     "sidecar_weather_track_metadata",
@@ -217,6 +234,20 @@ def normalize_weather_track_text(value: Any) -> Optional[str]:
     if text.lower() in WEATHER_TRACK_PLACEHOLDERS:
         return None
     return text or None
+
+
+def normalize_track_condition_text(value: Any) -> Optional[str]:
+    """Normalize explicit track condition text and reject race-title/promo text."""
+
+    text = normalize_weather_track_text(value)
+    if not text:
+        return None
+    if any(
+        re.fullmatch(pattern, text, re.I)
+        for pattern in TRACK_CONDITION_ALLOWED_PATTERNS
+    ):
+        return text
+    return None
 
 
 def _first_named_value(mapping: Mapping[str, Any], fields: tuple[str, ...]) -> Any:
@@ -717,7 +748,7 @@ def build_safe_weather_track_metadata_payload(
     if not _safe_weather_track_source_url(metadata_source_url, source, rejected):
         return payload
 
-    track_condition = normalize_weather_track_text(
+    track_condition = normalize_track_condition_text(
         _first_named_value(race_info_dict, TRACK_CONDITION_FIELDS)
     )
     weather = normalize_weather_track_text(_first_named_value(race_info_dict, WEATHER_FIELDS))
@@ -835,7 +866,7 @@ def safe_weather_track_metadata_from_payload(payload: Mapping[str, Any]) -> Dict
             or ["sidecar_not_verified_pre_race_context"],
         }
 
-    track_condition = normalize_weather_track_text(
+    track_condition = normalize_track_condition_text(
         _first_named_value(payload, TRACK_CONDITION_FIELDS)
         or _first_named_value(race_info, TRACK_CONDITION_FIELDS)
         or _first_named_value(shadow_metadata, TRACK_CONDITION_FIELDS)

@@ -13,9 +13,12 @@ from typing import Any, Mapping
 from urllib.parse import urlencode, urlparse
 from zoneinfo import ZoneInfo
 
-from utils.csv_metadata import normalize_weather_track_text
+from utils.csv_metadata import normalize_track_condition_text
 from utils.http_client import get_shared_session
-from utils.prejump_weather import venue_weather_location
+from utils.prejump_weather import (
+    _parse_race_datetime as _parse_prejump_race_datetime,
+    venue_weather_location,
+)
 
 
 SPORTSBET_NEXT_EVENTS_ENDPOINT = (
@@ -85,6 +88,8 @@ def _candidate_venue_names(race_info: Mapping[str, Any]) -> set[str]:
     )
     if location is not None:
         names.add(location.venue_name)
+        if not location.venue_name.lower().endswith("park"):
+            names.add(f"{location.venue_name} Park")
     return {_normalise_name(name) for name in names if name}
 
 
@@ -100,18 +105,16 @@ def _parse_race_datetime(race_info: Mapping[str, Any], timezone_name: str) -> da
     )
     if not race_date or not race_time:
         return None
-    for fmt in ("%I:%M %p", "%I:%M%p", "%H:%M", "%H%M", "%H:%M:%S"):
-        try:
-            parsed_date = datetime.strptime(race_date, "%Y-%m-%d").date()
-            parsed_time = datetime.strptime(race_time, fmt).time()
-            return datetime.combine(
-                parsed_date,
-                parsed_time,
-                tzinfo=ZoneInfo(timezone_name),
-            )
-        except ValueError:
-            continue
-    return None
+    return _parse_prejump_race_datetime(
+        race_date,
+        race_time,
+        timezone_name,
+        source_timezone=(
+            race_info.get("race_time_timezone")
+            or race_info.get("jump_time_timezone")
+            or race_info.get("display_timezone")
+        ),
+    )
 
 
 def _event_datetime(event: Mapping[str, Any], timezone_name: str) -> datetime | None:
@@ -229,7 +232,7 @@ def collect_sportsbet_track_metadata(
             "rejected_weather_track_metadata_sources": rejected,
         }
 
-    track_status = normalize_weather_track_text(event.get("trackStatus"))
+    track_status = normalize_track_condition_text(event.get("trackStatus"))
     if not track_status:
         return {
             "weather_track_metadata_source": "sportsbet_pre_race_page",
