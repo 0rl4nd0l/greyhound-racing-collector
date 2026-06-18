@@ -641,6 +641,239 @@ def test_approved_odds_augmented_blend_ranks_with_reviewed_formula(tmp_path):
     assert all(row["production_prediction_write"] is False for row in predictions)
 
 
+def test_trusted_inactive_runners_do_not_require_odds_or_enter_blend(tmp_path):
+    race_id = "Race 1 - TEST - 2026-06-09"
+    predictions = [
+        {"race_id": race_id, "dog_name": "Model Pick", "box": 1},
+        {"race_id": race_id, "dog_name": "Scratched Runner", "box": 2},
+        {"race_id": race_id, "dog_name": "Non Starter", "box": 3},
+        {"race_id": race_id, "dog_name": "Market Pick", "box": 4},
+    ]
+    rows = [
+        {
+            "race_id": race_id,
+            "dog_name": "Model Pick",
+            "box": 1,
+            "predicted_rank": 1,
+            "shadow_rf_calibrated_probability": 0.8,
+            "odds_candidate_count": 1,
+            "odds_match_status": "valid_pre_jump_dog_odds",
+            "odds_snapshot": {
+                "market_odds_win": 4.0,
+                "odds_timestamp": "2026-06-09T00:01:00+10:00",
+                "odds_provenance": {"source_url": "https://sportsbet.test/r1"},
+            },
+        },
+        {
+            "race_id": race_id,
+            "dog_name": "Scratched Runner",
+            "box": 2,
+            "predicted_rank": 2,
+            "shadow_rf_calibrated_probability": 0.99,
+            "runner_status": "scratched",
+            "runner_status_trusted": True,
+            "runner_status_source": "sportsbet",
+            "odds_candidate_count": 1,
+            "odds_match_status": "trusted_scratched_runner",
+            "odds_exclusion_reason": "trusted_scratched_runner",
+            "odds_snapshot": {
+                "runner_status": "scratched",
+                "runner_status_trusted": True,
+                "runner_status_source": "sportsbet",
+            },
+        },
+        {
+            "race_id": race_id,
+            "dog_name": "Non Starter",
+            "box": 3,
+            "predicted_rank": 3,
+            "shadow_rf_calibrated_probability": 0.5,
+            "runner_status": "non_starter",
+            "runner_status_trusted": True,
+            "runner_status_source": "sportsbet",
+            "odds_candidate_count": 1,
+            "odds_match_status": "trusted_non_starter_runner",
+            "odds_exclusion_reason": "trusted_non_starter_runner",
+            "odds_snapshot": {
+                "runner_status": "non_starter",
+                "runner_status_trusted": True,
+                "runner_status_source": "sportsbet",
+            },
+        },
+        {
+            "race_id": race_id,
+            "dog_name": "Market Pick",
+            "box": 4,
+            "predicted_rank": 4,
+            "shadow_rf_calibrated_probability": 0.2,
+            "odds_candidate_count": 1,
+            "odds_match_status": "valid_pre_jump_dog_odds",
+            "odds_snapshot": {
+                "market_odds_win": 2.0,
+                "odds_timestamp": "2026-06-09T00:01:00+10:00",
+                "odds_provenance": {"source_url": "https://sportsbet.test/r1"},
+            },
+        },
+    ]
+
+    coverage = odds.race_odds_coverage_report(
+        predictions=predictions,
+        rows=rows,
+        contexts={},
+        collection_status=odds.FINAL_COLLECTED,
+    )
+    race = coverage["races"][0]
+    report, blend_rows = odds.approved_blend_prediction_report(rows, output_dir=tmp_path)
+
+    assert coverage["races_with_complete_valid_prejump_odds"] == 1
+    assert coverage["trusted_scratched_runner_rows"] == 1
+    assert coverage["trusted_non_starter_runner_rows"] == 1
+    assert race["predicted_runner_count"] == 4
+    assert race["active_predicted_runner_count"] == 2
+    assert race["valid_pre_jump_dog_odds_rows"] == 2
+    assert race["missing_odds_rows"] == 0
+    assert race["complete_valid_prejump_odds"] is True
+    assert race["odds_analysis_blockers"] == []
+    assert report["status"] == "APPROVED_BLEND_READY"
+    assert report["prediction_rows"] == 2
+    by_dog = {row["dog_name"]: row for row in blend_rows}
+    assert set(by_dog) == {"Model Pick", "Market Pick"}
+    assert by_dog["Market Pick"]["approved_blend_rank"] == 1
+    assert by_dog["Model Pick"]["approved_blend_rank"] == 2
+
+
+def test_trusted_inactive_runner_with_odds_price_blocks_review(tmp_path):
+    race_id = "Race 1 - TEST - 2026-06-09"
+    predictions = [
+        {"race_id": race_id, "dog_name": "Active Runner", "box": 1},
+        {"race_id": race_id, "dog_name": "Scratched Runner", "box": 2},
+    ]
+    rows = [
+        {
+            "race_id": race_id,
+            "dog_name": "Active Runner",
+            "box": 1,
+            "predicted_rank": 1,
+            "shadow_rf_calibrated_probability": 0.6,
+            "odds_candidate_count": 1,
+            "odds_match_status": "valid_pre_jump_dog_odds",
+            "odds_snapshot": {
+                "market_odds_win": 2.0,
+                "odds_timestamp": "2026-06-09T00:01:00+10:00",
+                "odds_provenance": {"source_url": "https://sportsbet.test/r1"},
+            },
+        },
+        {
+            "race_id": race_id,
+            "dog_name": "Scratched Runner",
+            "box": 2,
+            "predicted_rank": 2,
+            "shadow_rf_calibrated_probability": 0.4,
+            "runner_status": "scratched",
+            "runner_status_trusted": True,
+            "runner_status_source": "sportsbet",
+            "odds_candidate_count": 1,
+            "odds_match_status": "trusted_scratched_runner",
+            "odds_exclusion_reason": "trusted_scratched_runner",
+            "odds_snapshot": {
+                "market_odds_win": 5.0,
+                "runner_status": "scratched",
+                "runner_status_trusted": True,
+                "runner_status_source": "sportsbet",
+            },
+        },
+    ]
+
+    coverage = odds.race_odds_coverage_report(
+        predictions=predictions,
+        rows=rows,
+        contexts={},
+        collection_status=odds.FINAL_COLLECTED,
+    )
+    race = coverage["races"][0]
+    report, blend_rows = odds.approved_blend_prediction_report(rows, output_dir=tmp_path)
+
+    assert coverage["races_with_complete_valid_prejump_odds"] == 0
+    assert coverage["trusted_inactive_runner_price_conflict_rows"] == 1
+    assert race["odds_coverage_status"] == "TRUSTED_INACTIVE_RUNNER_ODDS_CONFLICT"
+    assert race["complete_valid_prejump_odds"] is False
+    assert race["odds_analysis_blockers"] == [
+        "trusted_inactive_runner_has_odds_price"
+    ]
+    assert report["status"] == "APPROVED_BLEND_BLOCKED"
+    assert report["prediction_rows"] == 0
+    assert report["race_reports"][0]["trusted_inactive_runner_price_conflict_rows"] == 1
+    assert (
+        "trusted_inactive_runner_has_odds_price"
+        in report["race_reports"][0]["blockers"]
+    )
+    assert blend_rows == []
+
+
+def test_untrusted_inactive_status_still_requires_valid_odds(tmp_path):
+    race_id = "Race 1 - TEST - 2026-06-09"
+    predictions = [
+        {"race_id": race_id, "dog_name": "Priced Runner", "box": 1},
+        {"race_id": race_id, "dog_name": "Untrusted Scratch", "box": 2},
+    ]
+    rows = [
+        {
+            "race_id": race_id,
+            "dog_name": "Priced Runner",
+            "box": 1,
+            "predicted_rank": 1,
+            "shadow_rf_calibrated_probability": 0.4,
+            "odds_candidate_count": 1,
+            "odds_match_status": "valid_pre_jump_dog_odds",
+            "odds_snapshot": {
+                "market_odds_win": 3.0,
+                "odds_timestamp": "2026-06-09T00:01:00+10:00",
+                "odds_provenance": {"source_url": "https://sportsbet.test/r1"},
+            },
+        },
+        {
+            "race_id": race_id,
+            "dog_name": "Untrusted Scratch",
+            "box": 2,
+            "predicted_rank": 2,
+            "shadow_rf_calibrated_probability": 0.6,
+            "runner_status": "scratched",
+            "runner_status_trusted": False,
+            "odds_candidate_count": 0,
+            "odds_match_status": "no_odds_row",
+            "odds_exclusion_reason": "no_odds_row",
+            "odds_snapshot": {
+                "runner_status": "scratched",
+                "runner_status_trusted": False,
+            },
+        },
+    ]
+
+    coverage = odds.race_odds_coverage_report(
+        predictions=predictions,
+        rows=rows,
+        contexts={},
+        collection_status=odds.FINAL_COLLECTED,
+    )
+    race = coverage["races"][0]
+    report, blend_rows = odds.approved_blend_prediction_report(rows, output_dir=tmp_path)
+
+    assert coverage["races_with_complete_valid_prejump_odds"] == 0
+    assert coverage["trusted_inactive_runner_rows"] == 0
+    assert race["active_predicted_runner_count"] == 2
+    assert race["missing_odds_rows"] == 1
+    assert race["complete_valid_prejump_odds"] is False
+    assert race["odds_analysis_blockers"] == [
+        "missing_odds_rows",
+        "incomplete_valid_prejump_odds",
+    ]
+    assert report["status"] == "APPROVED_BLEND_BLOCKED"
+    assert report["prediction_rows"] == 0
+    assert blend_rows == []
+    assert "race_not_complete_valid_prejump_odds" in report["race_reports"][0]["blockers"]
+    assert "market_odds_missing_or_invalid" in report["race_reports"][0]["blockers"]
+
+
 def test_collect_shadow_odds_snapshot_rejects_duplicate_odds_rows(tmp_path, monkeypatch):
     report, rows, output_dir = _run(tmp_path, monkeypatch, duplicate_odds=True)
     race_coverage = _race_coverage(output_dir)

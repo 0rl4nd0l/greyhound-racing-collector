@@ -45,6 +45,30 @@ OUTPUT_PREFIX = "artifacts/full_evidence_orchestration_20260525/autonomous_live_
 CAPTURE_WINDOWS_MINUTES = (60, 30, 10, 2)
 ACCEPTED_SPORTSBET_BOX_SOURCES = {"explicit_dom", "runner_text"}
 ACCEPTED_DOG_LEVEL_ODDS_LEVELS = {"dog", "runner"}
+SCRATCHED_EXPECTED_RUNNER_STATUS_FIELDS = (
+    "status",
+    "runner_status",
+    "participant_status",
+    "scratch_status",
+)
+SCRATCHED_EXPECTED_RUNNER_BOOL_FIELDS = (
+    "scratched",
+    "is_scratched",
+    "was_scratched",
+)
+SCRATCHED_EXPECTED_RUNNER_STATUSES = {
+    "SCR",
+    "SCRATCH",
+    "SCRATCHED",
+    "L/SCR",
+    "LSCR",
+    "LATE SCR",
+    "LATE SCRATCH",
+    "LATE SCRATCHED",
+}
+SCRATCHED_EXPECTED_RUNNER_COMPACT_STATUSES = {
+    re.sub(r"[\s_/-]+", "", value) for value in SCRATCHED_EXPECTED_RUNNER_STATUSES
+}
 REQUIRED_EXISTING_CAPTURE_PROVENANCE_COLUMNS = {
     "capture_timestamp",
     "market_type",
@@ -436,11 +460,18 @@ def participant_identity_map(
         if identity in seen_identities:
             reasons.append(f"duplicate_runner_name:{identity}")
         seen_identities.add(identity)
-        output[box] = {
+        participant = {
             "box_number": box,
             "dog_name": dog_name,
             "identity": identity,
         }
+        for field in (
+            *SCRATCHED_EXPECTED_RUNNER_STATUS_FIELDS,
+            *SCRATCHED_EXPECTED_RUNNER_BOOL_FIELDS,
+        ):
+            if field in row:
+                participant[field] = row.get(field)
+        output[box] = participant
     return output, sorted(set(reasons))
 
 
@@ -879,11 +910,10 @@ def validate_fetched_odds(
         for row in plan_item.get("expected_runners") or []
         if isinstance(row, Mapping)
     ]
-    expected_set = {
-        (int(row["box_number"]), normalise_runner_name(row["dog_name"]))
-        for row in expected_rows
-        if row.get("box_number") not in (None, "") and row.get("dog_name")
-    }
+    expected_sets = expected_runner_key_sets(expected_rows)
+    expected_set = expected_sets["all"]
+    active_expected_set = expected_sets["active"]
+    scratched_expected_set = expected_sets["scratched"]
     accepted_set = {(int(row["box_number"]), row["identity"]) for row in accepted_rows}
     duplicate_keys = sorted(
         key
@@ -895,8 +925,14 @@ def validate_fetched_odds(
             "sportsbet_duplicate_runner_keys:"
             + ",".join(f"{box}:{identity}" for box, identity in duplicate_keys)
         )
-    missing = sorted(expected_set - accepted_set)
+    scratched_with_odds = sorted(scratched_expected_set & accepted_set)
+    missing = sorted(active_expected_set - accepted_set)
     extra = sorted(accepted_set - expected_set)
+    if scratched_with_odds:
+        reasons.append(
+            "sportsbet_odds_present_for_scratched_expected_runners:"
+            + ",".join(f"{box}:{identity}" for box, identity in scratched_with_odds)
+        )
     if missing:
         reasons.append(
             "sportsbet_missing_expected_runners:"
@@ -920,6 +956,15 @@ def validate_fetched_odds(
         "accepted_row_count": len(accepted_rows),
         "rejected_rows": rejected_rows,
         "expected_runner_count": len(expected_set),
+        "active_expected_runner_count": len(active_expected_set),
+        "scratched_expected_runner_count": len(scratched_expected_set),
+        "scratched_expected_runners": [
+            {"box_number": box, "identity": identity}
+            for box, identity in sorted(scratched_expected_set)
+        ],
+        "scratched_expected_runners_with_odds": [
+            {"box_number": box, "identity": identity} for box, identity in scratched_with_odds
+        ],
         "missing_expected_runners": [
             {"box_number": box, "identity": identity} for box, identity in missing
         ],
@@ -930,14 +975,54 @@ def validate_fetched_odds(
     }
 
 
-def expected_runner_key_set(expected_runners: Sequence[Mapping[str, Any]]) -> set[tuple[int, str]]:
-    keys: set[tuple[int, str]] = set()
+def explicit_expected_runner_scratched(row: Mapping[str, Any]) -> bool:
+    for field in SCRATCHED_EXPECTED_RUNNER_BOOL_FIELDS:
+        value = row.get(field)
+        if value is True:
+            return True
+        if isinstance(value, (int, float)) and value == 1:
+            return True
+        if isinstance(value, str) and value.strip().lower() in {"1", "true", "yes", "y"}:
+            return True
+    for field in SCRATCHED_EXPECTED_RUNNER_STATUS_FIELDS:
+        status = str(row.get(field) or "").strip().upper()
+        compact_status = re.sub(r"[\s_/-]+", "", status)
+        if (
+            status in SCRATCHED_EXPECTED_RUNNER_STATUSES
+            or compact_status in SCRATCHED_EXPECTED_RUNNER_COMPACT_STATUSES
+        ):
+            return True
+    return False
+
+
+def expected_runner_key(row: Mapping[str, Any]) -> tuple[int, str] | None:
+    box = parse_int_value(row.get("box_number"))
+    identity = normalise_runner_name(row.get("dog_name") or row.get("identity"))
+    if box is None or not identity:
+        return None
+    return (box, identity)
+
+
+def expected_runner_key_sets(
+    expected_runners: Sequence[Mapping[str, Any]],
+) -> dict[str, set[tuple[int, str]]]:
+    all_keys: set[tuple[int, str]] = set()
+    active_keys: set[tuple[int, str]] = set()
+    scratched_keys: set[tuple[int, str]] = set()
     for row in expected_runners:
-        box = parse_int_value(row.get("box_number"))
-        identity = normalise_runner_name(row.get("dog_name") or row.get("identity"))
-        if box is not None and identity:
-            keys.add((box, identity))
-    return keys
+        key = expected_runner_key(row)
+        if key is None:
+            continue
+        all_keys.add(key)
+        if explicit_expected_runner_scratched(row):
+            scratched_keys.add(key)
+        else:
+            active_keys.add(key)
+    return {"all": all_keys, "active": active_keys, "scratched": scratched_keys}
+
+
+def expected_runner_key_set(expected_runners: Sequence[Mapping[str, Any]]) -> set[tuple[int, str]]:
+    return expected_runner_key_sets(expected_runners)["active"]
 
 
 def parse_iso_datetime(value: Any) -> datetime | None:
@@ -1002,6 +1087,7 @@ def runner_group_status(
     rows: Sequence[Mapping[str, Any]],
     *,
     expected_set: set[tuple[int, str]],
+    allowed_expected_set: set[tuple[int, str]] | None = None,
 ) -> dict[str, Any]:
     observed_keys: list[tuple[int, str]] = []
     invalid_rows: list[dict[str, Any]] = []
@@ -1056,12 +1142,20 @@ def runner_group_status(
         observed_keys.append((int(box), identity))
 
     observed_set = set(observed_keys)
+    if allowed_expected_set is None:
+        allowed_expected_set = expected_set
+    inactive_expected_with_odds = sorted(observed_set & (allowed_expected_set - expected_set))
     duplicate_keys = sorted(
         key for key in observed_set if sum(1 for value in observed_keys if value == key) > 1
     )
     missing = sorted(expected_set - observed_set)
-    extra = sorted(observed_set - expected_set)
+    extra = sorted(observed_set - allowed_expected_set)
     reasons: list[str] = []
+    if inactive_expected_with_odds:
+        reasons.append(
+            "existing_capture_odds_present_for_inactive_expected_runners:"
+            + ",".join(f"{box}:{identity}" for box, identity in inactive_expected_with_odds)
+        )
     if missing:
         reasons.append(
             "existing_capture_missing_expected_runners:"
@@ -1092,6 +1186,10 @@ def runner_group_status(
         "missing_expected_runners": [
             {"box_number": box, "identity": identity} for box, identity in missing
         ],
+        "inactive_expected_runners_with_odds": [
+            {"box_number": box, "identity": identity}
+            for box, identity in inactive_expected_with_odds
+        ],
         "extra_unexpected_runners": [
             {"box_number": box, "identity": identity} for box, identity in extra
         ],
@@ -1120,6 +1218,10 @@ def existing_capture_runner_status(
         "existing_row_count": 0,
         "expected_runner_count": 0,
         "observed_runner_count": 0,
+        "active_expected_runner_count": 0,
+        "scratched_expected_runner_count": 0,
+        "scratched_expected_runners": [],
+        "scratched_expected_runners_with_odds": [],
         "missing_expected_runners": [],
         "extra_unexpected_runners": [],
         "duplicate_runner_keys": [],
@@ -1131,9 +1233,18 @@ def existing_capture_runner_status(
     if not db_path.exists():
         return status
 
-    expected_set = expected_runner_key_set(expected_runners)
-    status["expected_runner_count"] = len(expected_set)
-    if not expected_set:
+    expected_sets = expected_runner_key_sets(expected_runners)
+    expected_set = expected_sets["active"]
+    allowed_expected_set = expected_sets["all"]
+    scratched_expected_set = expected_sets["scratched"]
+    status["expected_runner_count"] = len(allowed_expected_set)
+    status["active_expected_runner_count"] = len(expected_set)
+    status["scratched_expected_runner_count"] = len(scratched_expected_set)
+    status["scratched_expected_runners"] = [
+        {"box_number": box, "identity": identity}
+        for box, identity in sorted(scratched_expected_set)
+    ]
+    if not allowed_expected_set:
         status["status"] = "INVALID"
         status["reasons"] = ["expected_runner_set_missing"]
         return status
@@ -1208,7 +1319,11 @@ def existing_capture_runner_status(
     group_reports: list[dict[str, Any]] = []
     stale_groups: list[dict[str, Any]] = []
     for capture_timestamp, group_rows in sorted(grouped_rows.items()):
-        group = runner_group_status(group_rows, expected_set=expected_set)
+        group = runner_group_status(
+            group_rows,
+            expected_set=expected_set,
+            allowed_expected_set=allowed_expected_set,
+        )
         group["capture_timestamp"] = capture_timestamp or None
         group["existing_row_count"] = len(group_rows)
         in_window, temporal_reason = capture_timestamp_in_window(
@@ -1229,6 +1344,7 @@ def existing_capture_runner_status(
         )[-1]
         existing_status = "COMPLETE"
         missing = []
+        inactive_with_odds = []
         extra = []
         duplicate_keys = []
         invalid_rows = []
@@ -1244,6 +1360,7 @@ def existing_capture_runner_status(
                 int(group.get("observed_runner_count") or 0) for group in stale_groups
             )
             missing = []
+            inactive_with_odds = []
             extra = []
             duplicate_keys = []
             invalid_rows = []
@@ -1267,6 +1384,10 @@ def existing_capture_runner_status(
                 (int(row["box_number"]), str(row["identity"]))
                 for row in selected.get("missing_expected_runners") or []
             ]
+            inactive_with_odds = [
+                (int(row["box_number"]), str(row["identity"]))
+                for row in selected.get("inactive_expected_runners_with_odds") or []
+            ]
             extra = [
                 (int(row["box_number"]), str(row["identity"]))
                 for row in selected.get("extra_unexpected_runners") or []
@@ -1283,6 +1404,10 @@ def existing_capture_runner_status(
             "observed_runner_count": observed_runner_count,
             "missing_expected_runners": [
                 {"box_number": box, "identity": identity} for box, identity in missing
+            ],
+            "scratched_expected_runners_with_odds": [
+                {"box_number": box, "identity": identity}
+                for box, identity in inactive_with_odds
             ],
             "extra_unexpected_runners": [
                 {"box_number": box, "identity": identity} for box, identity in extra

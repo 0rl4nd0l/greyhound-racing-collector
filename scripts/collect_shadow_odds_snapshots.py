@@ -31,7 +31,7 @@ sys.path = [path for path in sys.path if path != ROOT_STR]
 sys.path.insert(0, ROOT_STR)
 
 from accuracy_program.odds_coverage import normalize_dog_name, normalize_venue  # noqa: E402
-from accuracy_program.snapshots import classify_odds_snapshot_for_ev  # noqa: E402
+from accuracy_program.snapshots import TRUSTED_ODDS_SOURCES, classify_odds_snapshot_for_ev  # noqa: E402
 from scripts.refresh_prejump_upcoming import venue_exclusion_aliases  # noqa: E402
 
 
@@ -73,6 +73,10 @@ ODDS_CSV_COLUMNS = (
     "box",
     "predicted_rank",
     "shadow_rf_calibrated_probability",
+    "runner_status",
+    "runner_status_trusted",
+    "runner_status_source",
+    "runner_active_for_odds_gate",
     "odds_decimal",
     "odds_match_status",
     "odds_exclusion_reason",
@@ -112,6 +116,77 @@ POST_JUMP_ODDS_REASONS = {
     "timestamp_after_jump",
     "odds_captured_after_jump",
 }
+RUNNER_STATUS_TEXT_COLUMNS = (
+    "runner_status",
+    "selection_status",
+    "selection_state",
+    "starter_status",
+    "starting_status",
+    "scratch_status",
+    "scratching_status",
+    "sportsbet_runner_status",
+    "sportsbet_selection_status",
+    "sportsbet_status",
+    "runner_market_status",
+)
+RUNNER_STATUS_BOOL_COLUMNS = (
+    "is_scratched",
+    "scratched",
+    "was_scratched",
+    "is_late_scratched",
+    "is_non_starter",
+    "non_starter",
+)
+RUNNER_STATUS_TRUST_COLUMNS = (
+    "runner_status_trusted",
+    "selection_status_trusted",
+    "scratch_status_trusted",
+    "status_trusted",
+    "is_trusted_runner_status",
+)
+RUNNER_STATUS_SOURCE_COLUMNS = (
+    "runner_status_source",
+    "selection_status_source",
+    "scratch_status_source",
+    "status_source",
+    "source",
+    "odds_source",
+    "source_url",
+)
+SCRATCHED_STATUS_TOKENS = {
+    "scr",
+    "scratch",
+    "scratched",
+    "scratching",
+    "late_scratched",
+    "scratched_without_price",
+    "withdrawn",
+    "withdrawal",
+}
+NON_STARTER_STATUS_TOKENS = {
+    "nr",
+    "nrs",
+    "non_runner",
+    "non_starter",
+    "nonstarter",
+    "non_starting",
+}
+ACTIVE_STATUS_TOKENS = {
+    "active",
+    "available",
+    "live",
+    "open",
+    "priced",
+    "runner",
+    "starter",
+    "starting",
+    "valid",
+}
+TRUSTED_INACTIVE_ODDS_STATUSES = {
+    "trusted_scratched_runner",
+    "trusted_non_starter_runner",
+}
+TRUSTED_INACTIVE_ODDS_PRICE_CONFLICT = "trusted_inactive_runner_has_odds_price"
 ODDS_RESEARCH_GATE_POLICY = {
     "schema_version": "shadow_odds_research_gate_policy_v1",
     "candidate_scope": {
@@ -145,7 +220,10 @@ ODDS_RESEARCH_GATE_POLICY = {
     },
     "coverage_requirements": {
         "complete_valid_prejump_odds_required_for_odds_research_ready": True,
-        "all_predicted_runners_must_have_valid_prejump_odds": True,
+        "all_predicted_runners_must_have_valid_prejump_odds": False,
+        "all_active_predicted_runners_must_have_valid_prejump_odds": True,
+        "trusted_scratched_or_non_starter_runners_excluded_from_required_odds": True,
+        "unknown_or_untrusted_runner_status_requires_valid_odds": True,
         "minimum_complete_valid_prejump_odds_races": MIN_COMPLETE_VALID_PREJUMP_ODDS_RACES,
         "source_url_coverage_required_pct": 100.0,
         "unsafe_or_partial_odds_joins_counted": False,
@@ -210,6 +288,10 @@ def write_csv(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
                     "shadow_rf_calibrated_probability": row.get(
                         "shadow_rf_calibrated_probability"
                     ),
+                    "runner_status": row.get("runner_status"),
+                    "runner_status_trusted": row.get("runner_status_trusted"),
+                    "runner_status_source": row.get("runner_status_source"),
+                    "runner_active_for_odds_gate": row.get("runner_active_for_odds_gate"),
                     "odds_decimal": snapshot.get("market_odds_win"),
                     "odds_match_status": row.get("odds_match_status"),
                     "odds_exclusion_reason": row.get("odds_exclusion_reason"),
@@ -319,6 +401,180 @@ def table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
     if not table_exists(conn, table):
         return set()
     return {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+
+
+def _row_status_mappings(row: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    mappings: list[Mapping[str, Any]] = [row]
+    snapshot = row.get("odds_snapshot") if isinstance(row.get("odds_snapshot"), Mapping) else {}
+    if snapshot:
+        mappings.append(snapshot)
+        provenance = (
+            snapshot.get("odds_provenance")
+            if isinstance(snapshot.get("odds_provenance"), Mapping)
+            else {}
+        )
+        if provenance:
+            mappings.append(provenance)
+    return mappings
+
+
+def _first_present_value(
+    mappings: Sequence[Mapping[str, Any]],
+    keys: Sequence[str],
+) -> tuple[Any, str | None]:
+    for mapping in mappings:
+        for key in keys:
+            if key in mapping and mapping.get(key) not in (None, ""):
+                return mapping.get(key), key
+    return None, None
+
+
+def _coerce_bool(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if value in (None, ""):
+        return None
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().lower()
+    if text in {"1", "true", "t", "yes", "y", "on"}:
+        return True
+    if text in {"0", "false", "f", "no", "n", "off"}:
+        return False
+    return None
+
+
+def _runner_status_token(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
+
+
+def _trusted_runner_status(
+    mappings: Sequence[Mapping[str, Any]],
+    *,
+    source_value: Any,
+) -> bool:
+    explicit_trust, _key = _first_present_value(mappings, RUNNER_STATUS_TRUST_COLUMNS)
+    explicit_bool = _coerce_bool(explicit_trust)
+    if explicit_bool is not None:
+        return explicit_bool
+    source = str(source_value or "").strip().lower()
+    return source in TRUSTED_ODDS_SOURCES or "sportsbet.com.au" in source
+
+
+def runner_status_info(row: Mapping[str, Any]) -> dict[str, Any]:
+    mappings = _row_status_mappings(row)
+    source_value, _source_key = _first_present_value(mappings, RUNNER_STATUS_SOURCE_COLUMNS)
+    trusted = _trusted_runner_status(mappings, source_value=source_value)
+    unknown_raw: Any = None
+    unknown_column: str | None = None
+
+    for mapping in mappings:
+        for column in RUNNER_STATUS_TEXT_COLUMNS:
+            value = mapping.get(column)
+            if value in (None, ""):
+                continue
+            token = _runner_status_token(value)
+            if token in SCRATCHED_STATUS_TOKENS:
+                status = "scratched"
+            elif token in NON_STARTER_STATUS_TOKENS:
+                status = "non_starter"
+            elif token in ACTIVE_STATUS_TOKENS:
+                status = "active"
+            else:
+                unknown_raw = value
+                unknown_column = column
+                continue
+            return {
+                "runner_status": status,
+                "runner_status_raw": value,
+                "runner_status_source": source_value,
+                "runner_status_source_column": column,
+                "runner_status_trusted": trusted,
+                "trusted_inactive_runner": trusted and status in {"scratched", "non_starter"},
+                "runner_active_for_odds_gate": not (
+                    trusted and status in {"scratched", "non_starter"}
+                ),
+            }
+
+    for mapping in mappings:
+        for column in RUNNER_STATUS_BOOL_COLUMNS:
+            raw = mapping.get(column)
+            parsed = _coerce_bool(raw)
+            if parsed is None:
+                continue
+            status = "non_starter" if "non_starter" in column else "scratched"
+            if parsed is False:
+                status = "active"
+            return {
+                "runner_status": status,
+                "runner_status_raw": raw,
+                "runner_status_source": source_value,
+                "runner_status_source_column": column,
+                "runner_status_trusted": trusted,
+                "trusted_inactive_runner": trusted and status in {"scratched", "non_starter"},
+                "runner_active_for_odds_gate": not (
+                    trusted and status in {"scratched", "non_starter"}
+                ),
+            }
+
+    return {
+        "runner_status": "unknown",
+        "runner_status_raw": unknown_raw,
+        "runner_status_source": source_value,
+        "runner_status_source_column": unknown_column,
+        "runner_status_trusted": False,
+        "trusted_inactive_runner": False,
+        "runner_active_for_odds_gate": True,
+    }
+
+
+def is_trusted_inactive_runner(row: Mapping[str, Any]) -> bool:
+    return runner_status_info(row)["trusted_inactive_runner"] is True
+
+
+def trusted_inactive_odds_status(row: Mapping[str, Any]) -> str | None:
+    info = runner_status_info(row)
+    if info["trusted_inactive_runner"] is not True:
+        return None
+    if info["runner_status"] == "non_starter":
+        return "trusted_non_starter_runner"
+    return "trusted_scratched_runner"
+
+
+def trusted_inactive_runner_has_odds_price(row: Mapping[str, Any]) -> bool:
+    if not is_trusted_inactive_runner(row):
+        return False
+    snapshot = row.get("odds_snapshot") if isinstance(row.get("odds_snapshot"), Mapping) else {}
+    return any(
+        value is not None and value > 1.0
+        for value in (
+            safe_float(row.get("odds_decimal")),
+            safe_float(snapshot.get("market_odds_win")),
+        )
+    )
+
+
+def classify_odds_snapshot_for_shadow_gate(
+    runner: Mapping[str, Any],
+    odds_snapshot: Mapping[str, Any] | None = None,
+    *,
+    status_row: Mapping[str, Any] | None = None,
+    snapshot_race_id: Any = None,
+) -> dict[str, Any]:
+    inactive_status = trusted_inactive_odds_status(status_row or runner)
+    if inactive_status:
+        return {
+            "odds_match_status": inactive_status,
+            "odds_match_method": "trusted_runner_status",
+            "odds_exclusion_reason": inactive_status,
+            "odds_provenance_status": "trusted_inactive_runner",
+            "is_ev_eligible": False,
+        }
+    return classify_odds_snapshot_for_ev(
+        runner,
+        odds_snapshot,
+        snapshot_race_id=snapshot_race_id,
+    )
 
 
 def verify_db_state(db_path: Path) -> dict[str, Any]:
@@ -532,8 +788,6 @@ def candidate_rows_for_prediction(
         SELECT *
           FROM live_odds
          WHERE lower(coalesce(market_type, 'win')) = 'win'
-           AND odds_decimal IS NOT NULL
-           AND odds_decimal > 1
            AND CAST(box_number AS INTEGER) = ?
            AND (
                 race_id = ?
@@ -546,6 +800,11 @@ def candidate_rows_for_prediction(
     candidates: list[dict[str, Any]] = []
     for row in rows:
         record = dict(row)
+        odds_decimal = safe_float(record.get("odds_decimal"))
+        if (odds_decimal is None or odds_decimal <= 1.0) and not is_trusted_inactive_runner(
+            record
+        ):
+            continue
         row_box = safe_int(record.get("box_number"))
         row_dog_key = normalize_dog_name(record.get("dog_clean_name") or record.get("dog_name"))
         if row_box != box or row_dog_key != dog_key:
@@ -617,12 +876,13 @@ def selected_candidate_for_prediction(
     """Select one exact capture-window sample without treating all windows as duplicates."""
 
     if not candidates:
-        eligibility = classify_odds_snapshot_for_ev(
+        eligibility = classify_odds_snapshot_for_shadow_gate(
             {
                 "dog_name": prediction.get("dog_name"),
                 "box_number": prediction.get("box"),
             },
             {},
+            status_row=prediction,
             snapshot_race_id=prediction.get("race_id"),
         )
         return None, {}, eligibility, {
@@ -654,12 +914,13 @@ def selected_candidate_for_prediction(
             duplicate_count=1,
             stale_odds_after_minutes=stale_odds_after_minutes,
         )
-        eligibility = classify_odds_snapshot_for_ev(
+        eligibility = classify_odds_snapshot_for_shadow_gate(
             {
                 "dog_name": prediction.get("dog_name"),
                 "box_number": prediction.get("box"),
             },
             snapshot,
+            status_row=candidate,
             snapshot_race_id=prediction.get("race_id"),
         )
         classified.append((candidate, snapshot, eligibility))
@@ -719,12 +980,13 @@ def selected_candidate_for_prediction(
         duplicate_count=len(candidates),
         stale_odds_after_minutes=stale_odds_after_minutes,
     )
-    eligibility = classify_odds_snapshot_for_ev(
+    eligibility = classify_odds_snapshot_for_shadow_gate(
         {
             "dog_name": prediction.get("dog_name"),
             "box_number": prediction.get("box"),
         },
         snapshot,
+        status_row=selected,
         snapshot_race_id=prediction.get("race_id"),
     )
     selection = {
@@ -788,15 +1050,24 @@ def approved_blend_prediction_report(
     predictions: list[dict[str, Any]] = []
     race_reports: list[dict[str, Any]] = []
     for race_id, race_rows in sorted(grouped.items()):
+        inactive_rows = [row for row in race_rows if is_trusted_inactive_runner(row)]
+        active_rows = [row for row in race_rows if not is_trusted_inactive_runner(row)]
+        inactive_price_conflict_rows = [
+            row for row in inactive_rows if trusted_inactive_runner_has_odds_price(row)
+        ]
         blockers: list[str] = []
         if not race_rows:
             blockers.append("prediction_rows_missing")
-        if any(row.get("odds_match_status") != "valid_pre_jump_dog_odds" for row in race_rows):
+        if not active_rows:
+            blockers.append("no_active_runners")
+        if inactive_price_conflict_rows:
+            blockers.append(TRUSTED_INACTIVE_ODDS_PRICE_CONFLICT)
+        if any(row.get("odds_match_status") != "valid_pre_jump_dog_odds" for row in active_rows):
             blockers.append("race_not_complete_valid_prejump_odds")
 
         model_raw: list[float] = []
         market_raw: list[float] = []
-        for row in race_rows:
+        for row in active_rows:
             model_score = safe_float(row.get("shadow_rf_calibrated_probability"))
             snapshot = row.get("odds_snapshot") if isinstance(row.get("odds_snapshot"), Mapping) else {}
             odds_decimal = safe_float(snapshot.get("market_odds_win"))
@@ -825,6 +1096,11 @@ def approved_blend_prediction_report(
                     "race_id": race_id,
                     "status": "APPROVED_BLEND_BLOCKED",
                     "runner_rows": len(race_rows),
+                    "active_runner_rows": len(active_rows),
+                    "trusted_inactive_runner_rows": len(inactive_rows),
+                    "trusted_inactive_runner_price_conflict_rows": len(
+                        inactive_price_conflict_rows
+                    ),
                     "blockers": blockers,
                 }
             )
@@ -835,16 +1111,16 @@ def approved_blend_prediction_report(
             for model_score, market_score in zip(model_scores or [], market_scores or [], strict=True)
         ]
         order = sorted(
-            range(len(race_rows)),
+            range(len(active_rows)),
             key=lambda index: (
                 -blended[index],
-                safe_int(race_rows[index].get("box")) or 99,
-                str(race_rows[index].get("dog_name") or ""),
+                safe_int(active_rows[index].get("box")) or 99,
+                str(active_rows[index].get("dog_name") or ""),
             ),
         )
         ranks = {index: rank for rank, index in enumerate(order, start=1)}
         race_prediction_rows: list[dict[str, Any]] = []
-        for index, row in enumerate(race_rows):
+        for index, row in enumerate(active_rows):
             snapshot = row.get("odds_snapshot") if isinstance(row.get("odds_snapshot"), Mapping) else {}
             provenance = (
                 snapshot.get("odds_provenance")
@@ -868,6 +1144,8 @@ def approved_blend_prediction_report(
                     "odds_source_url": provenance.get("source_url"),
                     "odds_timestamp": snapshot.get("odds_timestamp"),
                     "odds_match_status": row.get("odds_match_status"),
+                    "runner_status": row.get("runner_status"),
+                    "runner_status_trusted": row.get("runner_status_trusted"),
                     "production_prediction_write": False,
                     "ev_output": False,
                     "betting_action": False,
@@ -880,6 +1158,9 @@ def approved_blend_prediction_report(
                 "race_id": race_id,
                 "status": "APPROVED_BLEND_READY",
                 "runner_rows": len(race_rows),
+                "active_runner_rows": len(active_rows),
+                "trusted_inactive_runner_rows": len(inactive_rows),
+                "trusted_inactive_runner_price_conflict_rows": 0,
                 "blockers": [],
                 "top_pick": race_prediction_rows[order[0]],
             }
@@ -926,6 +1207,7 @@ def odds_snapshot_from_row(
     odds_timestamp = row.get("timestamp") or row.get("capture_timestamp")
     odds_dt = parse_timestamp(odds_timestamp)
     age_at_prediction = seconds_between(prediction_time, odds_dt)
+    status_info = runner_status_info(row)
     provenance = {
         "source": row.get("source"),
         "source_url": row.get("source_url"),
@@ -943,11 +1225,22 @@ def odds_snapshot_from_row(
         "sportsbet_list_position": row.get("sportsbet_list_position"),
         "sportsbet_raw_runner_text": row.get("sportsbet_raw_runner_text"),
         "capture_mode": row.get("capture_mode"),
+        "runner_status": status_info["runner_status"],
+        "runner_status_raw": status_info["runner_status_raw"],
+        "runner_status_source": status_info["runner_status_source"],
+        "runner_status_source_column": status_info["runner_status_source_column"],
+        "runner_status_trusted": status_info["runner_status_trusted"],
     }
     snapshot = {
         "market_odds_win": row.get("odds_decimal"),
         "market_type": row.get("market_type") or "win",
         "odds_level": row.get("odds_level") or "dog",
+        "runner_status": status_info["runner_status"],
+        "runner_status_raw": status_info["runner_status_raw"],
+        "runner_status_source": status_info["runner_status_source"],
+        "runner_status_source_column": status_info["runner_status_source_column"],
+        "runner_status_trusted": status_info["runner_status_trusted"],
+        "runner_active_for_odds_gate": status_info["runner_active_for_odds_gate"],
         "odds_timestamp": odds_timestamp,
         "odds_age_seconds_at_prediction": age_at_prediction,
         "odds_age_minutes_at_prediction": (
@@ -1056,36 +1349,61 @@ def race_odds_coverage_report(
     for race_id in sorted(predictions_by_race):
         race_rows = rows_by_race.get(race_id, [])
         prediction_count = len(predictions_by_race[race_id])
-        runner_rows_with_candidates = sum(1 for row in race_rows if row.get("odds_candidate_count"))
-        total_candidate_count = sum(int(row.get("odds_candidate_count") or 0) for row in race_rows)
-        valid_rows = sum(
-            1 for row in race_rows if row.get("odds_match_status") == "valid_pre_jump_dog_odds"
+        inactive_rows = [row for row in race_rows if is_trusted_inactive_runner(row)]
+        active_rows = [row for row in race_rows if not is_trusted_inactive_runner(row)]
+        inactive_price_conflict_rows = [
+            row for row in inactive_rows if trusted_inactive_runner_has_odds_price(row)
+        ]
+        inactive_price_conflict_count = len(inactive_price_conflict_rows)
+        trusted_scratched_rows = sum(
+            1 for row in inactive_rows if runner_status_info(row)["runner_status"] == "scratched"
         )
-        ev_eligible_rows = sum(1 for row in race_rows if row.get("is_ev_eligible") is True)
-        exclusion_counts = Counter(
+        trusted_non_starter_rows = sum(
+            1 for row in inactive_rows if runner_status_info(row)["runner_status"] == "non_starter"
+        )
+        active_prediction_count = max(0, prediction_count - len(inactive_rows))
+        runner_rows_with_candidates = sum(
+            1 for row in active_rows if row.get("odds_candidate_count")
+        )
+        total_candidate_count = sum(
+            int(row.get("odds_candidate_count") or 0) for row in active_rows
+        )
+        valid_rows = sum(
+            1 for row in active_rows if row.get("odds_match_status") == "valid_pre_jump_dog_odds"
+        )
+        ev_eligible_rows = sum(1 for row in active_rows if row.get("is_ev_eligible") is True)
+        all_exclusion_counts = Counter(
             str(row.get("odds_exclusion_reason") or "none") for row in race_rows
+        )
+        exclusion_counts = Counter(
+            str(row.get("odds_exclusion_reason") or "none") for row in active_rows
         )
         duplicate_rows = exclusion_counts.get("duplicate_odds_rows", 0)
         post_prediction_rows = sum(
             1
-            for row in race_rows
+            for row in active_rows
             if row.get("odds_exclusion_reason") in POST_PREDICTION_ODDS_REASONS
         )
         post_feature_freeze_rows = sum(
             1
-            for row in race_rows
+            for row in active_rows
             if row.get("odds_exclusion_reason") in POST_FEATURE_FREEZE_ODDS_REASONS
         )
         post_jump_rows = sum(
             1
-            for row in race_rows
+            for row in active_rows
             if row.get("odds_exclusion_reason") in POST_JUMP_ODDS_REASONS
         )
-        missing_rows = max(0, prediction_count - runner_rows_with_candidates)
+        missing_rows = max(0, active_prediction_count - runner_rows_with_candidates)
         complete_candidate_coverage = (
-            prediction_count > 0 and runner_rows_with_candidates == prediction_count
+            active_prediction_count > 0
+            and runner_rows_with_candidates == active_prediction_count
         )
-        complete_valid_prejump_odds = prediction_count > 0 and valid_rows == prediction_count
+        complete_valid_prejump_odds = (
+            active_prediction_count > 0
+            and valid_rows == active_prediction_count
+            and inactive_price_conflict_count == 0
+        )
         odds_analysis_blockers: list[str] = []
         seen_blockers: set[str] = set()
 
@@ -1096,17 +1414,25 @@ def race_odds_coverage_report(
 
         if prediction_count <= 0:
             append_blocker("no_shadow_predictions")
+        if prediction_count > 0 and active_prediction_count <= 0:
+            append_blocker("no_active_runners")
+        if inactive_price_conflict_count > 0:
+            append_blocker(TRUSTED_INACTIVE_ODDS_PRICE_CONFLICT)
         if missing_rows > 0:
             append_blocker("missing_odds_rows")
-        for row in race_rows:
+        for row in active_rows:
             reason = str(row.get("odds_exclusion_reason") or "")
-            if reason and reason not in {"none", "no_odds_row"}:
+            if (
+                reason
+                and reason not in {"none", "no_odds_row"}
+                and reason not in TRUSTED_INACTIVE_ODDS_STATUSES
+            ):
                 append_blocker(reason)
-        if prediction_count > 0 and not complete_valid_prejump_odds:
+        if active_prediction_count > 0 and valid_rows != active_prediction_count:
             append_blocker("incomplete_valid_prejump_odds")
         odds_analysis_status = (
             "ODDS_ANALYSIS_READY_REPORT_ONLY_EV_DISABLED"
-            if prediction_count > 0 and not odds_analysis_blockers
+            if active_prediction_count > 0 and not odds_analysis_blockers
             else "ODDS_ANALYSIS_BLOCKED"
         )
 
@@ -1114,6 +1440,10 @@ def race_odds_coverage_report(
             coverage_status = "ODDS_NOT_CHECKED_DB_BLOCKED"
         elif collection_status == FINAL_ODDS_UNAVAILABLE:
             coverage_status = "ODDS_NOT_CHECKED_SOURCE_UNAVAILABLE"
+        elif inactive_price_conflict_count > 0:
+            coverage_status = "TRUSTED_INACTIVE_RUNNER_ODDS_CONFLICT"
+        elif active_prediction_count <= 0:
+            coverage_status = "NO_ACTIVE_RUNNERS"
         elif complete_valid_prejump_odds:
             coverage_status = "COMPLETE_VALID_PREJUMP_ODDS"
         elif complete_candidate_coverage:
@@ -1123,23 +1453,23 @@ def race_odds_coverage_report(
         else:
             coverage_status = "NO_ODDS_COVERAGE"
 
-        source_urls = sorted({url for row in race_rows for url in [_odds_source_url(row)] if url})
+        source_urls = sorted({url for row in active_rows for url in [_odds_source_url(row)] if url})
         status_counts = Counter(str(row.get("odds_match_status") or "unknown") for row in race_rows)
         raw_capture_mode_counts = _sum_count_mappings(
-            race_rows, "odds_raw_capture_mode_distribution"
+            active_rows, "odds_raw_capture_mode_distribution"
         )
         unique_capture_mode_counts = _sum_count_mappings(
-            race_rows, "odds_unique_capture_mode_distribution"
+            active_rows, "odds_unique_capture_mode_distribution"
         )
         valid_capture_mode_counts = _sum_count_mappings(
-            race_rows, "odds_valid_capture_mode_distribution"
+            active_rows, "odds_valid_capture_mode_distribution"
         )
         selected_capture_mode_counts = Counter(
-            mode for row in race_rows for mode in [_selected_capture_mode(row)] if mode
+            mode for row in active_rows for mode in [_selected_capture_mode(row)] if mode
         )
         selected_valid_capture_mode_counts = Counter(
             mode
-            for row in race_rows
+            for row in active_rows
             if row.get("odds_match_status") == "valid_pre_jump_dog_odds"
             for mode in [_selected_capture_mode(row)]
             if mode
@@ -1166,11 +1496,11 @@ def race_odds_coverage_report(
         ]
         raw_complete_expected_modes = _expected_capture_modes_with_full_runner_coverage(
             raw_capture_mode_counts,
-            prediction_count=prediction_count,
+            prediction_count=active_prediction_count,
         )
         valid_complete_expected_modes = _expected_capture_modes_with_full_runner_coverage(
             valid_capture_mode_counts,
-            prediction_count=prediction_count,
+            prediction_count=active_prediction_count,
         )
         raw_missing_complete_expected_modes = [
             mode
@@ -1188,7 +1518,15 @@ def race_odds_coverage_report(
                 "race_context": dict(contexts.get(race_id) or {}),
                 "odds_coverage_status": coverage_status,
                 "predicted_runner_count": prediction_count,
+                "active_predicted_runner_count": active_prediction_count,
+                "trusted_inactive_runner_rows": len(inactive_rows),
+                "trusted_scratched_runner_rows": trusted_scratched_rows,
+                "trusted_non_starter_runner_rows": trusted_non_starter_rows,
+                "trusted_inactive_runner_price_conflict_rows": (
+                    inactive_price_conflict_count
+                ),
                 "runner_rows_checked": len(race_rows),
+                "active_runner_rows_checked": len(active_rows),
                 "runner_rows_with_odds_candidates": runner_rows_with_candidates,
                 "total_odds_candidate_count": total_candidate_count,
                 "valid_pre_jump_dog_odds_rows": valid_rows,
@@ -1210,7 +1548,9 @@ def race_odds_coverage_report(
                 "odds_analysis_blockers": odds_analysis_blockers,
                 "ev_calculation_status": "DISABLED_REPORT_ONLY_NO_EV_OUTPUT",
                 "odds_match_status_distribution": dict(sorted(status_counts.items())),
-                "odds_exclusion_reason_distribution": dict(sorted(exclusion_counts.items())),
+                "odds_exclusion_reason_distribution": dict(
+                    sorted(all_exclusion_counts.items())
+                ),
                 "expected_prejump_capture_modes": list(EXPECTED_PREJUMP_CAPTURE_MODES),
                 "raw_capture_mode_distribution": raw_capture_mode_counts,
                 "unique_capture_mode_distribution": unique_capture_mode_counts,
@@ -1262,6 +1602,22 @@ def race_odds_coverage_report(
         ),
         "races_with_complete_valid_prejump_odds": sum(
             1 for race in race_reports if race["complete_valid_prejump_odds"]
+        ),
+        "races_with_trusted_inactive_runners": sum(
+            1 for race in race_reports if race["trusted_inactive_runner_rows"] > 0
+        ),
+        "trusted_inactive_runner_rows": sum(
+            int(race["trusted_inactive_runner_rows"]) for race in race_reports
+        ),
+        "trusted_scratched_runner_rows": sum(
+            int(race["trusted_scratched_runner_rows"]) for race in race_reports
+        ),
+        "trusted_non_starter_runner_rows": sum(
+            int(race["trusted_non_starter_runner_rows"]) for race in race_reports
+        ),
+        "trusted_inactive_runner_price_conflict_rows": sum(
+            int(race["trusted_inactive_runner_price_conflict_rows"])
+            for race in race_reports
         ),
         "races_with_missing_odds_rows": sum(
             1 for race in race_reports if race["missing_odds_rows"] > 0
@@ -1529,6 +1885,8 @@ def odds_research_gate_report(
     valid_prejump_rows_with_source_url = 0
     unsafe_or_rejected_rows = 0
     for row in rows:
+        if is_trusted_inactive_runner(row):
+            continue
         has_candidate = int(row.get("odds_candidate_count") or 0) > 0
         if has_candidate:
             source_url_rows_checked += 1
@@ -1812,6 +2170,7 @@ def collect_shadow_odds_snapshot(
                                 stale_odds_after_minutes=stale_odds_after_minutes,
                             )
                         )
+                        status_info = runner_status_info(_selected or prediction)
                         row = {
                             **prediction,
                             "schema_version": "shadow_odds_snapshot_runner_v1",
@@ -1845,6 +2204,19 @@ def collect_shadow_odds_snapshot(
                             ],
                             "odds_valid_capture_mode_distribution": selection[
                                 "valid_capture_mode_distribution"
+                            ],
+                            "runner_status": status_info["runner_status"],
+                            "runner_status_raw": status_info["runner_status_raw"],
+                            "runner_status_source": status_info["runner_status_source"],
+                            "runner_status_source_column": status_info[
+                                "runner_status_source_column"
+                            ],
+                            "runner_status_trusted": status_info["runner_status_trusted"],
+                            "trusted_inactive_runner": status_info[
+                                "trusted_inactive_runner"
+                            ],
+                            "runner_active_for_odds_gate": status_info[
+                                "runner_active_for_odds_gate"
                             ],
                             "odds_snapshot": odds_snapshot,
                             "odds_match_status": eligibility.get("odds_match_status"),
@@ -1910,6 +2282,13 @@ def collect_shadow_odds_snapshot(
         "prediction_rows": len(predictions),
         "race_count": race_count,
         "runner_rows": len(rows),
+        "active_runner_rows": sum(1 for row in rows if not is_trusted_inactive_runner(row)),
+        "trusted_inactive_runner_rows": race_coverage["trusted_inactive_runner_rows"],
+        "trusted_scratched_runner_rows": race_coverage["trusted_scratched_runner_rows"],
+        "trusted_non_starter_runner_rows": race_coverage["trusted_non_starter_runner_rows"],
+        "trusted_inactive_runner_price_conflict_rows": race_coverage[
+            "trusted_inactive_runner_price_conflict_rows"
+        ],
         "odds_candidate_rows": sum(1 for row in rows if row.get("odds_candidate_count")),
         "valid_pre_jump_dog_odds_rows": sum(
             1 for row in rows if row.get("odds_match_status") == "valid_pre_jump_dog_odds"
@@ -1944,6 +2323,9 @@ def collect_shadow_odds_snapshot(
         ],
         "races_with_complete_valid_prejump_odds": race_coverage[
             "races_with_complete_valid_prejump_odds"
+        ],
+        "races_with_trusted_inactive_runners": race_coverage[
+            "races_with_trusted_inactive_runners"
         ],
         "races_with_missing_odds_rows": race_coverage["races_with_missing_odds_rows"],
         "races_with_duplicate_odds_rows": race_coverage["races_with_duplicate_odds_rows"],
@@ -1998,6 +2380,9 @@ def collect_shadow_odds_snapshot(
                 f"- Final status: `{status}`",
                 f"- Shadow run: `{relpath(shadow_run_dir)}`",
                 f"- Prediction rows: `{len(predictions)}`",
+                f"- Active runner rows: `{report['active_runner_rows']}`",
+                f"- Trusted inactive runner rows: `{report['trusted_inactive_runner_rows']}`",
+                f"- Trusted inactive runner price conflicts: `{report['trusted_inactive_runner_price_conflict_rows']}`",
                 f"- Odds candidate rows: `{report['odds_candidate_rows']}`",
                 f"- Valid pre-jump dog odds rows: `{report['valid_pre_jump_dog_odds_rows']}`",
                 f"- Races with complete valid pre-jump odds: `{report['races_with_complete_valid_prejump_odds']}`",

@@ -554,6 +554,89 @@ def test_execute_capture_plan_skips_complete_existing_capture_without_fetch(
     assert attempt["existing_capture"]["missing_expected_runners"] == []
 
 
+def test_existing_capture_allows_missing_explicit_scratched_expected_runner(
+    tmp_path, monkeypatch
+):
+    input_dir = tmp_path / "upcoming"
+    csv_path = _write_capture_input(input_dir)
+    sidecar_path = capture.sidecar_path_for(csv_path)
+    sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    sidecar["prejump_shadow_metadata"]["runner_box_name_list"][1]["status"] = "SCR"
+    capture.write_json(sidecar_path, sidecar)
+    db_path = tmp_path / "odds.db"
+    _insert_live_odds_rows(
+        db_path,
+        [{"dog_name": "Alpha", "box_number": 1, "odds_decimal": 2.4}],
+    )
+
+    def fail_fetch(*_args, **_kwargs):
+        raise AssertionError("fetch must not run for complete active existing capture")
+
+    monkeypatch.setattr(capture, "fetch_odds_for_target_race", fail_fetch)
+
+    report = capture.execute_capture_plan(
+        _plan(input_dir),
+        db_path=db_path,
+        current_time=datetime.fromisoformat("2026-06-10T14:40:00+10:00"),
+        execute=True,
+        allow_auto_scrape_odds=True,
+        current_time_provider=lambda: datetime.fromisoformat("2026-06-10T14:40:00+10:00"),
+    )
+
+    attempt = report["attempts"][0]
+    assert attempt["status"] == "SKIPPED_ALREADY_CAPTURED"
+    assert attempt["existing_capture"]["status"] == "COMPLETE"
+    assert attempt["existing_capture"]["expected_runner_count"] == 2
+    assert attempt["existing_capture"]["active_expected_runner_count"] == 1
+    assert attempt["existing_capture"]["scratched_expected_runners"] == [
+        {"box_number": 2, "identity": "BRAVO"}
+    ]
+    assert attempt["existing_capture"]["missing_expected_runners"] == []
+
+
+def test_existing_capture_blocks_priced_explicit_scratched_expected_runner(
+    tmp_path, monkeypatch
+):
+    input_dir = tmp_path / "upcoming"
+    csv_path = _write_capture_input(input_dir)
+    sidecar_path = capture.sidecar_path_for(csv_path)
+    sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    sidecar["prejump_shadow_metadata"]["runner_box_name_list"][1]["status"] = "SCR"
+    capture.write_json(sidecar_path, sidecar)
+    db_path = tmp_path / "odds.db"
+    _insert_live_odds_rows(
+        db_path,
+        [
+            {"dog_name": "Alpha", "box_number": 1, "odds_decimal": 2.4},
+            {"dog_name": "Bravo", "box_number": 2, "odds_decimal": 3.5},
+        ],
+    )
+
+    def fail_fetch(*_args, **_kwargs):
+        raise AssertionError("fetch must not run when existing capture conflicts")
+
+    monkeypatch.setattr(capture, "fetch_odds_for_target_race", fail_fetch)
+
+    report = capture.execute_capture_plan(
+        _plan(input_dir),
+        db_path=db_path,
+        current_time=datetime.fromisoformat("2026-06-10T14:40:00+10:00"),
+        execute=True,
+        allow_auto_scrape_odds=True,
+        current_time_provider=lambda: datetime.fromisoformat("2026-06-10T14:40:00+10:00"),
+    )
+
+    attempt = report["attempts"][0]
+    assert attempt["status"] == "BLOCKED_EXISTING_CAPTURE_INVALID"
+    assert attempt["existing_capture"]["scratched_expected_runners_with_odds"] == [
+        {"box_number": 2, "identity": "BRAVO"}
+    ]
+    assert (
+        "existing_capture_odds_present_for_inactive_expected_runners:2:BRAVO"
+        in attempt["reasons"]
+    )
+
+
 def test_execute_capture_plan_blocks_existing_capture_with_incomplete_provenance(
     tmp_path, monkeypatch
 ):
@@ -839,6 +922,136 @@ def test_validate_fetched_odds_accepts_abbreviated_name_period_runner_text():
     assert validation["reasons"] == []
     assert validation["accepted_rows"][0]["box_number"] == 3
     assert validation["accepted_rows"][0]["identity"] == "DRWILL"
+
+
+def test_validate_fetched_odds_allows_missing_explicit_scratched_expected_runner():
+    plan_item = {
+        "race_id": "Race 1 - WPK - 2026-06-10",
+        "race_number": 1,
+        "expected_runners": [
+            {"box_number": 1, "dog_name": "Alpha", "identity": "ALPHA"},
+            {
+                "box_number": 2,
+                "dog_name": "Bravo",
+                "identity": "BRAVO",
+                "status": "SCR",
+            },
+        ],
+    }
+    fetch_result = {
+        "success": True,
+        "race_info": {
+            "race_number": 1,
+            "venue_url": (
+                "https://www.sportsbet.com.au/betting/greyhound-racing/"
+                "australia-nz/wentworth-park/race-1"
+            ),
+        },
+        "odds_data": [
+            {
+                "dog_name": "Alpha",
+                "box_number": 1,
+                "odds_decimal": 2.4,
+                "sportsbet_box_source": "runner_text",
+            },
+        ],
+    }
+
+    validation = capture.validate_fetched_odds(plan_item, fetch_result)
+
+    assert validation["status"] == "PASS"
+    assert validation["expected_runner_count"] == 2
+    assert validation["active_expected_runner_count"] == 1
+    assert validation["scratched_expected_runners"] == [
+        {"box_number": 2, "identity": "BRAVO"}
+    ]
+    assert validation["missing_expected_runners"] == []
+    assert validation["reasons"] == []
+
+
+def test_validate_fetched_odds_missing_unmarked_runner_still_blocks():
+    plan_item = {
+        "race_id": "Race 1 - WPK - 2026-06-10",
+        "race_number": 1,
+        "expected_runners": [
+            {"box_number": 1, "dog_name": "Alpha", "identity": "ALPHA"},
+            {"box_number": 2, "dog_name": "Bravo", "identity": "BRAVO"},
+        ],
+    }
+    fetch_result = {
+        "success": True,
+        "race_info": {
+            "race_number": 1,
+            "venue_url": (
+                "https://www.sportsbet.com.au/betting/greyhound-racing/"
+                "australia-nz/wentworth-park/race-1"
+            ),
+        },
+        "odds_data": [
+            {
+                "dog_name": "Alpha",
+                "box_number": 1,
+                "odds_decimal": 2.4,
+                "sportsbet_box_source": "runner_text",
+            },
+        ],
+    }
+
+    validation = capture.validate_fetched_odds(plan_item, fetch_result)
+
+    assert validation["status"] == "FAIL"
+    assert validation["missing_expected_runners"] == [
+        {"box_number": 2, "identity": "BRAVO"}
+    ]
+    assert validation["scratched_expected_runners"] == []
+    assert "sportsbet_missing_expected_runners:2:BRAVO" in validation["reasons"]
+
+
+def test_validate_fetched_odds_blocks_priced_explicit_scratched_expected_runner():
+    plan_item = {
+        "race_id": "Race 1 - WPK - 2026-06-10",
+        "race_number": 1,
+        "expected_runners": [
+            {"box_number": 1, "dog_name": "Alpha", "identity": "ALPHA"},
+            {"box_number": 2, "dog_name": "Bravo", "identity": "BRAVO", "status": "SCR"},
+        ],
+    }
+    fetch_result = {
+        "success": True,
+        "race_info": {
+            "race_number": 1,
+            "venue_url": (
+                "https://www.sportsbet.com.au/betting/greyhound-racing/"
+                "australia-nz/wentworth-park/race-1"
+            ),
+        },
+        "odds_data": [
+            {
+                "dog_name": "Alpha",
+                "box_number": 1,
+                "odds_decimal": 2.4,
+                "sportsbet_box_source": "runner_text",
+            },
+            {
+                "dog_name": "Bravo",
+                "box_number": 2,
+                "odds_decimal": 3.5,
+                "sportsbet_box_source": "runner_text",
+            },
+        ],
+    }
+
+    validation = capture.validate_fetched_odds(plan_item, fetch_result)
+
+    assert validation["status"] == "FAIL"
+    assert validation["missing_expected_runners"] == []
+    assert validation["scratched_expected_runners_with_odds"] == [
+        {"box_number": 2, "identity": "BRAVO"}
+    ]
+    assert (
+        "sportsbet_odds_present_for_scratched_expected_runners:2:BRAVO"
+        in validation["reasons"]
+    )
 
 
 def test_execute_capture_plan_rechecks_prejump_time_before_append(
