@@ -210,6 +210,9 @@ def odds_snapshot_summary(
     odds_next_action = readiness.get("odds_research_next_action")
     if not odds_next_action and skipped_reason == "no_shadow_predictions":
         odds_next_action = "WAIT_FOR_SHADOW_PREDICTIONS"
+    approved_predictions = report.get("approved_odds_augmented_predictions")
+    if not isinstance(approved_predictions, Mapping):
+        approved_predictions = {}
     return {
         "final_status": report.get("final_status") or report.get("status"),
         "collection_attempted": report.get("collection_attempted"),
@@ -244,6 +247,22 @@ def odds_snapshot_summary(
             "DISABLED_REPORT_ONLY_NO_EV_OUTPUT",
         ),
         "odds_used_for_shadow_scoring": bool(readiness.get("odds_used_for_shadow_scoring")),
+        "approved_odds_augmented_candidate_key": approved_predictions.get(
+            "candidate_key"
+        ),
+        "approved_odds_augmented_prediction_status": approved_predictions.get("status"),
+        "approved_odds_augmented_ready_race_count": int(
+            approved_predictions.get("ready_race_count") or 0
+        ),
+        "approved_odds_augmented_blocked_race_count": int(
+            approved_predictions.get("blocked_race_count") or 0
+        ),
+        "approved_odds_augmented_prediction_rows": int(
+            approved_predictions.get("prediction_rows") or 0
+        ),
+        "approved_odds_augmented_prediction_report_path": report.get(
+            "approved_odds_augmented_prediction_report_path"
+        ),
     }
 
 
