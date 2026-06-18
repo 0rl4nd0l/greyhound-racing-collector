@@ -52,6 +52,8 @@ ODDS_RESEARCH_BLOCKED_PROVENANCE = "ODDS_RESEARCH_BLOCKED_PROVENANCE"
 ODDS_RESEARCH_READY_REPORT_ONLY = "ODDS_RESEARCH_READY_REPORT_ONLY"
 ODDS_AUGMENTED_MODEL_BLOCKED = "ODDS_AUGMENTED_MODEL_BLOCKED"
 ODDS_AUGMENTED_MODEL_READY_FOR_PR_REVIEW = "ODDS_AUGMENTED_MODEL_READY_FOR_PR_REVIEW"
+APPROVED_ODDS_AUGMENTED_CANDIDATE_KEY = "stage2_market_blend_95"
+APPROVED_ODDS_AUGMENTED_MARKET_WEIGHT = 0.95
 PROTECTED_PATHS = (
     ROOT / "greyhound_racing_data.db",
     ROOT / "greyhound_racing_data_writable.db",
@@ -745,6 +747,171 @@ def safe_int(value: Any) -> int | None:
         return int(str(value).strip())
     except Exception:
         return None
+
+
+def safe_float(value: Any) -> float | None:
+    try:
+        if value in (None, ""):
+            return None
+        parsed = float(value)
+    except Exception:
+        return None
+    if not math.isfinite(parsed):
+        return None
+    return parsed
+
+
+def normalize_scores(raw_scores: Sequence[float]) -> list[float] | None:
+    if not raw_scores:
+        return None
+    if any(score < 0 or not math.isfinite(score) for score in raw_scores):
+        return None
+    total = sum(raw_scores)
+    if total <= 0:
+        return None
+    return [score / total for score in raw_scores]
+
+
+def approved_blend_prediction_report(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    output_dir: Path,
+    candidate_key: str = APPROVED_ODDS_AUGMENTED_CANDIDATE_KEY,
+    market_weight: float = APPROVED_ODDS_AUGMENTED_MARKET_WEIGHT,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    grouped: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+    for row in rows:
+        race_id = str(row.get("race_id") or "")
+        if race_id:
+            grouped[race_id].append(row)
+
+    predictions: list[dict[str, Any]] = []
+    race_reports: list[dict[str, Any]] = []
+    for race_id, race_rows in sorted(grouped.items()):
+        blockers: list[str] = []
+        if not race_rows:
+            blockers.append("prediction_rows_missing")
+        if any(row.get("odds_match_status") != "valid_pre_jump_dog_odds" for row in race_rows):
+            blockers.append("race_not_complete_valid_prejump_odds")
+
+        model_raw: list[float] = []
+        market_raw: list[float] = []
+        for row in race_rows:
+            model_score = safe_float(row.get("shadow_rf_calibrated_probability"))
+            snapshot = row.get("odds_snapshot") if isinstance(row.get("odds_snapshot"), Mapping) else {}
+            odds_decimal = safe_float(snapshot.get("market_odds_win"))
+            if model_score is None or model_score < 0:
+                blockers.append("model_probability_missing_or_invalid")
+                model_score = 0.0
+            if odds_decimal is None or odds_decimal <= 1.0:
+                blockers.append("market_odds_missing_or_invalid")
+                market_score = 0.0
+            else:
+                market_score = 1.0 / odds_decimal
+            model_raw.append(model_score)
+            market_raw.append(market_score)
+
+        model_scores = normalize_scores(model_raw)
+        market_scores = normalize_scores(market_raw)
+        if model_scores is None:
+            blockers.append("model_probability_normalization_failed")
+        if market_scores is None:
+            blockers.append("market_probability_normalization_failed")
+        blockers = list(dict.fromkeys(blockers))
+
+        if blockers:
+            race_reports.append(
+                {
+                    "race_id": race_id,
+                    "status": "APPROVED_BLEND_BLOCKED",
+                    "runner_rows": len(race_rows),
+                    "blockers": blockers,
+                }
+            )
+            continue
+
+        blended = [
+            ((1.0 - market_weight) * model_score) + (market_weight * market_score)
+            for model_score, market_score in zip(model_scores or [], market_scores or [], strict=True)
+        ]
+        order = sorted(
+            range(len(race_rows)),
+            key=lambda index: (
+                -blended[index],
+                safe_int(race_rows[index].get("box")) or 99,
+                str(race_rows[index].get("dog_name") or ""),
+            ),
+        )
+        ranks = {index: rank for rank, index in enumerate(order, start=1)}
+        race_prediction_rows: list[dict[str, Any]] = []
+        for index, row in enumerate(race_rows):
+            snapshot = row.get("odds_snapshot") if isinstance(row.get("odds_snapshot"), Mapping) else {}
+            provenance = (
+                snapshot.get("odds_provenance")
+                if isinstance(snapshot.get("odds_provenance"), Mapping)
+                else {}
+            )
+            race_prediction_rows.append(
+                {
+                    "schema_version": "approved_odds_augmented_prediction_v1",
+                    "race_id": race_id,
+                    "dog_name": row.get("dog_name"),
+                    "box": row.get("box"),
+                    "candidate_key": candidate_key,
+                    "market_weight": market_weight,
+                    "stage2_shadow_probability": model_scores[index],
+                    "market_implied_probability": market_scores[index],
+                    "approved_blend_probability": blended[index],
+                    "approved_blend_rank": ranks[index],
+                    "source_shadow_rank": row.get("predicted_rank"),
+                    "odds_decimal": snapshot.get("market_odds_win"),
+                    "odds_source_url": provenance.get("source_url"),
+                    "odds_timestamp": snapshot.get("odds_timestamp"),
+                    "odds_match_status": row.get("odds_match_status"),
+                    "production_prediction_write": False,
+                    "ev_output": False,
+                    "betting_action": False,
+                    "tgr_enabled": False,
+                }
+            )
+        predictions.extend(race_prediction_rows)
+        race_reports.append(
+            {
+                "race_id": race_id,
+                "status": "APPROVED_BLEND_READY",
+                "runner_rows": len(race_rows),
+                "blockers": [],
+                "top_pick": race_prediction_rows[order[0]],
+            }
+        )
+
+    ready_race_count = sum(1 for race in race_reports if race["status"] == "APPROVED_BLEND_READY")
+    blocked_race_count = sum(1 for race in race_reports if race["status"] != "APPROVED_BLEND_READY")
+    if ready_race_count and not blocked_race_count:
+        status = "APPROVED_BLEND_READY"
+    elif ready_race_count:
+        status = "APPROVED_BLEND_PARTIAL"
+    else:
+        status = "APPROVED_BLEND_BLOCKED"
+    report = {
+        "schema_version": "approved_odds_augmented_prediction_report_v1",
+        "candidate_key": candidate_key,
+        "market_weight": market_weight,
+        "status": status,
+        "race_count": len(race_reports),
+        "ready_race_count": ready_race_count,
+        "blocked_race_count": blocked_race_count,
+        "prediction_rows": len(predictions),
+        "approved_predictions_jsonl": relpath(
+            output_dir / "approved_odds_augmented_predictions.jsonl"
+        ),
+        "race_reports": race_reports,
+        "production_prediction_write": False,
+        "ev_output": False,
+        "betting_action": False,
+        "registry_mutation": False,
+    }
+    return report, predictions
 
 
 def odds_snapshot_from_row(
@@ -1721,6 +1888,10 @@ def collect_shadow_odds_snapshot(
     )
     odds_augmented_report = odds_augmented_challenger_report_from_gate(odds_gate)
     ev_diagnostics = report_only_ev_diagnostics(gate=odds_gate, rows=rows)
+    approved_blend_report, approved_blend_predictions = approved_blend_prediction_report(
+        rows,
+        output_dir=output_dir,
+    )
     report = {
         "schema_version": "shadow_odds_snapshot_report_v1",
         "generated_at": generated_at.isoformat(),
@@ -1752,10 +1923,17 @@ def collect_shadow_odds_snapshot(
         "odds_research_gate": odds_gate,
         "odds_augmented_challenger": odds_augmented_report,
         "report_only_ev_diagnostics": ev_diagnostics,
+        "approved_odds_augmented_predictions": approved_blend_report,
         "race_coverage_path": relpath(output_dir / "shadow_odds_race_coverage.json"),
         "odds_research_gate_report_path": relpath(output_dir / "odds_research_gate_report.json"),
         "odds_augmented_challenger_report_path": relpath(
             output_dir / "odds_augmented_challenger_report.json"
+        ),
+        "approved_odds_augmented_predictions_path": relpath(
+            output_dir / "approved_odds_augmented_predictions.jsonl"
+        ),
+        "approved_odds_augmented_prediction_report_path": relpath(
+            output_dir / "approved_odds_augmented_prediction_report.json"
         ),
         "report_only_ev_diagnostics_path": relpath(
             output_dir / "report_only_ev_diagnostics.json"
@@ -1796,10 +1974,18 @@ def collect_shadow_odds_snapshot(
     output_dir.mkdir(parents=True, exist_ok=True)
     write_jsonl(output_dir / "shadow_odds_snapshot.jsonl", rows)
     write_csv(output_dir / "shadow_odds_snapshot.csv", rows)
+    write_jsonl(
+        output_dir / "approved_odds_augmented_predictions.jsonl",
+        approved_blend_predictions,
+    )
     write_json(output_dir / "shadow_odds_race_coverage.json", race_coverage)
     write_json(output_dir / "shadow_odds_research_readiness.json", odds_research_readiness)
     write_json(output_dir / "odds_research_gate_report.json", odds_gate)
     write_json(output_dir / "odds_augmented_challenger_report.json", odds_augmented_report)
+    write_json(
+        output_dir / "approved_odds_augmented_prediction_report.json",
+        approved_blend_report,
+    )
     write_json(output_dir / "report_only_ev_diagnostics.json", ev_diagnostics)
     write_json(output_dir / "shadow_odds_snapshot_report.json", report)
     write_text(output_dir / "final_status.txt", f"{status}\n")
@@ -1820,10 +2006,14 @@ def collect_shadow_odds_snapshot(
                 f"- Odds analysis blockers: `{odds_research_readiness['blocker_counts']}`",
                 f"- Odds gate blockers: `{odds_gate['blocker_counts']}`",
                 f"- Odds-augmented model status: `{odds_augmented_report['final_status']}`",
+                f"- Approved odds-augmented candidate: `{approved_blend_report['candidate_key']}`",
+                f"- Approved odds-augmented prediction status: `{approved_blend_report['status']}`",
+                f"- Approved odds-augmented ready races: `{approved_blend_report['ready_race_count']}`",
+                f"- Approved odds-augmented blocked races: `{approved_blend_report['blocked_race_count']}`",
                 f"- EV output rows: `0`",
                 f"- Protected paths unchanged: `{report['protected_paths_unchanged']}`",
                 "",
-                "Report-only lane; no DB, label, registry, production model, production prediction, EV, betting, TGR, or training mutation.",
+                "Approved blend predictions are artifact-only; no DB, label, registry, production model, production prediction, EV, betting, TGR, or training mutation.",
                 "",
             ]
         ),

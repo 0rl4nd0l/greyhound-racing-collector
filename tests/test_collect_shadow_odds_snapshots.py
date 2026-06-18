@@ -353,6 +353,25 @@ def test_collect_shadow_odds_snapshot_marks_exact_dog_box_odds_eligible(tmp_path
     assert report["report_only_ev_diagnostics"]["status"] == (
         "EV_DIAGNOSTICS_BLOCKED_ODDS_RESEARCH_GATE"
     )
+    approved = report["approved_odds_augmented_predictions"]
+    assert approved["candidate_key"] == odds.APPROVED_ODDS_AUGMENTED_CANDIDATE_KEY
+    assert approved["status"] == "APPROVED_BLEND_READY"
+    assert approved["ready_race_count"] == 1
+    assert approved["blocked_race_count"] == 0
+    approved_rows = [
+        json.loads(line)
+        for line in (output_dir / "approved_odds_augmented_predictions.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line.strip()
+    ]
+    assert approved_rows[0]["candidate_key"] == "stage2_market_blend_95"
+    assert approved_rows[0]["approved_blend_probability"] == pytest.approx(1.0)
+    assert approved_rows[0]["approved_blend_rank"] == 1
+    assert approved_rows[0]["production_prediction_write"] is False
+    assert approved_rows[0]["ev_output"] is False
+    assert approved_rows[0]["betting_action"] is False
+    assert (output_dir / "approved_odds_augmented_prediction_report.json").exists()
     policy = report["odds_research_readiness"]["odds_research_gate_policy"]
     assert policy["source_requirements"]["trusted_source_required"] is True
     assert policy["timing_requirements"]["captured_before_prediction_required"] is True
@@ -555,6 +574,71 @@ def test_collect_shadow_odds_snapshot_records_missing_odds_without_ev(tmp_path, 
             ],
         }
     ]
+    approved = report["approved_odds_augmented_predictions"]
+    assert approved["status"] == "APPROVED_BLEND_BLOCKED"
+    assert approved["ready_race_count"] == 0
+    assert approved["blocked_race_count"] == 1
+    assert approved["prediction_rows"] == 0
+    assert approved["race_reports"][0]["blockers"] == [
+        "race_not_complete_valid_prejump_odds",
+        "market_odds_missing_or_invalid",
+        "market_probability_normalization_failed",
+    ]
+    assert (
+        output_dir / "approved_odds_augmented_predictions.jsonl"
+    ).read_text(encoding="utf-8") == ""
+
+
+def test_approved_odds_augmented_blend_ranks_with_reviewed_formula(tmp_path):
+    rows = [
+        {
+            "race_id": "Race 1 - TEST - 2026-06-09",
+            "dog_name": "Model Pick",
+            "box": 1,
+            "predicted_rank": 1,
+            "shadow_rf_calibrated_probability": 0.8,
+            "odds_match_status": "valid_pre_jump_dog_odds",
+            "odds_snapshot": {
+                "market_odds_win": 4.0,
+                "odds_timestamp": "2026-06-09T00:01:00+10:00",
+                "odds_provenance": {"source_url": "https://sportsbet.test/r1"},
+            },
+        },
+        {
+            "race_id": "Race 1 - TEST - 2026-06-09",
+            "dog_name": "Market Pick",
+            "box": 2,
+            "predicted_rank": 2,
+            "shadow_rf_calibrated_probability": 0.2,
+            "odds_match_status": "valid_pre_jump_dog_odds",
+            "odds_snapshot": {
+                "market_odds_win": 2.0,
+                "odds_timestamp": "2026-06-09T00:01:00+10:00",
+                "odds_provenance": {"source_url": "https://sportsbet.test/r1"},
+            },
+        },
+    ]
+
+    report, predictions = odds.approved_blend_prediction_report(
+        rows,
+        output_dir=tmp_path,
+    )
+
+    assert report["status"] == "APPROVED_BLEND_READY"
+    assert report["ready_race_count"] == 1
+    assert report["blocked_race_count"] == 0
+    by_dog = {row["dog_name"]: row for row in predictions}
+    assert by_dog["Model Pick"]["stage2_shadow_probability"] == pytest.approx(0.8)
+    assert by_dog["Model Pick"]["market_implied_probability"] == pytest.approx(1 / 3)
+    assert by_dog["Model Pick"]["approved_blend_probability"] == pytest.approx(
+        0.05 * 0.8 + 0.95 * (1 / 3)
+    )
+    assert by_dog["Model Pick"]["approved_blend_rank"] == 2
+    assert by_dog["Market Pick"]["approved_blend_probability"] == pytest.approx(
+        0.05 * 0.2 + 0.95 * (2 / 3)
+    )
+    assert by_dog["Market Pick"]["approved_blend_rank"] == 1
+    assert all(row["production_prediction_write"] is False for row in predictions)
 
 
 def test_collect_shadow_odds_snapshot_rejects_duplicate_odds_rows(tmp_path, monkeypatch):
