@@ -1599,10 +1599,11 @@ class SportsbetOddsIntegrator:
 
             # Process each card individually with comprehensive error handling
             successful_extractions = 0
-            processed_names = set()
+            processed_runner_keys = set()
+            discovered_runner_keys = set()
 
-            for i, card in enumerate(candidate_cards[:8]):  # Max 8 runners
-                print(f"  🐕 Processing runner card {i+1}/{min(len(candidate_cards), 8)}...")
+            for i, card in enumerate(candidate_cards):
+                print(f"  🐕 Processing runner card {i+1}/{len(candidate_cards)}...")
 
                 # Ensure element is in view (handles virtualization/lazy rendering)
                 try:
@@ -1615,16 +1616,7 @@ class SportsbetOddsIntegrator:
                 # Extract dog name with multiple fallback strategies
                 dog_name = self._extract_dog_name_with_fallbacks(card, i + 1)
 
-                # Skip duplicates by cleaned name
-                if dog_name and self.clean_dog_name(dog_name) in processed_names:
-                    print(f"    🔁 Skipping duplicate runner '{dog_name}'")
-                    continue
-
-                # Extract odds with multiple fallback strategies
-                odds_decimal, odds_text = self._extract_odds_with_fallbacks(card, i + 1)
-
-                # Add to results if we have both name and odds
-                if dog_name and odds_decimal > 0:
+                if dog_name:
                     cleaned = self.clean_dog_name(dog_name)
                     try:
                         runner_text = card.text.strip()
@@ -1640,6 +1632,25 @@ class SportsbetOddsIntegrator:
                         list_position=i + 1,
                         runner_text=runner_text,
                     )
+                    if box_meta.get("sportsbet_box_source") == SPORTSBET_LIST_POSITION_BOX_SOURCE:
+                        runner_key = ("name", cleaned)
+                    else:
+                        runner_key = ("box_name", box_meta.get("box_number"), cleaned)
+                    discovered_runner_keys.add(runner_key)
+
+                    if runner_key in processed_runner_keys:
+                        print(f"    🔁 Skipping duplicate runner '{dog_name}'")
+                        continue
+                else:
+                    cleaned = ""
+                    box_meta = {}
+                    runner_key = None
+
+                # Extract odds with multiple fallback strategies
+                odds_decimal, odds_text = self._extract_odds_with_fallbacks(card, i + 1)
+
+                # Add to results if we have both name and odds
+                if dog_name and odds_decimal > 0:
                     odds_data.append(
                         {
                             "dog_name": dog_name,
@@ -1649,7 +1660,7 @@ class SportsbetOddsIntegrator:
                             **box_meta,
                         }
                     )
-                    processed_names.add(cleaned)
+                    processed_runner_keys.add(runner_key)
                     successful_extractions += 1
                     print(f"    ✅ Successfully extracted: {dog_name} - ${odds_decimal:.2f}")
                 elif dog_name:
@@ -1669,6 +1680,16 @@ class SportsbetOddsIntegrator:
             if successful_extractions < 4:
                 print(
                     f"  🚨 WARNING: Only found {successful_extractions} complete runners (expected 4+)"
+                )
+                self._save_debug_info(successful_extractions)
+            elif (
+                len(discovered_runner_keys) >= 8
+                and successful_extractions < len(discovered_runner_keys)
+            ):
+                print(
+                    "  🚨 WARNING: Found "
+                    f"{successful_extractions} odds for "
+                    f"{len(discovered_runner_keys)} explicit Sportsbet runners"
                 )
                 self._save_debug_info(successful_extractions)
 

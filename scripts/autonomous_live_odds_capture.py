@@ -230,7 +230,12 @@ def blocked_attempt_summaries(
                 "validation_expected_runner_count": validation.get(
                     "expected_runner_count"
                 ),
+                "validation_active_expected_runner_count": validation.get(
+                    "active_expected_runner_count"
+                ),
                 "validation_accepted_row_count": validation.get("accepted_row_count"),
+                "validation_failure_root_cause": validation.get("failure_root_cause"),
+                "validation_failure_detail": validation.get("failure_detail"),
                 "validation_missing_expected_runner_count": len(
                     validation.get("missing_expected_runners") or []
                 ),
@@ -242,6 +247,58 @@ def blocked_attempt_summaries(
         if len(summaries) >= limit:
             break
     return summaries
+
+
+def validation_failure_detail(
+    *,
+    active_expected_count: int,
+    accepted_row_count: int,
+    missing_count: int,
+    extra_count: int,
+    fetch_result: Mapping[str, Any],
+) -> dict[str, Any]:
+    detail: dict[str, Any] = {
+        "active_expected_runner_count": active_expected_count,
+        "accepted_win_row_count": accepted_row_count,
+        "missing_active_runner_count": missing_count,
+        "extra_unexpected_runner_count": extra_count,
+        "fetch_win_count": parse_int_value(fetch_result.get("win_count")),
+        "fetch_place_count": parse_int_value(fetch_result.get("place_count")),
+    }
+    root_cause = None
+    if extra_count > 0:
+        root_cause = "sportsbet_unexpected_runner_identity_mismatch"
+    partial_win_rows = (
+        missing_count > 0
+        and accepted_row_count > 0
+        and accepted_row_count < active_expected_count
+    )
+    if (
+        root_cause is None
+        and partial_win_rows
+        and detail["fetch_place_count"] == active_expected_count
+    ):
+        root_cause = "sportsbet_win_market_partial_but_place_complete"
+    elif root_cause is None and partial_win_rows:
+        root_cause = "partial_same_race_win_market"
+    if root_cause is not None:
+        detail["root_cause"] = root_cause
+    return detail
+
+
+def validation_failure_reason(detail: Mapping[str, Any]) -> str | None:
+    root_cause = detail.get("root_cause")
+    if not root_cause:
+        return None
+    return (
+        f"{root_cause}:"
+        f"active_expected={detail.get('active_expected_runner_count')},"
+        f"accepted_win={detail.get('accepted_win_row_count')},"
+        f"fetch_win={detail.get('fetch_win_count')},"
+        f"fetch_place={detail.get('fetch_place_count')},"
+        f"missing_active={detail.get('missing_active_runner_count')},"
+        f"extra_unexpected={detail.get('extra_unexpected_runner_count')}"
+    )
 
 
 def t2_miss_cause_for_attempt(attempt: Mapping[str, Any]) -> str | None:
@@ -943,6 +1000,16 @@ def validate_fetched_odds(
             "sportsbet_extra_unexpected_runners:"
             + ",".join(f"{box}:{identity}" for box, identity in extra)
         )
+    failure_detail = validation_failure_detail(
+        active_expected_count=len(active_expected_set),
+        accepted_row_count=len(accepted_rows),
+        missing_count=len(missing),
+        extra_count=len(extra),
+        fetch_result=fetch_result,
+    )
+    failure_reason = validation_failure_reason(failure_detail)
+    if failure_reason:
+        reasons.append(failure_reason)
     if rejected_rows:
         reasons.append(f"sportsbet_rejected_runner_rows:{len(rejected_rows)}")
     if not accepted_rows:
@@ -971,6 +1038,8 @@ def validate_fetched_odds(
         "extra_unexpected_runners": [
             {"box_number": box, "identity": identity} for box, identity in extra
         ],
+        "failure_root_cause": failure_detail.get("root_cause"),
+        "failure_detail": failure_detail,
         "reasons": sorted(set(reasons)),
     }
 

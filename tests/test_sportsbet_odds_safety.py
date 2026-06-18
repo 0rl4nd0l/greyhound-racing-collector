@@ -451,6 +451,128 @@ def test_sportsbet_runner_box_metadata_marks_list_position_only_as_ambiguous():
     assert metadata["sportsbet_list_position"] == 5
 
 
+class _FakeSportsbetBy:
+    CSS_SELECTOR = "css selector"
+    XPATH = "xpath"
+
+
+class _FakeSportsbetEC:
+    @staticmethod
+    def presence_of_element_located(_locator):
+        return lambda _driver: True
+
+
+class _FakeSportsbetWait:
+    def __init__(self, _driver, _timeout):
+        pass
+
+    def until(self, condition):
+        return condition(None)
+
+
+class _FakeSportsbetElement:
+    def __init__(self, text):
+        self.text = text
+
+
+class _FakeSportsbetCard:
+    def __init__(self, runner_number, dog_name, odds_text):
+        self.runner_number = runner_number
+        self.dog_name = dog_name
+        self.odds_text = odds_text
+        self.text = f"{runner_number}. {dog_name} ({runner_number})\n{odds_text}"
+
+    def find_element(self, _by, selector):
+        if selector == "div[data-automation-id='racecard-outcome-name'] span":
+            return _FakeSportsbetElement(f"{self.runner_number}. {self.dog_name}")
+        if selector == "[data-automation-id*='price-text']":
+            return _FakeSportsbetElement(self.odds_text)
+        raise LookupError(selector)
+
+    def find_elements(self, _by, _selector):
+        return []
+
+
+class _FakeSportsbetRunnerCardDriver:
+    current_url = "https://www.sportsbet.com.au/test-race"
+    page_source = "<html></html>"
+
+    def __init__(self, cards):
+        self.cards = cards
+
+    def find_elements(self, _by, selector):
+        if "racecard-outcome-name" in selector or selector.startswith(
+            "div[data-automation-id^='racecard-outcome-']"
+        ):
+            return self.cards
+        return []
+
+    def execute_script(self, *_args):
+        return None
+
+    def save_screenshot(self, _path):
+        return True
+
+
+def test_runner_card_extractor_scans_all_candidates_before_deduping(monkeypatch, tmp_path):
+    monkeypatch.setattr("sportsbet_odds_integrator.time.sleep", lambda _seconds: None)
+    runners = [
+        (1, "Alpha One", "2.10"),
+        (2, "Bravo Two", "3.20"),
+        (3, "Charlie Three", "4.30"),
+        (4, "Delta Four", "5.40"),
+        (5, "Echo Five", "6.50"),
+        (6, "Foxtrot Six", "7.60"),
+        (7, "Golf Seven", "8.70"),
+        (8, "Hotel Eight", "9.80"),
+    ]
+    cards = []
+    for runner_number, dog_name, win_odds in runners:
+        cards.append(_FakeSportsbetCard(runner_number, dog_name, win_odds))
+        cards.append(_FakeSportsbetCard(runner_number, dog_name, "1.50"))
+
+    integrator = SportsbetOddsIntegrator(
+        db_path=str(tmp_path / "odds.db"),
+        setup_database=False,
+    )
+    integrator.driver = _FakeSportsbetRunnerCardDriver(cards)
+    monkeypatch.setattr(
+        integrator,
+        "_selenium_primitives",
+        lambda: (
+            _FakeSportsbetBy,
+            _FakeSportsbetWait,
+            _FakeSportsbetEC,
+            TimeoutError,
+        ),
+    )
+
+    extracted = integrator.extract_odds_strategy_runner_cards()
+
+    assert [runner["box_number"] for runner in extracted] == list(range(1, 9))
+    assert [runner["dog_clean_name"] for runner in extracted] == [
+        "ALPHA ONE",
+        "BRAVO TWO",
+        "CHARLIE THREE",
+        "DELTA FOUR",
+        "ECHO FIVE",
+        "FOXTROT SIX",
+        "GOLF SEVEN",
+        "HOTEL EIGHT",
+    ]
+    assert [runner["odds_decimal"] for runner in extracted] == [
+        2.10,
+        3.20,
+        4.30,
+        5.40,
+        6.50,
+        7.60,
+        8.70,
+        9.80,
+    ]
+    assert len(extracted) == 8
+
+
 def test_alias_odds_copy_rolls_back_when_metadata_upsert_fails(tmp_path, monkeypatch):
     import sportsbet_odds_integrator as odds_module
 

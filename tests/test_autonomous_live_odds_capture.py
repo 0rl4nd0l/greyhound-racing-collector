@@ -44,6 +44,49 @@ def _write_capture_input(
     return csv_path
 
 
+def _write_shepparton_eight_runner_input(input_dir: Path) -> Path:
+    input_dir.mkdir(parents=True, exist_ok=True)
+    csv_path = input_dir / "Race 7 - SHEP - 2026-06-10.csv"
+    rows = [
+        (1, "Shep Alpha"),
+        (2, "Shep Bravo"),
+        (3, "Shep Charlie"),
+        (4, "Shep Delta"),
+        (5, "Shep Echo"),
+        (6, "Shep Foxtrot"),
+        (7, "Shep Golf"),
+        (8, "Shep Hotel"),
+    ]
+    csv_path.write_text(
+        "Dog Name,BOX\n" + "".join(f"{box}. {name},\n" for box, name in rows),
+        encoding="utf-8",
+    )
+    sidecar = {
+        "metadata_is_leakage_safe": True,
+        "prejump_shadow_metadata": {
+            "status": "PASS",
+            "metadata_is_leakage_safe": True,
+            "race_date": "2026-06-10",
+            "venue": "SHEP",
+            "race_number": "7",
+            "jump_time": "2026-06-10T15:00:00+10:00",
+            "source_url": (
+                "https://www.thedogs.com.au/racing/shepparton/"
+                "2026-06-10/7/example"
+            ),
+            "runner_box_name_list": [
+                {"box_number": box, "dog_name": name} for box, name in rows
+            ],
+            "canonical_final_runner_alignment": {
+                "status": "aligned",
+                "canonical_runner_set_status": "available",
+            },
+        },
+    }
+    capture.write_json(capture.sidecar_path_for(csv_path), sidecar)
+    return csv_path
+
+
 def _plan(input_dir: Path) -> dict:
     return capture.build_capture_plan(
         [input_dir],
@@ -1007,6 +1050,174 @@ def test_validate_fetched_odds_missing_unmarked_runner_still_blocks():
     assert "sportsbet_missing_expected_runners:2:BRAVO" in validation["reasons"]
 
 
+def test_validate_fetched_odds_classifies_partial_win_market_when_place_complete():
+    plan_item = {
+        "race_id": "Race 7 - SHEP - 2026-06-10",
+        "race_number": 7,
+        "expected_runners": [
+            {"box_number": 1, "dog_name": "Shep Alpha", "identity": "SHEPALPHA"},
+            {"box_number": 2, "dog_name": "Shep Bravo", "identity": "SHEPBRAVO"},
+            {"box_number": 3, "dog_name": "Shep Charlie", "identity": "SHEPCHARLIE"},
+            {"box_number": 4, "dog_name": "Shep Delta", "identity": "SHEPDELTA"},
+            {"box_number": 5, "dog_name": "Shep Echo", "identity": "SHEPECHO"},
+            {"box_number": 6, "dog_name": "Shep Foxtrot", "identity": "SHEPFOXTROT"},
+            {"box_number": 7, "dog_name": "Shep Golf", "identity": "SHEPGOLF"},
+            {"box_number": 8, "dog_name": "Shep Hotel", "identity": "SHEPHOTEL"},
+        ],
+    }
+    fetch_result = {
+        "success": True,
+        "win_count": 4,
+        "place_count": 8,
+        "race_info": {
+            "race_number": 7,
+            "venue_url": (
+                "https://www.sportsbet.com.au/betting/greyhound-racing/"
+                "australia-nz/shepparton/race-7"
+            ),
+        },
+        "odds_data": [
+            {
+                "dog_name": "Shep Alpha",
+                "box_number": 1,
+                "odds_decimal": 2.4,
+                "sportsbet_box_source": "runner_text",
+            },
+            {
+                "dog_name": "Shep Bravo",
+                "box_number": 2,
+                "odds_decimal": 3.5,
+                "sportsbet_box_source": "runner_text",
+            },
+            {
+                "dog_name": "Shep Charlie",
+                "box_number": 3,
+                "odds_decimal": 4.8,
+                "sportsbet_box_source": "runner_text",
+            },
+            {
+                "dog_name": "Shep Delta",
+                "box_number": 4,
+                "odds_decimal": 6.0,
+                "sportsbet_box_source": "runner_text",
+            },
+        ],
+    }
+
+    validation = capture.validate_fetched_odds(plan_item, fetch_result)
+
+    assert validation["status"] == "FAIL"
+    assert validation["active_expected_runner_count"] == 8
+    assert validation["accepted_row_count"] == 4
+    assert validation["failure_root_cause"] == "sportsbet_win_market_partial_but_place_complete"
+    assert validation["failure_detail"] == {
+        "active_expected_runner_count": 8,
+        "accepted_win_row_count": 4,
+        "missing_active_runner_count": 4,
+        "extra_unexpected_runner_count": 0,
+        "fetch_win_count": 4,
+        "fetch_place_count": 8,
+        "root_cause": "sportsbet_win_market_partial_but_place_complete",
+    }
+    assert validation["missing_expected_runners"] == [
+        {"box_number": 5, "identity": "SHEPECHO"},
+        {"box_number": 6, "identity": "SHEPFOXTROT"},
+        {"box_number": 7, "identity": "SHEPGOLF"},
+        {"box_number": 8, "identity": "SHEPHOTEL"},
+    ]
+    assert validation["extra_unexpected_runners"] == []
+    assert any(
+        reason.startswith("sportsbet_win_market_partial_but_place_complete:")
+        for reason in validation["reasons"]
+    )
+
+
+def test_validate_fetched_odds_does_not_classify_zero_accepted_rows_as_partial_market():
+    plan_item = {
+        "race_id": "Race 7 - SHEP - 2026-06-10",
+        "race_number": 7,
+        "expected_runners": [
+            {"box_number": 1, "dog_name": "Shep Alpha", "identity": "SHEPALPHA"},
+            {"box_number": 2, "dog_name": "Shep Bravo", "identity": "SHEPBRAVO"},
+        ],
+    }
+    fetch_result = {
+        "success": False,
+        "win_count": 0,
+        "place_count": 0,
+        "race_info": {
+            "race_number": 7,
+            "venue_url": (
+                "https://www.sportsbet.com.au/betting/greyhound-racing/"
+                "australia-nz/shepparton/race-7"
+            ),
+        },
+        "odds_data": [],
+    }
+
+    validation = capture.validate_fetched_odds(plan_item, fetch_result)
+
+    assert validation["status"] == "FAIL"
+    assert validation["accepted_row_count"] == 0
+    assert validation["failure_root_cause"] is None
+    assert "sportsbet_accepted_runner_rows_zero" in validation["reasons"]
+    assert not any(
+        reason.startswith("partial_same_race_win_market:")
+        or reason.startswith("sportsbet_win_market_partial_but_place_complete:")
+        for reason in validation["reasons"]
+    )
+
+
+def test_validate_fetched_odds_keeps_extra_identity_mismatch_distinct():
+    plan_item = {
+        "race_id": "Race 7 - SHEP - 2026-06-10",
+        "race_number": 7,
+        "expected_runners": [
+            {"box_number": 1, "dog_name": "Shep Alpha", "identity": "SHEPALPHA"},
+            {"box_number": 2, "dog_name": "Shep Bravo", "identity": "SHEPBRAVO"},
+        ],
+    }
+    fetch_result = {
+        "success": True,
+        "win_count": 2,
+        "place_count": 2,
+        "race_info": {
+            "race_number": 7,
+            "venue_url": (
+                "https://www.sportsbet.com.au/betting/greyhound-racing/"
+                "australia-nz/shepparton/race-7"
+            ),
+        },
+        "odds_data": [
+            {
+                "dog_name": "Shep Alpha",
+                "box_number": 1,
+                "odds_decimal": 2.4,
+                "sportsbet_box_source": "runner_text",
+            },
+            {
+                "dog_name": "Wrong Race Dog",
+                "box_number": 8,
+                "odds_decimal": 3.5,
+                "sportsbet_box_source": "runner_text",
+            },
+        ],
+    }
+
+    validation = capture.validate_fetched_odds(plan_item, fetch_result)
+
+    assert validation["status"] == "FAIL"
+    assert validation["failure_root_cause"] == "sportsbet_unexpected_runner_identity_mismatch"
+    assert validation["failure_root_cause"] != "sportsbet_win_market_partial_but_place_complete"
+    assert validation["extra_unexpected_runners"] == [
+        {"box_number": 8, "identity": "WRONGRACEDOG"}
+    ]
+    assert any(
+        reason.startswith("sportsbet_unexpected_runner_identity_mismatch:")
+        for reason in validation["reasons"]
+    )
+
+
 def test_validate_fetched_odds_blocks_priced_explicit_scratched_expected_runner():
     plan_item = {
         "race_id": "Race 1 - WPK - 2026-06-10",
@@ -1227,5 +1438,92 @@ def test_execute_capture_plan_blocks_mismatched_or_ambiguous_sportsbet_rows(
     assert "sportsbet_rejected_runner_rows:1" in attempt["reasons"]
     assert any(
         reason.startswith("sportsbet_missing_expected_runners:")
+        for reason in attempt["reasons"]
+    )
+
+
+def test_execute_capture_plan_reports_partial_win_market_place_complete(
+    tmp_path, monkeypatch
+):
+    input_dir = tmp_path / "upcoming"
+    _write_shepparton_eight_runner_input(input_dir)
+
+    def fake_fetch(db_path, venue, race_number, race_date, allow_auto_scrape_odds):
+        return {
+            "success": True,
+            "win_count": 4,
+            "place_count": 8,
+            "race_info": {
+                "venue_url": (
+                    "https://www.sportsbet.com.au/betting/greyhound-racing/"
+                    "australia-nz/shepparton/race-7"
+                ),
+                "race_number": 7,
+            },
+            "odds_data": [
+                {
+                    "dog_name": "Shep Alpha",
+                    "box_number": 1,
+                    "odds_decimal": 2.4,
+                    "sportsbet_box_source": "runner_text",
+                },
+                {
+                    "dog_name": "Shep Bravo",
+                    "box_number": 2,
+                    "odds_decimal": 3.5,
+                    "sportsbet_box_source": "runner_text",
+                },
+                {
+                    "dog_name": "Shep Charlie",
+                    "box_number": 3,
+                    "odds_decimal": 4.8,
+                    "sportsbet_box_source": "runner_text",
+                },
+                {
+                    "dog_name": "Shep Delta",
+                    "box_number": 4,
+                    "odds_decimal": 6.0,
+                    "sportsbet_box_source": "runner_text",
+                },
+            ],
+        }
+
+    def fail_append(**_kwargs):
+        raise AssertionError("append must not run after failed validation")
+
+    monkeypatch.setattr(capture, "fetch_odds_for_target_race", fake_fetch)
+    monkeypatch.setattr(capture, "append_validated_capture", fail_append)
+
+    report = capture.execute_capture_plan(
+        _plan(input_dir),
+        db_path=tmp_path / "odds.db",
+        current_time=datetime.fromisoformat("2026-06-10T14:40:00+10:00"),
+        execute=True,
+        allow_auto_scrape_odds=True,
+        current_time_provider=lambda: datetime.fromisoformat("2026-06-10T14:40:00+10:00"),
+    )
+
+    assert report["final_status"] == "AUTONOMOUS_LIVE_ODDS_CAPTURE_BLOCKED"
+    assert report["inserted_live_odds_rows"] == 0
+    blocked = report["blocked_attempts"][0]
+    assert blocked["race_id"] == "Race 7 - SHEP - 2026-06-10"
+    assert blocked["fetch_win_count"] == 4
+    assert blocked["fetch_place_count"] == 8
+    assert blocked["validation_active_expected_runner_count"] == 8
+    assert blocked["validation_accepted_row_count"] == 4
+    assert blocked["validation_missing_expected_runner_count"] == 4
+    assert (
+        blocked["validation_failure_root_cause"]
+        == "sportsbet_win_market_partial_but_place_complete"
+    )
+    assert blocked["validation_failure_detail"]["fetch_place_count"] == 8
+    attempt = report["attempts"][0]
+    assert attempt["status"] == "BLOCKED_VALIDATION_FAILED"
+    assert (
+        attempt["validation"]["failure_root_cause"]
+        == "sportsbet_win_market_partial_but_place_complete"
+    )
+    assert any(
+        reason.startswith("sportsbet_win_market_partial_but_place_complete:")
         for reason in attempt["reasons"]
     )
