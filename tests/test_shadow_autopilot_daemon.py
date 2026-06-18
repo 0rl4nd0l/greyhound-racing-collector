@@ -982,6 +982,17 @@ def test_daemon_accepts_odds_capture_only_command_defaults():
     assert args.refresh_limit == daemon.DEFAULT_ODDS_CAPTURE_ONLY_REFRESH_LIMIT
     assert args.odds_capture_refresh_limit == daemon.DEFAULT_ODDS_CAPTURE_ONLY_REFRESH_LIMIT
     assert args.state_path == daemon.DEFAULT_ODDS_CAPTURE_ONLY_STATE_PATH
+    assert args.require_safe_refresh_metadata is True
+
+
+def test_daemon_can_explicitly_allow_incomplete_refresh_metadata():
+    run_args = daemon.parse_args(["run-once", "--allow-incomplete-refresh-metadata"])
+    odds_args = daemon.parse_args(
+        ["run-odds-capture-once", "--allow-incomplete-refresh-metadata"]
+    )
+
+    assert run_args.require_safe_refresh_metadata is False
+    assert odds_args.require_safe_refresh_metadata is False
 
 
 def test_odds_capture_only_autopilot_command_is_narrow_and_append_only():
@@ -1009,7 +1020,23 @@ def test_odds_capture_only_autopilot_command_is_narrow_and_append_only():
     assert "--skip-aggregate" in command
     assert "--skip-status" in command
     assert "--skip-unified-dataset" in command
+    assert "--require-safe-refresh-metadata" in command
     assert "--enable-autonomous-result-capture" not in command
+
+    permissive_command = daemon.odds_capture_only_autopilot_command(
+        run_id="odds_only_autopilot",
+        evidence_root=Path("/evidence"),
+        current_time="2026-06-12T09:48:00+10:00",
+        db_path=Path("/data/greyhound_racing_data.db"),
+        days_ahead=1,
+        refresh_limit=8,
+        odds_capture_min_minutes=0.0,
+        odds_capture_max_minutes=60.0,
+        odds_capture_refresh_limit=8,
+        timeout_seconds=600,
+        require_safe_refresh_metadata=False,
+    )
+    assert "--require-safe-refresh-metadata" not in permissive_command
 
 
 def test_gated_challenger_commands_use_report_only_packet_builders():
@@ -1982,6 +2009,7 @@ def test_run_odds_capture_once_uses_lock_and_writes_compact_report(tmp_path, mon
         assert "--skip-unified-dataset" in command
         assert "--enable-autonomous-odds-capture" in command
         assert "--allow-auto-scrape-odds" in command
+        assert "--require-safe-refresh-metadata" in command
         running_report = json.loads(
             (output_dir / "odds_capture_only_daemon_report.json").read_text(
                 encoding="utf-8"
@@ -4015,6 +4043,7 @@ def test_service_and_timer_define_15_minute_oneshot_cycle():
     assert "--execute-autonomous-odds-capture" in service
     assert "--allow-auto-scrape-odds" in service
     assert "--enable-autonomous-result-capture" in service
+    assert "--require-safe-refresh-metadata" in service
     assert "TimeoutStartSec=3360" in service
     assert "GREYHOUND_ALLOW_TGR=0" in service
     assert "/home/l4nd0/.local/bin" in service
@@ -4041,6 +4070,7 @@ def test_odds_capture_service_and_timer_define_minutely_locked_lane():
     assert "--lock-path /runtime/shared-shadow-autopilot.lock" in service
     assert "--state-path /runtime/odds_capture_state.json" in service
     assert "--odds-capture-refresh-limit 8" in service
+    assert "--require-safe-refresh-metadata" in service
     assert "--skip-primary-refresh" in service
     assert "TimeoutStartSec=1200" in service
     assert "GREYHOUND_ALLOW_TGR=0" in service

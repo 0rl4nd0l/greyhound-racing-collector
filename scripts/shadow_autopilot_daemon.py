@@ -1111,6 +1111,7 @@ def service_file_text(
                 "--execute-autonomous-odds-capture "
                 "--allow-auto-scrape-odds "
                 "--enable-autonomous-result-capture "
+                "--require-safe-refresh-metadata "
                 f"--rejoin-pending-limit {DEFAULT_REJOIN_PENDING_LIMIT} "
                 f"--timeout-seconds {timeout_seconds}"
             ),
@@ -1177,6 +1178,7 @@ def odds_capture_service_file_text(
                 "--days-ahead 1 "
                 f"--refresh-limit {refresh_limit} "
                 f"--odds-capture-refresh-limit {refresh_limit} "
+                "--require-safe-refresh-metadata "
                 "--skip-primary-refresh "
                 f"{explicit_path_segment}"
                 f"--timeout-seconds {timeout_seconds}"
@@ -1504,6 +1506,7 @@ def expected_service_exec_fragments_for_run(args: argparse.Namespace) -> list[st
         "--execute-autonomous-odds-capture",
         "--allow-auto-scrape-odds",
         "--enable-autonomous-result-capture",
+        "--require-safe-refresh-metadata",
     ]
     fragments.extend(shadow_model_cli_args(args.shadow_model))
     fragments.extend(optional_path_cli_args("--lock-path", args.lock_path))
@@ -1527,8 +1530,9 @@ def odds_capture_only_autopilot_command(
     odds_capture_refresh_limit: int,
     timeout_seconds: int,
     refresh_command_mode: str = "auto",
+    require_safe_refresh_metadata: bool = True,
 ) -> list[str]:
-    return [
+    command = [
         sys.executable,
         str(ROOT / "scripts/shadow_autopilot_v1.py"),
         "--run-id",
@@ -1564,6 +1568,9 @@ def odds_capture_only_autopilot_command(
         "--skip-status",
         "--skip-unified-dataset",
     ]
+    if require_safe_refresh_metadata:
+        command.append("--require-safe-refresh-metadata")
+    return command
 
 
 def pre_race_gated_challenger_command(
@@ -3310,6 +3317,7 @@ def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
             odds_capture_refresh_limit=args.odds_capture_refresh_limit,
             timeout_seconds=args.timeout_seconds,
             refresh_command_mode=args.refresh_command_mode,
+            require_safe_refresh_metadata=args.require_safe_refresh_metadata,
         )
         write_json(
             output_dir / "odds_capture_only_daemon_report.json",
@@ -9011,6 +9019,8 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
         autopilot_command.extend(shadow_model_cli_args(args.shadow_model))
         if args.refresh_dry_run:
             autopilot_command.append("--refresh-dry-run")
+        if args.require_safe_refresh_metadata:
+            autopilot_command.append("--require-safe-refresh-metadata")
         if args.skip_refresh:
             autopilot_command.append("--skip-refresh")
         if args.skip_shadow_run:
@@ -12585,6 +12595,17 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     run_parser.add_argument("--refresh-dry-run", action="store_true")
     run_parser.add_argument("--refresh-command-mode", choices=("auto", "python", "uv"), default="auto")
+    run_parser.add_argument(
+        "--require-safe-refresh-metadata",
+        dest="require_safe_refresh_metadata",
+        action="store_true",
+        default=True,
+    )
+    run_parser.add_argument(
+        "--allow-incomplete-refresh-metadata",
+        dest="require_safe_refresh_metadata",
+        action="store_false",
+    )
     run_parser.add_argument("--score-command-mode", choices=("auto", "python", "uv"), default="auto")
     run_parser.add_argument("--target-joined-races", type=int, default=DEFAULT_TARGET_JOINED_RACES)
     run_parser.add_argument("--min-joined-races", type=int, default=DEFAULT_MIN_JOINED_RACES)
@@ -12660,6 +12681,17 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--refresh-command-mode",
         choices=("auto", "python", "uv"),
         default="auto",
+    )
+    odds_parser.add_argument(
+        "--require-safe-refresh-metadata",
+        dest="require_safe_refresh_metadata",
+        action="store_true",
+        default=True,
+    )
+    odds_parser.add_argument(
+        "--allow-incomplete-refresh-metadata",
+        dest="require_safe_refresh_metadata",
+        action="store_false",
     )
     odds_parser.add_argument("--skip-primary-refresh", action="store_true")
     odds_parser.add_argument(
