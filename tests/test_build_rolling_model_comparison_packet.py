@@ -242,7 +242,7 @@ def test_rolling_comparison_evaluates_stage2_market_and_blends(tmp_path, monkeyp
         "- Source rejected live odds candidate reasons: "
         "`{'odds_decimal_invalid': 1, 'odds_source_url_missing': 2}`"
     ) in summary_text
-    assert report["candidate_count"] == 22
+    assert report["candidate_count"] == len(comparison.candidate_specs())
     assert report["baseline_metrics"]["top1"] == 0.0
     assert report["candidate_metrics_by_key"]["stage2_shadow"]["top1"] == 1.0
     assert report["candidate_metrics_by_key"]["stage2_shadow_uncalibrated"]["top1"] == 1.0
@@ -263,7 +263,11 @@ def test_rolling_comparison_evaluates_stage2_market_and_blends(tmp_path, monkeyp
         "status": "insufficient_sample",
     }
     assert "stage2_market_blend_50" in report["candidate_metrics_by_key"]
+    assert "stage2_market_blend_55" in report["candidate_metrics_by_key"]
+    assert "stage2_market_blend_95" in report["candidate_metrics_by_key"]
     assert "stage2_uncalibrated_market_blend_50" in report["candidate_metrics_by_key"]
+    assert "stage2_uncalibrated_market_blend_55" in report["candidate_metrics_by_key"]
+    assert "stage2_uncalibrated_market_blend_95" in report["candidate_metrics_by_key"]
     assert "stage2_shadow_uncalibrated_power_gamma_1_2" in report[
         "candidate_metrics_by_key"
     ]
@@ -557,7 +561,7 @@ def test_residual_hypothesis_backtest_is_report_only_and_underpowered(
     ]
     assert "triggered_race_count_below_directional_floor" in hypothesis["blockers"]
     assert hypothesis["candidate_minus_market"]["top1"] == 1.0
-    assert report["candidate_count"] == 22
+    assert report["candidate_count"] == len(comparison.candidate_specs())
     assert hypothesis["candidate_key"] not in report["candidate_metrics_by_key"]
 
 

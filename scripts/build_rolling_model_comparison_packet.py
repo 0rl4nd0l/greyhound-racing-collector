@@ -42,7 +42,7 @@ MARKET_RESIDUAL_CASES_CSV_FILE = "market_residual_cases.csv"
 MARKET_RESIDUAL_RUNNER_MATRIX_CSV_FILE = "market_residual_runner_matrix.csv"
 MIN_RACES_FOR_REVIEW = 100
 POWER_GAMMAS = (0.85, 1.2, 1.5, 2.0)
-BLEND_MARKET_WEIGHTS = (0.25, 0.5, 0.75)
+BLEND_MARKET_WEIGHTS = tuple(weight / 100 for weight in range(5, 100, 5))
 NO_WRITE_GUARANTEES = {
     "training": False,
     "production_promotion": False,
