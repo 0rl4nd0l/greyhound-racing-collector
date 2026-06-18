@@ -2790,11 +2790,28 @@ def build_shadow_odds_snapshot_status(
     odds_research_gate = report.get("odds_research_gate")
     if not isinstance(odds_research_gate, Mapping):
         odds_research_gate = {}
+    approved_odds_augmented_predictions = report.get(
+        "approved_odds_augmented_predictions"
+    )
+    if not isinstance(approved_odds_augmented_predictions, Mapping):
+        approved_odds_augmented_predictions = {}
     odds_gate_report_path = report.get("odds_research_gate_report_path")
     if not odds_gate_report_path and odds_dir is not None:
         candidate_gate_path = odds_dir / "odds_research_gate_report.json"
         if candidate_gate_path.exists():
             odds_gate_report_path = relpath(candidate_gate_path)
+    approved_odds_augmented_prediction_report_path = report.get(
+        "approved_odds_augmented_prediction_report_path"
+    )
+    if (
+        not approved_odds_augmented_prediction_report_path
+        and odds_dir is not None
+    ):
+        candidate_approved_path = odds_dir / "approved_odds_augmented_prediction_report.json"
+        if candidate_approved_path.exists():
+            approved_odds_augmented_prediction_report_path = relpath(
+                candidate_approved_path
+            )
     return {
         "schema_version": "shadow_autopilot_odds_snapshot_status_v1",
         "generated_at": generated_at.isoformat(),
@@ -2888,6 +2905,24 @@ def build_shadow_odds_snapshot_status(
         ),
         "odds_research_gate_blocker_counts": dict(
             odds_research_gate.get("blocker_counts") or {}
+        ),
+        "approved_odds_augmented_candidate_key": approved_odds_augmented_predictions.get(
+            "candidate_key"
+        ),
+        "approved_odds_augmented_prediction_status": approved_odds_augmented_predictions.get(
+            "status"
+        ),
+        "approved_odds_augmented_ready_race_count": int(
+            approved_odds_augmented_predictions.get("ready_race_count") or 0
+        ),
+        "approved_odds_augmented_blocked_race_count": int(
+            approved_odds_augmented_predictions.get("blocked_race_count") or 0
+        ),
+        "approved_odds_augmented_prediction_rows": int(
+            approved_odds_augmented_predictions.get("prediction_rows") or 0
+        ),
+        "approved_odds_augmented_prediction_report_path": (
+            approved_odds_augmented_prediction_report_path
         ),
         "ev_eligible_rows": report.get("ev_eligible_rows", 0),
         "ev_output_rows": report.get("ev_output_rows", 0),

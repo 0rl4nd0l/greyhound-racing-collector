@@ -4805,6 +4805,17 @@ def test_shadow_odds_snapshot_status_surfaces_race_level_coverage():
                 "artifacts/full_evidence_orchestration_20260525/"
                 "shadow_odds_snapshot_x/odds_research_gate_report.json"
             ),
+            "approved_odds_augmented_predictions": {
+                "candidate_key": "stage2_market_blend_95",
+                "status": "APPROVED_BLEND_READY",
+                "ready_race_count": 1,
+                "blocked_race_count": 0,
+                "prediction_rows": 8,
+            },
+            "approved_odds_augmented_prediction_report_path": (
+                "artifacts/full_evidence_orchestration_20260525/"
+                "shadow_odds_snapshot_x/approved_odds_augmented_prediction_report.json"
+            ),
             "ev_output_rows": 0,
         },
     )
@@ -4843,6 +4854,14 @@ def test_shadow_odds_snapshot_status_surfaces_race_level_coverage():
     assert status["odds_research_gate_blocker_counts"] == {
         "complete_valid_prejump_odds_races_below_min": 99
     }
+    assert status["approved_odds_augmented_candidate_key"] == "stage2_market_blend_95"
+    assert status["approved_odds_augmented_prediction_status"] == "APPROVED_BLEND_READY"
+    assert status["approved_odds_augmented_ready_race_count"] == 1
+    assert status["approved_odds_augmented_blocked_race_count"] == 0
+    assert status["approved_odds_augmented_prediction_rows"] == 8
+    assert status["approved_odds_augmented_prediction_report_path"].endswith(
+        "approved_odds_augmented_prediction_report.json"
+    )
 
 
 def test_timing_aligned_prediction_rerun_plan_uses_source_shadow_inputs(
