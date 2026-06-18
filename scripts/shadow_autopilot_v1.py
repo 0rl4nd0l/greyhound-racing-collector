@@ -6356,6 +6356,8 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
         ]
         if args.refresh_dry_run:
             refresh_command.append("--dry-run")
+        if args.require_safe_refresh_metadata:
+            refresh_command.append("--require-safe-metadata")
         steps.append(
             step_command(
                 name="refresh_prejump_races",
@@ -6422,6 +6424,8 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
         ]
         if args.refresh_dry_run:
             odds_capture_refresh_command.append("--dry-run")
+        if args.require_safe_refresh_metadata:
+            odds_capture_refresh_command.append("--require-safe-metadata")
         steps.append(
             step_command(
                 name="refresh_odds_capture_candidates",
@@ -8045,6 +8049,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--refresh-limit", type=int, default=16)
     parser.add_argument("--refresh-dry-run", action="store_true")
+    parser.add_argument("--require-safe-refresh-metadata", action="store_true")
     parser.add_argument("--refresh-command-mode", choices=("auto", "python", "uv"), default="auto")
     parser.add_argument("--score-command-mode", choices=("auto", "python", "uv"), default="auto")
     parser.add_argument("--target-joined-races", type=int, default=DEFAULT_TARGET_JOINED_RACES)

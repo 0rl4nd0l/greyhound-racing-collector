@@ -23,6 +23,7 @@ def test_autopilot_default_min_joined_races_matches_review_target():
     assert args.enable_autonomous_odds_capture is False
     assert args.execute_autonomous_odds_capture is False
     assert args.allow_auto_scrape_odds is False
+    assert args.require_safe_refresh_metadata is False
     assert args.enable_autonomous_result_capture is False
     assert args.skip_unified_dataset is False
     assert args.step_timeout_seconds == 840
@@ -3931,6 +3932,7 @@ def test_autonomous_live_odds_capture_runs_before_daily_shadow_run(tmp_path, mon
             "--skip-unified-dataset",
             "--autonomous-odds-capture-limit",
             "2",
+            "--require-safe-refresh-metadata",
         ]
     )
 
@@ -3971,6 +3973,8 @@ def test_autonomous_live_odds_capture_runs_before_daily_shadow_run(tmp_path, mon
     assert shadow_refresh_command[
         shadow_refresh_command.index("--max-minutes") + 1
     ] == "160.0"
+    assert "--require-safe-metadata" in shadow_refresh_command
+    assert "--require-safe-metadata" in odds_refresh_command
 
 
 def test_autonomous_official_result_capture_uses_fresh_step_time(
