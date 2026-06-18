@@ -84,6 +84,21 @@ def test_parse_live_runner_identity_prefers_target_box_prefix():
     assert parse_live_runner_identity("", "1") == ("", None)
 
 
+def test_score_live_input_files_ignore_refresh_auxiliary_dirs(tmp_path):
+    accepted = tmp_path / "Race 1 - TEST - 2026-06-08.csv"
+    accepted.write_text("Dog Name|BOX\n1. Alpha Runner|1\n", encoding="utf-8")
+    raw_export = tmp_path / "raw_exports" / "Race 1 - TEST - 2026-06-08.csv"
+    raw_export.parent.mkdir()
+    raw_export.write_text("Dog Name,BOX\nRaw Runner,1\n", encoding="utf-8")
+    quarantine = tmp_path / "quarantine" / "Race 2 - TEST - 2026-06-08.csv"
+    quarantine.parent.mkdir()
+    quarantine.write_text("Dog Name,BOX\nBad Runner,2\n", encoding="utf-8")
+
+    assert shadow_eval.input_files_from_path(tmp_path) == [accepted]
+    assert shadow_eval.input_files_from_path(raw_export) == []
+    assert shadow_eval.input_files_from_path(quarantine) == []
+
+
 def test_live_feature_rows_ignore_embedded_history_rows_and_use_target_boxes(
     tmp_path, monkeypatch
 ):

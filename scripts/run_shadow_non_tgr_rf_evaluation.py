@@ -84,6 +84,7 @@ WATCHED_PARITY_FEATURES = (
 SAME_DISTANCE_HISTORY_SOURCE = "prior_dog_history"
 SAME_DISTANCE_HISTORY_CUTOFF = "strictly_before_target_race"
 SAME_DISTANCE_HISTORY_CUTOFF_BASIS = "race_date_less_than_target_race_date"
+AUXILIARY_LIVE_INPUT_DIR_NAMES = frozenset({"raw_exports", "quarantine"})
 
 DEFAULT_FULL_EVIDENCE_PARENT = ROOT / "artifacts/full_evidence_orchestration_20260525"
 DEFAULT_LIVE_PARENT = ROOT / "artifacts/shadow_evaluation"
@@ -2083,9 +2084,18 @@ def expert_form_runner_features(
 
 def input_files_from_path(path: Path) -> list[Path]:
     if path.is_file():
+        if AUXILIARY_LIVE_INPUT_DIR_NAMES.intersection(path.parts[:-1]):
+            return []
         return [path]
     if path.is_dir():
-        return sorted(item for item in path.rglob("*.csv") if item.is_file())
+        return sorted(
+            item
+            for item in path.rglob("*.csv")
+            if item.is_file()
+            and not AUXILIARY_LIVE_INPUT_DIR_NAMES.intersection(
+                item.relative_to(path).parts[:-1]
+            )
+        )
     raise ValueError(f"input_path_missing:{path}")
 
 
@@ -2481,6 +2491,8 @@ def score_live(args: argparse.Namespace) -> int:
             raise RuntimeError(f"schema_contract_failed:{schema_audit['fail_reasons']}")
         write_shadow_candidate_definition(output_dir, schema, args.schema)
         input_paths = input_files_from_path(args.input)
+        if not input_paths:
+            raise RuntimeError("live_input_csv_files_missing_after_auxiliary_filter")
         deps = sklearn_imports()
         if deps["status"] != "OK":
             raise RuntimeError(f"missing_ml_dependencies:{deps['error']}")
