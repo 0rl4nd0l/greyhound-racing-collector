@@ -1,0 +1,5 @@
+rank,failure_area,status,evidence,next_action
+1,weather_track_source_coverage,KEEP_COLLECTING_ONLY_DATA_MISSING,accepted_both_races=120; accepted_both_runner_pct=0.13795278852763104,continue to train/holdout utility review
+2,train_all_missing_quarantine_policy,BLOCKED,race_time_minutes_since_midnight;same_distance_same_grade_avg_time;same_distance_same_grade_best_time;track_condition;weather,do not activate inactive features without report-only gate pass
+3,train_holdout_weather_track_coverage,DATA_MISSING_OR_LOW,"{""both_holdout_accepted_pct"": null, ""both_train_accepted_pct"": null, ""ready_train_holdout_coverage"": false, ""split_evidence_available"": false, ""track_holdout_accepted_pct"": null, ""track_train_accepted_pct"": null, ""weather_holdout_accepted_pct"": null, ""weather_train_accepted_pct"": null}",run report-only ablation only after train and holdout both clear 80 percent
+4,optional_db_weather_track_evidence,OPTIONAL_EVIDENCE_ONLY,db_present_but_not_accepted_without_prejump_collection_timestamp,DB rows remain optional unless pre-jump collection timestamp is proven
