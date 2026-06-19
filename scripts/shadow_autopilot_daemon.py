@@ -49,6 +49,7 @@ DEFAULT_LOCK_PATH = DEFAULT_RUNTIME_DIR / "shadow_autopilot.lock"
 DEFAULT_STATE_PATH = DEFAULT_RUNTIME_DIR / "state.json"
 DEFAULT_ODDS_CAPTURE_ONLY_STATE_PATH = DEFAULT_RUNTIME_DIR / "odds_capture_state.json"
 DEFAULT_SERVICE_DIR = ROOT / "ops/systemd"
+DEFAULT_SERVICE_PYTHON_RELATIVE_PATH = ".venv/bin/python"
 DEFAULT_TARGET_JOINED_RACES = 100
 DEFAULT_MIN_JOINED_RACES = 100
 DEFAULT_TIMEOUT_SECONDS = 840
@@ -1080,6 +1081,7 @@ def service_file_text(
     odds_capture_state_path: Path | None = None,
 ) -> str:
     script_path = repo_path / "scripts/shadow_autopilot_daemon.py"
+    python_path = repo_path / DEFAULT_SERVICE_PYTHON_RELATIVE_PATH
     explicit_path_args = [
         *optional_path_cli_args("--db", db_path),
         *shadow_model_cli_args(shadow_model),
@@ -1104,7 +1106,7 @@ def service_file_text(
             "Environment=GREYHOUND_ALLOW_TGR=0",
             "Environment=PATH=/home/l4nd0/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             (
-                f"ExecStart=/usr/bin/python3 {script_path} run-once "
+                f"ExecStart={python_path} {script_path} run-once "
                 "--days-ahead 1 --refresh-limit 16 "
                 f"{explicit_path_segment}"
                 "--enable-autonomous-odds-capture "
@@ -1152,6 +1154,7 @@ def odds_capture_service_file_text(
     refresh_limit: int = DEFAULT_ODDS_CAPTURE_ONLY_REFRESH_LIMIT,
 ) -> str:
     script_path = repo_path / "scripts/shadow_autopilot_daemon.py"
+    python_path = repo_path / DEFAULT_SERVICE_PYTHON_RELATIVE_PATH
     explicit_path_args = [
         *optional_path_cli_args("--db", db_path),
         *optional_path_cli_args("--lock-path", lock_path),
@@ -1174,7 +1177,7 @@ def odds_capture_service_file_text(
             "Environment=GREYHOUND_ALLOW_TGR=0",
             "Environment=PATH=/home/l4nd0/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             (
-                f"ExecStart=/usr/bin/python3 {script_path} run-odds-capture-once "
+                f"ExecStart={python_path} {script_path} run-odds-capture-once "
                 "--days-ahead 1 "
                 f"--refresh-limit {refresh_limit} "
                 f"--odds-capture-refresh-limit {refresh_limit} "

@@ -69,6 +69,11 @@ def test_track_condition_rejects_race_title_promo_text():
 def test_venue_weather_location_accepts_ap_k_and_nowra():
     assert venue_weather_location("AP_K").venue_name == "Angle Park"
     assert venue_weather_location("NOWRA").venue_name == "Nowra"
+    assert venue_weather_location("LADBROKES-Q1-LAKESIDE").venue_name == (
+        "Ladbrokes Q1 Lakeside"
+    )
+    assert venue_weather_location("ladbrokes q2 parklands").venue_code == "Q2"
+    assert venue_weather_location("QOT").timezone == "Australia/Brisbane"
 
 
 def test_weather_metadata_interprets_thedogs_display_time_for_wa():

@@ -151,7 +151,11 @@ def test_append_backlog_appends_multiple_artifacts_when_lock_free(tmp_path, monk
     assert report["inserted_runner_rows"] == 4
     assert report["status_counts"] == {"APPENDED_OFFICIAL_RESULT_EVIDENCE": 2}
     assert report["label_write_performed"] is False
-    assert report["shared_lock_status"]["status"] == "missing"
+    assert report["shared_lock_status"]["status"] == "acquired_by_backlog_append"
+    assert report["shared_lock_release"] == {
+        "released": True,
+        "reason": "released_by_owner",
+    }
     with sqlite3.connect(db_path) as conn:
         race_count = conn.execute(
             f"SELECT COUNT(*) FROM {capture.OFFICIAL_RESULT_EVIDENCE_RACES_TABLE}"
@@ -170,6 +174,79 @@ def test_append_backlog_appends_multiple_artifacts_when_lock_free(tmp_path, monk
     assert race_count == 2
     assert runner_count == 4
     assert label_table_count == 0
+
+
+def test_append_backlog_discovers_child_capture_dirs_from_parent_root(tmp_path, monkeypatch):
+    _patch_roots(monkeypatch, tmp_path)
+    db_path = tmp_path / "labels.sqlite"
+    with sqlite3.connect(db_path):
+        pass
+    artifact_root = tmp_path / "artifacts/full_evidence_orchestration_20260525"
+    _write_official_artifact_dir(
+        artifact_root,
+        name="autonomous_official_result_capture_race1",
+        rows=_official_artifact_rows(),
+    )
+    _write_official_artifact_dir(
+        artifact_root,
+        name="autonomous_official_result_capture_race2",
+        rows=_official_artifact_rows(
+            race_id="Race 2 - WPK - 2026-06-10",
+            race_number=2,
+            source_url=(
+                "https://www.thedogs.com.au/racing/"
+                "wentworth-park/2026-06-10/2/test-race?trial=false"
+            ),
+        ),
+    )
+    output_dir = (
+        artifact_root
+        / "official_result_evidence_append_backlog_parent_discovery"
+    )
+
+    result = backlog.main(
+        [
+            "--artifact-dir",
+            str(artifact_root),
+            "--db",
+            str(db_path),
+            "--output-dir",
+            str(output_dir),
+            "--execute-db-ingest",
+            "--require-lock-free",
+            "--lock-path",
+            str(tmp_path / "missing.lock"),
+        ]
+    )
+
+    assert result == 0
+    report = json.loads(
+        (output_dir / "official_result_evidence_append_backlog_report.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert report["input_artifact_count"] == 1
+    assert report["artifact_count"] == 2
+    assert report["processed_count"] == 2
+    assert report["artifact_discovery"][0]["mode"] == "recursive_parent_discovery"
+    assert report["artifact_discovery"][0]["discovered_child_artifact_count"] == 2
+    assert report["final_status"] == "APPENDED_OFFICIAL_RESULT_EVIDENCE_BACKLOG"
+    assert report["inserted_race_rows"] == 2
+    assert report["inserted_runner_rows"] == 4
+    assert report["shared_lock_status"]["status"] == "acquired_by_backlog_append"
+    assert report["shared_lock_release"] == {
+        "released": True,
+        "reason": "released_by_owner",
+    }
+    with sqlite3.connect(db_path) as conn:
+        race_count = conn.execute(
+            f"SELECT COUNT(*) FROM {capture.OFFICIAL_RESULT_EVIDENCE_RACES_TABLE}"
+        ).fetchone()[0]
+        runner_count = conn.execute(
+            f"SELECT COUNT(*) FROM {capture.OFFICIAL_RESULT_EVIDENCE_RUNNERS_TABLE}"
+        ).fetchone()[0]
+    assert race_count == 2
+    assert runner_count == 4
 
 
 def test_append_backlog_blocks_all_artifacts_on_live_lock(tmp_path, monkeypatch):
