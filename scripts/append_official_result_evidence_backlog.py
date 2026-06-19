@@ -6,12 +6,18 @@ This runner is intentionally narrow: it only consumes source-backed
 ``autonomous_official_result_capture.py`` and appends validated rows into the
 append-only official-result evidence tables. It never writes canonical labels,
 rewrites snapshots, trains models, or changes production pointers.
+
+Pass either exact capture artifact directories or a parent evidence root. Parent
+directories are expanded recursively to child capture directories that contain
+both ``official_result_races.jsonl`` and ``official_result_runners.jsonl``.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
+import socket
 import sys
 from collections import Counter
 from datetime import datetime
@@ -93,6 +99,139 @@ def artifact_paths(artifact_dir: Path) -> dict[str, Path]:
         "runner_rows": artifact_dir / "official_result_runners.jsonl",
         "quarantine_rows": artifact_dir / "official_result_quarantine.jsonl",
     }
+
+
+def has_official_result_artifacts(artifact_dir: Path) -> bool:
+    paths = artifact_paths(artifact_dir)
+    return paths["race_rows"].exists() and paths["runner_rows"].exists()
+
+
+def discover_official_result_artifact_dirs(
+    artifact_dirs: Sequence[Path],
+) -> tuple[list[Path], list[dict[str, Any]]]:
+    expanded: list[Path] = []
+    discovery_rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def add(path: Path) -> None:
+        key = str(path.resolve())
+        if key not in seen:
+            seen.add(key)
+            expanded.append(path)
+
+    for artifact_dir in artifact_dirs:
+        logical = artifact_dir if artifact_dir.is_absolute() else ROOT / artifact_dir
+        direct_match = has_official_result_artifacts(logical)
+        child_matches = sorted(
+            {
+                path.parent
+                for path in logical.rglob("official_result_runners.jsonl")
+                if has_official_result_artifacts(path.parent)
+            },
+            key=lambda path: path.as_posix(),
+        ) if logical.exists() and logical.is_dir() and not direct_match else []
+        if direct_match:
+            add(logical)
+            mode = "direct_artifact_dir"
+        elif child_matches:
+            for child in child_matches:
+                add(child)
+            mode = "recursive_parent_discovery"
+        else:
+            add(logical)
+            mode = "missing_artifact_dir"
+        discovery_rows.append(
+            {
+                "input_artifact_dir": relpath(logical),
+                "mode": mode,
+                "direct_match": direct_match,
+                "discovered_child_artifact_count": len(child_matches),
+                "discovered_child_artifact_dirs": [relpath(path) for path in child_matches[:50]],
+                "discovered_child_artifact_dirs_truncated": len(child_matches) > 50,
+            }
+        )
+
+    return expanded, discovery_rows
+
+
+def acquire_owned_shared_lock(
+    *,
+    lock_path: Path | None,
+    output_dir: Path,
+    generated_at: datetime,
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    status = capture.shared_lock_status(lock_path)
+    if lock_path is None:
+        return None, status
+    if not bool(status.get("write_allowed")):
+        return None, status
+    if status.get("status") == "stale_dead_pid" and lock_path.exists():
+        try:
+            lock_path.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            blocked = dict(status)
+            blocked["status"] = "stale_lock_unlink_failed"
+            blocked["error"] = f"{type(exc).__name__}:{exc}"
+            blocked["write_allowed"] = False
+            return None, blocked
+
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema_version": "shadow_autopilot_daemon_lock_v1",
+        "run_id": f"official_result_evidence_append_backlog_{now_id(generated_at)}",
+        "pid": os.getpid(),
+        "hostname": socket.gethostname(),
+        "started_at": generated_at.isoformat(),
+        "output_dir": relpath(output_dir),
+        "owner": "append_official_result_evidence_backlog",
+    }
+    try:
+        fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        blocked = capture.shared_lock_status(lock_path)
+        blocked["status"] = (
+            blocked.get("status")
+            if blocked.get("status") != "missing"
+            else "lock_race_lost"
+        )
+        blocked["write_allowed"] = False
+        return None, blocked
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+    acquired = capture.shared_lock_status(lock_path)
+    acquired["status"] = "acquired_by_backlog_append"
+    acquired["write_allowed"] = True
+    acquired["owned_lock"] = dict(payload)
+    return payload, acquired
+
+
+def release_owned_shared_lock(
+    *,
+    lock_path: Path | None,
+    owned_lock: Mapping[str, Any] | None,
+) -> dict[str, Any] | None:
+    if lock_path is None or not owned_lock:
+        return None
+    try:
+        current = json.loads(lock_path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {"released": False, "reason": "lock_already_missing"}
+    except Exception as exc:
+        return {
+            "released": False,
+            "reason": "lock_unreadable",
+            "error": f"{type(exc).__name__}:{exc}",
+        }
+    if not isinstance(current, Mapping) or current.get("run_id") != owned_lock.get("run_id"):
+        return {"released": False, "reason": "lock_owned_by_other_run", "lock": current}
+    try:
+        lock_path.unlink()
+    except FileNotFoundError:
+        return {"released": False, "reason": "lock_already_missing"}
+    return {"released": True, "reason": "released_by_owner"}
 
 
 def missing_artifact_status(
@@ -189,13 +328,16 @@ def build_report(
     *,
     generated_at: datetime,
     db_path: Path,
+    input_artifact_dirs: Sequence[Path],
     artifact_dirs: Sequence[Path],
+    artifact_discovery: Sequence[Mapping[str, Any]],
     output_dir: Path,
     execute: bool,
     lock_path: Path | None,
     require_lock_free: bool,
     items: Sequence[Mapping[str, Any]],
     lock_status: Mapping[str, Any] | None,
+    lock_release: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
     status_counts = Counter(str(item.get("status") or "UNKNOWN") for item in items)
     inserted_race_rows = sum(int(item.get("inserted_race_rows") or 0) for item in items)
@@ -223,6 +365,10 @@ def build_report(
         "require_lock_free": require_lock_free,
         "lock_path": str(lock_path) if lock_path else None,
         "shared_lock_status": dict(lock_status) if lock_status is not None else None,
+        "shared_lock_release": dict(lock_release) if lock_release is not None else None,
+        "input_artifact_count": len(input_artifact_dirs),
+        "input_artifact_dirs": [relpath(path if path.is_absolute() else ROOT / path) for path in input_artifact_dirs],
+        "artifact_discovery": list(artifact_discovery),
         "artifact_count": len(artifact_dirs),
         "artifact_dirs": [relpath(path) for path in artifact_dirs],
         "processed_count": len(items),
@@ -270,31 +416,45 @@ def main(argv: Sequence[str] | None = None) -> int:
     output_dir = unique_dir(output_dir)
     output_dir.mkdir(parents=True, exist_ok=False)
 
-    lock_status = (
-        capture.shared_lock_status(args.lock_path)
-        if args.require_lock_free and args.execute_db_ingest
-        else None
-    )
-    items = [
-        process_artifact_dir(
-            artifact_dir=artifact_dir,
-            db_path=args.db,
-            execute=args.execute_db_ingest,
-            lock_status=lock_status,
-            require_lock_free=args.require_lock_free,
+    lock_status = None
+    owned_lock = None
+    lock_release = None
+    if args.require_lock_free and args.execute_db_ingest:
+        owned_lock, lock_status = acquire_owned_shared_lock(
+            lock_path=args.lock_path,
+            output_dir=output_dir,
+            generated_at=generated_at,
         )
-        for artifact_dir in args.artifact_dir
-    ]
+    artifact_dirs, artifact_discovery = discover_official_result_artifact_dirs(args.artifact_dir)
+    try:
+        items = [
+            process_artifact_dir(
+                artifact_dir=artifact_dir,
+                db_path=args.db,
+                execute=args.execute_db_ingest,
+                lock_status=lock_status,
+                require_lock_free=args.require_lock_free,
+            )
+            for artifact_dir in artifact_dirs
+        ]
+    finally:
+        lock_release = release_owned_shared_lock(
+            lock_path=args.lock_path,
+            owned_lock=owned_lock,
+        )
     report = build_report(
         generated_at=generated_at,
         db_path=args.db,
-        artifact_dirs=args.artifact_dir,
+        input_artifact_dirs=args.artifact_dir,
+        artifact_dirs=artifact_dirs,
+        artifact_discovery=artifact_discovery,
         output_dir=output_dir,
         execute=args.execute_db_ingest,
         lock_path=args.lock_path,
         require_lock_free=args.require_lock_free,
         items=items,
         lock_status=lock_status,
+        lock_release=lock_release,
     )
     write_json(output_dir / "official_result_evidence_append_backlog_report.json", report)
     write_text(output_dir / "final_status.txt", str(report["final_status"]) + "\n")

@@ -155,6 +155,36 @@ def test_sportsbet_track_metadata_accepts_ap_k_underscore_code():
     assert metadata["weather_track_metadata_detail"]["competition_name"] == "Angle Park"
 
 
+def test_sportsbet_track_metadata_accepts_q1_lakeside_alias():
+    event = _sale_r9_event(
+        id=10601001,
+        competitionName="Q1 Lakeside",
+        raceNumber=7,
+        startTime=int(
+            datetime(
+                2026, 6, 19, 16, 47, tzinfo=ZoneInfo("Australia/Brisbane")
+            ).timestamp()
+        ),
+    )
+    session = FakeSportsbetSession([event])
+
+    metadata = collect_sportsbet_track_metadata(
+        {
+            "date": "2026-06-19",
+            "venue": "LADBROKES-Q1-LAKESIDE",
+            "race_number": "7",
+            "race_time": "4:47 PM",
+            "url": "https://www.thedogs.com.au/racing/ladbrokes-q1-lakeside/2026-06-19/7/example",
+        },
+        session=session,
+    )
+
+    assert metadata["track_condition"] == "Good"
+    assert metadata["weather_track_metadata_is_leakage_safe"] is True
+    assert metadata["weather_track_metadata_detail"]["event_id"] == 10601001
+    assert metadata["weather_track_metadata_detail"]["competition_name"] == "Q1 Lakeside"
+
+
 def test_sportsbet_track_metadata_rejects_mismatched_jump_time():
     session = FakeSportsbetSession([_sale_r9_event()])
 
