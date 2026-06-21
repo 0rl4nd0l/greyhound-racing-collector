@@ -4225,6 +4225,8 @@ def test_service_and_timer_define_15_minute_oneshot_cycle():
     service = daemon.service_file_text(
         repo_path=Path("/home/l4nd0/greyhound_racing_collector"),
         timeout_seconds=840,
+        python_path=Path("/runtime/.venv/bin/python"),
+        evidence_root=Path("/runtime/artifacts/full_evidence_orchestration_20260525"),
         shadow_model=Path("/models/stage2/shadow_randomforest_model.joblib"),
         db_path=Path("/data/greyhound_racing_data.db"),
         lock_path=Path("/runtime/shared-shadow-autopilot.lock"),
@@ -4234,7 +4236,12 @@ def test_service_and_timer_define_15_minute_oneshot_cycle():
     timer = daemon.timer_file_text()
 
     assert "Type=oneshot" in service
+    assert "ExecStart=/runtime/.venv/bin/python" in service
     assert "shadow_autopilot_daemon.py run-once" in service
+    assert (
+        "--evidence-root /runtime/artifacts/full_evidence_orchestration_20260525"
+        in service
+    )
     assert "--shadow-model /models/stage2/shadow_randomforest_model.joblib" in service
     assert "--db /data/greyhound_racing_data.db" in service
     assert "--lock-path /runtime/shared-shadow-autopilot.lock" in service
@@ -4259,6 +4266,8 @@ def test_odds_capture_service_and_timer_define_minutely_locked_lane():
     service = daemon.odds_capture_service_file_text(
         repo_path=Path("/home/l4nd0/greyhound_racing_collector"),
         timeout_seconds=600,
+        python_path=Path("/runtime/.venv/bin/python"),
+        evidence_root=Path("/runtime/artifacts/full_evidence_orchestration_20260525"),
         db_path=Path("/data/greyhound_racing_data.db"),
         lock_path=Path("/runtime/shared-shadow-autopilot.lock"),
         state_path=Path("/runtime/odds_capture_state.json"),
@@ -4267,7 +4276,12 @@ def test_odds_capture_service_and_timer_define_minutely_locked_lane():
     timer = daemon.odds_capture_timer_file_text()
 
     assert "Type=oneshot" in service
+    assert "ExecStart=/runtime/.venv/bin/python" in service
     assert "shadow_autopilot_daemon.py run-odds-capture-once" in service
+    assert (
+        "--evidence-root /runtime/artifacts/full_evidence_orchestration_20260525"
+        in service
+    )
     assert "--db /data/greyhound_racing_data.db" in service
     assert "--lock-path /runtime/shared-shadow-autopilot.lock" in service
     assert "--state-path /runtime/odds_capture_state.json" in service
@@ -4289,6 +4303,8 @@ def test_write_odds_capture_service_files_preserves_db_and_lock(tmp_path):
         service_dir=service_dir,
         repo_path=Path("/home/l4nd0/greyhound_racing_collector"),
         timeout_seconds=600,
+        python_path=Path("/runtime/.venv/bin/python"),
+        evidence_root=Path("/runtime/artifacts/full_evidence_orchestration_20260525"),
         db_path=Path("/data/greyhound_racing_data.db"),
         lock_path=Path("/runtime/shared-shadow-autopilot.lock"),
         state_path=Path("/runtime/odds_capture_state.json"),
@@ -4301,8 +4317,18 @@ def test_write_odds_capture_service_files_preserves_db_and_lock(tmp_path):
     assert result["timer_calendar"] == (
         daemon.DEFAULT_ODDS_CAPTURE_ONLY_TIMER_ON_CALENDAR
     )
+    assert result["python_path"] == "/runtime/.venv/bin/python"
+    assert (
+        result["evidence_root"]
+        == "/runtime/artifacts/full_evidence_orchestration_20260525"
+    )
     assert result["db_path"] == "/data/greyhound_racing_data.db"
     assert result["lock_path"] == "/runtime/shared-shadow-autopilot.lock"
+    assert "ExecStart=/runtime/.venv/bin/python" in service
+    assert (
+        "--evidence-root /runtime/artifacts/full_evidence_orchestration_20260525"
+        in service
+    )
     assert "--db /data/greyhound_racing_data.db" in service
     assert "--lock-path /runtime/shared-shadow-autopilot.lock" in service
     assert f"OnCalendar={daemon.DEFAULT_ODDS_CAPTURE_ONLY_TIMER_ON_CALENDAR}" in timer
@@ -6436,6 +6462,8 @@ def test_write_service_files_preserves_shadow_model_pin(tmp_path):
         service_dir=service_dir,
         repo_path=Path("/home/l4nd0/greyhound_racing_collector"),
         timeout_seconds=840,
+        python_path=Path("/runtime/.venv/bin/python"),
+        evidence_root=Path("/runtime/artifacts/full_evidence_orchestration_20260525"),
         shadow_model=Path("/models/stage2/shadow_randomforest_model.joblib"),
         db_path=Path("/data/greyhound_racing_data.db"),
         lock_path=Path("/runtime/shared-shadow-autopilot.lock"),
@@ -6445,11 +6473,21 @@ def test_write_service_files_preserves_shadow_model_pin(tmp_path):
 
     service = (service_dir / daemon.SERVICE_NAME).read_text(encoding="utf-8")
     assert result["shadow_model"] == "/models/stage2/shadow_randomforest_model.joblib"
+    assert result["python_path"] == "/runtime/.venv/bin/python"
+    assert (
+        result["evidence_root"]
+        == "/runtime/artifacts/full_evidence_orchestration_20260525"
+    )
     assert result["db_path"] == "/data/greyhound_racing_data.db"
     assert result["lock_path"] == "/runtime/shared-shadow-autopilot.lock"
     assert result["state_path"] == "/runtime/state.json"
     assert result["odds_capture_state_path"] == "/runtime/odds_capture_state.json"
     assert result["systemd_timeout_start_seconds"] == 3360
+    assert "ExecStart=/runtime/.venv/bin/python" in service
+    assert (
+        "--evidence-root /runtime/artifacts/full_evidence_orchestration_20260525"
+        in service
+    )
     assert "--shadow-model /models/stage2/shadow_randomforest_model.joblib" in service
     assert "--db /data/greyhound_racing_data.db" in service
     assert "--lock-path /runtime/shared-shadow-autopilot.lock" in service
