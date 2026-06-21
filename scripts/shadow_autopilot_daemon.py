@@ -1103,8 +1103,9 @@ def service_file_text(
 ) -> str:
     script_path = repo_path / "scripts/shadow_autopilot_daemon.py"
     service_python = python_path or Path("/usr/bin/python3")
+    evidence_root_segment = " ".join(optional_path_cli_args("--evidence-root", evidence_root))
+    evidence_root_segment = f"{evidence_root_segment} " if evidence_root_segment else ""
     explicit_path_args = [
-        *optional_path_cli_args("--evidence-root", evidence_root),
         *optional_path_cli_args("--db", db_path),
         *shadow_model_cli_args(shadow_model),
         *optional_path_cli_args("--lock-path", lock_path),
@@ -1129,6 +1130,7 @@ def service_file_text(
             "Environment=PATH=/home/l4nd0/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             (
                 f"ExecStart={service_python} {script_path} run-once "
+                f"{evidence_root_segment}"
                 "--days-ahead 1 --refresh-limit 16 "
                 f"{explicit_path_segment}"
                 "--enable-autonomous-odds-capture "
@@ -1179,8 +1181,9 @@ def odds_capture_service_file_text(
 ) -> str:
     script_path = repo_path / "scripts/shadow_autopilot_daemon.py"
     service_python = python_path or Path("/usr/bin/python3")
+    evidence_root_segment = " ".join(optional_path_cli_args("--evidence-root", evidence_root))
+    evidence_root_segment = f"{evidence_root_segment} " if evidence_root_segment else ""
     explicit_path_args = [
-        *optional_path_cli_args("--evidence-root", evidence_root),
         *optional_path_cli_args("--db", db_path),
         *optional_path_cli_args("--lock-path", lock_path),
         *optional_path_cli_args("--state-path", state_path),
@@ -1203,6 +1206,7 @@ def odds_capture_service_file_text(
             "Environment=PATH=/home/l4nd0/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             (
                 f"ExecStart={service_python} {script_path} run-odds-capture-once "
+                f"{evidence_root_segment}"
                 "--days-ahead 1 "
                 f"--refresh-limit {refresh_limit} "
                 f"--odds-capture-refresh-limit {refresh_limit} "
