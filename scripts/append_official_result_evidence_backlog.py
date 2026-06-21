@@ -162,7 +162,10 @@ def acquire_owned_shared_lock(
 ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     status = capture.shared_lock_status(lock_path)
     if lock_path is None:
-        return None, status
+        blocked = dict(status)
+        blocked["status"] = "lock_path_missing_required"
+        blocked["write_allowed"] = False
+        return None, blocked
     if not bool(status.get("write_allowed")):
         return None, status
     if status.get("status") == "stale_dead_pid" and lock_path.exists():

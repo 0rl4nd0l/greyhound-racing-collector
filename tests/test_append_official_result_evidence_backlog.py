@@ -317,3 +317,52 @@ def test_append_backlog_blocks_all_artifacts_on_live_lock(tmp_path, monkeypatch)
             (capture.OFFICIAL_RESULT_EVIDENCE_RACES_TABLE,),
         ).fetchone()[0]
     assert table_count == 0
+
+
+def test_append_backlog_requires_lock_path_when_lock_free_required(tmp_path, monkeypatch):
+    _patch_roots(monkeypatch, tmp_path)
+    db_path = tmp_path / "labels.sqlite"
+    with sqlite3.connect(db_path):
+        pass
+    artifact_root = tmp_path / "artifacts/full_evidence_orchestration_20260525"
+    artifact_dir = _write_official_artifact_dir(
+        artifact_root,
+        name="autonomous_official_result_capture_race1",
+        rows=_official_artifact_rows(),
+    )
+    output_dir = artifact_root / "official_result_evidence_append_backlog_missing_lock_path"
+
+    result = backlog.main(
+        [
+            "--artifact-dir",
+            str(artifact_dir),
+            "--db",
+            str(db_path),
+            "--output-dir",
+            str(output_dir),
+            "--execute-db-ingest",
+            "--require-lock-free",
+        ]
+    )
+
+    assert result == 0
+    report = json.loads(
+        (output_dir / "official_result_evidence_append_backlog_report.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert report["final_status"] == "BLOCKED_SHARED_LOCK_HELD"
+    assert report["db_write_performed"] is False
+    assert report["shared_lock_status"]["status"] == "lock_path_missing_required"
+    assert report["shared_lock_status"]["write_allowed"] is False
+    with sqlite3.connect(db_path) as conn:
+        table_count = conn.execute(
+            """
+            SELECT COUNT(*)
+            FROM sqlite_master
+            WHERE type = 'table'
+              AND name = ?
+            """,
+            (capture.OFFICIAL_RESULT_EVIDENCE_RACES_TABLE,),
+        ).fetchone()[0]
+    assert table_count == 0
