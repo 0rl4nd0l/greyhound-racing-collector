@@ -1395,6 +1395,33 @@ def write_empty_prediction_outputs(output_dir: Path) -> None:
     write_csv(output_dir / "shadow_predictions.csv", [], PREDICTION_COLUMNS)
 
 
+def write_waiting_matrix_reports_unavailable(
+    *,
+    output_dir: Path,
+    reason: str,
+    missing_inputs: Sequence[Mapping[str, Any]] | None = None,
+    error: str | None = None,
+) -> None:
+    report = {
+        "schema_version": "waiting_shadow_feature_matrix_data_missing_v1",
+        "status": "DATA_MISSING",
+        "reason": reason,
+        "missing_inputs": list(missing_inputs or []),
+        "live_input_status": "NO_ELIGIBLE_PREJUMP_RACES",
+        "shadow_scoring_allowed": False,
+        "production_promotion": False,
+        "registry_mutation": False,
+        "db_writes": False,
+        "label_writes": False,
+    }
+    if error is not None:
+        report["error"] = error
+    write_json(output_dir / "feature_population_report.json", report)
+    write_json(output_dir / "shadow_feature_matrix_audit.json", report)
+    write_json(output_dir / "train_eval_feature_parity_report.json", report)
+    write_json(output_dir / "inactive_feature_policy_report.json", report)
+
+
 def write_matrix_reports_for_waiting(
     *,
     output_dir: Path,
@@ -1404,14 +1431,42 @@ def write_matrix_reports_for_waiting(
     db_path: Path,
     all_missing_train_policy: str,
 ) -> None:
-    dataset, feature_audit, population = build_shadow_feature_matrix(
-        clean_dataset=clean_dataset,
-        repaired_packet=repaired_packet,
-        schema_path=schema_path,
-        db_path=db_path,
-    )
-    parity = train_eval_feature_parity_report(dataset, policy=all_missing_train_policy)
-    policy = inactive_feature_policy_report(parity)
+    required_inputs = {
+        "clean_dataset": clean_dataset,
+        "repaired_packet": repaired_packet,
+        "schema": schema_path,
+        "db": db_path,
+    }
+    missing_inputs = [
+        {"name": name, "path": shadow_relpath(path)}
+        for name, path in required_inputs.items()
+        if not path.exists()
+    ]
+    if missing_inputs:
+        write_waiting_matrix_reports_unavailable(
+            output_dir=output_dir,
+            reason="waiting_feature_matrix_inputs_missing",
+            missing_inputs=missing_inputs,
+        )
+        return
+
+    try:
+        dataset, feature_audit, population = build_shadow_feature_matrix(
+            clean_dataset=clean_dataset,
+            repaired_packet=repaired_packet,
+            schema_path=schema_path,
+            db_path=db_path,
+        )
+        parity = train_eval_feature_parity_report(dataset, policy=all_missing_train_policy)
+        policy = inactive_feature_policy_report(parity)
+    except Exception as exc:
+        write_waiting_matrix_reports_unavailable(
+            output_dir=output_dir,
+            reason="waiting_feature_matrix_diagnostic_failed",
+            error=repr(exc),
+        )
+        return
+
     write_json(output_dir / "feature_population_report.json", population)
     write_json(output_dir / "shadow_feature_matrix_audit.json", feature_audit)
     write_json(output_dir / "train_eval_feature_parity_report.json", parity)

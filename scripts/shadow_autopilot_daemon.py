@@ -44,6 +44,7 @@ from scripts.forward_shadow_runtime_state import (  # noqa: E402
 
 DEFAULT_EVIDENCE_ROOT = ROOT / "artifacts/full_evidence_orchestration_20260525"
 OUTPUT_PREFIX = "artifacts/full_evidence_orchestration_20260525/shadow_autopilot_daemonization_v1_"
+OUTPUT_ARTIFACT_PREFIX = "shadow_autopilot_daemonization_v1_"
 DEFAULT_RUNTIME_DIR = DEFAULT_EVIDENCE_ROOT / "shadow_autopilot_daemon_runtime"
 DEFAULT_LOCK_PATH = DEFAULT_RUNTIME_DIR / "shadow_autopilot.lock"
 DEFAULT_STATE_PATH = DEFAULT_RUNTIME_DIR / "state.json"
@@ -375,17 +376,35 @@ def protected_hashes(paths: Sequence[Path] = PROTECTED_PATHS) -> dict[str, str |
     return {relpath(path) or str(path): sha256_file(path) for path in paths}
 
 
-def assert_output_dir_safe(output_dir: Path) -> Path:
+def assert_output_dir_safe(
+    output_dir: Path,
+    *,
+    evidence_root: Path | None = None,
+) -> Path:
     logical = output_dir if output_dir.is_absolute() else ROOT / output_dir
+    candidate = logical.absolute()
     try:
-        relative = logical.absolute().relative_to(ROOT.absolute())
+        relative = candidate.relative_to(ROOT.absolute())
     except ValueError as exc:
-        raise ValueError("output_dir_must_be_inside_repo") from exc
+        if evidence_root is None:
+            raise ValueError("output_dir_must_be_inside_repo") from exc
+    else:
+        if ".." in relative.parts:
+            raise ValueError("output_dir_must_not_contain_parent_traversal")
+        if relative.as_posix().startswith(OUTPUT_PREFIX):
+            return candidate
+        raise ValueError(f"output_dir_must_be_shadow_autopilot_daemon_artifact:{relative}")
+
+    evidence_base = evidence_root if evidence_root.is_absolute() else ROOT / evidence_root
+    try:
+        relative = candidate.relative_to(evidence_base.absolute())
+    except ValueError as exc:
+        raise ValueError("output_dir_must_be_inside_repo_or_evidence_root") from exc
     if ".." in relative.parts:
         raise ValueError("output_dir_must_not_contain_parent_traversal")
-    if not relative.as_posix().startswith(OUTPUT_PREFIX):
-        raise ValueError(f"output_dir_must_be_shadow_autopilot_daemon_artifact:{relative}")
-    return logical.absolute()
+    if relative.parts and relative.parts[0].startswith(OUTPUT_ARTIFACT_PREFIX):
+        return candidate
+    raise ValueError(f"output_dir_must_be_shadow_autopilot_daemon_artifact:{relative}")
 
 
 def unique_dir(base: Path) -> Path:
@@ -2099,10 +2118,32 @@ def odds_capture_only_ready(
         "AUTONOMOUS_LIVE_ODDS_CAPTURE_APPENDED",
         "AUTONOMOUS_LIVE_ODDS_CAPTURE_NO_ELIGIBLE_WINDOWS",
     }
+    status_counts = odds_status.get("status_counts") or {}
+    refresh_status = refresh_report.get("status")
+    has_usable_odds_action = bool(
+        int(odds_status.get("ready_count") or 0) > 0
+        or int(odds_status.get("inserted_live_odds_rows") or 0) > 0
+        or any(
+            status_counts.get(status)
+            for status in (
+                "APPENDED",
+                "SKIPPED_ALREADY_CAPTURED",
+                "SKIPPED_EXISTING_CAPTURE_SUPERSET",
+            )
+        )
+    )
+    refresh_status_accepted = bool(
+        refresh_status == "SUCCESS"
+        or (
+            refresh_status == "METADATA_COVERAGE_INCOMPLETE"
+            and has_usable_odds_action
+        )
+    )
     return (
         step.get("returncode") == 0
-        and (autopilot_result or {}).get("final_verdict") == "AUTOPILOT_READY"
-        and refresh_report.get("status") == "SUCCESS"
+        and (autopilot_result or {}).get("final_verdict")
+        in {"PARTIAL_AUTOMATION_READY", "AUTOPILOT_READY"}
+        and refresh_status_accepted
         and odds_status.get("status") in accepted_odds_statuses
     )
 
@@ -2814,6 +2855,33 @@ def t2_odds_capture_surface_fields(
     }
 
 
+def full_daemon_defer_fixed_window_schedule(
+    state: Mapping[str, Any],
+    *,
+    current_time: datetime,
+) -> tuple[dict[str, Any], str]:
+    existing_schedule = state.get("odds_capture_fixed_window_schedule")
+    if not isinstance(existing_schedule, Mapping):
+        existing_schedule = {}
+    next_window = state.get("next_preferred_window")
+    if not isinstance(next_window, Mapping):
+        return dict(existing_schedule), "published_odds_capture_state"
+    next_race = next_window.get("next_race")
+    if not isinstance(next_race, Mapping) or not next_race.get("jump_datetime"):
+        return dict(existing_schedule), "published_odds_capture_state"
+
+    recomputed = odds_capture_fixed_window_schedule(
+        next_window,
+        current_time=current_time,
+    )
+    recomputed = reconcile_odds_capture_schedule_with_direct_status(
+        recomputed,
+        state,
+        current_time=current_time,
+    )
+    return recomputed, "recomputed_from_next_preferred_window"
+
+
 def full_daemon_odds_window_defer_decision(
     state: Mapping[str, Any] | None,
     *,
@@ -2821,9 +2889,10 @@ def full_daemon_odds_window_defer_decision(
     horizon_seconds: int = DEFAULT_FULL_DAEMON_ODDS_DEFER_HORIZON_SECONDS,
 ) -> dict[str, Any]:
     state = state if isinstance(state, Mapping) else {}
-    schedule = state.get("odds_capture_fixed_window_schedule")
-    if not isinstance(schedule, Mapping):
-        schedule = {}
+    schedule, schedule_source = full_daemon_defer_fixed_window_schedule(
+        state,
+        current_time=current_time,
+    )
     next_window = state.get("next_preferred_window")
     if not isinstance(next_window, Mapping):
         next_window = {}
@@ -2857,26 +2926,36 @@ def full_daemon_odds_window_defer_decision(
         state.get("next_meaningful_action") or schedule.get("next_meaningful_action") or ""
     )
     refresh_action_requested = next_action == "REFRESH_UPCOMING_RACE_WINDOW"
-    action_due_now = next_action == "RUN_ODDS_CAPTURE_NOW"
+    schedule_recomputed = schedule_source == "recomputed_from_next_preferred_window"
+    action_due_now = bool(
+        next_action == "RUN_ODDS_CAPTURE_NOW" and (schedule_recomputed or window_open)
+    )
     action_imminent = (
-        next_action in {"RUN_ODDS_CAPTURE_NOW", "WAIT_UNTIL_NEXT_FIXED_WINDOW"}
+        next_action == "WAIT_UNTIL_NEXT_FIXED_WINDOW"
         and action_at is not None
-        and action_at <= horizon_at
+        and current_time <= action_at <= horizon_at
     )
     pending_imminent = (
         pending_at is not None and current_time <= pending_at <= horizon_at
     )
     due_count = int((schedule.get("status_counts") or {}).get("DUE") or 0)
+    due_capture_unhandled = bool(
+        due_count > 0
+        and not schedule.get("schedule_reconciled_with_direct_capture")
+        and (schedule_recomputed or window_open)
+    )
+    fixed_window_due_or_near_due = bool(
+        action_due_now or action_imminent or pending_imminent or due_capture_unhandled
+    )
+    refresh_action_clear = bool(
+        refresh_action_requested
+        and not pending_imminent
+        and not due_capture_unhandled
+    )
     should_defer = bool(
-        not (refresh_action_requested and not pending_imminent)
-        and (window_open or fresh_open_multi_race_state)
-        and (
-            action_due_now
-            or action_imminent
-            or pending_imminent
-            or due_count > 0
-            or fresh_open_multi_race_state
-        )
+        not refresh_action_clear
+        and (window_open or fresh_open_multi_race_state or fixed_window_due_or_near_due)
+        and (fixed_window_due_or_near_due or fresh_open_multi_race_state)
     )
     if should_defer:
         reason = (
@@ -2904,7 +2983,19 @@ def full_daemon_odds_window_defer_decision(
             state.get("next_meaningful_action") or schedule.get("next_meaningful_action")
         ),
         "next_meaningful_action_at": action_at.isoformat() if action_at else None,
+        "next_meaningful_action_offset_minutes": schedule.get(
+            "next_meaningful_action_offset_minutes"
+        ),
+        "next_due_offset_minutes": schedule.get("next_due_offset_minutes"),
+        "next_due_capture_at": schedule.get("next_due_capture_at"),
+        "next_pending_offset_minutes": schedule.get("next_pending_offset_minutes"),
         "next_pending_capture_at": pending_at.isoformat() if pending_at else None,
+        "fixed_window_schedule_source": schedule_source,
+        "fixed_window_due_or_near_due": fixed_window_due_or_near_due,
+        "due_capture_window_unhandled": due_capture_unhandled,
+        "schedule_reconciled_with_direct_capture": bool(
+            schedule.get("schedule_reconciled_with_direct_capture")
+        ),
         "state_updated_at": state_updated_at.isoformat() if state_updated_at else None,
         "fresh_open_multi_race_state": fresh_open_multi_race_state,
         "due_capture_window_count": due_count,
@@ -3188,7 +3279,7 @@ def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
     output_dir = args.output_dir or (
         evidence_root / f"shadow_autopilot_daemonization_v1_{run_id}"
     )
-    output_dir = unique_dir(assert_output_dir_safe(output_dir))
+    output_dir = unique_dir(assert_output_dir_safe(output_dir, evidence_root=evidence_root))
     output_dir.mkdir(parents=True, exist_ok=False)
     preflight_wait = odds_capture_preflight_wait(
         state_path=args.state_path,
@@ -8833,7 +8924,8 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
     run_id = args.run_id or now_id(generated_at)
     evidence_root = args.evidence_root
     output_dir = assert_output_dir_safe(
-        args.output_dir or evidence_root / f"shadow_autopilot_daemonization_v1_{run_id}"
+        args.output_dir or evidence_root / f"shadow_autopilot_daemonization_v1_{run_id}",
+        evidence_root=evidence_root,
     )
     output_dir = unique_dir(output_dir)
     output_dir.mkdir(parents=True, exist_ok=False)

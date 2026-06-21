@@ -91,6 +91,32 @@ def test_initial_daemon_run_report_marks_long_cycle_running(tmp_path):
     assert report["no_write_guarantees"]["betting_action"] is False
 
 
+def test_output_dir_safe_accepts_configured_external_evidence_root(
+    tmp_path, monkeypatch
+):
+    repo_root = tmp_path / "release_repo"
+    evidence_root = tmp_path / "runtime_artifacts" / "full_evidence_orchestration_20260525"
+    output_dir = evidence_root / "shadow_autopilot_daemonization_v1_external"
+    repo_root.mkdir()
+
+    monkeypatch.setattr(daemon, "ROOT", repo_root)
+
+    assert (
+        daemon.assert_output_dir_safe(output_dir, evidence_root=evidence_root)
+        == output_dir.absolute()
+    )
+
+    try:
+        daemon.assert_output_dir_safe(
+            evidence_root / "not_a_daemon_output",
+            evidence_root=evidence_root,
+        )
+    except ValueError as exc:
+        assert str(exc).startswith("output_dir_must_be_shadow_autopilot_daemon_artifact")
+    else:
+        raise AssertionError("external evidence root must still enforce daemon prefix")
+
+
 def test_daily_shadow_run_from_autopilot_uses_run_manifest(tmp_path, monkeypatch):
     monkeypatch.setattr(daemon, "ROOT", tmp_path)
     autopilot_output_dir = tmp_path / "artifacts/shadow_autopilot_v1_x"
@@ -823,6 +849,98 @@ def test_run_once_defer_writes_startup_output_manifest(tmp_path, monkeypatch):
     assert any(path.endswith("full_daemon_odds_window_defer.json") for path in manifest["files"])
 
 
+def test_run_once_defers_before_lock_when_t2_window_recomputed_due(
+    tmp_path, monkeypatch
+):
+    evidence_root = tmp_path / "artifacts/full_evidence_orchestration_20260525"
+    output_dir = evidence_root / "shadow_autopilot_daemonization_v1_t2_defer"
+    odds_state_path = tmp_path / "runtime" / "odds_capture_state.json"
+    db_path = tmp_path / "greyhound_racing_data.db"
+    db_path.write_text("db", encoding="utf-8")
+    daemon.write_json(
+        odds_state_path,
+        {
+            "schema_version": "shadow_autopilot_odds_capture_only_state_v1",
+            "updated_at": "2026-06-12T01:29:00+10:00",
+            "window_state_source_updated_at": "2026-06-12T01:29:00+10:00",
+            "run_id": "previous_odds",
+            "final_status": "ODDS_CAPTURE_ONLY_READY",
+            "odds_capture_status": "AUTONOMOUS_LIVE_ODDS_CAPTURE_NO_ELIGIBLE_WINDOWS",
+            "odds_capture_refresh_status": "SUCCESS",
+            "next_meaningful_action": "REFRESH_UPCOMING_RACE_WINDOW",
+            "next_meaningful_action_at": "2026-06-12T01:29:00+10:00",
+            "next_window_opens_at": "2026-06-12T01:35:00+10:00",
+            "next_preferred_window": {
+                "status": "OPEN_NOW",
+                "next_window_opens_at": "2026-06-12T00:35:00+10:00",
+                "next_window_closes_at": "2026-06-12T01:37:00+10:00",
+                "next_race": {
+                    "race_id": "Race 1 - HEA - 2026-06-12",
+                    "date": "2026-06-12",
+                    "venue": "HEA",
+                    "race_number": 1,
+                    "race_time": "01:37",
+                    "jump_datetime": "2026-06-12T01:37:00+10:00",
+                },
+            },
+            "odds_capture_fixed_window_schedule": {
+                "generated_at": "2026-06-12T01:29:00+10:00",
+                "next_meaningful_action": "REFRESH_UPCOMING_RACE_WINDOW",
+                "next_meaningful_action_at": "2026-06-12T01:29:00+10:00",
+                "status_counts": {"PASSED": 4},
+            },
+        },
+    )
+
+    monkeypatch.setattr(daemon, "ROOT", tmp_path)
+    monkeypatch.setattr(daemon, "copy_if_exists", lambda source, dest: None)
+    monkeypatch.setattr(
+        daemon,
+        "write_service_files",
+        lambda **kwargs: {
+            "status": "SERVICE_FILES_WRITTEN",
+            "systemd_deployment_ready": True,
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "acquire_lock_with_odds_capture_retry",
+        lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("T-2 deferred full daemon should not acquire lock")
+        ),
+    )
+
+    args = daemon.parse_args(
+        [
+            "run-once",
+            "--run-id",
+            "t2_defer",
+            "--evidence-root",
+            str(evidence_root),
+            "--output-dir",
+            str(output_dir),
+            "--current-time",
+            "2026-06-12T01:35:30+10:00",
+            "--db",
+            str(db_path),
+            "--enable-autonomous-odds-capture",
+            "--odds-capture-state-path",
+            str(odds_state_path),
+        ]
+    )
+
+    report = daemon.run_once(args)
+    decision = json.loads((output_dir / "full_daemon_odds_window_defer.json").read_text())
+
+    assert report["final_verdict"] == "DAEMON_DEFERRED_TO_ODDS_CAPTURE_ONLY"
+    assert report["runtime_action"] == "DEFER_FULL_DAEMON_FOR_FIXED_WINDOW_ODDS_CAPTURE"
+    assert report["readiness_decision"] == "ODDS_CAPTURE_PRIORITY"
+    assert decision["should_defer"] is True
+    assert decision["due_capture_window_count"] == 1
+    assert decision["next_meaningful_action_offset_minutes"] == 2
+    assert report["lock_validation_status"] == "NOT_ACQUIRED_DEFERRED"
+
+
 def test_run_once_lock_held_surfaces_latest_odds_capture_state(tmp_path, monkeypatch):
     evidence_root = tmp_path / "artifacts/full_evidence_orchestration_20260525"
     output_dir = evidence_root / "shadow_autopilot_daemonization_v1_lock_held"
@@ -993,6 +1111,50 @@ def test_daemon_can_explicitly_allow_incomplete_refresh_metadata():
 
     assert run_args.require_safe_refresh_metadata is False
     assert odds_args.require_safe_refresh_metadata is False
+
+
+def test_odds_capture_only_ready_accepts_partial_parent_when_odds_appended():
+    final_status = daemon.classify_odds_capture_only_final_status(
+        step={"returncode": 0},
+        autopilot_result={"final_verdict": "PARTIAL_AUTOMATION_READY"},
+        odds_status={
+            "status": "AUTONOMOUS_LIVE_ODDS_CAPTURE_APPENDED",
+            "inserted_live_odds_rows": 15,
+        },
+        refresh_report={"status": "SUCCESS"},
+    )
+
+    assert final_status == "ODDS_CAPTURE_ONLY_READY"
+
+
+def test_odds_capture_only_ready_accepts_metadata_incomplete_when_windows_handled():
+    final_status = daemon.classify_odds_capture_only_final_status(
+        step={"returncode": 0},
+        autopilot_result={"final_verdict": "PARTIAL_AUTOMATION_READY"},
+        odds_status={
+            "status": "AUTONOMOUS_LIVE_ODDS_CAPTURE_NO_ELIGIBLE_WINDOWS",
+            "ready_count": 5,
+            "status_counts": {"SKIPPED_ALREADY_CAPTURED": 5, "SKIPPED_NOT_READY": 3},
+        },
+        refresh_report={"status": "METADATA_COVERAGE_INCOMPLETE"},
+    )
+
+    assert final_status == "ODDS_CAPTURE_ONLY_READY"
+
+
+def test_odds_capture_only_ready_rejects_metadata_incomplete_without_usable_windows():
+    final_status = daemon.classify_odds_capture_only_final_status(
+        step={"returncode": 0},
+        autopilot_result={"final_verdict": "PARTIAL_AUTOMATION_READY"},
+        odds_status={
+            "status": "AUTONOMOUS_LIVE_ODDS_CAPTURE_NO_ELIGIBLE_WINDOWS",
+            "ready_count": 0,
+            "status_counts": {"SKIPPED_NOT_READY": 3},
+        },
+        refresh_report={"status": "METADATA_COVERAGE_INCOMPLETE"},
+    )
+
+    assert final_status == "ODDS_CAPTURE_ONLY_FAILED"
 
 
 def test_odds_capture_only_autopilot_command_is_narrow_and_append_only():
@@ -3082,6 +3244,46 @@ def test_full_daemon_odds_window_defer_decision_allows_refresh_action():
     assert decision["reason"] == "odds_capture_refresh_action_requested"
     assert decision["next_meaningful_action"] == "REFRESH_UPCOMING_RACE_WINDOW"
     assert decision["due_capture_window_count"] == 1
+
+
+def test_full_daemon_odds_window_defer_decision_recomputes_near_due_t2_window():
+    state = {
+        "updated_at": "2026-06-12T01:29:00+10:00",
+        "next_meaningful_action": "REFRESH_UPCOMING_RACE_WINDOW",
+        "next_meaningful_action_at": "2026-06-12T01:29:00+10:00",
+        "next_preferred_window": {
+            "status": "OPEN_NOW",
+            "next_window_opens_at": "2026-06-12T00:35:00+10:00",
+            "next_window_closes_at": "2026-06-12T01:37:00+10:00",
+            "next_race": {
+                "race_id": "Race 1 - HEA - 2026-06-12",
+                "date": "2026-06-12",
+                "venue": "HEA",
+                "race_number": 1,
+                "race_time": "01:37",
+                "jump_datetime": "2026-06-12T01:37:00+10:00",
+            },
+        },
+        "odds_capture_fixed_window_schedule": {
+            "generated_at": "2026-06-12T01:29:00+10:00",
+            "next_meaningful_action": "REFRESH_UPCOMING_RACE_WINDOW",
+            "next_meaningful_action_at": "2026-06-12T01:29:00+10:00",
+            "status_counts": {"PASSED": 4},
+        },
+    }
+
+    decision = daemon.full_daemon_odds_window_defer_decision(
+        state,
+        current_time=daemon.datetime.fromisoformat("2026-06-12T01:34:45+10:00"),
+    )
+
+    assert decision["should_defer"] is True
+    assert decision["reason"] == "odds_capture_window_open_or_imminent"
+    assert decision["fixed_window_schedule_source"] == (
+        "recomputed_from_next_preferred_window"
+    )
+    assert decision["next_pending_capture_at"] == "2026-06-12T01:35:00+10:00"
+    assert decision["next_pending_offset_minutes"] == 2
 
 
 def test_full_daemon_odds_window_defer_decision_defers_future_pending_capture_after_refresh():

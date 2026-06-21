@@ -771,6 +771,112 @@ def test_common_reports_write_waiting_same_distance_history_provenance(tmp_path)
     assert report["by_feature"]["same_distance_same_grade_best_time"]["status"] == "NOT_POPULATED"
 
 
+def test_waiting_matrix_reports_mark_data_missing_without_raising(tmp_path):
+    output_dir = tmp_path / "daily"
+    output_dir.mkdir()
+
+    orchestrator.write_matrix_reports_for_waiting(
+        output_dir=output_dir,
+        clean_dataset=tmp_path / "missing_clean.jsonl",
+        repaired_packet=tmp_path / "missing_repaired.csv",
+        schema_path=tmp_path / "missing_schema.json",
+        db_path=tmp_path / "missing.db",
+        all_missing_train_policy="quarantine_feature",
+    )
+
+    for name in (
+        "feature_population_report.json",
+        "shadow_feature_matrix_audit.json",
+        "train_eval_feature_parity_report.json",
+        "inactive_feature_policy_report.json",
+    ):
+        report = json.loads((output_dir / name).read_text(encoding="utf-8"))
+        assert report["status"] == "DATA_MISSING"
+        assert report["reason"] == "waiting_feature_matrix_inputs_missing"
+        assert report["live_input_status"] == "NO_ELIGIBLE_PREJUMP_RACES"
+        assert report["shadow_scoring_allowed"] is False
+        assert {row["name"] for row in report["missing_inputs"]} == {
+            "clean_dataset",
+            "repaired_packet",
+            "schema",
+            "db",
+        }
+
+
+def test_main_waits_when_no_eligible_inputs_and_matrix_inputs_missing(
+    tmp_path,
+    monkeypatch,
+):
+    repo_root = tmp_path / "repo"
+    input_dir = tmp_path / "empty_refreshed_upcoming"
+    output_dir = (
+        repo_root
+        / "artifacts/full_evidence_orchestration_20260525"
+        / "daily_race_ingest_shadow_empty_input"
+    )
+    input_dir.mkdir(parents=True)
+
+    monkeypatch.setattr(orchestrator, "ROOT", repo_root)
+    monkeypatch.setattr(
+        orchestrator,
+        "verify_db_state",
+        lambda _db: {
+            "status": "PASS",
+            "quick_check": "ok",
+            "official_races": 214,
+            "official_dog_rows": 1493,
+        },
+    )
+    monkeypatch.setattr(orchestrator, "protected_path_snapshot", lambda: {})
+    monkeypatch.setattr(
+        orchestrator,
+        "protected_path_verification",
+        lambda _before: {"protected_paths_unchanged": True},
+    )
+    monkeypatch.setattr(
+        orchestrator,
+        "output_file_manifest",
+        lambda output_path: {
+            "schema_version": "test_manifest_v1",
+            "output_dir": str(output_path),
+            "artifact_files": {},
+        },
+    )
+
+    status = orchestrator.main(
+        [
+            "--input-dir",
+            str(input_dir),
+            "--output-dir",
+            str(output_dir),
+            "--current-time",
+            "2026-06-20T13:47:11+10:00",
+            "--db",
+            str(tmp_path / "missing.db"),
+            "--clean-dataset",
+            str(tmp_path / "missing_clean.jsonl"),
+            "--repaired-packet",
+            str(tmp_path / "missing_repaired.csv"),
+            "--schema",
+            str(tmp_path / "missing_schema.json"),
+        ]
+    )
+
+    assert status == 0
+    assert (output_dir / "final_status.txt").read_text(encoding="utf-8").strip() == (
+        orchestrator.FINAL_STATUS_WAITING
+    )
+    assert not (output_dir / "daily_shadow_runtime_error.json").exists()
+    manifest = json.loads((output_dir / "shadow_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["final_status"] == orchestrator.FINAL_STATUS_WAITING
+    assert manifest["input_summary"]["eligible_count"] == 0
+    assert manifest["prediction_rows"] == 0
+    matrix_status = json.loads(
+        (output_dir / "shadow_feature_matrix_audit.json").read_text(encoding="utf-8")
+    )
+    assert matrix_status["status"] == "DATA_MISSING"
+
+
 def test_common_reports_copy_score_live_same_distance_history_provenance(tmp_path):
     output_dir = tmp_path / "daily"
     score_output_dir = tmp_path / "score"
