@@ -6510,7 +6510,7 @@ def test_systemd_deployment_status_reports_active_installed_timer():
                     "ActiveState=inactive",
                     "UnitFileState=enabled",
                     "FragmentPath=/etc/systemd/system/shadow-autopilot.service",
-                    "ExecStart={ path=/usr/bin/python3 ; argv[]=/usr/bin/python3 /home/l4nd0/greyhound_racing_collector/scripts/shadow_autopilot_daemon.py run-once --enable-autonomous-odds-capture --execute-autonomous-odds-capture --allow-auto-scrape-odds --enable-autonomous-result-capture ; }",
+                    "ExecStart={ path=/home/l4nd0/greyhound_racing_collector/.venv/bin/python ; argv[]=/home/l4nd0/greyhound_racing_collector/.venv/bin/python /home/l4nd0/greyhound_racing_collector/scripts/shadow_autopilot_daemon.py run-once --enable-autonomous-odds-capture --execute-autonomous-odds-capture --allow-auto-scrape-odds --enable-autonomous-result-capture ; }",
                     "",
                 ]
             )
@@ -6556,7 +6556,7 @@ def test_systemd_deployment_status_fails_closed_when_active_timer_command_is_sta
                     "ActiveState=inactive",
                     "UnitFileState=static",
                     "FragmentPath=/etc/systemd/system/shadow-autopilot.service",
-                    "ExecStart={ path=/usr/bin/python3 ; argv[]=/usr/bin/python3 /home/l4nd0/greyhound_racing_collector/scripts/shadow_autopilot_daemon.py run-once --days-ahead 1 --refresh-limit 16 ; }",
+                    "ExecStart={ path=/home/l4nd0/greyhound_racing_collector/.venv/bin/python ; argv[]=/home/l4nd0/greyhound_racing_collector/.venv/bin/python /home/l4nd0/greyhound_racing_collector/scripts/shadow_autopilot_daemon.py run-once --days-ahead 1 --refresh-limit 16 ; }",
                     "",
                 ]
             )

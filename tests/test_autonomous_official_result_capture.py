@@ -1200,6 +1200,39 @@ def test_shadow_run_candidates_use_score_live_feature_rows_from_manifest(tmp_pat
     assert candidates[0].csv_path == source_csv
 
 
+def test_shadow_run_candidates_resolve_runtime_repo_relative_source_csv(tmp_path):
+    runtime_root = tmp_path / "runtime_checkout"
+    artifact_root = runtime_root / "artifacts/full_evidence_orchestration_20260525"
+    artifact_root.mkdir(parents=True)
+    run_name = "daily_race_ingest_shadow_20260610T140000+1000_daemon_autopilot"
+    source_rel = (
+        Path("artifacts/full_evidence_orchestration_20260525")
+        / run_name
+        / "eligible_inputs/source_0001/Race 1 - WPK - 2026-06-10.csv"
+    )
+    source_csv = runtime_root / source_rel
+    shadow_run_dir = _write_shadow_run(
+        artifact_root,
+        source_csv=source_rel,
+        dirname=run_name,
+    )
+    source_csv.parent.mkdir(parents=True)
+    _write_shadow_source_csv(source_csv)
+
+    candidates, skipped, source_report = capture.shadow_run_candidates(
+        shadow_run_dir=shadow_run_dir,
+        target_date="2026-06-10",
+        current_time=datetime.fromisoformat("2026-06-10T15:00:00+10:00"),
+        race_ids=[],
+        output_dir=tmp_path / "out",
+    )
+
+    assert skipped == []
+    assert source_report["candidate_count"] == 1
+    assert len(candidates) == 1
+    assert candidates[0].csv_path == source_csv.resolve()
+
+
 def test_shadow_run_candidates_skip_missing_source_csv(tmp_path):
     shadow_run_dir = _write_shadow_run(
         tmp_path,

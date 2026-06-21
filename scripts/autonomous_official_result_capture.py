@@ -431,6 +431,41 @@ def write_shadow_run_candidate_csv(path: Path, participants: Sequence[Mapping[st
             )
 
 
+def shadow_run_checkout_root(shadow_run_dir: Path) -> Path | None:
+    marker = Path("artifacts/full_evidence_orchestration_20260525")
+    parts = shadow_run_dir.resolve().parts
+    marker_parts = marker.parts
+    for index in range(0, len(parts) - len(marker_parts) + 1):
+        if parts[index : index + len(marker_parts)] == marker_parts:
+            if index == 0:
+                return Path(".").resolve()
+            return Path(*parts[:index])
+    return None
+
+
+def resolve_shadow_run_source_csv(source_csv_value: str, *, shadow_run_dir: Path) -> Path:
+    source_csv = Path(source_csv_value)
+    if source_csv.is_absolute():
+        return source_csv
+
+    candidate_paths = [
+        (shadow_run_dir / source_csv).resolve(),
+    ]
+    checkout_root = shadow_run_checkout_root(shadow_run_dir)
+    if checkout_root is not None:
+        candidate_paths.append((checkout_root / source_csv).resolve())
+    candidate_paths.append((ROOT / source_csv).resolve())
+
+    seen: set[str] = set()
+    unique_candidates: list[Path] = []
+    for candidate in candidate_paths:
+        key = str(candidate)
+        if key not in seen:
+            seen.add(key)
+            unique_candidates.append(candidate)
+    return next((candidate for candidate in unique_candidates if candidate.exists()), unique_candidates[0])
+
+
 def shadow_run_candidates(
     *,
     shadow_run_dir: Path,
@@ -492,16 +527,7 @@ def shadow_run_candidates(
                 }
             )
             continue
-        source_csv = Path(source_csv_value)
-        if not source_csv.is_absolute():
-            candidate_paths = [
-                (shadow_run_dir / source_csv).resolve(),
-                (ROOT / source_csv).resolve(),
-            ]
-            source_csv = next(
-                (candidate for candidate in candidate_paths if candidate.exists()),
-                candidate_paths[0],
-            )
+        source_csv = resolve_shadow_run_source_csv(source_csv_value, shadow_run_dir=shadow_run_dir)
         if not source_csv.exists():
             skipped.append(
                 {

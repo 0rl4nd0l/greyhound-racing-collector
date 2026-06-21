@@ -41,6 +41,11 @@ SPORTSBET_NEXT_EVENTS_PARAMS = {
 SPORTSBET_NEXT_EVENTS_SOURCE_URL = (
     SPORTSBET_NEXT_EVENTS_ENDPOINT + "?" + urlencode(SPORTSBET_NEXT_EVENTS_PARAMS)
 )
+SPORTSBET_VENUE_ALIASES_BY_CODE = {
+    "QOT": {"Q Straight", "Ladbrokes Q Straight"},
+    "Q1": {"Q1 Lakeside", "Ladbrokes Q1 Lakeside"},
+    "Q2": {"Q2 Parklands", "Ladbrokes Q2 Parklands"},
+}
 
 
 def _normalise_name(value: Any) -> str:
@@ -88,6 +93,7 @@ def _candidate_venue_names(race_info: Mapping[str, Any]) -> set[str]:
     )
     if location is not None:
         names.add(location.venue_name)
+        names.update(SPORTSBET_VENUE_ALIASES_BY_CODE.get(location.venue_code, set()))
         if not location.venue_name.lower().endswith("park"):
             names.add(f"{location.venue_name} Park")
     return {_normalise_name(name) for name in names if name}

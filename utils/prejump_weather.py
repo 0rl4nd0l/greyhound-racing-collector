@@ -25,6 +25,10 @@ class VenueWeatherLocation:
     timezone: str
 
 
+THE_Q_LATITUDE = -27.6667
+THE_Q_LONGITUDE = 152.7167
+
+
 VENUE_WEATHER_LOCATIONS: dict[str, VenueWeatherLocation] = {
     "AP_K": VenueWeatherLocation("AP_K", "Angle Park", -34.8468, 138.5390, "Australia/Adelaide"),
     "AP-K": VenueWeatherLocation("AP_K", "Angle Park", -34.8468, 138.5390, "Australia/Adelaide"),
@@ -75,6 +79,14 @@ VENUE_WEATHER_LOCATIONS: dict[str, VenueWeatherLocation] = {
     "NOR": VenueWeatherLocation("NOR", "Northam", -31.6500, 116.6667, "Australia/Perth"),
     "NORTHAM": VenueWeatherLocation("NOR", "Northam", -31.6500, 116.6667, "Australia/Perth"),
     "NOWRA": VenueWeatherLocation("NOWRA", "Nowra", -34.8750, 150.6000, "Australia/Sydney"),
+    "QOT": VenueWeatherLocation("QOT", "Ladbrokes Q Straight", THE_Q_LATITUDE, THE_Q_LONGITUDE, "Australia/Brisbane"),
+    "Q-STRAIGHT": VenueWeatherLocation("QOT", "Ladbrokes Q Straight", THE_Q_LATITUDE, THE_Q_LONGITUDE, "Australia/Brisbane"),
+    "LADBROKES-Q-STRAIGHT": VenueWeatherLocation("QOT", "Ladbrokes Q Straight", THE_Q_LATITUDE, THE_Q_LONGITUDE, "Australia/Brisbane"),
+    "Q1-LAKESIDE": VenueWeatherLocation("Q1", "Ladbrokes Q1 Lakeside", THE_Q_LATITUDE, THE_Q_LONGITUDE, "Australia/Brisbane"),
+    "LADBROKES-Q1-LAKESIDE": VenueWeatherLocation("Q1", "Ladbrokes Q1 Lakeside", THE_Q_LATITUDE, THE_Q_LONGITUDE, "Australia/Brisbane"),
+    "Q2-PARKLANDS": VenueWeatherLocation("Q2", "Ladbrokes Q2 Parklands", THE_Q_LATITUDE, THE_Q_LONGITUDE, "Australia/Brisbane"),
+    "LADBROKES-Q2-PARKLANDS": VenueWeatherLocation("Q2", "Ladbrokes Q2 Parklands", THE_Q_LATITUDE, THE_Q_LONGITUDE, "Australia/Brisbane"),
+    "THE-Q": VenueWeatherLocation("THE_Q", "The Q", THE_Q_LATITUDE, THE_Q_LONGITUDE, "Australia/Brisbane"),
     "RICH": VenueWeatherLocation("RICH", "Richmond", -33.6000, 150.7500, "Australia/Sydney"),
     "RICHMOND": VenueWeatherLocation("RICH", "Richmond", -33.6000, 150.7500, "Australia/Sydney"),
     "ROCK": VenueWeatherLocation("ROCK", "Rockhampton", -23.3833, 150.5167, "Australia/Brisbane"),
