@@ -98,16 +98,17 @@ metadata.
 - The venue map in `utils/prejump_weather.py` is also the timezone map used by
   Sportsbet track matching and expert-form metadata.
 
-The live daemon checkout is:
+The live daemon code checkout is:
 
-`/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610`
+`/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-runtime-release-clean-20260621`
 
-The master merge checkout is:
+The live daemon Python/runtime environment is:
 
-`/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-master-merge-autonomous-accuracy-odds-v1-20260618`
+`/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/.venv/bin/python`
 
-Keep these aligned for runtime fixes. A master-only patch will not affect the
-systemd daemon until it is applied or deployed to the runtime checkout.
+Use a fresh sibling worktree from `origin/master` for merge and review work.
+A master-only patch will not affect the systemd daemon until it is deployed
+through the service path.
 
 Q/The Q aliases are mapped to the Purga/Ipswich venue family:
 

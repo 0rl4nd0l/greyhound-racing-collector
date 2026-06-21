@@ -6,17 +6,18 @@ one shadow run, one result packet, or one daemon artifact.
 
 ## Canonical Runtime Paths
 
-- Runtime checkout used by systemd:
-  `/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610`
-- Master merge checkout:
-  `/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-master-merge-autonomous-accuracy-odds-v1-20260618`
+- Runtime code checkout used by systemd:
+  `/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-runtime-release-clean-20260621`
+- Runtime Python:
+  `/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/.venv/bin/python`
 - Runtime evidence root:
   `/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525`
 - Runtime DB:
   `/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/greyhound_racing_data.db`
 
-Master-only patches do not affect the live daemon until they are applied to the
-runtime checkout or deployed through the service path.
+Do merge and review work in a fresh sibling worktree from `origin/master`.
+Master-only patches do not affect the live daemon until they are deployed
+through the systemd service path.
 
 ## Race Inventory First
 
