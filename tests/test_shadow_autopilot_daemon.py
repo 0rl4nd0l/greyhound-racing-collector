@@ -4242,6 +4242,7 @@ def test_service_and_timer_define_15_minute_oneshot_cycle():
         "--evidence-root /runtime/artifacts/full_evidence_orchestration_20260525"
         in service
     )
+    assert service.index("--evidence-root") < service.index("--days-ahead")
     assert "--shadow-model /models/stage2/shadow_randomforest_model.joblib" in service
     assert "--db /data/greyhound_racing_data.db" in service
     assert "--lock-path /runtime/shared-shadow-autopilot.lock" in service
@@ -4282,6 +4283,7 @@ def test_odds_capture_service_and_timer_define_minutely_locked_lane():
         "--evidence-root /runtime/artifacts/full_evidence_orchestration_20260525"
         in service
     )
+    assert service.index("--evidence-root") < service.index("--days-ahead")
     assert "--db /data/greyhound_racing_data.db" in service
     assert "--lock-path /runtime/shared-shadow-autopilot.lock" in service
     assert "--state-path /runtime/odds_capture_state.json" in service
@@ -4329,6 +4331,7 @@ def test_write_odds_capture_service_files_preserves_db_and_lock(tmp_path):
         "--evidence-root /runtime/artifacts/full_evidence_orchestration_20260525"
         in service
     )
+    assert service.index("--evidence-root") < service.index("--days-ahead")
     assert "--db /data/greyhound_racing_data.db" in service
     assert "--lock-path /runtime/shared-shadow-autopilot.lock" in service
     assert f"OnCalendar={daemon.DEFAULT_ODDS_CAPTURE_ONLY_TIMER_ON_CALENDAR}" in timer
@@ -6488,6 +6491,7 @@ def test_write_service_files_preserves_shadow_model_pin(tmp_path):
         "--evidence-root /runtime/artifacts/full_evidence_orchestration_20260525"
         in service
     )
+    assert service.index("--evidence-root") < service.index("--days-ahead")
     assert "--shadow-model /models/stage2/shadow_randomforest_model.joblib" in service
     assert "--db /data/greyhound_racing_data.db" in service
     assert "--lock-path /runtime/shared-shadow-autopilot.lock" in service
