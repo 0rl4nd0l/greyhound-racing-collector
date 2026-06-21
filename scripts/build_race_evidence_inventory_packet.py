@@ -354,7 +354,9 @@ def scan_db(
 
     table_status: dict[str, Any] = {}
     counts: dict[str, int] = {}
-    with sqlite3.connect(db_path) as conn:
+    db_uri = f"{db_path.resolve().as_uri()}?mode=ro"
+    with sqlite3.connect(db_uri, uri=True) as conn:
+        conn.execute("PRAGMA query_only=ON")
         conn.row_factory = sqlite3.Row
         for table in (
             "autonomous_official_result_evidence_races",
