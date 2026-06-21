@@ -42,6 +42,7 @@ from utils.runner_completeness import (  # noqa: E402
 
 DEFAULT_EVIDENCE_ROOT = ROOT / "artifacts/full_evidence_orchestration_20260525"
 OUTPUT_PREFIX = "artifacts/full_evidence_orchestration_20260525/autonomous_live_odds_capture_"
+OUTPUT_ARTIFACT_PREFIX = "autonomous_live_odds_capture_"
 CAPTURE_WINDOWS_MINUTES = (60, 30, 10, 2)
 ACCEPTED_SPORTSBET_BOX_SOURCES = {"explicit_dom", "runner_text"}
 ACCEPTED_DOG_LEVEL_ODDS_LEVELS = {"dog", "runner"}
@@ -425,17 +426,35 @@ def parse_date_value(value: Any) -> date | None:
         return None
 
 
-def assert_output_dir_safe(output_dir: Path) -> Path:
+def assert_output_dir_safe(
+    output_dir: Path,
+    *,
+    evidence_root: Path | None = None,
+) -> Path:
     logical = output_dir if output_dir.is_absolute() else ROOT / output_dir
+    candidate = logical.absolute()
     try:
-        relative = logical.absolute().relative_to(ROOT.absolute())
+        relative = candidate.relative_to(ROOT.absolute())
     except ValueError as exc:
-        raise ValueError("output_dir_must_be_inside_repo") from exc
+        if evidence_root is None:
+            raise ValueError("output_dir_must_be_inside_repo") from exc
+    else:
+        if ".." in relative.parts:
+            raise ValueError("output_dir_must_not_contain_parent_traversal")
+        if relative.as_posix().startswith(OUTPUT_PREFIX):
+            return candidate
+        raise ValueError(f"output_dir_must_be_autonomous_live_odds_capture_artifact:{relative}")
+
+    evidence_base = evidence_root if evidence_root.is_absolute() else ROOT / evidence_root
+    try:
+        relative = candidate.relative_to(evidence_base.absolute())
+    except ValueError as exc:
+        raise ValueError("output_dir_must_be_inside_repo_or_evidence_root") from exc
     if ".." in relative.parts:
         raise ValueError("output_dir_must_not_contain_parent_traversal")
-    if not relative.as_posix().startswith(OUTPUT_PREFIX):
-        raise ValueError(f"output_dir_must_be_autonomous_live_odds_capture_artifact:{relative}")
-    return logical.absolute()
+    if relative.parts and relative.parts[0].startswith(OUTPUT_ARTIFACT_PREFIX):
+        return candidate
+    raise ValueError(f"output_dir_must_be_autonomous_live_odds_capture_artifact:{relative}")
 
 
 def unique_dir(base: Path) -> Path:
@@ -2025,6 +2044,7 @@ def execute_capture_plan(
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input-dir", action="append", type=Path, required=True)
+    parser.add_argument("--evidence-root", type=Path, default=DEFAULT_EVIDENCE_ROOT)
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--db", type=Path, default=ROOT / "greyhound_racing_data.db")
     parser.add_argument("--current-time")
@@ -2042,9 +2062,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     current_time = parse_current_time(args.current_time)
+    evidence_root = args.evidence_root
     output_dir = assert_output_dir_safe(
         args.output_dir
-        or DEFAULT_EVIDENCE_ROOT / f"autonomous_live_odds_capture_{now_id(current_time)}"
+        or evidence_root / f"autonomous_live_odds_capture_{now_id(current_time)}",
+        evidence_root=evidence_root,
     )
     output_dir = unique_dir(output_dir)
     output_dir.mkdir(parents=True, exist_ok=False)

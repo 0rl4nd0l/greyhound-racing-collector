@@ -91,6 +91,32 @@ def test_initial_daemon_run_report_marks_long_cycle_running(tmp_path):
     assert report["no_write_guarantees"]["betting_action"] is False
 
 
+def test_output_dir_safe_accepts_configured_external_evidence_root(
+    tmp_path, monkeypatch
+):
+    repo_root = tmp_path / "release_repo"
+    evidence_root = tmp_path / "runtime_artifacts" / "full_evidence_orchestration_20260525"
+    output_dir = evidence_root / "shadow_autopilot_daemonization_v1_external"
+    repo_root.mkdir()
+
+    monkeypatch.setattr(daemon, "ROOT", repo_root)
+
+    assert (
+        daemon.assert_output_dir_safe(output_dir, evidence_root=evidence_root)
+        == output_dir.absolute()
+    )
+
+    try:
+        daemon.assert_output_dir_safe(
+            evidence_root / "not_a_daemon_output",
+            evidence_root=evidence_root,
+        )
+    except ValueError as exc:
+        assert str(exc).startswith("output_dir_must_be_shadow_autopilot_daemon_artifact")
+    else:
+        raise AssertionError("external evidence root must still enforce daemon prefix")
+
+
 def test_daily_shadow_run_from_autopilot_uses_run_manifest(tmp_path, monkeypatch):
     monkeypatch.setattr(daemon, "ROOT", tmp_path)
     autopilot_output_dir = tmp_path / "artifacts/shadow_autopilot_v1_x"
@@ -1085,6 +1111,50 @@ def test_daemon_can_explicitly_allow_incomplete_refresh_metadata():
 
     assert run_args.require_safe_refresh_metadata is False
     assert odds_args.require_safe_refresh_metadata is False
+
+
+def test_odds_capture_only_ready_accepts_partial_parent_when_odds_appended():
+    final_status = daemon.classify_odds_capture_only_final_status(
+        step={"returncode": 0},
+        autopilot_result={"final_verdict": "PARTIAL_AUTOMATION_READY"},
+        odds_status={
+            "status": "AUTONOMOUS_LIVE_ODDS_CAPTURE_APPENDED",
+            "inserted_live_odds_rows": 15,
+        },
+        refresh_report={"status": "SUCCESS"},
+    )
+
+    assert final_status == "ODDS_CAPTURE_ONLY_READY"
+
+
+def test_odds_capture_only_ready_accepts_metadata_incomplete_when_windows_handled():
+    final_status = daemon.classify_odds_capture_only_final_status(
+        step={"returncode": 0},
+        autopilot_result={"final_verdict": "PARTIAL_AUTOMATION_READY"},
+        odds_status={
+            "status": "AUTONOMOUS_LIVE_ODDS_CAPTURE_NO_ELIGIBLE_WINDOWS",
+            "ready_count": 5,
+            "status_counts": {"SKIPPED_ALREADY_CAPTURED": 5, "SKIPPED_NOT_READY": 3},
+        },
+        refresh_report={"status": "METADATA_COVERAGE_INCOMPLETE"},
+    )
+
+    assert final_status == "ODDS_CAPTURE_ONLY_READY"
+
+
+def test_odds_capture_only_ready_rejects_metadata_incomplete_without_usable_windows():
+    final_status = daemon.classify_odds_capture_only_final_status(
+        step={"returncode": 0},
+        autopilot_result={"final_verdict": "PARTIAL_AUTOMATION_READY"},
+        odds_status={
+            "status": "AUTONOMOUS_LIVE_ODDS_CAPTURE_NO_ELIGIBLE_WINDOWS",
+            "ready_count": 0,
+            "status_counts": {"SKIPPED_NOT_READY": 3},
+        },
+        refresh_report={"status": "METADATA_COVERAGE_INCOMPLETE"},
+    )
+
+    assert final_status == "ODDS_CAPTURE_ONLY_FAILED"
 
 
 def test_odds_capture_only_autopilot_command_is_narrow_and_append_only():

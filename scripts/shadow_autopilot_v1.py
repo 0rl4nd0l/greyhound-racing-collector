@@ -37,6 +37,7 @@ from scripts.shadow_feature_audit_packet import feature_activation_gate_input_pa
 
 DEFAULT_EVIDENCE_ROOT = ROOT / "artifacts/full_evidence_orchestration_20260525"
 OUTPUT_PREFIX = "artifacts/full_evidence_orchestration_20260525/shadow_autopilot_v1_"
+OUTPUT_ARTIFACT_PREFIX = "shadow_autopilot_v1_"
 DEFAULT_TARGET_JOINED_RACES = 100
 DEFAULT_MIN_JOINED_RACES_FOR_STATUS = 100
 DEFAULT_ODDS_CAPTURE_MIN_MINUTES = 0.0
@@ -432,17 +433,35 @@ def protected_hashes(paths: Sequence[Path] = PROTECTED_PATHS) -> dict[str, str |
     return {relpath(path) or str(path): sha256_file(path) for path in paths}
 
 
-def assert_output_dir_safe(output_dir: Path) -> Path:
+def assert_output_dir_safe(
+    output_dir: Path,
+    *,
+    evidence_root: Path | None = None,
+) -> Path:
     logical = output_dir if output_dir.is_absolute() else ROOT / output_dir
+    candidate = logical.absolute()
     try:
-        relative = logical.absolute().relative_to(ROOT.absolute())
+        relative = candidate.relative_to(ROOT.absolute())
     except ValueError as exc:
-        raise ValueError("output_dir_must_be_inside_repo") from exc
+        if evidence_root is None:
+            raise ValueError("output_dir_must_be_inside_repo") from exc
+    else:
+        if ".." in relative.parts:
+            raise ValueError("output_dir_must_not_contain_parent_traversal")
+        if relative.as_posix().startswith(OUTPUT_PREFIX):
+            return candidate
+        raise ValueError(f"output_dir_must_be_shadow_autopilot_artifact:{relative}")
+
+    evidence_base = evidence_root if evidence_root.is_absolute() else ROOT / evidence_root
+    try:
+        relative = candidate.relative_to(evidence_base.absolute())
+    except ValueError as exc:
+        raise ValueError("output_dir_must_be_inside_repo_or_evidence_root") from exc
     if ".." in relative.parts:
         raise ValueError("output_dir_must_not_contain_parent_traversal")
-    if not relative.as_posix().startswith(OUTPUT_PREFIX):
-        raise ValueError(f"output_dir_must_be_shadow_autopilot_artifact:{relative}")
-    return logical.absolute()
+    if relative.parts and relative.parts[0].startswith(OUTPUT_ARTIFACT_PREFIX):
+        return candidate
+    raise ValueError(f"output_dir_must_be_shadow_autopilot_artifact:{relative}")
 
 
 def unique_dir(base: Path) -> Path:
@@ -581,6 +600,7 @@ def shadow_odds_snapshot_paths_for_daily_dir(
 def autonomous_live_odds_capture_command(
     *,
     input_dirs: Sequence[Path],
+    evidence_root: Path,
     capture_dir: Path,
     db_path: Path,
     current_time: str,
@@ -593,6 +613,8 @@ def autonomous_live_odds_capture_command(
     command.extend(
         [
             str(ROOT / "scripts/autonomous_live_odds_capture.py"),
+            "--evidence-root",
+            str(evidence_root),
             "--output-dir",
             str(capture_dir),
             "--db",
@@ -6321,7 +6343,8 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
     run_id = args.run_id or now_id(generated_at)
     evidence_root = args.evidence_root
     output_dir = assert_output_dir_safe(
-        args.output_dir or evidence_root / f"shadow_autopilot_v1_{run_id}"
+        args.output_dir or evidence_root / f"shadow_autopilot_v1_{run_id}",
+        evidence_root=evidence_root,
     )
     output_dir = unique_dir(output_dir)
     output_dir.mkdir(parents=True, exist_ok=False)
@@ -6445,6 +6468,7 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
     if args.enable_autonomous_odds_capture:
         autonomous_odds_command = autonomous_live_odds_capture_command(
             input_dirs=odds_capture_input_dirs,
+            evidence_root=evidence_root,
             capture_dir=autonomous_odds_capture_dir,
             db_path=args.db,
             current_time=current_time,
