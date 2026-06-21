@@ -7,6 +7,34 @@ from pathlib import Path
 from scripts import autonomous_live_odds_capture as capture
 
 
+def test_output_guard_accepts_configured_external_evidence_root(
+    tmp_path, monkeypatch
+):
+    repo_root = tmp_path / "release_repo"
+    evidence_root = tmp_path / "runtime_artifacts" / "full_evidence_orchestration_20260525"
+    output_dir = evidence_root / "autonomous_live_odds_capture_external"
+    repo_root.mkdir()
+
+    monkeypatch.setattr(capture, "ROOT", repo_root)
+
+    assert (
+        capture.assert_output_dir_safe(output_dir, evidence_root=evidence_root)
+        == output_dir.absolute()
+    )
+
+    try:
+        capture.assert_output_dir_safe(
+            evidence_root / "not_an_odds_capture_output",
+            evidence_root=evidence_root,
+        )
+    except ValueError as exc:
+        assert str(exc).startswith(
+            "output_dir_must_be_autonomous_live_odds_capture_artifact"
+        )
+    else:
+        raise AssertionError("external evidence root must still enforce capture prefix")
+
+
 def _write_capture_input(
     input_dir: Path,
     *,

@@ -177,6 +177,32 @@ def test_output_guard_rejects_non_autopilot_paths():
         raise AssertionError("expected protected output path to be rejected")
 
 
+def test_output_guard_accepts_configured_external_evidence_root(
+    tmp_path, monkeypatch
+):
+    repo_root = tmp_path / "release_repo"
+    evidence_root = tmp_path / "runtime_artifacts" / "full_evidence_orchestration_20260525"
+    output_dir = evidence_root / "shadow_autopilot_v1_external"
+    repo_root.mkdir()
+
+    monkeypatch.setattr(autopilot, "ROOT", repo_root)
+
+    assert (
+        autopilot.assert_output_dir_safe(output_dir, evidence_root=evidence_root)
+        == output_dir.absolute()
+    )
+
+    try:
+        autopilot.assert_output_dir_safe(
+            evidence_root / "not_an_autopilot_output",
+            evidence_root=evidence_root,
+        )
+    except ValueError as exc:
+        assert str(exc).startswith("output_dir_must_be_shadow_autopilot_artifact")
+    else:
+        raise AssertionError("external evidence root must still enforce autopilot prefix")
+
+
 def test_latest_challenger_activation_metric_paths_requires_pair(tmp_path):
     evidence_root = tmp_path / "artifacts/full_evidence_orchestration_20260525"
     partial_dir = evidence_root / "forward_shadow_challenger_calibration_20260609T050000+1000"
@@ -429,6 +455,7 @@ def test_shadow_odds_snapshot_command_is_report_only_artifact():
 def test_autonomous_live_odds_capture_command_requires_explicit_execute_flags():
     command = autopilot.autonomous_live_odds_capture_command(
         input_dirs=[Path("upcoming_a"), Path("upcoming_b")],
+        evidence_root=Path("artifacts/full_evidence_orchestration_20260525"),
         capture_dir=Path(
             "artifacts/full_evidence_orchestration_20260525/"
             "autonomous_live_odds_capture_x"
@@ -441,12 +468,14 @@ def test_autonomous_live_odds_capture_command_requires_explicit_execute_flags():
     )
 
     assert any("scripts/autonomous_live_odds_capture.py" in part for part in command)
+    assert "--evidence-root" in command
     assert command.count("--input-dir") == 2
     assert "--execute" not in command
     assert "--allow-auto-scrape-odds" not in command
 
     approved = autopilot.autonomous_live_odds_capture_command(
         input_dirs=[Path("upcoming_a")],
+        evidence_root=Path("artifacts/full_evidence_orchestration_20260525"),
         capture_dir=Path(
             "artifacts/full_evidence_orchestration_20260525/"
             "autonomous_live_odds_capture_x"
