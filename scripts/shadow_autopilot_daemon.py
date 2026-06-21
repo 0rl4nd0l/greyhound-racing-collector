@@ -1092,6 +1092,8 @@ def service_file_text(
     *,
     repo_path: Path,
     timeout_seconds: int,
+    python_path: Path | None = None,
+    evidence_root: Path | None = None,
     shadow_model: Path | None = None,
     db_path: Path | None = None,
     lock_path: Path | None = None,
@@ -1099,7 +1101,9 @@ def service_file_text(
     odds_capture_state_path: Path | None = None,
 ) -> str:
     script_path = repo_path / "scripts/shadow_autopilot_daemon.py"
+    service_python = python_path or Path("/usr/bin/python3")
     explicit_path_args = [
+        *optional_path_cli_args("--evidence-root", evidence_root),
         *optional_path_cli_args("--db", db_path),
         *shadow_model_cli_args(shadow_model),
         *optional_path_cli_args("--lock-path", lock_path),
@@ -1123,7 +1127,7 @@ def service_file_text(
             "Environment=GREYHOUND_ALLOW_TGR=0",
             "Environment=PATH=/home/l4nd0/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             (
-                f"ExecStart=/usr/bin/python3 {script_path} run-once "
+                f"ExecStart={service_python} {script_path} run-once "
                 "--days-ahead 1 --refresh-limit 16 "
                 f"{explicit_path_segment}"
                 "--enable-autonomous-odds-capture "
@@ -1165,13 +1169,17 @@ def odds_capture_service_file_text(
     *,
     repo_path: Path,
     timeout_seconds: int,
+    python_path: Path | None = None,
+    evidence_root: Path | None = None,
     db_path: Path | None = None,
     lock_path: Path | None = None,
     state_path: Path | None = None,
     refresh_limit: int = DEFAULT_ODDS_CAPTURE_ONLY_REFRESH_LIMIT,
 ) -> str:
     script_path = repo_path / "scripts/shadow_autopilot_daemon.py"
+    service_python = python_path or Path("/usr/bin/python3")
     explicit_path_args = [
+        *optional_path_cli_args("--evidence-root", evidence_root),
         *optional_path_cli_args("--db", db_path),
         *optional_path_cli_args("--lock-path", lock_path),
         *optional_path_cli_args("--state-path", state_path),
@@ -1193,7 +1201,7 @@ def odds_capture_service_file_text(
             "Environment=GREYHOUND_ALLOW_TGR=0",
             "Environment=PATH=/home/l4nd0/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             (
-                f"ExecStart=/usr/bin/python3 {script_path} run-odds-capture-once "
+                f"ExecStart={service_python} {script_path} run-odds-capture-once "
                 "--days-ahead 1 "
                 f"--refresh-limit {refresh_limit} "
                 f"--odds-capture-refresh-limit {refresh_limit} "
@@ -1234,6 +1242,8 @@ def write_service_files(
     service_dir: Path = DEFAULT_SERVICE_DIR,
     repo_path: Path = Path("/home/l4nd0/greyhound_racing_collector"),
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
+    python_path: Path | None = None,
+    evidence_root: Path | None = None,
     shadow_model: Path | None = None,
     db_path: Path | None = None,
     lock_path: Path | None = None,
@@ -1248,6 +1258,8 @@ def write_service_files(
         service_file_text(
             repo_path=repo_path,
             timeout_seconds=timeout_seconds,
+            python_path=python_path or Path(sys.executable),
+            evidence_root=evidence_root,
             shadow_model=shadow_model,
             db_path=db_path,
             lock_path=lock_path,
@@ -1264,6 +1276,8 @@ def write_service_files(
         "repo_path": str(repo_path),
         "timeout_seconds": timeout_seconds,
         "systemd_timeout_start_seconds": max(timeout_seconds + 60, timeout_seconds * 4),
+        "python_path": str(python_path or Path(sys.executable)),
+        "evidence_root": str(evidence_root) if evidence_root is not None else None,
         "shadow_model": str(shadow_model) if shadow_model is not None else None,
         "db_path": str(db_path) if db_path is not None else None,
         "lock_path": str(lock_path) if lock_path is not None else None,
@@ -1279,6 +1293,8 @@ def write_odds_capture_service_files(
     service_dir: Path = DEFAULT_SERVICE_DIR,
     repo_path: Path = Path("/home/l4nd0/greyhound_racing_collector"),
     timeout_seconds: int = DEFAULT_ODDS_CAPTURE_ONLY_TIMEOUT_SECONDS,
+    python_path: Path | None = None,
+    evidence_root: Path | None = None,
     db_path: Path | None = None,
     lock_path: Path | None = None,
     state_path: Path | None = None,
@@ -1292,6 +1308,8 @@ def write_odds_capture_service_files(
         odds_capture_service_file_text(
             repo_path=repo_path,
             timeout_seconds=timeout_seconds,
+            python_path=python_path or Path(sys.executable),
+            evidence_root=evidence_root,
             db_path=db_path,
             lock_path=lock_path,
             state_path=state_path,
@@ -1308,6 +1326,8 @@ def write_odds_capture_service_files(
         "repo_path": str(repo_path),
         "timeout_seconds": timeout_seconds,
         "systemd_timeout_start_seconds": max(timeout_seconds + 60, timeout_seconds * 2),
+        "python_path": str(python_path or Path(sys.executable)),
+        "evidence_root": str(evidence_root) if evidence_root is not None else None,
         "db_path": str(db_path) if db_path is not None else None,
         "lock_path": str(lock_path) if lock_path is not None else None,
         "state_path": str(state_path) if state_path is not None else None,
@@ -8951,6 +8971,8 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
     service_info = write_service_files(
         repo_path=ROOT,
         timeout_seconds=args.timeout_seconds,
+        python_path=Path(sys.executable),
+        evidence_root=evidence_root,
         shadow_model=args.shadow_model,
         db_path=args.db,
         lock_path=args.lock_path,
@@ -12799,6 +12821,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     service_parser.add_argument("--service-dir", type=Path, default=DEFAULT_SERVICE_DIR)
     service_parser.add_argument("--repo-path", type=Path, default=Path("/home/l4nd0/greyhound_racing_collector"))
     service_parser.add_argument("--timeout-seconds", type=int, default=DEFAULT_TIMEOUT_SECONDS)
+    service_parser.add_argument("--python-path", type=Path, default=Path(sys.executable))
+    service_parser.add_argument("--evidence-root", type=Path)
     service_parser.add_argument("--shadow-model", type=Path)
     service_parser.add_argument("--db", type=Path)
     service_parser.add_argument("--lock-path", type=Path)
@@ -12816,6 +12840,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=int,
         default=DEFAULT_ODDS_CAPTURE_ONLY_TIMEOUT_SECONDS,
     )
+    odds_service_parser.add_argument("--python-path", type=Path, default=Path(sys.executable))
+    odds_service_parser.add_argument("--evidence-root", type=Path)
     odds_service_parser.add_argument("--db", type=Path)
     odds_service_parser.add_argument("--lock-path", type=Path)
     odds_service_parser.add_argument("--state-path", type=Path)
@@ -12838,6 +12864,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             service_dir=args.service_dir,
             repo_path=args.repo_path,
             timeout_seconds=args.timeout_seconds,
+            python_path=args.python_path,
+            evidence_root=args.evidence_root,
             shadow_model=args.shadow_model,
             db_path=args.db,
             lock_path=args.lock_path,
@@ -12851,6 +12879,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             service_dir=args.service_dir,
             repo_path=args.repo_path,
             timeout_seconds=args.timeout_seconds,
+            python_path=args.python_path,
+            evidence_root=args.evidence_root,
             db_path=args.db,
             lock_path=args.lock_path,
             state_path=args.state_path,
