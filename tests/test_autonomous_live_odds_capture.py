@@ -211,6 +211,312 @@ def test_build_capture_plan_discovers_nested_daemon_eligible_inputs(tmp_path):
     )
 
 
+def test_build_capture_plan_uses_refresh_report_fallback_when_form_csv_quarantined(
+    tmp_path,
+):
+    run_dir = tmp_path / "shadow_autopilot_v1_unit"
+    input_dir = run_dir / "odds_capture_refreshed_upcoming"
+    raw_dir = input_dir / "raw_exports"
+    raw_dir.mkdir(parents=True)
+    raw_csv = raw_dir / "Race 1 - WENTWORTH-PARK - 2026-06-10.csv"
+    raw_csv.write_text("Dog Name,BOX\n1. Alpha,\n2. Bravo,\n", encoding="utf-8")
+    capture.write_json(
+        run_dir / "odds_capture_refresh_report.json",
+        {
+            "selected_races": [
+                {
+                    "race_url": "https://www.thedogs.com.au/racing/wentworth-park/2026-06-10/1/example",
+                    "race_id": "Race 1 - WPK - 2026-06-10",
+                    "race_id_aliases": [
+                        "Race 1 - WPK - 2026-06-10",
+                        "Race 1 - WENTWORTH-PARK - 2026-06-10",
+                    ],
+                    "venue": "WPK",
+                    "race_number": "1",
+                    "date": "2026-06-10",
+                    "race_time": "3:10 PM",
+                    "jump_datetime": "2026-06-10T15:10:00+10:00",
+                }
+            ],
+            "downloads": [
+                {
+                    "race_url": "https://www.thedogs.com.au/racing/wentworth-park/2026-06-10/1/example",
+                    "success": False,
+                    "result": {
+                        "raw_export_path": str(raw_csv),
+                        "normalization": {
+                            "canonical_runner_alignment": {
+                                "status": "not_aligned",
+                                "reason": "canonical_participant_missing_from_source_csv",
+                            }
+                        },
+                        "runner_completeness": {
+                            "status": "COMPLETE",
+                            "participants": [
+                                {"box_number": 1, "dog_name": "Alpha"},
+                                {"box_number": 2, "dog_name": "Bravo"},
+                            ],
+                        },
+                    },
+                }
+            ],
+        },
+    )
+
+    plan = capture.build_capture_plan(
+        [input_dir],
+        current_time=datetime.fromisoformat("2026-06-10T14:40:00+10:00"),
+        limit=1,
+    )
+
+    assert plan["ready_count"] == 1
+    item = plan["races"][0]
+    assert item["status"] == "READY_TO_CAPTURE"
+    assert item["race_id"] == "Race 1 - WENTWORTH-PARK - 2026-06-10"
+    assert item["capture_window_minutes"] == 30
+    assert item["odds_capture_expected_runner_source"] == (
+        "downloaded_thedogs_form_csv_fallback"
+    )
+    assert item["expected_runners"] == [
+        {"box_number": 1, "dog_name": "Alpha", "identity": "ALPHA"},
+        {"box_number": 2, "dog_name": "Bravo", "identity": "BRAVO"},
+    ]
+
+
+def test_refresh_plan_item_preserves_refresh_report_fallback_when_raw_csv_exists(
+    tmp_path,
+):
+    run_dir = tmp_path / "shadow_autopilot_v1_unit"
+    input_dir = run_dir / "odds_capture_refreshed_upcoming"
+    raw_dir = input_dir / "raw_exports"
+    raw_dir.mkdir(parents=True)
+    raw_csv = raw_dir / "Race 1 - WENTWORTH-PARK - 2026-06-10.csv"
+    raw_csv.write_text("Dog Name,BOX\n1. Alpha,\n2. Bravo,\n", encoding="utf-8")
+    capture.write_json(
+        run_dir / "odds_capture_refresh_report.json",
+        {
+            "selected_races": [
+                {
+                    "race_url": "https://www.thedogs.com.au/racing/wentworth-park/2026-06-10/1/example",
+                    "race_id": "Race 1 - WPK - 2026-06-10",
+                    "race_id_aliases": [
+                        "Race 1 - WPK - 2026-06-10",
+                        "Race 1 - WENTWORTH-PARK - 2026-06-10",
+                    ],
+                    "venue": "WPK",
+                    "race_number": "1",
+                    "date": "2026-06-10",
+                    "jump_datetime": "2026-06-10T15:10:00+10:00",
+                }
+            ],
+            "downloads": [
+                {
+                    "race_url": "https://www.thedogs.com.au/racing/wentworth-park/2026-06-10/1/example",
+                    "success": False,
+                    "result": {
+                        "raw_export_path": str(raw_csv),
+                        "runner_completeness": {
+                            "status": "COMPLETE",
+                            "participants": [
+                                {"box_number": 1, "dog_name": "Alpha"},
+                                {"box_number": 2, "dog_name": "Bravo"},
+                            ],
+                        },
+                    },
+                }
+            ],
+        },
+    )
+    plan = capture.build_capture_plan(
+        [input_dir],
+        current_time=datetime.fromisoformat("2026-06-10T14:40:00+10:00"),
+        limit=1,
+    )
+
+    refreshed = capture.refresh_plan_item_for_time(
+        plan["races"][0],
+        datetime.fromisoformat("2026-06-10T14:45:00+10:00"),
+    )
+
+    assert refreshed["status"] == "READY_TO_CAPTURE"
+    assert refreshed["blockers"] == []
+    assert refreshed["race_id"] == "Race 1 - WENTWORTH-PARK - 2026-06-10"
+    assert refreshed["capture_window_minutes"] == 30
+    assert refreshed["expected_runners"] == [
+        {"box_number": 1, "dog_name": "Alpha", "identity": "ALPHA"},
+        {"box_number": 2, "dog_name": "Bravo", "identity": "BRAVO"},
+    ]
+
+
+def test_build_capture_plan_prefers_canonical_runner_set_for_fallback(
+    tmp_path,
+    monkeypatch,
+):
+    run_dir = tmp_path / "shadow_autopilot_v1_unit"
+    input_dir = run_dir / "odds_capture_refreshed_upcoming"
+    raw_dir = input_dir / "raw_exports"
+    raw_dir.mkdir(parents=True)
+    raw_csv = raw_dir / "Race 1 - SHEPPARTON - 2026-06-10.csv"
+    raw_csv.write_text(
+        "Dog Name,BOX\n"
+        "1. Red Card,\n"
+        "2. Shooters Project,\n"
+        "3. Bundy Boy,\n"
+        "9. Elapidae Cathy,\n",
+        encoding="utf-8",
+    )
+
+    def fake_canonical_runner_set(source_url):
+        assert source_url == "https://www.thedogs.com.au/racing/shepparton/2026-06-10/1/example"
+        return {
+            "canonical_runner_set_status": "available",
+            "final_runner_participants": [
+                {"box_number": 1, "dog_name": "Red Card"},
+                {"box_number": 2, "dog_name": "Elapidae Cathy", "original_box_number": 9},
+                {"box_number": 3, "dog_name": "Bundy Boy"},
+                {"box_number": 7, "dog_name": "Swan Island"},
+            ],
+        }
+
+    monkeypatch.setattr(capture, "fetch_canonical_runner_set", fake_canonical_runner_set)
+    capture.write_json(
+        run_dir / "odds_capture_refresh_report.json",
+        {
+            "selected_races": [
+                {
+                    "race_url": "https://www.thedogs.com.au/racing/shepparton/2026-06-10/1/example",
+                    "race_id": "Race 1 - SHEP - 2026-06-10",
+                    "race_id_aliases": [
+                        "Race 1 - SHEP - 2026-06-10",
+                        "Race 1 - SHEPPARTON - 2026-06-10",
+                    ],
+                    "venue": "SHEP",
+                    "race_number": "1",
+                    "date": "2026-06-10",
+                    "jump_datetime": "2026-06-10T15:10:00+10:00",
+                }
+            ],
+            "downloads": [
+                {
+                    "race_url": "https://www.thedogs.com.au/racing/shepparton/2026-06-10/1/example",
+                    "success": False,
+                    "result": {
+                        "raw_export_path": str(raw_csv),
+                        "normalization": {
+                            "canonical_runner_alignment": {
+                                "status": "not_aligned",
+                                "canonical_runner_set_status": "available",
+                                "canonical_source_url": (
+                                    "https://www.thedogs.com.au/racing/"
+                                    "shepparton/2026-06-10/1/example"
+                                ),
+                            }
+                        },
+                        "runner_completeness": {
+                            "status": "COMPLETE",
+                            "participants": [
+                                {"box_number": 1, "dog_name": "Red Card"},
+                                {"box_number": 2, "dog_name": "Shooters Project"},
+                                {"box_number": 3, "dog_name": "Bundy Boy"},
+                                {"box_number": 9, "dog_name": "Elapidae Cathy"},
+                            ],
+                        },
+                    },
+                }
+            ],
+        },
+    )
+
+    plan = capture.build_capture_plan(
+        [input_dir],
+        current_time=datetime.fromisoformat("2026-06-10T14:40:00+10:00"),
+        limit=1,
+    )
+
+    item = plan["races"][0]
+    assert item["status"] == "READY_TO_CAPTURE"
+    assert item["odds_capture_expected_runner_source"] == (
+        "canonical_thedogs_final_runner_set_fallback"
+    )
+    assert item["expected_runners"] == [
+        {"box_number": 1, "dog_name": "Red Card", "identity": "REDCARD"},
+        {"box_number": 2, "dog_name": "Elapidae Cathy", "identity": "ELAPIDAECATHY"},
+        {"box_number": 3, "dog_name": "Bundy Boy", "identity": "BUNDYBOY"},
+        {"box_number": 7, "dog_name": "Swan Island", "identity": "SWANISLAND"},
+    ]
+
+
+def test_build_capture_plan_fallback_is_per_input_dir(tmp_path):
+    accepted_dir = tmp_path / "accepted_upcoming"
+    _write_capture_input(
+        accepted_dir,
+        race_number=1,
+        venue="WPK",
+        jump_time="2026-06-10T15:00:00+10:00",
+    )
+    run_dir = tmp_path / "shadow_autopilot_v1_unit"
+    fallback_dir = run_dir / "odds_capture_refreshed_upcoming"
+    raw_dir = fallback_dir / "raw_exports"
+    raw_dir.mkdir(parents=True)
+    raw_csv = raw_dir / "Race 2 - WENTWORTH-PARK - 2026-06-10.csv"
+    raw_csv.write_text("Dog Name,BOX\n1. Charlie,\n2. Delta,\n", encoding="utf-8")
+    capture.write_json(
+        run_dir / "odds_capture_refresh_report.json",
+        {
+            "selected_races": [
+                {
+                    "race_url": "https://www.thedogs.com.au/racing/wentworth-park/2026-06-10/2/example",
+                    "race_id": "Race 2 - WPK - 2026-06-10",
+                    "race_id_aliases": [
+                        "Race 2 - WPK - 2026-06-10",
+                        "Race 2 - WENTWORTH-PARK - 2026-06-10",
+                    ],
+                    "venue": "WPK",
+                    "race_number": "2",
+                    "date": "2026-06-10",
+                    "jump_datetime": "2026-06-10T15:10:00+10:00",
+                }
+            ],
+            "downloads": [
+                {
+                    "race_url": "https://www.thedogs.com.au/racing/wentworth-park/2026-06-10/2/example",
+                    "success": False,
+                    "result": {
+                        "raw_export_path": str(raw_csv),
+                        "runner_completeness": {
+                            "status": "COMPLETE",
+                            "participants": [
+                                {"box_number": 1, "dog_name": "Charlie"},
+                                {"box_number": 2, "dog_name": "Delta"},
+                            ],
+                        },
+                    },
+                }
+            ],
+        },
+    )
+
+    plan = capture.build_capture_plan(
+        [accepted_dir, fallback_dir],
+        current_time=datetime.fromisoformat("2026-06-10T14:40:00+10:00"),
+    )
+
+    race_ids = {item["race_id"] for item in plan["races"]}
+    assert race_ids == {
+        "Race 1 - WPK - 2026-06-10",
+        "Race 2 - WENTWORTH-PARK - 2026-06-10",
+    }
+    fallback = next(
+        item
+        for item in plan["races"]
+        if item["race_id"] == "Race 2 - WENTWORTH-PARK - 2026-06-10"
+    )
+    assert fallback["status"] == "READY_TO_CAPTURE"
+    assert fallback["odds_capture_expected_runner_source"] == (
+        "downloaded_thedogs_form_csv_fallback"
+    )
+
+
 def test_build_capture_plan_prioritizes_imminent_windows_before_limit(tmp_path):
     input_dir = tmp_path / "upcoming"
     _write_capture_input(
