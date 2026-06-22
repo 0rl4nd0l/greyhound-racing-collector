@@ -35,6 +35,7 @@ from scripts.daily_race_ingest_shadow_orchestrator import (  # noqa: E402
     parse_jump_datetime,
 )
 from utils.runner_completeness import (  # noqa: E402
+    fetch_canonical_runner_set,
     normalise_runner_name,
     parse_runner_rows_from_csv,
 )
@@ -494,6 +495,14 @@ def load_sidecar(csv_path: Path) -> tuple[dict[str, Any] | None, str | None]:
     return payload, None
 
 
+def load_json_object(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
 def sidecar_section(payload: Mapping[str, Any], key: str) -> Mapping[str, Any]:
     value = payload.get(key)
     return value if isinstance(value, Mapping) else {}
@@ -757,6 +766,368 @@ def build_plan_item(csv_path: Path, current_time: datetime) -> dict[str, Any]:
     }
 
 
+def _selected_race_key(row: Mapping[str, Any]) -> tuple[str, str]:
+    race_url = str(row.get("race_url") or row.get("url") or "").strip()
+    race_id = str(row.get("race_id") or "").strip()
+    return race_url, race_id
+
+
+def selected_races_by_key(report: Mapping[str, Any]) -> dict[tuple[str, str], dict[str, Any]]:
+    output: dict[tuple[str, str], dict[str, Any]] = {}
+    selected = report.get("selected_races")
+    if not isinstance(selected, list):
+        return output
+    for item in selected:
+        if not isinstance(item, Mapping):
+            continue
+        row = dict(item)
+        race_url, race_id = _selected_race_key(row)
+        aliases = [str(value) for value in row.get("race_id_aliases") or [] if value]
+        keys = [(race_url, race_id)]
+        keys.extend((race_url, alias) for alias in aliases)
+        keys.extend(("", alias) for alias in aliases)
+        for key in keys:
+            if key != ("", ""):
+                output[key] = row
+    return output
+
+
+def race_number_from_selected(row: Mapping[str, Any]) -> int | None:
+    return parse_int_value(row.get("race_number"))
+
+
+def race_date_from_selected(row: Mapping[str, Any]) -> str | None:
+    parsed = parse_date_value(row.get("date") or row.get("race_date"))
+    return parsed.isoformat() if parsed else None
+
+
+def long_race_id_from_selected(row: Mapping[str, Any]) -> str | None:
+    race_number = race_number_from_selected(row)
+    race_date = race_date_from_selected(row)
+    aliases = [str(value) for value in row.get("race_id_aliases") or [] if value]
+    if race_number is not None and race_date:
+        suffix = f"Race {race_number} - "
+        dated_suffix = f" - {race_date}"
+        long_aliases = [
+            alias
+            for alias in aliases
+            if alias.startswith(suffix) and alias.endswith(dated_suffix)
+        ]
+        if long_aliases:
+            return sorted(long_aliases, key=len, reverse=True)[0]
+    return str(row.get("race_id") or "").strip() or None
+
+
+def expected_runners_from_participants(
+    participants: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    expected: list[dict[str, Any]] = []
+    for item in participants:
+        if not isinstance(item, Mapping):
+            continue
+        box = parse_int_value(item.get("box_number") or item.get("box"))
+        dog_name = str(item.get("dog_name") or item.get("name") or "").strip()
+        identity = normalise_runner_name(dog_name)
+        if box is None or not dog_name or not identity:
+            continue
+        expected.append(
+            {
+                "box_number": box,
+                "dog_name": dog_name,
+                "identity": identity,
+            }
+        )
+    return expected
+
+
+def canonical_expected_runners_from_download(
+    download: Mapping[str, Any],
+    *,
+    source_url: str | None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    result = download.get("result")
+    if not isinstance(result, Mapping):
+        return [], {
+            "source": "canonical_thedogs_final_runner_set_fallback",
+            "status": "SKIPPED",
+            "reason": "download_result_missing",
+        }
+    normalization = result.get("normalization")
+    if not isinstance(normalization, Mapping):
+        return [], {
+            "source": "canonical_thedogs_final_runner_set_fallback",
+            "status": "SKIPPED",
+            "reason": "normalization_missing",
+        }
+    alignment = normalization.get("canonical_runner_alignment")
+    if not isinstance(alignment, Mapping):
+        return [], {
+            "source": "canonical_thedogs_final_runner_set_fallback",
+            "status": "SKIPPED",
+            "reason": "canonical_runner_alignment_missing",
+        }
+    if alignment.get("canonical_runner_set_status") != "available":
+        return [], {
+            "source": "canonical_thedogs_final_runner_set_fallback",
+            "status": "SKIPPED",
+            "reason": "canonical_runner_set_not_available",
+            "canonical_runner_set_status": alignment.get("canonical_runner_set_status"),
+        }
+    canonical_url = str(
+        alignment.get("canonical_source_url")
+        or alignment.get("canonical_runner_source_url")
+        or alignment.get("canonical_runner_set_source_url")
+        or source_url
+        or ""
+    ).strip()
+    if not canonical_url:
+        return [], {
+            "source": "canonical_thedogs_final_runner_set_fallback",
+            "status": "SKIPPED",
+            "reason": "canonical_source_url_missing",
+        }
+    if not is_thedogs_source_url(canonical_url):
+        return [], {
+            "source": "canonical_thedogs_final_runner_set_fallback",
+            "status": "SKIPPED",
+            "reason": "canonical_source_url_not_thedogs",
+            "canonical_source_url": canonical_url,
+        }
+    if looks_post_result_source_url(canonical_url):
+        return [], {
+            "source": "canonical_thedogs_final_runner_set_fallback",
+            "status": "SKIPPED",
+            "reason": "canonical_source_url_looks_post_result",
+            "canonical_source_url": canonical_url,
+        }
+
+    canonical = fetch_canonical_runner_set(canonical_url)
+    participants = [
+        row
+        for row in canonical.get("final_runner_participants") or []
+        if isinstance(row, Mapping)
+    ]
+    expected = expected_runners_from_participants(participants)
+    status = str(canonical.get("canonical_runner_set_status") or "unavailable")
+    return (
+        expected if status == "available" else [],
+        {
+            "source": "canonical_thedogs_final_runner_set_fallback",
+            "status": status,
+            "canonical_source_url": canonical_url,
+            "canonical_runner_count": len(participants),
+            "expected_runner_count": len(expected),
+            "reason": canonical.get("reason"),
+            "ambiguous_reasons": list(canonical.get("ambiguous_reasons") or []),
+        },
+    )
+
+
+def fallback_expected_runners_from_download(
+    download: Mapping[str, Any],
+    *,
+    source_url: str | None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    canonical_expected, canonical_report = canonical_expected_runners_from_download(
+        download,
+        source_url=source_url,
+    )
+    if canonical_expected:
+        return canonical_expected, canonical_report
+
+    result = download.get("result")
+    if not isinstance(result, Mapping):
+        return [], {
+            "source": "downloaded_thedogs_form_csv_fallback",
+            "status": "FAIL",
+            "reason": "download_result_missing",
+            "canonical_fallback": canonical_report,
+        }
+    completeness = result.get("runner_completeness")
+    if not isinstance(completeness, Mapping):
+        return [], {
+            "source": "downloaded_thedogs_form_csv_fallback",
+            "status": "FAIL",
+            "reason": "runner_completeness_missing",
+            "canonical_fallback": canonical_report,
+        }
+    if completeness.get("status") != "COMPLETE":
+        return [], {
+            "source": "downloaded_thedogs_form_csv_fallback",
+            "status": "FAIL",
+            "reason": "runner_completeness_not_complete",
+            "runner_completeness_status": completeness.get("status"),
+            "canonical_fallback": canonical_report,
+        }
+    participants = completeness.get("participants")
+    if not isinstance(participants, list):
+        return [], {
+            "source": "downloaded_thedogs_form_csv_fallback",
+            "status": "FAIL",
+            "reason": "runner_completeness_participants_missing",
+            "canonical_fallback": canonical_report,
+        }
+    expected = expected_runners_from_participants(
+        [row for row in participants if isinstance(row, Mapping)]
+    )
+    return expected, {
+        "source": "downloaded_thedogs_form_csv_fallback",
+        "status": "PASS" if expected else "FAIL",
+        "runner_count": len(expected),
+        "canonical_fallback": canonical_report,
+    }
+
+
+def build_fallback_plan_item_from_download(
+    *,
+    selected: Mapping[str, Any],
+    download: Mapping[str, Any],
+    current_time: datetime,
+) -> dict[str, Any]:
+    reasons: list[str] = []
+    race_number = race_number_from_selected(selected)
+    race_date_text = race_date_from_selected(selected)
+    venue_text = str(selected.get("venue") or "").strip().upper() or None
+    race_id = long_race_id_from_selected(selected)
+    source_url = str(selected.get("race_url") or selected.get("url") or "").strip() or None
+    expected, expected_source_report = fallback_expected_runners_from_download(
+        download,
+        source_url=source_url,
+    )
+    if not expected:
+        reasons.append("fallback_runner_rows_missing")
+    jump_dt = parse_iso_datetime(selected.get("jump_datetime"))
+    if jump_dt is None and race_date_text and selected.get("race_time"):
+        race_date_value = parse_date_value(race_date_text)
+        if race_date_value:
+            jump_dt, jump_error = parse_jump_datetime(
+                race_date=race_date_value,
+                jump_time=selected.get("race_time"),
+                current_time=current_time,
+            )
+            if jump_error:
+                reasons.append(jump_error)
+
+    if not race_id:
+        reasons.append("race_id_missing")
+    if not race_date_text:
+        reasons.append("race_date_missing")
+    if not venue_text:
+        reasons.append("venue_missing")
+    if race_number is None:
+        reasons.append("race_number_missing")
+    if not source_url:
+        reasons.append("source_url_missing")
+    elif not is_thedogs_source_url(source_url):
+        reasons.append("source_url_not_thedogs")
+    elif looks_post_result_source_url(source_url):
+        reasons.append("source_url_looks_post_result")
+
+    minutes_to_jump = None
+    if jump_dt is not None:
+        jump_cmp = jump_dt
+        current_cmp = current_time
+        if jump_cmp.tzinfo is None and current_cmp.tzinfo is not None:
+            jump_cmp = jump_cmp.replace(tzinfo=current_cmp.tzinfo)
+        if current_cmp.tzinfo is None and jump_cmp.tzinfo is not None:
+            current_cmp = current_cmp.replace(tzinfo=jump_cmp.tzinfo)
+        minutes_to_jump = (jump_cmp - current_cmp).total_seconds() / 60.0
+    else:
+        reasons.append("jump_datetime_missing")
+
+    capture_window, window_status = due_capture_window(minutes_to_jump)
+    if capture_window is None:
+        reasons.append(window_status)
+
+    result = download.get("result") if isinstance(download.get("result"), Mapping) else {}
+    raw_export_path = result.get("raw_export_path") if isinstance(result, Mapping) else None
+    status = "READY_TO_CAPTURE" if not reasons else "BLOCKED"
+    if status == "BLOCKED" and reasons == [window_status]:
+        status = "NO_DUE_WINDOW"
+    return {
+        "schema_version": "autonomous_live_odds_capture_plan_item_v1",
+        "status": status,
+        "csv_path": str(raw_export_path) if raw_export_path else None,
+        "sidecar_path": None,
+        "race_id": race_id,
+        "race_id_aliases": list(selected.get("race_id_aliases") or []),
+        "venue": venue_text,
+        "race_number": race_number,
+        "race_date": race_date_text,
+        "race_time": race_time_from_datetime(jump_dt),
+        "jump_datetime": jump_dt.isoformat() if jump_dt else None,
+        "minutes_to_jump": minutes_to_jump,
+        "capture_window_minutes": capture_window,
+        "window_status": window_status,
+        "thedogs_source_url": source_url,
+        "runner_set_validation": {
+            "status": "PASS" if expected else "FAIL",
+            "runner_count": len(expected),
+            "expected_runners": expected,
+            **expected_source_report,
+            "canonical_alignment_bypassed_for_odds_capture": True,
+            "canonical_alignment_status": (
+                result.get("normalization", {})
+                .get("canonical_runner_alignment", {})
+                .get("status")
+                if isinstance(result.get("normalization"), Mapping)
+                else None
+            ),
+        },
+        "expected_runners": expected,
+        "blockers": sorted(set(reasons)),
+        "odds_capture_expected_runner_source": expected_source_report.get("source"),
+    }
+
+
+def fallback_plan_items_from_refresh_report(
+    input_dir: Path,
+    *,
+    current_time: datetime,
+) -> list[dict[str, Any]]:
+    candidates = [
+        input_dir / "odds_capture_refresh_report.json",
+        input_dir / "refresh_prejump_report.json",
+        input_dir.parent / "odds_capture_refresh_report.json",
+        input_dir.parent / "refresh_prejump_report.json",
+    ]
+    report = next((load_json_object(path) for path in candidates if path.exists()), {})
+    if not report:
+        return []
+    selected_by_key = selected_races_by_key(report)
+    downloads = report.get("downloads")
+    if not isinstance(downloads, list):
+        return []
+    rows: list[dict[str, Any]] = []
+    for download in downloads:
+        if not isinstance(download, Mapping):
+            continue
+        race_url = str(download.get("race_url") or "").strip()
+        result = download.get("result")
+        if not isinstance(result, Mapping):
+            continue
+        selected = selected_by_key.get((race_url, "")) or next(
+            (
+                row
+                for (key_url, _), row in selected_by_key.items()
+                if race_url and key_url == race_url
+            ),
+            None,
+        )
+        if not isinstance(selected, Mapping):
+            continue
+        if not result.get("raw_export_path"):
+            continue
+        rows.append(
+            build_fallback_plan_item_from_download(
+                selected=selected,
+                download=download,
+                current_time=current_time,
+            )
+        )
+    return rows
+
+
 def build_capture_plan(
     input_dirs: Sequence[Path],
     *,
@@ -766,12 +1137,23 @@ def build_capture_plan(
     rows: list[dict[str, Any]] = []
     seen_csv_paths: set[Path] = set()
     for input_dir in input_dirs:
+        input_dir_row_start = len(rows)
         for csv_path in sorted(Path(input_dir).rglob("*.csv")):
+            if {"raw_exports", "quarantine"}.intersection(csv_path.parts):
+                continue
             logical_path = csv_path.resolve()
             if logical_path in seen_csv_paths:
                 continue
             seen_csv_paths.add(logical_path)
             rows.append(build_plan_item(csv_path, current_time))
+        input_dir_rows = rows[input_dir_row_start:]
+        if not any(row.get("status") == "READY_TO_CAPTURE" for row in input_dir_rows):
+            rows.extend(
+                fallback_plan_items_from_refresh_report(
+                    Path(input_dir),
+                    current_time=current_time,
+                )
+            )
     rows = sorted(rows, key=capture_plan_priority_key)
     if limit is not None:
         rows = rows[:limit]
@@ -818,16 +1200,38 @@ def plan_item_csv_path(plan_item: Mapping[str, Any]) -> Path | None:
     return path if path.is_absolute() else ROOT / path
 
 
+def plan_item_should_rebuild_from_csv(plan_item: Mapping[str, Any], csv_path: Path | None) -> bool:
+    if csv_path is None or not csv_path.exists():
+        return False
+    if plan_item.get("odds_capture_expected_runner_source") == (
+        "downloaded_thedogs_form_csv_fallback"
+    ):
+        return False
+    return plan_item.get("sidecar_path") not in (None, "")
+
+
 def refresh_plan_item_for_time(
     plan_item: Mapping[str, Any],
     current_time: datetime,
 ) -> dict[str, Any]:
     csv_path = plan_item_csv_path(plan_item)
-    if csv_path is not None and csv_path.exists():
+    if plan_item_should_rebuild_from_csv(plan_item, csv_path):
         return build_plan_item(csv_path, current_time)
 
     refreshed = dict(plan_item)
-    reasons = list(refreshed.get("blockers") or [])
+    time_blockers = {
+        "before_first_capture_window",
+        "capture_window_unavailable",
+        "jump_datetime_missing",
+        "jump_datetime_unparseable",
+        "jump_time_missing",
+        "race_already_jumped",
+    }
+    reasons = [
+        str(reason)
+        for reason in refreshed.get("blockers") or []
+        if str(reason) not in time_blockers
+    ]
     jump_text = refreshed.get("jump_datetime")
     jump_dt = None
     if jump_text:

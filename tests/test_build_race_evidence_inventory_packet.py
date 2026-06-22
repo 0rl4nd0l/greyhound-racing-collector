@@ -98,6 +98,34 @@ def test_race_evidence_inventory_reports_joinable_and_gap_races(tmp_path, monkey
                 "predicted_rank": 1,
                 "shadow_rf_calibrated_probability": 1.0,
             },
+            {
+                "race_id": "Race 3 - WPK - 2026-06-10",
+                "box": 1,
+                "dog_name": "Delta",
+                "predicted_rank": 1,
+                "shadow_rf_calibrated_probability": 1.0,
+            },
+            {
+                "race_id": "Race 4 - WPK - 2026-06-10",
+                "box": 1,
+                "dog_name": "Echo",
+                "predicted_rank": 1,
+                "shadow_rf_calibrated_probability": 0.6,
+            },
+            {
+                "race_id": "Race 4 - WPK - 2026-06-10",
+                "box": 2,
+                "dog_name": "Foxtrot",
+                "predicted_rank": 2,
+                "shadow_rf_calibrated_probability": 0.4,
+            },
+            {
+                "race_id": "Race 5 - WPK - 2026-06-10",
+                "box": 1,
+                "dog_name": "Golf",
+                "predicted_rank": 1,
+                "shadow_rf_calibrated_probability": 1.0,
+            },
         ],
     )
     official_dir = artifact_root / "autonomous_official_result_capture_test"
@@ -126,20 +154,30 @@ def test_race_evidence_inventory_reports_joinable_and_gap_races(tmp_path, monkey
     )
 
     with sqlite3.connect(db_path) as conn:
-        conn.execute(
+        conn.executemany(
             """
             INSERT INTO autonomous_official_result_evidence_races
               (race_id, race_date, venue, race_number)
-            VALUES ('Race 1 - WPK - 2026-06-10', '2026-06-10', 'WPK', 1)
-            """
+            VALUES (?, '2026-06-10', 'WPK', ?)
+            """,
+            [
+                ("Race 1 - WPK - 2026-06-10", 1),
+                ("Race 4 - WPK - 2026-06-10", 4),
+                ("Race 5 - WPK - 2026-06-10", 5),
+            ],
         )
         conn.executemany(
             """
             INSERT INTO autonomous_official_result_evidence_runners
               (race_id, race_date, venue, race_number, box_number, dog_name, finish_position, is_winner)
-            VALUES ('Race 1 - WPK - 2026-06-10', '2026-06-10', 'WPK', 1, ?, ?, ?, ?)
+            VALUES (?, '2026-06-10', 'WPK', ?, ?, ?, ?, ?)
             """,
-            [(1, "Alpha", 1, 1), (2, "Bravo", 2, 0)],
+            [
+                ("Race 1 - WPK - 2026-06-10", 1, 1, "Alpha", 1, 1),
+                ("Race 1 - WPK - 2026-06-10", 1, 2, "Bravo", 2, 0),
+                ("Race 4 - WPK - 2026-06-10", 4, 1, "Echo", 1, 1),
+                ("Race 5 - WPK - 2026-06-10", 5, 1, "Golf", 1, 1),
+            ],
         )
         conn.executemany(
             """
@@ -170,9 +208,34 @@ def test_race_evidence_inventory_reports_joinable_and_gap_races(tmp_path, monkey
     assert report["scorecard_metrics"]["market_top1_accuracy"] == 1.0
     assert report["summary_counts"]["action_counts"] == {
         "append_official_result_evidence_backlog": 1,
+        "capture_official_result": 1,
+        "collect_future_strict_prejump_odds": 1,
         "ready_for_unified_evidence_evaluation": 1,
+        "repair_official_result_runner_set_or_identity_join": 1,
+    }
+    assert report["scorecard_metrics"]["skipped_race_reason_counts"] == {
+        "official_result_incomplete_for_shadow_boxes": 3,
+        "strict_odds_incomplete_for_shadow_boxes": 1,
+    }
+    assert report["scorecard_metrics"]["skipped_race_action_counts"] == {
+        "append_official_result_evidence_backlog": 1,
+        "capture_official_result": 1,
+        "collect_future_strict_prejump_odds": 1,
+        "repair_official_result_runner_set_or_identity_join": 1,
+    }
+    assert report["scorecard_metrics"]["official_result_gap_action_counts"] == {
+        "append_official_result_evidence_backlog": 1,
+        "capture_official_result": 1,
+        "repair_official_result_runner_set_or_identity_join": 1,
+    }
+    assert report["scorecard_metrics"]["strict_odds_gap_action_counts"] == {
+        "collect_future_strict_prejump_odds": 1,
     }
     assert report["no_write_guarantees"]["db_write"] is False
+    summary_text = (output_dir / "SUMMARY.md").read_text(encoding="utf-8")
+    assert "## Scorecard Gap Action Counts" in summary_text
+    assert '"capture_official_result": 1' in summary_text
+    assert '"repair_official_result_runner_set_or_identity_join": 1' in summary_text
 
     rows = list(csv.DictReader((output_dir / "race_evidence_inventory.csv").open()))
     by_race = {row["race_id"]: row for row in rows}
@@ -181,6 +244,15 @@ def test_race_evidence_inventory_reports_joinable_and_gap_races(tmp_path, monkey
     )
     assert by_race["Race 2 - WPK - 2026-06-10"]["recommended_next_action"] == (
         "append_official_result_evidence_backlog"
+    )
+    assert by_race["Race 3 - WPK - 2026-06-10"]["recommended_next_action"] == (
+        "capture_official_result"
+    )
+    assert by_race["Race 4 - WPK - 2026-06-10"]["recommended_next_action"] == (
+        "repair_official_result_runner_set_or_identity_join"
+    )
+    assert by_race["Race 5 - WPK - 2026-06-10"]["recommended_next_action"] == (
+        "collect_future_strict_prejump_odds"
     )
 
 

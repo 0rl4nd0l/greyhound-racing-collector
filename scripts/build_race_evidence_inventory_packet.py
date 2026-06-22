@@ -709,24 +709,61 @@ def mean(values: Sequence[float]) -> float | None:
     return sum(clean) / len(clean) if clean else None
 
 
-def build_scorecard(records: Mapping[str, Mapping[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+def _race_row_by_id(rows: Sequence[Mapping[str, Any]]) -> dict[str, Mapping[str, Any]]:
+    return {str(row.get("race_id")): row for row in rows if row.get("race_id") not in (None, "")}
+
+
+def _gap_action(
+    race_rows_by_id: Mapping[str, Mapping[str, Any]],
+    race_id: Any,
+    fallback: str,
+) -> str:
+    row = race_rows_by_id.get(str(race_id))
+    if row is None:
+        return fallback
+    action = str(row.get("recommended_next_action") or "").strip()
+    if not action or action == "ready_for_unified_evidence_evaluation":
+        return fallback
+    return action
+
+
+def build_scorecard(
+    records: Mapping[str, Mapping[str, Any]],
+    race_rows: Sequence[Mapping[str, Any]] | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     skipped_reasons = Counter()
+    skipped_actions = Counter()
+    official_result_gap_actions = Counter()
+    strict_odds_gap_actions = Counter()
+    race_rows_by_id = _race_row_by_id(race_rows or [])
     for race_id, record in sorted(records.items()):
         shadow_boxes = set(record.get("shadow_boxes") or set())
         official_boxes = set(record.get("official_result_db_boxes") or set())
         strict_boxes = set(record.get("strict_live_odds_boxes") or set())
         if not shadow_boxes:
-            skipped_reasons["shadow_predictions_missing"] += 1
+            reason = "shadow_predictions_missing"
+            skipped_reasons[reason] += 1
+            skipped_actions[_gap_action(race_rows_by_id, race_id, reason)] += 1
             continue
         if not shadow_boxes.issubset(official_boxes):
-            skipped_reasons["official_result_incomplete_for_shadow_boxes"] += 1
+            reason = "official_result_incomplete_for_shadow_boxes"
+            skipped_reasons[reason] += 1
+            action = _gap_action(race_rows_by_id, race_id, reason)
+            skipped_actions[action] += 1
+            official_result_gap_actions[action] += 1
             continue
         if not shadow_boxes.issubset(strict_boxes):
-            skipped_reasons["strict_odds_incomplete_for_shadow_boxes"] += 1
+            reason = "strict_odds_incomplete_for_shadow_boxes"
+            skipped_reasons[reason] += 1
+            action = _gap_action(race_rows_by_id, race_id, reason)
+            skipped_actions[action] += 1
+            strict_odds_gap_actions[action] += 1
             continue
         if int(record.get("official_result_conflict_count") or 0) > 0:
-            skipped_reasons["official_result_conflicts"] += 1
+            reason = "official_result_conflicts"
+            skipped_reasons[reason] += 1
+            skipped_actions[reason] += 1
             continue
 
         results_by_box = record.get("official_result_by_box") or {}
@@ -737,17 +774,23 @@ def build_scorecard(records: Mapping[str, Mapping[str, Any]]) -> tuple[list[dict
             or parse_int(result.get("is_winner")) == 1
         ]
         if len(winner_boxes) != 1:
-            skipped_reasons["winner_box_not_unique"] += 1
+            reason = "winner_box_not_unique"
+            skipped_reasons[reason] += 1
+            skipped_actions[reason] += 1
             continue
         winner_box = winner_boxes[0]
 
         predictions_by_box = record.get("latest_shadow_prediction_by_box") or {}
         if not set(predictions_by_box).issuperset(shadow_boxes):
-            skipped_reasons["latest_shadow_prediction_rows_incomplete"] += 1
+            reason = "latest_shadow_prediction_rows_incomplete"
+            skipped_reasons[reason] += 1
+            skipped_actions[reason] += 1
             continue
         model_order = ranked_shadow_boxes(predictions_by_box)
         if winner_box not in model_order:
-            skipped_reasons["winner_box_missing_from_shadow_predictions"] += 1
+            reason = "winner_box_missing_from_shadow_predictions"
+            skipped_reasons[reason] += 1
+            skipped_actions[reason] += 1
             continue
         model_winner_rank = model_order.index(winner_box) + 1
         raw_model_probs = {
@@ -770,7 +813,9 @@ def build_scorecard(records: Mapping[str, Mapping[str, Any]]) -> tuple[list[dict
             market_candidates.append((decimal, int(box)))
             raw_market_probs[int(box)] = 1.0 / decimal
         if len(market_candidates) < len(shadow_boxes):
-            skipped_reasons["market_odds_missing_for_shadow_boxes"] += 1
+            reason = "market_odds_missing_for_shadow_boxes"
+            skipped_reasons[reason] += 1
+            skipped_actions[reason] += 1
             continue
         market_order = [box for _, box in sorted(market_candidates)]
         market_winner_rank = market_order.index(winner_box) + 1
@@ -840,10 +885,14 @@ def build_scorecard(records: Mapping[str, Mapping[str, Any]]) -> tuple[list[dict
         "market_mean_winner_rank": mean([float(row["market_winner_rank"]) for row in rows]),
         "market_logloss": mean(market_logloss_values),
         "skipped_race_reason_counts": dict(sorted(skipped_reasons.items())),
+        "skipped_race_action_counts": dict(sorted(skipped_actions.items())),
+        "official_result_gap_action_counts": dict(sorted(official_result_gap_actions.items())),
+        "strict_odds_gap_action_counts": dict(sorted(strict_odds_gap_actions.items())),
         "metric_notes": [
             "report_only_latest_shadow_prediction_per_race_box",
             "official_results_from_append_only_evidence_db",
             "market_baseline_from_latest_strict_sportsbet_odds_per_box",
+            "scorecard_gap_action_counts_use_recommended_next_action",
         ],
     }
     return rows, metrics
@@ -929,7 +978,12 @@ def write_csv(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
         "sample_official_artifact_paths",
     ]
     with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=fieldnames,
+            extrasaction="ignore",
+            lineterminator="\n",
+        )
         writer.writeheader()
         for row in rows:
             writer.writerow(row)
@@ -961,7 +1015,12 @@ def write_scorecard_csv(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
         "winner_prediction_raw_probability",
     ]
     with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=fieldnames,
+            extrasaction="ignore",
+            lineterminator="\n",
+        )
         writer.writeheader()
         for row in rows:
             writer.writerow(row)
@@ -996,6 +1055,24 @@ def summary_markdown(report: Mapping[str, Any]) -> str:
             "",
             "```json",
             json.dumps(counts.get("action_counts") or {}, indent=2, sort_keys=True),
+            "```",
+            "",
+            "## Scorecard Gap Action Counts",
+            "",
+            "```json",
+            json.dumps(metrics.get("skipped_race_action_counts") or {}, indent=2, sort_keys=True),
+            "```",
+            "",
+            "## Official-Result Gap Action Counts",
+            "",
+            "```json",
+            json.dumps(metrics.get("official_result_gap_action_counts") or {}, indent=2, sort_keys=True),
+            "```",
+            "",
+            "## Strict-Odds Gap Action Counts",
+            "",
+            "```json",
+            json.dumps(metrics.get("strict_odds_gap_action_counts") or {}, indent=2, sort_keys=True),
             "```",
             "",
             "## No-Write Guarantees",
@@ -1033,7 +1110,7 @@ def build_packet(
     db_summary = scan_db(db_path=db_path, records=records)
     race_rows = build_race_rows(records)
     summary_counts = build_summary_counts(race_rows)
-    scorecard_rows, scorecard_metrics = build_scorecard(records)
+    scorecard_rows, scorecard_metrics = build_scorecard(records, race_rows)
     decision = recommended_decision(summary_counts)
     db_available = (db_summary.get("db_status") or {}).get("status") == "AVAILABLE"
     final_status = (

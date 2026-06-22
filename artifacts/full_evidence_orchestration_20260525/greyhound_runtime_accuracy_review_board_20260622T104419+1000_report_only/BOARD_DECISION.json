@@ -1,0 +1,75 @@
+{
+  "schema_version": "tenn_review_board_decision_v1",
+  "generated_at": "2026-06-22T10:44:19+10:00",
+  "decision": "proceed",
+  "task_tier": "medium",
+  "recommended_model": "standard coding model",
+  "actual_model": "GPT-5 Codex",
+  "why_this_model": "The selected next action is a focused report-only metric/test/docs change with no DB, daemon, registry, model, promotion, or betting mutation.",
+  "worker_model_allowed": true,
+  "worker_decision_limit": "Workers may gather evidence or propose bounded tests, but the main agent keeps final decision authority.",
+  "escalation_needed": false,
+  "final_decision_authority": "main_agent_with_owner_boundaries",
+  "lower_tier_decision_limit": "Do not let a small worker choose runtime, DB, training, promotion, push, or betting actions.",
+  "git_guard": {
+    "worktree_path": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-runtime-master-live-20260621",
+    "branch": "codex/runtime-master-live-20260621",
+    "head": "ab902f3ceee1bd18dcf9d00a16dafcf1ed6958b8",
+    "base": "origin/master",
+    "upstream": "origin/master",
+    "merge_base": "fa58192d9692a15d7ebe77854b7c7b0ff78d4423",
+    "dirty_file_summary_before_board": "clean",
+    "owner_boundary_paths": [],
+    "related_prs_or_issues": [],
+    "registry_read_only_status": "DATA_MISSING",
+    "docs_impact": "DOCS_UPDATED",
+    "docs_checked": [
+      "AGENTS.md",
+      "docs/race_evidence_inventory.md",
+      "artifacts/full_evidence_orchestration_20260525/race_evidence_inventory_20260621T232643+1000_report_only/SUMMARY.md"
+    ],
+    "docs_changed": [
+      "docs/race_evidence_inventory.md"
+    ],
+    "docs_followup": "none",
+    "decision": "warning"
+  },
+  "ledger_sources_checked": [
+    "scripts/agent_job_registry.py:DATA_MISSING",
+    "scripts/agent_task_ledger.py:DATA_MISSING",
+    "git worktree list",
+    "gh pr list",
+    "gh issue list",
+    "docs and reports ripgrep fallback"
+  ],
+  "duplicate_work_classification": "DATA_MISSING_WITH_CLEAN_FALLBACK",
+  "matching_candidates": [],
+  "duplicate_work_decision": "proceed_narrow_report_only_no_runtime_or_db_mutation",
+  "root_problem": "The accuracy denominator is blocked mostly by official-result completeness, but scorecard skip reasons currently collapse distinct official-result next actions into one broad bucket.",
+  "overfitting_assessment": "Proceeding with one parser or one race would overfit. The selected change improves class-level routing across the full inventory denominator.",
+  "report_loop_assessment": "This is only acceptable because it changes the existing packet used to choose the next implementation class and includes a fresh full report-only validation run.",
+  "broad_progress_assessment": "The change makes production-readiness progress by turning a broad 667-race official-result skip bucket into actionable repair classes.",
+  "class_based_approach": "Use race-level recommended_next_action to classify skipped scorecard races by append backlog, result capture, runner-set/identity repair, strict-odds collection, and strict-odds runner repair.",
+  "production_readiness_value": "High for planning the next coverage repair; no direct model-quality or runtime-append change.",
+  "minority_objection": {
+    "objection": "A report-only taxonomy does not itself add evaluation races.",
+    "resolution": "Accepted. The change is bounded to one session because it prevents another narrow repair loop and must be followed by an implementation against the highest-count class."
+  },
+  "selected_next_goal": "Extend the race evidence inventory scorecard metrics with actionable gap reason counts tied to recommended_next_action, add focused tests/docs, and run a fresh report-only inventory packet.",
+  "forbidden_actions": [
+    "training",
+    "production_promotion",
+    "registry_mutation",
+    "production_pointer_update",
+    "active_model_replacement",
+    "db_write",
+    "label_write",
+    "odds_write",
+    "official_result_write",
+    "daemon_control",
+    "betting_or_ev_action",
+    "snapshot_rewrite",
+    "manifest_rewrite",
+    "push_without_owner_approval"
+  ]
+}
