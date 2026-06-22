@@ -86,6 +86,20 @@ shadow prediction, official-result evidence DB, and strict pre-jump odds. Use
 that scorecard to compare model Top1/Top3, winner rank, and logloss against the
 market before proposing training, promotion, EV, or betting changes.
 
+The scorecard metrics include both broad skip reasons and action-level gap
+counts:
+
+- `skipped_race_reason_counts` keeps stable broad buckets, such as
+  `official_result_incomplete_for_shadow_boxes`.
+- `skipped_race_action_counts` maps skipped races to the row-level
+  `recommended_next_action`, so the denominator loss is split into actions such
+  as `capture_official_result`,
+  `repair_official_result_runner_set_or_identity_join`, or
+  `collect_future_strict_prejump_odds`.
+- `official_result_gap_action_counts` and `strict_odds_gap_action_counts`
+  isolate the result and odds coverage classes that should drive the next
+  bounded repair.
+
 ## Weather And Track Metadata
 
 Weather and track condition are collected into each refreshed upcoming CSV
