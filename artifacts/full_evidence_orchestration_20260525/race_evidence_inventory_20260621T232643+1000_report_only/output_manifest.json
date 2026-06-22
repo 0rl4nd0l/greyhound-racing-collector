@@ -1,0 +1,34 @@
+{
+  "files": {
+    "artifacts/full_evidence_orchestration_20260525/race_evidence_inventory_20260621T232643+1000_report_only/SUMMARY.md": {
+      "bytes": 1506,
+      "sha256": "85552a044687138098cd49b8f8436d5d23045049960c8b587b705b46ead75357"
+    },
+    "artifacts/full_evidence_orchestration_20260525/race_evidence_inventory_20260621T232643+1000_report_only/final_status.txt": {
+      "bytes": 45,
+      "sha256": "7421cc84ffc0d23b540acb740bf1b78942d600c6c694fa3a936933adce6d7c2f"
+    },
+    "artifacts/full_evidence_orchestration_20260525/race_evidence_inventory_20260621T232643+1000_report_only/race_evidence_inventory.csv": {
+      "bytes": 6323837,
+      "sha256": "cf317c5fc2bc0484f03710e5f1c255f88b52efc71dc649a7e9001040850b0dfb"
+    },
+    "artifacts/full_evidence_orchestration_20260525/race_evidence_inventory_20260621T232643+1000_report_only/race_evidence_inventory.jsonl": {
+      "bytes": 7652713,
+      "sha256": "3a360251d3046b7308c42ffc9105ac64fd76393aefdd11217335b800cc61b213"
+    },
+    "artifacts/full_evidence_orchestration_20260525/race_evidence_inventory_20260621T232643+1000_report_only/race_evidence_inventory_report.json": {
+      "bytes": 25427,
+      "sha256": "6d63cedd766c984738164dc95e2b6341088bdc7b27c4910f0487316b7e99ec44"
+    },
+    "artifacts/full_evidence_orchestration_20260525/race_evidence_inventory_20260621T232643+1000_report_only/race_evidence_scorecard.csv": {
+      "bytes": 186343,
+      "sha256": "56c0449733e337a5c5e5f8674464d21f99309f58e568258919a523d3e8f8b6cf"
+    },
+    "artifacts/full_evidence_orchestration_20260525/race_evidence_inventory_20260621T232643+1000_report_only/race_evidence_scorecard.jsonl": {
+      "bytes": 388872,
+      "sha256": "b970e49c5ed94ad79dd10ea6ba96a9c0b10eaa31e443ea46fbd1ed34ad860f56"
+    }
+  },
+  "output_dir": "artifacts/full_evidence_orchestration_20260525/race_evidence_inventory_20260621T232643+1000_report_only",
+  "schema_version": "race_evidence_inventory_output_manifest_v1"
+}
