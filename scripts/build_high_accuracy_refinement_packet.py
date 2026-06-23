@@ -28,12 +28,14 @@ sys.path = [path for path in sys.path if path != ROOT_STR]
 sys.path.insert(0, ROOT_STR)
 
 from scripts import build_promotion_gate_contract_audit_packet as gate_contract_audit  # noqa: E402
+from utils.report_output_dir_guard import assert_prefixed_report_output_dir  # noqa: E402
 
 
 OUTPUT_PREFIX = (
     "artifacts/full_evidence_orchestration_20260525/"
     "high_accuracy_refinement_packet_"
 )
+OUTPUT_ARTIFACT_PREFIX = "high_accuracy_refinement_packet_"
 DEFAULT_OUTPUT_PARENT = ROOT / "artifacts/full_evidence_orchestration_20260525"
 DEFAULT_PROTECTED_PATHS = (
     ROOT / "greyhound_racing_data.db",
@@ -149,17 +151,19 @@ def protected_hashes(paths: Sequence[Path] = DEFAULT_PROTECTED_PATHS) -> dict[st
     return {relpath(path) or str(path): sha256_file(path) for path in paths}
 
 
-def assert_output_dir_safe(output_dir: Path) -> Path:
-    logical = output_dir if output_dir.is_absolute() else ROOT / output_dir
-    try:
-        relative = logical.absolute().relative_to(ROOT.absolute())
-    except ValueError as exc:
-        raise ValueError("output_dir_must_be_inside_repo") from exc
-    if ".." in relative.parts:
-        raise ValueError("output_dir_must_not_contain_parent_traversal")
-    if not relative.as_posix().startswith(OUTPUT_PREFIX):
-        raise ValueError(f"output_dir_must_be_high_accuracy_refinement_packet:{relative}")
-    return logical.absolute()
+def assert_output_dir_safe(
+    output_dir: Path,
+    *,
+    evidence_root: Path | None = None,
+) -> Path:
+    return assert_prefixed_report_output_dir(
+        output_dir,
+        repo_root=ROOT,
+        repo_prefix=OUTPUT_PREFIX,
+        artifact_prefix=OUTPUT_ARTIFACT_PREFIX,
+        prefix_error="output_dir_must_be_high_accuracy_refinement_packet",
+        evidence_root=evidence_root,
+    )
 
 
 def unique_dir(base: Path) -> Path:
@@ -1475,6 +1479,7 @@ def promotion_distance_summary(
     market_benchmark = mapping(report.get("market_benchmark"))
     predeclared_residual = mapping(report.get("predeclared_residual_candidate"))
     rolling_sample = mapping(report.get("rolling_sample"))
+    gate_contract_candidate = mapping(report.get("gate_contract_candidate"))
     official_result_coverage = promotion_distance_official_result_coverage_summary(
         report,
         rolling_sample,
@@ -1544,6 +1549,7 @@ def promotion_distance_summary(
         "best_non_market_minus_market": dict(
             mapping(market_benchmark.get("best_non_market_minus_market"))
         ),
+        "gate_contract_candidate": dict(gate_contract_candidate),
         "predeclared_residual_candidate_key": predeclared_residual.get(
             "candidate_key"
         ),
@@ -1566,6 +1572,41 @@ def promotion_distance_summary(
             mapping(predeclared_residual.get("candidate_minus_market"))
         ),
         "no_write_guarantees": mapping(report.get("no_write_guarantees")),
+    }
+
+
+def promotion_distance_gate_contract_diagnostics(
+    promotion_distance: Mapping[str, Any],
+) -> dict[str, Any]:
+    gate_contract = mapping(promotion_distance.get("gate_contract_candidate"))
+    if not gate_contract:
+        return {}
+    return {
+        "status": gate_contract.get("status"),
+        "audit_final_status": gate_contract.get("audit_final_status"),
+        "audit_classification": gate_contract.get("audit_classification"),
+        "policy_key": gate_contract.get("policy_key"),
+        "policy_status": gate_contract.get("policy_status"),
+        "policy_evaluation_status": gate_contract.get("policy_evaluation_status"),
+        "selected_candidate": gate_contract.get("selected_candidate"),
+        "audit_selected_candidate": gate_contract.get("audit_selected_candidate"),
+        "data_missing_reasons": string_list(gate_contract.get("data_missing_reasons")),
+        "source_not_ready_reasons": string_list(
+            gate_contract.get("source_not_ready_reasons")
+        ),
+        "policy_failure_reasons": string_list(
+            gate_contract.get("policy_failure_reasons")
+        ),
+        "candidate_policy_blocker_counts": int_count_mapping(
+            gate_contract.get("candidate_policy_blocker_counts")
+        ),
+        "candidate_gate_matrix_row_count": finite_int(
+            gate_contract.get("candidate_gate_matrix_row_count")
+        ),
+        "candidate_metrics_key_count": finite_int(
+            gate_contract.get("candidate_metrics_key_count")
+        ),
+        "blockers": string_list(gate_contract.get("blockers")),
     }
 
 
@@ -1856,9 +1897,7 @@ def promotion_pr_gate(
     selected = passing[-1] if passing else None
     distance = mapping(promotion_distance)
     if (
-        selected
-        and selected.get("stage") == "odds_augmented_model_research"
-        and distance
+        distance
         and distance.get("status") != "NOT_RUN"
         and distance.get("promotion_ready") is not True
     ):
@@ -1867,6 +1906,7 @@ def promotion_pr_gate(
             f"promotion_distance_blocker:{blocker}"
             for blocker in string_list(distance.get("blockers"))
         )
+    gate_contract_diagnostics = promotion_distance_gate_contract_diagnostics(distance)
     ready = bool(selected and not blockers)
     return {
         "schema_version": "promotion_pr_only_gate_v1",
@@ -1874,6 +1914,7 @@ def promotion_pr_gate(
         "selected_stage": selected.get("stage") if selected else None,
         "selected_candidate": selected.get("candidate_key") if selected else None,
         "blockers": blockers,
+        "promotion_distance_gate_contract": gate_contract_diagnostics,
         "pull_request_boundary": {
             "promotion_pr_allowed": ready,
             "direct_local_switch_allowed": False,
@@ -2069,6 +2110,9 @@ def build_summary(packet: Mapping[str, Any]) -> str:
     unified_summary = mapping(packet.get("unified_evidence_summary"))
     backlog_summary = mapping(packet.get("backlog_unified_evidence_summary"))
     promotion_distance = mapping(packet.get("promotion_distance_summary"))
+    promotion_gate_contract = mapping(
+        promotion_distance.get("gate_contract_candidate")
+    ) or mapping(pr_gate.get("promotion_distance_gate_contract"))
     unified_official_result = mapping(
         unified_summary.get("official_result_coverage")
     )
@@ -2150,6 +2194,11 @@ def build_summary(packet: Mapping[str, Any]) -> str:
         f"- Backlog aggregation scope: `{backlog_summary.get('aggregation_scope')}`",
         f"- Promotion distance: `{promotion_distance.get('status') or 'NOT_RUN'}`",
         f"- Promotion distance blockers: `{promotion_distance.get('blockers')}`",
+        f"- Promotion distance gate-contract audit classification: `{promotion_gate_contract.get('audit_classification')}`",
+        f"- Promotion distance gate-contract policy evaluation: `{promotion_gate_contract.get('policy_evaluation_status')}`",
+        f"- Promotion distance gate-contract data-missing reasons: `{promotion_gate_contract.get('data_missing_reasons')}`",
+        f"- Promotion distance gate-contract source-not-ready reasons: `{promotion_gate_contract.get('source_not_ready_reasons')}`",
+        f"- Promotion distance gate-contract policy failure reasons: `{promotion_gate_contract.get('policy_failure_reasons')}`",
         f"- Promotion distance source exclusion reasons: `{promotion_distance.get('source_exclusion_reason_counts')}`",
         f"- Promotion distance official-result missing race IDs: `{promotion_distance.get('source_official_result_evidence_db_missing_race_ids')}`",
         f"- Promotion distance official-result runner path count: `{promotion_official_result.get('runner_path_count')}`",
@@ -2253,6 +2302,7 @@ def run_refinement_packet(
     timing_aligned_rerun_plan_path: Path | None = None,
     timing_aligned_rerun_execution_status_path: Path | None = None,
     output_dir: Path | None = None,
+    evidence_root: Path | None = None,
     thresholds: AccuracyGateThresholds = AccuracyGateThresholds(),
 ) -> dict[str, Any]:
     if not any(
@@ -2274,7 +2324,7 @@ def run_refinement_packet(
         raise ValueError("at_least_one_source_report_required")
     generated_at = datetime.now().astimezone()
     output_dir = output_dir or DEFAULT_OUTPUT_PARENT / f"high_accuracy_refinement_packet_{now_id(generated_at)}"
-    output_dir = unique_dir(assert_output_dir_safe(output_dir))
+    output_dir = unique_dir(assert_output_dir_safe(output_dir, evidence_root=evidence_root))
     output_dir.mkdir(parents=True, exist_ok=False)
     protected_before = protected_hashes()
     reserve_substitution_manual_review_path = (
@@ -2358,6 +2408,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--timing-aligned-rerun-plan", type=Path)
     parser.add_argument("--timing-aligned-rerun-execution-status", type=Path)
     parser.add_argument("--output-dir", type=Path)
+    parser.add_argument("--evidence-root", type=Path, default=DEFAULT_OUTPUT_PARENT)
     parser.add_argument("--min-safe-joined-races", type=int, default=100)
     parser.add_argument("--min-top1-delta", type=float, default=0.02)
     parser.add_argument("--min-top3-delta", type=float, default=0.0)
@@ -2400,6 +2451,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         timing_aligned_rerun_plan_path=args.timing_aligned_rerun_plan,
         timing_aligned_rerun_execution_status_path=args.timing_aligned_rerun_execution_status,
         output_dir=args.output_dir,
+        evidence_root=args.evidence_root,
         thresholds=thresholds,
     )
     print(json.dumps(result, indent=2, sort_keys=True))

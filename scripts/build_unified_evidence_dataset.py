@@ -28,10 +28,12 @@ sys.path = [path for path in sys.path if path != ROOT_STR]
 sys.path.insert(0, ROOT_STR)
 
 from utils.runner_completeness import normalise_runner_name  # noqa: E402
+from utils.report_output_dir_guard import assert_prefixed_report_output_dir  # noqa: E402
 
 
 DEFAULT_EVIDENCE_ROOT = ROOT / "artifacts/full_evidence_orchestration_20260525"
 OUTPUT_PREFIX = "artifacts/full_evidence_orchestration_20260525/unified_evidence_dataset_"
+OUTPUT_ARTIFACT_PREFIX = "unified_evidence_dataset_"
 DATASET_FILE = "unified_evidence_dataset.jsonl"
 CSV_FILE = "unified_evidence_dataset.csv"
 REPORT_FILE = "unified_evidence_dataset_report.json"
@@ -41,6 +43,22 @@ ACCEPTED_DOG_LEVEL_ODDS_LEVELS = {"dog", "runner"}
 POST_RACE_SOURCE_URL_TOKENS = {"dividend", "payout", "result", "results"}
 JOINED_SHADOW_EXACT_IDENTITY_STATUS = "exact_box_and_normalized_name"
 OFFICIAL_RESULT_EVIDENCE_DB_SOURCE = "official_result_evidence_db"
+GAP_CLASS_PRIORITY = (
+    "source_set_missing",
+    "identity_mismatch",
+    "official_result_missing",
+    "strict_prejump_odds_missing",
+    "stage2_missing",
+    "other_gate",
+)
+GAP_CLASS_ACTIONS = {
+    "source_set_missing": "restore_rolling_source_set_inclusion",
+    "identity_mismatch": "inspect_identity_match_or_join_artifact",
+    "official_result_missing": "capture_or_join_official_result",
+    "strict_prejump_odds_missing": "collect_strict_prejump_odds",
+    "stage2_missing": "rebuild_stage2_shadow_predictions",
+    "other_gate": "inspect_other_unified_evidence_gate",
+}
 NO_WRITE_GUARANTEES = {
     "training": False,
     "production_promotion": False,
@@ -71,17 +89,19 @@ def relpath(path: Path | None) -> str | None:
         return str(path)
 
 
-def assert_output_dir_safe(output_dir: Path) -> Path:
-    logical = output_dir if output_dir.is_absolute() else ROOT / output_dir
-    try:
-        relative = logical.absolute().relative_to(ROOT.absolute())
-    except ValueError as exc:
-        raise ValueError("output_dir_must_be_inside_repo") from exc
-    if ".." in relative.parts:
-        raise ValueError("output_dir_must_not_contain_parent_traversal")
-    if not relative.as_posix().startswith(OUTPUT_PREFIX):
-        raise ValueError(f"output_dir_must_be_unified_evidence_dataset_artifact:{relative}")
-    return logical.absolute()
+def assert_output_dir_safe(
+    output_dir: Path,
+    *,
+    evidence_root: Path | None = None,
+) -> Path:
+    return assert_prefixed_report_output_dir(
+        output_dir,
+        repo_root=ROOT,
+        repo_prefix=OUTPUT_PREFIX,
+        artifact_prefix=OUTPUT_ARTIFACT_PREFIX,
+        prefix_error="output_dir_must_be_unified_evidence_dataset_artifact",
+        evidence_root=evidence_root,
+    )
 
 
 def unique_dir(base: Path) -> Path:
@@ -195,6 +215,232 @@ def official_result_coverage_summary(
         "missing_exclusion_count": int(
             exclusion_reason_counts.get("official_result_missing") or 0
         ),
+    }
+
+
+def accepted_source_race_ids(
+    join_eligibility_packet_audits: Sequence[Mapping[str, Any]],
+) -> list[str]:
+    return sorted(
+        {
+            str(race_id).strip()
+            for audit in join_eligibility_packet_audits
+            for race_id in audit.get("accepted_race_ids") or []
+            if str(race_id or "").strip()
+        }
+    )
+
+
+def joined_identity_mismatch_context(
+    joined_shadow_prediction_audits: Sequence[Mapping[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    context: dict[str, dict[str, Any]] = {}
+    for audit in joined_shadow_prediction_audits:
+        reason_map = audit.get("rejected_race_ids_by_reason") or {}
+        if not isinstance(reason_map, Mapping):
+            continue
+        path = audit.get("path")
+        for reason, race_ids in reason_map.items():
+            if str(reason) != "identity_match_not_exact_box_and_normalized_name":
+                continue
+            if not isinstance(race_ids, Sequence) or isinstance(race_ids, (str, bytes)):
+                continue
+            for race_id in race_ids:
+                race_key = str(race_id or "").strip()
+                if not race_key:
+                    continue
+                entry = context.setdefault(
+                    race_key,
+                    {
+                        "identity_mismatch_reasons": set(),
+                        "identity_mismatch_source_paths": set(),
+                    },
+                )
+                entry["identity_mismatch_reasons"].add(str(reason))
+                if path:
+                    entry["identity_mismatch_source_paths"].add(str(path))
+    return {
+        race_id: {
+            "identity_mismatch_reasons": sorted(value["identity_mismatch_reasons"]),
+            "identity_mismatch_source_paths": sorted(value["identity_mismatch_source_paths"]),
+        }
+        for race_id, value in sorted(context.items())
+    }
+
+
+def is_odds_detail_reason(reason: str) -> bool:
+    return reason.startswith("odds_") or reason.startswith("unsupported_sportsbet_box_source")
+
+
+def build_race_gap_prioritization(
+    *,
+    rows: Sequence[Mapping[str, Any]],
+    join_eligibility_packet_audits: Sequence[Mapping[str, Any]],
+    joined_shadow_prediction_audits: Sequence[Mapping[str, Any]],
+    top_limit: int = 20,
+) -> dict[str, Any]:
+    rows_by_race: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+    for row in rows:
+        race_id = str(row.get("race_id") or "").strip()
+        if race_id:
+            rows_by_race[race_id].append(row)
+
+    dataset_race_ids = set(rows_by_race)
+    source_race_ids = set(accepted_source_race_ids(join_eligibility_packet_audits))
+    source_race_id_source = (
+        "join_eligibility_packet_accepted_race_ids"
+        if source_race_ids
+        else "dataset_race_ids"
+    )
+    if not source_race_ids:
+        source_race_ids = set(dataset_race_ids)
+
+    identity_context = joined_identity_mismatch_context(joined_shadow_prediction_audits)
+    source_race_ids.update(identity_context)
+    source_race_ids.update(dataset_race_ids)
+
+    gap_class_counts = {gap_class: 0 for gap_class in GAP_CLASS_PRIORITY}
+    primary_gap_class_counts = {gap_class: 0 for gap_class in GAP_CLASS_PRIORITY}
+    gap_rows: list[dict[str, Any]] = []
+
+    for race_id in sorted(source_race_ids):
+        race_rows = rows_by_race.get(race_id, [])
+        row_count = len(race_rows)
+        reason_counts = Counter()
+        for row in race_rows:
+            reason_counts.update(
+                str(reason)
+                for reason in row.get("excluded_from_unified_reason") or []
+                if str(reason or "").strip()
+            )
+
+        if row_count == 0:
+            gap_classes = ["source_set_missing"]
+            official_missing_rows = 0
+            strict_missing_rows = 0
+            stage2_missing_rows = 0
+            primary_missing_rows = 0
+            unified_missing_rows = 0
+            official_complete = False
+            strict_complete = False
+            stage2_complete = False
+            primary_complete = False
+            unified_complete = False
+            race_date = None
+            venue = None
+            race_number = None
+        else:
+            official_rows = sum(1 for row in race_rows if row.get("official_result_available"))
+            strict_rows = sum(1 for row in race_rows if row.get("strict_prejump_odds_available"))
+            stage2_rows = sum(1 for row in race_rows if row.get("stage2_prediction_available"))
+            primary_rows = sum(1 for row in race_rows if row.get("primary_prediction_available"))
+            unified_rows = sum(1 for row in race_rows if row.get("unified_evidence_eligible"))
+            official_missing_rows = max(0, row_count - official_rows)
+            strict_missing_rows = max(0, row_count - strict_rows)
+            stage2_missing_rows = max(0, row_count - stage2_rows)
+            primary_missing_rows = max(0, row_count - primary_rows)
+            unified_missing_rows = max(0, row_count - unified_rows)
+            official_complete = row_count > 0 and official_missing_rows == 0
+            strict_complete = row_count > 0 and strict_missing_rows == 0
+            stage2_complete = row_count > 0 and stage2_missing_rows == 0
+            primary_complete = row_count > 0 and primary_missing_rows == 0
+            unified_complete = row_count > 0 and unified_missing_rows == 0
+            race_date = next((row.get("race_date") for row in race_rows if row.get("race_date")), None)
+            venue = next((row.get("venue") for row in race_rows if row.get("venue")), None)
+            race_number = next(
+                (row.get("race_number") for row in race_rows if row.get("race_number") is not None),
+                None,
+            )
+
+            gap_classes = []
+            if race_id in identity_context and not official_complete:
+                gap_classes.append("identity_mismatch")
+            if not official_complete:
+                gap_classes.append("official_result_missing")
+            if not strict_complete:
+                gap_classes.append("strict_prejump_odds_missing")
+            if not stage2_complete:
+                gap_classes.append("stage2_missing")
+            other_reasons = [
+                reason
+                for reason in sorted(reason_counts)
+                if reason
+                not in {
+                    "official_result_missing",
+                    "strict_prejump_odds_missing",
+                    "stage2_shadow_prediction_missing",
+                }
+                and not (
+                    "strict_prejump_odds_missing" in gap_classes
+                    and is_odds_detail_reason(reason)
+                )
+            ]
+            if primary_missing_rows or (unified_missing_rows and not gap_classes) or other_reasons:
+                gap_classes.append("other_gate")
+
+        gap_classes = [gap_class for gap_class in GAP_CLASS_PRIORITY if gap_class in gap_classes]
+        if not gap_classes:
+            continue
+
+        for gap_class in gap_classes:
+            gap_class_counts[gap_class] += 1
+        primary_gap_class = gap_classes[0]
+        primary_gap_class_counts[primary_gap_class] += 1
+        identity_details = identity_context.get(race_id) or {}
+        gap_rows.append(
+            {
+                "race_id": race_id,
+                "race_date": race_date,
+                "venue": venue,
+                "race_number": race_number,
+                "primary_gap_class": primary_gap_class,
+                "gap_class": primary_gap_class,
+                "gap_classes": gap_classes,
+                "recommended_action": GAP_CLASS_ACTIONS[primary_gap_class],
+                "source_set_present": row_count > 0,
+                "row_count": row_count,
+                "official_result_missing_rows": official_missing_rows,
+                "strict_prejump_odds_missing_rows": strict_missing_rows,
+                "stage2_missing_rows": stage2_missing_rows,
+                "primary_prediction_missing_rows": primary_missing_rows,
+                "unified_evidence_missing_rows": unified_missing_rows,
+                "official_result_complete": official_complete,
+                "strict_prejump_odds_complete": strict_complete,
+                "stage2_complete": stage2_complete,
+                "primary_prediction_complete": primary_complete,
+                "unified_evidence_complete": unified_complete,
+                "excluded_from_unified_reason_counts": dict(sorted(reason_counts.items())),
+                "identity_mismatch_reasons": identity_details.get("identity_mismatch_reasons") or [],
+                "identity_mismatch_source_paths": (
+                    identity_details.get("identity_mismatch_source_paths") or []
+                ),
+            }
+        )
+
+    priority = {gap_class: index for index, gap_class in enumerate(GAP_CLASS_PRIORITY)}
+    gap_rows.sort(
+        key=lambda row: (
+            priority.get(str(row.get("primary_gap_class")), len(priority)),
+            -int(row.get("unified_evidence_missing_rows") or 0),
+            str(row.get("race_id") or ""),
+        )
+    )
+    return {
+        "schema_version": "unified_evidence_race_gap_prioritization_v1",
+        "scope": "source_set_or_dataset_race_level_gaps",
+        "lineage_basis": source_race_id_source,
+        "raw_db_count_basis": False,
+        "source_race_id_source": source_race_id_source,
+        "source_race_count": len(source_race_ids),
+        "dataset_race_count": len(dataset_race_ids),
+        "source_set_missing_race_count": sum(
+            1 for race_id in source_race_ids if race_id not in dataset_race_ids
+        ),
+        "sample_blocking_gap_count": len(gap_rows),
+        "primary_gap_class_counts": dict(sorted(primary_gap_class_counts.items())),
+        "gap_class_counts": dict(sorted(gap_class_counts.items())),
+        "top_gap_race_ids": [row["race_id"] for row in gap_rows[:top_limit]],
+        "top_gap_races": gap_rows[:top_limit],
     }
 
 
@@ -646,40 +892,47 @@ def joined_shadow_official_results(
     for path in joined_paths:
         rows = load_jsonl(path)
         rejection_reasons = Counter()
+        rejected_race_ids_by_reason: dict[str, set[str]] = defaultdict(set)
         accepted_rows = 0
         duplicate_rows = 0
         for item in rows:
-            if item.get("identity_match_status") != JOINED_SHADOW_EXACT_IDENTITY_STATUS:
-                rejection_reasons["identity_match_not_exact_box_and_normalized_name"] += 1
-                continue
             race_id = str(item.get("race_id") or "").strip()
+
+            def reject(reason: str) -> None:
+                rejection_reasons[reason] += 1
+                if race_id:
+                    rejected_race_ids_by_reason[reason].add(race_id)
+
+            if item.get("identity_match_status") != JOINED_SHADOW_EXACT_IDENTITY_STATUS:
+                reject("identity_match_not_exact_box_and_normalized_name")
+                continue
             box_number = parse_int(
                 item.get("box_number") if item.get("box_number") not in (None, "") else item.get("box")
             )
             dog_name = item.get("dog_name") or item.get("official_dog_name")
             if not race_id:
-                rejection_reasons["race_id_missing"] += 1
+                reject("race_id_missing")
                 continue
             if box_number is None:
-                rejection_reasons["box_number_missing"] += 1
+                reject("box_number_missing")
                 continue
             if not normalize_name(dog_name):
-                rejection_reasons["dog_name_missing"] += 1
+                reject("dog_name_missing")
                 continue
             finish_position = parse_int(item.get("finish_position"))
             if finish_position is None or finish_position <= 0:
-                rejection_reasons["finish_position_invalid"] += 1
+                reject("finish_position_invalid")
                 continue
             is_winner = parse_json_bool(item.get("is_winner"))
             if is_winner is None:
-                rejection_reasons["is_winner_not_json_bool"] += 1
+                reject("is_winner_not_json_bool")
                 continue
             if is_winner != (finish_position == 1):
-                rejection_reasons["finish_position_winner_flag_conflict"] += 1
+                reject("finish_position_winner_flag_conflict")
                 continue
             source_url = item.get("result_url") or item.get("source_url") or item.get("race_url")
             if not str(source_url or "").strip():
-                rejection_reasons["result_source_url_missing"] += 1
+                reject("result_source_url_missing")
                 continue
             key = runner_key(race_id, box_number, dog_name)
             result = {
@@ -703,7 +956,7 @@ def joined_shadow_official_results(
                     existing.get("finish_position") != result.get("finish_position")
                     or existing.get("is_winner") != result.get("is_winner")
                 ):
-                    rejection_reasons["duplicate_joined_result_conflict"] += 1
+                    reject("duplicate_joined_result_conflict")
                     continue
                 duplicate_rows += 1
                 continue
@@ -717,6 +970,10 @@ def joined_shadow_official_results(
                 "duplicate_rows": duplicate_rows,
                 "rejected_rows": sum(rejection_reasons.values()),
                 "rejection_reason_counts": dict(sorted(rejection_reasons.items())),
+                "rejected_race_ids_by_reason": {
+                    reason: sorted(race_ids)
+                    for reason, race_ids in sorted(rejected_race_ids_by_reason.items())
+                },
             }
         )
     return results, audits
@@ -1178,6 +1435,11 @@ def build_report(
         official_result_evidence_db_audit=official_result_evidence_db_audit,
         exclusion_reason_counts=exclusion_counts,
     )
+    race_gap_prioritization = build_race_gap_prioritization(
+        rows=rows,
+        join_eligibility_packet_audits=join_eligibility_packet_audits,
+        joined_shadow_prediction_audits=joined_shadow_prediction_audits,
+    )
     return {
         "schema_version": "unified_evidence_dataset_report_v1",
         "generated_at": generated_at.isoformat(),
@@ -1193,6 +1455,7 @@ def build_report(
         "official_result_runner_paths": [relpath(path) for path in official_result_runner_paths],
         "official_result_evidence_db_audit": dict(official_result_evidence_db_audit),
         "official_result_coverage": official_result_coverage,
+        "race_gap_prioritization": race_gap_prioritization,
         "joined_shadow_prediction_paths": [relpath(path) for path in joined_shadow_prediction_paths],
         "joined_shadow_prediction_audits": list(joined_shadow_prediction_audits),
         "joined_shadow_prediction_rows_seen": sum(
@@ -1305,6 +1568,11 @@ def summary_markdown(report: Mapping[str, Any]) -> str:
         if isinstance(report.get("official_result_coverage"), Mapping)
         else {}
     )
+    race_gap_prioritization = (
+        report.get("race_gap_prioritization")
+        if isinstance(report.get("race_gap_prioritization"), Mapping)
+        else {}
+    )
     return "\n".join(
         [
             "# Unified Evidence Dataset",
@@ -1339,10 +1607,25 @@ def summary_markdown(report: Mapping[str, Any]) -> str:
             f"- Stage 2-evaluation eligible rows: `{report.get('stage2_evaluation_eligible_rows')}`",
             f"- Odds-evaluation eligible rows: `{report.get('odds_evaluation_eligible_rows')}`",
             f"- Unified-evidence eligible rows: `{report.get('unified_evidence_eligible_rows')}`",
+            f"- Race gap source basis: `{race_gap_prioritization.get('source_race_id_source')}`",
+            f"- Race gap raw DB count basis: `{race_gap_prioritization.get('raw_db_count_basis')}`",
+            f"- Race gap source races: `{race_gap_prioritization.get('source_race_count')}`",
+            f"- Race gap sample-blocking races: `{race_gap_prioritization.get('sample_blocking_gap_count')}`",
+            f"- Race gap primary class counts: `{race_gap_prioritization.get('primary_gap_class_counts')}`",
+            f"- Race gap all class counts: `{race_gap_prioritization.get('gap_class_counts')}`",
+            f"- Race gap top race IDs: `{race_gap_prioritization.get('top_gap_race_ids')}`",
             "",
             "## Exclusions",
             "",
             json.dumps(report.get("exclusion_reason_counts") or {}, indent=2, sort_keys=True),
+            "",
+            "## Race Gap Prioritization",
+            "",
+            json.dumps(
+                race_gap_prioritization.get("top_gap_races") or [],
+                indent=2,
+                sort_keys=True,
+            ),
             "",
             "## Rejected Live Odds Candidate Reasons",
             "",
@@ -1363,6 +1646,7 @@ def build_dataset(
     shadow_run_dir: Path,
     db_path: Path,
     output_dir: Path,
+    evidence_root: Path | None = None,
     official_result_runner_paths: Sequence[Path] = (),
     joined_shadow_prediction_paths: Sequence[Path] = (),
     join_eligibility_packet_paths: Sequence[Path] = (),
@@ -1370,7 +1654,7 @@ def build_dataset(
     generated_at: datetime | None = None,
 ) -> dict[str, Any]:
     generated_at = generated_at or datetime.now().astimezone()
-    output_dir = unique_dir(assert_output_dir_safe(output_dir))
+    output_dir = unique_dir(assert_output_dir_safe(output_dir, evidence_root=evidence_root))
     output_dir.mkdir(parents=True, exist_ok=False)
     prediction_info = load_prediction_rows(shadow_run_dir)
     eligible_race_ids, join_eligibility_audits = join_eligibility_packet_audit(
@@ -1433,6 +1717,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--shadow-run-dir", type=Path, required=True)
     parser.add_argument("--db", type=Path, default=ROOT / "greyhound_racing_data.db")
+    parser.add_argument("--evidence-root", type=Path, default=DEFAULT_EVIDENCE_ROOT)
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--official-result-runners-jsonl", action="append", type=Path, default=[])
     parser.add_argument("--joined-shadow-predictions-jsonl", action="append", type=Path, default=[])
@@ -1452,6 +1737,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         shadow_run_dir=args.shadow_run_dir,
         db_path=args.db,
         output_dir=output_dir,
+        evidence_root=args.evidence_root,
         official_result_runner_paths=args.official_result_runners_jsonl,
         joined_shadow_prediction_paths=args.joined_shadow_predictions_jsonl,
         join_eligibility_packet_paths=args.join_eligibility_packet,

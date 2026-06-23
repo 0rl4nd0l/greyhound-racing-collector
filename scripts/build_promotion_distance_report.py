@@ -16,6 +16,7 @@ import json
 import math
 import os
 import sys
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -27,11 +28,14 @@ sys.path = [path for path in sys.path if path != ROOT_STR]
 sys.path.insert(0, ROOT_STR)
 
 from scripts import build_promotion_gate_contract_audit_packet as gate_contract_audit  # noqa: E402
+from utils.report_output_dir_guard import assert_prefixed_report_output_dir  # noqa: E402
 
+DEFAULT_EVIDENCE_ROOT = ROOT / "artifacts/full_evidence_orchestration_20260525"
 OUTPUT_PREFIX = (
     "artifacts/full_evidence_orchestration_20260525/"
     "promotion_distance_report_"
 )
+OUTPUT_ARTIFACT_PREFIX = "promotion_distance_report_"
 REPORT_FILE = "promotion_distance_report.json"
 SUMMARY_FILE = "SUMMARY.md"
 MIN_ROLLING_RACES_FOR_REVIEW = 100
@@ -77,17 +81,19 @@ def relpath(path: Path | None) -> str | None:
         return str(path)
 
 
-def assert_output_dir_safe(output_dir: Path) -> Path:
-    logical = output_dir if output_dir.is_absolute() else ROOT / output_dir
-    try:
-        relative = logical.absolute().relative_to(ROOT.absolute())
-    except ValueError as exc:
-        raise ValueError("output_dir_must_be_inside_repo") from exc
-    if ".." in relative.parts:
-        raise ValueError("output_dir_must_not_contain_parent_traversal")
-    if not relative.as_posix().startswith(OUTPUT_PREFIX):
-        raise ValueError(f"output_dir_must_be_promotion_distance_report:{relative}")
-    return logical.absolute()
+def assert_output_dir_safe(
+    output_dir: Path,
+    *,
+    evidence_root: Path | None = None,
+) -> Path:
+    return assert_prefixed_report_output_dir(
+        output_dir,
+        repo_root=ROOT,
+        repo_prefix=OUTPUT_PREFIX,
+        artifact_prefix=OUTPUT_ARTIFACT_PREFIX,
+        prefix_error="output_dir_must_be_promotion_distance_report",
+        evidence_root=evidence_root,
+    )
 
 
 def unique_dir(base: Path) -> Path:
@@ -180,6 +186,118 @@ def metric_gap_to_target(delta: float | None, target: float) -> float | None:
     return max(0.0, target - delta)
 
 
+def mapping_list(value: Any) -> list[Mapping[str, Any]]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        return []
+    return [mapping(item) for item in value if isinstance(item, Mapping)]
+
+
+def first_present(*values: Any) -> Any:
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
+def gate_contract_audit_diagnostics(
+    *,
+    audit: Mapping[str, Any],
+    rolling: Mapping[str, Any],
+    policy: Mapping[str, Any],
+    selected_candidate: Any,
+    row: Mapping[str, Any],
+    min_rolling_races: int,
+) -> dict[str, Any]:
+    audit_final_status = str(audit.get("final_status") or "DATA_MISSING")
+    rolling_summary = mapping(audit.get("rolling_report_summary"))
+    rolling_status = first_present(
+        rolling_summary.get("final_status"),
+        rolling.get("final_status"),
+    )
+    sample_scope = first_present(
+        rolling_summary.get("sample_scope"),
+        rolling.get("sample_scope"),
+    )
+    sample_floor_met = first_present(
+        rolling_summary.get("sample_floor_met"),
+        rolling.get("sample_floor_met"),
+    )
+    sample_race_count = finite_int(
+        first_present(
+            rolling_summary.get("sample_race_count"),
+            rolling.get("sample_race_count"),
+        )
+    )
+    data_missing_reasons = string_list(audit.get("blockers"))
+    source_not_ready_reasons: list[str] = []
+    if rolling_status != gate_contract_audit.ROLLING_READY_STATUS:
+        source_not_ready_reasons.append(
+            f"rolling_report_status_not_ready:{rolling_status or 'missing'}"
+        )
+    if sample_scope != "unified":
+        source_not_ready_reasons.append(
+            f"sample_scope_not_unified:{sample_scope or 'missing'}"
+        )
+    if sample_floor_met is not True:
+        source_not_ready_reasons.append("sample_floor_not_met")
+    if sample_race_count < min_rolling_races:
+        source_not_ready_reasons.append("rolling_sample_below_review_floor")
+
+    policy_key = str(policy.get("policy_key") or PROMOTION_GATE_CONTRACT_POLICY)
+    candidate_rows = mapping_list(audit.get("candidate_gate_matrix"))
+    policy_blocker_counts: Counter[str] = Counter()
+    for candidate_row in candidate_rows:
+        blocker_text = str(candidate_row.get(f"{policy_key}_blockers") or "")
+        for blocker in (item for item in blocker_text.split(";") if item):
+            policy_blocker_counts[blocker] += 1
+    selected_blocker_text = str(row.get(f"{policy_key}_blockers") or "")
+    selected_policy_blockers = [
+        item for item in selected_blocker_text.split(";") if item
+    ]
+
+    policy_status = str(policy.get("status") or "MISSING")
+    if data_missing_reasons:
+        audit_classification = "DATA_MISSING"
+    elif source_not_ready_reasons:
+        audit_classification = "SOURCE_NOT_READY"
+    elif policy_status != "PASS":
+        audit_classification = "POLICY_FAILED"
+    elif audit_final_status != "REPORT_ONLY_GATE_CHANGE_CANDIDATE":
+        audit_classification = "AUDIT_STATUS_NOT_READY"
+    else:
+        audit_classification = "PASS"
+
+    if audit_classification in {"DATA_MISSING", "SOURCE_NOT_READY"}:
+        policy_evaluation_status = "NOT_EVALUABLE"
+        policy_failure_reasons: list[str] = []
+    elif policy_status == "PASS":
+        policy_evaluation_status = "PASS"
+        policy_failure_reasons = []
+    else:
+        policy_evaluation_status = "FAILED"
+        policy_failure_reasons = list(
+            dict.fromkeys(selected_policy_blockers or sorted(policy_blocker_counts))
+        )
+
+    candidate_metrics_by_key = mapping(rolling.get("candidate_metrics_by_key"))
+    return {
+        "audit_classification": audit_classification,
+        "policy_evaluation_status": policy_evaluation_status,
+        "data_missing_reasons": list(dict.fromkeys(data_missing_reasons)),
+        "source_not_ready_reasons": list(dict.fromkeys(source_not_ready_reasons)),
+        "policy_failure_reasons": policy_failure_reasons,
+        "candidate_policy_blocker_counts": dict(sorted(policy_blocker_counts.items())),
+        "candidate_gate_matrix_row_count": len(candidate_rows),
+        "candidate_metrics_key_count": len(candidate_metrics_by_key),
+        "selected_candidate_gate_matrix_row_found": bool(row),
+        "selected_candidate_from_high_accuracy": selected_candidate,
+        "rolling_report_status": rolling_status,
+        "rolling_sample_scope": sample_scope,
+        "rolling_sample_floor_met": sample_floor_met,
+        "rolling_sample_race_count": sample_race_count,
+    }
+
+
 def high_accuracy_gate_contract_blockers(high_gate: Mapping[str, Any]) -> list[str]:
     blockers: list[str] = []
     if high_gate.get("status") != "READY_FOR_PR_DRAFT":
@@ -203,6 +321,7 @@ def gate_contract_candidate_summary(
     rolling: Mapping[str, Any],
     high_gate: Mapping[str, Any],
     target_top1_margin_vs_market: float,
+    min_rolling_races: int,
 ) -> dict[str, Any]:
     audit = gate_contract_audit.build_report(
         rolling_report=rolling,
@@ -232,13 +351,38 @@ def gate_contract_candidate_summary(
     row = mapping(row)
     blocker_text = str(row.get(f"{PROMOTION_GATE_CONTRACT_POLICY}_blockers") or "")
     candidate_blockers = [item for item in blocker_text.split(";") if item]
+    diagnostics = gate_contract_audit_diagnostics(
+        audit=audit,
+        rolling=rolling,
+        policy=policy,
+        selected_candidate=selected_candidate,
+        row=row,
+        min_rolling_races=min_rolling_races,
+    )
     blockers: list[str] = []
-    if audit.get("final_status") != "REPORT_ONLY_GATE_CHANGE_CANDIDATE":
-        blockers.append(
-            f"gate_contract_audit_not_ready:{audit.get('final_status')}"
-        )
+    audit_classification = str(
+        diagnostics.get("audit_classification") or "DATA_MISSING"
+    )
+    policy_evaluation_status = str(
+        diagnostics.get("policy_evaluation_status") or "NOT_EVALUABLE"
+    )
+    if audit_classification in {"DATA_MISSING", "SOURCE_NOT_READY"}:
+        blockers.append(f"gate_contract_audit_not_ready:{audit_classification}")
+    elif (
+        audit.get("final_status") != "REPORT_ONLY_GATE_CHANGE_CANDIDATE"
+        and audit_classification != "POLICY_FAILED"
+    ):
+        blockers.append(f"gate_contract_audit_not_ready:{audit.get('final_status')}")
     if policy.get("status") != "PASS":
-        blockers.append(f"gate_contract_policy_not_pass:{PROMOTION_GATE_CONTRACT_POLICY}")
+        if policy_evaluation_status == "NOT_EVALUABLE":
+            blockers.append(
+                "gate_contract_policy_not_evaluable:"
+                f"{PROMOTION_GATE_CONTRACT_POLICY}:{audit_classification}"
+            )
+        else:
+            blockers.append(
+                f"gate_contract_policy_failed:{PROMOTION_GATE_CONTRACT_POLICY}"
+            )
     if not selected_candidate:
         blockers.append("high_accuracy_selected_candidate_missing")
     if selected_candidate and not row:
@@ -248,16 +392,36 @@ def gate_contract_candidate_summary(
             "high_accuracy_selected_candidate_not_audit_selected:"
             f"{selected_candidate}!={audit_candidate}"
         )
-    blockers.extend(candidate_blockers)
+    if policy_evaluation_status != "NOT_EVALUABLE":
+        blockers.extend(candidate_blockers)
     top1_delta = finite_float(row.get("market_top1_delta"))
     return {
         "schema_version": "promotion_distance_gate_contract_candidate_v1",
         "status": "PASS" if not blockers else "BLOCKED",
         "audit_final_status": audit.get("final_status"),
+        "audit_classification": diagnostics.get("audit_classification"),
         "policy_key": PROMOTION_GATE_CONTRACT_POLICY,
         "policy_status": policy.get("status"),
+        "policy_evaluation_status": diagnostics.get("policy_evaluation_status"),
         "selected_candidate": selected_candidate,
         "audit_selected_candidate": audit_candidate,
+        "data_missing_reasons": diagnostics.get("data_missing_reasons"),
+        "source_not_ready_reasons": diagnostics.get("source_not_ready_reasons"),
+        "policy_failure_reasons": diagnostics.get("policy_failure_reasons"),
+        "candidate_policy_blocker_counts": diagnostics.get(
+            "candidate_policy_blocker_counts"
+        ),
+        "candidate_gate_matrix_row_count": diagnostics.get(
+            "candidate_gate_matrix_row_count"
+        ),
+        "candidate_metrics_key_count": diagnostics.get("candidate_metrics_key_count"),
+        "selected_candidate_gate_matrix_row_found": diagnostics.get(
+            "selected_candidate_gate_matrix_row_found"
+        ),
+        "rolling_report_status": diagnostics.get("rolling_report_status"),
+        "rolling_sample_scope": diagnostics.get("rolling_sample_scope"),
+        "rolling_sample_floor_met": diagnostics.get("rolling_sample_floor_met"),
+        "rolling_sample_race_count": diagnostics.get("rolling_sample_race_count"),
         "candidate_minus_market": {
             "top1": top1_delta,
             "top3": finite_float(row.get("market_top3_delta")),
@@ -335,13 +499,14 @@ def build_report(
     pre_race_gated_report_path: Path,
     high_accuracy_gate_path: Path,
     output_dir: Path,
+    evidence_root: Path | None = None,
     generated_at: datetime | None = None,
     min_rolling_races: int = MIN_ROLLING_RACES_FOR_REVIEW,
     min_residual_triggered_races: int = MIN_RESIDUAL_TRIGGERED_RACES_FOR_DIRECTIONAL_READ,
     target_top1_margin_vs_market: float = TARGET_TOP1_MARGIN_VS_MARKET,
 ) -> dict[str, Any]:
     generated_at = generated_at or datetime.now().astimezone()
-    output_dir = unique_dir(assert_output_dir_safe(output_dir))
+    output_dir = unique_dir(assert_output_dir_safe(output_dir, evidence_root=evidence_root))
     output_dir.mkdir(parents=True, exist_ok=False)
 
     rolling = load_json(rolling_report_path)
@@ -370,6 +535,7 @@ def build_report(
         rolling=rolling,
         high_gate=high_gate,
         target_top1_margin_vs_market=target_top1_margin_vs_market,
+        min_rolling_races=min_rolling_races,
     )
     gate_contract_passed = gate_contract_candidate.get("status") == "PASS"
 
@@ -540,7 +706,13 @@ def summary_markdown(report: Mapping[str, Any]) -> str:
             f"- Best non-market top1 gap to target margin: `{market.get('best_non_market_top1_margin_gap')}`",
             f"- Gate-contract candidate: `{gate_contract.get('selected_candidate')}`",
             f"- Gate-contract candidate status: `{gate_contract.get('status')}`",
+            f"- Gate-contract audit classification: `{gate_contract.get('audit_classification')}`",
+            f"- Gate-contract policy evaluation: `{gate_contract.get('policy_evaluation_status')}`",
             f"- Gate-contract policy: `{gate_contract.get('policy_key')}`",
+            f"- Gate-contract data-missing reasons: `{gate_contract.get('data_missing_reasons')}`",
+            f"- Gate-contract source-not-ready reasons: `{gate_contract.get('source_not_ready_reasons')}`",
+            f"- Gate-contract policy failure reasons: `{gate_contract.get('policy_failure_reasons')}`",
+            f"- Gate-contract candidate policy blocker counts: `{gate_contract.get('candidate_policy_blocker_counts')}`",
             f"- Gate-contract candidate minus market: `{gate_contract.get('candidate_minus_market')}`",
             f"- Gate-contract top1 gap to target margin: `{gate_contract.get('top1_margin_gap_to_target')}`",
             f"- Gate-contract blockers: `{gate_contract.get('blockers')}`",
@@ -564,21 +736,21 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--pre-race-gated-report", type=Path, required=True)
     parser.add_argument("--high-accuracy-gate", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path)
+    parser.add_argument("--evidence-root", type=Path, default=DEFAULT_EVIDENCE_ROOT)
     return parser.parse_args(argv)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     output_dir = args.output_dir or (
-        ROOT
-        / "artifacts/full_evidence_orchestration_20260525"
-        / f"promotion_distance_report_{now_id()}"
+        DEFAULT_EVIDENCE_ROOT / f"promotion_distance_report_{now_id()}"
     )
     report = build_report(
         rolling_report_path=args.rolling_report,
         pre_race_gated_report_path=args.pre_race_gated_report,
         high_accuracy_gate_path=args.high_accuracy_gate,
         output_dir=output_dir,
+        evidence_root=args.evidence_root,
     )
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0
