@@ -110,9 +110,17 @@ Status interpretation matters:
 
 ## Promotion Boundary
 
-The current post-backlog evidence shows the model trails the market on complete
-races. Do not train, promote, emit EV, or place bets unless a fresh report-only
-evaluation proves model quality is better than the market on the declared slice.
+Do not train, directly promote, emit EV, or place bets unless a fresh
+report-only evaluation proves model quality is better than the market on the
+declared slice and the promotion PR gate allows a human-reviewed PR. A
+`READY_FOR_PROMOTION_PR_DRAFT` packet authorizes only a reviewable PR-bound
+change; it does not authorize direct local switching, registry mutation,
+production pointer updates, or live runtime mutation.
+
+The PR #24 post-merge report-only evidence selected
+`stage2_market_blend_70` for the odds-augmented model-research PR boundary.
+That candidate is still artifact-only unless a separate reviewed deployment
+path explicitly promotes it.
 
 Rolling and promotion readiness must trace the current source chain end to end:
 safe joined race IDs -> strict pre-jump Sportsbet odds -> official-result

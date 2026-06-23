@@ -4839,7 +4839,7 @@ def test_shadow_odds_snapshot_status_surfaces_race_level_coverage():
                 "shadow_odds_snapshot_x/odds_research_gate_report.json"
             ),
             "approved_odds_augmented_predictions": {
-                "candidate_key": "stage2_market_blend_95",
+                "candidate_key": "stage2_market_blend_70",
                 "status": "APPROVED_BLEND_READY",
                 "ready_race_count": 1,
                 "blocked_race_count": 0,
@@ -4887,7 +4887,7 @@ def test_shadow_odds_snapshot_status_surfaces_race_level_coverage():
     assert status["odds_research_gate_blocker_counts"] == {
         "complete_valid_prejump_odds_races_below_min": 99
     }
-    assert status["approved_odds_augmented_candidate_key"] == "stage2_market_blend_95"
+    assert status["approved_odds_augmented_candidate_key"] == "stage2_market_blend_70"
     assert status["approved_odds_augmented_prediction_status"] == "APPROVED_BLEND_READY"
     assert status["approved_odds_augmented_ready_race_count"] == 1
     assert status["approved_odds_augmented_blocked_race_count"] == 0

@@ -365,7 +365,7 @@ def test_collect_shadow_odds_snapshot_marks_exact_dog_box_odds_eligible(tmp_path
         .splitlines()
         if line.strip()
     ]
-    assert approved_rows[0]["candidate_key"] == "stage2_market_blend_95"
+    assert approved_rows[0]["candidate_key"] == "stage2_market_blend_70"
     assert approved_rows[0]["approved_blend_probability"] == pytest.approx(1.0)
     assert approved_rows[0]["approved_blend_rank"] == 1
     assert approved_rows[0]["production_prediction_write"] is False
@@ -631,11 +631,11 @@ def test_approved_odds_augmented_blend_ranks_with_reviewed_formula(tmp_path):
     assert by_dog["Model Pick"]["stage2_shadow_probability"] == pytest.approx(0.8)
     assert by_dog["Model Pick"]["market_implied_probability"] == pytest.approx(1 / 3)
     assert by_dog["Model Pick"]["approved_blend_probability"] == pytest.approx(
-        0.05 * 0.8 + 0.95 * (1 / 3)
+        0.30 * 0.8 + 0.70 * (1 / 3)
     )
     assert by_dog["Model Pick"]["approved_blend_rank"] == 2
     assert by_dog["Market Pick"]["approved_blend_probability"] == pytest.approx(
-        0.05 * 0.2 + 0.95 * (2 / 3)
+        0.30 * 0.2 + 0.70 * (2 / 3)
     )
     assert by_dog["Market Pick"]["approved_blend_rank"] == 1
     assert all(row["production_prediction_write"] is False for row in predictions)
