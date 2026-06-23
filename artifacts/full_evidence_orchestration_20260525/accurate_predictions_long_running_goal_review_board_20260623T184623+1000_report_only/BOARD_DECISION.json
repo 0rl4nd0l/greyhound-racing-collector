@@ -1,0 +1,137 @@
+{
+  "schema_version": "tenn_review_board_decision_v1",
+  "generated_at": "2026-06-23T18:46:23+10:00",
+  "decision": "proceed",
+  "task_tier": "critical",
+  "recommended_model": "high reasoning plus bounded workers",
+  "actual_model": "gpt-5 codex",
+  "why_this_model": "The lane touches live-runtime prediction, rolling evaluation, promotion contracts, and source-safety gates. It needs high reasoning and bounded implementation workers, but no direct DB/runtime/promotion mutation.",
+  "worker_model_allowed": true,
+  "worker_decision_limit": "Workers may implement bounded code/test fixes in assigned files and produce report-only validation. Workers must not train, promote, mutate DB/runtime/registry/snapshots, emit EV, bet, or weaken gates.",
+  "escalation_needed": false,
+  "final_decision_authority": "owner remains final authority for promotion, DB/runtime mutation, production pointer changes, and gate-policy changes",
+  "why_lower_tier_insufficient": "The blockers span source discovery, evidence lineage, model-quality gates, and promotion contracts; a single small edit or report summary is insufficient.",
+  "ledger_sources_checked": [
+    "tenn-git-guard global preflight",
+    "live task ledger",
+    "committed task ledger",
+    "dirty worktree fallback",
+    "local and remote branches fallback",
+    "worktrees fallback",
+    "report artifacts fallback"
+  ],
+  "ledger_status": "DATA_MISSING",
+  "duplicate_work_classification": "DATA_MISSING_FALLBACK_CHECKED",
+  "matching_candidates": [
+    "existing dirty runtime scripts/tests are present and must be treated as in-scope context",
+    "historical branches and worktrees exist for accuracy, odds, and runtime lanes; no single ledger-backed active duplicate was available from the missing ledgers"
+  ],
+  "duplicate_work_decision": "Proceed with bounded workers, but require each worker to inspect current dirt and avoid overwriting existing changes.",
+  "minority_objection": "The strongest objection is that implementation should wait until ledger state is restored. Chair overrules because fallback guard evidence was checked, user explicitly requested implementation subagents, and the next work can be bounded to source-safe code/test fixes without DB/runtime mutation.",
+  "root_problem": "The current rolling/promotion denominator is narrowed: many safe joined races and eligible unified evidence exist, but the latest rolling source set only includes a small subset.",
+  "overfitting": "Do not overfit to the latest 35-race rolling packet; compare against historical 100+ packets and repair the source inclusion class.",
+  "report_loop": "Avoid another report-only loop by assigning implementation workers immediately after this board. Keep validation report-only.",
+  "broad_progress": "Restoring broad rolling inclusion is broad system progress because it re-enables truthful evaluation, promotion-distance checks, and model-improvement prioritization.",
+  "class_based_approach": "Use failure classes: rolling source-set inclusion, source-safe eligibility, gate-contract completeness, model-quality gap, and residual hypothesis evidence.",
+  "production_readiness_value": "Highest value is a fresh 100+ eligible rolling comparison that either proves a candidate can beat the market under gate contracts or clearly identifies the model-improvement slice.",
+  "hard_boundaries": {
+    "db_mutation": false,
+    "runtime_mutation": false,
+    "training": false,
+    "promotion": false,
+    "ev_or_betting": false,
+    "snapshot_rewrite": false,
+    "registry_mutation": false,
+    "gate_weakening": false
+  },
+  "current_evidence": {
+    "safe_joined_races": 1033,
+    "db_live_odds_distinct_races": 1396,
+    "db_official_result_evidence_distinct_races": 538,
+    "safe_joined_with_any_unified_eligible_rows": 986,
+    "latest_rolling_sample_races": 35,
+    "latest_rolling_source_unified_reports": 29,
+    "historical_max_rolling_sample_races": 178,
+    "historical_max_rolling_source_unified_reports": 508,
+    "safe_joined_not_requested_by_latest_rolling_source_set": 999
+  },
+  "blockers": [
+    "rolling_source_set_narrowed_current_vs_historical",
+    "rolling_sample_below_review_floor",
+    "official_result_missing_and_strict_prejump_odds_missing_inside_current_source_set",
+    "no_candidate_passed_rank_first_accuracy_gate",
+    "gate_contract_audit_not_ready_DATA_MISSING",
+    "gate_contract_policy_not_pass_dual_baseline_market_rank_primary_safety",
+    "high_accuracy_selected_candidate_missing",
+    "promotion_pr_allowed_false"
+  ],
+  "milestones": [
+    {
+      "id": "M0",
+      "name": "Fresh preflight and evidence selection",
+      "exit_criteria": "Latest completed full daemon child and latest non-wrapper rolling packet selected; git guard run; ledger DATA_MISSING recorded if still unavailable."
+    },
+    {
+      "id": "M1",
+      "name": "Rolling source inclusion root cause",
+      "exit_criteria": "Code path causing 29-source current rolling set versus 508-source historical set is identified with tests or a report-only reproducer."
+    },
+    {
+      "id": "M2",
+      "name": "Rolling source inclusion repair",
+      "exit_criteria": "Patch restores cumulative eligible unified evidence discovery while ignoring odds-only and lock-wait wrappers, preserving dedupe and all eligibility gates."
+    },
+    {
+      "id": "M3",
+      "name": "100+ eligible rolling validation",
+      "exit_criteria": "Fresh report-only rolling comparison reaches at least 100 eligible races or produces an exact remaining gap list by race and blocker."
+    },
+    {
+      "id": "M4",
+      "name": "Gate-contract completeness",
+      "exit_criteria": "Promotion-distance and high-accuracy packets expose complete gate-contract audit/policy evidence without DATA_MISSING, or classify a real owner boundary."
+    },
+    {
+      "id": "M5",
+      "name": "Model-quality improvement lane",
+      "exit_criteria": "On the restored denominator, identify whether any candidate beats market under rank-first gates; if not, produce a model-improvement plan with feature/candidate hypotheses and no promotion."
+    },
+    {
+      "id": "M6",
+      "name": "Evidence gap remediation",
+      "exit_criteria": "Remaining official-result or strict pre-jump odds gaps are prioritized from rolling lineage, not raw DB counts, with append-only/report-only commands only unless owner approves mutation."
+    },
+    {
+      "id": "M7",
+      "name": "Final promotion readiness decision",
+      "exit_criteria": "Promotion stays blocked unless 100+ eligible races and all gate contracts pass; any promotion requires explicit owner approval and PR boundary."
+    }
+  ],
+  "recommended_subagents": [
+    {
+      "name": "rolling-source-inclusion-worker",
+      "ownership": [
+        "scripts/build_rolling_model_comparison_packet.py",
+        "tests for rolling model comparison source discovery"
+      ],
+      "mission": "Find and fix why the current rolling packet uses only the narrowed source set."
+    },
+    {
+      "name": "gate-contract-worker",
+      "ownership": [
+        "scripts/build_promotion_distance_report.py",
+        "scripts/build_high_accuracy_refinement_packet.py",
+        "tests for promotion gate diagnostics"
+      ],
+      "mission": "Make gate-contract blockers complete and actionable without weakening the gates."
+    },
+    {
+      "name": "evidence-gap-prioritization-worker",
+      "ownership": [
+        "scripts/build_unified_evidence_dataset.py",
+        "race/evidence inventory or lineage reporting tests, if present"
+      ],
+      "mission": "Ensure remaining official-result and strict pre-jump odds gaps are reported from current rolling lineage, not raw counts."
+    }
+  ]
+}

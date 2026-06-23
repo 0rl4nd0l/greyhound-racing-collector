@@ -113,3 +113,14 @@ Status interpretation matters:
 The current post-backlog evidence shows the model trails the market on complete
 races. Do not train, promote, emit EV, or place bets unless a fresh report-only
 evaluation proves model quality is better than the market on the declared slice.
+
+Rolling and promotion readiness must trace the current source chain end to end:
+safe joined race IDs -> strict pre-jump Sportsbet odds -> official-result
+evidence -> Stage 2 prediction rows -> unified evidence ->
+`rolling_model_comparison_report.json` -> `promotion_distance_report.json` ->
+`high_accuracy_refinement_packet.json`.
+
+Only races included by the latest rolling report source set count toward
+promotion gates. Raw DB race/odds counts, odds-only daemon runs, and older 100+
+race packets are coverage signals; they are not current rolling inclusion or
+promotion readiness.

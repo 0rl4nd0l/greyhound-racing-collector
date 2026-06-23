@@ -602,6 +602,85 @@ def test_rolling_gate_contract_can_select_non_rank_first_market_safe_candidate()
     )
 
 
+def test_promotion_pr_gate_carries_gate_contract_diagnostics_without_candidate():
+    promotion_distance_report = {
+        "final_status": "PROMOTION_DISTANCE_BLOCKED",
+        "promotion_ready": False,
+        "blockers": [
+            "gate_contract_candidate_blocker:gate_contract_audit_not_ready:SOURCE_NOT_READY",
+            (
+                "gate_contract_candidate_blocker:gate_contract_policy_not_evaluable:"
+                "dual_baseline_market_rank_primary_safety:SOURCE_NOT_READY"
+            ),
+        ],
+        "rolling_sample": {
+            "sample_race_count": 33,
+            "sample_runner_rows": 222,
+            "minimum_races_for_review": 100,
+        },
+        "gate_contract_candidate": {
+            "status": "BLOCKED",
+            "audit_final_status": "DATA_MISSING",
+            "audit_classification": "SOURCE_NOT_READY",
+            "policy_key": "dual_baseline_market_rank_primary_safety",
+            "policy_status": "BLOCKED",
+            "policy_evaluation_status": "NOT_EVALUABLE",
+            "data_missing_reasons": [],
+            "source_not_ready_reasons": [
+                "rolling_report_status_not_ready:ROLLING_MODEL_COMPARISON_COLLECTING",
+                "sample_floor_not_met",
+                "rolling_sample_below_review_floor",
+            ],
+            "policy_failure_reasons": [],
+            "candidate_policy_blocker_counts": {
+                "source_status_not_ready:ROLLING_MODEL_COMPARISON_COLLECTING": 3
+            },
+            "selected_candidate": None,
+            "audit_selected_candidate": None,
+            "blockers": [
+                "gate_contract_audit_not_ready:SOURCE_NOT_READY",
+                (
+                    "gate_contract_policy_not_evaluable:"
+                    "dual_baseline_market_rank_primary_safety:SOURCE_NOT_READY"
+                ),
+                "high_accuracy_selected_candidate_missing",
+            ],
+        },
+    }
+
+    result = packet.build_packet(
+        promotion_distance_report=promotion_distance_report,
+        generated_at=datetime(2026, 6, 23, 9, 10, tzinfo=timezone.utc),
+        protected_before={},
+        protected_after={},
+    )
+
+    pr_gate = result["promotion_pr_gate"]
+    assert pr_gate["status"] == "BLOCKED"
+    assert "no_candidate_passed_rank_first_accuracy_gate" in pr_gate["blockers"]
+    assert "promotion_distance_not_ready:PROMOTION_DISTANCE_BLOCKED" in (
+        pr_gate["blockers"]
+    )
+    assert (
+        "promotion_distance_blocker:"
+        "gate_contract_candidate_blocker:gate_contract_audit_not_ready:SOURCE_NOT_READY"
+    ) in pr_gate["blockers"]
+    assert pr_gate["promotion_distance_gate_contract"]["audit_classification"] == (
+        "SOURCE_NOT_READY"
+    )
+    assert pr_gate["promotion_distance_gate_contract"]["policy_evaluation_status"] == (
+        "NOT_EVALUABLE"
+    )
+    assert result["promotion_distance_summary"]["gate_contract_candidate"][
+        "audit_classification"
+    ] == "SOURCE_NOT_READY"
+    summary = packet.build_summary(result)
+    assert (
+        "Promotion distance gate-contract audit classification: `SOURCE_NOT_READY`"
+        in summary
+    )
+
+
 def test_collecting_rolling_comparison_does_not_bypass_latest_odds_gate():
     odds_gate_report = {
         "status": packet.ODDS_RESEARCH_BLOCKED_PROVENANCE,

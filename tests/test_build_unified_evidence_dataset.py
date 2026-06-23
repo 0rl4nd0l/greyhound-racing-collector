@@ -1233,6 +1233,248 @@ def test_joined_shadow_predictions_reject_non_exact_identity_rows(tmp_path, monk
     assert "official_result_missing" in rows[0]["excluded_from_unified_reason"]
 
 
+def test_race_gap_prioritization_uses_source_lineage_not_raw_db_counts(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(dataset, "ROOT", tmp_path)
+    shadow_dir = tmp_path / "daily"
+
+    def prediction(race_id: str, dog_name: str) -> dict:
+        return {
+            "race_id": race_id,
+            "dog_name": dog_name,
+            "box": 1,
+            "predicted_rank": 1,
+            "shadow_rf_calibrated_probability": 0.31,
+        }
+
+    ready = "Race 1 - WPK - 2026-06-10"
+    official_missing = "Race 2 - WPK - 2026-06-10"
+    odds_missing = "Race 3 - WPK - 2026-06-10"
+    stage2_missing = "Race 4 - WPK - 2026-06-10"
+    identity_mismatch = "Race 5 - WPK - 2026-06-10"
+    source_set_missing = "Race 6 - WPK - 2026-06-10"
+    other_gate = "Race 7 - WPK - 2026-06-10"
+    dog_by_race = {
+        ready: "Ready Runner",
+        official_missing: "Official Missing Runner",
+        odds_missing: "Odds Missing Runner",
+        stage2_missing: "Stage Two Missing Runner",
+        identity_mismatch: "Identity Mismatch Runner",
+        source_set_missing: "Source Missing Runner",
+        other_gate: "Other Gate Runner",
+    }
+
+    primary_predictions = [
+        prediction(ready, dog_by_race[ready]),
+        prediction(official_missing, dog_by_race[official_missing]),
+        prediction(odds_missing, dog_by_race[odds_missing]),
+        prediction(stage2_missing, dog_by_race[stage2_missing]),
+        prediction(identity_mismatch, dog_by_race[identity_mismatch]),
+    ]
+    stage2_predictions = [
+        {
+            **prediction(race_id, dog_by_race[race_id]),
+            "schema_version": "stage2_shadow_prediction_v1",
+            "stage2_challenger_key": "shadow_calibrated_rf_power_gamma_2_4",
+        }
+        for race_id in [
+            ready,
+            official_missing,
+            odds_missing,
+            identity_mismatch,
+            other_gate,
+        ]
+    ]
+    _write_jsonl(shadow_dir / "shadow_predictions.jsonl", primary_predictions)
+    _write_jsonl(shadow_dir / "stage2_shadow_predictions.jsonl", stage2_predictions)
+
+    runner_path = tmp_path / "official_result_runners.jsonl"
+    _write_jsonl(
+        runner_path,
+        [
+            {
+                "race_id": race_id,
+                "box_number": 1,
+                "dog_name": dog_by_race[race_id],
+                "finish_position": 1,
+                "source": "thedogs_official",
+                "source_url": (
+                    "https://www.thedogs.com.au/racing/"
+                    f"wentworth-park/2026-06-10/{index}/results"
+                ),
+            }
+            for index, race_id in enumerate(
+                [ready, odds_missing, stage2_missing, other_gate],
+                start=1,
+            )
+        ],
+    )
+
+    joined_path = tmp_path / "joined_shadow_predictions.jsonl"
+    _write_jsonl(
+        joined_path,
+        [
+            {
+                "race_id": identity_mismatch,
+                "dog_name": dog_by_race[identity_mismatch],
+                "official_dog_name": "Different Runner",
+                "box": 1,
+                "finish_position": 1,
+                "is_winner": True,
+                "identity_match_status": "dog_name_mismatch_after_exact_badge_stripping",
+                "result_url": "https://www.thedogs.com.au/racing/wentworth-park/2026-06-10/5/results",
+            }
+        ],
+    )
+
+    odds_path = tmp_path / "shadow_odds_snapshot.jsonl"
+    _write_jsonl(
+        odds_path,
+        [
+            {
+                "schema_version": "shadow_odds_snapshot_runner_v1",
+                "race_id": race_id,
+                "dog_name": dog_by_race[race_id],
+                "box": 1,
+                "odds_match_status": "valid_pre_jump_dog_odds",
+                "odds_provenance_status": "complete",
+                "ev_calculation_status": "DISABLED_REPORT_ONLY_NO_EV_OUTPUT",
+                "ev_win": None,
+                "race_context": {
+                    "venue": "WPK",
+                    "race_number": int(race_id.split()[1]),
+                    "race_date": "2026-06-10",
+                    "race_time": "15:00",
+                },
+                "odds_snapshot": {
+                    "market_odds_win": 2.8,
+                    "market_type": "win",
+                    "odds_timestamp": "2026-06-10T14:30:00+10:00",
+                    "odds_level": "dog",
+                    "odds_captured_before_feature_freeze": True,
+                    "odds_captured_before_jump": True,
+                    "odds_captured_before_prediction": True,
+                    "odds_provenance": {
+                        "source": "sportsbet",
+                        "source_table": "live_odds",
+                        "source_url": (
+                            "https://www.sportsbet.com.au/greyhound-racing/"
+                            "australia-nz/wentworth-park/race-1"
+                        ),
+                        "capture_mode": "autonomous_prejump_t30m",
+                        "sportsbet_box_source": "runner_text",
+                        "sportsbet_raw_runner_text": f"1. {dog_by_race[race_id]}",
+                        "odds_box_number": 1,
+                        "odds_dog_name": dog_by_race[race_id].upper(),
+                        "odds_race_id": race_id,
+                    },
+                },
+            }
+            for race_id in [
+                ready,
+                official_missing,
+                stage2_missing,
+                identity_mismatch,
+                other_gate,
+            ]
+        ],
+    )
+
+    packet_path = tmp_path / "join_eligibility.json"
+    packet_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "live_odds_backlog_join_eligibility_packet_v1",
+                "diagnostic_only": True,
+                "join_authorized": False,
+                "db_write_performed": False,
+                "races": [
+                    {
+                        "race_id": race_id,
+                        "eligibility_status": "JOIN_ELIGIBLE_REPORT_ONLY",
+                        "blockers": [],
+                        "join_authorized": False,
+                        "db_write_performed": False,
+                    }
+                    for race_id in dog_by_race
+                ],
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    db_path = _make_db(tmp_path)
+    _remove_official_result_rows(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("DELETE FROM live_odds")
+
+    report = dataset.build_dataset(
+        shadow_run_dir=shadow_dir,
+        db_path=db_path,
+        output_dir=tmp_path
+        / "artifacts/full_evidence_orchestration_20260525/unified_evidence_dataset_gap_priority",
+        official_result_runner_paths=[runner_path],
+        joined_shadow_prediction_paths=[joined_path],
+        join_eligibility_packet_paths=[packet_path],
+        odds_jsonl_paths=[odds_path],
+        generated_at=datetime.fromisoformat("2026-06-10T15:30:00+10:00"),
+    )
+
+    gap = report["race_gap_prioritization"]
+    assert gap["source_race_id_source"] == "join_eligibility_packet_accepted_race_ids"
+    assert gap["raw_db_count_basis"] is False
+    assert gap["source_race_count"] == 7
+    assert gap["dataset_race_count"] == 6
+    assert gap["source_set_missing_race_count"] == 1
+    assert gap["primary_gap_class_counts"] == {
+        "identity_mismatch": 1,
+        "official_result_missing": 1,
+        "other_gate": 1,
+        "source_set_missing": 1,
+        "stage2_missing": 1,
+        "strict_prejump_odds_missing": 1,
+    }
+    assert gap["gap_class_counts"] == {
+        "identity_mismatch": 1,
+        "official_result_missing": 2,
+        "other_gate": 1,
+        "source_set_missing": 1,
+        "stage2_missing": 1,
+        "strict_prejump_odds_missing": 1,
+    }
+    assert gap["top_gap_race_ids"] == [
+        source_set_missing,
+        identity_mismatch,
+        official_missing,
+        odds_missing,
+        stage2_missing,
+        other_gate,
+    ]
+    top_by_race = {row["race_id"]: row for row in gap["top_gap_races"]}
+    assert top_by_race[source_set_missing]["primary_gap_class"] == "source_set_missing"
+    assert top_by_race[source_set_missing]["source_set_present"] is False
+    assert top_by_race[identity_mismatch]["gap_classes"] == [
+        "identity_mismatch",
+        "official_result_missing",
+    ]
+    assert top_by_race[identity_mismatch]["identity_mismatch_reasons"] == [
+        "identity_match_not_exact_box_and_normalized_name"
+    ]
+    assert top_by_race[official_missing]["primary_gap_class"] == "official_result_missing"
+    assert top_by_race[odds_missing]["primary_gap_class"] == "strict_prejump_odds_missing"
+    assert top_by_race[stage2_missing]["primary_gap_class"] == "stage2_missing"
+    assert top_by_race[other_gate]["primary_gap_class"] == "other_gate"
+
+    summary = (
+        tmp_path
+        / "artifacts/full_evidence_orchestration_20260525/unified_evidence_dataset_gap_priority/SUMMARY.md"
+    ).read_text(encoding="utf-8")
+    assert "- Race gap raw DB count basis: `False`" in summary
+    assert f"- Race gap top race IDs: `{gap['top_gap_race_ids']}`" in summary
+
+
 def test_valid_strict_odds_do_not_inherit_stale_candidate_exclusions(tmp_path, monkeypatch):
     monkeypatch.setattr(dataset, "ROOT", tmp_path)
     shadow_dir = tmp_path / "daily"

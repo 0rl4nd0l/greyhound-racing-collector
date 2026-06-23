@@ -82,6 +82,142 @@ def _write_dataset(
     return report_path
 
 
+def test_evidence_root_expands_current_input_to_historical_automatic_sources(
+    tmp_path,
+    monkeypatch,
+):
+    runtime_root = tmp_path / "runtime"
+    retained_repo = tmp_path / "retained"
+    runtime_root.mkdir()
+    retained_repo.mkdir()
+    evidence_root = retained_repo / "artifacts/full_evidence_orchestration_20260525"
+    monkeypatch.setattr(comparison, "ROOT", runtime_root)
+
+    older = _write_dataset(
+        retained_repo,
+        "unified_evidence_dataset_20260613T151711+1000_daemon_autopilot_backlog_001",
+        [
+            _row(
+                race_id="Race 1 - BEN - 2026-06-13",
+                dog="A",
+                box=1,
+                winner=True,
+                primary=0.7,
+                stage2=0.8,
+                odds=2.0,
+            ),
+            _row(
+                race_id="Race 1 - BEN - 2026-06-13",
+                dog="B",
+                box=2,
+                primary=0.3,
+                stage2=0.2,
+                odds=4.0,
+            ),
+        ],
+    )
+    _write_dataset(
+        retained_repo,
+        "unified_evidence_dataset_20260613T151711+1000_daemon_autopilot_backlog_manual_001",
+        [
+            _row(
+                race_id="Race manual - BEN - 2026-06-13",
+                dog="M",
+                box=1,
+                winner=True,
+            ),
+            _row(race_id="Race manual - BEN - 2026-06-13", dog="N", box=2),
+        ],
+    )
+    partial = _write_dataset(
+        retained_repo,
+        "unified_evidence_dataset_20260613T151711+1000_daemon_rejoin_001",
+        [
+            _row(
+                race_id="Race partial - BEN - 2026-06-13",
+                dog="P",
+                box=1,
+                winner=True,
+                unified=True,
+            ),
+            _row(
+                race_id="Race partial - BEN - 2026-06-13",
+                dog="Q",
+                box=2,
+                unified=False,
+                odds=None,
+            ),
+        ],
+    )
+    _write_dataset(
+        retained_repo,
+        "unified_evidence_dataset_20260613T151711+1000_daemon_rejoin_002",
+        [
+            _row(
+                race_id="Race empty - BEN - 2026-06-13",
+                dog="E",
+                box=1,
+                winner=True,
+            ),
+            _row(race_id="Race empty - BEN - 2026-06-13", dog="F", box=2),
+        ],
+        report_extra={"final_status": "UNIFIED_EVIDENCE_DATASET_EMPTY"},
+    )
+    latest = _write_dataset(
+        retained_repo,
+        "unified_evidence_dataset_20260623T181701+1000_daemon_rejoin_001",
+        [
+            _row(
+                race_id="Race 2 - BEN - 2026-06-23",
+                dog="C",
+                box=1,
+                winner=True,
+                primary=0.6,
+                stage2=0.7,
+                odds=2.4,
+            ),
+            _row(
+                race_id="Race 2 - BEN - 2026-06-23",
+                dog="D",
+                box=2,
+                primary=0.4,
+                stage2=0.3,
+                odds=3.5,
+            ),
+        ],
+    )
+
+    assert comparison.report_dataset_path(
+        older,
+        comparison.load_json(older),
+        evidence_root=evidence_root,
+    ).exists()
+
+    report = comparison.build_comparison(
+        unified_evidence_report_paths=[latest],
+        evidence_root=evidence_root,
+        output_dir=evidence_root / "rolling_model_comparison_expanded",
+        min_races_for_review=2,
+        generated_at=datetime(2026, 6, 23, 9, 0, tzinfo=timezone.utc),
+    )
+
+    assert report["final_status"] == "ROLLING_MODEL_COMPARISON_READY_FOR_REVIEW"
+    assert report["sample_race_count"] == 2
+    assert report["skipped_race_counts"] == {
+        "race_not_fully_unified_evidence_eligible": 1
+    }
+    assert report["source_discovery"]["explicit_report_count"] == 1
+    assert report["source_discovery"]["historical_report_count"] == 2
+    assert report["source_discovery"]["effective_report_count"] == 3
+    assert len(report["source_reports"]) == 3
+    source_paths = report["source_unified_evidence_reports"]
+    assert any(older.parent.name in path for path in source_paths)
+    assert any(partial.parent.name in path for path in source_paths)
+    assert any(latest.parent.name in path for path in source_paths)
+    assert not any("_manual_" in path for path in source_paths)
+    assert not any("daemon_rejoin_002" in path for path in source_paths)
+
+
 def test_rolling_comparison_evaluates_stage2_market_and_blends(tmp_path, monkeypatch):
     monkeypatch.setattr(comparison, "ROOT", tmp_path)
     rows = [

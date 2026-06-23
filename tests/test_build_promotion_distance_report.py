@@ -236,6 +236,233 @@ def test_promotion_distance_report_quantifies_blocked_accuracy_path(
     assert (output_dir / "output_manifest.json").exists()
 
 
+def test_gate_contract_diagnostics_classify_source_not_ready_separately(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr(distance, "ROOT", tmp_path)
+    primary = _candidate(
+        candidate_key="primary_shadow",
+        family="baseline",
+        top1=0.30,
+        top3=0.60,
+        mean_winner_rank=3.0,
+        brier=0.80,
+        logloss=1.70,
+        slope=1.0,
+        intercept=0.0,
+        box1=0.16,
+    )
+    market = _candidate(
+        candidate_key="market_only_implied",
+        family="market_only",
+        top1=0.44,
+        top3=0.80,
+        mean_winner_rank=2.35,
+        brier=0.70,
+        logloss=1.50,
+        slope=0.90,
+        intercept=-0.10,
+        box1=0.20,
+    )
+    candidate = _candidate(
+        candidate_key="stage2_market_blend_85",
+        top1=0.448,
+        top3=0.816,
+        mean_winner_rank=2.27,
+        brier=0.69,
+        logloss=1.48,
+        slope=0.95,
+        intercept=0.05,
+        box1=0.21,
+    )
+    rolling = _write_json(
+        tmp_path / "rolling_collecting.json",
+        {
+            "final_status": "ROLLING_MODEL_COMPARISON_COLLECTING",
+            "sample_scope": "unified",
+            "sample_floor_met": False,
+            "sample_race_count": 33,
+            "sample_runner_rows": 222,
+            "minimum_races_for_review": 100,
+            "best_candidate_key": "stage2_market_blend_85",
+            "best_non_market_candidate_key": "stage2_market_blend_85",
+            "best_non_market_minus_market": {"top1": 0.008},
+            "rank_first_sort": ["stage2_market_blend_85"],
+            "baseline_metrics": primary,
+            "market_metrics": market,
+            "candidate_metrics_by_key": {
+                "primary_shadow": primary,
+                "market_only_implied": market,
+                "stage2_market_blend_85": candidate,
+            },
+        },
+    )
+    gated = _write_json(
+        tmp_path / "gated.json",
+        {"predeclared_residual_candidate": {"triggered_race_count": 0}},
+    )
+    gate = _write_json(
+        tmp_path / "gate.json",
+        {
+            "status": "BLOCKED",
+            "blockers": ["no_candidate_passed_rank_first_accuracy_gate"],
+            "pull_request_boundary": {"promotion_pr_allowed": False},
+        },
+    )
+
+    report = distance.build_report(
+        rolling_report_path=rolling,
+        pre_race_gated_report_path=gated,
+        high_accuracy_gate_path=gate,
+        output_dir=(
+            tmp_path
+            / "artifacts/full_evidence_orchestration_20260525"
+            / "promotion_distance_report_source_not_ready_test"
+        ),
+        generated_at=datetime(2026, 6, 23, 9, 0, tzinfo=timezone.utc),
+    )
+
+    contract = report["gate_contract_candidate"]
+    assert contract["audit_final_status"] == "DATA_MISSING"
+    assert contract["audit_classification"] == "SOURCE_NOT_READY"
+    assert contract["policy_evaluation_status"] == "NOT_EVALUABLE"
+    assert contract["data_missing_reasons"] == []
+    assert "rolling_report_status_not_ready:ROLLING_MODEL_COMPARISON_COLLECTING" in (
+        contract["source_not_ready_reasons"]
+    )
+    assert "sample_floor_not_met" in contract["source_not_ready_reasons"]
+    assert "rolling_sample_below_review_floor" in contract["source_not_ready_reasons"]
+    assert "gate_contract_audit_not_ready:SOURCE_NOT_READY" in contract["blockers"]
+    assert (
+        "gate_contract_policy_not_evaluable:"
+        "dual_baseline_market_rank_primary_safety:SOURCE_NOT_READY"
+    ) in contract["blockers"]
+    assert not any(
+        str(blocker).startswith("gate_contract_policy_failed")
+        for blocker in contract["blockers"]
+    )
+    summary = (
+        tmp_path
+        / "artifacts/full_evidence_orchestration_20260525"
+        / "promotion_distance_report_source_not_ready_test"
+        / "SUMMARY.md"
+    ).read_text(encoding="utf-8")
+    assert "Gate-contract audit classification: `SOURCE_NOT_READY`" in summary
+
+
+def test_gate_contract_diagnostics_classify_ready_source_policy_failure(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr(distance, "ROOT", tmp_path)
+    primary = _candidate(
+        candidate_key="primary_shadow",
+        family="baseline",
+        top1=0.30,
+        top3=0.60,
+        mean_winner_rank=3.0,
+        brier=0.80,
+        logloss=1.70,
+        slope=1.0,
+        intercept=0.0,
+        box1=0.16,
+    )
+    market = _candidate(
+        candidate_key="market_only_implied",
+        family="market_only",
+        top1=0.44,
+        top3=0.80,
+        mean_winner_rank=2.35,
+        brier=0.70,
+        logloss=1.50,
+        slope=0.90,
+        intercept=-0.10,
+        box1=0.20,
+    )
+    failing = _candidate(
+        candidate_key="stage2_market_blend_20",
+        top1=0.42,
+        top3=0.78,
+        mean_winner_rank=2.45,
+        brier=0.74,
+        logloss=1.58,
+        slope=0.20,
+        intercept=-1.20,
+        box1=0.24,
+    )
+    rolling = _write_json(
+        tmp_path / "rolling_ready_policy_failed.json",
+        {
+            "final_status": "ROLLING_MODEL_COMPARISON_READY_FOR_REVIEW",
+            "sample_scope": "unified",
+            "sample_floor_met": True,
+            "sample_race_count": 120,
+            "sample_runner_rows": 840,
+            "minimum_races_for_review": 100,
+            "best_candidate_key": "stage2_market_blend_20",
+            "best_non_market_candidate_key": "stage2_market_blend_20",
+            "best_non_market_minus_market": {"top1": -0.02},
+            "rank_first_sort": ["stage2_market_blend_20"],
+            "baseline_metrics": primary,
+            "market_metrics": market,
+            "candidate_metrics_by_key": {
+                "primary_shadow": primary,
+                "market_only_implied": market,
+                "stage2_market_blend_20": failing,
+            },
+        },
+    )
+    gated = _write_json(
+        tmp_path / "gated.json",
+        {"predeclared_residual_candidate": {"triggered_race_count": 0}},
+    )
+    gate = _write_json(
+        tmp_path / "gate_ready.json",
+        {
+            "status": "READY_FOR_PR_DRAFT",
+            "selected_stage": "odds_augmented_model_research",
+            "selected_candidate": "stage2_market_blend_20",
+            "blockers": [],
+            "pull_request_boundary": {
+                "promotion_pr_allowed": True,
+                "direct_local_switch_allowed": False,
+                "local_registry_mutation_allowed": False,
+                "production_pointer_update_allowed": False,
+                "requires_human_pr_review": True,
+            },
+        },
+    )
+
+    report = distance.build_report(
+        rolling_report_path=rolling,
+        pre_race_gated_report_path=gated,
+        high_accuracy_gate_path=gate,
+        output_dir=(
+            tmp_path
+            / "artifacts/full_evidence_orchestration_20260525"
+            / "promotion_distance_report_policy_failed_test"
+        ),
+        generated_at=datetime(2026, 6, 23, 9, 5, tzinfo=timezone.utc),
+    )
+
+    contract = report["gate_contract_candidate"]
+    assert contract["audit_classification"] == "POLICY_FAILED"
+    assert contract["policy_evaluation_status"] == "FAILED"
+    assert contract["data_missing_reasons"] == []
+    assert contract["source_not_ready_reasons"] == []
+    assert "gate_contract_policy_failed:dual_baseline_market_rank_primary_safety" in (
+        contract["blockers"]
+    )
+    assert "metric_delta_below_min:top1" in contract["policy_failure_reasons"]
+    assert (
+        contract["candidate_policy_blocker_counts"]["metric_delta_below_min:top1"]
+        >= 1
+    )
+    assert "gate_contract_audit_not_ready:DATA_MISSING" not in contract["blockers"]
+    assert report["promotion_ready"] is False
+
+
 def test_gate_contract_candidate_can_make_promotion_distance_review_ready(
     tmp_path,
     monkeypatch,

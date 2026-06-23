@@ -28,6 +28,7 @@ sys.path = [path for path in sys.path if path != ROOT_STR]
 sys.path.insert(0, ROOT_STR)
 
 from scripts.join_forward_shadow_results import logistic_calibration_review  # noqa: E402
+from utils.report_output_dir_guard import assert_prefixed_report_output_dir  # noqa: E402
 
 
 DEFAULT_EVIDENCE_ROOT = ROOT / "artifacts/full_evidence_orchestration_20260525"
@@ -35,12 +36,14 @@ OUTPUT_PREFIX = (
     "artifacts/full_evidence_orchestration_20260525/"
     "rolling_model_comparison_"
 )
+OUTPUT_ARTIFACT_PREFIX = "rolling_model_comparison_"
 REPORT_FILE = "rolling_model_comparison_report.json"
 SUMMARY_FILE = "SUMMARY.md"
 CANDIDATE_CSV_FILE = "candidate_metrics.csv"
 MARKET_RESIDUAL_CASES_CSV_FILE = "market_residual_cases.csv"
 MARKET_RESIDUAL_RUNNER_MATRIX_CSV_FILE = "market_residual_runner_matrix.csv"
 MIN_RACES_FOR_REVIEW = 100
+DEFAULT_HISTORICAL_UNIFIED_EVIDENCE_REPORT_LIMIT = 500
 POWER_GAMMAS = (0.85, 1.2, 1.5, 2.0)
 BLEND_MARKET_WEIGHTS = tuple(weight / 100 for weight in range(5, 100, 5))
 NO_WRITE_GUARANTEES = {
@@ -73,17 +76,19 @@ def relpath(path: Path | None) -> str | None:
         return str(path)
 
 
-def assert_output_dir_safe(output_dir: Path) -> Path:
-    logical = output_dir if output_dir.is_absolute() else ROOT / output_dir
-    try:
-        relative = logical.absolute().relative_to(ROOT.absolute())
-    except ValueError as exc:
-        raise ValueError("output_dir_must_be_inside_repo") from exc
-    if ".." in relative.parts:
-        raise ValueError("output_dir_must_not_contain_parent_traversal")
-    if not relative.as_posix().startswith(OUTPUT_PREFIX):
-        raise ValueError(f"output_dir_must_be_rolling_model_comparison:{relative}")
-    return logical.absolute()
+def assert_output_dir_safe(
+    output_dir: Path,
+    *,
+    evidence_root: Path | None = None,
+) -> Path:
+    return assert_prefixed_report_output_dir(
+        output_dir,
+        repo_root=ROOT,
+        repo_prefix=OUTPUT_PREFIX,
+        artifact_prefix=OUTPUT_ARTIFACT_PREFIX,
+        prefix_error="output_dir_must_be_rolling_model_comparison",
+        evidence_root=evidence_root,
+    )
 
 
 def unique_dir(base: Path) -> Path:
@@ -154,6 +159,36 @@ def output_manifest(output_dir: Path) -> dict[str, Any]:
         "output_dir": relpath(output_dir),
         "files": files,
     }
+
+
+def evidence_repo_root(evidence_root: Path | None) -> Path | None:
+    if evidence_root is None:
+        return None
+    root = evidence_root.resolve()
+    if root.name == "full_evidence_orchestration_20260525" and root.parent.name == "artifacts":
+        return root.parent.parent
+    return root
+
+
+def resolve_report_relative_path(
+    report_path: Path,
+    path_value: Any,
+    *,
+    evidence_root: Path | None = None,
+) -> Path:
+    path = Path(str(path_value))
+    if path.is_absolute():
+        return path
+    candidates: list[Path] = []
+    repo_root = evidence_repo_root(evidence_root)
+    if repo_root is not None:
+        candidates.append(repo_root / path)
+    candidates.append(ROOT / path)
+    candidates.append(report_path.parent / path)
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0] if candidates else report_path.parent / path
 
 
 def finite_float(value: Any) -> float | None:
@@ -418,22 +453,128 @@ def candidate_specs() -> list[dict[str, Any]]:
     return specs
 
 
-def report_dataset_path(report_path: Path, report: Mapping[str, Any]) -> Path | None:
+def report_dataset_path(
+    report_path: Path,
+    report: Mapping[str, Any],
+    *,
+    evidence_root: Path | None = None,
+) -> Path | None:
     dataset = report.get("dataset_jsonl")
-    if not dataset:
-        return None
-    path = Path(str(dataset))
-    if path.is_absolute():
-        return path
-    rooted = ROOT / path
-    if rooted.exists():
-        return rooted
-    return report_path.parent / path
+    if dataset:
+        return resolve_report_relative_path(
+            report_path,
+            dataset,
+            evidence_root=evidence_root,
+        )
+    fallback = report_path.parent / "unified_evidence_dataset.jsonl"
+    return fallback if fallback.exists() else None
+
+
+def unified_report_eligible_rows(report: Mapping[str, Any]) -> int:
+    return safe_int(report.get("unified_evidence_eligible_rows"))
+
+
+def is_automatic_unified_evidence_report_path(report_path: Path) -> bool:
+    dirname = report_path.parent.name
+    if (
+        "_manual" in dirname
+        or "_probe" in dirname
+        or "_validation" in dirname
+        or "_odds_only" in dirname
+        or "_lock_wait" in dirname
+    ):
+        return False
+    if "_daemon_autopilot" in dirname:
+        return True
+    marker = "_daemon_rejoin_"
+    if marker not in dirname:
+        return False
+    suffix = dirname.rsplit(marker, 1)[1]
+    return len(suffix) >= 3 and suffix[:3].isdigit() and (
+        len(suffix) == 3 or suffix[3] == "_"
+    )
+
+
+def historical_unified_evidence_report_paths(
+    evidence_root: Path,
+    *,
+    exclude_paths: Sequence[Path] = (),
+    max_reports: int = DEFAULT_HISTORICAL_UNIFIED_EVIDENCE_REPORT_LIMIT,
+) -> list[Path]:
+    excluded = {path.resolve() for path in exclude_paths if path.exists()}
+    candidates: list[Path] = []
+    for report_path in sorted(
+        evidence_root.glob("unified_evidence_dataset_*/unified_evidence_dataset_report.json")
+    ):
+        if not is_automatic_unified_evidence_report_path(report_path):
+            continue
+        if report_path.exists() and report_path.resolve() in excluded:
+            continue
+        report = load_json(report_path)
+        if not report or report.get("final_status") != "UNIFIED_EVIDENCE_DATASET_BUILT":
+            continue
+        if unified_report_eligible_rows(report) <= 0:
+            continue
+        dataset_path = report_dataset_path(
+            report_path,
+            report,
+            evidence_root=evidence_root,
+        )
+        if dataset_path is None or not dataset_path.exists():
+            continue
+        candidates.append(report_path)
+    return candidates[-max_reports:] if max_reports > 0 else candidates
+
+
+def unique_report_paths(paths: Sequence[Path]) -> list[Path]:
+    unique: dict[str, Path] = {}
+    for path in paths:
+        try:
+            key = str(path.resolve()) if path.exists() else path.as_posix()
+        except OSError:
+            key = path.as_posix()
+        if key in unique:
+            del unique[key]
+        unique[key] = path
+    return list(unique.values())
+
+
+def resolve_unified_evidence_report_paths(
+    report_paths: Sequence[Path],
+    *,
+    evidence_root: Path | None = None,
+    historical_limit: int = DEFAULT_HISTORICAL_UNIFIED_EVIDENCE_REPORT_LIMIT,
+) -> tuple[list[Path], dict[str, Any]]:
+    explicit_paths = list(report_paths)
+    historical_paths: list[Path] = []
+    if evidence_root is not None and evidence_root.exists():
+        historical_paths = historical_unified_evidence_report_paths(
+            evidence_root,
+            exclude_paths=explicit_paths,
+            max_reports=historical_limit,
+        )
+    resolved_paths = unique_report_paths([*historical_paths, *explicit_paths])
+    return resolved_paths, {
+        "schema_version": "rolling_model_source_discovery_v1",
+        "evidence_root": relpath(evidence_root),
+        "explicit_report_count": len(explicit_paths),
+        "historical_report_limit": historical_limit,
+        "historical_report_count": len(historical_paths),
+        "effective_report_count": len(resolved_paths),
+        "historical_first_report_path": relpath(historical_paths[0])
+        if historical_paths
+        else None,
+        "historical_last_report_path": relpath(historical_paths[-1])
+        if historical_paths
+        else None,
+    }
 
 
 def collect_race_groups(
     report_paths: Sequence[Path],
     *,
+    evidence_root: Path | None = None,
+    source_discovery: Mapping[str, Any] | None = None,
     sample_scope: str,
     dedupe_race_id: bool,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -442,7 +583,11 @@ def collect_race_groups(
     source_reports: list[dict[str, Any]] = []
     for source_index, report_path in enumerate(report_paths):
         report = load_json(report_path)
-        dataset_path = report_dataset_path(report_path, report)
+        dataset_path = report_dataset_path(
+            report_path,
+            report,
+            evidence_root=evidence_root,
+        )
         official_audit = mapping(report.get("official_result_evidence_db_audit"))
         source_reports.append(
             {
@@ -538,6 +683,7 @@ def collect_race_groups(
         "skipped_race_counts": dict(sorted(skipped.items())),
         "dedupe_race_id": dedupe_race_id,
         "sample_scope": sample_scope,
+        "source_discovery": dict(source_discovery or {}),
     }
 
 
@@ -1620,6 +1766,7 @@ def build_report(
         "market_residual_runner_matrix_csv": relpath(
             output_dir / MARKET_RESIDUAL_RUNNER_MATRIX_CSV_FILE
         ),
+        "source_discovery": collection.get("source_discovery") or {},
         "source_unified_evidence_reports": [relpath(path) for path in report_paths],
         "sample_scope": collection.get("sample_scope"),
         "dedupe_race_id": collection.get("dedupe_race_id"),
@@ -1887,12 +2034,16 @@ def write_market_residual_runner_matrix_csv(
 
 def summary_markdown(report: Mapping[str, Any]) -> str:
     official_result = report.get("official_result_coverage") or {}
+    source_discovery = report.get("source_discovery") or {}
     return "\n".join(
         [
             "# Rolling Model Comparison",
             "",
             f"Final status: `{report.get('final_status')}`",
             "",
+            f"- Source discovery explicit reports: `{source_discovery.get('explicit_report_count')}`",
+            f"- Source discovery historical reports: `{source_discovery.get('historical_report_count')}`",
+            f"- Source discovery effective reports: `{source_discovery.get('effective_report_count')}`",
             f"- Sample scope: `{report.get('sample_scope')}`",
             f"- Dedupe race id: `{report.get('dedupe_race_id')}`",
             f"- Sample races: `{report.get('sample_race_count')}` / `{report.get('minimum_races_for_review')}`",
@@ -1938,23 +2089,30 @@ def build_comparison(
     *,
     unified_evidence_report_paths: Sequence[Path],
     output_dir: Path,
+    evidence_root: Path | None = None,
     sample_scope: str = "unified",
     dedupe_race_id: bool = True,
     min_races_for_review: int = MIN_RACES_FOR_REVIEW,
     generated_at: datetime | None = None,
 ) -> dict[str, Any]:
     generated_at = generated_at or datetime.now().astimezone()
-    output_dir = unique_dir(assert_output_dir_safe(output_dir))
+    output_dir = unique_dir(assert_output_dir_safe(output_dir, evidence_root=evidence_root))
     output_dir.mkdir(parents=True, exist_ok=False)
-    race_groups, collection = collect_race_groups(
+    effective_report_paths, source_discovery = resolve_unified_evidence_report_paths(
         unified_evidence_report_paths,
+        evidence_root=evidence_root,
+    )
+    race_groups, collection = collect_race_groups(
+        effective_report_paths,
+        evidence_root=evidence_root,
+        source_discovery=source_discovery,
         sample_scope=sample_scope,
         dedupe_race_id=dedupe_race_id,
     )
     metrics = [evaluate_candidate(race_groups, spec) for spec in candidate_specs()]
     report = build_report(
         generated_at=generated_at,
-        report_paths=unified_evidence_report_paths,
+        report_paths=effective_report_paths,
         race_groups=race_groups,
         collection=collection,
         candidate_metrics=metrics,
@@ -2000,6 +2158,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         required=True,
     )
     parser.add_argument("--output-dir", type=Path)
+    parser.add_argument("--evidence-root", type=Path, default=DEFAULT_EVIDENCE_ROOT)
     parser.add_argument(
         "--sample-scope",
         choices=("unified", "label"),
@@ -2020,6 +2179,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     report = build_comparison(
         unified_evidence_report_paths=args.unified_evidence_report,
         output_dir=output_dir,
+        evidence_root=args.evidence_root,
         sample_scope=args.sample_scope,
         dedupe_race_id=not args.no_dedupe_race_id,
         min_races_for_review=args.min_races_for_review,
