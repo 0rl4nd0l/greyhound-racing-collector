@@ -401,6 +401,7 @@ def test_rolling_comparison_evaluates_stage2_market_and_blends(tmp_path, monkeyp
     assert "stage2_market_blend_50" in report["candidate_metrics_by_key"]
     assert "stage2_market_blend_55" in report["candidate_metrics_by_key"]
     assert "stage2_market_blend_95" in report["candidate_metrics_by_key"]
+    assert "stage2_market_blend_63" not in report["candidate_metrics_by_key"]
     assert "stage2_uncalibrated_market_blend_50" in report["candidate_metrics_by_key"]
     assert "stage2_uncalibrated_market_blend_55" in report["candidate_metrics_by_key"]
     assert "stage2_uncalibrated_market_blend_95" in report["candidate_metrics_by_key"]
@@ -423,6 +424,24 @@ def test_rolling_comparison_evaluates_stage2_market_and_blends(tmp_path, monkeyp
     )
     assert len(report["residual_hypothesis_backtests"]) == 1
     assert report["residual_hypothesis_backtests"][0]["promotion_eligible"] is False
+    frontier = {
+        item["candidate_key"]: item
+        for item in report["refined_blend_frontier_backtests"]
+    }
+    assert set(frontier) == {
+        "stage2_market_blend_63",
+        "stage2_market_blend_66",
+        "stage2_market_blend_89",
+        "stage2_market_blend_91",
+    }
+    assert frontier["stage2_market_blend_63"]["status"] == "REPORT_ONLY_EVALUATED"
+    assert frontier["stage2_market_blend_63"]["promotion_eligible"] is False
+    assert frontier["stage2_market_blend_63"]["metrics"][
+        "baseline_denominator_match"
+    ] is True
+    assert "report_only_refined_frontier_not_promotion_eligible" in frontier[
+        "stage2_market_blend_63"
+    ]["blockers"]
     assert report["edge_diagnostics"]["schema_version"] == (
         "rolling_model_edge_diagnostics_v1"
     )
@@ -450,6 +469,65 @@ def test_rolling_comparison_evaluates_stage2_market_and_blends(tmp_path, monkeyp
     assert "candidate_minus_market_probability" in residual_matrix[0]
     assert "stage2_shadow_uncalibrated_probability_norm" in residual_matrix[0]
     assert (output_dir / "SUMMARY.md").exists()
+
+
+def test_ranked_candidates_must_match_primary_denominator(tmp_path, monkeypatch):
+    monkeypatch.setattr(comparison, "ROOT", tmp_path)
+    rows = [
+        _row(race_id="Race 1 - BEN - 2026-06-10", dog="A", box=1, winner=True, primary=0.2, stage2=0.2, odds=6.0),
+        _row(race_id="Race 1 - BEN - 2026-06-10", dog="B", box=2, primary=0.7, stage2=0.7, odds=2.0),
+        _row(race_id="Race 1 - BEN - 2026-06-10", dog="C", box=3, primary=0.1, stage2=0.1, odds=8.0),
+        _row(race_id="Race 2 - BEN - 2026-06-10", dog="D", box=1, winner=True, primary=0.2, stage2=0.2, odds=6.0),
+        _row(race_id="Race 2 - BEN - 2026-06-10", dog="E", box=2, primary=0.7, stage2=0.7, odds=2.0),
+        _row(race_id="Race 2 - BEN - 2026-06-10", dog="F", box=3, primary=0.1, stage2=0.1, odds=8.0),
+    ]
+    report_path = _write_dataset(
+        tmp_path,
+        "unified_evidence_dataset_sparse_candidate",
+        rows,
+    )
+    original_candidate_specs = comparison.candidate_specs
+
+    def sparse_perfect_scores(candidate_rows):
+        if candidate_rows and candidate_rows[0].get("race_id") == "Race 1 - BEN - 2026-06-10":
+            return [0.8 if row.get("is_winner") else 0.1 for row in candidate_rows]
+        return None
+
+    def candidate_specs_with_sparse():
+        return [
+            *original_candidate_specs(),
+            {
+                "candidate_key": "sparse_perfect_candidate",
+                "family": "test_sparse_candidate",
+                "score_function": sparse_perfect_scores,
+            },
+        ]
+
+    monkeypatch.setattr(comparison, "candidate_specs", candidate_specs_with_sparse)
+
+    report = comparison.build_comparison(
+        unified_evidence_report_paths=[report_path],
+        output_dir=(
+            tmp_path
+            / "artifacts/full_evidence_orchestration_20260525"
+            / "rolling_model_comparison_sparse_candidate"
+        ),
+        min_races_for_review=2,
+        generated_at=datetime(2026, 6, 10, 1, 0, tzinfo=timezone.utc),
+    )
+
+    sparse = report["candidate_metrics_by_key"]["sparse_perfect_candidate"]
+    assert sparse["status"] == "EVALUATED"
+    assert sparse["race_count"] == 1
+    assert sparse["baseline_denominator_match"] is False
+    assert "candidate_denominator_mismatch_primary_shadow" in sparse["blockers"]
+    assert report["candidate_denominator_mismatch_keys"] == [
+        "sparse_perfect_candidate"
+    ]
+    assert report["best_candidate_key"] != "sparse_perfect_candidate"
+    assert report["best_non_baseline_candidate_key"] != "sparse_perfect_candidate"
+    assert report["best_non_market_candidate_key"] != "sparse_perfect_candidate"
+    assert "sparse_perfect_candidate" not in report["rank_first_sort"]
 
 
 def test_unified_scope_excludes_partial_odds_races(tmp_path, monkeypatch):

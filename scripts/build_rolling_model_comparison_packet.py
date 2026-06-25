@@ -46,6 +46,10 @@ MIN_RACES_FOR_REVIEW = 100
 DEFAULT_HISTORICAL_UNIFIED_EVIDENCE_REPORT_LIMIT = 500
 POWER_GAMMAS = (0.85, 1.2, 1.5, 2.0)
 BLEND_MARKET_WEIGHTS = tuple(weight / 100 for weight in range(5, 100, 5))
+REFINED_BLEND_MARKET_WEIGHTS = (0.63, 0.66, 0.89, 0.91)
+CANDIDATE_DENOMINATOR_MISMATCH_BLOCKER = (
+    "candidate_denominator_mismatch_primary_shadow"
+)
 NO_WRITE_GUARANTEES = {
     "training": False,
     "production_promotion": False,
@@ -791,6 +795,8 @@ def compact_candidate_metrics(metrics: Mapping[str, Any]) -> dict[str, Any]:
             "family",
             "status",
             "race_count",
+            "evaluated_race_ids_hash",
+            "baseline_denominator_match",
             "top1",
             "top3",
             "mean_winner_rank",
@@ -820,6 +826,37 @@ def is_market_only_candidate(metrics: Mapping[str, Any]) -> bool:
         str(metrics.get("candidate_key") or "") == "market_only_implied"
         or str(metrics.get("family") or "") == "market_only"
     )
+
+
+def with_baseline_denominator_guard(
+    metrics: Mapping[str, Any],
+    *,
+    baseline: Mapping[str, Any],
+) -> dict[str, Any]:
+    guarded = dict(metrics)
+    if guarded.get("status") != "EVALUATED":
+        return guarded
+    baseline_count = safe_int(baseline.get("race_count"))
+    baseline_hash = str(baseline.get("evaluated_race_ids_hash") or "")
+    candidate_count = safe_int(guarded.get("race_count"))
+    candidate_hash = str(guarded.get("evaluated_race_ids_hash") or "")
+    denominator_match = (
+        bool(baseline)
+        and baseline.get("status") == "EVALUATED"
+        and candidate_count == baseline_count
+        and bool(candidate_hash)
+        and candidate_hash == baseline_hash
+    )
+    guarded["baseline_denominator_candidate_key"] = "primary_shadow"
+    guarded["baseline_denominator_race_count"] = baseline_count if baseline else None
+    guarded["baseline_denominator_race_ids_hash"] = baseline_hash or None
+    guarded["baseline_denominator_match"] = denominator_match
+    if not denominator_match:
+        blockers = list(guarded.get("blockers") or [])
+        if CANDIDATE_DENOMINATOR_MISMATCH_BLOCKER not in blockers:
+            blockers.append(CANDIDATE_DENOMINATOR_MISMATCH_BLOCKER)
+        guarded["blockers"] = blockers
+    return guarded
 
 
 def metric_delta(
@@ -1619,6 +1656,55 @@ def build_residual_hypothesis_backtests(
     return results
 
 
+def build_refined_blend_frontier_backtests(
+    race_groups: Sequence[Mapping[str, Any]],
+    *,
+    baseline_metrics: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    for weight in REFINED_BLEND_MARKET_WEIGHTS:
+        weight_percent = int(round(weight * 100))
+        spec = {
+            "candidate_key": f"stage2_market_blend_{weight_percent}",
+            "family": "report_only_refined_odds_augmented_blend",
+            "market_weight": weight,
+            "score_function": (
+                lambda rows, weight=weight: blend_scores(
+                    rows,
+                    model_key="stage2_shadow_probability",
+                    market_weight=weight,
+                )
+            ),
+        }
+        metrics = with_baseline_denominator_guard(
+            evaluate_candidate(race_groups, spec),
+            baseline=baseline_metrics,
+        )
+        blockers = ["report_only_refined_frontier_not_promotion_eligible"]
+        if metrics.get("baseline_denominator_match") is False:
+            blockers.append(CANDIDATE_DENOMINATOR_MISMATCH_BLOCKER)
+        results.append(
+            {
+                "schema_version": "rolling_model_refined_blend_frontier_backtest_v1",
+                "candidate_key": spec["candidate_key"],
+                "family": spec["family"],
+                "status": (
+                    "REPORT_ONLY_EVALUATED"
+                    if metrics.get("status") == "EVALUATED"
+                    else metrics.get("status")
+                ),
+                "selection_basis": (
+                    "small_refined_frontier_around_prior_stage2_market_blend_candidates"
+                ),
+                "promotion_eligible": False,
+                "market_weight": weight,
+                "metrics": compact_candidate_metrics(metrics),
+                "blockers": blockers,
+            }
+        )
+    return results
+
+
 def build_report(
     *,
     generated_at: datetime,
@@ -1629,14 +1715,33 @@ def build_report(
     min_races_for_review: int,
     output_dir: Path,
 ) -> dict[str, Any]:
-    evaluated = [item for item in candidate_metrics if item.get("status") == "EVALUATED"]
+    raw_evaluated = [
+        item for item in candidate_metrics if item.get("status") == "EVALUATED"
+    ]
+    raw_baseline = next(
+        (item for item in raw_evaluated if item.get("candidate_key") == "primary_shadow"),
+        {},
+    )
+    guarded_candidate_metrics = [
+        with_baseline_denominator_guard(item, baseline=raw_baseline)
+        for item in candidate_metrics
+    ]
+    evaluated = [
+        item for item in guarded_candidate_metrics if item.get("status") == "EVALUATED"
+    ]
     baseline = next(
         (item for item in evaluated if item.get("candidate_key") == "primary_shadow"),
         {},
     )
-    best = max(evaluated, key=candidate_sort_key) if evaluated else {}
+    rankable = [
+        item for item in evaluated if item.get("baseline_denominator_match") is True
+    ]
+    denominator_mismatches = [
+        item for item in evaluated if item.get("baseline_denominator_match") is False
+    ]
+    best = max(rankable, key=candidate_sort_key) if rankable else {}
     best_non_baseline = max(
-        [item for item in evaluated if item.get("candidate_key") != "primary_shadow"],
+        [item for item in rankable if item.get("candidate_key") != "primary_shadow"],
         key=candidate_sort_key,
         default={},
     )
@@ -1644,8 +1749,11 @@ def build_report(
         (item for item in evaluated if is_market_only_candidate(item)),
         {},
     )
+    rankable_market = (
+        market if market.get("baseline_denominator_match") is True else {}
+    )
     best_non_market = max(
-        [item for item in evaluated if not is_market_only_candidate(item)],
+        [item for item in rankable if not is_market_only_candidate(item)],
         key=candidate_sort_key,
         default={},
     )
@@ -1828,7 +1936,17 @@ def build_report(
         "skipped_race_counts": collection.get("skipped_race_counts") or {},
         "sample_race_count": sample_race_count,
         "sample_runner_rows": sum(len(race.get("runner_rows") or []) for race in race_groups),
-        "candidate_count": len(candidate_metrics),
+        "candidate_count": len(guarded_candidate_metrics),
+        "rankable_candidate_count": len(rankable),
+        "candidate_denominator_mismatch_count": len(denominator_mismatches),
+        "candidate_denominator_mismatch_keys": [
+            item.get("candidate_key") for item in denominator_mismatches
+        ],
+        "baseline_denominator": {
+            "candidate_key": "primary_shadow",
+            "race_count": baseline.get("race_count"),
+            "evaluated_race_ids_hash": baseline.get("evaluated_race_ids_hash"),
+        },
         "minimum_races_for_review": min_races_for_review,
         "sample_floor_met": sample_floor_met,
         "races_needed_for_review": max(0, min_races_for_review - sample_race_count),
@@ -1855,8 +1973,8 @@ def build_report(
             )
         },
         "best_non_market_minus_market": (
-            slice_metric_delta(market, best_non_market)
-            if market and best_non_market
+            slice_metric_delta(rankable_market, best_non_market)
+            if rankable_market and best_non_market
             else {}
         ),
         "best_non_market_minus_baseline": (
@@ -1865,11 +1983,12 @@ def build_report(
             else {}
         ),
         "candidate_metrics_by_key": {
-            str(item.get("candidate_key")): dict(item) for item in candidate_metrics
+            str(item.get("candidate_key")): dict(item)
+            for item in guarded_candidate_metrics
         },
         "rank_first_sort": [
             item.get("candidate_key")
-            for item in sorted(evaluated, key=candidate_sort_key, reverse=True)
+            for item in sorted(rankable, key=candidate_sort_key, reverse=True)
         ],
         "edge_diagnostics": build_edge_diagnostics(
             race_groups,
@@ -1894,6 +2013,10 @@ def build_report(
         "residual_hypothesis_backtests": build_residual_hypothesis_backtests(
             race_groups,
         ),
+        "refined_blend_frontier_backtests": build_refined_blend_frontier_backtests(
+            race_groups,
+            baseline_metrics=baseline,
+        ),
         "ev_metrics_used_for_promotion": False,
         "ev_improved": False,
         "no_write_guarantees": dict(NO_WRITE_GUARANTEES),
@@ -1914,6 +2037,10 @@ def write_candidate_csv(path: Path, candidate_metrics: Sequence[Mapping[str, Any
         "logloss",
         "box1_top_pick_share",
         "probability_sum_max_error_joined_races",
+        "evaluated_race_ids_hash",
+        "baseline_denominator_match",
+        "baseline_denominator_race_count",
+        "baseline_denominator_race_ids_hash",
         "calibration_status",
         "calibration_slope",
         "calibration_intercept",
@@ -2069,6 +2196,9 @@ def summary_markdown(report: Mapping[str, Any]) -> str:
             f"- Official-result runner path count: `{official_result.get('runner_path_count')}`",
             f"- Official-result runner paths source field: `{official_result.get('runner_paths_source_field')}`",
             f"- Candidate count: `{report.get('candidate_count')}`",
+            f"- Rankable candidate count: `{report.get('rankable_candidate_count')}`",
+            f"- Candidate denominator mismatch count: `{report.get('candidate_denominator_mismatch_count')}`",
+            f"- Candidate denominator mismatch keys: `{report.get('candidate_denominator_mismatch_keys')}`",
             f"- Best candidate: `{report.get('best_candidate_key')}`",
             f"- Best non-baseline candidate: `{report.get('best_non_baseline_candidate_key')}`",
             f"- Best non-market candidate: `{report.get('best_non_market_candidate_key')}`",
@@ -2078,6 +2208,7 @@ def summary_markdown(report: Mapping[str, Any]) -> str:
             f"- Market residual case rows: `{report.get('market_residual_case_count')}`",
             f"- Market residual runner matrix rows: `{report.get('market_residual_runner_matrix_row_count')}`",
             f"- Residual hypothesis backtests: `{len(report.get('residual_hypothesis_backtests') or [])}`",
+            f"- Refined blend frontier backtests: `{len(report.get('refined_blend_frontier_backtests') or [])}`",
             "",
             "No training, production promotion, registry mutation, production pointer update, DB write, label write, odds write, betting/EV action, snapshot rewrite, manifest rewrite, or TGR enablement was performed.",
             "",

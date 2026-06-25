@@ -42,6 +42,9 @@ OUTPUT_MANIFEST_FILE = "output_manifest.json"
 ROLLING_READY_STATUS = "ROLLING_MODEL_COMPARISON_READY_FOR_REVIEW"
 MARKET_ONLY_CANDIDATE_KEYS = {"market_only_implied"}
 BASELINE_CANDIDATE_KEYS = {"primary_shadow", "champion_baseline"}
+CANDIDATE_DENOMINATOR_MISMATCH_BLOCKER = (
+    "candidate_denominator_mismatch_primary_shadow"
+)
 
 
 @dataclass(frozen=True)
@@ -217,6 +220,24 @@ def calibration_distance(metrics: Mapping[str, Any]) -> float | None:
     return abs(slope - 1.0) + abs(intercept)
 
 
+def denominator_mismatches_primary(
+    candidate: Mapping[str, Any],
+    rolling_report: Mapping[str, Any],
+) -> bool:
+    if candidate.get("baseline_denominator_match") is True:
+        return False
+    if candidate.get("baseline_denominator_match") is False:
+        return True
+    primary = mapping(rolling_report.get("baseline_metrics"))
+    primary_count = race_count(primary)
+    candidate_count = race_count(candidate)
+    primary_hash = str(primary.get("evaluated_race_ids_hash") or "")
+    candidate_hash = str(candidate.get("evaluated_race_ids_hash") or "")
+    if primary_count <= 0 or candidate_count <= 0 or not primary_hash or not candidate_hash:
+        return False
+    return primary_count != candidate_count or primary_hash != candidate_hash
+
+
 def delta(
     baseline: Mapping[str, Any],
     candidate: Mapping[str, Any],
@@ -290,6 +311,8 @@ def add_common_candidate_blockers(
         blockers.append("market_only_candidate_not_promotable")
     if is_baseline_candidate(candidate_key):
         blockers.append("baseline_candidate_not_promotable")
+    if denominator_mismatches_primary(candidate, rolling_report):
+        blockers.append(CANDIDATE_DENOMINATOR_MISMATCH_BLOCKER)
     if race_count(candidate) < thresholds.min_safe_joined_races:
         blockers.append("candidate_race_sample_below_min")
     sum_error = probability_sum_error(candidate)
@@ -607,6 +630,8 @@ def candidate_gate_row(
         "candidate_key": candidate_key,
         "family": candidate.get("family"),
         "status": candidate.get("status"),
+        "baseline_denominator_match": candidate.get("baseline_denominator_match"),
+        "evaluated_race_ids_hash": candidate.get("evaluated_race_ids_hash"),
         "rank_first_order": rank_lookup.get(candidate_key),
         "race_count": race_count(candidate),
         "top1": metric(candidate, "top1"),
@@ -827,6 +852,8 @@ def compact_metrics(metrics: Mapping[str, Any]) -> dict[str, Any]:
         "brier": metric(metrics, "brier"),
         "logloss": metric(metrics, "logloss"),
         "box1_top_pick_share": metric(metrics, "box1_top_pick_share"),
+        "baseline_denominator_match": metrics.get("baseline_denominator_match"),
+        "evaluated_race_ids_hash": metrics.get("evaluated_race_ids_hash"),
         "calibration_distance": calibration_distance(metrics),
         "probability_sum_max_error_joined_races": probability_sum_error(metrics),
     }
