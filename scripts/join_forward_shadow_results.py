@@ -911,6 +911,11 @@ def join_forward_shadow_results(
         predictions_by_race[str(row["race_id"])].append(row)
     for rows in predictions_by_race.values():
         rows.sort(key=lambda row: int(row.get("predicted_rank") or 999))
+    malformed_prediction_rows_by_race: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in malformed_prediction_rows:
+        race_id = str(row.get("race_id") or "").strip()
+        if race_id:
+            malformed_prediction_rows_by_race[race_id].append(dict(row))
 
     race_meta = load_shadow_race_metadata(shadow_run_dir, refresh_metadata_path)
     joined_rows: list[dict[str, Any]] = []
@@ -919,8 +924,8 @@ def join_forward_shadow_results(
     unsafe_matches: list[dict[str, Any]] = []
     race_attempts: list[dict[str, Any]] = []
 
-    for race_id in sorted(predictions_by_race):
-        rows = predictions_by_race[race_id]
+    for race_id in sorted(set(predictions_by_race) | set(malformed_prediction_rows_by_race)):
+        rows = predictions_by_race.get(race_id, [])
         meta = dict(race_meta.get(race_id, {"race_id": race_id}))
         meta["race_id"] = race_id
         race_url = meta.get("race_url")
@@ -976,6 +981,25 @@ def join_forward_shadow_results(
             "result_status": None,
             "identity_status": None,
         }
+        malformed_for_race = malformed_prediction_rows_by_race.get(race_id, [])
+        if malformed_for_race:
+            attempt["result_status"] = "PREDICTION_ROWS_MALFORMED"
+            attempt["identity_status"] = "UNSAFE_QUARANTINED"
+            attempt["identity_errors"] = ["malformed_prediction_rows_for_race"]
+            attempt["malformed_prediction_rows"] = malformed_for_race
+            unsafe_matches.append(
+                {
+                    "race_id": race_id,
+                    "status": "UNSAFE_RESULT_MATCH_QUARANTINED",
+                    "reason": ["malformed_prediction_rows_for_race"],
+                    "race_url": race_url,
+                    "malformed_prediction_rows": malformed_for_race,
+                    "prejump_runner_alignment": attempt["prejump_runner_alignment"],
+                }
+            )
+            race_attempts.append(attempt)
+            continue
+
         if not race_url:
             attempt["result_status"] = "NO_RACE_URL"
             attempt["identity_status"] = "PENDING_OFFICIAL_RESULT"

@@ -321,9 +321,11 @@ def test_join_forward_shadow_results_quarantines_malformed_prediction_rows(
         verify_db=False,
     )
 
-    assert result["verdict"] == "FORWARD_SHADOW_RESULTS_JOINED"
-    assert result["safe_joined_race_count"] == 1
+    assert result["verdict"] == "BLOCKED_IDENTITY_MATCH_FAILURE"
+    assert result["safe_joined_race_count"] == 0
+    assert result["unsafe_match_count"] == 1
     assert result["malformed_prediction_row_count"] == 1
+    assert (output_dir / "joined_shadow_predictions.jsonl").read_text(encoding="utf-8") == ""
     malformed = json.loads(
         (output_dir / "malformed_prediction_rows.json").read_text(encoding="utf-8")
     )
@@ -333,6 +335,88 @@ def test_join_forward_shadow_results_quarantines_malformed_prediction_rows(
         (output_dir / "identity_match_report.json").read_text(encoding="utf-8")
     )
     assert identity_report["summary"]["malformed_prediction_row_count"] == 1
+    assert identity_report["summary"]["safe_joined_race_count"] == 0
+    unsafe = json.loads((output_dir / "unsafe_result_matches.json").read_text(encoding="utf-8"))
+    assert unsafe["unsafe_match_count"] == 1
+    assert unsafe["unsafe_result_matches"][0]["reason"] == ["malformed_prediction_rows_for_race"]
+
+
+def test_join_forward_shadow_results_quarantines_all_malformed_race_rows(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(joiner, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        joiner,
+        "DEFAULT_PROTECTED_PATHS",
+        (tmp_path / "greyhound_racing_data.db",),
+    )
+    malformed_race_id = "Race 2 - TEST - 2026-06-08"
+    shadow_dir = _write_shadow_run(
+        tmp_path,
+        {
+            "Race 1 - TEST - 2026-06-08": [
+                _prediction("Race 1 - TEST - 2026-06-08", "Alpha Runner", 1, 0.7, 1),
+                _prediction("Race 1 - TEST - 2026-06-08", "Bravo Runner", 2, 0.3, 2),
+            ],
+            malformed_race_id: [],
+        },
+    )
+    with (shadow_dir / "shadow_predictions.csv").open("a", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(
+            [
+                malformed_race_id,
+                "Broken Runner",
+                "",
+                "0.1",
+                "0.1",
+                "",
+                "power_gamma_2.4",
+                "test-shadow",
+                "artifacts/test/model.joblib",
+                "False",
+                "shadow_only",
+            ]
+        )
+
+    output_dir = (
+        tmp_path
+        / "artifacts/full_evidence_orchestration_20260525/"
+        "forward_shadow_result_join_20260608T122000+1000"
+    )
+    fetched_urls: list[str] = []
+
+    def fetch_html(url: str) -> dict:
+        fetched_urls.append(url)
+        return {
+            "url": url,
+            "final_url": url,
+            "status_code": 200,
+            "text": _result_html(
+                [
+                    _official(1, "Alpha Runner", 1),
+                    _official(2, "Bravo Runner", 2),
+                ]
+            ),
+            "error": None,
+        }
+
+    result = joiner.join_forward_shadow_results(
+        shadow_run_dir=shadow_dir,
+        output_dir=output_dir,
+        current_time=datetime(2026, 6, 8, 12, 0, tzinfo=timezone.utc),
+        fetch_html=fetch_html,
+        verify_db=False,
+    )
+
+    assert result["verdict"] == "PARTIAL_JOIN_PENDING_MORE_RESULTS"
+    assert result["safe_joined_race_count"] == 1
+    assert result["unsafe_match_count"] == 1
+    assert (output_dir / "joined_shadow_predictions.jsonl").read_text(encoding="utf-8").count("\n") == 2
+    assert not any("/2/" in url for url in fetched_urls)
+    unsafe = json.loads((output_dir / "unsafe_result_matches.json").read_text(encoding="utf-8"))
+    assert unsafe["unsafe_result_matches"][0]["race_id"] == malformed_race_id
+    assert unsafe["unsafe_result_matches"][0]["reason"] == ["malformed_prediction_rows_for_race"]
 
 
 def test_unique_default_output_dir_adds_suffix_for_existing_generated_dir(tmp_path, monkeypatch):
