@@ -1577,6 +1577,92 @@ def test_valid_strict_odds_do_not_inherit_stale_candidate_exclusions(tmp_path, m
     assert '"odds_decimal_invalid": 1' in summary_text
 
 
+def test_db_live_odds_captured_after_prediction_and_jump_are_quarantined(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(dataset, "ROOT", tmp_path)
+    shadow_dir = tmp_path / "daily"
+    prediction = {
+        "race_id": "Race 1 - WPK - 2026-06-10",
+        "dog_name": "Alpha Runner",
+        "box": 1,
+        "predicted_rank": 1,
+        "shadow_rf_calibrated_probability": 0.31,
+        "prediction_timestamp": "2026-06-10T15:10:00+10:00",
+        "feature_freeze_timestamp": "2026-06-10T15:05:00+10:00",
+    }
+    _write_jsonl(shadow_dir / "shadow_predictions.jsonl", [prediction])
+    _write_jsonl(
+        shadow_dir / "stage2_shadow_predictions.jsonl",
+        [
+            {
+                **prediction,
+                "schema_version": "stage2_shadow_prediction_v1",
+                "stage2_challenger_key": "shadow_calibrated_rf_power_gamma_2_4",
+            }
+        ],
+    )
+    db_path = _make_db(tmp_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            UPDATE race_metadata
+            SET race_time = '15:20',
+                start_datetime = '2026-06-10T15:20:00+10:00'
+            WHERE race_id = ?
+            """,
+            ("Race 1 - WPK - 2026-06-10",),
+        )
+        conn.execute(
+            """
+            UPDATE live_odds
+            SET race_time = '15:20',
+                timestamp = '2026-06-10T15:25:00+10:00',
+                capture_timestamp = '2026-06-10T15:25:00+10:00',
+                capture_mode = 'autonomous_prejump_t2m'
+            WHERE race_id = ? AND dog_clean_name = 'ALPHA RUNNER'
+            """,
+            ("Race 1 - WPK - 2026-06-10",),
+        )
+
+    report = dataset.build_dataset(
+        shadow_run_dir=shadow_dir,
+        db_path=db_path,
+        output_dir=tmp_path
+        / "artifacts/full_evidence_orchestration_20260525/unified_evidence_dataset_late_db_odds",
+        generated_at=datetime.fromisoformat("2026-06-10T15:30:00+10:00"),
+    )
+
+    rows = [
+        json.loads(line)
+        for line in (
+            tmp_path
+            / "artifacts/full_evidence_orchestration_20260525/unified_evidence_dataset_late_db_odds/unified_evidence_dataset.jsonl"
+        ).read_text(encoding="utf-8").splitlines()
+    ]
+    alpha = rows[0]
+    assert report["rows_with_strict_prejump_odds"] == 0
+    assert report["odds_evaluation_eligible_rows"] == 0
+    assert alpha["strict_prejump_odds_available"] is False
+    assert alpha["rejected_live_odds_candidate_count"] == 1
+    assert alpha["rejected_live_odds_candidates"][0]["rejection_reasons"] == [
+        "odds_capture_not_before_feature_freeze",
+        "odds_capture_not_before_jump",
+        "odds_capture_not_before_prediction",
+    ]
+    assert alpha["odds_exclusion_reasons"] == {
+        "odds_capture_not_before_feature_freeze": 1,
+        "odds_capture_not_before_jump": 1,
+        "odds_capture_not_before_prediction": 1,
+    }
+    assert "strict_prejump_odds_missing" in alpha["excluded_from_unified_reason"]
+    assert report["rejected_live_odds_candidate_reason_counts"] == {
+        "odds_capture_not_before_feature_freeze": 1,
+        "odds_capture_not_before_jump": 1,
+        "odds_capture_not_before_prediction": 1,
+    }
+
+
 def test_summary_surfaces_compact_official_result_coverage_without_path_list(
     tmp_path, monkeypatch
 ):

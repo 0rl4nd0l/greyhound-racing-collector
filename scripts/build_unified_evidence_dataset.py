@@ -41,6 +41,16 @@ SUMMARY_FILE = "SUMMARY.md"
 ACCEPTED_SPORTSBET_BOX_SOURCES = {"explicit_dom", "runner_text"}
 ACCEPTED_DOG_LEVEL_ODDS_LEVELS = {"dog", "runner"}
 POST_RACE_SOURCE_URL_TOKENS = {"dividend", "payout", "result", "results"}
+PREDICTION_TIMESTAMP_KEYS = (
+    "prediction_timestamp",
+    "effective_prediction_timestamp",
+    "source_prediction_timestamp",
+)
+FEATURE_FREEZE_TIMESTAMP_KEYS = (
+    "feature_freeze_timestamp",
+    "effective_feature_freeze_timestamp",
+    "source_feature_freeze_timestamp",
+)
 JOINED_SHADOW_EXACT_IDENTITY_STATUS = "exact_box_and_normalized_name"
 OFFICIAL_RESULT_EVIDENCE_DB_SOURCE = "official_result_evidence_db"
 GAP_CLASS_PRIORITY = (
@@ -1026,7 +1036,130 @@ def source_url_is_post_race(value: Any) -> bool:
     return bool(tokens.intersection(POST_RACE_SOURCE_URL_TOKENS))
 
 
-def validate_odds_row(row: Mapping[str, Any]) -> list[str]:
+def parse_datetime_value(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = f"{text[:-1]}+00:00"
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+def parse_race_time_value(value: Any) -> Any:
+    text = str(value or "").strip().upper()
+    if not text:
+        return None
+    for fmt in ("%H:%M:%S", "%H:%M", "%I:%M %p"):
+        try:
+            return datetime.strptime(text, fmt).time()
+        except ValueError:
+            continue
+    return None
+
+
+def live_odds_jump_datetime(row: Mapping[str, Any]) -> datetime | None:
+    for key in ("jump_datetime", "start_datetime", "race_datetime"):
+        parsed = parse_datetime_value(row.get(key))
+        if parsed is not None:
+            return parsed
+
+    race_time_datetime = parse_datetime_value(row.get("race_time"))
+    if race_time_datetime is not None:
+        return race_time_datetime
+
+    race_date = parse_datetime_value(row.get("race_date"))
+    race_time = parse_race_time_value(row.get("race_time"))
+    if race_date is None or race_time is None:
+        return None
+    return datetime.combine(race_date.date(), race_time)
+
+
+def has_timezone(value: datetime) -> bool:
+    return value.tzinfo is not None and value.tzinfo.utcoffset(value) is not None
+
+
+def datetime_before(value: datetime, reference: datetime) -> bool:
+    left = value
+    right = reference
+    if has_timezone(left) and not has_timezone(right):
+        right = right.replace(tzinfo=left.tzinfo)
+    elif has_timezone(right) and not has_timezone(left):
+        left = left.replace(tzinfo=right.tzinfo)
+    return left < right
+
+
+def first_datetime(row: Mapping[str, Any], keys: Sequence[str]) -> datetime | None:
+    for key in keys:
+        parsed = parse_datetime_value(row.get(key))
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def first_datetime_from_sources(
+    sources: Sequence[Mapping[str, Any]],
+    keys: Sequence[str],
+) -> datetime | None:
+    for source in sources:
+        parsed = first_datetime(source, keys)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def db_live_odds_temporal_reasons(
+    row: Mapping[str, Any],
+    *,
+    generated_at: datetime | None,
+    prediction_at: datetime | None = None,
+    feature_freeze_at: datetime | None = None,
+) -> list[str]:
+    if generated_at is None or row.get("source_artifact_path"):
+        return []
+
+    capture_value = row.get("capture_timestamp") or row.get("timestamp")
+    capture_dt = parse_datetime_value(capture_value)
+    if capture_value and capture_dt is None:
+        return ["odds_capture_timestamp_unparseable"]
+    if capture_dt is None:
+        return []
+
+    prediction_dt = (
+        first_datetime(row, PREDICTION_TIMESTAMP_KEYS)
+        or prediction_at
+        or generated_at
+    )
+    feature_freeze_dt = (
+        first_datetime(row, FEATURE_FREEZE_TIMESTAMP_KEYS)
+        or feature_freeze_at
+        or prediction_dt
+    )
+    jump_dt = live_odds_jump_datetime(row)
+
+    reasons: list[str] = []
+    if not datetime_before(capture_dt, prediction_dt):
+        reasons.append("odds_capture_not_before_prediction")
+    if not datetime_before(capture_dt, feature_freeze_dt):
+        reasons.append("odds_capture_not_before_feature_freeze")
+    if jump_dt is None:
+        reasons.append("odds_jump_timestamp_missing")
+    elif not datetime_before(capture_dt, jump_dt):
+        reasons.append("odds_capture_not_before_jump")
+    return reasons
+
+
+def validate_odds_row(
+    row: Mapping[str, Any],
+    *,
+    generated_at: datetime | None = None,
+    prediction_at: datetime | None = None,
+    feature_freeze_at: datetime | None = None,
+) -> list[str]:
     reasons: list[str] = []
     if str(row.get("market_type") or "").strip().lower() != "win":
         reasons.append("odds_market_not_win")
@@ -1054,6 +1187,14 @@ def validate_odds_row(row: Mapping[str, Any]) -> list[str]:
         reasons.append("odds_box_number_missing")
     if not normalize_name(row.get("dog_name") or row.get("dog_clean_name")):
         reasons.append("odds_dog_name_missing")
+    reasons.extend(
+        db_live_odds_temporal_reasons(
+            row,
+            generated_at=generated_at,
+            prediction_at=prediction_at,
+            feature_freeze_at=feature_freeze_at,
+        )
+    )
     return reasons
 
 
@@ -1079,12 +1220,21 @@ def odds_by_runner(rows: Iterable[Mapping[str, Any]]) -> dict[tuple[str, int | N
 
 def best_strict_odds(
     rows: Sequence[Mapping[str, Any]],
+    *,
+    generated_at: datetime | None = None,
+    prediction_at: datetime | None = None,
+    feature_freeze_at: datetime | None = None,
 ) -> tuple[list[dict[str, Any]], Counter, list[dict[str, Any]]]:
     valid_rows: list[dict[str, Any]] = []
     rejected_rows: list[dict[str, Any]] = []
     reasons = Counter()
     for row in rows:
-        row_reasons = validate_odds_row(row)
+        row_reasons = validate_odds_row(
+            row,
+            generated_at=generated_at,
+            prediction_at=prediction_at,
+            feature_freeze_at=feature_freeze_at,
+        )
         if row_reasons:
             reasons.update(row_reasons)
             rejected = compact_odds(row)
@@ -1237,7 +1387,23 @@ def build_dataset_rows(
         stage2 = item.get("stage2") or {}
         result = dict(official_results.get(key) or {})
         odds_rows = list(odds_index.get(key) or [])
-        strict_odds, odds_reasons, rejected_odds = best_strict_odds(odds_rows)
+        prediction_at = (
+            first_datetime_from_sources((primary, stage2), PREDICTION_TIMESTAMP_KEYS)
+            or generated_at
+        )
+        feature_freeze_at = (
+            first_datetime_from_sources(
+                (primary, stage2),
+                FEATURE_FREEZE_TIMESTAMP_KEYS,
+            )
+            or prediction_at
+        )
+        strict_odds, odds_reasons, rejected_odds = best_strict_odds(
+            odds_rows,
+            generated_at=generated_at,
+            prediction_at=prediction_at,
+            feature_freeze_at=feature_freeze_at,
+        )
         odds_by_bucket = {
             capture_bucket(row): compact_odds(row)
             for row in strict_odds
