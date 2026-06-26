@@ -19,12 +19,14 @@ def _metrics(
     intercept: float = 0.0,
     box1: float = 0.16,
     status: str = "EVALUATED",
+    evaluated_race_ids_hash: str = "trusted_race_hash",
 ) -> dict:
     return {
         "candidate_key": candidate_key,
         "family": family,
         "status": status,
         "race_count": races,
+        "evaluated_race_ids_hash": evaluated_race_ids_hash,
         "top1": top1,
         "top3": top3,
         "mean_winner_rank": mean_winner_rank,
@@ -192,6 +194,44 @@ def test_strict_market_and_dual_pass_emit_report_only_gate_change_candidate():
     assert dual["status"] == "PASS"
     assert report["no_write_guarantees"]["production_promotion"] is False
     assert "separate reviewed implementation" in report["recommended_next_action"]
+
+
+def test_denominator_mismatch_candidate_is_not_gate_eligible():
+    sparse = _metrics(
+        candidate_key="stage2_sparse_candidate",
+        races=60,
+        evaluated_race_ids_hash="sparse_race_hash",
+        top1=0.50,
+        top3=0.82,
+        mean_winner_rank=2.20,
+        brier=0.68,
+        logloss=1.48,
+        slope=0.98,
+        intercept=0.02,
+        box1=0.20,
+    )
+    rolling_report = _rolling_report(
+        {"stage2_sparse_candidate": sparse},
+        ["stage2_sparse_candidate"],
+    )
+
+    report = packet.build_report(
+        rolling_report=rolling_report,
+        generated_at=datetime(2026, 6, 18, 5, 0, tzinfo=timezone.utc),
+    )
+
+    row = {
+        item["candidate_key"]: item
+        for item in report["candidate_gate_matrix"]
+    }["stage2_sparse_candidate"]
+    assert row["market_relative_rank_safe_box_cap_only_status"] == "BLOCKED"
+    assert "candidate_denominator_mismatch_primary_shadow" in row[
+        "market_relative_rank_safe_box_cap_only_blockers"
+    ]
+    assert _policy(
+        report, "market_relative_rank_safe_box_cap_only"
+    )["status"] == "BLOCKED"
+    assert report["final_status"] == "KEEP_BASELINE_GATE_VALID"
 
 
 def test_missing_market_baseline_is_data_missing():
