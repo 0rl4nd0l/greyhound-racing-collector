@@ -44,7 +44,7 @@ DEFAULT_ODDS_CAPTURE_MIN_MINUTES = 0.0
 DEFAULT_ODDS_CAPTURE_MAX_MINUTES = 60.0
 DEFAULT_ODDS_CAPTURE_REFRESH_LIMIT = 8
 DEFAULT_AUTONOMOUS_ODDS_CAPTURE_LIMIT: int | None = None
-DEFAULT_HISTORICAL_UNIFIED_EVIDENCE_REPORT_LIMIT = 500
+DEFAULT_HISTORICAL_UNIFIED_EVIDENCE_REPORT_LIMIT = 600
 DEFAULT_RESULT_BACKLOG_LIMIT = 128
 DEFAULT_RESULT_BACKLOG_SHADOW_RUN_LIMIT = 200
 DEFAULT_RESULT_BACKLOG_LOOKBACK_DAYS = 2
@@ -2158,6 +2158,14 @@ def unified_report_dataset_path(report_path: Path, report: Mapping[str, Any]) ->
         rooted_dataset_path = ROOT / dataset_path
         if rooted_dataset_path.exists():
             return rooted_dataset_path
+        for parent in report_path.parents:
+            parent_relative_path = parent / dataset_path
+            if parent_relative_path.exists():
+                return parent_relative_path
+        if dataset_path.name == "unified_evidence_dataset.jsonl":
+            adjacent_dataset_path = report_path.parent / dataset_path.name
+            if adjacent_dataset_path.exists():
+                return adjacent_dataset_path
         return report_path.parent / dataset_path
     return report_path.parent / "unified_evidence_dataset.jsonl"
 
@@ -2175,6 +2183,8 @@ def is_automatic_unified_evidence_report_path(report_path: Path) -> bool:
     if "_manual" in dirname or "_probe" in dirname or "_validation" in dirname:
         return False
     if "_daemon_autopilot" in dirname:
+        return True
+    if "_live_db_approved_append_" in dirname:
         return True
     marker = "_daemon_rejoin_"
     if marker not in dirname:

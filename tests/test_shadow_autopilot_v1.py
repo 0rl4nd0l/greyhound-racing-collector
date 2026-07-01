@@ -13,7 +13,7 @@ def test_autopilot_default_min_joined_races_matches_review_target():
     assert autopilot.DEFAULT_ODDS_CAPTURE_MIN_MINUTES == 0.0
     assert autopilot.DEFAULT_ODDS_CAPTURE_MAX_MINUTES == 60.0
     assert autopilot.DEFAULT_ODDS_CAPTURE_REFRESH_LIMIT == 8
-    assert autopilot.DEFAULT_HISTORICAL_UNIFIED_EVIDENCE_REPORT_LIMIT == 500
+    assert autopilot.DEFAULT_HISTORICAL_UNIFIED_EVIDENCE_REPORT_LIMIT == 600
     assert args.target_joined_races == 100
     assert args.min_joined_races == 100
     assert args.odds_capture_min_minutes == 0.0
@@ -3733,6 +3733,10 @@ def test_historical_unified_evidence_reports_use_automatic_daemon_evidence_only(
         "unified_evidence_dataset_20260610T191153+1000_daemon_rejoin_007",
         23,
     )
+    approved_append = write_report(
+        "unified_evidence_dataset_live_db_approved_append_20260701T0630p1000_01",
+        31,
+    )
     write_report(
         "unified_evidence_dataset_20260610T191153+1000_daemon_rejoin_bridge_validation_007",
         27,
@@ -3754,8 +3758,44 @@ def test_historical_unified_evidence_reports_use_automatic_daemon_evidence_only(
 
     reports = autopilot.historical_unified_evidence_report_paths(evidence_root)
 
-    assert reports == [older, newer, rejoin]
-    assert autopilot.best_unified_evidence_report_path(reports) == rejoin
+    assert reports == [older, newer, rejoin, approved_append]
+    assert autopilot.best_unified_evidence_report_path(reports) == approved_append
+
+
+def test_historical_unified_evidence_resolves_approved_append_artifact_relative_dataset(
+    tmp_path,
+):
+    worktree_root = tmp_path / "greyhound-autonomous-accuracy-odds-v1"
+    evidence_root = worktree_root / "artifacts/full_evidence_orchestration_20260525"
+    dataset_dir = (
+        evidence_root
+        / "unified_evidence_dataset_live_db_approved_append_20260701T0630p1000_01"
+    )
+    dataset_dir.mkdir(parents=True)
+    dataset_path = dataset_dir / "unified_evidence_dataset.jsonl"
+    dataset_path.write_text("{}\n", encoding="utf-8")
+    report_path = dataset_dir / "unified_evidence_dataset_report.json"
+    dataset_jsonl = (
+        "artifacts/full_evidence_orchestration_20260525/"
+        "unified_evidence_dataset_live_db_approved_append_20260701T0630p1000_01/"
+        "unified_evidence_dataset.jsonl"
+    )
+    autopilot.write_json(
+        report_path,
+        {
+            "final_status": "UNIFIED_EVIDENCE_DATASET_BUILT",
+            "dataset_jsonl": dataset_jsonl,
+            "unified_evidence_eligible_rows": 70,
+        },
+    )
+
+    reports = autopilot.historical_unified_evidence_report_paths(evidence_root)
+
+    assert autopilot.unified_report_dataset_path(
+        report_path,
+        autopilot.load_json(report_path),
+    ) == dataset_path
+    assert reports == [report_path]
 
 
 def test_historical_unified_evidence_default_retains_more_than_100_reports(tmp_path):
