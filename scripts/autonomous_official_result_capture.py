@@ -32,6 +32,7 @@ sys.path.insert(0, ROOT_STR)
 
 from scripts import ingest_results_for_date as ingest
 from scripts.refresh_prejump_upcoming import venue_exclusion_aliases
+from utils.report_output_dir_guard import assert_prefixed_report_output_dir
 from utils.runner_completeness import RunnerRow, analyze_runner_rows, normalise_runner_name
 
 try:
@@ -43,6 +44,7 @@ except Exception:
 
 DEFAULT_EVIDENCE_ROOT = ROOT / "artifacts/full_evidence_orchestration_20260525"
 OUTPUT_PREFIX = "artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_"
+OUTPUT_ARTIFACT_PREFIX = "autonomous_official_result_capture_"
 OFFICIAL_SOURCE = "thedogs_official"
 RESULTED_STATUS = "resulted"
 OFFICIAL_RESULT_EVIDENCE_RACES_TABLE = "autonomous_official_result_evidence_races"
@@ -142,17 +144,19 @@ def parse_current_time(value: str | None) -> datetime:
     return parsed
 
 
-def assert_output_dir_safe(output_dir: Path) -> Path:
-    logical = output_dir if output_dir.is_absolute() else ROOT / output_dir
-    try:
-        relative = logical.absolute().relative_to(ROOT.absolute())
-    except ValueError as exc:
-        raise ValueError("output_dir_must_be_inside_repo") from exc
-    if ".." in relative.parts:
-        raise ValueError("output_dir_must_not_contain_parent_traversal")
-    if not relative.as_posix().startswith(OUTPUT_PREFIX):
-        raise ValueError(f"output_dir_must_be_autonomous_official_result_capture_artifact:{relative}")
-    return logical.absolute()
+def assert_output_dir_safe(
+    output_dir: Path,
+    *,
+    evidence_root: Path | None = None,
+) -> Path:
+    return assert_prefixed_report_output_dir(
+        output_dir,
+        repo_root=ROOT,
+        repo_prefix=OUTPUT_PREFIX,
+        artifact_prefix=OUTPUT_ARTIFACT_PREFIX,
+        prefix_error="output_dir_must_be_autonomous_official_result_capture_artifact",
+        evidence_root=evidence_root,
+    )
 
 
 def unique_dir(base: Path) -> Path:
@@ -3024,6 +3028,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--snapshot-dir", type=Path, default=ROOT / "artifacts/prediction_snapshots")
     parser.add_argument("--db", type=Path, default=ROOT / "greyhound_racing_data.db")
     parser.add_argument("--output-dir", type=Path)
+    parser.add_argument("--evidence-root", type=Path, default=DEFAULT_EVIDENCE_ROOT)
     parser.add_argument("--existing-race-rows-jsonl", type=Path)
     parser.add_argument("--existing-runner-rows-jsonl", type=Path)
     parser.add_argument("--existing-quarantine-jsonl", type=Path)
@@ -3076,7 +3081,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     generated_at = datetime.now().astimezone()
     output_dir = assert_output_dir_safe(
         args.output_dir
-        or DEFAULT_EVIDENCE_ROOT / f"autonomous_official_result_capture_{now_id(generated_at)}"
+        or args.evidence_root / f"autonomous_official_result_capture_{now_id(generated_at)}",
+        evidence_root=args.evidence_root,
     )
     output_dir = unique_dir(output_dir)
     output_dir.mkdir(parents=True, exist_ok=False)

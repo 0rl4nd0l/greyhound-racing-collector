@@ -1006,6 +1006,28 @@ def test_score_live_command_reuses_shadow_model_without_training(tmp_path):
     assert "--train-if-missing" not in command
 
 
+def test_score_live_command_passes_retained_evidence_root(tmp_path):
+    evidence_root = (
+        tmp_path.parent
+        / f"{tmp_path.name}_retained"
+        / "artifacts/full_evidence_orchestration_20260525"
+    )
+
+    command = build_score_live_command(
+        input_dir=evidence_root / "daily_race_ingest_shadow_x" / "eligible_inputs",
+        output_dir=evidence_root / "daily_race_ingest_shadow_x" / "shadow_score_live",
+        db_path=Path("greyhound_racing_data.db"),
+        schema_path=Path("schema.json"),
+        clean_dataset=Path("clean.jsonl"),
+        repaired_packet=Path("packet.csv"),
+        all_missing_train_policy="quarantine_feature",
+        evidence_root=evidence_root,
+    )
+
+    assert "--evidence-root" in command
+    assert command[command.index("--evidence-root") + 1] == str(evidence_root)
+
+
 def test_score_live_command_auto_falls_back_to_uv_when_current_python_lacks_ml_deps(
     tmp_path,
     monkeypatch,
@@ -1154,6 +1176,22 @@ def test_daily_output_guard_accepts_only_shadow_artifact_prefix():
     assert assert_daily_output_dir_safe(output_dir).name == (
         "daily_race_ingest_shadow_20260607T220000+1000"
     )
+
+
+def test_daily_output_guard_accepts_configured_external_output_parent(tmp_path):
+    evidence_root = tmp_path / "runtime_artifacts" / "full_evidence_orchestration_20260525"
+    output_dir = evidence_root / "daily_race_ingest_shadow_external"
+
+    assert (
+        assert_daily_output_dir_safe(output_dir, output_parent=evidence_root)
+        == output_dir.absolute()
+    )
+
+    with pytest.raises(ValueError, match="output_dir_must_be_daily_shadow_artifact"):
+        assert_daily_output_dir_safe(
+            evidence_root / "not_a_daily_shadow_artifact",
+            output_parent=evidence_root,
+        )
 
 
 def test_daily_output_guard_rejects_production_paths():

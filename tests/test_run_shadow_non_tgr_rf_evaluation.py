@@ -1066,11 +1066,28 @@ def test_shadow_output_path_rejects_production_paths(tmp_path):
         / "shadow_run",
         root=tmp_path,
     )
+    retained_root = (
+        tmp_path.parent
+        / f"{tmp_path.name}_retained"
+        / "artifacts"
+        / "full_evidence_orchestration_20260525"
+    )
+    assert_shadow_output_dir_safe(
+        retained_root / "daily_race_ingest_shadow_test" / "shadow_score_live",
+        root=tmp_path,
+        evidence_root=retained_root,
+    )
 
     with pytest.raises(ValueError, match="output_dir_must_be_shadow_artifact"):
         assert_shadow_output_dir_safe(tmp_path / "predictions" / "shadow", root=tmp_path)
     with pytest.raises(ValueError, match="output_dir_must_be_shadow_artifact"):
         assert_shadow_output_dir_safe(tmp_path / "model_registry" / "shadow", root=tmp_path)
+    with pytest.raises(ValueError, match="output_dir_must_be_shadow_artifact"):
+        assert_shadow_output_dir_safe(
+            retained_root / "not_daily_shadow" / "shadow_score_live",
+            root=tmp_path,
+            evidence_root=retained_root,
+        )
 
 
 def test_cli_stop_after_definition_writes_only_shadow_candidate(tmp_path, monkeypatch):

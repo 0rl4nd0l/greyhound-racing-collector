@@ -246,6 +246,9 @@ def decide_runtime_action(
         return "DAEMON_RUNNING_WAIT_FOR_CYCLE", ["shadow_autopilot_service_active"]
 
     verdict = daemon_state.get("last_verdict")
+    if verdict == "DAEMON_READY_NEEDS_DEPLOYMENT":
+        reasons.append("daemon_ready_timer_not_active")
+        return "DEPLOY_OR_RESTART_DAEMON_TIMER", reasons
     if verdict not in {"DAEMON_READY", "AUTOPILOT_READY", None}:
         reasons.append("daemon_not_ready")
         return "CHECK_DAEMON_FAILURE", reasons

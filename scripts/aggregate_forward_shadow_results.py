@@ -26,8 +26,12 @@ ROOT = Path(__file__).resolve().parents[1]
 ROOT_STR = str(ROOT)
 sys.path = [path for path in sys.path if path != ROOT_STR]
 sys.path.insert(0, ROOT_STR)
+
+from utils.report_output_dir_guard import assert_prefixed_report_output_dir  # noqa: E402
+
 DEFAULT_EVIDENCE_ROOT = ROOT / "artifacts/full_evidence_orchestration_20260525"
 OUTPUT_PREFIX = "artifacts/full_evidence_orchestration_20260525/forward_shadow_result_aggregate_"
+OUTPUT_ARTIFACT_PREFIX = "forward_shadow_result_aggregate_"
 PROBABILITY_COLUMN = "shadow_rf_calibrated_probability"
 FINAL_AGGREGATED = "FORWARD_SHADOW_RESULTS_AGGREGATED"
 FINAL_PARTIAL = "PARTIAL_AGGREGATE_PENDING_MORE_RESULTS"
@@ -98,17 +102,19 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
-def assert_output_dir_safe(output_dir: Path) -> Path:
-    logical = output_dir if output_dir.is_absolute() else ROOT / output_dir
-    try:
-        relative = logical.absolute().relative_to(ROOT.absolute())
-    except ValueError as exc:
-        raise ValueError("output_dir_must_be_inside_repo") from exc
-    if ".." in relative.parts:
-        raise ValueError("output_dir_must_not_contain_parent_traversal")
-    if not relative.as_posix().startswith(OUTPUT_PREFIX):
-        raise ValueError(f"output_dir_must_be_forward_shadow_result_aggregate_artifact:{relative}")
-    return logical.absolute()
+def assert_output_dir_safe(
+    output_dir: Path,
+    *,
+    evidence_root: Path | None = None,
+) -> Path:
+    return assert_prefixed_report_output_dir(
+        output_dir,
+        repo_root=ROOT,
+        repo_prefix=OUTPUT_PREFIX,
+        artifact_prefix=OUTPUT_ARTIFACT_PREFIX,
+        prefix_error="output_dir_must_be_forward_shadow_result_aggregate_artifact",
+        evidence_root=evidence_root,
+    )
 
 
 def discovered_result_join_dirs(evidence_root: Path) -> list[Path]:
@@ -417,7 +423,7 @@ def run_aggregate(
 ) -> dict[str, Any]:
     generated_at = datetime.now().astimezone()
     output_dir = output_dir or evidence_root / f"forward_shadow_result_aggregate_{generated_at.strftime('%Y%m%dT%H%M%S%z')}"
-    output_dir = assert_output_dir_safe(output_dir)
+    output_dir = assert_output_dir_safe(output_dir, evidence_root=evidence_root)
     output_dir.mkdir(parents=True, exist_ok=False)
     protected_before = protected_hashes()
     report = build_aggregate_report(evidence_root=evidence_root, generated_at=generated_at)

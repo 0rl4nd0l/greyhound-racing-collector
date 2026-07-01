@@ -65,8 +65,8 @@ DEFAULT_ODDS_CAPTURE_ONLY_TIMER_ON_CALENDAR = (
 )
 DEFAULT_ODDS_CAPTURE_ONLY_TIMER_ACCURACY = "15s"
 DEFAULT_ODDS_CAPTURE_ONLY_TIMEOUT_SECONDS = 600
-DEFAULT_ODDS_CAPTURE_ONLY_REFRESH_LIMIT = 8
-DEFAULT_FULL_DAEMON_AUTONOMOUS_ODDS_CAPTURE_LIMIT = 2
+DEFAULT_ODDS_CAPTURE_ONLY_REFRESH_LIMIT = 16
+DEFAULT_FULL_DAEMON_AUTONOMOUS_ODDS_CAPTURE_LIMIT = 16
 DEFAULT_FULL_DAEMON_RESULT_BACKLOG_LIMIT = 32
 DEFAULT_FULL_DAEMON_RESULT_BACKLOG_SHADOW_RUN_LIMIT = 64
 DEFAULT_FULL_DAEMON_RESULT_BACKLOG_LOOKBACK_DAYS = 2
@@ -1620,6 +1620,7 @@ def pre_race_gated_challenger_command(
     *,
     runner_matrix_csv: Path,
     output_dir: Path,
+    evidence_root: Path,
     rank_first_hypotheses_json: Path | None = None,
 ) -> list[str]:
     command = [
@@ -1627,6 +1628,8 @@ def pre_race_gated_challenger_command(
         str(ROOT / "scripts/build_pre_race_gated_challenger_packet.py"),
         "--runner-matrix-csv",
         str(runner_matrix_csv),
+        "--evidence-root",
+        str(evidence_root),
         "--output-dir",
         str(output_dir),
     ]
@@ -1689,12 +1692,15 @@ def promotion_distance_report_command(
     pre_race_gated_report: Path,
     high_accuracy_gate: Path,
     output_dir: Path,
+    evidence_root: Path,
 ) -> list[str]:
     return [
         sys.executable,
         str(ROOT / "scripts/build_promotion_distance_report.py"),
         "--rolling-report",
         str(rolling_report),
+        "--evidence-root",
+        str(evidence_root),
         "--pre-race-gated-report",
         str(pre_race_gated_report),
         "--high-accuracy-gate",
@@ -5628,6 +5634,7 @@ def build_rejoin_unified_evidence_datasets(
         command = autopilot.unified_evidence_dataset_command(
             shadow_run_dir=shadow_run_dir,
             output_dir=dataset_dir,
+            evidence_root=evidence_root,
             db_path=db_path,
             odds_jsonl_paths=autopilot.shadow_odds_snapshot_paths_for_daily_dir(
                 evidence_root=evidence_root,
@@ -9117,6 +9124,8 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
             str(args.refresh_limit),
             "--autonomous-odds-capture-limit",
             str(args.autonomous_odds_capture_limit),
+            "--odds-capture-refresh-limit",
+            str(args.autonomous_odds_capture_limit),
             "--result-backlog-limit",
             str(args.result_backlog_limit),
             "--result-backlog-shadow-run-limit",
@@ -9511,6 +9520,7 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
                 command=autopilot.rolling_model_comparison_command(
                     unified_evidence_reports=rejoin_comparison_report_paths,
                     output_dir=rejoin_rolling_dir,
+                    evidence_root=evidence_root,
                 ),
                 output_dir=output_dir,
                 timeout_seconds=args.timeout_seconds,
@@ -9542,6 +9552,7 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
                     command=pre_race_gated_challenger_command(
                         runner_matrix_csv=rejoin_runner_matrix_csv,
                         output_dir=rejoin_pre_race_gated_dir,
+                        evidence_root=evidence_root,
                     ),
                     output_dir=output_dir,
                     timeout_seconds=args.timeout_seconds,
@@ -9666,6 +9677,7 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
                             command=pre_race_gated_challenger_command(
                                 runner_matrix_csv=rejoin_runner_matrix_csv,
                                 output_dir=rejoin_rank_first_hypothesis_gated_dir,
+                                evidence_root=evidence_root,
                                 rank_first_hypotheses_json=rank_first_hypotheses_json,
                             ),
                             output_dir=output_dir,
@@ -9832,6 +9844,7 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
                     command=autopilot.high_accuracy_refinement_packet_command(
                         unified_evidence_report=best_rejoin_unified_report,
                         output_dir=rejoin_high_accuracy_dir,
+                        evidence_root=evidence_root,
                         stage2_predictions=(
                             daily_shadow_run_dir / "stage2_shadow_predictions.jsonl"
                             if daily_shadow_run_dir
@@ -9900,6 +9913,7 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
                         pre_race_gated_report=rejoin_pre_race_gated_report_path,
                         high_accuracy_gate=rejoin_high_accuracy_gate_path,
                         output_dir=rejoin_promotion_distance_dir,
+                        evidence_root=evidence_root,
                     ),
                     output_dir=output_dir,
                     timeout_seconds=args.timeout_seconds,
@@ -9924,6 +9938,7 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
                     command=autopilot.high_accuracy_refinement_packet_command(
                         unified_evidence_report=best_rejoin_unified_report,
                         output_dir=rejoin_high_accuracy_after_promotion_dir,
+                        evidence_root=evidence_root,
                         stage2_predictions=(
                             daily_shadow_run_dir / "stage2_shadow_predictions.jsonl"
                             if daily_shadow_run_dir

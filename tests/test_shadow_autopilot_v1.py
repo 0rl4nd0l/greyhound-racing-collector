@@ -439,11 +439,13 @@ def test_shadow_odds_snapshot_command_is_report_only_artifact():
     command = autopilot.shadow_odds_snapshot_command(
         daily_dir=Path("artifacts/full_evidence_orchestration_20260525/daily_race_ingest_shadow_x"),
         odds_dir=Path("artifacts/full_evidence_orchestration_20260525/shadow_odds_snapshot_x"),
+        evidence_root=Path("artifacts/full_evidence_orchestration_20260525"),
         db_path=Path("greyhound_racing_data.db"),
         current_time="2026-06-09T00:52:00+10:00",
     )
 
     assert "scripts/collect_shadow_odds_snapshots.py" in command[1]
+    assert "--evidence-root" in command
     assert "--shadow-run-dir" in command
     assert "--output-dir" in command
     assert "artifacts/full_evidence_orchestration_20260525/shadow_odds_snapshot_x" in command
@@ -621,6 +623,7 @@ def test_autonomous_official_result_capture_command_is_dry_run_artifact_lane():
             "artifacts/full_evidence_orchestration_20260525/"
             "autonomous_official_result_capture_x"
         ),
+        evidence_root=Path("artifacts/full_evidence_orchestration_20260525"),
         db_path=Path("greyhound_racing_data.db"),
         race_ids=["Race 1 - WPK - 2026-06-10"],
         require_ready_snapshot=True,
@@ -645,6 +648,7 @@ def test_autonomous_official_result_capture_command_can_use_shadow_run_candidate
             "artifacts/full_evidence_orchestration_20260525/"
             "autonomous_official_result_capture_x"
         ),
+        evidence_root=Path("artifacts/full_evidence_orchestration_20260525"),
         db_path=Path("greyhound_racing_data.db"),
         current_time="2026-06-10T15:00:00+10:00",
         require_ready_snapshot=False,
@@ -1052,6 +1056,7 @@ def test_unified_evidence_dataset_command_is_report_only_artifact_lane(tmp_path)
             "artifacts/full_evidence_orchestration_20260525/"
             "unified_evidence_dataset_x"
         ),
+        evidence_root=Path("artifacts/full_evidence_orchestration_20260525"),
         db_path=Path("greyhound_racing_data.db"),
         odds_jsonl_paths=[odds_path],
         official_result_runner_paths=[result_path],
@@ -1060,6 +1065,7 @@ def test_unified_evidence_dataset_command_is_report_only_artifact_lane(tmp_path)
     )
 
     assert "scripts/build_unified_evidence_dataset.py" in command[1]
+    assert "--evidence-root" in command
     assert "--shadow-run-dir" in command
     assert "--odds-jsonl" in command
     assert "--official-result-runners-jsonl" in command
@@ -2929,6 +2935,44 @@ def test_dashboard_and_daily_status_surface_backlog_unified_evidence(tmp_path):
     ) in summary
 
 
+def test_daily_status_blocks_missing_prediction_sample_odds():
+    daily_status = autopilot.build_daily_status(
+        generated_at=datetime.fromisoformat("2026-06-24T14:32:00+10:00"),
+        daily_manifest={"race_count": 13, "prediction_rows": 97},
+        result_join_status={"latest_join": {"joined_count": 0}},
+        dashboard={},
+        timeseries=[],
+        readiness={"decision": "READY_FOR_RELIABILITY_REVIEW"},
+        odds_snapshot_status={
+            "status": "SHADOW_ODDS_SNAPSHOT_COLLECTED",
+            "races_with_complete_valid_prejump_odds": 5,
+            "races_with_missing_odds_rows": 8,
+            "race_coverage_path": "shadow_odds_snapshot_x/race_coverage.json",
+        },
+        autonomous_live_odds_capture_status={
+            "status": "AUTONOMOUS_LIVE_ODDS_CAPTURE_APPENDED",
+            "ready_count": 2,
+        },
+    )
+
+    assert daily_status["prediction_sample_odds_coverage_status"] == (
+        "BLOCKED_MISSING_PREJUMP_ODDS"
+    )
+    assert daily_status["prediction_sample_odds_coverage_blocker"] == (
+        "prediction_sample_missing_complete_valid_prejump_odds"
+    )
+    assert daily_status["prediction_sample_odds_expected_races"] == 13
+    assert daily_status["prediction_sample_odds_complete_prejump_races"] == 5
+    assert daily_status["prediction_sample_odds_missing_prejump_races"] == 8
+    assert daily_status["prediction_sample_odds_coverage_report"] == (
+        "shadow_odds_snapshot_x/race_coverage.json"
+    )
+    assert daily_status["autonomous_live_odds_capture_scope_status"] == (
+        "PARTIAL_AUTONOMOUS_ODDS_SCOPE"
+    )
+    assert daily_status["autonomous_live_odds_capture_scope_gap_races"] == 11
+
+
 def test_high_accuracy_refinement_packet_command_and_status_are_report_only(tmp_path):
     odds_augmented_report = tmp_path / "rolling_model_comparison_report.json"
     odds_augmented_report.write_text("{}", encoding="utf-8")
@@ -2954,6 +2998,7 @@ def test_high_accuracy_refinement_packet_command_and_status_are_report_only(tmp_
             "artifacts/full_evidence_orchestration_20260525/"
             "high_accuracy_refinement_packet_x"
         ),
+        evidence_root=Path("artifacts/full_evidence_orchestration_20260525"),
         stage2_predictions=stage2_predictions,
         odds_augmented_report=odds_augmented_report,
         odds_gate_report=odds_gate_report,
@@ -3433,6 +3478,7 @@ def test_autopilot_promotion_distance_commands_are_report_only():
     pre_race_command = autopilot.pre_race_gated_challenger_command(
         runner_matrix_csv=Path("/evidence/rolling/market_residual_runner_matrix.csv"),
         output_dir=Path("/evidence/pre_race_gated_challenger_run"),
+        evidence_root=Path("/evidence"),
     )
     promotion_distance_command = autopilot.promotion_distance_report_command(
         rolling_report=Path("/evidence/rolling/rolling_model_comparison_report.json"),
@@ -3441,6 +3487,7 @@ def test_autopilot_promotion_distance_commands_are_report_only():
         ),
         high_accuracy_gate=Path("/evidence/high_accuracy/promotion_pr_gate.json"),
         output_dir=Path("/evidence/promotion_distance_report_run"),
+        evidence_root=Path("/evidence"),
     )
 
     assert "scripts/build_pre_race_gated_challenger_packet.py" in pre_race_command[1]
@@ -3463,6 +3510,7 @@ def test_high_accuracy_refinement_packet_command_omits_missing_odds_gate_report(
             "artifacts/full_evidence_orchestration_20260525/"
             "high_accuracy_refinement_packet_x"
         ),
+        evidence_root=Path("artifacts/full_evidence_orchestration_20260525"),
         odds_gate_report=tmp_path / "missing_odds_research_gate_report.json",
     )
 
@@ -3479,6 +3527,7 @@ def test_high_accuracy_refinement_packet_command_includes_backlog_unified_status
             "artifacts/full_evidence_orchestration_20260525/"
             "high_accuracy_refinement_packet_x"
         ),
+        evidence_root=Path("artifacts/full_evidence_orchestration_20260525"),
         backlog_unified_evidence_status=backlog_status,
     )
 
@@ -3532,9 +3581,11 @@ def test_rolling_model_comparison_command_and_status_are_report_only(tmp_path):
             "artifacts/full_evidence_orchestration_20260525/"
             "rolling_model_comparison_x"
         ),
+        evidence_root=Path("artifacts/full_evidence_orchestration_20260525"),
     )
 
     assert "scripts/build_rolling_model_comparison_packet.py" in command[1]
+    assert "--evidence-root" in command
     assert command.count("--unified-evidence-report") == 2
     assert "--output-dir" in command
     assert "--execute" not in command
@@ -4042,8 +4093,16 @@ def test_autonomous_live_odds_capture_runs_before_daily_shadow_run(tmp_path, mon
     assert shadow_refresh_command[
         shadow_refresh_command.index("--max-minutes") + 1
     ] == "160.0"
+    assert shadow_refresh_command[
+        shadow_refresh_command.index("--current-time") + 1
+    ] == "2026-06-11T20:20:00+10:00"
+    assert odds_refresh_command[
+        odds_refresh_command.index("--current-time") + 1
+    ] == "2026-06-11T20:20:00+10:00"
     assert "--require-safe-metadata" in shadow_refresh_command
     assert "--require-safe-metadata" in odds_refresh_command
+    daily_command = commands_by_step["daily_shadow_run"]
+    assert daily_command[daily_command.index("--output-parent") + 1] == str(evidence_root)
 
 
 def test_autonomous_official_result_capture_uses_fresh_step_time(
@@ -4990,6 +5049,10 @@ def test_timing_aligned_prediction_rerun_plan_uses_source_shadow_inputs(
         },
     )
 
+    output_dir = (
+        tmp_path
+        / "artifacts/full_evidence_orchestration_20260525/shadow_autopilot_v1_x"
+    )
     plan = autopilot.build_timing_aligned_prediction_rerun_plan(
         generated_at=datetime.fromisoformat("2026-06-13T23:40:00+10:00"),
         odds_snapshot_status={
@@ -5008,10 +5071,7 @@ def test_timing_aligned_prediction_rerun_plan_uses_source_shadow_inputs(
             "effective_prediction_timestamp": "2026-06-13T22:22:36+10:00",
             "effective_prediction_timestamp_source": "prediction_timestamp",
         },
-        output_dir=(
-            tmp_path
-            / "artifacts/full_evidence_orchestration_20260525/shadow_autopilot_v1_x"
-        ),
+        output_dir=output_dir,
         db_path=tmp_path / "greyhound_racing_data.db",
         shadow_model=model_path,
         score_command_mode="python",
@@ -5041,6 +5101,7 @@ def test_timing_aligned_prediction_rerun_plan_uses_source_shadow_inputs(
     assert "full-dry-run" in command
     assert "--shadow-model" in command
     assert str(model_path) in command
+    assert command[command.index("--output-parent") + 1] == str(output_dir.parent)
     assert str(input_a) in command
     assert str(input_b) in command
     assert plan["hard_stops"] == []
