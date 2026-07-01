@@ -17,6 +17,115 @@ from one shadow run or one audit packet.
 - Main DB path used by the runtime:
   `/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/greyhound_racing_data.db`
 
+## Recent PR Boundaries
+
+Last verified on 2026-07-01 against PR #33 merge commit `cb869022`.
+
+Recent source patches changed evidence wiring, not production readiness:
+
+- PR #28 keeps strict pre-jump evidence from accepting DB `live_odds` rows at
+  or after jump time.
+- PR #32 lets automatic historical source selection include approved append
+  unified-evidence roots and resolve artifact-root-relative `dataset_jsonl`
+  paths.
+- PR #33 lets report builders and shadow-autopilot wrappers use a retained
+  `--evidence-root` while keeping artifact-prefix output guards in force.
+
+These patches do not train, promote, deploy, restart services, mutate the live
+DB, update model registry pointers, approve EV actions, or approve betting.
+Promotion and high-accuracy decisions still have to come from the current
+matching evidence root's rolling comparison, promotion-distance report, and
+high-accuracy packet.
+Raw DB counts, older successful packets, and daemon tick watching are not
+substitutes for those gates.
+
+## Shadow Autopilot Evidence Root
+
+Use `--evidence-root` when an already approved report-only workflow needs to
+read or write retained shadow-autopilot artifacts outside the source checkout,
+for example:
+
+`/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525`
+
+The evidence root is an artifact parent, not a runtime pointer. Passing it to a
+script must not be treated as permission to capture more official results, start
+or restart the daemon, write the live DB, train, promote, or perform betting
+actions.
+
+Output guards allow report output only under either:
+
+- the repo-local default `artifacts/full_evidence_orchestration_20260525/...`
+- the supplied `--evidence-root`
+
+The child output directory must still use the expected artifact prefix, such as
+`shadow_autopilot_v1_`, `daily_race_ingest_shadow_`,
+`shadow_odds_snapshot_`, `autonomous_official_result_capture_`,
+`unified_evidence_dataset_`, `rolling_model_comparison_`,
+`promotion_distance_report_`, `high_accuracy_refinement_packet_`,
+`forward_shadow_result_join_`, `forward_shadow_result_aggregate_`,
+`forward_shadow_status_`, or `shadow_feature_activation_gate_`. An absolute
+retained root does not permit arbitrary output paths.
+
+Common CLIs in the current evidence-root chain include:
+
+- `scripts/shadow_autopilot_v1.py --evidence-root`
+- `scripts/shadow_autopilot_daemon.py run-once --evidence-root`
+- `scripts/shadow_autopilot_daemon.py run-odds-capture-only --evidence-root`
+- `scripts/shadow_autopilot_daemon.py write-service-files --evidence-root`
+- `scripts/shadow_autopilot_daemon.py write-odds-capture-service-files --evidence-root`
+- `scripts/daily_race_ingest_shadow_orchestrator.py --output-parent`
+- `scripts/collect_shadow_odds_snapshots.py --evidence-root`
+- `scripts/autonomous_live_odds_capture.py --evidence-root`
+- `scripts/autonomous_official_result_capture.py --evidence-root`
+- `scripts/build_unified_evidence_dataset.py --evidence-root`
+- `scripts/build_rolling_model_comparison_packet.py --evidence-root`
+- `scripts/build_promotion_distance_report.py --evidence-root`
+- `scripts/build_high_accuracy_refinement_packet.py --evidence-root`
+- `scripts/build_pre_race_gated_challenger_packet.py --evidence-root`
+- `scripts/join_forward_shadow_results.py --evidence-root`
+- `scripts/aggregate_forward_shadow_results.py --evidence-root`
+- `scripts/forward_shadow_status_report.py --evidence-root`
+- `scripts/shadow_feature_activation_gate.py --evidence-root`
+- `scripts/run_shadow_non_tgr_rf_evaluation.py live --evidence-root`
+
+A source commit on `master` does not change the installed user service or the
+active runtime checkout. Re-verify the systemd unit path before reasoning about
+live daemon behavior.
+
+## Daily Odds Status Fields
+
+PR #33 adds sample-scoped odds diagnostics to `DAILY_STATUS.json`,
+`DAILY_STATUS.md`, and the shadow-autopilot dashboard output:
+
+- `prediction_sample_odds_coverage_status`
+- `prediction_sample_odds_coverage_blocker`
+- `prediction_sample_odds_expected_races`
+- `prediction_sample_odds_complete_prejump_races`
+- `prediction_sample_odds_missing_prejump_races`
+- `prediction_sample_odds_coverage_report`
+- `autonomous_live_odds_capture_scope_status`
+- `autonomous_live_odds_capture_scope_gap_races`
+
+Interpret these against the current prediction sample only. A complete raw
+`live_odds` table, a large historical evidence root, or a later odds-only
+daemon packet does not by itself prove that the current prediction sample has
+complete strict pre-jump odds.
+
+Status values are intentionally gate-shaped:
+
+- `PASS_COMPLETE_PREJUMP_ODDS` means the prediction sample has complete valid
+  pre-jump odds.
+- `BLOCKED_MISSING_PREJUMP_ODDS` means at least one prediction-sample race is
+  missing complete valid pre-jump odds.
+- `DATA_MISSING_NO_PREDICTION_SAMPLE` means there was no scored prediction
+  sample to evaluate.
+- `PASS_AUTONOMOUS_ODDS_SCOPE_COVERS_SAMPLE` means autonomous odds capture
+  readiness covers the prediction sample.
+- `PARTIAL_AUTONOMOUS_ODDS_SCOPE` means autonomous odds capture readiness covers
+  some, but not all, of the prediction sample.
+- `BLOCKED_NO_AUTONOMOUS_ODDS_SCOPE` means autonomous odds capture readiness
+  covers none of the prediction sample.
+
 ## Backlog Append
 
 `scripts/append_official_result_evidence_backlog.py` accepts either exact

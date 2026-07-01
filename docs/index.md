@@ -65,6 +65,7 @@ graph TB
 
 - **[Architecture](architecture/system_overview.md)**: System design and components
 - **[Data Dictionary](data_dictionary/database_schema.md)**: Database schema and data models
+- **[Race Evidence Inventory](race_evidence_inventory.md)**: Evidence roots, output guards, and readiness evidence boundaries
 - **[Monitoring](monitoring/prometheus_metrics.md)**: Metrics, alerts, and performance monitoring
 - **[Model Governance](governance/champion_challenger.md)**: Model deployment and management
 - **[API Reference](api/endpoints.md)**: Complete API documentation
