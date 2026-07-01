@@ -92,10 +92,10 @@ A source commit on `master` does not change the installed user service or the
 active runtime checkout. Re-verify the systemd unit path before reasoning about
 live daemon behavior.
 
-## Daily Odds Status Fields
+## Daily And Autopilot Odds Status Fields
 
-PR #33 adds sample-scoped odds diagnostics to `DAILY_STATUS.json`,
-`DAILY_STATUS.md`, and the shadow-autopilot dashboard output:
+PR #33 adds sample-scoped odds diagnostics to `DAILY_STATUS.json` and
+`DAILY_STATUS.md`:
 
 - `prediction_sample_odds_coverage_status`
 - `prediction_sample_odds_coverage_blocker`
@@ -105,6 +105,20 @@ PR #33 adds sample-scoped odds diagnostics to `DAILY_STATUS.json`,
 - `prediction_sample_odds_coverage_report`
 - `autonomous_live_odds_capture_scope_status`
 - `autonomous_live_odds_capture_scope_gap_races`
+
+The shadow-autopilot command return payload and `verification_results.txt`
+surface the compact summary fields:
+
+- `prediction_sample_odds_coverage_status`
+- `prediction_sample_odds_missing_prejump_races`
+- `autonomous_live_odds_capture_scope_status`
+- `autonomous_live_odds_capture_scope_gap_races`
+
+The full daemon reads the autopilot cycle's `DAILY_STATUS.json` and carries
+status forward into daemon artifacts with `autopilot_cycle_*` fields and daemon
+runtime state with `last_*` fields. Treat these as pass-through status pointers
+to the autopilot cycle, not as a separate readiness gate or permission to mutate
+runtime state.
 
 Interpret these against the current prediction sample only. A complete raw
 `live_odds` table, a large historical evidence root, or a later odds-only
