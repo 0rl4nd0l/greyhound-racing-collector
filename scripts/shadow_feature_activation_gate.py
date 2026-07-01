@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -19,8 +20,15 @@ from typing import Any, Mapping, Sequence
 
 
 ROOT = Path(__file__).resolve().parents[1]
+ROOT_STR = str(ROOT)
+sys.path = [path for path in sys.path if path != ROOT_STR]
+sys.path.insert(0, ROOT_STR)
+
+from utils.report_output_dir_guard import assert_prefixed_report_output_dir  # noqa: E402
+
 DEFAULT_OUTPUT_PARENT = ROOT / "artifacts/full_evidence_orchestration_20260525"
 OUTPUT_PREFIX = "artifacts/full_evidence_orchestration_20260525/shadow_feature_activation_gate_"
+OUTPUT_ARTIFACT_PREFIX = "shadow_feature_activation_gate_"
 DEFAULT_CANDIDATE_FEATURES = (
     "same_distance_same_grade_best_time",
     "same_distance_same_grade_avg_time",
@@ -82,17 +90,19 @@ def write_text(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def assert_output_dir_safe(output_dir: Path) -> Path:
-    logical = output_dir if output_dir.is_absolute() else ROOT / output_dir
-    try:
-        relative = logical.absolute().relative_to(ROOT.absolute())
-    except ValueError as exc:
-        raise ValueError("output_dir_must_be_inside_repo") from exc
-    if ".." in relative.parts:
-        raise ValueError("output_dir_must_not_contain_parent_traversal")
-    if not relative.as_posix().startswith(OUTPUT_PREFIX):
-        raise ValueError(f"output_dir_must_be_shadow_feature_activation_gate_artifact:{relative}")
-    return logical.absolute()
+def assert_output_dir_safe(
+    output_dir: Path,
+    *,
+    evidence_root: Path | None = None,
+) -> Path:
+    return assert_prefixed_report_output_dir(
+        output_dir,
+        repo_root=ROOT,
+        repo_prefix=OUTPUT_PREFIX,
+        artifact_prefix=OUTPUT_ARTIFACT_PREFIX,
+        prefix_error="output_dir_must_be_shadow_feature_activation_gate_artifact",
+        evidence_root=evidence_root,
+    )
 
 
 def ratio_too_unstable(train_pct: float, holdout_pct: float, max_ratio: float) -> bool:
@@ -702,13 +712,14 @@ def run_activation_gate(
     candidate_metrics_path: Path | None = None,
     output_parent: Path = DEFAULT_OUTPUT_PARENT,
     output_dir: Path | None = None,
+    evidence_root: Path | None = None,
     candidate_features: Sequence[str] = DEFAULT_CANDIDATE_FEATURES,
     thresholds: ActivationThresholds = ActivationThresholds(),
     generated_at: datetime | None = None,
 ) -> dict[str, Any]:
     generated_at = generated_at or datetime.now().astimezone()
     output_dir = output_dir or output_parent / f"shadow_feature_activation_gate_{now_id(generated_at)}"
-    output_dir = assert_output_dir_safe(output_dir)
+    output_dir = assert_output_dir_safe(output_dir, evidence_root=evidence_root)
     output_dir.mkdir(parents=True, exist_ok=False)
     report = build_activation_report(
         candidate_features=candidate_features,
@@ -750,6 +761,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--candidate-metrics", type=Path)
     parser.add_argument("--output-parent", default=DEFAULT_OUTPUT_PARENT, type=Path)
     parser.add_argument("--output-dir", type=Path)
+    parser.add_argument("--evidence-root", default=DEFAULT_OUTPUT_PARENT, type=Path)
     parser.add_argument("--feature", action="append", dest="features")
     parser.add_argument("--min-train-present-rows", type=int, default=ActivationThresholds.min_train_present_rows)
     parser.add_argument("--min-train-present-pct", type=float, default=ActivationThresholds.min_train_present_pct)
@@ -787,6 +799,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         candidate_metrics_path=args.candidate_metrics,
         output_parent=args.output_parent,
         output_dir=args.output_dir,
+        evidence_root=args.evidence_root,
         candidate_features=args.features or DEFAULT_CANDIDATE_FEATURES,
         thresholds=thresholds,
     )

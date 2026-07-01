@@ -42,7 +42,7 @@ DEFAULT_TARGET_JOINED_RACES = 100
 DEFAULT_MIN_JOINED_RACES_FOR_STATUS = 100
 DEFAULT_ODDS_CAPTURE_MIN_MINUTES = 0.0
 DEFAULT_ODDS_CAPTURE_MAX_MINUTES = 60.0
-DEFAULT_ODDS_CAPTURE_REFRESH_LIMIT = 8
+DEFAULT_ODDS_CAPTURE_REFRESH_LIMIT = 16
 DEFAULT_AUTONOMOUS_ODDS_CAPTURE_LIMIT: int | None = None
 DEFAULT_HISTORICAL_UNIFIED_EVIDENCE_REPORT_LIMIT = 600
 DEFAULT_RESULT_BACKLOG_LIMIT = 128
@@ -550,12 +550,15 @@ def shadow_odds_snapshot_command(
     *,
     daily_dir: Path,
     odds_dir: Path,
+    evidence_root: Path,
     db_path: Path,
     current_time: str,
 ) -> list[str]:
     return [
         sys.executable,
         str(ROOT / "scripts/collect_shadow_odds_snapshots.py"),
+        "--evidence-root",
+        str(evidence_root),
         "--shadow-run-dir",
         str(daily_dir),
         "--output-dir",
@@ -641,6 +644,7 @@ def autonomous_official_result_capture_command(
     shadow_run_dir: Path | None = None,
     snapshot_dir: Path | None,
     output_dir: Path,
+    evidence_root: Path,
     db_path: Path,
     current_time: str | None = None,
     race_ids: Sequence[str] | None = None,
@@ -657,6 +661,8 @@ def autonomous_official_result_capture_command(
         str(ROOT / "scripts/autonomous_official_result_capture.py"),
         "--date",
         target_date,
+        "--evidence-root",
+        str(evidence_root),
         "--output-dir",
         str(output_dir),
         "--db",
@@ -697,6 +703,7 @@ def unified_evidence_dataset_command(
     *,
     shadow_run_dir: Path,
     output_dir: Path,
+    evidence_root: Path,
     db_path: Path,
     odds_jsonl_paths: Sequence[Path] | None = None,
     official_result_runner_paths: Sequence[Path] | None = None,
@@ -708,6 +715,8 @@ def unified_evidence_dataset_command(
         str(ROOT / "scripts/build_unified_evidence_dataset.py"),
         "--shadow-run-dir",
         str(shadow_run_dir),
+        "--evidence-root",
+        str(evidence_root),
         "--output-dir",
         str(output_dir),
         "--db",
@@ -2006,6 +2015,7 @@ def high_accuracy_refinement_packet_command(
     *,
     unified_evidence_report: Path,
     output_dir: Path,
+    evidence_root: Path,
     stage2_predictions: Path | None = None,
     odds_augmented_report: Path | None = None,
     odds_gate_report: Path | None = None,
@@ -2020,6 +2030,8 @@ def high_accuracy_refinement_packet_command(
         str(ROOT / "scripts/build_high_accuracy_refinement_packet.py"),
         "--unified-evidence-report",
         str(unified_evidence_report),
+        "--evidence-root",
+        str(evidence_root),
         "--output-dir",
         str(output_dir),
     ]
@@ -2081,12 +2093,15 @@ def pre_race_gated_challenger_command(
     *,
     runner_matrix_csv: Path,
     output_dir: Path,
+    evidence_root: Path,
 ) -> list[str]:
     return [
         sys.executable,
         str(ROOT / "scripts/build_pre_race_gated_challenger_packet.py"),
         "--runner-matrix-csv",
         str(runner_matrix_csv),
+        "--evidence-root",
+        str(evidence_root),
         "--output-dir",
         str(output_dir),
     ]
@@ -2098,12 +2113,15 @@ def promotion_distance_report_command(
     pre_race_gated_report: Path,
     high_accuracy_gate: Path,
     output_dir: Path,
+    evidence_root: Path,
 ) -> list[str]:
     return [
         sys.executable,
         str(ROOT / "scripts/build_promotion_distance_report.py"),
         "--rolling-report",
         str(rolling_report),
+        "--evidence-root",
+        str(evidence_root),
         "--pre-race-gated-report",
         str(pre_race_gated_report),
         "--high-accuracy-gate",
@@ -2136,10 +2154,13 @@ def rolling_model_comparison_command(
     *,
     unified_evidence_reports: Sequence[Path],
     output_dir: Path,
+    evidence_root: Path,
 ) -> list[str]:
     command = [
         sys.executable,
         str(ROOT / "scripts/build_rolling_model_comparison_packet.py"),
+        "--evidence-root",
+        str(evidence_root),
         "--output-dir",
         str(output_dir),
     ]
@@ -3127,6 +3148,8 @@ def build_timing_aligned_prediction_rerun_plan(
         "full-dry-run",
         "--output-dir",
         str(rerun_output_dir),
+        "--output-parent",
+        str(output_dir.parent),
         "--current-time",
         planned_current_time,
         "--db",
@@ -3310,6 +3333,7 @@ def execute_timing_aligned_prediction_rerun_plan(
         odds_command = shadow_odds_snapshot_command(
             daily_dir=rerun_daily_dir,
             odds_dir=rerun_odds_dir,
+            evidence_root=output_dir.parent,
             db_path=db_path,
             current_time=current_time,
         )
@@ -5084,6 +5108,41 @@ def build_daily_status(
         backlog_unified_eligible_rows,
         high_accuracy_unified_eligible_rows,
     )
+    races_scored_today = int((daily_manifest or {}).get("race_count") or 0)
+    prediction_rows_today = int((daily_manifest or {}).get("prediction_rows") or 0)
+    complete_prejump_odds_races = safe_count(
+        (odds_snapshot_status or {}).get("races_with_complete_valid_prejump_odds")
+    )
+    reported_missing_odds_races = safe_count(
+        (odds_snapshot_status or {}).get("races_with_missing_odds_rows")
+    )
+    missing_prejump_odds_races = max(
+        reported_missing_odds_races,
+        max(0, races_scored_today - complete_prejump_odds_races),
+    )
+    if races_scored_today <= 0:
+        prediction_sample_odds_coverage_status = "DATA_MISSING_NO_PREDICTION_SAMPLE"
+        prediction_sample_odds_coverage_blocker = None
+    elif missing_prejump_odds_races > 0:
+        prediction_sample_odds_coverage_status = "BLOCKED_MISSING_PREJUMP_ODDS"
+        prediction_sample_odds_coverage_blocker = (
+            "prediction_sample_missing_complete_valid_prejump_odds"
+        )
+    else:
+        prediction_sample_odds_coverage_status = "PASS_COMPLETE_PREJUMP_ODDS"
+        prediction_sample_odds_coverage_blocker = None
+    autonomous_odds_ready_count = safe_count(
+        (autonomous_live_odds_capture_status or {}).get("ready_count")
+    )
+    autonomous_odds_scope_gap = max(0, races_scored_today - autonomous_odds_ready_count)
+    if races_scored_today <= 0:
+        autonomous_odds_scope_status = "DATA_MISSING_NO_PREDICTION_SAMPLE"
+    elif autonomous_odds_ready_count >= races_scored_today:
+        autonomous_odds_scope_status = "PASS_AUTONOMOUS_ODDS_SCOPE_COVERS_SAMPLE"
+    elif autonomous_odds_ready_count > 0:
+        autonomous_odds_scope_status = "PARTIAL_AUTONOMOUS_ODDS_SCOPE"
+    else:
+        autonomous_odds_scope_status = "BLOCKED_NO_AUTONOMOUS_ODDS_SCOPE"
     comparisons = {
         key: {
             "current": current.get(key),
@@ -5097,8 +5156,8 @@ def build_daily_status(
         "schema_version": "shadow_autopilot_daily_status_v1",
         "generated_at": generated_at.isoformat(),
         "what_happened_today": "Ran shadow autopilot collection, odds diagnostics, exact result join, aggregate dashboard, drift report, and readiness tracker.",
-        "races_scored_today": int((daily_manifest or {}).get("race_count") or 0),
-        "prediction_rows_today": int((daily_manifest or {}).get("prediction_rows") or 0),
+        "races_scored_today": races_scored_today,
+        "prediction_rows_today": prediction_rows_today,
         "results_joined_this_run": (result_join_status.get("latest_join") or {}).get("joined_count", 0),
         "odds_snapshot_status": (odds_snapshot_status or {}).get("status"),
         "odds_candidate_rows": (odds_snapshot_status or {}).get("odds_candidate_rows", 0),
@@ -5114,6 +5173,24 @@ def build_daily_status(
             "races_with_missing_odds_rows",
             0,
         ),
+        "prediction_sample_odds_coverage_status": (
+            prediction_sample_odds_coverage_status
+        ),
+        "prediction_sample_odds_coverage_blocker": (
+            prediction_sample_odds_coverage_blocker
+        ),
+        "prediction_sample_odds_expected_races": races_scored_today,
+        "prediction_sample_odds_complete_prejump_races": (
+            complete_prejump_odds_races
+        ),
+        "prediction_sample_odds_missing_prejump_races": (
+            missing_prejump_odds_races
+        ),
+        "prediction_sample_odds_coverage_report": (
+            odds_snapshot_status or {}
+        ).get("race_coverage_path"),
+        "autonomous_live_odds_capture_scope_status": autonomous_odds_scope_status,
+        "autonomous_live_odds_capture_scope_gap_races": autonomous_odds_scope_gap,
         "ev_output_rows": (odds_snapshot_status or {}).get("ev_output_rows", 0),
         "live_odds_capture_approval_status": (live_odds_capture_packet or {}).get(
             "status"
@@ -6029,6 +6106,12 @@ def daily_status_markdown(daily_status: Mapping[str, Any]) -> str:
         f"Valid pre-jump dog odds rows: `{daily_status.get('valid_pre_jump_dog_odds_rows')}`",
         f"Races with complete valid pre-jump odds: `{daily_status.get('races_with_complete_valid_prejump_odds')}`",
         f"Races with missing odds rows: `{daily_status.get('races_with_missing_odds_rows')}`",
+        f"Prediction-sample odds coverage: `{daily_status.get('prediction_sample_odds_coverage_status')}`",
+        f"Prediction-sample odds coverage blocker: `{daily_status.get('prediction_sample_odds_coverage_blocker')}`",
+        f"Prediction-sample odds complete/missing races: `{daily_status.get('prediction_sample_odds_complete_prejump_races')}` / `{daily_status.get('prediction_sample_odds_missing_prejump_races')}`",
+        f"Prediction-sample odds coverage report: `{daily_status.get('prediction_sample_odds_coverage_report')}`",
+        f"Autonomous odds scope: `{daily_status.get('autonomous_live_odds_capture_scope_status')}`",
+        f"Autonomous odds scope gap races: `{daily_status.get('autonomous_live_odds_capture_scope_gap_races')}`",
         f"Odds research gate: `{daily_status.get('odds_research_gate_status')}`",
         f"Odds research gate complete valid races: `{daily_status.get('odds_research_gate_complete_valid_prejump_odds_races')}`",
         f"Odds research next action: `{daily_status.get('odds_research_next_action')}`",
@@ -6384,6 +6467,8 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             str(args.max_minutes),
             "--limit",
             str(args.refresh_limit),
+            "--current-time",
+            current_time,
             "--output",
             str(output_dir / "refresh_prejump_report.json"),
         ]
@@ -6452,6 +6537,8 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             str(args.odds_capture_max_minutes),
             "--limit",
             str(odds_capture_limit),
+            "--current-time",
+            current_time,
             "--output",
             str(output_dir / "odds_capture_refresh_report.json"),
         ]
@@ -6548,6 +6635,8 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             "full-dry-run",
             "--output-dir",
             str(daily_dir),
+            "--output-parent",
+            str(evidence_root),
             "--current-time",
             current_time,
             "--db",
@@ -6637,6 +6726,7 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             if result_capture_shadow_dir is None
             else None,
             output_dir=autonomous_result_capture_dir,
+            evidence_root=evidence_root,
             db_path=args.db,
             current_time=result_capture_command_current_time,
             require_ready_snapshot=result_capture_shadow_dir is None,
@@ -6720,6 +6810,7 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
         odds_command = shadow_odds_snapshot_command(
             daily_dir=daily_dir,
             odds_dir=odds_dir,
+            evidence_root=evidence_root,
             db_path=args.db,
             current_time=current_time,
         )
@@ -6833,6 +6924,7 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
         unified_dataset_command = unified_evidence_dataset_command(
             shadow_run_dir=daily_dir,
             output_dir=unified_dataset_dir,
+            evidence_root=evidence_root,
             db_path=args.db,
             odds_jsonl_paths=odds_jsonl_paths,
             official_result_runner_paths=official_result_runner_paths,
@@ -6901,6 +6993,7 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             backlog_dataset_command = unified_evidence_dataset_command(
                 shadow_run_dir=backlog_shadow_dir,
                 output_dir=backlog_dataset_dir,
+                evidence_root=evidence_root,
                 db_path=args.db,
                 odds_jsonl_paths=shadow_odds_snapshot_paths_for_daily_dir(
                     evidence_root=evidence_root,
@@ -7010,6 +7103,7 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             rolling_comparison_command = rolling_model_comparison_command(
                 unified_evidence_reports=unified_report_paths,
                 output_dir=rolling_comparison_dir,
+                evidence_root=evidence_root,
             )
             rolling_comparison_step = step_command(
                 name="rolling_model_comparison",
@@ -7061,6 +7155,7 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             command=pre_race_gated_challenger_command(
                 runner_matrix_csv=rolling_runner_matrix_csv,
                 output_dir=pre_race_gated_dir,
+                evidence_root=evidence_root,
             ),
             output_dir=output_dir,
             timeout_seconds=args.step_timeout_seconds,
@@ -7101,6 +7196,7 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
         high_accuracy_command = high_accuracy_refinement_packet_command(
             unified_evidence_report=unified_report_path,
             output_dir=high_accuracy_dir,
+            evidence_root=evidence_root,
             stage2_predictions=stage2_predictions_path,
             odds_augmented_report=(
                 rolling_comparison_dir / "rolling_model_comparison_report.json"
@@ -7148,6 +7244,7 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
                     pre_race_gated_report=pre_race_gated_report_path,
                     high_accuracy_gate=high_accuracy_gate_path,
                     output_dir=promotion_distance_dir,
+                    evidence_root=evidence_root,
                 ),
                 output_dir=output_dir,
                 timeout_seconds=args.step_timeout_seconds,
@@ -7159,6 +7256,7 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
                     command=high_accuracy_refinement_packet_command(
                         unified_evidence_report=unified_report_path,
                         output_dir=high_accuracy_after_promotion_dir,
+                        evidence_root=evidence_root,
                         stage2_predictions=stage2_predictions_path,
                         odds_augmented_report=rolling_comparison_report_path,
                         odds_gate_report=odds_gate_report_path,
@@ -7210,6 +7308,8 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
         join_command = [
             sys.executable,
             str(ROOT / "scripts/join_forward_shadow_results.py"),
+            "--evidence-root",
+            str(evidence_root),
             "--shadow-run-dir",
             str(daily_dir),
             "--output-dir",
@@ -7330,6 +7430,8 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
         activation_command = [
             sys.executable,
             str(ROOT / "scripts/shadow_feature_activation_gate.py"),
+            "--evidence-root",
+            str(evidence_root),
             "--parity-report",
             str(activation_gate_inputs["parity_report"]),
             "--provenance-audit",
@@ -7734,6 +7836,12 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
         protected_paths_unchanged=protected_paths_unchanged_or_allowed,
         required_outputs_present=required_outputs_present,
     )
+    if (
+        final_verdict == "AUTOPILOT_READY"
+        and daily_status.get("prediction_sample_odds_coverage_status")
+        == "BLOCKED_MISSING_PREJUMP_ODDS"
+    ):
+        final_verdict = "PARTIAL_AUTOMATION_READY"
     write_text(
         output_dir / "verification_results.txt",
         "\n".join(
@@ -7750,6 +7858,14 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
                 f"tgr_enabled=False",
                 f"betting_or_ev_action=False",
                 f"shadow_odds_snapshot_status={odds_snapshot_status.get('status')}",
+                f"races_with_complete_valid_prejump_odds={odds_snapshot_status.get('races_with_complete_valid_prejump_odds')}",
+                f"races_with_missing_odds_rows={odds_snapshot_status.get('races_with_missing_odds_rows')}",
+                f"prediction_sample_odds_coverage_status={daily_status.get('prediction_sample_odds_coverage_status')}",
+                f"prediction_sample_odds_coverage_blocker={daily_status.get('prediction_sample_odds_coverage_blocker')}",
+                f"prediction_sample_odds_complete_prejump_races={daily_status.get('prediction_sample_odds_complete_prejump_races')}",
+                f"prediction_sample_odds_missing_prejump_races={daily_status.get('prediction_sample_odds_missing_prejump_races')}",
+                f"autonomous_live_odds_capture_scope_status={daily_status.get('autonomous_live_odds_capture_scope_status')}",
+                f"autonomous_live_odds_capture_scope_gap_races={daily_status.get('autonomous_live_odds_capture_scope_gap_races')}",
                 f"shadow_odds_snapshot_ev_output_rows={odds_snapshot_status.get('ev_output_rows')}",
                 f"timing_aligned_prediction_rerun_plan_status={timing_aligned_rerun_plan.get('status')}",
                 f"timing_aligned_prediction_rerun_execution_status={timing_aligned_rerun_execution_status.get('status')}",
@@ -7890,6 +8006,18 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
         ),
         "autonomous_live_odds_capture_inserted_rows": autonomous_odds_capture_status.get(
             "inserted_live_odds_rows"
+        ),
+        "prediction_sample_odds_coverage_status": daily_status.get(
+            "prediction_sample_odds_coverage_status"
+        ),
+        "prediction_sample_odds_missing_prejump_races": daily_status.get(
+            "prediction_sample_odds_missing_prejump_races"
+        ),
+        "autonomous_live_odds_capture_scope_status": daily_status.get(
+            "autonomous_live_odds_capture_scope_status"
+        ),
+        "autonomous_live_odds_capture_scope_gap_races": daily_status.get(
+            "autonomous_live_odds_capture_scope_gap_races"
         ),
         "autonomous_official_result_capture_status": autonomous_result_capture_status.get("status"),
         "autonomous_official_result_race_rows": autonomous_result_capture_status.get(

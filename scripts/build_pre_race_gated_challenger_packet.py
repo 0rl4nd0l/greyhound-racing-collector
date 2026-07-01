@@ -47,6 +47,7 @@ from scripts.build_market_residual_challenger_packet import (  # noqa: E402
     split_folds,
     stage2_uncalibrated_scores,
 )
+from utils.report_output_dir_guard import assert_prefixed_report_output_dir  # noqa: E402
 
 
 DEFAULT_EVIDENCE_ROOT = ROOT / "artifacts/full_evidence_orchestration_20260525"
@@ -54,6 +55,7 @@ OUTPUT_PREFIX = (
     "artifacts/full_evidence_orchestration_20260525/"
     "pre_race_gated_challenger_"
 )
+OUTPUT_ARTIFACT_PREFIX = "pre_race_gated_challenger_"
 REPORT_FILE = "pre_race_gated_challenger_report.json"
 FOLD_SUMMARY_CSV = "cross_validated_fold_summary.csv"
 RACE_PREDICTIONS_CSV = "cross_validated_race_predictions.csv"
@@ -111,17 +113,19 @@ def relpath(path: Path | None) -> str | None:
         return str(path)
 
 
-def assert_output_dir_safe(output_dir: Path) -> Path:
-    logical = output_dir if output_dir.is_absolute() else ROOT / output_dir
-    try:
-        relative = logical.absolute().relative_to(ROOT.absolute())
-    except ValueError as exc:
-        raise ValueError("output_dir_must_be_inside_repo") from exc
-    if ".." in relative.parts:
-        raise ValueError("output_dir_must_not_contain_parent_traversal")
-    if not relative.as_posix().startswith(OUTPUT_PREFIX):
-        raise ValueError(f"output_dir_must_be_pre_race_gated_challenger:{relative}")
-    return logical.absolute()
+def assert_output_dir_safe(
+    output_dir: Path,
+    *,
+    evidence_root: Path | None = None,
+) -> Path:
+    return assert_prefixed_report_output_dir(
+        output_dir,
+        repo_root=ROOT,
+        repo_prefix=OUTPUT_PREFIX,
+        artifact_prefix=OUTPUT_ARTIFACT_PREFIX,
+        prefix_error="output_dir_must_be_pre_race_gated_challenger",
+        evidence_root=evidence_root,
+    )
 
 
 def unique_dir(base: Path) -> Path:
@@ -1050,6 +1054,7 @@ def build_packet(
     *,
     runner_matrix_csv: Path,
     output_dir: Path,
+    evidence_root: Path | None = None,
     fold_count: int = DEFAULT_FOLDS,
     min_train_races: int = DEFAULT_MIN_TRAIN_RACES,
     min_races_for_review: int = MIN_RACES_FOR_REVIEW,
@@ -1057,7 +1062,7 @@ def build_packet(
     generated_at: datetime | None = None,
 ) -> dict[str, Any]:
     generated_at = generated_at or datetime.now().astimezone()
-    output_dir = unique_dir(assert_output_dir_safe(output_dir))
+    output_dir = unique_dir(assert_output_dir_safe(output_dir, evidence_root=evidence_root))
     output_dir.mkdir(parents=True, exist_ok=False)
 
     matrix_rows = load_matrix(runner_matrix_csv)
@@ -1157,6 +1162,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--runner-matrix-csv", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path)
+    parser.add_argument("--evidence-root", type=Path, default=DEFAULT_EVIDENCE_ROOT)
     parser.add_argument("--fold-count", type=int, default=DEFAULT_FOLDS)
     parser.add_argument("--min-train-races", type=int, default=DEFAULT_MIN_TRAIN_RACES)
     parser.add_argument("--min-races-for-review", type=int, default=MIN_RACES_FOR_REVIEW)
@@ -1175,11 +1181,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     generated_at = datetime.now().astimezone()
     output_dir = (
         args.output_dir
-        or DEFAULT_EVIDENCE_ROOT / f"pre_race_gated_challenger_{now_id(generated_at)}"
+        or args.evidence_root / f"pre_race_gated_challenger_{now_id(generated_at)}"
     )
     report = build_packet(
         runner_matrix_csv=args.runner_matrix_csv,
         output_dir=output_dir,
+        evidence_root=args.evidence_root,
         fold_count=args.fold_count,
         min_train_races=args.min_train_races,
         min_races_for_review=args.min_races_for_review,

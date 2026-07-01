@@ -39,6 +39,7 @@ from scripts.ingest_results_for_date import (  # noqa: E402
     thedogs_result_urls_from_race_url,
 )
 from utils.race_lifecycle import extract_target_metadata_from_filename  # noqa: E402
+from utils.report_output_dir_guard import assert_prefixed_report_output_dir  # noqa: E402
 
 
 DEFAULT_OUTPUT_PARENT = ROOT / "artifacts/full_evidence_orchestration_20260525"
@@ -53,6 +54,7 @@ DEFAULT_PROTECTED_PATHS = (
 EXPECTED_OFFICIAL_RACES = 214
 EXPECTED_OFFICIAL_DOG_ROWS = 1493
 RESULT_JOIN_PREFIX = "artifacts/full_evidence_orchestration_20260525/forward_shadow_result_join_"
+RESULT_JOIN_ARTIFACT_PREFIX = "forward_shadow_result_join_"
 PROBABILITY_COLUMN = "shadow_rf_calibrated_probability"
 NON_NAME_RESULT_BADGES = frozenset({"NBT"})
 SCRATCH_STATUSES = frozenset({"SCR", "L/SCR", "LSCR"})
@@ -104,26 +106,36 @@ def relpath(path: Path) -> str:
         return str(path)
 
 
-def assert_result_join_output_dir_safe(output_dir: Path) -> Path:
-    logical = output_dir if output_dir.is_absolute() else ROOT / output_dir
-    try:
-        relative = logical.absolute().relative_to(ROOT.absolute())
-    except ValueError as exc:
-        raise ValueError("output_dir_must_be_inside_repo") from exc
-    if ".." in relative.parts:
-        raise ValueError("output_dir_must_not_contain_parent_traversal")
-    if not relative.as_posix().startswith(RESULT_JOIN_PREFIX):
-        raise ValueError(f"output_dir_must_be_forward_shadow_result_join_artifact:{relative}")
-    return logical.absolute()
+def assert_result_join_output_dir_safe(
+    output_dir: Path,
+    *,
+    evidence_root: Path | None = None,
+) -> Path:
+    return assert_prefixed_report_output_dir(
+        output_dir,
+        repo_root=ROOT,
+        repo_prefix=RESULT_JOIN_PREFIX,
+        artifact_prefix=RESULT_JOIN_ARTIFACT_PREFIX,
+        prefix_error="output_dir_must_be_forward_shadow_result_join_artifact",
+        evidence_root=evidence_root,
+    )
 
 
-def unique_default_output_dir(output_parent: Path, generated_at: datetime) -> Path:
+def unique_default_output_dir(
+    output_parent: Path,
+    generated_at: datetime,
+    *,
+    evidence_root: Path | None = None,
+) -> Path:
     base = output_parent / f"forward_shadow_result_join_{now_id(generated_at)}"
-    output_dir = assert_result_join_output_dir_safe(base)
+    output_dir = assert_result_join_output_dir_safe(base, evidence_root=evidence_root)
     if not output_dir.exists():
         return output_dir
     for index in range(1, 1000):
-        candidate = assert_result_join_output_dir_safe(Path(f"{base}_{index:03d}"))
+        candidate = assert_result_join_output_dir_safe(
+            Path(f"{base}_{index:03d}"),
+            evidence_root=evidence_root,
+        )
         if not candidate.exists():
             return candidate
     raise RuntimeError("forward_shadow_result_join_output_dir_collision_exhausted")
@@ -869,6 +881,7 @@ def join_forward_shadow_results(
     shadow_run_dir: Path,
     output_parent: Path = DEFAULT_OUTPUT_PARENT,
     output_dir: Path | None = None,
+    evidence_root: Path | None = None,
     refresh_metadata_path: Path | None = None,
     db_path: Path = DEFAULT_DB_PATH,
     current_time: datetime | None = None,
@@ -878,9 +891,13 @@ def join_forward_shadow_results(
     generated_at = current_time or datetime.now().astimezone()
     shadow_run_dir = shadow_run_dir.resolve()
     output_dir = (
-        assert_result_join_output_dir_safe(output_dir)
+        assert_result_join_output_dir_safe(output_dir, evidence_root=evidence_root)
         if output_dir is not None
-        else unique_default_output_dir(output_parent, generated_at)
+        else unique_default_output_dir(
+            output_parent,
+            generated_at,
+            evidence_root=evidence_root or output_parent,
+        )
     )
     output_dir.mkdir(parents=True, exist_ok=False)
 
@@ -1247,6 +1264,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--shadow-run-dir", required=True, type=Path)
     parser.add_argument("--output-parent", default=DEFAULT_OUTPUT_PARENT, type=Path)
     parser.add_argument("--output-dir", type=Path)
+    parser.add_argument("--evidence-root", default=DEFAULT_OUTPUT_PARENT, type=Path)
     parser.add_argument("--refresh-metadata", type=Path)
     parser.add_argument("--db", default=DEFAULT_DB_PATH, type=Path)
     parser.add_argument("--current-time", help="ISO timestamp used for pending race-time decisions")
@@ -1259,6 +1277,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         shadow_run_dir=args.shadow_run_dir,
         output_parent=args.output_parent,
         output_dir=args.output_dir,
+        evidence_root=args.evidence_root,
         refresh_metadata_path=args.refresh_metadata,
         db_path=args.db,
         current_time=parse_current_time(args.current_time),

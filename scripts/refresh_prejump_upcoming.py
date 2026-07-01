@@ -29,6 +29,18 @@ from utils.expert_form_metadata import safe_expert_form_metadata_from_payload  #
 from utils.race_lifecycle import melbourne_now  # noqa: E402
 
 
+def parse_current_time(value: str | None) -> datetime:
+    if not value:
+        return melbourne_now()
+    text = str(value).strip()
+    if len(text) >= 5 and text[-5] in {"+", "-"} and text[-4:].isdigit():
+        text = f"{text[:-5]}{text[-5:-2]}:{text[-2:]}"
+    parsed = datetime.fromisoformat(text)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=melbourne_now().tzinfo)
+    return parsed
+
+
 VENUE_EXCLUSION_ALIAS_GROUPS = [
     {"QOT", "LADBROKES-Q-STRAIGHT", "LADBROKES_Q_STRAIGHT", "LADBROKES Q STRAIGHT"},
     {"LCTN", "LAUNCESTON"},
@@ -584,7 +596,7 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
 
     from upcoming_race_browser import UpcomingRaceBrowser
 
-    now = melbourne_now()
+    now = parse_current_time(getattr(args, "current_time", None))
     browser = UpcomingRaceBrowser()
     races = browser.get_upcoming_races(days_ahead=int(args.days_ahead))
     excluded_race_ids = load_excluded_race_ids(
@@ -678,6 +690,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional newline, JSON list, or JSON object file of race IDs to skip.",
     )
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--current-time")
     parser.add_argument(
         "--require-safe-metadata",
         action="store_true",

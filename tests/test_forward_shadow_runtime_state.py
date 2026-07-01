@@ -1290,6 +1290,21 @@ def test_runtime_action_reports_active_daemon_before_waiting_state():
     assert reasons == ["shadow_autopilot_service_active"]
 
 
+def test_runtime_action_reports_ready_needs_deployment_without_failure():
+    action, reasons = runtime.decide_runtime_action(
+        daemon_state={
+            "last_verdict": "DAEMON_READY_NEEDS_DEPLOYMENT",
+            "last_next_prejump_refresh_status": "READY_FOR_REFRESH",
+            "last_safe_joined_races": 1061,
+        },
+        timer={"service_status": "inactive", "timer_status": "inactive"},
+        target_joined_races=100,
+    )
+
+    assert action == "DEPLOY_OR_RESTART_DAEMON_TIMER"
+    assert reasons == ["daemon_ready_timer_not_active"]
+
+
 def test_runtime_action_continues_collection_when_not_waiting_and_under_target():
     action, reasons = runtime.decide_runtime_action(
         daemon_state={

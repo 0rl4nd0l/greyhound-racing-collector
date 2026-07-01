@@ -33,11 +33,13 @@ sys.path.insert(0, ROOT_STR)
 from accuracy_program.odds_coverage import normalize_dog_name, normalize_venue  # noqa: E402
 from accuracy_program.snapshots import TRUSTED_ODDS_SOURCES, classify_odds_snapshot_for_ev  # noqa: E402
 from scripts.refresh_prejump_upcoming import venue_exclusion_aliases  # noqa: E402
+from utils.report_output_dir_guard import assert_prefixed_report_output_dir  # noqa: E402
 
 
 DEFAULT_DB = ROOT / "greyhound_racing_data.db"
 DEFAULT_OUTPUT_PARENT = ROOT / "artifacts/full_evidence_orchestration_20260525"
 OUTPUT_PREFIX = "artifacts/full_evidence_orchestration_20260525/shadow_odds_snapshot_"
+OUTPUT_ARTIFACT_PREFIX = "shadow_odds_snapshot_"
 EXPECTED_OFFICIAL_RACES = 214
 EXPECTED_OFFICIAL_DOG_ROWS = 1493
 DEFAULT_STALE_ODDS_AFTER_MINUTES = 30.0
@@ -338,17 +340,19 @@ def protected_hashes(paths: Sequence[Path] = PROTECTED_PATHS) -> dict[str, str |
     return {relpath(path) or str(path): sha256_file(path) for path in paths}
 
 
-def assert_output_dir_safe(output_dir: Path) -> Path:
-    logical = output_dir if output_dir.is_absolute() else ROOT / output_dir
-    try:
-        relative = logical.absolute().relative_to(ROOT.absolute())
-    except ValueError as exc:
-        raise ValueError("output_dir_must_be_inside_repo") from exc
-    if ".." in relative.parts:
-        raise ValueError("output_dir_must_not_contain_parent_traversal")
-    if not relative.as_posix().startswith(OUTPUT_PREFIX):
-        raise ValueError(f"output_dir_must_be_shadow_odds_snapshot_artifact:{relative}")
-    return logical.absolute()
+def assert_output_dir_safe(
+    output_dir: Path,
+    *,
+    evidence_root: Path | None = None,
+) -> Path:
+    return assert_prefixed_report_output_dir(
+        output_dir,
+        repo_root=ROOT,
+        repo_prefix=OUTPUT_PREFIX,
+        artifact_prefix=OUTPUT_ARTIFACT_PREFIX,
+        prefix_error="output_dir_must_be_shadow_odds_snapshot_artifact",
+        evidence_root=evidence_root,
+    )
 
 
 def parse_current_time(value: str | None) -> datetime:
@@ -2102,6 +2106,7 @@ def collect_shadow_odds_snapshot(
     shadow_run_dir: Path,
     db_path: Path,
     output_dir: Path,
+    evidence_root: Path | None = None,
     current_time: datetime | None = None,
     current_only: bool = True,
     stale_odds_after_minutes: float = DEFAULT_STALE_ODDS_AFTER_MINUTES,
@@ -2109,7 +2114,7 @@ def collect_shadow_odds_snapshot(
     if not math.isfinite(stale_odds_after_minutes) or stale_odds_after_minutes <= 0:
         raise ValueError("stale_odds_after_minutes_must_be_positive")
     generated_at = current_time or datetime.now().astimezone()
-    output_dir = assert_output_dir_safe(output_dir)
+    output_dir = assert_output_dir_safe(output_dir, evidence_root=evidence_root)
     protected_before = protected_hashes()
     db_state = verify_db_state(db_path)
     predictions = read_jsonl(shadow_predictions_path(shadow_run_dir))
@@ -2424,6 +2429,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--shadow-run-dir", required=True, type=Path)
     parser.add_argument("--db", default=DEFAULT_DB, type=Path)
     parser.add_argument("--output-dir", type=Path)
+    parser.add_argument("--evidence-root", type=Path, default=DEFAULT_OUTPUT_PARENT)
     parser.add_argument("--current-time")
     parser.add_argument("--all-odds", action="store_true")
     parser.add_argument(
@@ -2435,12 +2441,13 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     current_time = parse_current_time(args.current_time)
     output_dir = args.output_dir or (
-        DEFAULT_OUTPUT_PARENT / f"shadow_odds_snapshot_{now_id(current_time)}"
+        args.evidence_root / f"shadow_odds_snapshot_{now_id(current_time)}"
     )
     report = collect_shadow_odds_snapshot(
         shadow_run_dir=args.shadow_run_dir,
         db_path=args.db,
         output_dir=output_dir,
+        evidence_root=args.evidence_root,
         current_time=current_time,
         current_only=not args.all_odds,
         stale_odds_after_minutes=args.stale_odds_after_minutes,
@@ -2449,7 +2456,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         json.dumps(
             {
                 "final_status": report["final_status"],
-                "output_dir": relpath(assert_output_dir_safe(output_dir)),
+                "output_dir": relpath(
+                    assert_output_dir_safe(output_dir, evidence_root=args.evidence_root)
+                ),
                 "prediction_rows": report["prediction_rows"],
                 "odds_candidate_rows": report["odds_candidate_rows"],
                 "valid_pre_jump_dog_odds_rows": report["valid_pre_jump_dog_odds_rows"],

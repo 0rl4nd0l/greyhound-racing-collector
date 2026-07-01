@@ -26,6 +26,7 @@ def test_daemon_default_min_joined_races_matches_review_target():
         args.autonomous_odds_capture_limit
         == daemon.DEFAULT_FULL_DAEMON_AUTONOMOUS_ODDS_CAPTURE_LIMIT
     )
+    assert daemon.DEFAULT_FULL_DAEMON_AUTONOMOUS_ODDS_CAPTURE_LIMIT == 16
     assert args.result_backlog_limit == daemon.DEFAULT_FULL_DAEMON_RESULT_BACKLOG_LIMIT
     assert (
         args.result_backlog_shadow_run_limit
@@ -456,7 +457,7 @@ def test_run_once_releases_after_primary_when_odds_refresh_due(tmp_path, monkeyp
     def fake_run_command(*, name, command, output_dir, timeout_seconds, cwd=daemon.ROOT):
         if name != "autopilot_cycle":
             raise AssertionError(f"post-primary release should not run {name}")
-        assert command[command.index("--autonomous-odds-capture-limit") + 1] == "2"
+        assert command[command.index("--autonomous-odds-capture-limit") + 1] == "16"
         assert command[command.index("--result-backlog-limit") + 1] == "32"
         assert command[command.index("--result-backlog-shadow-run-limit") + 1] == "64"
         assert command[command.index("--result-backlog-lookback-days") + 1] == "2"
@@ -1202,16 +1203,19 @@ def test_odds_capture_only_autopilot_command_is_narrow_and_append_only():
 
 
 def test_gated_challenger_commands_use_report_only_packet_builders():
+    evidence_root = Path("/evidence")
     runner_matrix_csv = Path("/evidence/rolling/market_residual_runner_matrix.csv")
     race_predictions_csv = Path("/evidence/residual/cross_validated_race_predictions.csv")
 
     pre_race_command = daemon.pre_race_gated_challenger_command(
         runner_matrix_csv=runner_matrix_csv,
         output_dir=Path("/evidence/pre_race_gated_challenger_run"),
+        evidence_root=evidence_root,
     )
     rank_first_command = daemon.pre_race_gated_challenger_command(
         runner_matrix_csv=runner_matrix_csv,
         output_dir=Path("/evidence/pre_race_rank_first_hypothesis_review_run"),
+        evidence_root=evidence_root,
         rank_first_hypotheses_json=Path(
             "/evidence/regime/next_hypotheses.json"
         ),
@@ -1236,17 +1240,24 @@ def test_gated_challenger_commands_use_report_only_packet_builders():
         ),
         high_accuracy_gate=Path("/evidence/high_accuracy/promotion_pr_gate.json"),
         output_dir=Path("/evidence/promotion_distance_report_run"),
+        evidence_root=evidence_root,
     )
     watchlist_command = daemon.rank_first_hypothesis_watchlist_command(
-        evidence_root=Path("/evidence"),
+        evidence_root=evidence_root,
         output_dir=Path("/evidence/rank_first_hypothesis_watchlist_run"),
     )
 
     assert "scripts/build_pre_race_gated_challenger_packet.py" in pre_race_command[1]
     assert "--runner-matrix-csv" in pre_race_command
     assert str(runner_matrix_csv) in pre_race_command
+    assert pre_race_command[pre_race_command.index("--evidence-root") + 1] == str(
+        evidence_root
+    )
     assert "--output-dir" in pre_race_command
     assert "scripts/build_pre_race_gated_challenger_packet.py" in rank_first_command[1]
+    assert rank_first_command[rank_first_command.index("--evidence-root") + 1] == str(
+        evidence_root
+    )
     assert "--rank-first-hypotheses-json" in rank_first_command
     assert "/evidence/regime/next_hypotheses.json" in rank_first_command
     assert "scripts/build_time_split_gated_challenger_packet.py" in time_split_command[1]
@@ -1261,6 +1272,9 @@ def test_gated_challenger_commands_use_report_only_packet_builders():
     assert str(race_predictions_csv) in regime_command
     assert "scripts/build_promotion_distance_report.py" in promotion_distance_command[1]
     assert "--rolling-report" in promotion_distance_command
+    assert promotion_distance_command[
+        promotion_distance_command.index("--evidence-root") + 1
+    ] == str(evidence_root)
     assert "--pre-race-gated-report" in promotion_distance_command
     assert "--high-accuracy-gate" in promotion_distance_command
     assert "scripts/build_rank_first_hypothesis_watchlist.py" in watchlist_command[1]

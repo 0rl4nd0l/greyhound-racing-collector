@@ -78,6 +78,7 @@ UV_SCORE_LIVE_PACKAGES = (
     "requests",
 )
 DAILY_OUTPUT_PREFIX = "artifacts/full_evidence_orchestration_20260525/daily_race_ingest_shadow_"
+DAILY_OUTPUT_ARTIFACT_PREFIX = "daily_race_ingest_shadow_"
 EXPECTED_OFFICIAL_RACES = 214
 EXPECTED_OFFICIAL_DOG_ROWS = 1493
 FINAL_STATUS_FORWARD_COMPLETE = "FORWARD_SHADOW_RUN_COMPLETE"
@@ -132,18 +133,45 @@ def parse_current_time(value: str | None) -> datetime:
     return parsed
 
 
-def assert_daily_output_dir_safe(output_dir: Path) -> Path:
+def assert_daily_output_dir_safe(
+    output_dir: Path,
+    *,
+    output_parent: Path | None = None,
+) -> Path:
     logical = output_dir if output_dir.is_absolute() else ROOT / output_dir
+    candidate = logical.absolute()
     try:
-        relative_path = logical.absolute().relative_to(ROOT.absolute())
+        relative_path = candidate.relative_to(ROOT.absolute())
     except ValueError as exc:
-        raise ValueError("output_dir_must_be_inside_repo") from exc
+        if output_parent is None:
+            raise ValueError("output_dir_must_be_inside_repo") from exc
+    else:
+        if ".." in relative_path.parts:
+            raise ValueError("output_dir_must_not_contain_parent_traversal")
+        relative = relative_path.as_posix()
+        if relative.startswith(DAILY_OUTPUT_PREFIX):
+            return candidate
+        raise ValueError(f"output_dir_must_be_daily_shadow_artifact:{relative}")
+
+    parent = output_parent if output_parent.is_absolute() else ROOT / output_parent
+    try:
+        relative_path = candidate.relative_to(parent.absolute())
+    except ValueError as exc:
+        raise ValueError("output_dir_must_be_inside_repo_or_output_parent") from exc
     if ".." in relative_path.parts:
         raise ValueError("output_dir_must_not_contain_parent_traversal")
-    relative = relative_path.as_posix()
-    if not relative.startswith(DAILY_OUTPUT_PREFIX):
-        raise ValueError(f"output_dir_must_be_daily_shadow_artifact:{relative}")
-    return logical.absolute()
+    if relative_path.parts and relative_path.parts[0].startswith(DAILY_OUTPUT_ARTIFACT_PREFIX):
+        return candidate
+    raise ValueError(f"output_dir_must_be_daily_shadow_artifact:{relative_path.as_posix()}")
+
+
+def path_is_inside_repo(path: Path) -> bool:
+    logical = path if path.is_absolute() else ROOT / path
+    try:
+        logical.absolute().relative_to(ROOT.absolute())
+    except ValueError:
+        return False
+    return True
 
 
 def verify_db_state(db_path: Path) -> dict[str, Any]:
@@ -1237,6 +1265,7 @@ def build_score_live_command(
     repaired_packet: Path,
     all_missing_train_policy: str,
     shadow_model: Path | None = None,
+    evidence_root: Path | None = None,
     score_command_mode: str = DEFAULT_SCORE_COMMAND_MODE,
 ) -> list[str]:
     command = [
@@ -1266,6 +1295,8 @@ def build_score_live_command(
             str(output_dir),
         ]
     )
+    if evidence_root is not None:
+        command.extend(["--evidence-root", str(evidence_root)])
     return command
 
 
@@ -1693,7 +1724,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.output_dir
         else (args.output_parent / f"daily_race_ingest_shadow_{now_id()}")
     )
-    output_dir = assert_daily_output_dir_safe(output_dir)
+    output_dir = assert_daily_output_dir_safe(output_dir, output_parent=args.output_parent)
     output_dir.mkdir(parents=True, exist_ok=False)
 
     protected_before = protected_path_snapshot()
@@ -1768,6 +1799,9 @@ def main(argv: list[str] | None = None) -> int:
                 repaired_packet=args.repaired_packet,
                 all_missing_train_policy=args.all_missing_train_policy,
                 shadow_model=args.shadow_model,
+                evidence_root=args.output_parent
+                if not path_is_inside_repo(score_output_dir)
+                else None,
                 score_command_mode=args.score_command_mode,
             )
             write_json(

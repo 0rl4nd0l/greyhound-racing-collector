@@ -682,6 +682,58 @@ def test_refresh_prejump_upcoming_reports_top_level_artifact_counts(tmp_path, mo
     assert report["sidecar_metadata_coverage"]["safe_weather_race_count"] == 0
 
 
+def test_refresh_prejump_upcoming_honors_supplied_current_time(tmp_path, monkeypatch):
+    refresh_module = sys.modules[refresh_prejump_upcoming.__module__]
+    wall_clock = datetime(2026, 6, 24, 0, 47, tzinfo=ZoneInfo("Australia/Melbourne"))
+    monkeypatch.setattr(refresh_module, "melbourne_now", lambda: wall_clock)
+
+    class FakeUpcomingRaceBrowser:
+        def get_upcoming_races(self, days_ahead):
+            assert days_ahead == 1
+            return [
+                {
+                    "url": "https://www.thedogs.com.au/racing/murray-bridge-straight/2026-06-24/1/test?trial=false",
+                    "date": "2026-06-24",
+                    "race_time": "11:29 AM",
+                    "race_number": 1,
+                    "venue": "MURR",
+                }
+            ]
+
+        def download_race_csv(self, url):
+            csv_path = tmp_path / "upcoming" / "Race 1 - MURR - 2026-06-24.csv"
+            csv_path.write_text("box|dog_name\n1|Alpha Runner\n", encoding="utf-8")
+            csv_path.with_name(csv_path.name + ".metadata.json").write_text(
+                json.dumps({"race_url": url}),
+                encoding="utf-8",
+            )
+            return {"success": True, "path": str(csv_path)}
+
+    monkeypatch.setitem(
+        sys.modules,
+        "upcoming_race_browser",
+        types.SimpleNamespace(UpcomingRaceBrowser=FakeUpcomingRaceBrowser),
+    )
+
+    report = refresh_prejump_upcoming(
+        Namespace(
+            upcoming_dir=str(tmp_path / "upcoming"),
+            days_ahead=1,
+            min_minutes=20,
+            max_minutes=160,
+            limit=16,
+            exclude_race_id=[],
+            exclude_race_ids_file=None,
+            dry_run=False,
+            current_time="2026-06-24T09:30:00+10:00",
+        )
+    )
+
+    assert report["generated_at"] == "2026-06-24T09:30:00+10:00"
+    assert report["selected_count"] == 1
+    assert report["bucket_counts"] == {"preferred_window": 1}
+
+
 def _write_safe_collection_sidecar(csv_path: Path, *, expert_form: bool = True):
     csv_path.write_text("box|dog_name\n1|Alpha Runner\n", encoding="utf-8")
     expert = {

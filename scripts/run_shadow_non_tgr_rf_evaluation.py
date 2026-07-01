@@ -88,6 +88,7 @@ AUXILIARY_LIVE_INPUT_DIR_NAMES = frozenset({"raw_exports", "quarantine"})
 
 DEFAULT_FULL_EVIDENCE_PARENT = ROOT / "artifacts/full_evidence_orchestration_20260525"
 DEFAULT_LIVE_PARENT = ROOT / "artifacts/shadow_evaluation"
+DAILY_OUTPUT_ARTIFACT_PREFIX = "daily_race_ingest_shadow_"
 
 ALLOWED_OUTPUT_PREFIXES = (
     "artifacts/shadow_evaluation",
@@ -163,18 +164,41 @@ def shadow_relpath(path: Path) -> str:
         return relpath(path)
 
 
-def assert_shadow_output_dir_safe(output_dir: Path, root: Path = ROOT) -> Path:
-    relative = repo_relative_text(output_dir, root)
-    allowed = False
-    for prefix in ALLOWED_OUTPUT_PREFIXES:
-        if relative == prefix or relative.startswith(prefix + "/"):
-            allowed = True
-            break
-        if prefix.endswith("_") and relative.startswith(prefix):
-            allowed = True
-            break
-    if not allowed:
-        raise ValueError(f"output_dir_must_be_shadow_artifact:{relative}")
+def assert_shadow_output_dir_safe(
+    output_dir: Path,
+    root: Path = ROOT,
+    evidence_root: Path | None = None,
+) -> Path:
+    try:
+        relative = repo_relative_text(output_dir, root)
+    except ValueError:
+        if evidence_root is None:
+            raise
+        logical = output_dir if output_dir.is_absolute() else root / output_dir
+        parent = evidence_root if evidence_root.is_absolute() else root / evidence_root
+        try:
+            evidence_relative = logical.absolute().relative_to(parent.absolute())
+        except ValueError as exc:
+            raise ValueError("output_dir_must_be_inside_repo_or_evidence_root") from exc
+        if not (
+            evidence_relative.parts
+            and evidence_relative.parts[0].startswith(DAILY_OUTPUT_ARTIFACT_PREFIX)
+        ):
+            raise ValueError(
+                f"output_dir_must_be_shadow_artifact:{evidence_relative.as_posix()}"
+            )
+        return logical.absolute()
+    else:
+        allowed = False
+        for prefix in ALLOWED_OUTPUT_PREFIXES:
+            if relative == prefix or relative.startswith(prefix + "/"):
+                allowed = True
+                break
+            if prefix.endswith("_") and relative.startswith(prefix):
+                allowed = True
+                break
+        if not allowed:
+            raise ValueError(f"output_dir_must_be_shadow_artifact:{relative}")
 
     for prefix in PROTECTED_OUTPUT_PREFIXES:
         if relative == prefix or relative.startswith(prefix + "/"):
@@ -182,8 +206,8 @@ def assert_shadow_output_dir_safe(output_dir: Path, root: Path = ROOT) -> Path:
     return output_dir
 
 
-def prepare_output_dir(output_dir: Path) -> Path:
-    output_dir = assert_shadow_output_dir_safe(output_dir)
+def prepare_output_dir(output_dir: Path, evidence_root: Path | None = None) -> Path:
+    output_dir = assert_shadow_output_dir_safe(output_dir, evidence_root=evidence_root)
     if output_dir.exists() and any(output_dir.iterdir()):
         raise ValueError(f"output_dir_already_exists:{relpath(output_dir)}")
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -2481,7 +2505,10 @@ def build_live_feature_rows(
 def score_live(args: argparse.Namespace) -> int:
     ensure_shadow_runtime_guard()
     run_started_at = datetime.now().astimezone()
-    output_dir = prepare_output_dir(args.output_dir or default_live_output_dir())
+    output_dir = prepare_output_dir(
+        args.output_dir or default_live_output_dir(),
+        evidence_root=args.evidence_root,
+    )
     protected_before = protected_path_snapshot()
     final_status = "IMPLEMENTATION_ABORTED"
     try:
@@ -2725,6 +2752,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     live_parser.add_argument("--schema", type=Path, default=DEFAULT_SCHEMA)
     live_parser.add_argument("--db", type=Path, default=DEFAULT_DB)
     live_parser.add_argument("--output-dir", type=Path, default=None)
+    live_parser.add_argument("--evidence-root", type=Path, default=None)
     live_parser.add_argument(
         "--all-missing-train-policy",
         choices=ALL_MISSING_TRAIN_POLICIES,
