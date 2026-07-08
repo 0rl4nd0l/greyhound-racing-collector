@@ -69,6 +69,7 @@ graph TB
 - **[Model Governance](governance/champion_challenger.md)**: Model deployment and management
 - **[API Reference](api/endpoints.md)**: Complete API documentation
 - **[Development](development/setup.md)**: Setup, testing, and contribution guidelines
+- **[Git Dirt Adoption Policy](development/greyhound_git_dirt_adoption.md)**: Source-adoption-first cleanup policy for Greyhound worktrees
 
 ## 🎯 Performance Metrics
 
