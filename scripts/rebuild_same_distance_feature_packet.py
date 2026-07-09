@@ -195,11 +195,13 @@ def _json_default(value: Any) -> Any:
 
 
 def assert_output_dir_safe(output_dir: Path, repo_root: Path = ROOT) -> Path:
-    logical = output_dir if output_dir.is_absolute() else repo_root / output_dir
-    logical = logical.absolute()
-    root = repo_root.absolute()
+    root = repo_root.expanduser().resolve(strict=False)
+    logical = output_dir.expanduser()
+    if not logical.is_absolute():
+        logical = root / logical
+    resolved = logical.resolve(strict=False)
     try:
-        relative = logical.relative_to(root)
+        relative = resolved.relative_to(root)
     except ValueError as exc:
         raise ValueError("output_dir_must_be_inside_repo") from exc
     relative_text = relative.as_posix()
@@ -209,7 +211,7 @@ def assert_output_dir_safe(output_dir: Path, repo_root: Path = ROOT) -> Path:
     required_parent = "artifacts/full_evidence_orchestration_20260525"
     if not relative_text.startswith(required_parent + "/"):
         raise ValueError(f"output_dir_must_be_under:{required_parent}")
-    return logical
+    return resolved
 
 
 def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:

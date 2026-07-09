@@ -40,10 +40,13 @@ def write_json(path: Path, payload: Any) -> None:
 
 
 def safe_output_dir(path: Path) -> Path:
-    logical = path if path.is_absolute() else ROOT / path
-    logical = logical.absolute()
+    root = ROOT.expanduser().resolve(strict=False)
+    logical = path.expanduser()
+    if not logical.is_absolute():
+        logical = root / logical
+    resolved = logical.resolve(strict=False)
     try:
-        relative = logical.relative_to(ROOT.absolute())
+        relative = resolved.relative_to(root)
     except ValueError as exc:
         raise ValueError("output_dir_must_be_inside_repo") from exc
     text = relative.as_posix()
@@ -51,7 +54,7 @@ def safe_output_dir(path: Path) -> Path:
         raise ValueError(f"output_dir_must_be_under:{SAFE_OUTPUT_PARENT}")
     if text.startswith("artifacts/prediction_snapshots/"):
         raise ValueError("output_dir_must_not_be_prediction_snapshots")
-    return logical
+    return resolved
 
 
 def safe_int(value: Any) -> int | None:

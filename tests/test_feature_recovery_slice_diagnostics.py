@@ -5,6 +5,7 @@ import pytest
 from scripts.run_feature_recovery_execution_v1 import (
     REPAIRED_SLICE_DIMENSIONS,
     build_repaired_slice_population_diagnostics,
+    safe_output_dir,
     slice_population_csv_rows,
 )
 
@@ -155,3 +156,23 @@ def test_stage2_slice_population_diagnostics_reports_context_buckets_and_family_
         )["key_feature_present_pct"]
     )
     assert key_rates["distance_box_band_start_count"] == pytest.approx(1.0)
+
+
+def test_feature_recovery_output_dir_guard_rejects_artifact_symlink_escape(
+    tmp_path, monkeypatch
+):
+    import scripts.run_feature_recovery_execution_v1 as recovery
+
+    monkeypatch.setattr(recovery, "ROOT", tmp_path)
+    outside = tmp_path.parent / f"{tmp_path.name}_outside"
+    outside.mkdir()
+    link = (
+        tmp_path
+        / "artifacts/full_evidence_orchestration_20260525/"
+        "feature_recovery_execution_v1_symlink_report_only"
+    )
+    link.parent.mkdir(parents=True)
+    link.symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="output_dir_must_be_inside_repo"):
+        safe_output_dir(link)

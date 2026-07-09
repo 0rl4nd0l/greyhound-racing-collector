@@ -122,3 +122,21 @@ def test_scorecard_failure_attribution_output_dir_guard(tmp_path, monkeypatch):
         packet.assert_output_dir_safe(
             tmp_path / "artifacts/full_evidence_orchestration_20260525/wrong_report_only"
         )
+
+
+def test_scorecard_failure_attribution_output_dir_guard_rejects_symlink_escape(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(packet, "ROOT", tmp_path)
+    outside = tmp_path.parent / f"{tmp_path.name}_outside"
+    outside.mkdir()
+    link = (
+        tmp_path
+        / "artifacts/full_evidence_orchestration_20260525/"
+        "scorecard_failure_attribution_symlink_report_only"
+    )
+    link.parent.mkdir(parents=True)
+    link.symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="output_dir_must_be_inside_repo"):
+        packet.assert_output_dir_safe(link)

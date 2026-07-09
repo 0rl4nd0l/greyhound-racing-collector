@@ -353,11 +353,13 @@ def git_output(args: Sequence[str]) -> str:
 
 
 def safe_output_dir(output_dir: Path) -> Path:
-    logical = output_dir if output_dir.is_absolute() else ROOT / output_dir
-    logical = logical.absolute()
-    root = ROOT.absolute()
+    root = ROOT.expanduser().resolve(strict=False)
+    logical = output_dir.expanduser()
+    if not logical.is_absolute():
+        logical = root / logical
+    resolved = logical.resolve(strict=False)
     try:
-        relative = logical.relative_to(root)
+        relative = resolved.relative_to(root)
     except ValueError as exc:
         raise ValueError("output_dir_must_be_inside_repo") from exc
     relative_text = relative.as_posix()
@@ -367,7 +369,7 @@ def safe_output_dir(output_dir: Path) -> Path:
     for prefix in PROTECTED_PREFIXES:
         if relative_text == prefix or relative_text.startswith(prefix + "/"):
             raise ValueError(f"output_dir_protected:{prefix}")
-    return output_dir
+    return resolved
 
 
 def safe_float(value: Any) -> float | None:

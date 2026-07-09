@@ -1,6 +1,8 @@
 import sqlite3
 
-from scripts.audit_stage2_target_metadata_coverage import audit_rows
+import pytest
+
+from scripts.audit_stage2_target_metadata_coverage import audit_rows, safe_output_dir
 
 
 def _connection() -> sqlite3.Connection:
@@ -90,3 +92,23 @@ def test_target_metadata_audit_blocks_unmapped_embedded_form_context():
     assert report["embedded_context_status_counts"] == {
         "unsafe_unmapped_embedded_form_context_present": 1
     }
+
+
+def test_target_metadata_audit_output_dir_guard_rejects_symlink_escape(
+    tmp_path, monkeypatch
+):
+    import scripts.audit_stage2_target_metadata_coverage as audit
+
+    monkeypatch.setattr(audit, "ROOT", tmp_path)
+    outside = tmp_path.parent / f"{tmp_path.name}_outside"
+    outside.mkdir()
+    link = (
+        tmp_path
+        / "artifacts/full_evidence_orchestration_20260525/"
+        "target_metadata_coverage_symlink_report_only"
+    )
+    link.parent.mkdir(parents=True)
+    link.symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="output_dir_must_be_inside_repo"):
+        safe_output_dir(link)

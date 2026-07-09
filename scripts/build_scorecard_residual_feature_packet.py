@@ -169,16 +169,20 @@ def relpath(path: Path | None) -> str | None:
 
 
 def assert_output_dir_safe(output_dir: Path) -> Path:
-    logical = output_dir if output_dir.is_absolute() else ROOT / output_dir
+    root = ROOT.expanduser().resolve(strict=False)
+    logical = output_dir.expanduser()
+    if not logical.is_absolute():
+        logical = root / logical
+    resolved = logical.resolve(strict=False)
     try:
-        relative = logical.absolute().relative_to(ROOT.absolute())
+        relative = resolved.relative_to(root)
     except ValueError as exc:
         raise ValueError("output_dir_must_be_inside_repo") from exc
     if ".." in relative.parts:
         raise ValueError("output_dir_must_not_contain_parent_traversal")
     if not relative.as_posix().startswith(OUTPUT_PREFIX):
         raise ValueError(f"output_dir_must_be_scorecard_residual_feature:{relative}")
-    return logical.absolute()
+    return resolved
 
 
 def unique_dir(base: Path) -> Path:
