@@ -391,7 +391,11 @@ def test_collect_shadow_odds_snapshot_marks_exact_dog_box_odds_eligible(tmp_path
     assert rows[0]["ev_win"] is None
     assert rows[0]["ev_calculation_status"] == "DISABLED_REPORT_ONLY_NO_EV_OUTPUT"
     assert rows[0]["odds_snapshot"]["odds_captured_before_jump"] is True
+    assert rows[0]["odds_snapshot"]["odds_age_minutes_at_jump"] == pytest.approx(694.0)
     assert rows[0]["odds_snapshot"]["odds_stale_at_prediction"] is False
+    provenance = rows[0]["odds_snapshot"]["odds_provenance"]
+    assert provenance["sportsbet_raw_runner_text"] == "1. Alpha Runner"
+    assert provenance["capture_mode"] == "autonomous_prejump_t60m"
     assert (output_dir / "shadow_odds_snapshot.csv").exists()
     assert (output_dir / "shadow_odds_race_coverage.json").exists()
     assert (output_dir / "odds_research_gate_report.json").exists()
@@ -1149,6 +1153,9 @@ def test_collect_shadow_odds_snapshot_blocks_after_feature_freeze_odds_when_avai
     )
     assert rows[0]["odds_snapshot"]["odds_captured_before_prediction"] is True
     assert rows[0]["odds_snapshot"]["odds_captured_before_feature_freeze"] is False
+    assert rows[0]["odds_snapshot"]["odds_age_minutes_at_feature_freeze"] == pytest.approx(
+        -1.0
+    )
     assert rows[0]["odds_snapshot"]["odds_captured_before_jump"] is True
     race = race_coverage["races"][0]
     assert race["post_prediction_odds_rows"] == 0

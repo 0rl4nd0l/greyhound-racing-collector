@@ -11,10 +11,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
-from accuracy_program.snapshots import (
-    assert_no_result_fields,
-    classify_odds_snapshot_for_ev,
-)
+from accuracy_program.odds_provenance import classify_odds_snapshot_for_ev
+from accuracy_program.snapshots import assert_no_result_fields
 
 _DOG_PREFIX_RE = re.compile(r"^\s*\d{1,2}\s*[\.\):-]\s*")
 
