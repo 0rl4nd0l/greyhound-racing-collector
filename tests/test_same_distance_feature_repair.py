@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from scripts.rebuild_same_distance_feature_packet import (
+    assert_output_dir_safe,
     _load_csv,
     _resolve_target_metadata,
     repair_packet,
@@ -113,6 +114,19 @@ def test_repair_packet_populates_historical_same_distance_fields(tmp_path):
             original_rows, field, packet="rolling"
         )
 
+    if _present_count(repaired_rows, "starts_same_distance", packet="historical") == 0:
+        historical_safe_target_rows = [
+            row
+            for row in repaired_rows
+            if row.get("packet") == "historical"
+            and row.get("target_grade_safe") not in (None, "")
+            and row.get("target_distance_safe") not in (None, "")
+        ]
+        if not historical_safe_target_rows:
+            pytest.skip(
+                "current frozen packet has no leakage-safe historical target metadata"
+            )
+
     for field in (
         "starts_same_distance",
         "prior_same_distance_start_count",
@@ -145,3 +159,18 @@ def test_repair_packet_populates_historical_same_distance_fields(tmp_path):
         assert any(row.get(field) not in (None, "") for row in repaired_historical)
         assert all(field in row for row in repaired_historical)
         assert all(field in row for row in repaired_rolling)
+
+
+def test_same_distance_output_dir_guard_rejects_artifact_symlink_escape(tmp_path):
+    outside = tmp_path.parent / f"{tmp_path.name}_outside"
+    outside.mkdir()
+    link = (
+        tmp_path
+        / "artifacts/full_evidence_orchestration_20260525/"
+        "bounded_target_grade_repair_symlink_report_only"
+    )
+    link.parent.mkdir(parents=True)
+    link.symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="output_dir_must_be_inside_repo"):
+        assert_output_dir_safe(link, repo_root=tmp_path)

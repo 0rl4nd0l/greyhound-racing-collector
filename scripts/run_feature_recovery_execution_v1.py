@@ -81,6 +81,131 @@ IDENTITY_FEATURE_NAMES = {
 }
 MISSING = ""
 RANDOM_SEED = 42
+EXPECTED_REPAIRED_FEATURE_COUNT = 103
+REPAIRED_SLICE_DIMENSIONS = (
+    "venue",
+    "target_distance_band",
+    "target_grade",
+    "field_size",
+    "box_band",
+    "venue_box_band",
+    "distance_box_band",
+)
+REPAIRED_FEATURE_FAMILY_ORDER = (
+    "safe_target_context",
+    "repaired_history_reconstruction",
+    "class_and_field_strength",
+    "draw_adjusted_history",
+    "same_venue",
+    "same_distance",
+    "same_grade_and_grade_transition",
+    "sectional_metrics",
+)
+KEY_REPAIRED_FEATURES_BY_FAMILY = {
+    "safe_target_context": (
+        "target_distance_safe",
+        "target_grade_safe",
+        "target_distance_source_is_safe",
+        "target_grade_provenance_safe",
+    ),
+    "repaired_history_reconstruction": (
+        "prior_start_count",
+        "recent_finish_mean_5",
+        "recent_avg_time_5",
+        "recent_avg_speed_mps_5",
+        "recent_avg_race_strength_5",
+    ),
+    "class_and_field_strength": (
+        "safe_grade_rank",
+        "safe_field_strength",
+        "prior_race_strength_delta_to_target",
+        "grade_normalized_recent_speed_index",
+    ),
+    "draw_adjusted_history": (
+        "target_box_band_prior_start_count",
+        "venue_box_band_start_count",
+        "distance_box_band_start_count",
+    ),
+    "same_venue": (
+        "starts_same_venue",
+        "win_rate_same_venue",
+        "best_time_same_venue",
+    ),
+    "same_distance": (
+        "starts_same_distance",
+        "best_time_same_distance",
+        "same_distance_same_grade_best_time",
+    ),
+    "same_grade_and_grade_transition": (
+        "same_grade_start_count",
+        "same_grade_win_rate",
+        "grade_change_indicator",
+    ),
+    "sectional_metrics": (
+        "recent_avg_sectional_1st_5",
+        "last_start_sectional_1st",
+        "sectional_missing_rate_5",
+    ),
+}
+HISTORY_PROVENANCE_METADATA_FIELDS = (
+    "grade",
+    "distance",
+    "race_time",
+    "track_condition",
+    "weather",
+    "start_datetime",
+    "race_metadata_url",
+)
+SAFE_TARGET_METADATA_SOURCES = {
+    "canonical_pre_race_page",
+    "sidecar_target_metadata",
+    "explicit_csv_sidecar",
+}
+SAFE_DB_TARGET_METADATA_SOURCES = {
+    "canonical_pre_race_page",
+    "sidecar_target_metadata",
+}
+UNSAFE_TARGET_METADATA_SOURCE_MARKERS = (
+    "embedded_form_history",
+    "embedded_form_guide",
+    "post_result",
+    "result_page",
+    "sportsbet_result",
+)
+POST_OUTCOME_STATUS_VALUES = {
+    "complete",
+    "completed",
+    "final",
+    "official",
+    "resulted",
+}
+TARGET_METADATA_DEPENDENT_PACKET_REUSE_BLOCKLIST = {
+    "target_distance_safe",
+    "target_distance_source_is_safe",
+    "target_distance_missing",
+    "target_distance_band_sprint",
+    "target_distance_band_middle",
+    "target_distance_band_staying",
+    "target_grade_safe",
+    "target_grade_normalized",
+    "target_grade_missing",
+    "target_grade_vocab_known",
+    "target_grade_provenance_safe",
+    "safe_grade_rank",
+    "safe_field_strength",
+    "prior_race_strength_delta_to_target",
+    "same_grade_start_count",
+    "same_grade_win_rate",
+    "same_grade_place_rate",
+    "same_grade_avg_speed_mps",
+    "grade_normalized_recent_speed_index",
+    "same_distance_same_grade_start_count",
+    "same_distance_same_grade_best_time",
+    "same_distance_same_grade_avg_time",
+    "grade_change_indicator",
+    "grade_change_direction",
+    "grade_strength_delta",
+}
 
 
 GRADE_MAP = {
@@ -228,11 +353,13 @@ def git_output(args: Sequence[str]) -> str:
 
 
 def safe_output_dir(output_dir: Path) -> Path:
-    logical = output_dir if output_dir.is_absolute() else ROOT / output_dir
-    logical = logical.absolute()
-    root = ROOT.absolute()
+    root = ROOT.expanduser().resolve(strict=False)
+    logical = output_dir.expanduser()
+    if not logical.is_absolute():
+        logical = root / logical
+    resolved = logical.resolve(strict=False)
     try:
-        relative = logical.relative_to(root)
+        relative = resolved.relative_to(root)
     except ValueError as exc:
         raise ValueError("output_dir_must_be_inside_repo") from exc
     relative_text = relative.as_posix()
@@ -242,7 +369,7 @@ def safe_output_dir(output_dir: Path) -> Path:
     for prefix in PROTECTED_PREFIXES:
         if relative_text == prefix or relative_text.startswith(prefix + "/"):
             raise ValueError(f"output_dir_protected:{prefix}")
-    return output_dir
+    return resolved
 
 
 def safe_float(value: Any) -> float | None:
@@ -261,6 +388,49 @@ def safe_float(value: Any) -> float | None:
     if math.isnan(parsed) or math.isinf(parsed):
         return None
     return parsed
+
+
+def usable_context_text(value: Any) -> str | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if text.lower() in {"unknown", "n/a", "na", "none", "null", "-"}:
+        return None
+    return text
+
+
+def safe_target_metadata_source(value: Any) -> bool:
+    text = str(value or "").strip()
+    if not text:
+        return False
+    lowered = text.lower()
+    if any(marker in lowered for marker in UNSAFE_TARGET_METADATA_SOURCE_MARKERS):
+        return False
+    return text in SAFE_TARGET_METADATA_SOURCES or text.startswith(("target_column:", "filename:"))
+
+
+def safe_db_target_metadata_source(value: Any) -> bool:
+    text = str(value or "").strip()
+    if not text:
+        return False
+    lowered = text.lower()
+    if any(marker in lowered for marker in UNSAFE_TARGET_METADATA_SOURCE_MARKERS):
+        return False
+    return text in SAFE_DB_TARGET_METADATA_SOURCES
+
+
+def has_post_outcome_marker(row: Mapping[str, Any]) -> bool:
+    for field in ("winner_name", "winner_source", "winner_margin", "winner_odds"):
+        if row.get(field) not in (None, ""):
+            return True
+    status = str(row.get("results_status") or row.get("result_status") or "").strip().lower()
+    return status in POST_OUTCOME_STATUS_VALUES
+
+
+def can_reuse_packet_feature(feature: str, target: Mapping[str, Any]) -> bool:
+    if target.get("status") != "SAFE" and feature in TARGET_METADATA_DEPENDENT_PACKET_REUSE_BLOCKLIST:
+        return False
+    return True
 
 
 def safe_int(value: Any) -> int | None:
@@ -326,6 +496,54 @@ def normalize_grade(value: Any) -> str | None:
 def grade_rank(value: Any) -> int | None:
     normalized = normalize_grade(value)
     return GRADE_RANK.get(normalized or "")
+
+
+def box_band(value: Any) -> str | None:
+    box = safe_int(value)
+    if box in (1, 2):
+        return "inside"
+    if box in (3, 4, 5, 6):
+        return "middle"
+    if box is not None and box >= 7:
+        return "outside"
+    return None
+
+
+def history_grade_rank(row: Mapping[str, Any]) -> float | None:
+    rank = safe_float(row.get("grade_rank_num"))
+    if rank is not None:
+        return rank
+    return safe_float(grade_rank(row.get("grade_normalized") or row.get("grade")))
+
+
+def history_field_size(row: Mapping[str, Any]) -> float | None:
+    return safe_float(row.get("race_field_size")) or safe_float(row.get("field_size"))
+
+
+def history_box_band(row: Mapping[str, Any]) -> str | None:
+    return str(row.get("box_band") or "") or box_band(row.get("box_number"))
+
+
+def history_speed(row: Mapping[str, Any]) -> float | None:
+    speed = safe_float(row.get("speed_mps"))
+    if speed is not None:
+        return speed
+    distance = safe_float(row.get("distance_num") or row.get("distance"))
+    time_value = safe_float(row.get("time_num") or row.get("individual_time"))
+    if distance is not None and time_value is not None and time_value > 0:
+        return distance / time_value
+    return None
+
+
+def history_race_strength(row: Mapping[str, Any]) -> float | None:
+    strength = safe_float(row.get("race_strength_num"))
+    if strength is not None:
+        return strength
+    rank = history_grade_rank(row)
+    field_size = history_field_size(row)
+    if rank is not None and field_size is not None:
+        return rank * field_size
+    return None
 
 
 def mean(values: Iterable[float]) -> float | None:
@@ -424,6 +642,10 @@ def load_db_history(connection: sqlite3.Connection) -> dict[str, list[dict[str, 
         str(row[1])
         for row in connection.execute("PRAGMA table_info(dog_race_data)").fetchall()
     }
+    race_columns = {
+        str(row[1])
+        for row in connection.execute("PRAGMA table_info(race_metadata)").fetchall()
+    }
 
     def dog_expr(column: str, *, fallback: str | None = None) -> str:
         if column in dog_columns:
@@ -431,6 +653,17 @@ def load_db_history(connection: sqlite3.Connection) -> dict[str, list[dict[str, 
         if fallback and fallback in dog_columns:
             return f"dr.{fallback} AS {column}"
         return f"NULL AS {column}"
+
+    def dog_alias_expr(column: str, alias: str) -> str:
+        if column in dog_columns:
+            return f"dr.{column} AS {alias}"
+        return f"NULL AS {alias}"
+
+    def race_expr(column: str, *, alias: str | None = None) -> str:
+        output = alias or column
+        if column in race_columns:
+            return f"rm.{column} AS {output}"
+        return f"NULL AS {output}"
 
     if "dog_name" in dog_columns:
         dog_name_where = "dr.dog_name"
@@ -450,15 +683,20 @@ def load_db_history(connection: sqlite3.Connection) -> dict[str, list[dict[str, 
             {weight},
             {beaten_margin},
             {margin},
-            rm.venue,
-            rm.race_number,
-            rm.race_date,
-            rm.grade,
-            rm.distance,
-            rm.track_condition,
-            rm.weather,
-            rm.race_time,
-            rm.start_datetime
+            {venue},
+            {race_number},
+            {race_date},
+            {grade},
+            {distance},
+            {track_condition},
+            {weather},
+            {race_time},
+            {start_datetime},
+            {dog_data_source},
+            {race_metadata_data_source},
+            {race_metadata_url},
+            {dog_data_source_loaded} AS dog_data_source_column_loaded,
+            {race_metadata_data_source_loaded} AS race_metadata_data_source_column_loaded
         FROM dog_race_data dr
         LEFT JOIN race_metadata rm ON rm.race_id = dr.race_id
         WHERE {dog_name_where} IS NOT NULL
@@ -473,9 +711,23 @@ def load_db_history(connection: sqlite3.Connection) -> dict[str, list[dict[str, 
         weight=dog_expr("weight"),
         beaten_margin=dog_expr("beaten_margin"),
         margin=dog_expr("margin"),
+        venue=race_expr("venue"),
+        race_number=race_expr("race_number"),
+        race_date=race_expr("race_date"),
+        grade=race_expr("grade"),
+        distance=race_expr("distance"),
+        track_condition=race_expr("track_condition"),
+        weather=race_expr("weather"),
+        race_time=race_expr("race_time"),
+        start_datetime=race_expr("start_datetime"),
+        dog_data_source=dog_alias_expr("data_source", "dog_data_source"),
+        race_metadata_data_source=race_expr("data_source", alias="race_metadata_data_source"),
+        race_metadata_url=race_expr("url", alias="race_metadata_url"),
+        dog_data_source_loaded=1 if "data_source" in dog_columns else 0,
+        race_metadata_data_source_loaded=1 if "data_source" in race_columns else 0,
         dog_name_where=dog_name_where,
     )
-    history: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    raw_rows: list[dict[str, Any]] = []
     for item in connection.execute(query):
         row = dict(item)
         row["dog_key"] = clean_name(row.get("dog_name"))
@@ -489,6 +741,26 @@ def load_db_history(connection: sqlite3.Connection) -> dict[str, list[dict[str, 
         row["weight_num"] = safe_float(row.get("weight"))
         row["margin_num"] = safe_float(row.get("beaten_margin") or row.get("margin"))
         row["grade_normalized"] = normalize_grade(row.get("grade"))
+        row["grade_rank_num"] = grade_rank(row.get("grade_normalized"))
+        row["box_band"] = box_band(row.get("box_number"))
+        if row["distance_num"] and row["time_num"] and row["time_num"] > 0:
+            row["speed_mps"] = row["distance_num"] / row["time_num"]
+        else:
+            row["speed_mps"] = None
+        raw_rows.append(row)
+
+    race_field_sizes = Counter(
+        str(row.get("race_id") or "")
+        for row in raw_rows
+        if row.get("race_id") not in (None, "")
+    )
+    history: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in raw_rows:
+        row["race_field_size"] = race_field_sizes.get(str(row.get("race_id") or ""), 0) or None
+        if row.get("grade_rank_num") is not None and row.get("race_field_size") is not None:
+            row["race_strength_num"] = row["grade_rank_num"] * row["race_field_size"]
+        else:
+            row["race_strength_num"] = None
         history[row["dog_key"]].append(row)
     for rows in history.values():
         rows.sort(key=lambda row: (row.get("race_date") or "", safe_int(row.get("race_number")) or 0, row.get("race_id") or ""))
@@ -496,31 +768,161 @@ def load_db_history(connection: sqlite3.Connection) -> dict[str, list[dict[str, 
 
 
 def race_metadata_candidates(connection: sqlite3.Connection, race_date: str, venue: str, race_number: int | None) -> list[dict[str, Any]]:
+    columns = {
+        str(row[1])
+        for row in connection.execute("PRAGMA table_info(race_metadata)").fetchall()
+    }
+    if "race_date" not in columns or "venue" not in columns:
+        return []
+
+    def race_expr(column: str) -> str:
+        if column in columns:
+            return column
+        return f"NULL AS {column}"
+
     rows: list[dict[str, Any]] = []
     for item in connection.execute(
-        """
-        SELECT race_id, venue, race_number, race_date, grade, distance, field_size,
-               race_time, track_condition, weather, url, data_source, start_datetime
+        f"""
+        SELECT
+            {race_expr("race_id")},
+            venue,
+            {race_expr("race_number")},
+            race_date,
+            {race_expr("grade")},
+            {race_expr("distance")},
+            {race_expr("field_size")},
+            {race_expr("race_time")},
+            {race_expr("track_condition")},
+            {race_expr("weather")},
+            {race_expr("weather_condition")},
+            {race_expr("url")},
+            {race_expr("data_source")},
+            {race_expr("start_datetime")},
+            {race_expr("results_status")},
+            {race_expr("winner_source")},
+            {race_expr("winner_name")},
+            {race_expr("winner_margin")},
+            {race_expr("winner_odds")}
         FROM race_metadata
         WHERE race_date = ? AND upper(venue) = upper(?)
         """,
         (race_date, venue),
     ):
-        rows.append(dict(item))
-    exact = [
+        row = dict(item)
+        row["identity_match"] = False
+        rows.append(row)
+    safe_rows = [
         row
         for row in rows
+        if (safe_float(row.get("distance")) is not None or normalize_grade(row.get("grade")))
+        and safe_db_target_metadata_source(row.get("data_source"))
+        and not has_post_outcome_marker(row)
+    ]
+    exact = [
+        row
+        for row in safe_rows
         if race_number is not None
         and safe_int(row.get("race_number")) == race_number
-        and (safe_float(row.get("distance")) is not None or normalize_grade(row.get("grade")))
     ]
     if exact:
+        for row in exact:
+            row["identity_match"] = True
         return exact
-    return [
+    return safe_rows
+
+
+def race_metadata_probe(connection: sqlite3.Connection, race_date: str | None, venue: str, race_number: int | None) -> dict[str, Any]:
+    default = {
+        "db_lookup_status": "not_attempted",
+        "db_exact_row_count": 0,
+        "db_exact_metadata_row_count": 0,
+        "db_safe_candidate_count": 0,
+        "db_unsafe_candidate_count": 0,
+        "db_embedded_form_metadata_count": 0,
+        "db_post_outcome_metadata_count": 0,
+        "db_metadata_source_counts": {},
+        "db_exact_row_has_target_metadata": False,
+        "db_exact_row_has_post_outcome_marker": False,
+    }
+    if not race_date or not venue:
+        return {**default, "db_lookup_status": "missing_identity"}
+    columns = {
+        str(row[1])
+        for row in connection.execute("PRAGMA table_info(race_metadata)").fetchall()
+    }
+    if "race_date" not in columns or "venue" not in columns:
+        return {**default, "db_lookup_status": "race_metadata_identity_columns_missing"}
+
+    def race_expr(column: str) -> str:
+        if column in columns:
+            return column
+        return f"NULL AS {column}"
+
+    rows = [
+        dict(row)
+        for row in connection.execute(
+            f"""
+            SELECT
+                {race_expr("race_id")},
+                venue,
+                {race_expr("race_number")},
+                race_date,
+                {race_expr("grade")},
+                {race_expr("distance")},
+                {race_expr("url")},
+                {race_expr("data_source")},
+                {race_expr("results_status")},
+                {race_expr("winner_source")},
+                {race_expr("winner_name")},
+                {race_expr("winner_margin")},
+                {race_expr("winner_odds")}
+            FROM race_metadata
+            WHERE race_date = ? AND upper(venue) = upper(?)
+            """,
+            (race_date, venue),
+        )
+    ]
+    exact_rows = [
+        row
+        for row in rows
+        if race_number is not None and safe_int(row.get("race_number")) == race_number
+    ]
+    metadata_rows = [
         row
         for row in rows
         if safe_float(row.get("distance")) is not None or normalize_grade(row.get("grade"))
     ]
+    safe_rows = [
+        row
+        for row in metadata_rows
+        if safe_db_target_metadata_source(row.get("data_source")) and not has_post_outcome_marker(row)
+    ]
+    unsafe_rows = [row for row in metadata_rows if row not in safe_rows]
+    source_counts: Counter[str] = Counter()
+    for row in metadata_rows:
+        source_counts[provenance_bucket(row.get("data_source"))] += 1
+    exact_metadata_rows = [
+        row
+        for row in exact_rows
+        if safe_float(row.get("distance")) is not None or normalize_grade(row.get("grade"))
+    ]
+    return {
+        **default,
+        "db_lookup_status": "checked",
+        "db_exact_row_count": len(exact_rows),
+        "db_exact_metadata_row_count": len(exact_metadata_rows),
+        "db_safe_candidate_count": len(safe_rows),
+        "db_unsafe_candidate_count": len(unsafe_rows),
+        "db_embedded_form_metadata_count": sum(
+            1
+            for row in metadata_rows
+            if str(row.get("data_source") or "").strip().lower() == "embedded_form_guide"
+        ),
+        "db_post_outcome_metadata_count": sum(1 for row in metadata_rows if has_post_outcome_marker(row)),
+        "db_metadata_source_counts": dict(source_counts),
+        "db_exact_row_has_target_metadata": bool(exact_metadata_rows),
+        "db_exact_row_has_post_outcome_marker": any(has_post_outcome_marker(row) for row in exact_rows),
+    }
 
 
 def safe_sidecar_metadata(snapshot: Mapping[str, Any] | None) -> dict[str, Any] | None:
@@ -542,15 +944,228 @@ def safe_sidecar_metadata(snapshot: Mapping[str, Any] | None) -> dict[str, Any] 
     verification = payload.get("normalization_verification") or {}
     if verification.get("target_metadata_status") not in (None, "verified"):
         return None
+    distance = safe_float(race_info.get("distance") or payload.get("target_distance"))
+    grade = normalize_grade(race_info.get("grade") or payload.get("target_grade"))
+    distance_source = race_info.get("target_distance_source") or payload.get("target_distance_source")
+    grade_source = race_info.get("target_grade_source") or payload.get("target_grade_source")
+    if distance is not None and not safe_target_metadata_source(distance_source):
+        distance = None
+    if grade and not safe_target_metadata_source(grade_source):
+        grade = None
     return {
-        "distance": safe_float(race_info.get("distance")),
-        "grade": normalize_grade(race_info.get("grade")),
+        "distance": distance,
+        "grade": grade,
         "race_time": race_info.get("race_time"),
-        "track_condition": payload.get("track_condition"),
-        "weather": payload.get("weather"),
+        "track_condition": usable_context_text(
+            payload.get("track_condition") or race_info.get("track_condition")
+        ),
+        "weather": usable_context_text(
+            payload.get("weather")
+            or race_info.get("weather")
+            or payload.get("weather_condition")
+            or race_info.get("weather_condition")
+        ),
         "source": "safe_sidecar_metadata",
         "url": payload.get("metadata_source_url") or payload.get("race_url"),
         "sidecar_path": relpath(sidecar),
+    }
+
+
+def sidecar_metadata_probe(snapshot: Mapping[str, Any] | None) -> dict[str, Any]:
+    default = {
+        "sidecar_status": "not_attempted",
+        "sidecar_path": None,
+        "sidecar_has_distance": False,
+        "sidecar_has_grade": False,
+        "sidecar_distance_source": None,
+        "sidecar_grade_source": None,
+        "sidecar_verification_status": None,
+        "sidecar_metadata_is_leakage_safe": False,
+    }
+    if not snapshot:
+        return {**default, "sidecar_status": "snapshot_missing"}
+    source_path = current_path_from_snapshot_path(snapshot.get("source_file_path"))
+    if source_path is None:
+        return {**default, "sidecar_status": "source_file_path_missing"}
+    sidecar = Path(str(source_path) + ".metadata.json")
+    if not sidecar.exists():
+        return {**default, "sidecar_status": "sidecar_missing", "sidecar_path": relpath(sidecar)}
+    try:
+        payload = load_json(sidecar)
+    except Exception:
+        return {**default, "sidecar_status": "sidecar_unreadable", "sidecar_path": relpath(sidecar)}
+    if not isinstance(payload, Mapping):
+        return {**default, "sidecar_status": "sidecar_not_object", "sidecar_path": relpath(sidecar)}
+
+    race_info = payload.get("race_info") if isinstance(payload.get("race_info"), Mapping) else {}
+    verification = payload.get("normalization_verification") or {}
+    if not isinstance(verification, Mapping):
+        verification = {}
+    distance = safe_float(race_info.get("distance") or payload.get("target_distance"))
+    grade = normalize_grade(race_info.get("grade") or payload.get("target_grade"))
+    distance_source = race_info.get("target_distance_source") or payload.get("target_distance_source")
+    grade_source = race_info.get("target_grade_source") or payload.get("target_grade_source")
+    verification_status = verification.get("target_metadata_status")
+    leakage_safe = payload.get("metadata_is_leakage_safe") is True
+    distance_safe = distance is not None and safe_target_metadata_source(distance_source)
+    grade_safe = bool(grade and safe_target_metadata_source(grade_source))
+
+    if not leakage_safe:
+        status = "sidecar_not_leakage_safe"
+    elif verification_status not in (None, "verified"):
+        status = f"sidecar_target_metadata_{verification_status}"
+    elif distance_safe or grade_safe:
+        status = "sidecar_verified_safe_target_metadata"
+    elif distance is not None or grade:
+        status = "sidecar_target_metadata_unsafe_source"
+    else:
+        status = "sidecar_without_target_metadata"
+    return {
+        **default,
+        "sidecar_status": status,
+        "sidecar_path": relpath(sidecar),
+        "sidecar_has_distance": distance is not None,
+        "sidecar_has_grade": bool(grade),
+        "sidecar_distance_source": distance_source,
+        "sidecar_grade_source": grade_source,
+        "sidecar_verification_status": verification_status,
+        "sidecar_metadata_is_leakage_safe": leakage_safe,
+    }
+
+
+def target_metadata_blocker_reason(
+    *,
+    target: Mapping[str, Any],
+    sidecar_probe: Mapping[str, Any],
+    db_probe: Mapping[str, Any],
+    packet_row: Mapping[str, Any] | None,
+) -> str:
+    if target.get("status") == "SAFE":
+        return "SAFE"
+    if target.get("status") == "AMBIGUOUS":
+        return "DATA_MISSING:ambiguous_safe_pre_race_metadata"
+    packet_source = str((packet_row or {}).get("target_grade_source") or "").strip()
+    if packet_source == "race_metadata.grade":
+        return "DATA_MISSING:legacy_packet_race_metadata_grade_rejected"
+    if sidecar_probe.get("sidecar_status") == "sidecar_verified_safe_target_metadata":
+        return "DATA_MISSING:partial_sidecar_target_metadata"
+    if db_probe.get("db_exact_row_count") and not db_probe.get("db_exact_row_has_target_metadata"):
+        return "DATA_MISSING:canonical_exact_db_row_has_no_distance_grade"
+    if db_probe.get("db_embedded_form_metadata_count") and not db_probe.get("db_safe_candidate_count"):
+        return "DATA_MISSING:only_embedded_form_history_metadata_available"
+    if db_probe.get("db_post_outcome_metadata_count") and not db_probe.get("db_safe_candidate_count"):
+        return "DATA_MISSING:only_post_outcome_metadata_available"
+    if db_probe.get("db_unsafe_candidate_count") and not db_probe.get("db_safe_candidate_count"):
+        return "DATA_MISSING:only_unsafe_metadata_candidates_available"
+    if db_probe.get("db_safe_candidate_count", 0) > 1:
+        return "DATA_MISSING:ambiguous_safe_pre_race_metadata"
+    if sidecar_probe.get("sidecar_status") in {
+        "sidecar_missing",
+        "source_file_path_missing",
+        "snapshot_missing",
+        "sidecar_without_target_metadata",
+    }:
+        return "DATA_MISSING:no_verified_sidecar_or_db_target_metadata"
+    return "DATA_MISSING:no_safe_target_metadata"
+
+
+def target_metadata_recovery_audit_row(
+    *,
+    clean_row: Mapping[str, Any],
+    packet_row: Mapping[str, Any] | None,
+    snapshot: Mapping[str, Any] | None,
+    target: Mapping[str, Any],
+    connection: sqlite3.Connection,
+) -> dict[str, Any]:
+    race_date = parse_date(clean_row.get("race_date"))
+    venue = str(clean_row.get("venue") or "").strip()
+    race_number = safe_int(snapshot.get("race_number") if snapshot else None) or parse_race_number(clean_row.get("race_id"))
+    sidecar_probe = sidecar_metadata_probe(snapshot)
+    db_probe = race_metadata_probe(connection, race_date, venue, race_number)
+    blocker_reason = target_metadata_blocker_reason(
+        target=target,
+        sidecar_probe=sidecar_probe,
+        db_probe=db_probe,
+        packet_row=packet_row,
+    )
+    packet = packet_row or {}
+    return {
+        "race_id": clean_row.get("race_id"),
+        "snapshot_instance_id": clean_row.get("snapshot_instance_id"),
+        "dog_name": clean_row.get("dog_name"),
+        "box_number": clean_row.get("box_number"),
+        "race_date": race_date,
+        "venue": venue,
+        "race_number": race_number,
+        "target_metadata_status_v2": target.get("status"),
+        "target_metadata_source_v2": target.get("source"),
+        "target_metadata_reason_v2": target.get("reason"),
+        "target_distance_safe_present": target.get("distance") is not None,
+        "target_grade_safe_present": bool(target.get("grade")),
+        "target_metadata_blocker_reason": blocker_reason,
+        "sidecar_status": sidecar_probe.get("sidecar_status"),
+        "sidecar_path": sidecar_probe.get("sidecar_path"),
+        "sidecar_has_distance": sidecar_probe.get("sidecar_has_distance"),
+        "sidecar_has_grade": sidecar_probe.get("sidecar_has_grade"),
+        "sidecar_distance_source": sidecar_probe.get("sidecar_distance_source"),
+        "sidecar_grade_source": sidecar_probe.get("sidecar_grade_source"),
+        "sidecar_verification_status": sidecar_probe.get("sidecar_verification_status"),
+        "sidecar_metadata_is_leakage_safe": sidecar_probe.get("sidecar_metadata_is_leakage_safe"),
+        "db_lookup_status": db_probe.get("db_lookup_status"),
+        "db_exact_row_count": db_probe.get("db_exact_row_count"),
+        "db_exact_metadata_row_count": db_probe.get("db_exact_metadata_row_count"),
+        "db_safe_candidate_count": db_probe.get("db_safe_candidate_count"),
+        "db_unsafe_candidate_count": db_probe.get("db_unsafe_candidate_count"),
+        "db_embedded_form_metadata_count": db_probe.get("db_embedded_form_metadata_count"),
+        "db_post_outcome_metadata_count": db_probe.get("db_post_outcome_metadata_count"),
+        "db_metadata_source_counts": compact_counter(db_probe.get("db_metadata_source_counts") or {}),
+        "db_exact_row_has_target_metadata": db_probe.get("db_exact_row_has_target_metadata"),
+        "db_exact_row_has_post_outcome_marker": db_probe.get("db_exact_row_has_post_outcome_marker"),
+        "packet_target_grade_source": packet.get("target_grade_source"),
+        "packet_target_distance_source": packet.get("target_distance_source"),
+    }
+
+
+def target_metadata_recovery_audit_report(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    blocker_counts: Counter[str] = Counter()
+    source_counts: Counter[str] = Counter()
+    status_counts: Counter[str] = Counter()
+    race_ids_by_blocker: dict[str, set[str]] = defaultdict(set)
+    for row in rows:
+        blocker = str(row.get("target_metadata_blocker_reason") or "DATA_MISSING:unknown")
+        blocker_counts[blocker] += 1
+        source_counts[provenance_bucket(row.get("target_metadata_source_v2"))] += 1
+        status_counts[provenance_bucket(row.get("target_metadata_status_v2"))] += 1
+        race_ids_by_blocker[blocker].add(str(row.get("race_id") or "DATA_MISSING"))
+    return {
+        "schema_version": "target_metadata_recovery_audit_v1",
+        "report_only": True,
+        "matrix_rows": len(rows),
+        "safe_rows": blocker_counts.get("SAFE", 0),
+        "data_missing_rows": len(rows) - blocker_counts.get("SAFE", 0),
+        "safe_races": len(race_ids_by_blocker.get("SAFE", set())),
+        "data_missing_races": len(
+            set().union(
+                *[
+                    race_ids
+                    for blocker, race_ids in race_ids_by_blocker.items()
+                    if blocker != "SAFE"
+                ]
+            )
+        )
+        if any(blocker != "SAFE" for blocker in race_ids_by_blocker)
+        else 0,
+        "target_metadata_source_counts": dict(source_counts),
+        "target_metadata_status_counts": dict(status_counts),
+        "blocker_counts": dict(blocker_counts),
+        "blocker_race_counts": {
+            blocker: len(race_ids)
+            for blocker, race_ids in sorted(race_ids_by_blocker.items())
+        },
+        "notes": [
+            "Rows are recoverable only from clean target fields, verified canonical sidecars, or safe pre-race DB metadata.",
+            "Embedded form-history metadata, post-outcome metadata, odds, EV, result fields, and ambiguous candidates remain DATA_MISSING.",
+        ],
     }
 
 
@@ -614,18 +1229,26 @@ def resolve_target_metadata(
         ]
         if len(unique_candidates) == 1:
             candidate = unique_candidates[0]
+            identity_match = bool(candidate.get("identity_match"))
             result.update(
                 {
                     "distance": result.get("distance")
                     if result.get("distance") is not None
                     else safe_float(candidate.get("distance")),
                     "grade": result.get("grade") or normalize_grade(candidate.get("grade")),
-                    "track_condition": candidate.get("track_condition") or result.get("track_condition"),
-                    "weather": candidate.get("weather") or result.get("weather"),
+                    "track_condition": usable_context_text(candidate.get("track_condition"))
+                    or result.get("track_condition"),
+                    "weather": usable_context_text(candidate.get("weather"))
+                    or usable_context_text(candidate.get("weather_condition"))
+                    or result.get("weather"),
                     "race_time": candidate.get("race_time") or result.get("race_time"),
-                    "source": "canonical_race_metadata_unique_date_venue",
+                    "source": "canonical_race_metadata_exact_identity"
+                    if identity_match
+                    else "canonical_race_metadata_unique_date_venue",
                     "status": "SAFE",
-                    "reason": "unique_date_venue_metadata_candidate",
+                    "reason": "exact_identity_metadata_candidate"
+                    if identity_match
+                    else "unique_safe_date_venue_metadata_candidate",
                     "source_race_id": candidate.get("race_id"),
                 }
             )
@@ -633,7 +1256,7 @@ def resolve_target_metadata(
             result.update(
                 {
                     "status": "AMBIGUOUS",
-                    "reason": f"ambiguous_date_venue_metadata_candidates:{len(unique_candidates)}",
+                    "reason": f"ambiguous_safe_metadata_candidates:{len(unique_candidates)}",
                     "candidate_count": len(unique_candidates),
                 }
             )
@@ -641,7 +1264,7 @@ def resolve_target_metadata(
     if packet_row and not result.get("grade"):
         packet_grade = normalize_grade(packet_row.get("target_grade_safe"))
         packet_source = packet_row.get("target_grade_source")
-        if packet_grade and packet_source in {"clean_official_dataset.target_grade", "race_metadata.grade"}:
+        if packet_grade and packet_source == "clean_official_dataset.target_grade":
             result.update(
                 {
                     "grade": packet_grade,
@@ -672,6 +1295,186 @@ def history_before_target(
     return selected
 
 
+def provenance_bucket(value: Any, *, column_loaded: bool = True) -> str:
+    if not column_loaded:
+        return "COLUMN_ABSENT"
+    text = str(value or "").strip()
+    return text if text else "MISSING"
+
+
+def history_time_source(row: Mapping[str, Any]) -> str:
+    if safe_float(row.get("time_num")) is not None:
+        return "time_num"
+    if safe_float(row.get("individual_time")) is not None:
+        return "individual_time"
+    return "missing"
+
+
+def compact_counter(counter: Mapping[str, int]) -> str:
+    if not counter:
+        return ""
+    return ";".join(f"{key}={counter[key]}" for key in sorted(counter))
+
+
+def summarize_history_source_provenance_for_row(
+    *,
+    clean_row: Mapping[str, Any],
+    history_rows: Sequence[Mapping[str, Any]],
+    target: Mapping[str, Any],
+) -> dict[str, Any]:
+    dog_source_counts: Counter[str] = Counter()
+    race_source_counts: Counter[str] = Counter()
+    time_source_counts: Counter[str] = Counter()
+    dog_source_loaded_rows = 0
+    race_source_loaded_rows = 0
+    metadata_present_counts: Counter[str] = Counter()
+    time_num_present_rows = 0
+    individual_time_present_rows = 0
+
+    for row in history_rows:
+        dog_loaded = bool(row.get("dog_data_source_column_loaded"))
+        race_loaded = bool(row.get("race_metadata_data_source_column_loaded"))
+        dog_source_loaded_rows += 1 if dog_loaded else 0
+        race_source_loaded_rows += 1 if race_loaded else 0
+        dog_source_counts[provenance_bucket(row.get("dog_data_source"), column_loaded=dog_loaded)] += 1
+        race_source_counts[
+            provenance_bucket(row.get("race_metadata_data_source"), column_loaded=race_loaded)
+        ] += 1
+        time_source_counts[history_time_source(row)] += 1
+        if safe_float(row.get("time_num")) is not None:
+            time_num_present_rows += 1
+        if safe_float(row.get("individual_time")) is not None:
+            individual_time_present_rows += 1
+        for field in HISTORY_PROVENANCE_METADATA_FIELDS:
+            if row.get(field) not in (None, ""):
+                metadata_present_counts[field] += 1
+
+    history_row_count = len(history_rows)
+    return {
+        "race_id": clean_row.get("race_id"),
+        "snapshot_instance_id": clean_row.get("snapshot_instance_id"),
+        "dog_name": clean_row.get("dog_name"),
+        "box_number": clean_row.get("box_number"),
+        "history_rows_used": history_row_count,
+        "dog_data_source_column_loaded_rows": dog_source_loaded_rows,
+        "race_metadata_data_source_column_loaded_rows": race_source_loaded_rows,
+        "dog_data_source_counts": dict(dog_source_counts),
+        "race_metadata_data_source_counts": dict(race_source_counts),
+        "time_source_counts": dict(time_source_counts),
+        "time_num_present_rows": time_num_present_rows,
+        "individual_time_present_rows": individual_time_present_rows,
+        "time_missing_rows": time_source_counts.get("missing", 0),
+        "history_metadata_present_rows": dict(metadata_present_counts),
+        "target_metadata_status_v2": target.get("status"),
+        "target_metadata_source_v2": target.get("source"),
+        "target_metadata_reason_v2": target.get("reason"),
+    }
+
+
+def history_source_provenance_report(
+    row_summaries: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    total_history_rows = sum(safe_int(row.get("history_rows_used")) or 0 for row in row_summaries)
+    rows_with_history = sum(1 for row in row_summaries if (safe_int(row.get("history_rows_used")) or 0) > 0)
+    dog_sources: Counter[str] = Counter()
+    race_sources: Counter[str] = Counter()
+    time_sources: Counter[str] = Counter()
+    target_metadata_sources: Counter[str] = Counter()
+    target_metadata_statuses: Counter[str] = Counter()
+    metadata_field_present_rows: Counter[str] = Counter()
+    time_num_present_rows = 0
+    individual_time_present_rows = 0
+    dog_source_loaded_rows = 0
+    race_source_loaded_rows = 0
+
+    for row in row_summaries:
+        dog_sources.update(row.get("dog_data_source_counts") or {})
+        race_sources.update(row.get("race_metadata_data_source_counts") or {})
+        time_sources.update(row.get("time_source_counts") or {})
+        metadata_field_present_rows.update(row.get("history_metadata_present_rows") or {})
+        target_metadata_sources[provenance_bucket(row.get("target_metadata_source_v2"))] += 1
+        target_metadata_statuses[provenance_bucket(row.get("target_metadata_status_v2"))] += 1
+        time_num_present_rows += safe_int(row.get("time_num_present_rows")) or 0
+        individual_time_present_rows += safe_int(row.get("individual_time_present_rows")) or 0
+        dog_source_loaded_rows += safe_int(row.get("dog_data_source_column_loaded_rows")) or 0
+        race_source_loaded_rows += safe_int(row.get("race_metadata_data_source_column_loaded_rows")) or 0
+
+    return {
+        "schema_version": "history_source_provenance_v1",
+        "report_only": True,
+        "scope": "pre_target_db_history_rows_selected_for_stage2_feature_matrix",
+        "matrix_rows": len(row_summaries),
+        "matrix_rows_with_history": rows_with_history,
+        "history_rows_used": total_history_rows,
+        "data_source_columns": {
+            "dog_race_data.data_source_loaded_rows": dog_source_loaded_rows,
+            "race_metadata.data_source_loaded_rows": race_source_loaded_rows,
+            "dog_race_data.data_source_counts": dict(dog_sources),
+            "race_metadata.data_source_counts": dict(race_sources),
+        },
+        "time_source_availability": {
+            "source_priority_counts": dict(time_sources),
+            "time_num_present_rows": time_num_present_rows,
+            "individual_time_present_rows": individual_time_present_rows,
+            "missing_time_rows": time_sources.get("missing", 0),
+        },
+        "history_metadata_coverage": {
+            field: {
+                "present_rows": metadata_field_present_rows.get(field, 0),
+                "missing_rows": max(total_history_rows - metadata_field_present_rows.get(field, 0), 0),
+            }
+            for field in HISTORY_PROVENANCE_METADATA_FIELDS
+        },
+        "target_metadata_source_counts": dict(target_metadata_sources),
+        "target_metadata_status_counts": dict(target_metadata_statuses),
+        "notes": [
+            "This report is generated after pre-target history filtering and does not change features, metrics, training, labels, snapshots, manifests, odds, EV, or registry state.",
+            "time_num is the normalized timing value used by the feature builder; individual_time records whether the raw DB timing field was available.",
+            "COLUMN_ABSENT means the DB table did not expose that data_source column in the read-only schema.",
+        ],
+    }
+
+
+def history_source_provenance_csv_rows(
+    row_summaries: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for row in row_summaries:
+        metadata_counts = row.get("history_metadata_present_rows") or {}
+        rows.append(
+            {
+                "race_id": row.get("race_id"),
+                "snapshot_instance_id": row.get("snapshot_instance_id"),
+                "dog_name": row.get("dog_name"),
+                "box_number": row.get("box_number"),
+                "history_rows_used": row.get("history_rows_used"),
+                "dog_data_source_column_loaded_rows": row.get("dog_data_source_column_loaded_rows"),
+                "race_metadata_data_source_column_loaded_rows": row.get(
+                    "race_metadata_data_source_column_loaded_rows"
+                ),
+                "dog_data_source_counts": compact_counter(row.get("dog_data_source_counts") or {}),
+                "race_metadata_data_source_counts": compact_counter(
+                    row.get("race_metadata_data_source_counts") or {}
+                ),
+                "time_source_counts": compact_counter(row.get("time_source_counts") or {}),
+                "time_num_present_rows": row.get("time_num_present_rows"),
+                "individual_time_present_rows": row.get("individual_time_present_rows"),
+                "time_missing_rows": row.get("time_missing_rows"),
+                "grade_present_rows": metadata_counts.get("grade", 0),
+                "distance_present_rows": metadata_counts.get("distance", 0),
+                "race_time_present_rows": metadata_counts.get("race_time", 0),
+                "track_condition_present_rows": metadata_counts.get("track_condition", 0),
+                "weather_present_rows": metadata_counts.get("weather", 0),
+                "start_datetime_present_rows": metadata_counts.get("start_datetime", 0),
+                "race_metadata_url_present_rows": metadata_counts.get("race_metadata_url", 0),
+                "target_metadata_status_v2": row.get("target_metadata_status_v2"),
+                "target_metadata_source_v2": row.get("target_metadata_source_v2"),
+                "target_metadata_reason_v2": row.get("target_metadata_reason_v2"),
+            }
+        )
+    return rows
+
+
 def rate(rows: Sequence[Mapping[str, Any]], predicate: Any) -> float:
     if not rows:
         return 0.0
@@ -693,9 +1496,13 @@ def add_history_features(
     recent3_finish_values = [safe_float(row.get("finish_num")) for row in recent3]
     time_values = [safe_float(row.get("time_num")) for row in history_rows]
     recent_time_values = [safe_float(row.get("time_num")) for row in recent]
+    recent_speed_values = [history_speed(row) for row in recent]
     margin_values = [safe_float(row.get("margin_num")) for row in recent]
     weight_values = [safe_float(row.get("weight_num")) for row in recent]
     sectional_values = [safe_float(row.get("sectional_1st_num")) for row in recent]
+    recent_grade_rank_values = [history_grade_rank(row) for row in recent]
+    recent_field_size_values = [history_field_size(row) for row in recent]
+    recent_race_strength_values = [history_race_strength(row) for row in recent]
     last_date = str(last.get("race_date")) if last else None
 
     features["prior_start_count"] = len(history_rows)
@@ -709,6 +1516,7 @@ def add_history_features(
     features["recent_avg_time_5"] = mean(recent_time_values)
     features["recent_best_time_5"] = best_min(recent_time_values)
     features["recent_time_std_5"] = std(recent_time_values)
+    features["recent_avg_speed_mps_5"] = mean(recent_speed_values)
     features["career_win_rate"] = rate(history_rows, lambda row: safe_int(row.get("finish_num")) == 1)
     features["career_place_rate"] = rate(history_rows, lambda row: (safe_int(row.get("finish_num")) or 99) <= 3)
     features["career_avg_finish"] = mean(finish_values)
@@ -721,12 +1529,61 @@ def add_history_features(
     if features.get("last_start_weight") is not None and features.get("recent_avg_weight_5") is not None:
         features["weight_delta_last_to_recent"] = features["last_start_weight"] - features["recent_avg_weight_5"]
 
+    safe_grade_rank = grade_rank(target.get("grade"))
+    target_field_size = safe_float(features.get("field_size"))
+    features["safe_grade_rank"] = safe_grade_rank
+    if safe_grade_rank is not None and target_field_size is not None:
+        features["safe_field_strength"] = safe_grade_rank * target_field_size
+    features["last_start_grade_rank"] = history_grade_rank(last) if last else None
+    features["recent_avg_grade_rank_5"] = mean(recent_grade_rank_values)
+    features["last_start_field_size"] = history_field_size(last) if last else None
+    features["recent_avg_field_size_5"] = mean(recent_field_size_values)
+    features["last_start_race_strength"] = history_race_strength(last) if last else None
+    features["recent_avg_race_strength_5"] = mean(recent_race_strength_values)
+    if (
+        features.get("safe_field_strength") is not None
+        and features.get("recent_avg_race_strength_5") is not None
+    ):
+        features["prior_race_strength_delta_to_target"] = (
+            features["safe_field_strength"] - features["recent_avg_race_strength_5"]
+        )
+
+    target_band = box_band(features.get("box_number"))
+    if target_band:
+        same_box_band = [row for row in history_rows if history_box_band(row) == target_band]
+        features["target_box_band_prior_start_count"] = len(same_box_band)
+        features["target_box_band_win_rate"] = rate(
+            same_box_band, lambda row: safe_int(row.get("finish_num")) == 1
+        )
+        features["target_box_band_place_rate"] = rate(
+            same_box_band, lambda row: (safe_int(row.get("finish_num")) or 99) <= 3
+        )
+        features["target_box_band_avg_finish"] = mean(
+            [safe_float(row.get("finish_num")) for row in same_box_band]
+        )
+        features["target_box_band_avg_time"] = mean(
+            [safe_float(row.get("time_num")) for row in same_box_band]
+        )
+    else:
+        same_box_band = []
+
     same_venue = [row for row in history_rows if str(row.get("venue") or "").upper() == target_venue.upper()]
     features["starts_same_venue"] = len(same_venue)
     features["win_rate_same_venue"] = rate(same_venue, lambda row: safe_int(row.get("finish_num")) == 1)
     features["place_rate_same_venue"] = rate(same_venue, lambda row: (safe_int(row.get("finish_num")) or 99) <= 3)
     features["best_time_same_venue"] = best_min([safe_float(row.get("time_num")) for row in same_venue])
     features["avg_time_same_venue"] = mean([safe_float(row.get("time_num")) for row in same_venue])
+    venue_box_band = [row for row in same_venue if target_band and history_box_band(row) == target_band]
+    features["venue_box_band_start_count"] = len(venue_box_band)
+    features["venue_box_band_win_rate"] = rate(
+        venue_box_band, lambda row: safe_int(row.get("finish_num")) == 1
+    )
+    features["venue_box_band_place_rate"] = rate(
+        venue_box_band, lambda row: (safe_int(row.get("finish_num")) or 99) <= 3
+    )
+    features["venue_box_band_avg_finish"] = mean(
+        [safe_float(row.get("finish_num")) for row in venue_box_band]
+    )
 
     target_distance = safe_float(target.get("distance"))
     if target_distance is not None:
@@ -762,6 +1619,19 @@ def add_history_features(
         features["same_distance_venue_best_time"] = best_min(
             [safe_float(row.get("time_num")) for row in same_distance_venue]
         )
+        distance_box_band = [
+            row for row in same_distance if target_band and history_box_band(row) == target_band
+        ]
+        features["distance_box_band_start_count"] = len(distance_box_band)
+        features["distance_box_band_win_rate"] = rate(
+            distance_box_band, lambda row: safe_int(row.get("finish_num")) == 1
+        )
+        features["distance_box_band_place_rate"] = rate(
+            distance_box_band, lambda row: (safe_int(row.get("finish_num")) or 99) <= 3
+        )
+        features["distance_box_band_avg_time"] = mean(
+            [safe_float(row.get("time_num")) for row in distance_box_band]
+        )
     else:
         same_distance = []
 
@@ -771,6 +1641,17 @@ def add_history_features(
         features["same_grade_start_count"] = len(same_grade)
         features["same_grade_win_rate"] = rate(same_grade, lambda row: safe_int(row.get("finish_num")) == 1)
         features["same_grade_place_rate"] = rate(same_grade, lambda row: (safe_int(row.get("finish_num")) or 99) <= 3)
+        features["same_grade_avg_speed_mps"] = mean(
+            [history_speed(row) for row in same_grade]
+        )
+        if (
+            features.get("recent_avg_speed_mps_5") is not None
+            and features.get("same_grade_avg_speed_mps") is not None
+            and features["same_grade_avg_speed_mps"] > 0
+        ):
+            features["grade_normalized_recent_speed_index"] = (
+                features["recent_avg_speed_mps_5"] / features["same_grade_avg_speed_mps"]
+            )
         features["last_start_grade_normalized"] = normalize_grade(last.get("grade_normalized")) if last else None
         features["recent_grade_mode_5"] = mode_text([normalize_grade(row.get("grade_normalized")) for row in recent])
         same_distance_same_grade = [
@@ -789,7 +1670,7 @@ def add_history_features(
         if last_grade and target_rank is not None and last_rank is not None:
             delta = target_rank - last_rank
             features["grade_change_indicator"] = 1 if delta != 0 else 0
-            features["grade_change_direction"] = "up" if delta > 0 else "down" if delta < 0 else "flat"
+            features["grade_change_direction"] = "UP" if delta > 0 else "DOWN" if delta < 0 else "FLAT"
             features["grade_strength_delta"] = delta
 
     features["recent_avg_sectional_1st_5"] = mean(sectional_values)
@@ -839,6 +1720,8 @@ def build_repaired_dataset(
     target_resolution_counts: Counter[str] = Counter()
     source_status_counts: Counter[str] = Counter()
     history_status_counts: Counter[str] = Counter()
+    history_provenance_rows: list[dict[str, Any]] = []
+    target_metadata_audit_rows: list[dict[str, Any]] = []
 
     for clean_row in clean_rows:
         packet_row = packet_by_key.get(row_join_key(clean_row), {})
@@ -846,6 +1729,15 @@ def build_repaired_dataset(
         prediction = find_prediction(snapshot, clean_row.get("dog_name"), clean_row.get("box_number"))
         target = resolve_target_metadata(clean_row, packet_row, snapshot, connection)
         target_resolution_counts[str(target.get("status"))] += 1
+        target_metadata_audit_rows.append(
+            target_metadata_recovery_audit_row(
+                clean_row=clean_row,
+                packet_row=packet_row,
+                snapshot=snapshot,
+                target=target,
+                connection=connection,
+            )
+        )
 
         row_features: dict[str, Any] = {feature: None for feature in features}
         field_size = len(clean_by_group[group_key(clean_row)])
@@ -900,6 +1792,13 @@ def build_repaired_dataset(
             race_date,
             str(clean_row.get("race_id") or ""),
         )
+        history_provenance_rows.append(
+            summarize_history_source_provenance_for_row(
+                clean_row=clean_row,
+                history_rows=dog_history,
+                target=target,
+            )
+        )
         add_history_features(
             row_features,
             dog_history,
@@ -909,7 +1808,11 @@ def build_repaired_dataset(
         )
 
         for feature in features:
-            if row_features.get(feature) is None and packet_row.get(feature) not in (None, ""):
+            if (
+                row_features.get(feature) is None
+                and packet_row.get(feature) not in (None, "")
+                and can_reuse_packet_feature(feature, target)
+            ):
                 # Reuse safe packet values only for feature columns, never IDs or outcome fields.
                 row_features[feature] = packet_row.get(feature)
                 lineage_by_feature[feature]["repaired_packet_safe_reuse"] += 1
@@ -991,6 +1894,10 @@ def build_repaired_dataset(
         "target_resolution_counts": dict(target_resolution_counts),
         "source_status_counts": dict(source_status_counts),
         "history_status_counts": dict(history_status_counts),
+        "history_source_provenance": history_source_provenance_report(history_provenance_rows),
+        "history_source_provenance_rows": history_source_provenance_csv_rows(history_provenance_rows),
+        "target_metadata_recovery_audit": target_metadata_recovery_audit_report(target_metadata_audit_rows),
+        "target_metadata_recovery_audit_rows": target_metadata_audit_rows,
         "train_rows": train_rows,
         "holdout_rows": holdout_rows,
     }
@@ -1015,6 +1922,210 @@ def feature_population(rows: Sequence[Mapping[str, Any]], features: Sequence[str
         "all_missing_features": [feature for feature, item in by_feature.items() if item["all_missing"]],
         "by_feature": by_feature,
     }
+
+
+def target_distance_band_from_row(row: Mapping[str, Any]) -> str | None:
+    if safe_int(row.get("target_distance_band_sprint")) == 1:
+        return "sprint"
+    if safe_int(row.get("target_distance_band_middle")) == 1:
+        return "middle"
+    if safe_int(row.get("target_distance_band_staying")) == 1:
+        return "staying"
+    distance = safe_float(row.get("target_distance_safe"))
+    if distance is None:
+        return None
+    if distance < 450:
+        return "sprint"
+    if distance < 650:
+        return "middle"
+    return "staying"
+
+
+def slice_value(row: Mapping[str, Any], dimension: str) -> str | None:
+    venue = str(row.get("venue") or "").strip().upper()
+    distance_band = target_distance_band_from_row(row)
+    draw_band = box_band(row.get("box_number"))
+    if dimension == "venue":
+        return venue or None
+    if dimension == "target_distance_band":
+        return distance_band
+    if dimension == "target_grade":
+        return normalize_grade(row.get("target_grade_safe") or row.get("target_grade_normalized"))
+    if dimension == "field_size":
+        field_size = safe_int(row.get("field_size"))
+        return str(field_size) if field_size is not None else None
+    if dimension == "box_band":
+        return draw_band
+    if dimension == "venue_box_band":
+        if venue and draw_band:
+            return f"{venue}|{draw_band}"
+        return None
+    if dimension == "distance_box_band":
+        if distance_band and draw_band:
+            return f"{distance_band}|{draw_band}"
+        return None
+    raise ValueError(f"unknown_slice_dimension:{dimension}")
+
+
+def repaired_feature_families(schema: Mapping[str, Any], features: Sequence[str]) -> dict[str, list[str]]:
+    feature_set = set(features)
+    raw_families = schema.get("feature_families") if isinstance(schema, Mapping) else None
+    families: dict[str, list[str]] = {}
+    if isinstance(raw_families, Mapping):
+        for family in REPAIRED_FEATURE_FAMILY_ORDER:
+            values = raw_families.get(family)
+            if isinstance(values, Sequence) and not isinstance(values, (str, bytes)):
+                families[family] = [str(feature) for feature in values if str(feature) in feature_set]
+    if not families:
+        families = {
+            "safe_target_context": [
+                feature
+                for feature in features
+                if feature.startswith("target_distance")
+                or feature.startswith("target_grade")
+            ],
+            "draw_adjusted_history": [
+                feature
+                for feature in features
+                if "box_band" in feature
+            ],
+            "same_distance": [
+                feature
+                for feature in features
+                if "same_distance" in feature
+            ],
+            "same_grade_and_grade_transition": [
+                feature
+                for feature in features
+                if "same_grade" in feature or feature.startswith("grade_")
+            ],
+        }
+    return {family: values for family, values in families.items() if values}
+
+
+def family_population_summary(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    feature_population_report: Mapping[str, Any],
+    family_features: Sequence[str],
+    key_features: Sequence[str],
+) -> dict[str, Any]:
+    by_feature = feature_population_report.get("by_feature") or {}
+    selected = [feature for feature in family_features if feature in by_feature]
+    key_selected = [feature for feature in key_features if feature in by_feature]
+    present_pcts = [safe_float((by_feature.get(feature) or {}).get("present_pct")) for feature in selected]
+    present_pcts = [value for value in present_pcts if value is not None]
+    all_missing = [
+        feature
+        for feature in selected
+        if (by_feature.get(feature) or {}).get("all_missing")
+    ]
+    return {
+        "row_count": len(rows),
+        "race_count": len({group_key(row) for row in rows}),
+        "feature_count": len(selected),
+        "populated_feature_count": len(selected) - len(all_missing),
+        "avg_present_pct": mean(present_pcts) or 0.0,
+        "min_present_pct": min(present_pcts) if present_pcts else 0.0,
+        "all_missing_features": all_missing,
+        "key_feature_present_pct": {
+            feature: (by_feature.get(feature) or {}).get("present_pct", 0.0)
+            for feature in key_selected
+        },
+        "key_feature_present_rows": {
+            feature: (by_feature.get(feature) or {}).get("present_rows", 0)
+            for feature in key_selected
+        },
+    }
+
+
+def build_repaired_slice_population_diagnostics(
+    rows: Sequence[Mapping[str, Any]],
+    features: Sequence[str],
+    schema: Mapping[str, Any],
+) -> dict[str, Any]:
+    families = repaired_feature_families(schema, features)
+    overall_races = len({group_key(row) for row in rows})
+    report: dict[str, Any] = {
+        "schema_version": "stage2_repaired_slice_population_diagnostics_v1",
+        "mode": "report_only_no_training_registry_db_snapshot_manifest_odds_or_ev",
+        "row_count": len(rows),
+        "race_count": overall_races,
+        "dimensions": {},
+        "feature_families": families,
+    }
+    for dimension in REPAIRED_SLICE_DIMENSIONS:
+        buckets: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+        missing_rows = 0
+        for row in rows:
+            value = slice_value(row, dimension)
+            if value is None or value == "":
+                value = "DATA_MISSING"
+                missing_rows += 1
+            buckets[str(value)].append(row)
+        bucket_summaries: dict[str, Any] = {}
+        for bucket, bucket_rows in sorted(buckets.items(), key=lambda item: item[0]):
+            bucket_population = feature_population(bucket_rows, features)
+            family_summaries = {
+                family: family_population_summary(
+                    bucket_rows,
+                    feature_population_report=bucket_population,
+                    family_features=family_features,
+                    key_features=KEY_REPAIRED_FEATURES_BY_FAMILY.get(family, ()),
+                )
+                for family, family_features in families.items()
+            }
+            bucket_summaries[bucket] = {
+                "row_count": len(bucket_rows),
+                "race_count": len({group_key(row) for row in bucket_rows}),
+                "row_pct": len(bucket_rows) / len(rows) if rows else 0.0,
+                "race_pct": (
+                    len({group_key(row) for row in bucket_rows}) / overall_races
+                    if overall_races
+                    else 0.0
+                ),
+                "family_population": family_summaries,
+            }
+        report["dimensions"][dimension] = {
+            "bucket_count": len(bucket_summaries),
+            "missing_row_count": missing_rows,
+            "missing_row_pct": missing_rows / len(rows) if rows else 0.0,
+            "buckets": bucket_summaries,
+        }
+    return report
+
+
+def slice_population_csv_rows(report: Mapping[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    dimensions = report.get("dimensions") or {}
+    for dimension, dimension_report in dimensions.items():
+        for bucket, bucket_report in (dimension_report.get("buckets") or {}).items():
+            for family, family_report in (bucket_report.get("family_population") or {}).items():
+                rows.append(
+                    {
+                        "dimension": dimension,
+                        "bucket": bucket,
+                        "family": family,
+                        "row_count": bucket_report.get("row_count"),
+                        "race_count": bucket_report.get("race_count"),
+                        "row_pct": bucket_report.get("row_pct"),
+                        "race_pct": bucket_report.get("race_pct"),
+                        "feature_count": family_report.get("feature_count"),
+                        "populated_feature_count": family_report.get("populated_feature_count"),
+                        "avg_present_pct": family_report.get("avg_present_pct"),
+                        "min_present_pct": family_report.get("min_present_pct"),
+                        "all_missing_features": ",".join(family_report.get("all_missing_features") or []),
+                        "key_feature_present_pct": json.dumps(
+                            family_report.get("key_feature_present_pct") or {},
+                            sort_keys=True,
+                        ),
+                        "key_feature_present_rows": json.dumps(
+                            family_report.get("key_feature_present_rows") or {},
+                            sort_keys=True,
+                        ),
+                    }
+                )
+    return rows
 
 
 def temporal_split(rows: Sequence[Mapping[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -1496,8 +2607,11 @@ def main(argv: list[str] | None = None) -> int:
     feature_columns = list(schema["feature_columns"])
     if any(feature.startswith("tgr_") for feature in feature_columns):
         raise SystemExit("schema_contains_tgr_columns")
-    if len(feature_columns) != 78:
-        raise SystemExit(f"schema_feature_count_not_78:{len(feature_columns)}")
+    if len(feature_columns) != EXPECTED_REPAIRED_FEATURE_COUNT:
+        raise SystemExit(
+            f"schema_feature_count_not_{EXPECTED_REPAIRED_FEATURE_COUNT}:"
+            f"{len(feature_columns)}"
+        )
 
     protected_before = {
         "model_registry/best_metadata.json": sha256_file(ROOT / "model_registry/best_metadata.json")
@@ -1568,6 +2682,102 @@ def main(argv: list[str] | None = None) -> int:
             "gate": gate,
         },
     )
+    slice_diagnostics = build_repaired_slice_population_diagnostics(
+        dataset["rows"],
+        feature_columns,
+        schema,
+    )
+    write_json(phase1 / "stage2_slice_population_diagnostics_v1.json", slice_diagnostics)
+    write_csv(
+        phase1 / "stage2_slice_population_diagnostics_v1.csv",
+        slice_population_csv_rows(slice_diagnostics),
+        [
+            "dimension",
+            "bucket",
+            "family",
+            "row_count",
+            "race_count",
+            "row_pct",
+            "race_pct",
+            "feature_count",
+            "populated_feature_count",
+            "avg_present_pct",
+            "min_present_pct",
+            "all_missing_features",
+            "key_feature_present_pct",
+            "key_feature_present_rows",
+        ],
+    )
+    write_json(phase1 / "history_source_provenance_v1.json", dataset["history_source_provenance"])
+    write_csv(
+        phase1 / "history_source_provenance_by_matrix_row_v1.csv",
+        dataset["history_source_provenance_rows"],
+        [
+            "race_id",
+            "snapshot_instance_id",
+            "dog_name",
+            "box_number",
+            "history_rows_used",
+            "dog_data_source_column_loaded_rows",
+            "race_metadata_data_source_column_loaded_rows",
+            "dog_data_source_counts",
+            "race_metadata_data_source_counts",
+            "time_source_counts",
+            "time_num_present_rows",
+            "individual_time_present_rows",
+            "time_missing_rows",
+            "grade_present_rows",
+            "distance_present_rows",
+            "race_time_present_rows",
+            "track_condition_present_rows",
+            "weather_present_rows",
+            "start_datetime_present_rows",
+            "race_metadata_url_present_rows",
+            "target_metadata_status_v2",
+            "target_metadata_source_v2",
+            "target_metadata_reason_v2",
+        ],
+    )
+    write_json(phase1 / "target_metadata_recovery_audit_v1.json", dataset["target_metadata_recovery_audit"])
+    write_csv(
+        phase1 / "target_metadata_recovery_audit_by_matrix_row_v1.csv",
+        dataset["target_metadata_recovery_audit_rows"],
+        [
+            "race_id",
+            "snapshot_instance_id",
+            "dog_name",
+            "box_number",
+            "race_date",
+            "venue",
+            "race_number",
+            "target_metadata_status_v2",
+            "target_metadata_source_v2",
+            "target_metadata_reason_v2",
+            "target_distance_safe_present",
+            "target_grade_safe_present",
+            "target_metadata_blocker_reason",
+            "sidecar_status",
+            "sidecar_path",
+            "sidecar_has_distance",
+            "sidecar_has_grade",
+            "sidecar_distance_source",
+            "sidecar_grade_source",
+            "sidecar_verification_status",
+            "sidecar_metadata_is_leakage_safe",
+            "db_lookup_status",
+            "db_exact_row_count",
+            "db_exact_metadata_row_count",
+            "db_safe_candidate_count",
+            "db_unsafe_candidate_count",
+            "db_embedded_form_metadata_count",
+            "db_post_outcome_metadata_count",
+            "db_metadata_source_counts",
+            "db_exact_row_has_target_metadata",
+            "db_exact_row_has_post_outcome_marker",
+            "packet_target_grade_source",
+            "packet_target_distance_source",
+        ],
+    )
     write_phase_common(
         phase1,
         summary=phase1_summary(gate, dataset, args),
@@ -1581,6 +2791,7 @@ def main(argv: list[str] | None = None) -> int:
             "target_grade_safe_present_rows": gate["target_grade_safe_present_rows"],
             "leakage_audit": dataset["leakage_audit"]["status"],
             "gate": gate["status"],
+            "stage2_slice_dimensions": ",".join(REPAIRED_SLICE_DIMENSIONS),
         },
         extra_manifest={
             "clean_dataset": relpath(args.clean_dataset),
@@ -1727,7 +2938,13 @@ def phase1_summary(gate: Mapping[str, Any], dataset: Mapping[str, Any], args: ar
             "- `repaired_dataset_v2.csv`",
             "- `leakage_audit_v2.json`",
             "- `feature_population_v2.json`",
+            "- `stage2_slice_population_diagnostics_v1.json`",
+            "- `stage2_slice_population_diagnostics_v1.csv`",
             "- `leakage_risk_row_classification_v2.csv`",
+            "- `history_source_provenance_v1.json`",
+            "- `history_source_provenance_by_matrix_row_v1.csv`",
+            "- `target_metadata_recovery_audit_v1.json`",
+            "- `target_metadata_recovery_audit_by_matrix_row_v1.csv`",
             "",
             "No DB writes, registry mutation, model replacement, TGR enablement, promotion, betting, EV, snapshot rewrite, or manifest append was performed.",
             "",

@@ -118,4 +118,3 @@ def test_expert_form_readiness_packet_blocks_on_schema_gap_after_coverage(tmp_pa
     assert report["coverage_summary"]["safe_source_runner_rows"] == 1
     assert report["coverage_summary"]["safe_shadow_feature_rows"] == 1
     assert report["schema_gap_count"] > 0
-

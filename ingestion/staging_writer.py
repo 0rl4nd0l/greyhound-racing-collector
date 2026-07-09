@@ -26,6 +26,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
+from utils.csv_metadata import load_safe_weather_track_metadata
+
 # --- Helpers shared within this module ---
 
 CANONICAL_DATE_FORMAT = "%Y-%m-%d"
@@ -39,6 +41,8 @@ class RaceMeta:
     race_name: Optional[str] = None
     grade: Optional[str] = None
     distance: Optional[str] = None
+    track_condition: Optional[str] = None
+    weather: Optional[str] = None
 
     @property
     def race_id(self) -> str:
@@ -197,6 +201,17 @@ def extract_meta_from_filename(p: Path) -> Optional[RaceMeta]:
     return None
 
 
+def apply_safe_sidecar_weather_track_metadata(csv_path: Path, meta: RaceMeta) -> RaceMeta:
+    sidecar_metadata = load_safe_weather_track_metadata(csv_path)
+    track_condition = sidecar_metadata.get("track_condition")
+    weather = sidecar_metadata.get("weather") or sidecar_metadata.get("weather_condition")
+    if track_condition is not None:
+        meta.track_condition = str(track_condition)
+    if weather is not None:
+        meta.weather = str(weather)
+    return meta
+
+
 # Dog row mapping
 DOG_NAME_KEYS = ["Dog", "Dog Name", "dog_name", "dog name", "Name"]
 BOX_KEYS = ["Box Number", "Box", "BOX", "box", "trap", "Trap"]
@@ -209,6 +224,7 @@ SEC1_KEYS = [
     "first_sectional",
     "sectional_1st",
     "first split",
+    "1 SEC",
 ]
 MARGIN_KEYS = ["Margin", "margin", "Beaten Margin", "beaten_margin"]
 TRAINER_KEYS = ["Trainer", "trainer", "Trainer Name"]
@@ -235,6 +251,7 @@ def parse_race_csv_for_staging(
         raise ValueError(
             "Unable to extract race metadata (race_date, venue, race_number) from CSV or filename."
         )
+    meta = apply_safe_sidecar_weather_track_metadata(p, meta)
 
     dogs: List[Dict[str, object]] = []
     with p.open("r", encoding="utf-8", errors="replace") as f:

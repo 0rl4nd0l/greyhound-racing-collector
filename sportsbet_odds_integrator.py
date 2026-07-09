@@ -53,6 +53,7 @@ RACE_METADATA_SAFE_UPSERT_FIELDS = {
 
 
 LIVE_ODDS_CAPTURE_COLUMNS = {
+    "topN": "INTEGER",
     "source_url": "TEXT",
     "capture_timestamp": "TEXT",
     "capture_mode": "TEXT",
@@ -1189,7 +1190,7 @@ class SportsbetOddsIntegrator:
         if not race_id:
             report["warnings"].append("race_id_missing")
             return report
-        if market != "win":
+        if market not in {"win", "place"}:
             report["status"] = "REJECTED"
             report["warnings"].append(f"unsupported_market_type:{market}")
             return report

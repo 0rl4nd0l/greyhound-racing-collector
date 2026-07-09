@@ -15,6 +15,10 @@ import pandas as pd
 import sqlite3
 from typing import Any, Optional
 
+from accuracy_program.odds_provenance import (
+    build_odds_snapshot as _build_canonical_odds_snapshot,
+    classify_odds_snapshot_for_ev as _classify_canonical_odds_snapshot_for_ev,
+)
 from ml_system_v4 import MLSystemV4
 from temporal_feature_builder import classify_dog_history_status
 from utils.feature_flags import load_flags
@@ -273,6 +277,12 @@ def _annotate_market_context(
     predictions: list[dict[str, Any]],
     win_odds: dict[str, float],
     win_odds_records: dict[str, dict[str, Any]] | None = None,
+    *,
+    prediction_timestamp: str | None = None,
+    feature_freeze_timestamp: str | None = None,
+    jump_datetime: str | None = None,
+    snapshot_race_id: str | None = None,
+    stale_odds_after_minutes: float = 30.0,
 ) -> dict[str, Any]:
     """Attach market-implied probabilities and disagreement flags without reranking."""
     if not predictions or not win_odds:
@@ -319,6 +329,34 @@ def _annotate_market_context(
             elif record.get("dog_clean_name"):
                 prediction["odds_match_method"] = "race_id_name"
                 prediction["odds_match_confidence"] = 0.5
+        if prediction_timestamp:
+            odds_snapshot = _build_canonical_odds_snapshot(
+                prediction,
+                prediction_timestamp=prediction_timestamp,
+                feature_freeze_timestamp=feature_freeze_timestamp or prediction_timestamp,
+                jump_datetime=jump_datetime,
+                stale_odds_after_minutes=stale_odds_after_minutes,
+            )
+            odds_decision = _classify_canonical_odds_snapshot_for_ev(
+                prediction,
+                odds_snapshot,
+                snapshot_race_id=(
+                    snapshot_race_id
+                    or (record.get("race_id") if isinstance(record, dict) else None)
+                ),
+            )
+            prediction["odds_snapshot"] = odds_snapshot
+            prediction["odds_match_status"] = odds_decision.get("odds_match_status")
+            prediction["odds_exclusion_reason"] = odds_decision.get(
+                "odds_exclusion_reason"
+            )
+            prediction["odds_provenance_status"] = odds_decision.get(
+                "odds_provenance_status"
+            )
+            if odds_decision.get("is_ev_eligible") is not True:
+                prediction["ev_win"] = None
+                prediction["ev_win_positive"] = False
+                _append_quality_flag(prediction, "invalid_pre_jump_odds")
 
     implied_total = sum(implied_by_index.values())
     threshold = _market_disagreement_threshold()
@@ -1198,10 +1236,46 @@ class PredictionPipelineV4:
                                         except Exception:
                                             p.setdefault("ev_win", None)
                                     p.setdefault("model_version", model_version)
+                            strict_odds_prediction_timestamp = str(
+                                result.get("prediction_timestamp")
+                                or result.get("generated_at")
+                                or datetime.now().astimezone().isoformat()
+                            )
+                            strict_odds_jump_datetime = (
+                                result.get("jump_datetime")
+                                or result.get("start_datetime")
+                                or result.get("race_start_time")
+                            )
+                            if not strict_odds_jump_datetime:
+                                try:
+                                    for column in (
+                                        "jump_datetime",
+                                        "start_datetime",
+                                        "race_start_time",
+                                    ):
+                                        if (
+                                            hasattr(race_data, "columns")
+                                            and column in race_data.columns
+                                            and not race_data[column].dropna().empty
+                                        ):
+                                            strict_odds_jump_datetime = str(
+                                                race_data[column].dropna().iloc[0]
+                                            )
+                                            break
+                                except Exception:
+                                    strict_odds_jump_datetime = None
                             market_summary = _annotate_market_context(
                                 preds,
                                 win_odds,
                                 win_odds_records,
+                                prediction_timestamp=strict_odds_prediction_timestamp,
+                                feature_freeze_timestamp=strict_odds_prediction_timestamp,
+                                jump_datetime=(
+                                    str(strict_odds_jump_datetime)
+                                    if strict_odds_jump_datetime
+                                    else None
+                                ),
+                                snapshot_race_id=race_id,
                             )
                             if market_summary.get("market_odds_count"):
                                 result["market_context"] = market_summary

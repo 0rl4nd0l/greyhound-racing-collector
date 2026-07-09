@@ -1032,6 +1032,57 @@ def test_dom_fallback_page_scraping_requires_opt_in_and_is_limited(tmp_path, mon
     assert all(race.get("odds_data") for race in enabled_result)
 
 
+def test_integrator_can_skip_database_setup_for_read_only_fetch(tmp_path):
+    db_path = tmp_path / "read_only_fetch.db"
+
+    SportsbetOddsIntegrator(db_path=str(db_path), setup_database=False)
+
+    assert not db_path.exists()
+
+
+def test_append_pre_jump_snapshot_can_skip_race_metadata_write(tmp_path):
+    db_path = tmp_path / "append_without_metadata.db"
+    integrator = SportsbetOddsIntegrator(db_path=str(db_path))
+
+    race_info = {
+        "race_id": "READ_ONLY_R1",
+        "preserve_race_id": True,
+        "venue": "Wentworth Park",
+        "race_number": 1,
+        "race_date": "2026-05-24",
+        "race_time": "10:30",
+        "venue_url": "https://www.sportsbet.com.au/greyhound-racing/wpk-r1",
+    }
+    report = integrator.append_pre_jump_odds_snapshot(
+        race_info,
+        [
+            {
+                "dog_name": "Alpha Runner",
+                "dog_clean_name": "Alpha Runner",
+                "box_number": 1,
+                "odds_decimal": 3.0,
+            }
+        ],
+        capture_timestamp="2026-05-24T09:55:00",
+        write_race_metadata=False,
+    )
+
+    assert report["status"] == "SUCCESS"
+    assert report["inserted_rows"] == 1
+    with sqlite3.connect(db_path) as conn:
+        metadata_rows = conn.execute(
+            "SELECT COUNT(*) FROM race_metadata WHERE race_id = ?",
+            ("READ_ONLY_R1",),
+        ).fetchone()[0]
+        odds_rows = conn.execute(
+            "SELECT COUNT(*) FROM live_odds WHERE race_id = ?",
+            ("READ_ONLY_R1",),
+        ).fetchone()[0]
+
+    assert metadata_rows == 0
+    assert odds_rows == 1
+
+
 def test_ev_win_contract_uses_win_probability_times_odds_minus_one_when_odds_exist():
     import importlib.util
     import numpy as np

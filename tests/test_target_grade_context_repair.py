@@ -9,6 +9,7 @@ import pytest
 from scripts.rebuild_same_distance_feature_packet import (
     _clean_lookup,
     _compute_grade_context_bundle,
+    _compute_same_distance_bundle,
     _histories_by_dog,
     _join_key,
     _load_csv,
@@ -168,6 +169,85 @@ def test_class_transition_uses_only_prior_rows():
             break
         else:
             pytest.skip("no suitable historical row with prior same-grade history was found")
+
+
+def test_same_distance_same_grade_timing_uses_only_safe_prior_rows():
+    target_row = {
+        "dog_name": "Fixture Runner",
+        "race_date": "2026-06-10",
+        "venue": "TEST",
+    }
+    target_meta = {
+        "status": "UNIQUE_DATE_VENUE",
+        "source": "fixture",
+        "target_distance": 450,
+        "target_grade": "Grade 5",
+        "target_race_date": "2026-06-10",
+        "target_datetime": _parse_date("2026-06-10"),
+        "target_venue": "TEST",
+    }
+    history_index = {
+        "FIXTURERUNNER": [
+            {
+                "race_id": "prior-same-grade-fast",
+                "race_date": "2026-06-01",
+                "venue": "TEST",
+                "distance": "450m",
+                "grade": "Grade 5",
+                "individual_time": "18.12",
+                "finish_position": "2",
+            },
+            {
+                "race_id": "prior-same-grade-slow",
+                "race_date": "2026-05-20",
+                "venue": "TEST",
+                "distance": "455m",
+                "grade": "5",
+                "individual_time": "18.36",
+                "finish_position": "1",
+            },
+            {
+                "race_id": "prior-different-grade",
+                "race_date": "2026-05-10",
+                "venue": "TEST",
+                "distance": "450m",
+                "grade": "Grade 4",
+                "individual_time": "17.50",
+                "finish_position": "1",
+            },
+            {
+                "race_id": "target-date-row",
+                "race_date": "2026-06-10",
+                "venue": "TEST",
+                "distance": "450m",
+                "grade": "Grade 5",
+                "individual_time": "16.00",
+                "finish_position": "1",
+            },
+            {
+                "race_id": "future-row",
+                "race_date": "2026-06-11",
+                "venue": "TEST",
+                "distance": "450m",
+                "grade": "Grade 5",
+                "individual_time": "15.00",
+                "finish_position": "1",
+            },
+        ]
+    }
+
+    bundle = _compute_same_distance_bundle(
+        row=target_row,
+        target_meta=target_meta,
+        history_index=history_index,
+        target_grade_normalized="Grade 5",
+    )
+
+    assert bundle["same_distance_same_grade_start_count"] == 2
+    assert bundle["same_distance_same_grade_best_time"] == 18.12
+    assert bundle["same_distance_same_grade_avg_time"] == pytest.approx(18.24)
+    assert bundle["best_time_same_distance"] == 17.50
+    assert bundle["same_distance_target_status"] == "UNIQUE_DATE_VENUE"
 
 
 def test_target_grade_train_eval_schema_parity(tmp_path):

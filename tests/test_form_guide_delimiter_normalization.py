@@ -248,6 +248,66 @@ def test_provenance_payload_writes_flat_prejump_shadow_metadata_block(tmp_path):
     assert shadow_metadata["canonical_final_runner_alignment"]["status"] == "aligned"
 
 
+def test_provenance_payload_preserves_safe_weather_track_fields(tmp_path):
+    content = _synthetic_form_export([(1, "Alpha Dog")])
+    sidecar = _synthetic_sidecar()
+    race_info = {
+        **sidecar["race_info"],
+        "date": "2026-05-29",
+        "venue": "TEST",
+        "race_time": "11:15 AM",
+        "track_condition": "Slow",
+        "weather_condition": "Showers",
+        "target_distance": sidecar["target_distance"],
+        "target_distance_source": sidecar["target_distance_source"],
+        "target_grade": sidecar["target_grade"],
+        "target_grade_source": sidecar["target_grade_source"],
+    }
+
+    payload = build_csv_download_provenance_payload(
+        filepath=tmp_path / "Race 1 - TEST - 2026-05-29.csv",
+        race_url=SYNTHETIC_RACE_URL,
+        csv_info={"type": "GET", "url": "https://example.test/form.csv"},
+        content=content,
+        completeness={"status": "COMPLETE"},
+        race_info=race_info,
+    )
+
+    assert payload["race_info"]["track_condition"] == "Slow"
+    assert payload["race_info"]["weather_condition"] == "Showers"
+    assert payload["track_condition"] == "Slow"
+    assert payload["weather"] == "Showers"
+    assert payload["weather_condition"] == "Showers"
+    assert payload["weather_track_metadata_is_leakage_safe"] is True
+
+
+def test_provenance_payload_rejects_weather_track_placeholders_and_result_like_source(
+    tmp_path,
+):
+    payload = build_csv_download_provenance_payload(
+        filepath=tmp_path / "Race 1 - TEST - 2026-05-29.csv",
+        race_url="https://www.thedogs.com.au/results/test/2026-05-29/1/test-race",
+        csv_info={"type": "GET", "url": "https://example.test/form.csv"},
+        content=_synthetic_form_export([(1, "Alpha Dog")]),
+        completeness={"status": "COMPLETE"},
+        race_info={
+            "race_number": 1,
+            "track_condition": "Unknown",
+            "weather": "N/A",
+            "winner_track_condition": "Fast",
+            "odds_weather": "Fine",
+            "target_distance": "400m",
+            "target_grade": "Maiden",
+        },
+    )
+
+    assert payload["track_condition"] is None
+    assert payload["weather"] is None
+    assert payload["weather_track_metadata_is_leakage_safe"] is False
+    assert "winner_track_condition" not in payload
+    assert "odds_weather" not in payload
+
+
 def test_prejump_shadow_metadata_fails_closed_for_non_thedogs_race_url(tmp_path):
     runners = [
         (1, "Alpha Runner"),

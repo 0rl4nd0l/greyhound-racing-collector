@@ -5858,6 +5858,98 @@ def test_feature_activation_gate_inputs_falls_back_to_daily_same_distance_proven
     assert inputs["same_distance_history_provenance"] == daily_same_distance
 
 
+def test_feature_activation_data_availability_status_keeps_quarantined_live_progress(tmp_path):
+    candidate_metrics = tmp_path / "candidate_eval_metrics_for_activation.json"
+    activation_report = {
+        "final_status": "FEATURE_ACTIVATION_BLOCKED_KEEP_QUARANTINED",
+        "kept_quarantined_features": [
+            "same_distance_same_grade_best_time",
+            "same_distance_same_grade_avg_time",
+        ],
+        "activation_allowed_features": [],
+        "thresholds": {
+            "min_train_present_rows": 30,
+            "min_train_present_pct": 0.05,
+            "min_train_unique_present_values": 5,
+            "min_holdout_present_rows": 10,
+            "min_holdout_present_pct": 0.05,
+            "min_holdout_unique_present_values": 5,
+        },
+        "fail_reason_summary": {
+            "reason_counts": {
+                "all_missing_in_train": 2,
+                "missing_shadow_metric_comparison": 2,
+            }
+        },
+        "features": [
+            {
+                "feature": "same_distance_same_grade_best_time",
+                "decision": "KEEP_QUARANTINED",
+                "fail_reasons": [
+                    "all_missing_in_train",
+                    "missing_shadow_metric_comparison",
+                ],
+                "parity": {
+                    "train_present_rows": 0,
+                    "train_rows": 751,
+                    "train_present_pct": 0,
+                    "train_unique_present_values": 0,
+                    "holdout_present_rows": 10,
+                    "holdout_rows": 192,
+                    "holdout_present_pct": 0.052083333333333336,
+                    "holdout_unique_present_values": 10,
+                },
+            }
+        ],
+    }
+    same_distance_report = {
+        "status": "PASS",
+        "feature_rows": 122,
+        "required_source": "prior_dog_history",
+        "required_history_cutoff": "strictly_before_target_race",
+        "target_race_rows_allowed": 0,
+        "post_outcome_rows_allowed": 0,
+        "by_feature": {
+            "same_distance_same_grade_best_time": {
+                "status": "PASS",
+                "present_rows": 6,
+                "prior_history_rows_used": 8,
+                "source": "prior_dog_history",
+                "history_cutoff": "strictly_before_target_race",
+                "target_race_rows_used": 0,
+                "post_outcome_rows_used": 0,
+            }
+        },
+    }
+
+    status = autopilot.build_feature_activation_data_availability_status(
+        activation_report=activation_report,
+        same_distance_history_provenance=same_distance_report,
+        inputs={"candidate_metrics": None},
+    )
+
+    assert status["status"] == "FEATURE_ACTIVATION_DATA_STILL_MISSING_KEEP_QUARANTINED"
+    assert status["candidate_metric_comparison_status"] == "MISSING_OR_STALE"
+    assert status["fail_reason_summary"]["reason_counts"]["all_missing_in_train"] == 2
+    assert status["same_distance_history"]["feature_rows"] == 122
+    assert (
+        status["by_feature"]["same_distance_same_grade_best_time"][
+            "live_same_distance_history"
+        ]["present_rows"]
+        == 6
+    )
+    assert status["by_feature"]["same_distance_same_grade_best_time"]["train_present_rows"] == 0
+    assert status["next_data_requirement"]["min_train_present_rows"] == 30
+    assert status["candidate_metrics_path"] is None
+
+    status_with_metrics = autopilot.build_feature_activation_data_availability_status(
+        activation_report=activation_report,
+        same_distance_history_provenance=same_distance_report,
+        inputs={"candidate_metrics": candidate_metrics},
+    )
+    assert status_with_metrics["candidate_metric_comparison_status"] == "AVAILABLE"
+
+
 def test_summary_surfaces_feature_activation_gate_status():
     summary = autopilot.summary_markdown(
         final_verdict="AUTOPILOT_READY",
@@ -5869,12 +5961,25 @@ def test_summary_surfaces_feature_activation_gate_status():
             "output_dir": "artifacts/full_evidence_orchestration_20260525/shadow_feature_activation_gate_x",
             "activation_allowed_features": [],
             "kept_quarantined_features": ["same_distance_same_grade_best_time"],
+            "data_availability_status": {
+                "status": "FEATURE_ACTIVATION_DATA_STILL_MISSING_KEEP_QUARANTINED",
+                "candidate_metric_comparison_status": "MISSING_OR_STALE",
+                "fail_reason_summary": {
+                    "reason_counts": {"all_missing_in_train": 1}
+                },
+                "same_distance_history": {
+                    "status": "PASS",
+                    "feature_rows": 122,
+                },
+            },
         },
     )
 
     assert "## Feature Activation Gate" in summary
     assert "FEATURE_ACTIVATION_BLOCKED_KEEP_QUARANTINED" in summary
     assert "same_distance_same_grade_best_time" in summary
+    assert "FEATURE_ACTIVATION_DATA_STILL_MISSING_KEEP_QUARANTINED" in summary
+    assert "Same-distance feature rows: `122`" in summary
 
 
 def test_summary_surfaces_shadow_odds_snapshot_status():

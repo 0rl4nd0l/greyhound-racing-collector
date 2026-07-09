@@ -26,10 +26,8 @@ from accuracy_program.evaluation import (
     market_implied_probabilities,
     score_predictions,
 )
-from accuracy_program.snapshots import (
-    assert_no_result_fields,
-    classify_odds_snapshot_for_ev,
-)
+from accuracy_program.odds_provenance import classify_odds_snapshot_for_ev
+from accuracy_program.snapshots import assert_no_result_fields
 from utils.runner_completeness import (
     MIN_COMPLETE_RUNNERS,
     RunnerRow,
