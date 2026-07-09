@@ -1276,7 +1276,11 @@ def test_shadow_run_official_dry_run_uses_official_fetcher_without_db_writes(
                 raw_order=[1, 2, 3, 4],
             )
 
-    monkeypatch.setattr(capture.ingest, "TheDogsResultFetcher", FakeTheDogsResultFetcher)
+    monkeypatch.setattr(
+        capture.ingest,
+        "TheDogsResultFetcher",
+        FakeTheDogsResultFetcher,
+    )
     monkeypatch.setattr(
         capture.ingest,
         "optional_browser_driver",
@@ -1332,7 +1336,11 @@ def test_shadow_run_official_dry_run_failed_validation_keeps_participant_context
                 },
             )
 
-    monkeypatch.setattr(capture.ingest, "TheDogsResultFetcher", FakeTheDogsResultFetcher)
+    monkeypatch.setattr(
+        capture.ingest,
+        "TheDogsResultFetcher",
+        FakeTheDogsResultFetcher,
+    )
     monkeypatch.setattr(
         capture.ingest,
         "optional_browser_driver",
@@ -1447,7 +1455,11 @@ def test_shadow_run_official_dry_run_retries_source_backed_live_odds_backlog(
                 raw_order=[1, 2, 3, 4],
             )
 
-    monkeypatch.setattr(capture.ingest, "TheDogsResultFetcher", FakeTheDogsResultFetcher)
+    monkeypatch.setattr(
+        capture.ingest,
+        "TheDogsResultFetcher",
+        FakeTheDogsResultFetcher,
+    )
     monkeypatch.setattr(
         capture.ingest,
         "optional_browser_driver",
@@ -1489,6 +1501,142 @@ def test_shadow_run_official_dry_run_retries_source_backed_live_odds_backlog(
         "Race 1 - WPK - 2026-06-10",
         "Race 2 - WPK - 2026-06-11",
     }
+
+
+def test_shadow_run_official_dry_run_retains_shadow_backlog_candidates_beyond_limit(
+    tmp_path,
+    monkeypatch,
+):
+    current_csv = tmp_path / "Race 99 - WPK - 2026-06-29.csv"
+    retained_csv = tmp_path / "Race 10 - WAR - 2026-06-29.csv"
+    retained_race_id = "Race 10 - WAR - 2026-06-29"
+    _write_shadow_source_csv(current_csv)
+    _write_shadow_source_csv(retained_csv)
+    current_shadow_run = _write_shadow_run(
+        tmp_path,
+        source_csv=current_csv,
+        race_id="Race 99 - WPK - 2026-06-29",
+        race_time_minutes=20 * 60,
+        dirname="shadow_current",
+    )
+    evidence_root = tmp_path / "artifacts/full_evidence_orchestration_20260525"
+    evidence_root.mkdir(parents=True)
+    _write_shadow_run(
+        evidence_root,
+        source_csv=retained_csv,
+        race_id=retained_race_id,
+        race_time_minutes=17 * 60,
+        dirname="daily_race_ingest_shadow_20260629T170200_retained",
+    )
+    newer_unrelated_csv = tmp_path / "Race 1 - WPK - 2026-06-30.csv"
+    _write_shadow_source_csv(newer_unrelated_csv)
+    _write_shadow_run(
+        evidence_root,
+        source_csv=newer_unrelated_csv,
+        race_id="Race 1 - WPK - 2026-06-30",
+        race_time_minutes=12 * 60,
+        dirname="daily_race_ingest_shadow_20260630T120000_newer",
+    )
+    db_path = tmp_path / "labels.sqlite"
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(
+            """
+            CREATE TABLE race_metadata (
+                race_id TEXT PRIMARY KEY,
+                winner_source TEXT
+            );
+            CREATE TABLE live_odds (
+                race_id TEXT,
+                race_date TEXT,
+                source_url TEXT,
+                capture_timestamp TEXT,
+                timestamp TEXT,
+                market_type TEXT,
+                odds_decimal REAL,
+                odds_level TEXT,
+                sportsbet_box_source TEXT
+            );
+            """
+        )
+        rows = [
+            (
+                f"Race {index} - FILLER{index:02d} - 2026-06-29",
+                "2026-06-29",
+                f"2026-06-29T17:{index:02d}:00+10:00",
+                f"2026-06-29T17:{index:02d}:00+10:00",
+            )
+            for index in range(1, 34)
+        ]
+        rows.append(
+            (
+                retained_race_id,
+                "2026-06-29",
+                "2026-06-29T17:34:00+10:00",
+                "2026-06-29T17:34:00+10:00",
+            )
+        )
+        conn.executemany(
+            """
+            INSERT INTO live_odds
+                (race_id, race_date, source_url, capture_timestamp, timestamp,
+                 market_type, odds_decimal, odds_level, sportsbet_box_source)
+            VALUES (?, ?, 'https://www.sportsbet.com.au/greyhound-racing/test/race',
+                    ?, ?, 'win', 2.8, 'dog', 'runner_text')
+            """,
+            rows,
+        )
+
+    class FakeTheDogsResultFetcher:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def fetch(self, candidate):
+            return capture.ingest.SourceResult(
+                source="thedogs_official",
+                status="resulted",
+                source_url=f"{candidate.canonical_thedogs_url}/results",
+                positions_by_box={1: 1, 2: 2, 3: 3, 4: 4},
+                raw_order=[1, 2, 3, 4],
+            )
+
+    monkeypatch.setattr(
+        capture.ingest,
+        "TheDogsResultFetcher",
+        FakeTheDogsResultFetcher,
+    )
+    monkeypatch.setattr(
+        capture.ingest,
+        "optional_browser_driver",
+        lambda headless=True: (None, None, "browser_unavailable"),
+    )
+
+    report, returncode = capture.run_shadow_run_official_dry_run(
+        db_path=db_path,
+        shadow_run_dir=current_shadow_run,
+        target_date="2026-06-29",
+        current_time=datetime.fromisoformat("2026-06-29T21:00:00+10:00"),
+        output_dir=tmp_path / "out",
+        race_ids=[],
+        include_live_odds_backlog=True,
+        backlog_evidence_root=evidence_root,
+        backlog_limit=32,
+        backlog_shadow_run_limit=1,
+        backlog_lookback_days=0,
+    )
+
+    assert returncode == 0
+    assert retained_race_id in report["candidate_race_ids"]
+    retained_entry = next(
+        row
+        for row in report["live_odds_backlog"]["discovered_races"]
+        if row["race_id"] == retained_race_id
+    )
+    assert retained_entry["backlog_rank"] == 34
+    assert retained_entry["retained_beyond_limit"] is True
+    assert report["live_odds_backlog"]["retained_beyond_limit_race_ids"] == [
+        retained_race_id
+    ]
+    assert retained_race_id in {row["race_id"] for row in report["ingested"]}
 
 
 def test_shadow_run_official_dry_run_reports_unresolved_live_odds_backlog_reasons(

@@ -625,6 +625,7 @@ def source_backed_live_odds_backlog_race_ids(
     target_date: str,
     limit: int,
     lookback_days: int = 0,
+    retain_race_ids: Sequence[str] | None = None,
 ) -> list[str]:
     """Find source-backed odds races that still need official result evidence."""
 
@@ -635,6 +636,7 @@ def source_backed_live_odds_backlog_race_ids(
             target_date=target_date,
             limit=limit,
             lookback_days=lookback_days,
+            retain_race_ids=retain_race_ids,
         )
     ]
 
@@ -657,16 +659,30 @@ def source_backed_live_odds_backlog_entries(
     target_date: str,
     limit: int,
     lookback_days: int = 0,
+    retain_race_ids: Sequence[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Find source-backed odds races that still need official result evidence."""
 
     if limit <= 0 or not db_path.exists():
         return []
+    retained_ids = sorted(
+        {
+            str(race_id).strip()
+            for race_id in retain_race_ids or []
+            if str(race_id).strip()
+        }
+    )
     target_dates = live_odds_backlog_target_dates(
         target_date,
         lookback_days=lookback_days,
     )
     placeholders = ",".join("?" for _ in target_dates)
+    retained_placeholders = ",".join("?" for _ in retained_ids)
+    retention_predicate = (
+        f"backlog_rank <= ? OR race_id IN ({retained_placeholders})"
+        if retained_ids
+        else "backlog_rank <= ?"
+    )
     try:
         with sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True) as conn:
             live_odds_columns = {
@@ -697,6 +713,7 @@ def source_backed_live_odds_backlog_entries(
                 else "''"
             )
             query = """
+        WITH backlog AS (
         SELECT
             lo.race_id,
             lo.race_date,
@@ -727,40 +744,75 @@ def source_backed_live_odds_backlog_entries(
                 AND rm.winner_source = ?
           )
         GROUP BY lo.race_id
-        ORDER BY lo.race_date DESC, latest_capture ASC, lo.race_id ASC
-        LIMIT ?
+        ),
+        ranked AS (
+            SELECT
+                ROW_NUMBER() OVER (
+                    ORDER BY race_date DESC, latest_capture ASC, race_id ASC
+                ) AS backlog_rank,
+                race_id,
+                race_date,
+                latest_capture,
+                venue,
+                race_number,
+                source_url,
+                odds_row_count,
+                box_count,
+                sportsbet_box_sources
+            FROM backlog
+        )
+        SELECT
+            backlog_rank,
+            race_id,
+            race_date,
+            latest_capture,
+            venue,
+            race_number,
+            source_url,
+            odds_row_count,
+            box_count,
+            sportsbet_box_sources
+        FROM ranked
+        WHERE {retention_predicate}
+        ORDER BY backlog_rank ASC
     """.format(
                 placeholders=placeholders,
                 venue_expr=venue_expr,
                 race_number_expr=race_number_expr,
                 box_count_expr=box_count_expr,
                 box_sources_expr=box_sources_expr,
+                retention_predicate=retention_predicate,
             )
             rows = conn.execute(
                 query,
-                [*target_dates, OFFICIAL_SOURCE, int(limit)],
+                [*target_dates, OFFICIAL_SOURCE, int(limit), *retained_ids],
             ).fetchall()
     except sqlite3.Error:
         return []
     entries: list[dict[str, Any]] = []
     for row in rows:
-        race_id = str(row[0] if row else "").strip()
+        race_id = str(row[1] if row else "").strip()
         if not race_id:
             continue
+        backlog_rank = int(row[0] or 0)
         entries.append(
             {
                 "race_id": race_id,
-                "race_date": row[1],
-                "latest_capture": row[2],
-                "venue": row[3],
-                "race_number": row[4],
-                "source_url": row[5],
-                "odds_row_count": row[6],
-                "box_count": row[7],
+                "race_date": row[2],
+                "latest_capture": row[3],
+                "venue": row[4],
+                "race_number": row[5],
+                "source_url": row[6],
+                "odds_row_count": row[7],
+                "box_count": row[8],
+                "backlog_rank": backlog_rank,
+                "retained_beyond_limit": bool(
+                    race_id in retained_ids and backlog_rank > int(limit)
+                ),
                 "sportsbet_box_sources": sorted(
                     {
                         str(value).strip()
-                        for value in str(row[8] or "").split(",")
+                        for value in str(row[9] or "").split(",")
                         if str(value).strip()
                     }
                 ),
@@ -1018,14 +1070,69 @@ def latest_shadow_run_dirs(evidence_root: Path, *, limit: int) -> list[Path]:
     candidates = [
         path
         for path in evidence_root.glob("daily_race_ingest_shadow_*")
-        if path.is_dir()
+        if is_shadow_run_candidate_dir(path)
+    ]
+    candidates.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+    return candidates[:limit]
+
+
+def is_shadow_run_candidate_dir(path: Path) -> bool:
+    return (
+        path.is_dir()
         and (
             (path / "stage2_shadow_predictions.jsonl").exists()
             or (path / "shadow_predictions.jsonl").exists()
         )
+    )
+
+
+def target_date_shadow_run_dirs(
+    evidence_root: Path,
+    *,
+    target_dates: Sequence[str],
+) -> list[Path]:
+    if not evidence_root.exists():
+        return []
+    date_tokens = {
+        str(target_date).replace("-", "")
+        for target_date in target_dates
+        if str(target_date).strip()
+    }
+    candidates = [
+        path
+        for path in evidence_root.glob("daily_race_ingest_shadow_*")
+        if is_shadow_run_candidate_dir(path)
+        and any(token in path.name for token in date_tokens)
     ]
     candidates.sort(key=lambda path: path.stat().st_mtime, reverse=True)
-    return candidates[:limit]
+    return candidates
+
+
+def merge_shadow_run_dirs(*groups: Sequence[Path]) -> list[Path]:
+    merged: list[Path] = []
+    seen: set[str] = set()
+    for group in groups:
+        for path in group:
+            key = str(path.resolve())
+            if key not in seen:
+                seen.add(key)
+                merged.append(path)
+    return merged
+
+
+def shadow_run_backlog_retention_race_ids(shadow_run_dirs: Sequence[Path]) -> list[str]:
+    race_ids: set[str] = set()
+    for shadow_run_dir in shadow_run_dirs:
+        race_ids.update(feature_rows_by_race_id(shadow_run_dir))
+        for predictions_path in [
+            shadow_run_dir / "stage2_shadow_predictions.jsonl",
+            shadow_run_dir / "shadow_predictions.jsonl",
+        ]:
+            for row in load_jsonl(predictions_path):
+                race_id = str(row.get("race_id") or "").strip()
+                if race_id:
+                    race_ids.add(race_id)
+    return sorted(race_ids)
 
 
 def run_shadow_run_official_dry_run(
@@ -1069,11 +1176,30 @@ def run_shadow_run_official_dry_run(
         "discovered_races": [],
     }
     if include_live_odds_backlog:
+        target_dates = live_odds_backlog_target_dates(
+            target_date,
+            lookback_days=backlog_lookback_days,
+        )
+        resolved_backlog_evidence_root = backlog_evidence_root or DEFAULT_EVIDENCE_ROOT
+        scanned_shadow_run_dirs = merge_shadow_run_dirs(
+            latest_shadow_run_dirs(
+                resolved_backlog_evidence_root,
+                limit=backlog_shadow_run_limit,
+            ),
+            target_date_shadow_run_dirs(
+                resolved_backlog_evidence_root,
+                target_dates=target_dates,
+            ),
+        )
+        retained_shadow_race_ids = shadow_run_backlog_retention_race_ids(
+            scanned_shadow_run_dirs
+        )
         backlog_entries = source_backed_live_odds_backlog_entries(
             db_path=db_path,
             target_date=target_date,
             limit=backlog_limit,
             lookback_days=backlog_lookback_days,
+            retain_race_ids=retained_shadow_race_ids,
         )
         backlog_race_ids = [str(item.get("race_id")) for item in backlog_entries]
         backlog_race_dates = {
@@ -1082,15 +1208,18 @@ def run_shadow_run_official_dry_run(
         }
         backlog_report["discovered_race_ids"] = backlog_race_ids
         backlog_report["discovered_races"] = backlog_entries
+        backlog_report["retention_shadow_run_count"] = len(scanned_shadow_run_dirs)
+        backlog_report["retention_shadow_race_count"] = len(retained_shadow_race_ids)
+        backlog_report["retained_beyond_limit_race_ids"] = [
+            str(item.get("race_id"))
+            for item in backlog_entries
+            if item.get("retained_beyond_limit")
+        ]
         remaining = [
             race_id
             for race_id in backlog_race_ids
             if race_id not in candidate_by_race_id
         ]
-        scanned_shadow_run_dirs = latest_shadow_run_dirs(
-            backlog_evidence_root or DEFAULT_EVIDENCE_ROOT,
-            limit=backlog_shadow_run_limit,
-        )
         for backlog_dir in scanned_shadow_run_dirs:
             if not remaining:
                 break
