@@ -6,11 +6,11 @@ Generated: 2026-07-09
 
 PR: https://github.com/0rl4nd0l/greyhound-racing-collector/pull/38
 
-Status: READY_FOR_OWNER_REVIEW
+Status: READY_FOR_OWNER_REVIEW_REFRESHED
 
 Branch: `feature/dog-odds-snapshot-readiness`
 
-Code-validation head before this closeout report: `90001397f5bb1230738cc2de47de481f9e7c4c53`
+Code-validation head before this refreshed closeout report: `f41fafa69e9eac91ac79ceebaec68ff4181af242`
 
 Base: `master`
 
@@ -20,18 +20,21 @@ PR state from GitHub:
 - Draft: yes
 - Mergeable: `MERGEABLE`
 - Merge state: `CLEAN`
-- Changed files: `110`
-- Additions/deletions: `+38350/-85`
+- Changed files: `122`
+- Additions/deletions: `+39898/-612`
 
 Recommendation: keep the PR draft until owner accepts the scope summary below; then mark ready for review and merge through the normal GitHub path. Do not merge automatically from an agent session.
 
-Note: this closeout report is a docs-only follow-up commit on top of the code-validation head. Refresh GitHub checks after pushing the report commit before treating the final PR head as merge-ready.
+Refresh note: this report supersedes the earlier closeout snapshot at `a08f3aa224524afbe11f95aa8613be3eb023f40c`, which predated the PR #39 and PR #40 merges into `feature/dog-odds-snapshot-readiness`.
+
+Note: this refreshed closeout report is a docs-only follow-up commit on top of the code-validation head. Refresh GitHub checks after publishing the report commit before treating the final PR head as merge-ready.
 
 ## Guard Evidence
 
-`tenn-git-guard` preflight ran from the clean PR worktree:
+`tenn-git-guard` preflight ran from clean PR worktrees:
 
 - Worktree: `/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-pr38-conflict-resolution-20260709`
+- Refresh worktree: `/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-pr38-closeout-refresh-20260709`
 - Path ownership: `VALID_TASK_WORKTREE`
 - Dirty state: clean
 - Registry status: `PASS`
@@ -64,12 +67,19 @@ Focused source/test adoption and follow-up commits now on the PR branch:
 - `792b4e83` Adopt no-box downstream diagnostics helper
 - `9802bfbb` Merge remote-tracking branch `origin/master`
 - `90001397` Harden report output guards against symlink escape
+- `a08f3aa` Add PR38 snapshot readiness closeout
+- `e49bb2f` Retain official result retry backlog candidates
+- `78bd4d6` Merge PR #39, Issue 30 official-result retry retention
+- `97f76da` Centralize strict pre-jump odds provenance
+- `f41fafa` Merge PR #40, strict pre-jump odds provenance
 
 Already-covered or parked plan items:
 
 - `build_single_race_official_gap_review_packet.py` was already adopted before this pass.
 - `audit_historical_race_sources.py` remains parked.
 - `evaluate_expanded_historical_shadow.py` remains parked.
+- PR #39 added source-level official-result retry retention; live daemon deployment or timer/service mutation remains parked.
+- PR #40 added source-level strict pre-jump odds provenance centralization; model promotion, EV output, and betting action remain parked.
 
 ## Validation Matrix
 
@@ -82,8 +92,11 @@ Local validation:
 | Focused symlink-escape regression tests | PASS: `6 passed` |
 | `git diff --check` before output-guard commit | PASS |
 | Normal pytest attempt for focused suite | BLOCKED by known `ModuleNotFoundError: No module named 'flask'` from `tests/conftest.py` |
+| Closeout refresh changed files | PASS: `reports/agent_jobs/pr38_snapshot_readiness_closeout_20260709.md` only |
+| Closeout refresh `git diff --check` | PASS |
+| Closeout refresh conflict-marker scan | PASS |
 
-GitHub validation for code-validation head `90001397f5bb1230738cc2de47de481f9e7c4c53`:
+GitHub validation for code-validation head `f41fafa69e9eac91ac79ceebaec68ff4181af242`:
 
 | Check | Result |
 | --- | --- |
@@ -103,12 +116,22 @@ Policy now validated by focused tests:
 - In-repo non-artifact paths fail with the helper-specific artifact-boundary error.
 - Artifact-tree symlinks that resolve outside the repo fail with `output_dir_must_be_inside_repo`.
 
+## Scope Refresh
+
+The original closeout was written before two source-level follow-up PRs were merged into this branch. The current PR #38 scope now includes those already-merged branch updates:
+
+- PR #39 / `e49bb2f` retained official-result retry backlog candidates in source and tests.
+- PR #40 / `97f76da` centralized strict pre-jump odds provenance across snapshot, shadow, evaluation, and live-market annotation surfaces.
+
+These additions do not authorize live runtime mutation, service/timer deployment, DB writes, model promotion, EV output, or betting action. They are source/test changes on the snapshot-readiness branch and should be reviewed as part of the owner scope decision for PR #38.
+
 ## Parked Lanes
 
 These remain intentionally out of scope for PR #38:
 
-- Runtime/live daemon mutation and timer/service changes.
-- DB write, label write, snapshot mutation, manifest mutation, registry mutation, model promotion, odds, EV, and betting action lanes.
+- Runtime/live daemon mutation and timer/service changes. Source-level daemon retry retention is included; deployment is not.
+- DB write, label write, snapshot mutation, manifest mutation, registry mutation, model promotion, EV output, and betting action lanes.
+- New odds capture, odds-driven model promotion, and betting workflows. Source-level strict pre-jump odds provenance validation is included.
 - Broad ML/model-adjacent historical shadow evaluation.
 - Cleanup or deletion of sibling worktrees and generated artifact dirt.
 - The launch checkout's preserved `.gitignore` and daemon packet artifact dirt.
@@ -117,7 +140,7 @@ These remain intentionally out of scope for PR #38:
 
 Docs impact: `DOCS_UPDATED`
 
-This report is the durable closeout artifact for the PR readiness decision. No operator/runtime documentation was changed because the code changes are report-helper output guard hardening plus tests, not new operator workflow.
+This report is the durable closeout artifact for the PR readiness decision. No operator/runtime documentation was changed because the branch changes remain source/test/report readiness work and do not authorize a new operator workflow, service deployment, or betting action.
 
 ## Final Recommendation
 
