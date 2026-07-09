@@ -10,24 +10,24 @@ Status: READY_FOR_OWNER_REVIEW_REFRESHED
 
 Branch: `feature/dog-odds-snapshot-readiness`
 
-Code-validation head before this refreshed closeout report: `f41fafa69e9eac91ac79ceebaec68ff4181af242`
+Last published validation head before this self-reference correction: `da9cf77cb3c4a2b41c671dd06c1a4cdd3f04e902`
 
 Base: `master`
 
-PR state from GitHub:
+PR state from GitHub at validation head `da9cf77cb3c4a2b41c671dd06c1a4cdd3f04e902`:
 
 - Open: yes
 - Draft: yes
 - Mergeable: `MERGEABLE`
 - Merge state: `CLEAN`
 - Changed files: `122`
-- Additions/deletions: `+39898/-612`
+- Additions/deletions: `+39921/-612`
 
 Recommendation: keep the PR draft until owner accepts the scope summary below; then mark ready for review and merge through the normal GitHub path. Do not merge automatically from an agent session.
 
 Refresh note: this report supersedes the earlier closeout snapshot at `a08f3aa224524afbe11f95aa8613be3eb023f40c`, which predated the PR #39 and PR #40 merges into `feature/dog-odds-snapshot-readiness`.
 
-Note: this refreshed closeout report is a docs-only follow-up commit on top of the code-validation head. Refresh GitHub checks after publishing the report commit before treating the final PR head as merge-ready.
+Note: this refreshed closeout report is a docs-only follow-up on top of the code-validation head. If another report-only correction is published after the validation head listed above, refresh GitHub checks and PR counters externally before treating the final PR head as merge-ready.
 
 ## Guard Evidence
 
@@ -72,6 +72,7 @@ Focused source/test adoption and follow-up commits now on the PR branch:
 - `78bd4d6` Merge PR #39, Issue 30 official-result retry retention
 - `97f76da` Centralize strict pre-jump odds provenance
 - `f41fafa` Merge PR #40, strict pre-jump odds provenance
+- `da9cf77` Refresh PR38 readiness closeout
 
 Already-covered or parked plan items:
 
@@ -96,7 +97,7 @@ Local validation:
 | Closeout refresh `git diff --check` | PASS |
 | Closeout refresh conflict-marker scan | PASS |
 
-GitHub validation for code-validation head `f41fafa69e9eac91ac79ceebaec68ff4181af242`:
+GitHub validation for published validation head `da9cf77cb3c4a2b41c671dd06c1a4cdd3f04e902`:
 
 | Check | Result |
 | --- | --- |
