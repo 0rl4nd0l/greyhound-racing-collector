@@ -1,0 +1,7 @@
+{
+  "activation_blockers": [],
+  "final_status": "CHALLENGER_CALIBRATION_REPORT_ONLY_READY_FOR_REVIEW",
+  "production_activation_allowed": false,
+  "report_only": true,
+  "schema_version": "forward_shadow_challenger_activation_gate_v1"
+}

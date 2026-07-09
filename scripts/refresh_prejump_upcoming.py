@@ -17,14 +17,28 @@ import sys
 from collections import Counter
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 ROOT = Path(__file__).resolve().parents[1]
 ROOT_STR = str(ROOT)
 sys.path = [path for path in sys.path if path != ROOT_STR]
 sys.path.insert(0, ROOT_STR)
 
+from utils.csv_metadata import load_safe_weather_track_metadata  # noqa: E402
+from utils.expert_form_metadata import safe_expert_form_metadata_from_payload  # noqa: E402
 from utils.race_lifecycle import melbourne_now  # noqa: E402
+
+
+def parse_current_time(value: str | None) -> datetime:
+    if not value:
+        return melbourne_now()
+    text = str(value).strip()
+    if len(text) >= 5 and text[-5] in {"+", "-"} and text[-4:].isdigit():
+        text = f"{text[:-5]}{text[-5:-2]}:{text[-2:]}"
+    parsed = datetime.fromisoformat(text)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=melbourne_now().tzinfo)
+    return parsed
 
 
 VENUE_EXCLUSION_ALIAS_GROUPS = [
@@ -256,14 +270,47 @@ def select_prejump_races(
             record["selected"] = False
             record["excluded_reason"] = "excluded_race_id"
             record["bucket"] = "excluded_race_id"
-    selected = [
-        race
-        for race, record in zip(races, records)
-        if record["selected"] and race.get("url")
-    ]
+    selected_pairs = sorted(
+        (
+            (race, record)
+            for race, record in zip(races, records)
+            if record["selected"] and race.get("url")
+        ),
+        key=lambda pair: (
+            float(pair[1].get("minutes_to_jump"))
+            if isinstance(pair[1].get("minutes_to_jump"), (int, float))
+            else float("inf"),
+            str(pair[1].get("venue") or ""),
+            int(pair[1].get("race_number") or 0),
+            str(pair[1].get("race_id") or ""),
+        ),
+    )
     if limit and limit > 0:
-        selected = selected[:limit]
+        selected_pairs = selected_pairs[:limit]
+    for selection_order, (_, record) in enumerate(selected_pairs, start=1):
+        record["selection_order"] = selection_order
+    selected = [race for race, _ in selected_pairs]
     return selected, records
+
+
+def selected_prejump_records(
+    records: Sequence[Mapping[str, Any]],
+    *,
+    limit: int = 0,
+) -> list[Mapping[str, Any]]:
+    selected = sorted(
+        (record for record in records if record.get("selected")),
+        key=lambda record: (
+            int(record.get("selection_order") or 999999),
+            float(record.get("minutes_to_jump"))
+            if isinstance(record.get("minutes_to_jump"), (int, float))
+            else float("inf"),
+            str(record.get("venue") or ""),
+            int(record.get("race_number") or 0),
+            str(record.get("race_id") or ""),
+        ),
+    )
+    return selected[:limit] if limit and limit > 0 else selected
 
 
 def refresh_timing_summary(
@@ -369,6 +416,177 @@ def _artifact_counts(upcoming_dir: Path) -> dict[str, int]:
     }
 
 
+def _read_json_object(path: Path) -> dict[str, Any] | None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _sidecar_path_for_csv(csv_path: Path) -> Path:
+    return csv_path.with_name(csv_path.name + ".metadata.json")
+
+
+def _sidecar_race_url(payload: Mapping[str, Any] | None) -> str | None:
+    if not isinstance(payload, Mapping):
+        return None
+    race_info = (
+        payload.get("race_info")
+        if isinstance(payload.get("race_info"), Mapping)
+        else {}
+    )
+    value = (
+        payload.get("race_url")
+        or race_info.get("url")
+        or payload.get("metadata_source_url")
+    )
+    text = str(value or "").strip()
+    return text or None
+
+
+def _metadata_record_for_csv(csv_path: Path) -> dict[str, Any]:
+    sidecar_path = _sidecar_path_for_csv(csv_path)
+    payload = _read_json_object(sidecar_path) if sidecar_path.exists() else None
+    weather_track = load_safe_weather_track_metadata(csv_path)
+    expert_form = safe_expert_form_metadata_from_payload(payload or {})
+    weather_present = bool(weather_track.get("weather"))
+    track_present = bool(weather_track.get("track_condition"))
+    expert_form_safe = bool(expert_form.get("metadata_is_leakage_safe"))
+    return {
+        "race_id": csv_path.stem,
+        "race_url": _sidecar_race_url(payload),
+        "csv_path": str(csv_path),
+        "sidecar_path": str(sidecar_path) if sidecar_path.exists() else None,
+        "sidecar_status": "present" if payload is not None else "missing_or_unreadable",
+        "safe_weather_present": weather_present,
+        "safe_track_condition_present": track_present,
+        "safe_both_weather_track_present": weather_present and track_present,
+        "safe_expert_form_present": expert_form_safe,
+        "safe_all_weather_track_expert_form_present": (
+            weather_present and track_present and expert_form_safe
+        ),
+        "weather": weather_track.get("weather"),
+        "track_condition": weather_track.get("track_condition"),
+        "weather_track_metadata_source": weather_track.get("weather_track_metadata_source"),
+        "weather_track_metadata_source_url": weather_track.get(
+            "weather_track_metadata_source_url"
+        )
+        or weather_track.get("metadata_source_url"),
+        "weather_track_rejected_reasons": list(
+            weather_track.get("rejected_weather_track_metadata_sources") or []
+        ),
+        "expert_form_runner_count": int(expert_form.get("runner_count") or 0),
+        "expert_form_rejected_reasons": list(expert_form.get("rejected_reasons") or []),
+    }
+
+
+def _missing_metadata_record(record: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "race_id": record.get("race_id"),
+        "race_url": record.get("race_url"),
+        "csv_path": None,
+        "sidecar_path": None,
+        "sidecar_status": "accepted_csv_missing",
+        "safe_weather_present": False,
+        "safe_track_condition_present": False,
+        "safe_both_weather_track_present": False,
+        "safe_expert_form_present": False,
+        "safe_all_weather_track_expert_form_present": False,
+        "weather": None,
+        "track_condition": None,
+        "weather_track_metadata_source": None,
+        "weather_track_metadata_source_url": None,
+        "weather_track_rejected_reasons": ["accepted_csv_missing"],
+        "expert_form_runner_count": 0,
+        "expert_form_rejected_reasons": ["accepted_csv_missing"],
+    }
+
+
+def sidecar_metadata_coverage(
+    upcoming_dir: Path,
+    selected_records: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Summarise source-safe weather/track/expert-form sidecar coverage."""
+
+    csv_records = [
+        _metadata_record_for_csv(path) for path in sorted(upcoming_dir.glob("*.csv"))
+    ]
+    by_url = {
+        str(record["race_url"]): record
+        for record in csv_records
+        if record.get("race_url")
+    }
+    by_race_id = {
+        str(record["race_id"]): record
+        for record in csv_records
+        if record.get("race_id")
+    }
+    selected_rows: list[dict[str, Any]] = []
+    for selected in selected_records:
+        race_url = str(selected.get("race_url") or "").strip()
+        race_ids = [
+            str(value)
+            for value in [
+                selected.get("race_id"),
+                *(selected.get("race_id_aliases") or []),
+            ]
+            if value
+        ]
+        record = by_url.get(race_url) if race_url else None
+        if record is None:
+            record = next(
+                (by_race_id[race_id] for race_id in race_ids if race_id in by_race_id),
+                None,
+            )
+        selected_rows.append(
+            dict(record) if record is not None else _missing_metadata_record(selected)
+        )
+
+    selected_count = len(selected_rows)
+    safe_weather = sum(1 for row in selected_rows if row["safe_weather_present"])
+    safe_track = sum(1 for row in selected_rows if row["safe_track_condition_present"])
+    safe_both = sum(1 for row in selected_rows if row["safe_both_weather_track_present"])
+    safe_expert = sum(1 for row in selected_rows if row["safe_expert_form_present"])
+    safe_all = sum(
+        1 for row in selected_rows if row["safe_all_weather_track_expert_form_present"]
+    )
+    accepted_csvs = sum(1 for row in selected_rows if row.get("csv_path"))
+    if selected_count == 0:
+        status = "NOT_REQUESTED_NO_SELECTED_RACES"
+        reason = "no_selected_races"
+    elif safe_all == selected_count:
+        status = "READY"
+        reason = None
+    elif accepted_csvs == 0:
+        status = "DATA_MISSING"
+        reason = "no_selected_race_csv_sidecars"
+    else:
+        status = "PARTIAL"
+        missing_parts = []
+        if safe_weather < selected_count:
+            missing_parts.append("weather")
+        if safe_track < selected_count:
+            missing_parts.append("track_condition")
+        if safe_expert < selected_count:
+            missing_parts.append("expert_form")
+        reason = "missing_safe_" + "_".join(missing_parts)
+
+    return {
+        "schema_version": "prejump_sidecar_metadata_coverage_v1",
+        "status": status,
+        "reason": reason,
+        "selected_race_count": selected_count,
+        "accepted_selected_csv_count": accepted_csvs,
+        "safe_weather_race_count": safe_weather,
+        "safe_track_condition_race_count": safe_track,
+        "safe_both_weather_track_race_count": safe_both,
+        "safe_expert_form_race_count": safe_expert,
+        "safe_all_weather_track_expert_form_race_count": safe_all,
+        "races": selected_rows,
+    }
+
+
 def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
     upcoming_dir = Path(args.upcoming_dir)
     if not upcoming_dir.is_absolute():
@@ -378,7 +596,7 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
 
     from upcoming_race_browser import UpcomingRaceBrowser
 
-    now = melbourne_now()
+    now = parse_current_time(getattr(args, "current_time", None))
     browser = UpcomingRaceBrowser()
     races = browser.get_upcoming_races(days_ahead=int(args.days_ahead))
     excluded_race_ids = load_excluded_race_ids(
@@ -408,6 +626,8 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
 
     bucket_counts = Counter(record["bucket"] for record in records)
     artifact_counts = _artifact_counts(upcoming_dir)
+    selected_records = list(selected_prejump_records(records, limit=int(args.limit)))
+    metadata_coverage = sidecar_metadata_coverage(upcoming_dir, selected_records)
     report = {
         "status": "SUCCESS",
         "dry_run": bool(args.dry_run),
@@ -428,18 +648,27 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
             min_minutes=float(args.min_minutes),
             max_minutes=float(args.max_minutes),
         ),
-        "selected_races": [
-            record for record in records if record["selected"]
-        ][: int(args.limit) if int(args.limit) > 0 else None],
+        "selected_races": list(
+            selected_records
+        ),
         "downloads": downloads,
         **artifact_counts,
         "artifact_counts": artifact_counts,
+        "sidecar_metadata_coverage": metadata_coverage,
+        "metadata_collection_status": metadata_coverage.get("status"),
         "no_snapshot_persist": True,
         "no_odds_capture": True,
         "no_result_ingest": True,
         "no_label_write": True,
         "no_retrain_or_promotion": True,
     }
+    if (
+        bool(getattr(args, "require_safe_metadata", False))
+        and metadata_coverage.get("status")
+        not in {"READY", "NOT_REQUESTED_NO_SELECTED_RACES"}
+    ):
+        report["status"] = "METADATA_COVERAGE_INCOMPLETE"
+        report["reason"] = metadata_coverage.get("reason") or "safe_metadata_incomplete"
     return report
 
 
@@ -461,6 +690,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional newline, JSON list, or JSON object file of race IDs to skip.",
     )
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--current-time")
+    parser.add_argument(
+        "--require-safe-metadata",
+        action="store_true",
+        help=(
+            "Return a non-success status when any selected race lacks source-safe "
+            "weather, track_condition, or expert-form sidecar metadata."
+        ),
+    )
     parser.add_argument("--output")
     return parser
 

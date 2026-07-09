@@ -1,0 +1,56 @@
+{
+  "artifact_files": {
+    "artifacts/full_evidence_orchestration_20260525/daily_race_ingest_shadow_20260610T_stage2_accuracy_lane_current/active_feature_policy_report.json": {
+      "bytes": 943,
+      "sha256": "2f7d8c5dead330c7a155482f06cbcaabc4bf5da9c2bdea11c285a671e5fa79f6"
+    },
+    "artifacts/full_evidence_orchestration_20260525/daily_race_ingest_shadow_20260610T_stage2_accuracy_lane_current/protected_path_verification.json": {
+      "bytes": 3087,
+      "sha256": "985405e3d8169f708f23b31d6d30e963ec2522f08b206c94259a3344c1664d2a"
+    },
+    "artifacts/full_evidence_orchestration_20260525/daily_race_ingest_shadow_20260610T_stage2_accuracy_lane_current/same_distance_same_grade_history_provenance.json": {
+      "bytes": 1682,
+      "sha256": "d1a229a8b103743a4d777df3a5bd0bb91dd9a3215582a79395c24d0bd661ddb7"
+    },
+    "artifacts/full_evidence_orchestration_20260525/daily_race_ingest_shadow_20260610T_stage2_accuracy_lane_current/shadow_candidate_definition.json": {
+      "bytes": 846,
+      "sha256": "4962b06e99c55fc2daec56bd66cb8e2000554723b224193697138dce53677b16"
+    },
+    "artifacts/full_evidence_orchestration_20260525/daily_race_ingest_shadow_20260610T_stage2_accuracy_lane_current/shadow_feature_rows.json": {
+      "bytes": 487346,
+      "sha256": "2baa59b5b2acdfcee01c8c2ade0aea3376bb326c583dc46d1330144e1c476941"
+    },
+    "artifacts/full_evidence_orchestration_20260525/daily_race_ingest_shadow_20260610T_stage2_accuracy_lane_current/shadow_manifest.json": {
+      "bytes": 6168,
+      "sha256": "a933a0a9f21eea010ce71d7bf4da4af2e904e6e70e5b18ae3ad4dc62ee5189fc"
+    },
+    "artifacts/full_evidence_orchestration_20260525/daily_race_ingest_shadow_20260610T_stage2_accuracy_lane_current/shadow_predictions.csv": {
+      "bytes": 43439,
+      "sha256": "e7b4e2f5e76e37738e9da37ffd68483f2818384f9b352bd377f07b5e9aa05687"
+    },
+    "artifacts/full_evidence_orchestration_20260525/daily_race_ingest_shadow_20260610T_stage2_accuracy_lane_current/shadow_predictions.json": {
+      "bytes": 76531,
+      "sha256": "145f7c22fc23a593775ed29d766d4d33b38e7078875dd231055b77f8e02b9b40"
+    },
+    "artifacts/full_evidence_orchestration_20260525/daily_race_ingest_shadow_20260610T_stage2_accuracy_lane_current/shadow_predictions.jsonl": {
+      "bytes": 117321,
+      "sha256": "c58f969ce40ad5a406c721c85fdcb04faa02a7a08db882ee6909a2ebc31b16dc"
+    },
+    "artifacts/full_evidence_orchestration_20260525/daily_race_ingest_shadow_20260610T_stage2_accuracy_lane_current/shadow_run_summary.md": {
+      "bytes": 252,
+      "sha256": "325ced52c47fd895c7b21764ff82096822f9d24ea3a4ce1da4339a7414c519d5"
+    },
+    "artifacts/full_evidence_orchestration_20260525/daily_race_ingest_shadow_20260610T_stage2_accuracy_lane_current/stage2_shadow_predictions.jsonl": {
+      "bytes": 117321,
+      "sha256": "c58f969ce40ad5a406c721c85fdcb04faa02a7a08db882ee6909a2ebc31b16dc"
+    }
+  },
+  "git_branch": "codex/stage2-odds-ev-research-v1-20260610",
+  "git_head": "920ee326b1f2",
+  "implementation_files": [
+    "scripts/run_shadow_non_tgr_rf_evaluation.py",
+    "tests/test_run_shadow_non_tgr_rf_evaluation.py"
+  ],
+  "output_dir": "artifacts/full_evidence_orchestration_20260525/daily_race_ingest_shadow_20260610T_stage2_accuracy_lane_current",
+  "schema_version": "shadow_implementation_file_manifest_v1"
+}

@@ -5,6 +5,7 @@ import time
 import types
 from argparse import Namespace
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from scripts import prejump_prediction_loop as loop
@@ -13,6 +14,7 @@ from scripts.refresh_prejump_upcoming import (
     refresh_prejump_upcoming,
     refresh_timing_summary,
     select_prejump_races,
+    sidecar_metadata_coverage,
     stable_race_id,
 )
 
@@ -406,6 +408,48 @@ def test_refresh_selection_filters_prejump_window():
     assert timing["minutes_until_window_closes"] == 25.0
 
 
+def test_refresh_selection_prioritizes_nearest_due_races_before_limit():
+    now = datetime(2026, 5, 29, 13, 0, tzinfo=ZoneInfo("Australia/Melbourne"))
+    races = [
+        {
+            "url": "https://example.test/r1",
+            "date": "2026-05-29",
+            "race_time": "1:55 PM",
+            "race_number": 1,
+            "venue": "TEST",
+        },
+        {
+            "url": "https://example.test/r2",
+            "date": "2026-05-29",
+            "race_time": "1:05 PM",
+            "race_number": 2,
+            "venue": "TEST",
+        },
+        {
+            "url": "https://example.test/r3",
+            "date": "2026-05-29",
+            "race_time": "1:30 PM",
+            "race_number": 3,
+            "venue": "TEST",
+        },
+    ]
+
+    selected, records = select_prejump_races(
+        races,
+        now=now,
+        min_minutes=0,
+        max_minutes=60,
+        limit=2,
+    )
+
+    assert [race["race_number"] for race in selected] == [2, 3]
+    selected_records = [record for record in records if record.get("selection_order")]
+    assert [(record["race_number"], record["selection_order"]) for record in selected_records] == [
+        (2, 1),
+        (3, 2),
+    ]
+
+
 def test_refresh_timing_summary_reports_next_future_window():
     now = datetime(2026, 5, 29, 13, 0, tzinfo=ZoneInfo("Australia/Melbourne"))
     races = [
@@ -634,6 +678,180 @@ def test_refresh_prejump_upcoming_reports_top_level_artifact_counts(tmp_path, mo
         "raw_export_count": 1,
         "quarantine_count": 1,
     }
+    assert report["metadata_collection_status"] == "PARTIAL"
+    assert report["sidecar_metadata_coverage"]["safe_weather_race_count"] == 0
+
+
+def test_refresh_prejump_upcoming_honors_supplied_current_time(tmp_path, monkeypatch):
+    refresh_module = sys.modules[refresh_prejump_upcoming.__module__]
+    wall_clock = datetime(2026, 6, 24, 0, 47, tzinfo=ZoneInfo("Australia/Melbourne"))
+    monkeypatch.setattr(refresh_module, "melbourne_now", lambda: wall_clock)
+
+    class FakeUpcomingRaceBrowser:
+        def get_upcoming_races(self, days_ahead):
+            assert days_ahead == 1
+            return [
+                {
+                    "url": "https://www.thedogs.com.au/racing/murray-bridge-straight/2026-06-24/1/test?trial=false",
+                    "date": "2026-06-24",
+                    "race_time": "11:29 AM",
+                    "race_number": 1,
+                    "venue": "MURR",
+                }
+            ]
+
+        def download_race_csv(self, url):
+            csv_path = tmp_path / "upcoming" / "Race 1 - MURR - 2026-06-24.csv"
+            csv_path.write_text("box|dog_name\n1|Alpha Runner\n", encoding="utf-8")
+            csv_path.with_name(csv_path.name + ".metadata.json").write_text(
+                json.dumps({"race_url": url}),
+                encoding="utf-8",
+            )
+            return {"success": True, "path": str(csv_path)}
+
+    monkeypatch.setitem(
+        sys.modules,
+        "upcoming_race_browser",
+        types.SimpleNamespace(UpcomingRaceBrowser=FakeUpcomingRaceBrowser),
+    )
+
+    report = refresh_prejump_upcoming(
+        Namespace(
+            upcoming_dir=str(tmp_path / "upcoming"),
+            days_ahead=1,
+            min_minutes=20,
+            max_minutes=160,
+            limit=16,
+            exclude_race_id=[],
+            exclude_race_ids_file=None,
+            dry_run=False,
+            current_time="2026-06-24T09:30:00+10:00",
+        )
+    )
+
+    assert report["generated_at"] == "2026-06-24T09:30:00+10:00"
+    assert report["selected_count"] == 1
+    assert report["bucket_counts"] == {"preferred_window": 1}
+
+
+def _write_safe_collection_sidecar(csv_path: Path, *, expert_form: bool = True):
+    csv_path.write_text("box|dog_name\n1|Alpha Runner\n", encoding="utf-8")
+    expert = {
+        "schema_version": "thedogs_expert_form_metadata_v1",
+        "source": "thedogs_expert_form_page",
+        "source_url": "https://www.thedogs.com.au/racing/sale/2026-06-17/9/test/expert-form",
+        "captured_at": "2026-06-17T03:00:00Z",
+        "metadata_is_leakage_safe": True,
+        "runner_count": 1,
+        "runners": [{"dog_name": "Alpha Runner"}],
+        "rejected_reasons": [],
+    }
+    if not expert_form:
+        expert["metadata_is_leakage_safe"] = False
+        expert["runner_count"] = 0
+        expert["runners"] = []
+        expert["rejected_reasons"] = ["expert_form_runner_metadata_missing"]
+    payload = {
+        "schema_version": "form_guide_download_provenance_v1",
+        "metadata_is_leakage_safe": True,
+        "metadata_captured_at": "2026-06-17T03:00:00Z",
+        "race_url": "https://www.thedogs.com.au/racing/sale/2026-06-17/9/test?trial=false",
+        "race_info": {
+            "date": "2026-06-17",
+            "race_time": "1:57 PM",
+            "venue": "SAL",
+            "race_number": "9",
+            "url": "https://www.thedogs.com.au/racing/sale/2026-06-17/9/test?trial=false",
+        },
+        "weather": "Clear",
+        "track_condition": "Good",
+        "weather_track_metadata_source": "open_meteo_forecast_api+sportsbet_pre_race_page",
+        "weather_track_metadata_source_url": {
+            "open_meteo_forecast_api": "https://api.open-meteo.com/v1/forecast?latitude=-38.1",
+            "sportsbet_pre_race_page": "https://www.sportsbet.com.au/apigw/sportsbook-racing/Sportsbook/Racing/NextEvents",
+        },
+        "weather_track_metadata_is_leakage_safe": True,
+        "expert_form_metadata": expert,
+    }
+    csv_path.with_name(csv_path.name + ".metadata.json").write_text(
+        json.dumps(payload),
+        encoding="utf-8",
+    )
+
+
+def test_sidecar_metadata_coverage_accepts_safe_weather_track_and_expert_form(tmp_path):
+    upcoming_dir = tmp_path / "upcoming"
+    upcoming_dir.mkdir()
+    csv_path = upcoming_dir / "Race 9 - SAL - 2026-06-17.csv"
+    _write_safe_collection_sidecar(csv_path)
+
+    coverage = sidecar_metadata_coverage(
+        upcoming_dir,
+        [
+            {
+                "race_id": "Race 9 - SAL - 2026-06-17",
+                "race_url": "https://www.thedogs.com.au/racing/sale/2026-06-17/9/test?trial=false",
+            }
+        ],
+    )
+
+    assert coverage["status"] == "READY"
+    assert coverage["safe_weather_race_count"] == 1
+    assert coverage["safe_track_condition_race_count"] == 1
+    assert coverage["safe_expert_form_race_count"] == 1
+    assert coverage["safe_all_weather_track_expert_form_race_count"] == 1
+
+
+def test_refresh_prejump_upcoming_can_fail_closed_on_incomplete_safe_metadata(
+    tmp_path,
+    monkeypatch,
+):
+    refresh_module = sys.modules[refresh_prejump_upcoming.__module__]
+    now = datetime(2026, 6, 17, 12, 30, tzinfo=ZoneInfo("Australia/Melbourne"))
+    monkeypatch.setattr(refresh_module, "melbourne_now", lambda: now)
+
+    class FakeUpcomingRaceBrowser:
+        def get_upcoming_races(self, days_ahead):
+            return [
+                {
+                    "url": "https://www.thedogs.com.au/racing/sale/2026-06-17/9/test?trial=false",
+                    "date": "2026-06-17",
+                    "race_time": "1:57 PM",
+                    "race_number": 9,
+                    "venue": "SAL",
+                }
+            ]
+
+        def download_race_csv(self, url):
+            csv_path = tmp_path / "upcoming" / "Race 9 - SAL - 2026-06-17.csv"
+            _write_safe_collection_sidecar(csv_path, expert_form=False)
+            return {"success": True, "filepath": str(csv_path)}
+
+    monkeypatch.setitem(
+        sys.modules,
+        "upcoming_race_browser",
+        types.SimpleNamespace(UpcomingRaceBrowser=FakeUpcomingRaceBrowser),
+    )
+
+    report = refresh_prejump_upcoming(
+        Namespace(
+            upcoming_dir=str(tmp_path / "upcoming"),
+            days_ahead=0,
+            min_minutes=20,
+            max_minutes=160,
+            limit=16,
+            exclude_race_id=[],
+            exclude_race_ids_file=None,
+            dry_run=False,
+            require_safe_metadata=True,
+        )
+    )
+
+    assert report["status"] == "METADATA_COVERAGE_INCOMPLETE"
+    assert report["metadata_collection_status"] == "PARTIAL"
+    assert report["sidecar_metadata_coverage"]["safe_both_weather_track_race_count"] == 1
+    assert report["sidecar_metadata_coverage"]["safe_expert_form_race_count"] == 0
+    assert report["reason"] == "missing_safe_expert_form"
 
 
 def test_prejump_loop_operator_action_surfaces_refresh_rerun_window(

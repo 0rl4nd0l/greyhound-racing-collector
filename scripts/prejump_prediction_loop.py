@@ -2510,9 +2510,15 @@ def _refresh_report_gate(report_path: Path) -> dict[str, Any]:
     next_window = next_window if isinstance(next_window, dict) else None
     selected_count = int(report.get("selected_count") or 0)
     total_races_found = int(report.get("total_races_found") or 0)
+    metadata_coverage = report.get("sidecar_metadata_coverage")
+    metadata_coverage = metadata_coverage if isinstance(metadata_coverage, dict) else {}
     if report.get("status") != "SUCCESS":
         status = "NOT_READY"
-        reason = "refresh_report_status_not_success"
+        reason = (
+            report.get("reason")
+            or metadata_coverage.get("reason")
+            or "refresh_report_status_not_success"
+        )
     elif selected_count > 0:
         status = "SELECTED_RACES_READY"
         reason = None
@@ -2543,6 +2549,9 @@ def _refresh_report_gate(report_path: Path) -> dict[str, Any]:
             if isinstance(report.get("window"), dict)
             else {},
             "next_preferred_window": next_window,
+            "metadata_collection_status": report.get("metadata_collection_status")
+            or metadata_coverage.get("status"),
+            "sidecar_metadata_coverage": metadata_coverage,
             "recommended_rerun_after_local": (
                 next_window.get("recommended_rerun_after_local")
                 if next_window

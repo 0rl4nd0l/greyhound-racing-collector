@@ -67,7 +67,41 @@ WEATHER_TRACK_PLACEHOLDERS = {
     "tbd",
     "to be advised",
     "to be confirmed",
+    "0",
+    "0.0",
+    "20.0",
+    "50.0",
 }
+TRACK_CONDITION_ALLOWED_PATTERNS = (
+    r"good(?:\s*\d+)?",
+    r"fast",
+    r"slow",
+    r"heavy(?:\s*\d+)?",
+    r"soft(?:\s*\d+)?",
+    r"dead(?:\s*\d+)?",
+    r"firm(?:\s*\d+)?",
+    r"wet",
+    r"muddy",
+    r"sloppy",
+    r"fair",
+    r"excellent",
+    r"normal",
+    r"rain\s+affected",
+    r"weather\s+affected",
+)
+SAFE_WEATHER_TRACK_SOURCES = {
+    "canonical_pre_race_page",
+    "sidecar_weather_track_metadata",
+    "explicit_csv_sidecar",
+    "open_meteo_forecast_api",
+    "sportsbet_pre_race_page",
+}
+UNSAFE_WEATHER_TRACK_SOURCE_MARKERS = (
+    "embedded_form_history",
+    "post_result",
+    "result_page",
+    "sportsbet_result",
+)
 TRACK_CONDITION_FIELDS = (
     "track_condition",
     "track condition",
@@ -197,11 +231,23 @@ def normalize_weather_track_text(value: Any) -> Optional[str]:
     if value is None:
         return None
     text = re.sub(r"\s+", " ", str(value).strip())
-    if not text:
-        return None
     if text.lower() in WEATHER_TRACK_PLACEHOLDERS:
         return None
-    return text
+    return text or None
+
+
+def normalize_track_condition_text(value: Any) -> Optional[str]:
+    """Normalize explicit track condition text and reject race-title/promo text."""
+
+    text = normalize_weather_track_text(value)
+    if not text:
+        return None
+    if any(
+        re.fullmatch(pattern, text, re.I)
+        for pattern in TRACK_CONDITION_ALLOWED_PATTERNS
+    ):
+        return text
+    return None
 
 
 def _first_named_value(mapping: Mapping[str, Any], fields: tuple[str, ...]) -> Any:
@@ -214,150 +260,6 @@ def _first_named_value(mapping: Mapping[str, Any], fields: tuple[str, ...]) -> A
         if value not in (None, ""):
             return value
     return None
-
-
-def _weather_track_source_url(payload: Mapping[str, Any], race_info: Mapping[str, Any]) -> Any:
-    return (
-        payload.get("metadata_source_url")
-        or payload.get("race_url")
-        or race_info.get("url")
-    )
-
-
-def _safe_pre_race_context(payload: Mapping[str, Any], race_info: Mapping[str, Any]) -> bool:
-    source_url = _weather_track_source_url(payload, race_info)
-    return (
-        (
-            payload.get("metadata_is_leakage_safe") is True
-            or payload.get("weather_track_metadata_is_leakage_safe") is True
-        )
-        and _is_thedogs_source_url(source_url)
-        and not _looks_post_result_source_url(source_url)
-    )
-
-
-def build_safe_weather_track_metadata_payload(
-    race_info: Optional[Mapping[str, Any]] = None,
-    *,
-    source_url: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Build leakage-safe weather/track metadata from explicit pre-race fields only."""
-
-    race_info_dict = dict(race_info or {})
-    payload: Dict[str, Any] = {
-        "track_condition": None,
-        "weather": None,
-        "weather_condition": None,
-        "weather_track_metadata_source": None,
-        "weather_track_metadata_is_leakage_safe": False,
-        "rejected_weather_track_metadata_sources": [],
-    }
-    source_url_safe = (
-        _is_thedogs_source_url(source_url)
-        and not _looks_post_result_source_url(source_url)
-    )
-    if not source_url_safe:
-        payload["rejected_weather_track_metadata_sources"].append(
-            "source_url_missing_or_not_pre_race_thedogs"
-        )
-        return payload
-
-    track_condition = normalize_weather_track_text(
-        _first_named_value(race_info_dict, TRACK_CONDITION_FIELDS)
-    )
-    weather = normalize_weather_track_text(_first_named_value(race_info_dict, WEATHER_FIELDS))
-    if not track_condition:
-        payload["rejected_weather_track_metadata_sources"].append(
-            "track_condition_missing_or_placeholder"
-        )
-    if not weather:
-        payload["rejected_weather_track_metadata_sources"].append(
-            "weather_missing_or_placeholder"
-        )
-    if track_condition:
-        payload["track_condition"] = track_condition
-    if weather:
-        payload["weather"] = weather
-        payload["weather_condition"] = weather
-    if track_condition or weather:
-        payload["weather_track_metadata_source"] = "canonical_pre_race_page"
-        payload["weather_track_metadata_is_leakage_safe"] = True
-    return payload
-
-
-def safe_weather_track_metadata_from_payload(payload: Mapping[str, Any]) -> Dict[str, Any]:
-    """Extract sidecar weather/track metadata without consulting result, odds, or history fields."""
-
-    default: Dict[str, Any] = {
-        "track_condition": None,
-        "weather": None,
-        "weather_condition": None,
-        "weather_track_metadata_source": None,
-        "weather_track_metadata_is_leakage_safe": False,
-        "rejected_weather_track_metadata_sources": [],
-    }
-    if not isinstance(payload, Mapping):
-        return {
-            **default,
-            "rejected_weather_track_metadata_sources": ["sidecar_not_object"],
-        }
-
-    race_info = payload.get("race_info") if isinstance(payload.get("race_info"), Mapping) else {}
-    rejected = list(payload.get("rejected_weather_track_metadata_sources") or [])
-    if not _safe_pre_race_context(payload, race_info):
-        rejected.append("sidecar_not_verified_pre_race_context")
-        return {**default, "rejected_weather_track_metadata_sources": rejected}
-
-    track_condition = normalize_weather_track_text(
-        _first_named_value(payload, TRACK_CONDITION_FIELDS)
-        or _first_named_value(race_info, TRACK_CONDITION_FIELDS)
-    )
-    weather = normalize_weather_track_text(
-        _first_named_value(payload, WEATHER_FIELDS)
-        or _first_named_value(race_info, WEATHER_FIELDS)
-    )
-    if not track_condition:
-        rejected.append("track_condition_missing_or_placeholder")
-    if not weather:
-        rejected.append("weather_missing_or_placeholder")
-
-    return {
-        "track_condition": track_condition,
-        "weather": weather,
-        "weather_condition": weather,
-        "weather_track_metadata_source": payload.get("weather_track_metadata_source")
-        or "canonical_pre_race_page",
-        "weather_track_metadata_is_leakage_safe": bool(track_condition or weather),
-        "rejected_weather_track_metadata_sources": rejected,
-    }
-
-
-def load_safe_weather_track_metadata(csv_path: Union[str, os.PathLike]) -> Dict[str, Any]:
-    """Read leakage-safe weather/track metadata from a CSV sidecar, if present."""
-
-    sidecar_path = _sidecar_path(csv_path)
-    default = {
-        "track_condition": None,
-        "weather": None,
-        "weather_condition": None,
-        "weather_track_metadata_source": None,
-        "weather_track_metadata_is_leakage_safe": False,
-        "rejected_weather_track_metadata_sources": [],
-    }
-    if not os.path.exists(sidecar_path):
-        return {
-            **default,
-            "rejected_weather_track_metadata_sources": ["sidecar_metadata_missing"],
-        }
-    try:
-        with open(sidecar_path, "r", encoding="utf-8") as handle:
-            payload = json.load(handle)
-    except Exception:
-        return {
-            **default,
-            "rejected_weather_track_metadata_sources": ["sidecar_metadata_unreadable"],
-        }
-    return safe_weather_track_metadata_from_payload(payload)
 
 
 def is_safe_sidecar_target_source(source: Any) -> bool:
@@ -379,6 +281,23 @@ def is_canonical_sidecar_target_source(source: Any) -> bool:
     if not is_safe_sidecar_target_source(text):
         return False
     return text in CANONICAL_SIDECAR_TARGET_SOURCES
+
+
+def is_safe_weather_track_source(source: Any) -> bool:
+    text = str(source or "").strip()
+    if not text:
+        return False
+    lowered = text.lower()
+    if any(marker in lowered for marker in UNSAFE_WEATHER_TRACK_SOURCE_MARKERS):
+        return False
+    parts = [
+        part.strip()
+        for part in re.split(r"\s*\+\s*|\s*,\s*", text)
+        if part.strip()
+    ]
+    if not parts:
+        return False
+    return all(part in SAFE_WEATHER_TRACK_SOURCES for part in parts)
 
 
 def _is_thedogs_source_url(value: Any) -> bool:
@@ -408,6 +327,122 @@ def _looks_post_result_source_url(value: Any) -> bool:
         searchable = text
     tokens = {token for token in re.split(r"[^a-z0-9]+", searchable) if token}
     return bool(tokens.intersection(POST_RESULT_URL_MARKERS))
+
+
+def _safe_source_url(value: Any, rejected: list[str]) -> bool:
+    if not value:
+        rejected.append("source_url_missing")
+        return False
+    if not _is_thedogs_source_url(value):
+        rejected.append("source_url_not_thedogs")
+        return False
+    if _looks_post_result_source_url(value):
+        rejected.append("source_url_looks_post_result")
+        return False
+    return True
+
+
+def _is_open_meteo_source_url(value: Any) -> bool:
+    text = str(value or "").strip()
+    if not text:
+        return False
+    try:
+        parsed = urlparse(text)
+    except Exception:
+        return False
+    host = parsed.netloc.lower().split("@")[-1].split(":")[0]
+    return parsed.scheme == "https" and host == "api.open-meteo.com"
+
+
+def _is_sportsbet_source_url(value: Any) -> bool:
+    text = str(value or "").strip()
+    if not text:
+        return False
+    try:
+        parsed = urlparse(text)
+    except Exception:
+        return False
+    host = parsed.netloc.lower().split("@")[-1].split(":")[0]
+    if parsed.scheme not in {"http", "https"} or not host:
+        return False
+    return host == "sportsbet.com.au" or host.endswith(".sportsbet.com.au")
+
+
+def _safe_weather_track_source_url(
+    value: Any,
+    source: Any,
+    rejected: list[str],
+) -> bool:
+    source_text = str(source or "").strip()
+    source_parts = [
+        part.strip()
+        for part in re.split(r"\s*\+\s*|\s*,\s*", source_text)
+        if part.strip()
+    ] or [source_text]
+
+    def _url_allowed_for_part(part: str, url_value: Any) -> bool:
+        if part in {
+            "canonical_pre_race_page",
+            "sidecar_weather_track_metadata",
+            "explicit_csv_sidecar",
+        }:
+            return _is_thedogs_source_url(url_value)
+        if part == "open_meteo_forecast_api":
+            return _is_open_meteo_source_url(url_value)
+        if part == "sportsbet_pre_race_page":
+            return _is_sportsbet_source_url(url_value)
+        return False
+
+    if isinstance(value, Mapping):
+        ok = True
+        for part in source_parts:
+            url_value = value.get(part)
+            if not url_value:
+                rejected.append(f"source_url_missing:{part}")
+                ok = False
+                continue
+            if _looks_post_result_source_url(url_value):
+                rejected.append(f"source_url_looks_post_result:{part}")
+                ok = False
+                continue
+            if not _url_allowed_for_part(part, url_value):
+                rejected.append(
+                    f"source_url_not_allowed_for_weather_track_source:{part}"
+                )
+                ok = False
+        return ok
+
+    if not value:
+        rejected.append("source_url_missing")
+        return False
+    if len(source_parts) > 1:
+        rejected.append("composite_source_url_requires_mapping")
+        return False
+    if _looks_post_result_source_url(value):
+        rejected.append("source_url_looks_post_result")
+        return False
+    allowed = False
+    for part in source_parts:
+        allowed = allowed or _url_allowed_for_part(part, value)
+    if not allowed:
+        rejected.append("source_url_not_allowed_for_weather_track_source")
+    return allowed
+
+
+def _weather_track_source_url(
+    payload: Mapping[str, Any],
+    race_info: Mapping[str, Any],
+    shadow_metadata: Mapping[str, Any],
+) -> Any:
+    return (
+        payload.get("weather_track_metadata_source_url")
+        or race_info.get("weather_track_metadata_source_url")
+        or shadow_metadata.get("weather_track_metadata_source_url")
+        or payload.get("metadata_source_url")
+        or payload.get("race_url")
+        or shadow_metadata.get("source_url")
+        or race_info.get("url")
+    )
 
 
 def _safe_int(value: Any) -> Optional[int]:
@@ -679,6 +714,219 @@ def build_safe_target_metadata_payload(
     return payload
 
 
+def build_safe_weather_track_metadata_payload(
+    race_info: Optional[Mapping[str, Any]] = None,
+    *,
+    source_url: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Build sidecar weather/track metadata from explicit pre-race fields only."""
+
+    race_info_dict = dict(race_info or {})
+    rejected: list[str] = list(
+        race_info_dict.get("rejected_weather_track_metadata_sources") or []
+    )
+    payload: Dict[str, Any] = {
+        "track_condition": None,
+        "weather": None,
+        "weather_condition": None,
+        "weather_track_metadata_source": None,
+        "weather_track_metadata_source_url": None,
+        "weather_track_metadata_is_leakage_safe": False,
+        "rejected_weather_track_metadata_sources": rejected,
+    }
+    source = (
+        race_info_dict.get("weather_track_metadata_source")
+        or "canonical_pre_race_page"
+    )
+    metadata_source_url = (
+        race_info_dict.get("weather_track_metadata_source_url")
+        or source_url
+    )
+    if not is_safe_weather_track_source(source):
+        rejected.append(f"unsafe_weather_track_source:{source}")
+        return payload
+    if not _safe_weather_track_source_url(metadata_source_url, source, rejected):
+        return payload
+
+    track_condition = normalize_track_condition_text(
+        _first_named_value(race_info_dict, TRACK_CONDITION_FIELDS)
+    )
+    weather = normalize_weather_track_text(_first_named_value(race_info_dict, WEATHER_FIELDS))
+    if not track_condition:
+        rejected.append("track_condition_missing_or_placeholder")
+    if not weather:
+        rejected.append("weather_missing_or_placeholder")
+    if track_condition:
+        payload["track_condition"] = track_condition
+    if weather:
+        payload["weather"] = weather
+        payload["weather_condition"] = weather
+    if track_condition or weather:
+        payload["weather_track_metadata_source"] = source
+        payload["weather_track_metadata_source_url"] = metadata_source_url
+        payload["weather_track_metadata_is_leakage_safe"] = True
+    if isinstance(race_info_dict.get("weather_track_metadata_detail"), Mapping):
+        payload["weather_track_metadata_detail"] = dict(
+            race_info_dict["weather_track_metadata_detail"]
+        )
+    return payload
+
+
+def safe_weather_track_metadata_from_payload(payload: Mapping[str, Any]) -> Dict[str, Any]:
+    """Extract weather/track metadata only from verified pre-race sidecar context."""
+
+    default: Dict[str, Any] = {
+        "track_condition": None,
+        "weather": None,
+        "weather_condition": None,
+        "weather_track_metadata_source": None,
+        "weather_track_metadata_source_url": None,
+        "weather_track_metadata_detail": None,
+        "weather_track_metadata_is_leakage_safe": False,
+        "metadata_source_url": None,
+        "metadata_captured_at": None,
+        "race_date": None,
+        "race_time": None,
+        "rejected_weather_track_metadata_sources": [],
+    }
+    if not isinstance(payload, Mapping):
+        return {
+            **default,
+            "rejected_weather_track_metadata_sources": ["sidecar_not_object"],
+        }
+
+    race_info = payload.get("race_info") if isinstance(payload.get("race_info"), Mapping) else {}
+    shadow_metadata = (
+        payload.get("prejump_shadow_metadata")
+        if isinstance(payload.get("prejump_shadow_metadata"), Mapping)
+        else {}
+    )
+    rejected = list(payload.get("rejected_weather_track_metadata_sources") or [])
+    source_url = _weather_track_source_url(payload, race_info, shadow_metadata)
+    metadata = {
+        "metadata_source_url": source_url,
+        "weather_track_metadata_source_url": source_url,
+        "metadata_captured_at": payload.get("metadata_captured_at")
+        or shadow_metadata.get("metadata_captured_at"),
+        "race_date": race_info.get("date") or shadow_metadata.get("race_date"),
+        "race_time": race_info.get("race_time") or shadow_metadata.get("jump_time"),
+    }
+    source = (
+        payload.get("weather_track_metadata_source")
+        or shadow_metadata.get("weather_track_metadata_source")
+        or "sidecar_weather_track_metadata"
+    )
+    source_safe = is_safe_weather_track_source(source)
+    if not source_safe:
+        rejected.append(f"unsafe_weather_track_source:{source}")
+    source_url_safe = _safe_weather_track_source_url(source_url, source, rejected)
+    explicit_weather_track_safe = (
+        payload.get("weather_track_metadata_is_leakage_safe") is True
+        or shadow_metadata.get("weather_track_metadata_is_leakage_safe") is True
+    )
+    if not explicit_weather_track_safe:
+        rejected.append("weather_track_metadata_is_leakage_safe_not_true")
+
+    timing_safe = False
+    capture_dt = _parse_prejump_contract_timestamp(metadata["metadata_captured_at"])
+    if capture_dt is None:
+        rejected.append("metadata_captured_at_unparseable")
+    else:
+        jump_dt, jump_error = _parse_prejump_contract_jump_datetime(
+            race_date=metadata["race_date"],
+            jump_time=metadata["race_time"],
+            capture_dt=capture_dt,
+        )
+        if jump_dt is None:
+            rejected.append(
+                f"metadata_capture_timing_unverified:{jump_error or 'unknown'}"
+            )
+        elif (jump_dt - capture_dt).total_seconds() <= 0:
+            rejected.append("metadata_captured_at_not_before_jump")
+        else:
+            timing_safe = True
+    leakage_safe = (
+        (
+            payload.get("metadata_is_leakage_safe") is True
+            or (
+                shadow_metadata.get("status") == "PASS"
+                and shadow_metadata.get("metadata_is_leakage_safe") is True
+            )
+        )
+        and source_url_safe
+        and source_safe
+        and explicit_weather_track_safe
+        and timing_safe
+    )
+    if not leakage_safe:
+        return {
+            **default,
+            **metadata,
+            "rejected_weather_track_metadata_sources": rejected
+            or ["sidecar_not_verified_pre_race_context"],
+        }
+
+    track_condition = normalize_track_condition_text(
+        _first_named_value(payload, TRACK_CONDITION_FIELDS)
+        or _first_named_value(race_info, TRACK_CONDITION_FIELDS)
+        or _first_named_value(shadow_metadata, TRACK_CONDITION_FIELDS)
+    )
+    weather = normalize_weather_track_text(
+        _first_named_value(payload, WEATHER_FIELDS)
+        or _first_named_value(race_info, WEATHER_FIELDS)
+        or _first_named_value(shadow_metadata, WEATHER_FIELDS)
+    )
+    if not track_condition:
+        rejected.append("track_condition_missing_or_placeholder")
+    if not weather:
+        rejected.append("weather_missing_or_placeholder")
+
+    return {
+        **metadata,
+        "track_condition": track_condition,
+        "weather": weather,
+        "weather_condition": weather,
+        "weather_track_metadata_source": str(source) if source not in (None, "") else None,
+        "weather_track_metadata_source_url": source_url,
+        "weather_track_metadata_detail": payload.get("weather_track_metadata_detail")
+        if isinstance(payload.get("weather_track_metadata_detail"), Mapping)
+        else None,
+        "weather_track_metadata_is_leakage_safe": bool(track_condition or weather),
+        "rejected_weather_track_metadata_sources": rejected,
+    }
+
+
+def load_safe_weather_track_metadata(csv_path: Union[str, os.PathLike]) -> Dict[str, Any]:
+    """Read leakage-safe weather/track metadata from a CSV sidecar, if present."""
+
+    sidecar_path = _sidecar_path(csv_path)
+    default: Dict[str, Any] = {
+        "track_condition": None,
+        "weather": None,
+        "weather_condition": None,
+        "weather_track_metadata_source": None,
+        "weather_track_metadata_source_url": None,
+        "weather_track_metadata_detail": None,
+        "weather_track_metadata_is_leakage_safe": False,
+        "metadata_source_url": None,
+        "metadata_captured_at": None,
+        "race_date": None,
+        "race_time": None,
+        "rejected_weather_track_metadata_sources": ["sidecar_metadata_missing"],
+    }
+    if not os.path.exists(sidecar_path):
+        return default
+    try:
+        with open(sidecar_path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except Exception:
+        return {
+            **default,
+            "rejected_weather_track_metadata_sources": ["sidecar_metadata_unreadable"],
+        }
+    return safe_weather_track_metadata_from_payload(payload)
+
+
 def _utc_timestamp() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
@@ -876,6 +1124,9 @@ def build_csv_download_provenance_payload(
             source_url=race_url,
         )
     )
+    expert_form_metadata = race_info_dict.get("expert_form_metadata")
+    if isinstance(expert_form_metadata, Mapping):
+        payload["expert_form_metadata"] = dict(expert_form_metadata)
     if normalization:
         payload.update(dict(normalization))
     payload["prejump_shadow_metadata"] = build_prejump_shadow_metadata_payload(payload)

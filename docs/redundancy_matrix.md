@@ -28,10 +28,9 @@ We compared data fields, output formats, and ingestion patterns across all exist
 | `event_scraper.py` | ✓ | | | Basic odds data, market selections | `hybrid_odds_scraper.py` | **DEPRECATE** - FastTrack includes comprehensive odds |
 | `form_guide_csv_scraper.py` | | ✓ | | Historical form, venue mapping | Multiple pipelines | **MERGE** - Keep for historical backfill, migrate to FastTrack |
 | `hybrid_odds_scraper.py` | ✓ | | | Live odds compilation | `app.py` | **DEPRECATE** - FastTrack provides real-time odds |
-| `odds_scraper_system.py` | ✓ | | | Structured odds storage | `app.py` | **DEPRECATE** - Redundant with FastTrack odds system |
+| `archive/legacy_odds_entrypoints/odds_scraper_system.py` | ✓ | | | Structured odds storage | None active | **ARCHIVED** - Redundant with guarded Sportsbet odds capture |
 | `safe_data_ingestion.py` | | | ✓ | Generic validation framework | System-wide | **KEEP** - Critical for FastTrack adapter validation |
 | `sportsbet_odds_integrator.py` | ✓ | | | Live odds, value bets | `app.py` | **DEPRECATE** - FastTrack supersedes sportsbook-specific data |
 | `sportsbet_recent_races_scraper.py` | | ✓ | | Sportsbet-specific race results | `app.py` | **MERGE** - Evaluate unique sportsbook fields |
 | `sportsbet_race_time_scraper.py` | ✓ | | | Race timing data | `comprehensive_prediction_pipeline.py` | **DEPRECATE** - FastTrack includes superior timing data |
 | `enhanced_data_integration.py` | | ✓ | | Sectional times, performance indicators | `comprehensive_prediction_pipeline.py` | **MERGE** - Enhanced analysis may complement FastTrack |
-

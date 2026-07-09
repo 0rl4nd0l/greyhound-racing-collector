@@ -806,3 +806,10 @@ def test_gate_writes_report_only_artifact(tmp_path, monkeypatch):
     assert (output_dir / "final_status.txt").read_text(encoding="utf-8").strip() == (
         "FEATURE_ACTIVATION_BLOCKED_KEEP_QUARANTINED"
     )
+
+
+def test_gate_accepts_configured_external_evidence_root(tmp_path, monkeypatch):
+    monkeypatch.setattr(gate, "ROOT", tmp_path / "repo")
+    evidence_root = tmp_path / "retained_evidence"
+    output_dir = evidence_root / "shadow_feature_activation_gate_20260608T120000+1000"
+    assert gate.assert_output_dir_safe(output_dir, evidence_root=evidence_root) == output_dir.resolve()

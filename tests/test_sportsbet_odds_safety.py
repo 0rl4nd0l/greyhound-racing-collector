@@ -10,6 +10,7 @@ from sportsbet_odds_integrator import (
     SPORTSBET_LIST_POSITION_BOX_SOURCE,
     SPORTSBET_RUNNER_TEXT_BOX_SOURCE,
     SportsbetOddsIntegrator,
+    sportsbet_runner_header_count,
     sportsbet_runner_box_metadata,
 )
 from utils import feature_flags
@@ -288,15 +289,63 @@ def test_append_pre_jump_capture_defaults_to_canonical_race_id_and_preserves_sou
             """
         ).fetchone()
 
-    assert row == (
-        "HOR_2026-05-26_7",
-        source_url,
-        "opt_in_live_pre_jump_snapshot",
-        "PABLO VENDETTA",
-        1,
-        SPORTSBET_RUNNER_TEXT_BOX_SOURCE,
-        1,
+        assert row == (
+            "HOR_2026-05-26_7",
+            source_url,
+            "opt_in_live_pre_jump_snapshot",
+            "PABLO VENDETTA",
+            1,
+            SPORTSBET_RUNNER_TEXT_BOX_SOURCE,
+            1,
+        )
+
+
+def test_append_pre_jump_capture_can_skip_race_metadata_write(tmp_path):
+    db_path = tmp_path / "capture_no_metadata.db"
+    integrator = SportsbetOddsIntegrator(db_path=str(db_path))
+    source_url = (
+        "https://www.sportsbet.com.au/greyhound-racing/australia-nz/"
+        "wentworth-park/race-1"
     )
+
+    report = integrator.append_pre_jump_odds_snapshot(
+        {
+            "race_id": "Race 1 - WPK - 2026-06-10",
+            "venue": "WPK",
+            "race_number": 1,
+            "race_date": "2026-06-10",
+            "race_time": "15:00",
+            "venue_url": source_url,
+            "preserve_race_id": True,
+        },
+        [
+            {
+                "dog_name": "Alpha",
+                "dog_clean_name": "ALPHA",
+                "box_number": 1,
+                "odds_decimal": 2.4,
+                "sportsbet_box_source": SPORTSBET_RUNNER_TEXT_BOX_SOURCE,
+            }
+        ],
+        capture_mode="autonomous_prejump_t30m",
+        capture_timestamp="2026-06-10T14:40:00+10:00",
+        write_race_metadata=False,
+    )
+
+    assert report["status"] == "SUCCESS"
+    assert report["inserted_rows"] == 1
+    with sqlite3.connect(db_path) as conn:
+        metadata_count = conn.execute(
+            "SELECT COUNT(*) FROM race_metadata WHERE race_id = ?",
+            ("Race 1 - WPK - 2026-06-10",),
+        ).fetchone()[0]
+        live_count = conn.execute(
+            "SELECT COUNT(*) FROM live_odds WHERE race_id = ? AND capture_mode = ?",
+            ("Race 1 - WPK - 2026-06-10", "autonomous_prejump_t30m"),
+        ).fetchone()[0]
+
+    assert metadata_count == 0
+    assert live_count == 1
 
 
 def test_sportsbet_runner_box_metadata_uses_explicit_runner_text_over_list_position():
@@ -310,6 +359,87 @@ def test_sportsbet_runner_box_metadata_uses_explicit_runner_text_over_list_posit
     assert metadata["sportsbet_list_position"] == 5
 
 
+def test_sportsbet_runner_box_metadata_prefers_parenthesized_final_box_for_reserve():
+    metadata = sportsbet_runner_box_metadata(
+        list_position=8,
+        runner_text="9. High Rollin' (6)\nF: 388638\n8.00",
+    )
+
+    assert metadata["box_number"] == 6
+    assert metadata["sportsbet_box_source"] == SPORTSBET_RUNNER_TEXT_BOX_SOURCE
+    assert metadata["sportsbet_list_position"] == 8
+
+
+def test_sportsbet_runner_box_metadata_accepts_abbreviated_runner_name_periods():
+    metadata = sportsbet_runner_box_metadata(
+        list_position=3,
+        runner_text="3. Dr. Will (3)\nF: 241112\n8.50",
+    )
+
+    assert metadata["box_number"] == 3
+    assert metadata["sportsbet_box_source"] == SPORTSBET_RUNNER_TEXT_BOX_SOURCE
+    assert metadata["sportsbet_list_position"] == 3
+
+
+def test_sportsbet_runner_header_count_detects_single_runner_text():
+    assert sportsbet_runner_header_count("3. Dr. Will (3)\nF: 241112\n8.50") == 1
+
+
+def test_sportsbet_runner_header_count_detects_concatenated_race_card_text():
+    raw_text = "\n".join(
+        [
+            "Expand Form",
+            "Flucs",
+            "Fast Form",
+            "Runner",
+            "Early Speed",
+            "Open",
+            "Fluc 1",
+            "Fluc 2",
+            "Win",
+            "Fixed",
+            "Place",
+            "Fixed",
+            "Each Way",
+            "Fixed",
+            "1. Big Cutie (1)",
+            "F: 145581",
+            "T: Meredith Verhagen",
+            "Early Speed:",
+            "3.00",
+            "2.15",
+            "2.20",
+            "2.15",
+            "Fav",
+            "1.17",
+            "EW",
+            "2. Our Hedley (2)",
+            "F: 525153",
+            "T: Jonathan Childs",
+            "Early Speed:",
+            "7.00",
+            "6.50",
+            "6.00",
+            "6.50",
+            "1.67",
+            "EW",
+            "3. Super Skunk (3)",
+            "F: 222118",
+            "T: Meredith Verhagen",
+            "Early Speed:",
+            "6.00",
+            "5.00",
+            "5.50",
+            "5.00",
+            "1.67",
+            "EW",
+            "4. Golden Effects (4)",
+        ]
+    )
+
+    assert sportsbet_runner_header_count(raw_text) == 4
+
+
 def test_sportsbet_runner_box_metadata_marks_list_position_only_as_ambiguous():
     metadata = sportsbet_runner_box_metadata(
         list_position=5,
@@ -319,6 +449,128 @@ def test_sportsbet_runner_box_metadata_marks_list_position_only_as_ambiguous():
     assert metadata["box_number"] == 5
     assert metadata["sportsbet_box_source"] == SPORTSBET_LIST_POSITION_BOX_SOURCE
     assert metadata["sportsbet_list_position"] == 5
+
+
+class _FakeSportsbetBy:
+    CSS_SELECTOR = "css selector"
+    XPATH = "xpath"
+
+
+class _FakeSportsbetEC:
+    @staticmethod
+    def presence_of_element_located(_locator):
+        return lambda _driver: True
+
+
+class _FakeSportsbetWait:
+    def __init__(self, _driver, _timeout):
+        pass
+
+    def until(self, condition):
+        return condition(None)
+
+
+class _FakeSportsbetElement:
+    def __init__(self, text):
+        self.text = text
+
+
+class _FakeSportsbetCard:
+    def __init__(self, runner_number, dog_name, odds_text):
+        self.runner_number = runner_number
+        self.dog_name = dog_name
+        self.odds_text = odds_text
+        self.text = f"{runner_number}. {dog_name} ({runner_number})\n{odds_text}"
+
+    def find_element(self, _by, selector):
+        if selector == "div[data-automation-id='racecard-outcome-name'] span":
+            return _FakeSportsbetElement(f"{self.runner_number}. {self.dog_name}")
+        if selector == "[data-automation-id*='price-text']":
+            return _FakeSportsbetElement(self.odds_text)
+        raise LookupError(selector)
+
+    def find_elements(self, _by, _selector):
+        return []
+
+
+class _FakeSportsbetRunnerCardDriver:
+    current_url = "https://www.sportsbet.com.au/test-race"
+    page_source = "<html></html>"
+
+    def __init__(self, cards):
+        self.cards = cards
+
+    def find_elements(self, _by, selector):
+        if "racecard-outcome-name" in selector or selector.startswith(
+            "div[data-automation-id^='racecard-outcome-']"
+        ):
+            return self.cards
+        return []
+
+    def execute_script(self, *_args):
+        return None
+
+    def save_screenshot(self, _path):
+        return True
+
+
+def test_runner_card_extractor_scans_all_candidates_before_deduping(monkeypatch, tmp_path):
+    monkeypatch.setattr("sportsbet_odds_integrator.time.sleep", lambda _seconds: None)
+    runners = [
+        (1, "Alpha One", "2.10"),
+        (2, "Bravo Two", "3.20"),
+        (3, "Charlie Three", "4.30"),
+        (4, "Delta Four", "5.40"),
+        (5, "Echo Five", "6.50"),
+        (6, "Foxtrot Six", "7.60"),
+        (7, "Golf Seven", "8.70"),
+        (8, "Hotel Eight", "9.80"),
+    ]
+    cards = []
+    for runner_number, dog_name, win_odds in runners:
+        cards.append(_FakeSportsbetCard(runner_number, dog_name, win_odds))
+        cards.append(_FakeSportsbetCard(runner_number, dog_name, "1.50"))
+
+    integrator = SportsbetOddsIntegrator(
+        db_path=str(tmp_path / "odds.db"),
+        setup_database=False,
+    )
+    integrator.driver = _FakeSportsbetRunnerCardDriver(cards)
+    monkeypatch.setattr(
+        integrator,
+        "_selenium_primitives",
+        lambda: (
+            _FakeSportsbetBy,
+            _FakeSportsbetWait,
+            _FakeSportsbetEC,
+            TimeoutError,
+        ),
+    )
+
+    extracted = integrator.extract_odds_strategy_runner_cards()
+
+    assert [runner["box_number"] for runner in extracted] == list(range(1, 9))
+    assert [runner["dog_clean_name"] for runner in extracted] == [
+        "ALPHA ONE",
+        "BRAVO TWO",
+        "CHARLIE THREE",
+        "DELTA FOUR",
+        "ECHO FIVE",
+        "FOXTROT SIX",
+        "GOLF SEVEN",
+        "HOTEL EIGHT",
+    ]
+    assert [runner["odds_decimal"] for runner in extracted] == [
+        2.10,
+        3.20,
+        4.30,
+        5.40,
+        6.50,
+        7.60,
+        8.70,
+        9.80,
+    ]
+    assert len(extracted) == 8
 
 
 def test_alias_odds_copy_rolls_back_when_metadata_upsert_fails(tmp_path, monkeypatch):
@@ -649,6 +901,86 @@ def test_auto_odds_falls_back_to_sportsbet_meeting_when_landing_misses_target(
         "https://www.sportsbet.com.au/greyhound-racing/"
         "australia-nz/horsham/race-1-10514868"
     )
+
+
+def test_fetch_odds_for_target_race_uses_read_only_integrator(monkeypatch, tmp_path):
+    import sportsbet_odds_integrator as odds_module
+
+    monkeypatch.setattr(odds_auto_integrator.time, "sleep", lambda _seconds: None)
+    driver = _FakeDriver(
+        landing_anchors=[
+            _FakeAnchor(
+                text="R1 Horsham\n16m",
+                href=(
+                    "https://www.sportsbet.com.au/greyhound-racing/"
+                    "australia-nz/horsham/race-1-10514868"
+                ),
+            )
+        ],
+    )
+
+    class FakeIntegrator:
+        instances = []
+
+        def __init__(
+            self,
+            db_path,
+            allow_auto_scrape_odds=None,
+            setup_database=True,
+        ):
+            self.db_path = db_path
+            self.allow_auto_scrape_odds = allow_auto_scrape_odds
+            self.setup_database = setup_database
+            self.base_url = "https://www.sportsbet.com.au"
+            self.greyhound_url = f"{self.base_url}/betting/greyhound-racing"
+            self.driver = driver
+            FakeIntegrator.instances.append(self)
+
+        def setup_driver(self):
+            return True
+
+        def get_race_odds_from_page(self, race_info):
+            return {
+                **race_info,
+                "venue": "Horsham",
+                "race_date": "2026-05-26",
+                "race_number": 1,
+                "odds_data": [
+                    {
+                        "dog_name": "Fast Dog",
+                        "dog_clean_name": "FAST DOG",
+                        "box_number": 1,
+                        "odds_decimal": 2.5,
+                    }
+                ],
+                "odds_data_place": [],
+            }
+
+        def _canonical_race_id(self, venue, race_date, race_number):
+            return f"HOR_{race_date}_{race_number}"
+
+        def close_driver(self):
+            pass
+
+    monkeypatch.setattr(odds_module, "SportsbetOddsIntegrator", FakeIntegrator)
+    db_path = tmp_path / "fetch_only.db"
+
+    summary = odds_auto_integrator.fetch_odds_for_target_race(
+        str(db_path),
+        "HOR",
+        1,
+        "2026-05-26",
+        allow_auto_scrape_odds=True,
+    )
+
+    fake = FakeIntegrator.instances[0]
+    assert fake.setup_database is False
+    assert summary["success"] is True
+    assert summary["write_performed"] is False
+    assert summary["win_count"] == 1
+    assert summary["race_id"] == "HOR_2026-05-26_1"
+    assert summary["odds_data"][0]["dog_name"] == "Fast Dog"
+    assert not db_path.exists()
 
 
 def test_dom_fallback_page_scraping_requires_opt_in_and_is_limited(tmp_path, monkeypatch):

@@ -37,7 +37,7 @@ DEFAULT_REPAIRED_PACKET = (
     / "artifacts/full_evidence_orchestration_20260525"
     / "bounded_target_grade_repair_20260603/repaired_pre_race_history_feature_packet.csv"
 )
-DEFAULT_SCHEMA = ROOT / "outputs/milestone_6a_non_tgr_challenger_training_design/repaired_non_tgr_schema.json"
+DEFAULT_SCHEMA = ROOT / "accuracy_program/repaired_non_tgr_schema.json"
 DEFAULT_DB = ROOT / "greyhound_racing_data.db"
 DEFAULT_OUTPUT_PARENT = ROOT / "artifacts/full_evidence_orchestration_20260525"
 PROTECTED_PREFIXES = (
@@ -376,7 +376,7 @@ def safe_float(value: Any) -> float | None:
     text = str(value).strip()
     if not text:
         return None
-    match = re.search(r"-?\d+(?:\.\d+)?", text)
+    match = re.search(r"-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?", text)
     if not match:
         return None
     try:

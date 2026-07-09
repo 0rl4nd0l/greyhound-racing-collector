@@ -1,0 +1,426 @@
+{
+  "artifact_roots": [
+    "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525"
+  ],
+  "db_path": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/greyhound_racing_data.db",
+  "db_summary": {
+    "counts": {
+      "live_odds_race_count": 1225,
+      "live_odds_rows": 22981,
+      "official_result_evidence_race_count": 526,
+      "official_result_evidence_race_rows": 639,
+      "official_result_evidence_runner_race_count": 526,
+      "official_result_evidence_runner_rows": 3699,
+      "strict_live_odds_race_count": 1176,
+      "strict_live_odds_rows": 21025
+    },
+    "db_status": {
+      "bytes": 69529600,
+      "db_path": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/greyhound_racing_data.db",
+      "status": "AVAILABLE"
+    },
+    "table_status": {
+      "autonomous_official_result_evidence_races": {
+        "present": true
+      },
+      "autonomous_official_result_evidence_runners": {
+        "present": true
+      },
+      "live_odds": {
+        "present": true
+      }
+    }
+  },
+  "final_status": "RACE_EVIDENCE_INVENTORY_READY_FOR_EVALUATION",
+  "generated_at": "2026-06-21T23:26:44.371395+10:00",
+  "inventory_csv": "artifacts/full_evidence_orchestration_20260525/race_evidence_inventory_20260621T232643+1000_report_only/race_evidence_inventory.csv",
+  "inventory_jsonl": "artifacts/full_evidence_orchestration_20260525/race_evidence_inventory_20260621T232643+1000_report_only/race_evidence_inventory.jsonl",
+  "latest_backlog_append_report": {
+    "artifact_count": 807,
+    "db_write_performed": true,
+    "final_status": "APPENDED_OFFICIAL_RESULT_EVIDENCE_BACKLOG",
+    "inserted_race_rows": 70,
+    "inserted_runner_rows": 452,
+    "path": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/official_result_evidence_append_backlog_20260619T155930+1000_parent_discovery_execute/official_result_evidence_append_backlog_report.json",
+    "processed_count": 807,
+    "shared_lock_release": {
+      "reason": "released_by_owner",
+      "released": true
+    },
+    "shared_lock_status": {
+      "lock": {
+        "hostname": "l4nd0-System-Product-Name",
+        "output_dir": "artifacts/full_evidence_orchestration_20260525/official_result_evidence_append_backlog_20260619T155930+1000_parent_discovery_execute",
+        "owner": "append_official_result_evidence_backlog",
+        "pid": 3871260,
+        "run_id": "official_result_evidence_append_backlog_20260619T155931+1000",
+        "schema_version": "shadow_autopilot_daemon_lock_v1",
+        "started_at": "2026-06-19T15:59:31.068479+10:00"
+      },
+      "lock_path": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/artifacts/full_evidence_orchestration_20260525/shadow_autopilot_daemon_runtime/shadow_autopilot.lock",
+      "owned_lock": {
+        "hostname": "l4nd0-System-Product-Name",
+        "output_dir": "artifacts/full_evidence_orchestration_20260525/official_result_evidence_append_backlog_20260619T155930+1000_parent_discovery_execute",
+        "owner": "append_official_result_evidence_backlog",
+        "pid": 3871260,
+        "run_id": "official_result_evidence_append_backlog_20260619T155931+1000",
+        "schema_version": "shadow_autopilot_daemon_lock_v1",
+        "started_at": "2026-06-19T15:59:31.068479+10:00"
+      },
+      "pid": 3871260,
+      "schema_version": "shared_lock_status_v1",
+      "status": "acquired_by_backlog_append",
+      "write_allowed": true
+    },
+    "status": "FOUND",
+    "status_counts": {
+      "APPENDED_OFFICIAL_RESULT_EVIDENCE": 18,
+      "BLOCKED_UNSAFE_OFFICIAL_RESULT_EVIDENCE": 1,
+      "NOOP_ALREADY_PRESENT": 363,
+      "NOOP_ALREADY_PRESENT_WITH_QUARANTINE": 280,
+      "NO_VALID_OFFICIAL_RESULT_EVIDENCE": 145
+    }
+  },
+  "no_write_guarantees": {
+    "active_model_replacement": false,
+    "betting_or_ev_action": false,
+    "daemon_control": false,
+    "db_write": false,
+    "label_write": false,
+    "manifest_rewrite": false,
+    "odds_write": false,
+    "official_result_write": false,
+    "production_pointer_update": false,
+    "production_promotion": false,
+    "registry_mutation": false,
+    "snapshot_rewrite": false,
+    "training": false
+  },
+  "official_artifact_summary": {
+    "artifact_discovery": [
+      {
+        "direct_match": false,
+        "discovered_child_artifact_count": 945,
+        "discovered_child_artifact_dirs": [
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T150200_current_state_dry_run",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T150200_result_capture_integration_dry_run_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T150200_result_capture_integration_dry_run_final_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T160000_shadow_result_capture_integration_dry_run_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T161200_stage2_odds_same_run_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T162500_stage2_first_small_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T163700_stage2_result_retry",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T164300_gunnedah_result_retry",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T165000_daemon_autonomous_stage2_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T165700_daemon_service_mismatch_validation_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T170100_daemon_service_mismatch_validation_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T171900_ben_r10_result_probe",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T172900_ben_r10_shadow_probe",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T173835+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T175349+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T180949+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T182549+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T184100+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T185649+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T191153+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T192749+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T194349+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T195949+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T203216+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T204816+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T210416+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T212016+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T213616+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T215216+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T220816+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T222416+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T224016+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T225616+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T231216+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T232816+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T234416+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260610T_shadow_run_candidate_current_dry_run",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260611T000016+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260611T003216+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260611T004816+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260611T010416+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260611T012016+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260611T013616+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260611T015216+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260611T020816+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260611T022416+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260611T024016+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260611T025616+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260611T031216+1000_daemon_autopilot",
+          "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/autonomous_official_result_capture_20260611T032816+1000_daemon_autopilot"
+        ],
+        "discovered_child_artifact_dirs_truncated": true,
+        "input_artifact_dir": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525",
+        "mode": "recursive_parent_discovery"
+      }
+    ],
+    "input_artifact_root_count": 1,
+    "official_result_artifact_dir_count": 945,
+    "official_result_artifact_race_count": 530,
+    "official_result_artifact_race_rows": 30329,
+    "official_result_artifact_runner_rows": 209781
+  },
+  "output_dir": "artifacts/full_evidence_orchestration_20260525/race_evidence_inventory_20260621T232643+1000_report_only",
+  "recommended_decision": "RUN_POST_BACKLOG_UNIFIED_EVALUATION",
+  "schema_version": "race_evidence_inventory_report_v1",
+  "scorecard_csv": "artifacts/full_evidence_orchestration_20260525/race_evidence_inventory_20260621T232643+1000_report_only/race_evidence_scorecard.csv",
+  "scorecard_jsonl": "artifacts/full_evidence_orchestration_20260525/race_evidence_inventory_20260621T232643+1000_report_only/race_evidence_scorecard.jsonl",
+  "scorecard_metrics": {
+    "evaluation_race_count": 443,
+    "market_logloss": 1.531870125341703,
+    "market_mean_winner_rank": 2.3769751693002257,
+    "market_top1_accuracy": 0.44469525959367945,
+    "market_top3_accuracy": 0.7923250564334086,
+    "metric_notes": [
+      "report_only_latest_shadow_prediction_per_race_box",
+      "official_results_from_append_only_evidence_db",
+      "market_baseline_from_latest_strict_sportsbet_odds_per_box"
+    ],
+    "model_logloss": 1.9414561919647493,
+    "model_mean_winner_rank": 3.4243792325056432,
+    "model_top1_accuracy": 0.22799097065462753,
+    "model_top3_accuracy": 0.5778781038374717,
+    "schema_version": "race_evidence_scorecard_metrics_v1",
+    "skipped_race_reason_counts": {
+      "official_result_incomplete_for_shadow_boxes": 667,
+      "shadow_predictions_missing": 180,
+      "strict_odds_incomplete_for_shadow_boxes": 16
+    }
+  },
+  "shadow_prediction_summary": {
+    "prediction_file_count": 2671,
+    "prediction_file_kind_counts": {
+      "shadow_predictions.jsonl": 1336,
+      "stage2_shadow_predictions.jsonl": 1335
+    },
+    "prediction_file_limit": null,
+    "prediction_file_scan_truncated": false,
+    "shadow_prediction_race_count": 1126,
+    "shadow_prediction_rows": 136872
+  },
+  "summary_counts": {
+    "action_counts": {
+      "append_official_result_evidence_backlog": 4,
+      "capture_official_result": 608,
+      "collect_future_strict_prejump_odds": 16,
+      "not_shadow_scored": 180,
+      "ready_for_unified_evidence_evaluation": 443,
+      "repair_official_result_runner_set_or_identity_join": 55
+    },
+    "live_odds_race_count": 1225,
+    "official_result_artifact_race_count": 530,
+    "official_result_evidence_db_race_count": 526,
+    "race_union_count": 1306,
+    "shadow_prediction_race_count": 1126,
+    "shadow_races_complete_official_and_strict_odds": 443,
+    "shadow_races_with_official_result_evidence_db": 514,
+    "shadow_races_with_strict_prejump_odds": 1046,
+    "strict_prejump_odds_race_count": 1176
+  },
+  "top_gap_races": [
+    {
+      "official_result_db_box_count": 4,
+      "race_date": "2026-06-12",
+      "race_id": "Race 8 - TOWNSVILLE - 2026-06-12",
+      "race_number": 8,
+      "recommended_next_action": "repair_official_result_runner_set_or_identity_join",
+      "shadow_box_count": 8,
+      "strict_live_odds_box_count": 8,
+      "venue": "TOWNSVILLE"
+    },
+    {
+      "official_result_db_box_count": 0,
+      "race_date": "2026-06-15",
+      "race_id": "Race 12 - SHEPPARTON - 2026-06-15",
+      "race_number": 12,
+      "recommended_next_action": "capture_official_result",
+      "shadow_box_count": 8,
+      "strict_live_odds_box_count": 8,
+      "venue": "SHEPPARTON"
+    },
+    {
+      "official_result_db_box_count": 0,
+      "race_date": "2026-06-12",
+      "race_id": "Race 10 - HEA - 2026-06-12",
+      "race_number": 10,
+      "recommended_next_action": "capture_official_result",
+      "shadow_box_count": 8,
+      "strict_live_odds_box_count": 8,
+      "venue": "HEA"
+    },
+    {
+      "official_result_db_box_count": 0,
+      "race_date": "2026-06-12",
+      "race_id": "Race 9 - TOWNSVILLE - 2026-06-12",
+      "race_number": 9,
+      "recommended_next_action": "capture_official_result",
+      "shadow_box_count": 8,
+      "strict_live_odds_box_count": 8,
+      "venue": "TOWNSVILLE"
+    },
+    {
+      "official_result_db_box_count": 0,
+      "race_date": "2026-06-12",
+      "race_id": "Race 8 - HEA - 2026-06-12",
+      "race_number": 8,
+      "recommended_next_action": "capture_official_result",
+      "shadow_box_count": 8,
+      "strict_live_odds_box_count": 8,
+      "venue": "HEA"
+    },
+    {
+      "official_result_db_box_count": 7,
+      "race_date": "2026-06-12",
+      "race_id": "Race 5 - TOWNSVILLE - 2026-06-12",
+      "race_number": 5,
+      "recommended_next_action": "repair_official_result_runner_set_or_identity_join",
+      "shadow_box_count": 8,
+      "strict_live_odds_box_count": 8,
+      "venue": "TOWNSVILLE"
+    },
+    {
+      "official_result_db_box_count": 4,
+      "race_date": "2026-06-12",
+      "race_id": "Race 5 - GOULBURN - 2026-06-12",
+      "race_number": 5,
+      "recommended_next_action": "repair_official_result_runner_set_or_identity_join",
+      "shadow_box_count": 8,
+      "strict_live_odds_box_count": 8,
+      "venue": "GOULBURN"
+    },
+    {
+      "official_result_db_box_count": 0,
+      "race_date": "2026-06-12",
+      "race_id": "Race 4 - TOWNSVILLE - 2026-06-12",
+      "race_number": 4,
+      "recommended_next_action": "capture_official_result",
+      "shadow_box_count": 8,
+      "strict_live_odds_box_count": 8,
+      "venue": "TOWNSVILLE"
+    },
+    {
+      "official_result_db_box_count": 4,
+      "race_date": "2026-06-15",
+      "race_id": "Race 3 - WAR - 2026-06-15",
+      "race_number": 3,
+      "recommended_next_action": "repair_official_result_runner_set_or_identity_join",
+      "shadow_box_count": 8,
+      "strict_live_odds_box_count": 8,
+      "venue": "WAR"
+    },
+    {
+      "official_result_db_box_count": 0,
+      "race_date": "2026-06-13",
+      "race_id": "Race 3 - TAREE - 2026-06-13",
+      "race_number": 3,
+      "recommended_next_action": "capture_official_result",
+      "shadow_box_count": 8,
+      "strict_live_odds_box_count": 8,
+      "venue": "TAREE"
+    },
+    {
+      "official_result_db_box_count": 0,
+      "race_date": null,
+      "race_id": "Race 12 - HEA - 2026-06-12",
+      "race_number": null,
+      "recommended_next_action": "capture_official_result",
+      "shadow_box_count": 8,
+      "strict_live_odds_box_count": 0,
+      "venue": null
+    },
+    {
+      "official_result_db_box_count": 0,
+      "race_date": "2026-06-16",
+      "race_id": "Race 11 - LADBROKES-Q1-LAKESIDE - 2026-06-16",
+      "race_number": 11,
+      "recommended_next_action": "capture_official_result",
+      "shadow_box_count": 8,
+      "strict_live_odds_box_count": 8,
+      "venue": "LADBROKES-Q1-LAKESIDE"
+    },
+    {
+      "official_result_db_box_count": 7,
+      "race_date": "2026-06-12",
+      "race_id": "Race 1 - GOULBURN - 2026-06-12",
+      "race_number": 1,
+      "recommended_next_action": "repair_official_result_runner_set_or_identity_join",
+      "shadow_box_count": 8,
+      "strict_live_odds_box_count": 8,
+      "venue": "GOULBURN"
+    },
+    {
+      "official_result_db_box_count": 0,
+      "race_date": "2026-06-18",
+      "race_id": "Race 9 - CASO - 2026-06-18",
+      "race_number": 9,
+      "recommended_next_action": "capture_official_result",
+      "shadow_box_count": 8,
+      "strict_live_odds_box_count": 8,
+      "venue": "CASO"
+    },
+    {
+      "official_result_db_box_count": 4,
+      "race_date": "2026-06-14",
+      "race_id": "Race 9 - CAPALABA - 2026-06-14",
+      "race_number": 9,
+      "recommended_next_action": "repair_official_result_runner_set_or_identity_join",
+      "shadow_box_count": 8,
+      "strict_live_odds_box_count": 8,
+      "venue": "CAPALABA"
+    },
+    {
+      "official_result_db_box_count": 0,
+      "race_date": "2026-06-18",
+      "race_id": "Race 5 - WAR - 2026-06-18",
+      "race_number": 5,
+      "recommended_next_action": "capture_official_result",
+      "shadow_box_count": 8,
+      "strict_live_odds_box_count": 8,
+      "venue": "WAR"
+    },
+    {
+      "official_result_db_box_count": 4,
+      "race_date": "2026-06-11",
+      "race_id": "Race 5 - WAR - 2026-06-11",
+      "race_number": 5,
+      "recommended_next_action": "repair_official_result_runner_set_or_identity_join",
+      "shadow_box_count": 7,
+      "strict_live_odds_box_count": 7,
+      "venue": "WAR"
+    },
+    {
+      "official_result_db_box_count": 0,
+      "race_date": "2026-06-14",
+      "race_id": "Race 5 - CAPALABA - 2026-06-14",
+      "race_number": 5,
+      "recommended_next_action": "capture_official_result",
+      "shadow_box_count": 8,
+      "strict_live_odds_box_count": 8,
+      "venue": "CAPALABA"
+    },
+    {
+      "official_result_db_box_count": 0,
+      "race_date": "2026-06-13",
+      "race_id": "Race 4 - TAREE - 2026-06-13",
+      "race_number": 4,
+      "recommended_next_action": "capture_official_result",
+      "shadow_box_count": 8,
+      "strict_live_odds_box_count": 8,
+      "venue": "TAREE"
+    },
+    {
+      "official_result_db_box_count": 0,
+      "race_date": "2026-06-16",
+      "race_id": "Race 3 - HEA - 2026-06-16",
+      "race_number": 3,
+      "recommended_next_action": "append_official_result_evidence_backlog",
+      "shadow_box_count": 8,
+      "strict_live_odds_box_count": 8,
+      "venue": "HEA"
+    }
+  ]
+}

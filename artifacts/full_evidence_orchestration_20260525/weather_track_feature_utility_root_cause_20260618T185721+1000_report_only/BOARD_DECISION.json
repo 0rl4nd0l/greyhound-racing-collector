@@ -1,0 +1,20 @@
+{
+  "decision": "park",
+  "duplicate_work_classification": "SUPERSEDED_IGNORE",
+  "duplicate_work_decision": "new dedicated packet is justified; ablation only if packet gate passes",
+  "ledger_sources_checked": [
+    "current greyhound git status",
+    "local artifact roots",
+    "external autonomous accuracy artifact root when present",
+    "memory duplicate-work summary"
+  ],
+  "matching_candidates": [
+    "prediction_accuracy_system_audit packets cover broad system audit but not dedicated weather/track decision packet",
+    "expert_form_schema_trial_ablation covers expert_form fields only"
+  ],
+  "minority_objection": "DATA_MISSING train/holdout coverage prevents a defensible ablation.",
+  "next_goal": "Keep collecting source-safe rows until train/holdout evidence exists.",
+  "packet_final_status": "KEEP_COLLECTING_ONLY_DATA_MISSING",
+  "reason": "source-safe weather/track evidence exists, but train/holdout coverage or non-flat utility evidence is not sufficient",
+  "schema_version": "tenn_review_board_decision_v1"
+}

@@ -1,0 +1,16 @@
+{
+  "blockers": [
+    "no_candidate_passed_rank_first_accuracy_gate"
+  ],
+  "pull_request_boundary": {
+    "direct_local_switch_allowed": false,
+    "local_registry_mutation_allowed": false,
+    "production_pointer_update_allowed": false,
+    "promotion_pr_allowed": false,
+    "requires_human_pr_review": true
+  },
+  "schema_version": "promotion_pr_only_gate_v1",
+  "selected_candidate": null,
+  "selected_stage": null,
+  "status": "BLOCKED"
+}

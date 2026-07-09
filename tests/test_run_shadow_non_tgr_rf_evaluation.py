@@ -8,18 +8,13 @@ from pathlib import Path
 import pytest
 
 from scripts import run_shadow_non_tgr_rf_evaluation as shadow_eval
-from scripts.run_feature_recovery_execution_v1 import (
-    add_history_features,
-    history_source_provenance_csv_rows,
-    history_source_provenance_report,
-    load_db_history,
-    resolve_target_metadata,
-    summarize_history_source_provenance_for_row,
-)
+from scripts.run_feature_recovery_execution_v1 import load_db_history
 from scripts.run_shadow_non_tgr_rf_evaluation import (
     ALLOWED_OUTPUT_PREFIXES,
+    DEFAULT_SCHEMA,
     FORBIDDEN_APPROVAL_ENV_VARS,
     POWER_GAMMA,
+    STAGE2_FORWARD_SHADOW_COLLECTING,
     active_features_for_loaded_model,
     apply_power_gamma_by_race,
     assert_shadow_output_dir_safe,
@@ -30,6 +25,7 @@ from scripts.run_shadow_non_tgr_rf_evaluation import (
     probability_sum_report,
     ranking_preservation_report,
     same_distance_same_grade_history_provenance_report,
+    stage2_shadow_prediction_rows,
     train_eval_feature_parity_report,
     validate_schema_contract,
 )
@@ -86,6 +82,21 @@ def test_parse_live_runner_identity_prefers_target_box_prefix():
     assert parse_live_runner_identity("4. Paw Kiplin", "6") == ("Paw Kiplin", 4)
     assert parse_live_runner_identity("Plain Runner", "8") == ("Plain Runner", 8)
     assert parse_live_runner_identity("", "1") == ("", None)
+
+
+def test_score_live_input_files_ignore_refresh_auxiliary_dirs(tmp_path):
+    accepted = tmp_path / "Race 1 - TEST - 2026-06-08.csv"
+    accepted.write_text("Dog Name|BOX\n1. Alpha Runner|1\n", encoding="utf-8")
+    raw_export = tmp_path / "raw_exports" / "Race 1 - TEST - 2026-06-08.csv"
+    raw_export.parent.mkdir()
+    raw_export.write_text("Dog Name,BOX\nRaw Runner,1\n", encoding="utf-8")
+    quarantine = tmp_path / "quarantine" / "Race 2 - TEST - 2026-06-08.csv"
+    quarantine.parent.mkdir()
+    quarantine.write_text("Dog Name,BOX\nBad Runner,2\n", encoding="utf-8")
+
+    assert shadow_eval.input_files_from_path(tmp_path) == [accepted]
+    assert shadow_eval.input_files_from_path(raw_export) == []
+    assert shadow_eval.input_files_from_path(quarantine) == []
 
 
 def test_live_feature_rows_ignore_embedded_history_rows_and_use_target_boxes(
@@ -241,6 +252,413 @@ def test_live_feature_rows_use_leakage_safe_sidecar_target_metadata_for_history_
     assert avg["status"] == "PASS"
 
 
+def test_live_feature_rows_use_leakage_safe_sidecar_weather_track_metadata(
+    tmp_path, monkeypatch
+):
+    race_file = tmp_path / "Race 4 - TRA - 2026-06-08.csv"
+    race_file.write_text(
+        "Dog Name|BOX\n"
+        "1. Alpha Runner|8\n",
+        encoding="utf-8",
+    )
+    source_url = "https://www.thedogs.com.au/racing/traralgon/2026-06-08/4/test?trial=false"
+    race_file.with_name(race_file.name + ".metadata.json").write_text(
+        json.dumps(
+            {
+                "metadata_is_leakage_safe": True,
+                "metadata_captured_at": "2026-06-08T00:30:00Z",
+                "metadata_source_url": source_url,
+                "race_url": source_url,
+                "weather": "Overcast",
+                "track_condition": "Soft",
+                "weather_track_metadata_source": "canonical_pre_race_page",
+                "weather_track_metadata_is_leakage_safe": True,
+                "race_info": {
+                    "date": "2026-06-08",
+                    "venue": "TRA",
+                    "race_number": "4",
+                    "race_time": "11:15 AM",
+                    "url": source_url,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class DummyConnection:
+        def close(self):
+            return None
+
+    monkeypatch.setattr(shadow_eval, "sqlite_ro", lambda _path: DummyConnection())
+    monkeypatch.setattr(shadow_eval, "load_db_history", lambda _connection: {})
+
+    rows = shadow_eval.build_live_feature_rows(
+        input_paths=[race_file],
+        schema={"feature_columns": ["track_condition", "weather"]},
+        db_path=Path("unused.db"),
+    )
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["track_condition"] == "Soft"
+    assert row["weather"] == "Overcast"
+    assert row["track_condition_source_backed"] is True
+    assert row["weather_source_backed"] is True
+    assert row["metadata_is_leakage_safe"] is True
+    assert row["source_url"] == source_url
+    assert row["collection_timestamp"] == "2026-06-08T00:30:00Z"
+    assert row["race_time"] == "2026-06-08T11:15:00+10:00"
+    assert row["weather_track_metadata_from_sidecar"] is True
+
+
+def test_live_feature_rows_reject_unsafe_weather_track_sources_and_placeholders(
+    tmp_path, monkeypatch
+):
+    race_file = tmp_path / "Race 4 - TRA - 2026-06-08.csv"
+    race_file.write_text(
+        "Dog Name|BOX|Track Condition|Weather\n"
+        "1. Alpha Runner|8|Soft|Overcast\n",
+        encoding="utf-8",
+    )
+    result_url = "https://www.thedogs.com.au/racing/traralgon/2026-06-08/4/results"
+    race_file.with_name(race_file.name + ".metadata.json").write_text(
+        json.dumps(
+            {
+                "metadata_is_leakage_safe": True,
+                "metadata_captured_at": "2026-06-08T12:30:00+10:00",
+                "metadata_source_url": result_url,
+                "race_url": result_url,
+                "weather": "Fine",
+                "track_condition": "Good",
+                "weather_track_metadata_source": "canonical_pre_race_page",
+                "weather_track_metadata_is_leakage_safe": True,
+                "race_info": {
+                    "date": "2026-06-08",
+                    "venue": "TRA",
+                    "race_number": "4",
+                    "race_time": "11:15 AM",
+                    "url": result_url,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class DummyConnection:
+        def close(self):
+            return None
+
+    monkeypatch.setattr(shadow_eval, "sqlite_ro", lambda _path: DummyConnection())
+    monkeypatch.setattr(shadow_eval, "load_db_history", lambda _connection: {})
+
+    rows = shadow_eval.build_live_feature_rows(
+        input_paths=[race_file],
+        schema={"feature_columns": ["track_condition", "weather"]},
+        db_path=Path("unused.db"),
+    )
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["track_condition"] is None
+    assert row["weather"] is None
+    assert row["track_condition_source_backed"] is False
+    assert row["weather_source_backed"] is False
+    assert row["weather_track_metadata_from_sidecar"] is False
+    assert "source_url_looks_post_result" in row["weather_track_metadata_rejected_sources"]
+
+
+def test_live_feature_rows_accept_open_meteo_weather_sidecar(tmp_path, monkeypatch):
+    race_file = tmp_path / "Race 4 - TRA - 2026-06-08.csv"
+    race_file.write_text(
+        "Dog Name|BOX\n"
+        "1. Alpha Runner|8\n",
+        encoding="utf-8",
+    )
+    race_url = "https://www.thedogs.com.au/racing/traralgon/2026-06-08/4/test?trial=false"
+    weather_url = "https://api.open-meteo.com/v1/forecast?latitude=-38.18&longitude=146.53"
+    race_file.with_name(race_file.name + ".metadata.json").write_text(
+        json.dumps(
+            {
+                "metadata_is_leakage_safe": True,
+                "metadata_captured_at": "2026-06-08T00:30:00Z",
+                "metadata_source_url": race_url,
+                "race_url": race_url,
+                "weather": "Overcast",
+                "weather_condition": "Overcast",
+                "weather_track_metadata_source": "open_meteo_forecast_api",
+                "weather_track_metadata_source_url": weather_url,
+                "weather_track_metadata_is_leakage_safe": True,
+                "race_info": {
+                    "date": "2026-06-08",
+                    "venue": "TRA",
+                    "race_number": "4",
+                    "race_time": "11:15 AM",
+                    "url": race_url,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class DummyConnection:
+        def close(self):
+            return None
+
+    monkeypatch.setattr(shadow_eval, "sqlite_ro", lambda _path: DummyConnection())
+    monkeypatch.setattr(shadow_eval, "load_db_history", lambda _connection: {})
+
+    rows = shadow_eval.build_live_feature_rows(
+        input_paths=[race_file],
+        schema={"feature_columns": ["track_condition", "weather"]},
+        db_path=Path("unused.db"),
+    )
+
+    row = rows[0]
+    assert row["track_condition"] is None
+    assert row["weather"] == "Overcast"
+    assert row["weather_source_backed"] is True
+    assert row["track_condition_source_backed"] is False
+    assert row["weather_track_metadata_from_sidecar"] is True
+    assert row["source_url"] == weather_url
+
+
+def test_live_feature_rows_accept_combined_sportsbet_track_and_weather_sidecar(
+    tmp_path, monkeypatch
+):
+    race_file = tmp_path / "Race 9 - SAL - 2026-06-08.csv"
+    race_file.write_text(
+        "Dog Name|BOX\n"
+        "1. Alpha Runner|8\n",
+        encoding="utf-8",
+    )
+    race_url = "https://www.thedogs.com.au/racing/sale/2026-06-08/9/test?trial=false"
+    sportsbet_url = (
+        "https://www.sportsbet.com.au/apigw/sportsbook-racing/"
+        "Sportsbook/Racing/NextEvents?racingFilters=GH_DOMESTIC"
+    )
+    weather_url = "https://api.open-meteo.com/v1/forecast?latitude=-38.10&longitude=147.07"
+    source_urls = {
+        "sportsbet_pre_race_page": sportsbet_url,
+        "open_meteo_forecast_api": weather_url,
+    }
+    race_file.with_name(race_file.name + ".metadata.json").write_text(
+        json.dumps(
+            {
+                "metadata_is_leakage_safe": True,
+                "metadata_captured_at": "2026-06-08T00:30:00Z",
+                "metadata_source_url": race_url,
+                "race_url": race_url,
+                "weather": "Overcast",
+                "weather_condition": "Overcast",
+                "track_condition": "Good",
+                "weather_track_metadata_source": (
+                    "sportsbet_pre_race_page+open_meteo_forecast_api"
+                ),
+                "weather_track_metadata_source_url": source_urls,
+                "weather_track_metadata_is_leakage_safe": True,
+                "race_info": {
+                    "date": "2026-06-08",
+                    "venue": "SAL",
+                    "race_number": "9",
+                    "race_time": "11:15 AM",
+                    "url": race_url,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class DummyConnection:
+        def close(self):
+            return None
+
+    monkeypatch.setattr(shadow_eval, "sqlite_ro", lambda _path: DummyConnection())
+    monkeypatch.setattr(shadow_eval, "load_db_history", lambda _connection: {})
+
+    rows = shadow_eval.build_live_feature_rows(
+        input_paths=[race_file],
+        schema={"feature_columns": ["track_condition", "weather"]},
+        db_path=Path("unused.db"),
+    )
+
+    row = rows[0]
+    assert row["track_condition"] == "Good"
+    assert row["weather"] == "Overcast"
+    assert row["track_condition_source_backed"] is True
+    assert row["weather_source_backed"] is True
+    assert row["weather_track_metadata_from_sidecar"] is True
+    assert row["source_url"] == source_urls
+
+
+def test_live_feature_rows_reject_post_jump_weather_track_capture_time(
+    tmp_path, monkeypatch
+):
+    race_file = tmp_path / "Race 4 - TRA - 2026-06-08.csv"
+    race_file.write_text(
+        "Dog Name|BOX\n"
+        "1. Alpha Runner|8\n",
+        encoding="utf-8",
+    )
+    source_url = "https://www.thedogs.com.au/racing/traralgon/2026-06-08/4/test?trial=false"
+    race_file.with_name(race_file.name + ".metadata.json").write_text(
+        json.dumps(
+            {
+                "metadata_is_leakage_safe": True,
+                "metadata_captured_at": "2026-06-08T12:30:00+10:00",
+                "metadata_source_url": source_url,
+                "race_url": source_url,
+                "weather": "Overcast",
+                "track_condition": "Soft",
+                "weather_track_metadata_source": "canonical_pre_race_page",
+                "weather_track_metadata_is_leakage_safe": True,
+                "race_info": {
+                    "date": "2026-06-08",
+                    "venue": "TRA",
+                    "race_number": "4",
+                    "race_time": "11:15 AM",
+                    "url": source_url,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class DummyConnection:
+        def close(self):
+            return None
+
+    monkeypatch.setattr(shadow_eval, "sqlite_ro", lambda _path: DummyConnection())
+    monkeypatch.setattr(shadow_eval, "load_db_history", lambda _connection: {})
+
+    rows = shadow_eval.build_live_feature_rows(
+        input_paths=[race_file],
+        schema={"feature_columns": ["track_condition", "weather"]},
+        db_path=Path("unused.db"),
+    )
+
+    row = rows[0]
+    assert row["track_condition"] is None
+    assert row["weather"] is None
+    assert "metadata_captured_at_not_before_jump" in row[
+        "weather_track_metadata_rejected_sources"
+    ]
+
+
+def test_live_feature_rows_require_explicit_weather_track_safe_flag(
+    tmp_path, monkeypatch
+):
+    race_file = tmp_path / "Race 4 - TRA - 2026-06-08.csv"
+    race_file.write_text(
+        "Dog Name|BOX\n"
+        "1. Alpha Runner|8\n",
+        encoding="utf-8",
+    )
+    source_url = "https://www.thedogs.com.au/racing/traralgon/2026-06-08/4/test?trial=false"
+    race_file.with_name(race_file.name + ".metadata.json").write_text(
+        json.dumps(
+            {
+                "metadata_is_leakage_safe": True,
+                "metadata_captured_at": "2026-06-08T00:30:00Z",
+                "metadata_source_url": source_url,
+                "race_url": source_url,
+                "weather": "Overcast",
+                "track_condition": "Soft",
+                "race_info": {
+                    "date": "2026-06-08",
+                    "venue": "TRA",
+                    "race_number": "4",
+                    "race_time": "11:15 AM",
+                    "url": source_url,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class DummyConnection:
+        def close(self):
+            return None
+
+    monkeypatch.setattr(shadow_eval, "sqlite_ro", lambda _path: DummyConnection())
+    monkeypatch.setattr(shadow_eval, "load_db_history", lambda _connection: {})
+
+    rows = shadow_eval.build_live_feature_rows(
+        input_paths=[race_file],
+        schema={"feature_columns": ["track_condition", "weather"]},
+        db_path=Path("unused.db"),
+    )
+
+    row = rows[0]
+    assert row["track_condition"] is None
+    assert row["weather"] is None
+    assert "weather_track_metadata_is_leakage_safe_not_true" in row[
+        "weather_track_metadata_rejected_sources"
+    ]
+
+
+def test_live_feature_rows_populate_same_distance_same_grade_from_form_history(
+    tmp_path, monkeypatch
+):
+    race_file = tmp_path / "Race 4 - TRA - 2026-06-08.csv"
+    race_file.write_text(
+        "Dog Name|BOX|DIST|DATE|TRACK|G|TIME|PLC|WGT|1 SEC|MGN\n"
+        "1. Alpha Runner|8|400|2026-06-01|TRA|Grade 5|22.10|1|31.2|6.10|0.5\n"
+        "|7|400|2026-05-24|TRA|Grade 5|22.40|2|31.0|6.20|1.0\n"
+        "|6|330|2026-05-10|TRA|Grade 5|19.90|3|30.9|6.00|2.0\n",
+        encoding="utf-8",
+    )
+    race_url = "https://www.thedogs.com.au/racing/traralgon/2026-06-08/4/test?trial=false"
+    race_file.with_name(race_file.name + ".metadata.json").write_text(
+        json.dumps(
+            {
+                "metadata_is_leakage_safe": True,
+                "metadata_captured_at": "2026-06-08T00:30:00Z",
+                "metadata_source_url": race_url,
+                "race_url": race_url,
+                "target_distance": "400m",
+                "target_distance_source": "canonical_pre_race_page",
+                "target_grade": "Grade 5",
+                "target_grade_source": "canonical_pre_race_page",
+                "race_info": {
+                    "date": "2026-06-08",
+                    "venue": "TRA",
+                    "race_number": "4",
+                    "race_time": "11:15 AM",
+                    "url": race_url,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class DummyConnection:
+        def close(self):
+            return None
+
+    monkeypatch.setattr(shadow_eval, "sqlite_ro", lambda _path: DummyConnection())
+    monkeypatch.setattr(shadow_eval, "load_db_history", lambda _connection: {})
+
+    rows = shadow_eval.build_live_feature_rows(
+        input_paths=[race_file],
+        schema={
+            "feature_columns": [
+                "same_distance_same_grade_best_time",
+                "same_distance_same_grade_avg_time",
+                "same_distance_same_grade_start_count",
+            ]
+        },
+        db_path=Path("unused.db"),
+    )
+
+    row = rows[0]
+    assert row["same_distance_same_grade_start_count"] == 2
+    assert row["same_distance_same_grade_best_time"] == 22.10
+    assert row["same_distance_same_grade_avg_time"] == pytest.approx(22.25)
+    assert row["same_distance_same_grade_history_status"] == "PASS"
+    assert row["same_distance_same_grade_prior_history_rows_used"] == 2
+    assert row["same_distance_same_grade_target_race_rows_used"] == 0
+
+
 def test_live_feature_rows_ignore_unsafe_sidecar_target_metadata(tmp_path, monkeypatch):
     race_file = tmp_path / "Race 4 - TRA - 2026-06-08.csv"
     race_file.write_text(
@@ -284,194 +702,6 @@ def test_live_feature_rows_ignore_unsafe_sidecar_target_metadata(tmp_path, monke
     assert "unsafe_sidecar_target_grade:embedded_form_history:G" in rows[0][
         "target_metadata_rejected_sources"
     ]
-
-
-def test_live_feature_rows_fill_weather_track_from_unique_canonical_metadata(
-    tmp_path, monkeypatch
-):
-    race_file = tmp_path / "Race 4 - TRA - 2026-06-08.csv"
-    race_file.write_text(
-        "Dog Name|BOX|Track Condition|Weather\n"
-        "1. Alpha Runner|1|Unknown|N/A\n",
-        encoding="utf-8",
-    )
-    db_path = tmp_path / "metadata.db"
-    connection = sqlite3.connect(db_path)
-    try:
-        connection.execute(
-            """
-            CREATE TABLE race_metadata (
-                race_id TEXT,
-                venue TEXT,
-                race_number INTEGER,
-                race_date TEXT,
-                track_condition TEXT,
-                weather_condition TEXT,
-                race_time TEXT,
-                winner_name TEXT,
-                winner_odds REAL
-            )
-            """
-        )
-        connection.execute(
-            """
-            INSERT INTO race_metadata (
-                race_id, venue, race_number, race_date, track_condition,
-                weather_condition, race_time, winner_name, winner_odds
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                "TRA_2026-06-08_4",
-                "TRA",
-                4,
-                "2026-06-08",
-                "Good",
-                "Fine",
-                "11:15 AM",
-                "Post Outcome Winner",
-                2.4,
-            ),
-        )
-        connection.commit()
-    finally:
-        connection.close()
-
-    monkeypatch.setattr(shadow_eval, "load_db_history", lambda _connection: {})
-
-    rows = shadow_eval.build_live_feature_rows(
-        input_paths=[race_file],
-        schema={
-            "feature_columns": [
-                "track_condition",
-                "weather",
-                "race_time_minutes_since_midnight",
-            ]
-        },
-        db_path=db_path,
-    )
-
-    assert len(rows) == 1
-    row = rows[0]
-    assert row["track_condition"] == "Good"
-    assert row["weather"] == "Fine"
-    assert row["race_time_minutes_since_midnight"] == 675
-    assert row["target_weather_track_metadata_status"] == "SAFE"
-    assert row["target_weather_track_metadata_source"] == (
-        "canonical_race_metadata_unique_date_venue_race_number"
-    )
-    assert row["target_weather_track_source_race_id"] == "TRA_2026-06-08_4"
-    assert "winner_name" not in row
-    assert "winner_odds" not in row
-
-
-def test_live_feature_rows_fail_closed_on_ambiguous_canonical_weather_track_metadata(
-    tmp_path, monkeypatch
-):
-    race_file = tmp_path / "Race 4 - TRA - 2026-06-08.csv"
-    race_file.write_text(
-        "Dog Name|BOX\n"
-        "1. Alpha Runner|1\n",
-        encoding="utf-8",
-    )
-    db_path = tmp_path / "metadata.db"
-    connection = sqlite3.connect(db_path)
-    try:
-        connection.execute(
-            """
-            CREATE TABLE race_metadata (
-                race_id TEXT,
-                venue TEXT,
-                race_number INTEGER,
-                race_date TEXT,
-                track_condition TEXT,
-                weather TEXT
-            )
-            """
-        )
-        connection.executemany(
-            """
-            INSERT INTO race_metadata (
-                race_id, venue, race_number, race_date, track_condition, weather
-            ) VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            [
-                ("TRA_2026-06-08_4_A", "TRA", 4, "2026-06-08", "Good", "Fine"),
-                ("TRA_2026-06-08_4_B", "TRA", 4, "2026-06-08", "Slow", "Rain"),
-            ],
-        )
-        connection.commit()
-    finally:
-        connection.close()
-
-    monkeypatch.setattr(shadow_eval, "load_db_history", lambda _connection: {})
-
-    rows = shadow_eval.build_live_feature_rows(
-        input_paths=[race_file],
-        schema={"feature_columns": ["track_condition", "weather"]},
-        db_path=db_path,
-    )
-
-    assert len(rows) == 1
-    row = rows[0]
-    assert row["track_condition"] is None
-    assert row["weather"] is None
-    assert row["target_weather_track_metadata_status"] == "AMBIGUOUS"
-    assert row["target_weather_track_metadata_reason"] == (
-        "ambiguous_canonical_race_metadata_matches:2"
-    )
-
-
-def test_feature_recovery_target_metadata_uses_weather_condition_fallback():
-    connection = sqlite3.connect(":memory:")
-    connection.row_factory = sqlite3.Row
-    connection.executescript(
-        """
-        CREATE TABLE race_metadata (
-            race_id TEXT,
-            venue TEXT,
-            race_number INTEGER,
-            race_date TEXT,
-            grade TEXT,
-            distance TEXT,
-            field_size INTEGER,
-            race_time TEXT,
-            track_condition TEXT,
-            weather TEXT,
-            weather_condition TEXT,
-            url TEXT,
-            data_source TEXT,
-            start_datetime TEXT
-        );
-        INSERT INTO race_metadata (
-            race_id, venue, race_number, race_date, grade, distance, field_size,
-            race_time, track_condition, weather, weather_condition, url, data_source,
-            start_datetime
-        ) VALUES (
-            'TRA_2026-06-08_4', 'TRA', 4, '2026-06-08', 'Grade 5', '450', 8,
-            '11:15 AM', 'Good', 'Unknown', 'Fine', 'https://example.test/r4',
-            'canonical_pre_race_page', '2026-06-08T11:15:00+10:00'
-        );
-        """
-    )
-
-    target = resolve_target_metadata(
-        {
-            "race_id": "Race 4 - TRA - 2026-06-08",
-            "race_date": "2026-06-08",
-            "venue": "TRA",
-        },
-        {},
-        None,
-        connection,
-    )
-
-    assert target["status"] == "SAFE"
-    assert target["distance"] == pytest.approx(450)
-    assert target["grade"] == "Grade 5"
-    assert target["track_condition"] == "Good"
-    assert target["weather"] == "Fine"
-    assert "winner_name" not in target
-    assert "winner_odds" not in target
 
 
 def test_same_distance_history_provenance_report_keeps_unpopulated_features_blocked():
@@ -534,16 +764,13 @@ def _parity_dataset():
     }
 
 
-def test_default_repaired_schema_has_103_features_and_no_tgr():
-    schema_path = Path(
-        "outputs/milestone_6a_non_tgr_challenger_training_design/repaired_non_tgr_schema.json"
-    )
-    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+def test_default_repaired_schema_has_78_features_and_no_tgr():
+    schema = json.loads(DEFAULT_SCHEMA.read_text(encoding="utf-8"))
 
     audit = validate_schema_contract(schema)
 
     assert audit["status"] == "PASS"
-    assert audit["feature_count"] == 103
+    assert audit["feature_count"] == 78
     assert audit["tgr_columns"] == []
 
 
@@ -590,190 +817,6 @@ def test_history_loader_tolerates_minimal_main_db_dog_schema():
     assert row["finish_num"] == 2
     assert row["time_num"] is None
     assert row["margin_num"] is None
-    assert row["race_field_size"] == 1
-    assert row["race_strength_num"] == 7
-
-
-def test_history_source_provenance_report_summarizes_used_history_rows():
-    connection = sqlite3.connect(":memory:")
-    connection.row_factory = sqlite3.Row
-    connection.executescript(
-        """
-        CREATE TABLE race_metadata (
-            race_id TEXT,
-            venue TEXT,
-            race_number INTEGER,
-            race_date TEXT,
-            grade TEXT,
-            distance TEXT,
-            track_condition TEXT,
-            weather TEXT,
-            race_time TEXT,
-            start_datetime TEXT,
-            url TEXT,
-            data_source TEXT
-        );
-        CREATE TABLE dog_race_data (
-            id INTEGER PRIMARY KEY,
-            race_id TEXT,
-            dog_name TEXT,
-            finish_position TEXT,
-            dog_clean_name TEXT,
-            box_number INTEGER,
-            individual_time TEXT,
-            data_source TEXT
-        );
-        INSERT INTO race_metadata
-            (race_id, venue, race_number, race_date, grade, distance, race_time, url, data_source)
-        VALUES
-            ('race-1', 'TEST', 1, '2026-01-01', 'Grade 5', '450', '12:00', 'https://example.test/r1', 'race_meta_source'),
-            ('race-2', 'TEST', 2, '2026-01-02', 'Grade 4', '500', NULL, NULL, 'race_meta_source');
-        INSERT INTO dog_race_data
-            (race_id, dog_name, finish_position, dog_clean_name, box_number, individual_time, data_source)
-        VALUES
-            ('race-1', 'Source Dog', '2', 'Source Dog', 1, '25.10', 'dog_source'),
-            ('race-2', 'Source Dog', '3', 'Source Dog', 2, NULL, 'dog_source');
-        """
-    )
-
-    history_rows = load_db_history(connection)["source dog"]
-    row_summary = summarize_history_source_provenance_for_row(
-        clean_row={
-            "race_id": "target-race",
-            "snapshot_instance_id": "target-snapshot",
-            "dog_name": "Source Dog",
-            "box_number": 3,
-        },
-        history_rows=history_rows,
-        target={
-            "status": "SAFE",
-            "source": "canonical_race_metadata_unique_date_venue",
-            "reason": "unique_date_venue_metadata_candidate",
-        },
-    )
-    report = history_source_provenance_report([row_summary])
-    csv_row = history_source_provenance_csv_rows([row_summary])[0]
-
-    assert report["report_only"] is True
-    assert report["matrix_rows"] == 1
-    assert report["history_rows_used"] == 2
-    assert report["data_source_columns"]["dog_race_data.data_source_counts"] == {
-        "dog_source": 2
-    }
-    assert report["data_source_columns"]["race_metadata.data_source_counts"] == {
-        "race_meta_source": 2
-    }
-    assert report["time_source_availability"]["source_priority_counts"] == {
-        "missing": 1,
-        "time_num": 1,
-    }
-    assert report["time_source_availability"]["time_num_present_rows"] == 1
-    assert report["time_source_availability"]["individual_time_present_rows"] == 1
-    assert report["history_metadata_coverage"]["grade"]["present_rows"] == 2
-    assert report["history_metadata_coverage"]["race_time"]["present_rows"] == 1
-    assert report["target_metadata_source_counts"] == {
-        "canonical_race_metadata_unique_date_venue": 1
-    }
-    assert csv_row["dog_data_source_counts"] == "dog_source=2"
-    assert csv_row["time_source_counts"] == "missing=1;time_num=1"
-
-
-def test_history_features_add_draw_class_strength_and_speed_aggregates():
-    history_rows = [
-        {
-            "race_id": "hist-1",
-            "race_date": "2026-01-01",
-            "race_number": 1,
-            "venue": "TEST",
-            "distance_num": 450,
-            "grade_normalized": "Grade 5",
-            "grade_rank_num": 7,
-            "box_number": 1,
-            "box_band": "inside",
-            "finish_num": 1,
-            "time_num": 25.0,
-            "speed_mps": 18.0,
-            "race_field_size": 2,
-            "race_strength_num": 14,
-        },
-        {
-            "race_id": "hist-2",
-            "race_date": "2026-01-02",
-            "race_number": 2,
-            "venue": "TEST",
-            "distance_num": 450,
-            "grade_normalized": "Grade 5",
-            "grade_rank_num": 7,
-            "box_number": 2,
-            "box_band": "inside",
-            "finish_num": 2,
-            "time_num": 26.0,
-            "speed_mps": 450 / 26.0,
-            "race_field_size": 2,
-            "race_strength_num": 14,
-        },
-        {
-            "race_id": "hist-3",
-            "race_date": "2026-01-03",
-            "race_number": 3,
-            "venue": "OTHER",
-            "distance_num": 500,
-            "grade_normalized": "Grade 4",
-            "grade_rank_num": 8,
-            "box_number": 8,
-            "box_band": "outside",
-            "finish_num": 4,
-            "time_num": 30.0,
-            "speed_mps": 500 / 30.0,
-            "race_field_size": 8,
-            "race_strength_num": 64,
-        },
-    ]
-    features = {"box_number": 2, "field_size": 8}
-
-    add_history_features(
-        features,
-        history_rows,
-        {"distance": 450, "grade": "Grade 5"},
-        "2026-01-10",
-        "TEST",
-    )
-
-    assert features["safe_grade_rank"] == 7
-    assert features["safe_field_strength"] == 56
-    assert features["last_start_grade_rank"] == 8
-    assert features["recent_avg_grade_rank_5"] == pytest.approx((7 + 7 + 8) / 3)
-    assert features["last_start_field_size"] == 8
-    assert features["recent_avg_field_size_5"] == pytest.approx(4)
-    assert features["last_start_race_strength"] == 64
-    assert features["recent_avg_race_strength_5"] == pytest.approx((14 + 14 + 64) / 3)
-    assert features["prior_race_strength_delta_to_target"] == pytest.approx(
-        56 - ((14 + 14 + 64) / 3)
-    )
-
-    assert features["target_box_band_prior_start_count"] == 2
-    assert features["target_box_band_win_rate"] == pytest.approx(0.5)
-    assert features["target_box_band_place_rate"] == pytest.approx(1.0)
-    assert features["target_box_band_avg_finish"] == pytest.approx(1.5)
-    assert features["target_box_band_avg_time"] == pytest.approx(25.5)
-
-    assert features["venue_box_band_start_count"] == 2
-    assert features["venue_box_band_win_rate"] == pytest.approx(0.5)
-    assert features["venue_box_band_place_rate"] == pytest.approx(1.0)
-    assert features["venue_box_band_avg_finish"] == pytest.approx(1.5)
-
-    assert features["distance_box_band_start_count"] == 2
-    assert features["distance_box_band_win_rate"] == pytest.approx(0.5)
-    assert features["distance_box_band_place_rate"] == pytest.approx(1.0)
-    assert features["distance_box_band_avg_time"] == pytest.approx(25.5)
-
-    recent_speed = (18.0 + (450 / 26.0) + (500 / 30.0)) / 3
-    same_grade_speed = (18.0 + (450 / 26.0)) / 2
-    assert features["recent_avg_speed_mps_5"] == pytest.approx(recent_speed)
-    assert features["same_grade_avg_speed_mps"] == pytest.approx(same_grade_speed)
-    assert features["grade_normalized_recent_speed_index"] == pytest.approx(
-        recent_speed / same_grade_speed
-    )
 
 
 def test_schema_rejects_tgr_identity_and_post_outcome_features():
@@ -846,6 +889,41 @@ def test_power_gamma_2p4_normalizes_and_preserves_ranking():
     assert sums["max_abs_error"] == pytest.approx(0.0)
     assert ranking["status"] == "PASS"
     assert [row["shadow_rf_calibrated_rank"] for row in calibrated[:3]] == [1, 2, 3]
+
+
+def test_stage2_prediction_rows_are_shadow_only_and_do_not_use_odds_or_ev():
+    rows = stage2_shadow_prediction_rows(
+        [
+            {
+                "race_id": "Race 1 - TEST - 2026-06-10",
+                "dog_name": "Alpha Runner",
+                "box": 1,
+                "shadow_rf_calibrated_probability": 0.62,
+                "predicted_rank": 1,
+            }
+        ],
+        stage2_status=STAGE2_FORWARD_SHADOW_COLLECTING,
+    )
+
+    assert rows == [
+        {
+            "schema_version": "stage2_shadow_prediction_v1",
+            "race_id": "Race 1 - TEST - 2026-06-10",
+            "dog_name": "Alpha Runner",
+            "box": 1,
+            "shadow_rf_calibrated_probability": 0.62,
+            "predicted_rank": 1,
+            "stage2_forward_shadow_status": STAGE2_FORWARD_SHADOW_COLLECTING,
+            "stage2_challenger_family": "RandomForest",
+            "stage2_challenger_key": "shadow_calibrated_rf_power_gamma_2_4",
+            "odds_used_for_shadow_scoring": False,
+            "ev_output": False,
+            "betting_action": False,
+            "production_prediction_write": False,
+            "registry_mutation": False,
+            "production_pointer_update": False,
+        }
+    ]
 
 
 def test_train_eval_parity_detects_all_missing_train_present_holdout_features():
@@ -988,17 +1066,34 @@ def test_shadow_output_path_rejects_production_paths(tmp_path):
         / "shadow_run",
         root=tmp_path,
     )
+    retained_root = (
+        tmp_path.parent
+        / f"{tmp_path.name}_retained"
+        / "artifacts"
+        / "full_evidence_orchestration_20260525"
+    )
+    assert_shadow_output_dir_safe(
+        retained_root / "daily_race_ingest_shadow_test" / "shadow_score_live",
+        root=tmp_path,
+        evidence_root=retained_root,
+    )
 
     with pytest.raises(ValueError, match="output_dir_must_be_shadow_artifact"):
         assert_shadow_output_dir_safe(tmp_path / "predictions" / "shadow", root=tmp_path)
     with pytest.raises(ValueError, match="output_dir_must_be_shadow_artifact"):
         assert_shadow_output_dir_safe(tmp_path / "model_registry" / "shadow", root=tmp_path)
+    with pytest.raises(ValueError, match="output_dir_must_be_shadow_artifact"):
+        assert_shadow_output_dir_safe(
+            retained_root / "not_daily_shadow" / "shadow_score_live",
+            root=tmp_path,
+            evidence_root=retained_root,
+        )
 
 
 def test_cli_stop_after_definition_writes_only_shadow_candidate(tmp_path, monkeypatch):
     for env_name in FORBIDDEN_APPROVAL_ENV_VARS:
         monkeypatch.delenv(env_name, raising=False)
-    schema = _schema([f"feature_{index}" for index in range(103)])
+    schema = _schema([f"feature_{index}" for index in range(78)])
     schema_path = tmp_path / "schema.json"
     schema_path.write_text(json.dumps(schema), encoding="utf-8")
     output_dir = Path("artifacts/shadow_evaluation") / f"pytest_candidate_{tmp_path.name}"

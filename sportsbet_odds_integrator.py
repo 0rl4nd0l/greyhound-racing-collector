@@ -68,6 +68,9 @@ POST_RACE_SOURCE_URL_MARKERS = ("dividend", "payout", "result")
 SPORTSBET_LIST_POSITION_BOX_SOURCE = "list_position_fallback"
 SPORTSBET_RUNNER_TEXT_BOX_SOURCE = "runner_text"
 SPORTSBET_EXPLICIT_DOM_BOX_SOURCE = "explicit_dom"
+SPORTSBET_RUNNER_HEADER_RE = re.compile(
+    r"^\s*(\d{1,2})\s*[.)]\s+[A-Za-z][A-Za-z'. -]+(?:\s*\((\d{1,2})\))?\s*$"
+)
 
 
 def _race_metadata_columns(cursor: sqlite3.Cursor) -> set[str]:
@@ -127,10 +130,23 @@ def parse_sportsbet_runner_box_from_text(raw_text: Any) -> Optional[int]:
 
     lines = [line.strip() for line in re.split(r"[\r\n]+", text) if line.strip()]
     for line in lines:
-        # Sportsbet race cards render greyhounds like "6. Memories" and "(6)".
+        # Sportsbet can render reserves as "9. High Rollin' (6)"; the
+        # parenthesized value is the final box and the leading value is the
+        # reserve/runner number.
+        remapped_match = re.match(
+            r"^\s*\d{1,2}\s*[.)]\s+[A-Za-z][A-Za-z'. -]+\s*\((\d{1,2})\)\s*$",
+            line,
+        )
+        if remapped_match:
+            box = _safe_runner_box(remapped_match.group(1))
+            if box is not None:
+                return box
+
+        # Sportsbet race cards render ordinary greyhounds like "6. Memories".
         for pattern in (
-            r"^\s*(\d{1,2})\s*[.)]\s+[A-Za-z][A-Za-z' -]+(?:\s*\(\d{1,2}\))?\s*$",
-            r"^\s*[A-Za-z][A-Za-z' -]+\s*\((\d{1,2})\)\s*$",
+            r"^\s*(\d{1,2})\s*[.)]\s+[A-Za-z][A-Za-z'. -]+\s*$",
+            r"^\s*[A-Za-z][A-Za-z'. -]+\s*\((\d{1,2})\)\s*$",
+            r"^\s*\((\d{1,2})\)\s*$",
         ):
             match = re.match(pattern, line)
             if match:
@@ -147,6 +163,20 @@ def parse_sportsbet_runner_box_from_text(raw_text: Any) -> Optional[int]:
     if attr_match:
         return _safe_runner_box(attr_match.group(1))
     return None
+
+
+def sportsbet_runner_header_count(raw_text: Any) -> int:
+    """Count explicit runner headers in a Sportsbet text block."""
+
+    text = str(raw_text or "").replace("\xa0", " ")
+    count = 0
+    for line in [line.strip() for line in re.split(r"[\r\n]+", text) if line.strip()]:
+        match = SPORTSBET_RUNNER_HEADER_RE.match(line)
+        if not match:
+            continue
+        if _safe_runner_box(match.group(2) or match.group(1)) is not None:
+            count += 1
+    return count
 
 
 def sportsbet_runner_box_metadata(
@@ -1570,10 +1600,11 @@ class SportsbetOddsIntegrator:
 
             # Process each card individually with comprehensive error handling
             successful_extractions = 0
-            processed_names = set()
+            processed_runner_keys = set()
+            discovered_runner_keys = set()
 
-            for i, card in enumerate(candidate_cards[:8]):  # Max 8 runners
-                print(f"  🐕 Processing runner card {i+1}/{min(len(candidate_cards), 8)}...")
+            for i, card in enumerate(candidate_cards):
+                print(f"  🐕 Processing runner card {i+1}/{len(candidate_cards)}...")
 
                 # Ensure element is in view (handles virtualization/lazy rendering)
                 try:
@@ -1586,25 +1617,41 @@ class SportsbetOddsIntegrator:
                 # Extract dog name with multiple fallback strategies
                 dog_name = self._extract_dog_name_with_fallbacks(card, i + 1)
 
-                # Skip duplicates by cleaned name
-                if dog_name and self.clean_dog_name(dog_name) in processed_names:
-                    print(f"    🔁 Skipping duplicate runner '{dog_name}'")
-                    continue
+                if dog_name:
+                    cleaned = self.clean_dog_name(dog_name)
+                    try:
+                        runner_text = card.text.strip()
+                    except Exception:
+                        runner_text = dog_name
+                    if sportsbet_runner_header_count(runner_text) > 1:
+                        print(
+                            "    ⚠️  Skipping concatenated Sportsbet runner block; "
+                            "falling back to narrower extraction"
+                        )
+                        continue
+                    box_meta = sportsbet_runner_box_metadata(
+                        list_position=i + 1,
+                        runner_text=runner_text,
+                    )
+                    if box_meta.get("sportsbet_box_source") == SPORTSBET_LIST_POSITION_BOX_SOURCE:
+                        runner_key = ("name", cleaned)
+                    else:
+                        runner_key = ("box_name", box_meta.get("box_number"), cleaned)
+                    discovered_runner_keys.add(runner_key)
+
+                    if runner_key in processed_runner_keys:
+                        print(f"    🔁 Skipping duplicate runner '{dog_name}'")
+                        continue
+                else:
+                    cleaned = ""
+                    box_meta = {}
+                    runner_key = None
 
                 # Extract odds with multiple fallback strategies
                 odds_decimal, odds_text = self._extract_odds_with_fallbacks(card, i + 1)
 
                 # Add to results if we have both name and odds
                 if dog_name and odds_decimal > 0:
-                    cleaned = self.clean_dog_name(dog_name)
-                    try:
-                        runner_text = card.text.strip()
-                    except Exception:
-                        runner_text = dog_name
-                    box_meta = sportsbet_runner_box_metadata(
-                        list_position=i + 1,
-                        runner_text=runner_text,
-                    )
                     odds_data.append(
                         {
                             "dog_name": dog_name,
@@ -1614,7 +1661,7 @@ class SportsbetOddsIntegrator:
                             **box_meta,
                         }
                     )
-                    processed_names.add(cleaned)
+                    processed_runner_keys.add(runner_key)
                     successful_extractions += 1
                     print(f"    ✅ Successfully extracted: {dog_name} - ${odds_decimal:.2f}")
                 elif dog_name:
@@ -1634,6 +1681,16 @@ class SportsbetOddsIntegrator:
             if successful_extractions < 4:
                 print(
                     f"  🚨 WARNING: Only found {successful_extractions} complete runners (expected 4+)"
+                )
+                self._save_debug_info(successful_extractions)
+            elif (
+                len(discovered_runner_keys) >= 8
+                and successful_extractions < len(discovered_runner_keys)
+            ):
+                print(
+                    "  🚨 WARNING: Found "
+                    f"{successful_extractions} odds for "
+                    f"{len(discovered_runner_keys)} explicit Sportsbet runners"
                 )
                 self._save_debug_info(successful_extractions)
 
@@ -2143,6 +2200,12 @@ class SportsbetOddsIntegrator:
                                 runner_text = container.text.strip()
                             except Exception:
                                 runner_text = expected_dog_name or dog_name
+                            if sportsbet_runner_header_count(runner_text) > 1:
+                                print(
+                                    "    ⚠️  Skipping broad container with multiple runner "
+                                    "headers; not a dog-level odds row"
+                                )
+                                continue
                             box_meta = sportsbet_runner_box_metadata(
                                 list_position=i + 1,
                                 runner_text=runner_text,
@@ -2350,6 +2413,12 @@ class SportsbetOddsIntegrator:
 
                     if dog_name and odds_decimal > 0:
                         print(f"    ✅ Extracted: {dog_name} - ${odds_decimal:.2f}")
+                        if sportsbet_runner_header_count(runner_text) > 1:
+                            print(
+                                "    ⚠️  Skipping concatenated runner text block; "
+                                "not a dog-level odds row"
+                            )
+                            continue
                         box_meta = sportsbet_runner_box_metadata(
                             list_position=i + 1,
                             runner_text=runner_text,
@@ -2551,6 +2620,12 @@ class SportsbetOddsIntegrator:
                         break
 
                 if dog_name:
+                    if sportsbet_runner_header_count(runner_text) > 1:
+                        print(
+                            f"    ⚠️  Skipping runner text block {i+1}; contains multiple "
+                            "Sportsbet runner headers"
+                        )
+                        continue
                     dog_names.append(
                         {
                             "dog_name": dog_name,

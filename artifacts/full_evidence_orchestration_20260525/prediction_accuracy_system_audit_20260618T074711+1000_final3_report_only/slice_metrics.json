@@ -1,0 +1,79 @@
+{
+  "schema_version": "prediction_accuracy_system_slice_metrics_v1",
+  "slices": [
+    {
+      "metrics": {
+        "brier": null,
+        "logloss": null,
+        "mean_winner_rank": null,
+        "safe_race_count": 0,
+        "safe_runner_count": 0,
+        "skipped_race_reason_counts": {
+          "missing_labels": 2
+        },
+        "status": "DATA_MISSING_LABELS_OR_PROBABILITIES",
+        "top1": null,
+        "top3": null,
+        "winner_ranks": []
+      },
+      "race_count": 2,
+      "runner_rows": 16,
+      "slice": "all_current_rows"
+    },
+    {
+      "metrics": {
+        "brier": null,
+        "logloss": null,
+        "mean_winner_rank": null,
+        "safe_race_count": 0,
+        "safe_runner_count": 0,
+        "skipped_race_reason_counts": {},
+        "status": "DATA_MISSING_LABELS_OR_PROBABILITIES",
+        "top1": null,
+        "top3": null,
+        "winner_ranks": []
+      },
+      "race_count": 0,
+      "runner_rows": 0,
+      "slice": "current_rows_with_strict_prejump_odds"
+    },
+    {
+      "metrics": {
+        "brier": null,
+        "logloss": null,
+        "mean_winner_rank": null,
+        "safe_race_count": 0,
+        "safe_runner_count": 0,
+        "skipped_race_reason_counts": {
+          "missing_labels": 2
+        },
+        "status": "DATA_MISSING_LABELS_OR_PROBABILITIES",
+        "top1": null,
+        "top3": null,
+        "winner_ranks": []
+      },
+      "race_count": 2,
+      "runner_rows": 16,
+      "slice": "current_rows_with_expert_form_sidecar"
+    },
+    {
+      "metrics": {
+        "brier": null,
+        "logloss": null,
+        "mean_winner_rank": null,
+        "safe_race_count": 0,
+        "safe_runner_count": 0,
+        "skipped_race_reason_counts": {
+          "missing_labels": 2
+        },
+        "status": "DATA_MISSING_LABELS_OR_PROBABILITIES",
+        "top1": null,
+        "top3": null,
+        "winner_ranks": []
+      },
+      "race_count": 2,
+      "runner_rows": 16,
+      "slice": "current_rows_with_weather_or_track"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+race_id,box,dog_name,predicted_rank,shadow_rf_calibrated_probability,shadow_rf_uncalibrated_probability,is_winner,finish_position,label_join_status,result_identity_match_status,odds_join_status,odds_provenance_status,market_odds_win,market_implied_probability_raw,market_implied_probability_normalized,feature_row_join_status,metadata_is_leakage_safe,weather_present,track_condition_present,race_time_minutes_since_midnight_present,expert_form_sidecar_present
+Race 1 - SHEPPARTON - 2026-06-18,1,Mask Of Zorro,8,0.0390966106155663,0.08063877072983772,,,DATA_MISSING_LABEL,,no_odds_row,excluded,,,,JOINED_FEATURE_ROW,True,True,True,True,True
+Race 1 - SHEPPARTON - 2026-06-18,2,Shooters Project,6,0.07836294226642357,0.10773713170741687,,,DATA_MISSING_LABEL,,no_odds_row,excluded,,,,JOINED_FEATURE_ROW,True,True,True,True,True
+Race 1 - SHEPPARTON - 2026-06-18,3,Hartland Ash,4,0.12549627523408988,0.13109378968551844,,,DATA_MISSING_LABEL,,no_odds_row,excluded,,,,JOINED_FEATURE_ROW,True,True,True,True,True
+Race 1 - SHEPPARTON - 2026-06-18,4,Scroll Up,7,0.0394495532685557,0.08094129353362735,,,DATA_MISSING_LABEL,,no_odds_row,excluded,,,,JOINED_FEATURE_ROW,True,True,True,True,True
+Race 1 - SHEPPARTON - 2026-06-18,5,Shima Lexie,3,0.15488911389387394,0.1431071423818045,,,DATA_MISSING_LABEL,,no_odds_row,excluded,,,,JOINED_FEATURE_ROW,True,True,True,True,True
+Race 1 - SHEPPARTON - 2026-06-18,6,Sustainable,5,0.10482116278266447,0.12162037609290362,,,DATA_MISSING_LABEL,,no_odds_row,excluded,,,,JOINED_FEATURE_ROW,True,True,True,True,True
+Race 1 - SHEPPARTON - 2026-06-18,7,Preparation,1,0.2786498942939602,0.18277935386653613,,,DATA_MISSING_LABEL,,no_odds_row,excluded,,,,JOINED_FEATURE_ROW,True,True,True,True,True
+Race 1 - SHEPPARTON - 2026-06-18,8,Moe,2,0.17923444764486593,0.15208214200235523,,,DATA_MISSING_LABEL,,no_odds_row,excluded,,,,JOINED_FEATURE_ROW,True,True,True,True,True
+Race 2 - SHEPPARTON - 2026-06-18,1,Critically,3,0.09834474362193046,0.11755544466721508,,,DATA_MISSING_LABEL,,no_odds_row,excluded,,,,JOINED_FEATURE_ROW,True,True,True,True,True
+Race 2 - SHEPPARTON - 2026-06-18,2,Lil Cockatoo,5,0.0910661805115675,0.11384882929964757,,,DATA_MISSING_LABEL,,no_odds_row,excluded,,,,JOINED_FEATURE_ROW,True,True,True,True,True
+Race 2 - SHEPPARTON - 2026-06-18,3,Scott Redacted,7,0.07578545258776459,0.10546067303716966,,,DATA_MISSING_LABEL,,no_odds_row,excluded,,,,JOINED_FEATURE_ROW,True,True,True,True,True
+Race 2 - SHEPPARTON - 2026-06-18,4,Candy Pops,8,0.052712746235112844,0.0906555964355554,,,DATA_MISSING_LABEL,,no_odds_row,excluded,,,,JOINED_FEATURE_ROW,True,True,True,True,True
+Race 2 - SHEPPARTON - 2026-06-18,5,Indiana Icon,6,0.08286212115777623,0.10945731426951881,,,DATA_MISSING_LABEL,,no_odds_row,excluded,,,,JOINED_FEATURE_ROW,True,True,True,True,True
+Race 2 - SHEPPARTON - 2026-06-18,6,Knife Edge,2,0.20455483110492834,0.15950237733243958,,,DATA_MISSING_LABEL,,no_odds_row,excluded,,,,JOINED_FEATURE_ROW,True,True,True,True,True
+Race 2 - SHEPPARTON - 2026-06-18,7,Having A Look,4,0.09761245962840295,0.11718992918253117,,,DATA_MISSING_LABEL,,no_odds_row,excluded,,,,JOINED_FEATURE_ROW,True,True,True,True,True
+Race 2 - SHEPPARTON - 2026-06-18,8,Cash In Space,1,0.2970614651525169,0.18632983577592285,,,DATA_MISSING_LABEL,,no_odds_row,excluded,,,,JOINED_FEATURE_ROW,True,True,True,True,True

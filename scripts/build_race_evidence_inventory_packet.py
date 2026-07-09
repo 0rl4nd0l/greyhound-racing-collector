@@ -17,7 +17,6 @@ import csv
 import hashlib
 import json
 import math
-import re
 import sqlite3
 import sys
 from collections import Counter, defaultdict
@@ -25,10 +24,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
+
 ROOT = Path(__file__).resolve().parents[1]
 ROOT_STR = str(ROOT)
 sys.path = [path for path in sys.path if path != ROOT_STR]
 sys.path.insert(0, ROOT_STR)
+
+from scripts import append_official_result_evidence_backlog as backlog  # noqa: E402
+from scripts.build_unified_evidence_dataset import validate_odds_row  # noqa: E402
+
 
 DEFAULT_EVIDENCE_ROOT = ROOT / "artifacts/full_evidence_orchestration_20260525"
 OUTPUT_PREFIX = "artifacts/full_evidence_orchestration_20260525/race_evidence_inventory_"
@@ -38,9 +42,6 @@ JSONL_FILE = "race_evidence_inventory.jsonl"
 SCORECARD_CSV_FILE = "race_evidence_scorecard.csv"
 SCORECARD_JSONL_FILE = "race_evidence_scorecard.jsonl"
 SUMMARY_FILE = "SUMMARY.md"
-ACCEPTED_SPORTSBET_BOX_SOURCES = {"explicit_dom", "runner_text"}
-ACCEPTED_DOG_LEVEL_ODDS_LEVELS = {"dog", "runner"}
-POST_RACE_SOURCE_URL_TOKENS = {"dividend", "payout", "result", "results"}
 NO_WRITE_GUARANTEES = {
     "training": False,
     "production_promotion": False,
@@ -137,118 +138,6 @@ def load_jsonl(path: Path | None) -> list[dict[str, Any]]:
     return rows
 
 
-def artifact_paths(artifact_dir: Path) -> dict[str, Path]:
-    return {
-        "race_rows": artifact_dir / "official_result_races.jsonl",
-        "runner_rows": artifact_dir / "official_result_runners.jsonl",
-        "quarantine_rows": artifact_dir / "official_result_quarantine.jsonl",
-    }
-
-
-def has_official_result_artifacts(artifact_dir: Path) -> bool:
-    paths = artifact_paths(artifact_dir)
-    return paths["race_rows"].exists() and paths["runner_rows"].exists()
-
-
-def discover_official_result_artifact_dirs(
-    artifact_dirs: Sequence[Path],
-) -> tuple[list[Path], list[dict[str, Any]]]:
-    expanded: list[Path] = []
-    discovery_rows: list[dict[str, Any]] = []
-    seen: set[str] = set()
-
-    def add(path: Path) -> None:
-        key = str(path.resolve())
-        if key not in seen:
-            seen.add(key)
-            expanded.append(path)
-
-    for artifact_dir in artifact_dirs:
-        logical = artifact_dir if artifact_dir.is_absolute() else ROOT / artifact_dir
-        direct_match = has_official_result_artifacts(logical)
-        child_matches = (
-            sorted(
-                {
-                    path.parent
-                    for path in logical.rglob("official_result_runners.jsonl")
-                    if has_official_result_artifacts(path.parent)
-                },
-                key=lambda path: path.as_posix(),
-            )
-            if logical.exists() and logical.is_dir() and not direct_match
-            else []
-        )
-        if direct_match:
-            add(logical)
-            mode = "direct_artifact_dir"
-        elif child_matches:
-            for child in child_matches:
-                add(child)
-            mode = "recursive_parent_discovery"
-        else:
-            add(logical)
-            mode = "missing_artifact_dir"
-        discovery_rows.append(
-            {
-                "input_artifact_dir": relpath(logical),
-                "mode": mode,
-                "direct_match": direct_match,
-                "discovered_child_artifact_count": len(child_matches),
-                "discovered_child_artifact_dirs": [relpath(path) for path in child_matches[:50]],
-                "discovered_child_artifact_dirs_truncated": len(child_matches) > 50,
-            }
-        )
-
-    return expanded, discovery_rows
-
-
-def normalize_runner_name(value: Any) -> str:
-    return "".join(ch for ch in str(value or "").upper() if ch.isalnum())
-
-
-def source_url_is_post_race(value: Any) -> bool:
-    text = str(value or "").strip().lower()
-    if not text:
-        return False
-    tokens = {token for token in re.split(r"[^a-z0-9]+", text) if token}
-    return bool(tokens.intersection(POST_RACE_SOURCE_URL_TOKENS))
-
-
-def validate_odds_row(row: Mapping[str, Any]) -> list[str]:
-    reasons: list[str] = []
-    if str(row.get("market_type") or "").strip().lower() != "win":
-        reasons.append("odds_market_not_win")
-    if str(row.get("source") or "").strip().lower() != "sportsbet":
-        reasons.append("odds_source_not_sportsbet")
-    decimal = parse_float(row.get("odds_decimal"))
-    if decimal is None or decimal <= 1.0:
-        reasons.append("odds_decimal_invalid")
-    source_url = str(row.get("source_url") or "").strip()
-    if not source_url:
-        reasons.append("odds_source_url_missing")
-    elif "sportsbet.com.au" not in source_url.lower():
-        reasons.append("odds_source_url_not_sportsbet")
-    elif source_url_is_post_race(source_url):
-        reasons.append("odds_source_url_post_race")
-    if not str(row.get("capture_timestamp") or "").strip():
-        reasons.append("odds_capture_timestamp_missing")
-    odds_level = str(row.get("odds_level") or "").strip().lower()
-    if not odds_level:
-        reasons.append("odds_level_missing")
-    elif odds_level not in ACCEPTED_DOG_LEVEL_ODDS_LEVELS:
-        reasons.append("odds_level_not_dog")
-    box_source = str(row.get("sportsbet_box_source") or "").strip()
-    if box_source not in ACCEPTED_SPORTSBET_BOX_SOURCES:
-        reasons.append(f"unsupported_sportsbet_box_source:{box_source or 'missing'}")
-    if parse_int(
-        row.get("box_number") if row.get("box_number") not in (None, "") else row.get("box")
-    ) is None:
-        reasons.append("odds_box_number_missing")
-    if not normalize_runner_name(row.get("dog_name") or row.get("dog_clean_name")):
-        reasons.append("odds_dog_name_missing")
-    return reasons
-
-
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -306,17 +195,6 @@ def race_record(records: dict[str, dict[str, Any]], race_id: Any) -> dict[str, A
             "official_result_db_runner_rows": 0,
             "official_result_db_boxes": set(),
             "official_result_by_box": {},
-            "official_result_db_race_identity_signatures": set(),
-            "official_result_db_race_winner_signatures": set(),
-            "official_result_db_race_result_signatures": set(),
-            "official_result_db_race_result_variant_count": 0,
-            "official_result_db_race_identity_conflict_count": 0,
-            "official_result_db_race_winner_conflict_count": 0,
-            "official_result_db_race_selected_position_count": None,
-            "official_result_db_race_selected_sort_key": (-1, "", "", -1),
-            "official_result_db_runner_duplicate_row_count": 0,
-            "official_result_db_runner_duplicate_box_count": 0,
-            "official_result_db_runner_seen_by_box": Counter(),
             "official_result_conflict_count": 0,
             "live_odds_rows": 0,
             "strict_live_odds_rows": 0,
@@ -410,12 +288,12 @@ def scan_official_artifacts(
     artifact_roots: Sequence[Path],
     records: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
-    artifact_dirs, discovery = discover_official_result_artifact_dirs(artifact_roots)
+    artifact_dirs, discovery = backlog.discover_official_result_artifact_dirs(artifact_roots)
     race_row_count = 0
     runner_row_count = 0
     race_ids: set[str] = set()
     for artifact_dir in artifact_dirs:
-        paths = artifact_paths(artifact_dir)
+        paths = backlog.artifact_paths(artifact_dir)
         for row in load_jsonl(paths.get("race_rows")):
             record = race_record(records, row.get("race_id"))
             if record is None:
@@ -457,29 +335,6 @@ def sqlite_table_exists(conn: sqlite3.Connection, table: str) -> bool:
     return row is not None
 
 
-def sqlite_table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
-    return {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})")}
-
-
-def sqlite_select_expr(columns: set[str], column: str, default: str = "NULL") -> str:
-    return column if column in columns else f"{default} AS {column}"
-
-
-def evidence_row_sort_key(row: Mapping[str, Any]) -> tuple[str, str, int]:
-    return (
-        str(row.get("captured_at") or ""),
-        str(row.get("inserted_at") or ""),
-        parse_int(row.get("id")) or -1,
-    )
-
-
-def race_result_sort_key(row: Mapping[str, Any]) -> tuple[int, str, str, int]:
-    return (
-        parse_int(row.get("position_count")) or -1,
-        *evidence_row_sort_key(row),
-    )
-
-
 def db_status(db_path: Path) -> dict[str, Any]:
     if not db_path.exists():
         return {"status": "DATA_MISSING", "reason": "db_path_missing", "db_path": str(db_path)}
@@ -511,127 +366,59 @@ def scan_db(
             table_status[table] = {"present": sqlite_table_exists(conn, table)}
 
         if table_status["autonomous_official_result_evidence_races"]["present"]:
-            race_columns = sqlite_table_columns(conn, "autonomous_official_result_evidence_races")
-            select_fields = [
-                sqlite_select_expr(race_columns, "id", "0"),
-                sqlite_select_expr(race_columns, "race_id"),
-                sqlite_select_expr(race_columns, "race_date"),
-                sqlite_select_expr(race_columns, "venue"),
-                sqlite_select_expr(race_columns, "race_number"),
-                sqlite_select_expr(race_columns, "captured_at", "''"),
-                sqlite_select_expr(race_columns, "inserted_at", "''"),
-                sqlite_select_expr(race_columns, "status"),
-                sqlite_select_expr(race_columns, "winner_name"),
-                sqlite_select_expr(race_columns, "winner_box"),
-                sqlite_select_expr(race_columns, "position_count"),
-                sqlite_select_expr(race_columns, "participant_count"),
-                sqlite_select_expr(race_columns, "box_order_json"),
-            ]
-            rows = conn.execute(f"""
-                SELECT {", ".join(select_fields)}
+            rows = conn.execute(
+                """
+                SELECT race_id, race_date, venue, race_number, COUNT(*) AS row_count
                 FROM autonomous_official_result_evidence_races
                 WHERE race_id IS NOT NULL AND TRIM(race_id) != ''
-                ORDER BY race_id, captured_at, inserted_at, id
-                """).fetchall()
-            counts["official_result_evidence_race_rows"] = len(rows)
-            counts["official_result_evidence_race_count"] = len(
-                {str(row["race_id"]) for row in rows}
-            )
-            for sqlite_row in rows:
-                row = dict(sqlite_row)
-                record = race_record(records, row.get("race_id"))
+                GROUP BY race_id, race_date, venue, race_number
+                """
+            ).fetchall()
+            counts["official_result_evidence_race_rows"] = sum(int(row["row_count"]) for row in rows)
+            counts["official_result_evidence_race_count"] = len({str(row["race_id"]) for row in rows})
+            for row in rows:
+                record = race_record(records, row["race_id"])
                 if record is None:
                     continue
-                record["official_result_db_race_rows"] += 1
-                identity_signature = (
-                    row.get("race_date"),
-                    row.get("venue"),
-                    parse_int(row.get("race_number")),
-                )
-                winner_signature = (
-                    str(row.get("status") or "").strip().lower(),
-                    str(row.get("winner_name") or "").strip().casefold(),
-                    parse_int(row.get("winner_box")),
-                )
-                result_signature = (
-                    *winner_signature,
-                    parse_int(row.get("position_count")),
-                    parse_int(row.get("participant_count")),
-                    str(row.get("box_order_json") or "").strip(),
-                )
-                selected_sort_key = race_result_sort_key(row)
-                if selected_sort_key >= record["official_result_db_race_selected_sort_key"]:
-                    record["official_result_db_race_selected_sort_key"] = selected_sort_key
-                    record["official_result_db_race_selected_position_count"] = parse_int(
-                        row.get("position_count")
-                    )
-                record["official_result_db_race_identity_signatures"].add(identity_signature)
-                record["official_result_db_race_winner_signatures"].add(winner_signature)
-                record["official_result_db_race_result_signatures"].add(result_signature)
-                record["official_result_db_race_identity_conflict_count"] = max(
-                    0, len(record["official_result_db_race_identity_signatures"]) - 1
-                )
-                record["official_result_db_race_winner_conflict_count"] = max(
-                    0, len(record["official_result_db_race_winner_signatures"]) - 1
-                )
-                record["official_result_db_race_result_variant_count"] = len(
-                    record["official_result_db_race_result_signatures"]
-                )
-                set_first(record, "race_date", row.get("race_date"))
-                set_first(record, "venue", row.get("venue"))
-                set_first(record, "race_number", row.get("race_number"))
+                record["official_result_db_race_rows"] += int(row["row_count"])
+                set_first(record, "race_date", row["race_date"])
+                set_first(record, "venue", row["venue"])
+                set_first(record, "race_number", row["race_number"])
         else:
             counts["official_result_evidence_race_rows"] = 0
             counts["official_result_evidence_race_count"] = 0
 
         if table_status["autonomous_official_result_evidence_runners"]["present"]:
-            runner_columns = sqlite_table_columns(
-                conn, "autonomous_official_result_evidence_runners"
-            )
-            select_fields = [
-                sqlite_select_expr(runner_columns, "id", "0"),
-                sqlite_select_expr(runner_columns, "race_id"),
-                sqlite_select_expr(runner_columns, "race_date"),
-                sqlite_select_expr(runner_columns, "venue"),
-                sqlite_select_expr(runner_columns, "race_number"),
-                sqlite_select_expr(runner_columns, "captured_at", "''"),
-                sqlite_select_expr(runner_columns, "inserted_at", "''"),
-                sqlite_select_expr(runner_columns, "box_number"),
-                sqlite_select_expr(runner_columns, "dog_name"),
-                sqlite_select_expr(runner_columns, "finish_position"),
-                sqlite_select_expr(runner_columns, "is_winner"),
-            ]
-            rows = conn.execute(f"""
-                SELECT {", ".join(select_fields)}
+            rows = conn.execute(
+                """
+                SELECT
+                    race_id,
+                    race_date,
+                    venue,
+                    race_number,
+                    box_number,
+                    dog_name,
+                    finish_position,
+                    is_winner
                 FROM autonomous_official_result_evidence_runners
                 WHERE race_id IS NOT NULL AND TRIM(race_id) != ''
-                ORDER BY race_id, box_number, captured_at, inserted_at, id
-                """).fetchall()
+                """
+            ).fetchall()
             counts["official_result_evidence_runner_rows"] = len(rows)
-            counts["official_result_evidence_runner_race_count"] = len(
-                {str(row["race_id"]) for row in rows}
-            )
-            for sqlite_row in rows:
-                row = dict(sqlite_row)
-                record = race_record(records, row.get("race_id"))
+            counts["official_result_evidence_runner_race_count"] = len({str(row["race_id"]) for row in rows})
+            for row in rows:
+                record = race_record(records, row["race_id"])
                 if record is None:
                     continue
                 record["official_result_db_runner_rows"] += 1
-                box_number = parse_int(row.get("box_number"))
+                box_number = parse_int(row["box_number"])
                 add_box(record, "official_result_db_boxes", box_number)
                 if box_number is not None:
-                    seen_by_box = record["official_result_db_runner_seen_by_box"]
-                    seen_by_box[box_number] += 1
-                    if seen_by_box[box_number] == 2:
-                        record["official_result_db_runner_duplicate_box_count"] += 1
-                    if seen_by_box[box_number] > 1:
-                        record["official_result_db_runner_duplicate_row_count"] += 1
                     result = {
                         "box_number": box_number,
-                        "dog_name": row.get("dog_name"),
-                        "finish_position": parse_int(row.get("finish_position")),
-                        "is_winner": parse_int(row.get("is_winner")),
-                        "dedupe_sort_key": evidence_row_sort_key(row),
+                        "dog_name": row["dog_name"],
+                        "finish_position": parse_int(row["finish_position"]),
+                        "is_winner": parse_int(row["is_winner"]),
                     }
                     existing = record["official_result_by_box"].get(box_number)
                     if existing is None:
@@ -639,21 +426,18 @@ def scan_db(
                     elif (
                         existing.get("finish_position") != result.get("finish_position")
                         or existing.get("is_winner") != result.get("is_winner")
-                        or str(existing.get("dog_name") or "").strip().casefold()
-                        != str(result.get("dog_name") or "").strip().casefold()
                     ):
                         record["official_result_conflict_count"] += 1
-                    elif result["dedupe_sort_key"] >= existing.get("dedupe_sort_key", ("", "", -1)):
-                        record["official_result_by_box"][box_number] = result
-                set_first(record, "race_date", row.get("race_date"))
-                set_first(record, "venue", row.get("venue"))
-                set_first(record, "race_number", row.get("race_number"))
+                set_first(record, "race_date", row["race_date"])
+                set_first(record, "venue", row["venue"])
+                set_first(record, "race_number", row["race_number"])
         else:
             counts["official_result_evidence_runner_rows"] = 0
             counts["official_result_evidence_runner_race_count"] = 0
 
         if table_status["live_odds"]["present"]:
-            rows = conn.execute("""
+            rows = conn.execute(
+                """
                 SELECT
                     race_id,
                     venue,
@@ -679,7 +463,8 @@ def scan_db(
                     sportsbet_raw_runner_text
                 FROM live_odds
                 WHERE race_id IS NOT NULL AND TRIM(race_id) != ''
-                """).fetchall()
+                """
+            ).fetchall()
             live_races: set[str] = set()
             strict_races: set[str] = set()
             strict_rows = 0
@@ -746,26 +531,6 @@ def race_action(row: Mapping[str, Any]) -> str:
     return "ready_for_unified_evidence_evaluation"
 
 
-def official_result_duplicate_certification(row: Mapping[str, Any]) -> str:
-    has_conflict = any(
-        int(row.get(key) or 0) > 0
-        for key in (
-            "official_result_conflict_count",
-            "official_result_db_race_identity_conflict_count",
-            "official_result_db_race_winner_conflict_count",
-        )
-    )
-    if has_conflict:
-        return "OFFICIAL_RESULT_DUPLICATE_CONFLICT"
-    has_duplicate = (
-        int(row.get("official_result_db_race_duplicate_count") or 0) > 0
-        or int(row.get("official_result_db_runner_duplicate_row_count") or 0) > 0
-    )
-    if has_duplicate:
-        return "OFFICIAL_RESULT_DUPLICATES_CERTIFIED_NON_CONFLICTING"
-    return "NO_OFFICIAL_RESULT_DUPLICATES"
-
-
 def build_race_rows(records: Mapping[str, Mapping[str, Any]]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for race_id, record in sorted(records.items()):
@@ -773,19 +538,6 @@ def build_race_rows(records: Mapping[str, Mapping[str, Any]]) -> list[dict[str, 
         official_db_boxes = set(record.get("official_result_db_boxes") or set())
         strict_odds_boxes = set(record.get("strict_live_odds_boxes") or set())
         has_shadow = int(record.get("shadow_prediction_rows") or 0) > 0
-        official_result_conflict_count = int(record.get("official_result_conflict_count") or 0)
-        race_identity_conflict_count = int(
-            record.get("official_result_db_race_identity_conflict_count") or 0
-        )
-        race_winner_conflict_count = int(
-            record.get("official_result_db_race_winner_conflict_count") or 0
-        )
-        has_official_result_conflicts = bool(
-            official_result_conflict_count
-            or race_identity_conflict_count
-            or race_winner_conflict_count
-        )
-        official_race_rows = int(record.get("official_result_db_race_rows") or 0)
         row = {
             "race_id": race_id,
             "race_date": record.get("race_date"),
@@ -798,66 +550,32 @@ def build_race_rows(records: Mapping[str, Mapping[str, Any]]) -> list[dict[str, 
             "official_artifact_race_rows": int(record.get("official_artifact_race_rows") or 0),
             "official_artifact_runner_rows": int(record.get("official_artifact_runner_rows") or 0),
             "official_artifact_path_count": len(record.get("official_artifact_paths") or []),
-            "official_artifact_boxes": json.dumps(
-                sorted(record.get("official_artifact_boxes") or [])
-            ),
+            "official_artifact_boxes": json.dumps(sorted(record.get("official_artifact_boxes") or [])),
             "official_artifact_box_count": len(record.get("official_artifact_boxes") or []),
-            "official_result_db_race_rows": official_race_rows,
-            "official_result_db_race_duplicate_count": max(0, official_race_rows - 1),
-            "official_result_db_race_result_variant_count": int(
-                record.get("official_result_db_race_result_variant_count") or 0
-            ),
-            "official_result_db_race_selected_position_count": (
-                record.get("official_result_db_race_selected_position_count")
-            ),
-            "official_result_db_race_identity_conflict_count": race_identity_conflict_count,
-            "official_result_db_race_winner_conflict_count": race_winner_conflict_count,
-            "official_result_db_runner_rows": int(
-                record.get("official_result_db_runner_rows") or 0
-            ),
-            "official_result_db_runner_duplicate_row_count": int(
-                record.get("official_result_db_runner_duplicate_row_count") or 0
-            ),
-            "official_result_db_runner_duplicate_box_count": int(
-                record.get("official_result_db_runner_duplicate_box_count") or 0
-            ),
+            "official_result_db_race_rows": int(record.get("official_result_db_race_rows") or 0),
+            "official_result_db_runner_rows": int(record.get("official_result_db_runner_rows") or 0),
             "official_result_db_boxes": json.dumps(sorted(official_db_boxes)),
             "official_result_db_box_count": len(official_db_boxes),
-            "official_result_conflict_count": official_result_conflict_count,
-            "has_official_result_evidence_conflict": has_official_result_conflicts,
+            "official_result_conflict_count": int(record.get("official_result_conflict_count") or 0),
             "live_odds_rows": int(record.get("live_odds_rows") or 0),
             "live_odds_box_count": len(record.get("live_odds_boxes") or []),
             "strict_live_odds_rows": int(record.get("strict_live_odds_rows") or 0),
             "strict_live_odds_boxes": json.dumps(sorted(strict_odds_boxes)),
             "strict_live_odds_box_count": len(strict_odds_boxes),
             "has_shadow_predictions": has_shadow,
-            "has_official_result_artifact": int(record.get("official_artifact_runner_rows") or 0)
-            > 0,
-            "has_official_result_evidence_db": int(
-                record.get("official_result_db_runner_rows") or 0
-            )
-            > 0,
+            "has_official_result_artifact": int(record.get("official_artifact_runner_rows") or 0) > 0,
+            "has_official_result_evidence_db": int(record.get("official_result_db_runner_rows") or 0) > 0,
             "has_live_odds": int(record.get("live_odds_rows") or 0) > 0,
             "has_strict_prejump_odds": int(record.get("strict_live_odds_rows") or 0) > 0,
             "has_complete_official_result_evidence_db_for_shadow": (
-                has_shadow
-                and bool(shadow_boxes)
-                and shadow_boxes.issubset(official_db_boxes)
-                and not has_official_result_conflicts
+                has_shadow and bool(shadow_boxes) and shadow_boxes.issubset(official_db_boxes)
             ),
             "has_complete_strict_prejump_odds_for_shadow": (
                 has_shadow and bool(shadow_boxes) and shadow_boxes.issubset(strict_odds_boxes)
             ),
-            "sample_shadow_prediction_paths": json.dumps(
-                limited(record.get("shadow_prediction_paths") or [])
-            ),
-            "sample_official_artifact_paths": json.dumps(
-                limited(record.get("official_artifact_paths") or [])
-            ),
+            "sample_shadow_prediction_paths": json.dumps(limited(record.get("shadow_prediction_paths") or [])),
+            "sample_official_artifact_paths": json.dumps(limited(record.get("official_artifact_paths") or [])),
         }
-        row["official_result_duplicate_certification"] = official_result_duplicate_certification(
-            row
-        )
         row["has_complete_shadow_official_and_strict_odds"] = bool(
             row["has_shadow_predictions"]
             and row["has_complete_official_result_evidence_db_for_shadow"]
@@ -876,9 +594,7 @@ def latest_backlog_append_report(artifact_roots: Sequence[Path]) -> dict[str, An
             continue
         candidates.extend(
             path
-            for path in logical.glob(
-                "official_result_evidence_append_backlog_*/official_result_evidence_append_backlog_report.json"
-            )
+            for path in logical.glob("official_result_evidence_append_backlog_*/official_result_evidence_append_backlog_report.json")
             if path.is_file()
         )
     if not candidates:
@@ -903,24 +619,13 @@ def latest_backlog_append_report(artifact_roots: Sequence[Path]) -> dict[str, An
 def build_summary_counts(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     action_counts = Counter(str(row.get("recommended_next_action") or "UNKNOWN") for row in rows)
     shadow_rows = [row for row in rows if row.get("has_shadow_predictions")]
-    scorecard_rows = [
-        row
-        for row in rows
-        if row.get("recommended_next_action") == "ready_for_unified_evidence_evaluation"
-    ]
     return {
         "race_union_count": len(rows),
         "shadow_prediction_race_count": sum(1 for row in rows if row.get("has_shadow_predictions")),
-        "official_result_artifact_race_count": sum(
-            1 for row in rows if row.get("has_official_result_artifact")
-        ),
-        "official_result_evidence_db_race_count": sum(
-            1 for row in rows if row.get("has_official_result_evidence_db")
-        ),
+        "official_result_artifact_race_count": sum(1 for row in rows if row.get("has_official_result_artifact")),
+        "official_result_evidence_db_race_count": sum(1 for row in rows if row.get("has_official_result_evidence_db")),
         "live_odds_race_count": sum(1 for row in rows if row.get("has_live_odds")),
-        "strict_prejump_odds_race_count": sum(
-            1 for row in rows if row.get("has_strict_prejump_odds")
-        ),
+        "strict_prejump_odds_race_count": sum(1 for row in rows if row.get("has_strict_prejump_odds")),
         "shadow_races_with_official_result_evidence_db": sum(
             1 for row in shadow_rows if row.get("has_official_result_evidence_db")
         ),
@@ -930,180 +635,7 @@ def build_summary_counts(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "shadow_races_complete_official_and_strict_odds": sum(
             1 for row in shadow_rows if row.get("has_complete_shadow_official_and_strict_odds")
         ),
-        "official_result_duplicate_race_count": sum(
-            1 for row in rows if int(row.get("official_result_db_race_duplicate_count") or 0) > 0
-        ),
-        "official_result_duplicate_runner_race_count": sum(
-            1
-            for row in rows
-            if int(row.get("official_result_db_runner_duplicate_row_count") or 0) > 0
-        ),
-        "official_result_duplicate_conflict_race_count": sum(
-            1
-            for row in rows
-            if row.get("official_result_duplicate_certification")
-            == "OFFICIAL_RESULT_DUPLICATE_CONFLICT"
-        ),
-        "official_result_duplicate_certified_race_count": sum(
-            1
-            for row in rows
-            if row.get("official_result_duplicate_certification")
-            == "OFFICIAL_RESULT_DUPLICATES_CERTIFIED_NON_CONFLICTING"
-        ),
-        "scorecard_official_result_duplicate_race_count": sum(
-            1
-            for row in scorecard_rows
-            if int(row.get("official_result_db_race_duplicate_count") or 0) > 0
-            or int(row.get("official_result_db_runner_duplicate_row_count") or 0) > 0
-        ),
-        "scorecard_official_result_duplicate_conflict_race_count": sum(
-            1
-            for row in scorecard_rows
-            if row.get("official_result_duplicate_certification")
-            == "OFFICIAL_RESULT_DUPLICATE_CONFLICT"
-        ),
-        "scorecard_official_result_duplicate_certified_race_count": sum(
-            1
-            for row in scorecard_rows
-            if row.get("official_result_duplicate_certification")
-            == "OFFICIAL_RESULT_DUPLICATES_CERTIFIED_NON_CONFLICTING"
-        ),
         "action_counts": dict(sorted(action_counts.items())),
-    }
-
-
-def official_result_duplicate_audit(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    scorecard_rows = [
-        row
-        for row in rows
-        if row.get("recommended_next_action") == "ready_for_unified_evidence_evaluation"
-    ]
-    duplicate_rows = [
-        row
-        for row in rows
-        if int(row.get("official_result_db_race_duplicate_count") or 0) > 0
-        or int(row.get("official_result_db_runner_duplicate_row_count") or 0) > 0
-    ]
-    conflict_rows = [
-        row
-        for row in rows
-        if row.get("official_result_duplicate_certification")
-        == "OFFICIAL_RESULT_DUPLICATE_CONFLICT"
-    ]
-    scorecard_duplicate_rows = [
-        row
-        for row in scorecard_rows
-        if int(row.get("official_result_db_race_duplicate_count") or 0) > 0
-        or int(row.get("official_result_db_runner_duplicate_row_count") or 0) > 0
-    ]
-    scorecard_conflict_rows = [
-        row
-        for row in scorecard_rows
-        if row.get("official_result_duplicate_certification")
-        == "OFFICIAL_RESULT_DUPLICATE_CONFLICT"
-    ]
-    if conflict_rows:
-        global_certification_status = "OFFICIAL_RESULT_DUPLICATE_CONFLICTS_PRESENT"
-    elif duplicate_rows:
-        global_certification_status = "OFFICIAL_RESULT_DUPLICATES_CERTIFIED_NON_CONFLICTING"
-    else:
-        global_certification_status = "NO_OFFICIAL_RESULT_DUPLICATES"
-    if scorecard_conflict_rows:
-        certification_status = "OFFICIAL_RESULT_DUPLICATE_CONFLICTS_PRESENT_IN_SCORECARD"
-    elif scorecard_duplicate_rows:
-        certification_status = "OFFICIAL_RESULT_SCORECARD_DUPLICATES_CERTIFIED_NON_CONFLICTING"
-    else:
-        certification_status = "NO_OFFICIAL_RESULT_DUPLICATES_IN_SCORECARD"
-    return {
-        "schema_version": "official_result_duplicate_audit_v1",
-        "certification_status": certification_status,
-        "global_certification_status": global_certification_status,
-        "certification_basis": [
-            "race_identity_fields_must_not_conflict",
-            "race_winner_fields_must_not_conflict",
-            "runner_box_finish_position_is_winner_and_dog_name_must_not_conflict",
-            "non_conflicting_partial_to_complete_race_result_variants_are_reported_not_disqualifying",
-        ],
-        "scorecard_race_count": len(scorecard_rows),
-        "scorecard_duplicate_race_count": len(scorecard_duplicate_rows),
-        "scorecard_duplicate_official_race_row_race_count": sum(
-            1
-            for row in scorecard_rows
-            if int(row.get("official_result_db_race_duplicate_count") or 0) > 0
-        ),
-        "scorecard_duplicate_runner_box_race_count": sum(
-            1
-            for row in scorecard_rows
-            if int(row.get("official_result_db_runner_duplicate_row_count") or 0) > 0
-        ),
-        "scorecard_conflict_race_count": len(scorecard_conflict_rows),
-        "duplicate_race_count": len(duplicate_rows),
-        "duplicate_official_race_row_race_count": sum(
-            1 for row in rows if int(row.get("official_result_db_race_duplicate_count") or 0) > 0
-        ),
-        "duplicate_runner_box_race_count": sum(
-            1
-            for row in rows
-            if int(row.get("official_result_db_runner_duplicate_row_count") or 0) > 0
-        ),
-        "conflict_race_count": len(conflict_rows),
-        "sample_duplicate_races": [
-            {
-                "race_id": row.get("race_id"),
-                "official_result_db_race_rows": row.get("official_result_db_race_rows"),
-                "official_result_db_race_duplicate_count": row.get(
-                    "official_result_db_race_duplicate_count"
-                ),
-                "official_result_db_race_result_variant_count": row.get(
-                    "official_result_db_race_result_variant_count"
-                ),
-                "official_result_db_race_selected_position_count": row.get(
-                    "official_result_db_race_selected_position_count"
-                ),
-                "official_result_db_runner_duplicate_row_count": row.get(
-                    "official_result_db_runner_duplicate_row_count"
-                ),
-                "official_result_duplicate_certification": row.get(
-                    "official_result_duplicate_certification"
-                ),
-            }
-            for row in duplicate_rows[:20]
-        ],
-        "sample_scorecard_duplicate_races": [
-            {
-                "race_id": row.get("race_id"),
-                "official_result_db_race_rows": row.get("official_result_db_race_rows"),
-                "official_result_db_race_duplicate_count": row.get(
-                    "official_result_db_race_duplicate_count"
-                ),
-                "official_result_db_race_result_variant_count": row.get(
-                    "official_result_db_race_result_variant_count"
-                ),
-                "official_result_db_race_selected_position_count": row.get(
-                    "official_result_db_race_selected_position_count"
-                ),
-                "official_result_db_runner_duplicate_row_count": row.get(
-                    "official_result_db_runner_duplicate_row_count"
-                ),
-                "official_result_duplicate_certification": row.get(
-                    "official_result_duplicate_certification"
-                ),
-            }
-            for row in scorecard_duplicate_rows[:20]
-        ],
-        "sample_conflict_races": [
-            {
-                "race_id": row.get("race_id"),
-                "official_result_conflict_count": row.get("official_result_conflict_count"),
-                "official_result_db_race_identity_conflict_count": row.get(
-                    "official_result_db_race_identity_conflict_count"
-                ),
-                "official_result_db_race_winner_conflict_count": row.get(
-                    "official_result_db_race_winner_conflict_count"
-                ),
-            }
-            for row in conflict_rows[:20]
-        ],
     }
 
 
@@ -1177,32 +709,61 @@ def mean(values: Sequence[float]) -> float | None:
     return sum(clean) / len(clean) if clean else None
 
 
+def _race_row_by_id(rows: Sequence[Mapping[str, Any]]) -> dict[str, Mapping[str, Any]]:
+    return {str(row.get("race_id")): row for row in rows if row.get("race_id") not in (None, "")}
+
+
+def _gap_action(
+    race_rows_by_id: Mapping[str, Mapping[str, Any]],
+    race_id: Any,
+    fallback: str,
+) -> str:
+    row = race_rows_by_id.get(str(race_id))
+    if row is None:
+        return fallback
+    action = str(row.get("recommended_next_action") or "").strip()
+    if not action or action == "ready_for_unified_evidence_evaluation":
+        return fallback
+    return action
+
+
 def build_scorecard(
     records: Mapping[str, Mapping[str, Any]],
+    race_rows: Sequence[Mapping[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     skipped_reasons = Counter()
+    skipped_actions = Counter()
+    official_result_gap_actions = Counter()
+    strict_odds_gap_actions = Counter()
+    race_rows_by_id = _race_row_by_id(race_rows or [])
     for race_id, record in sorted(records.items()):
         shadow_boxes = set(record.get("shadow_boxes") or set())
         official_boxes = set(record.get("official_result_db_boxes") or set())
         strict_boxes = set(record.get("strict_live_odds_boxes") or set())
         if not shadow_boxes:
-            skipped_reasons["shadow_predictions_missing"] += 1
+            reason = "shadow_predictions_missing"
+            skipped_reasons[reason] += 1
+            skipped_actions[_gap_action(race_rows_by_id, race_id, reason)] += 1
             continue
         if not shadow_boxes.issubset(official_boxes):
-            skipped_reasons["official_result_incomplete_for_shadow_boxes"] += 1
+            reason = "official_result_incomplete_for_shadow_boxes"
+            skipped_reasons[reason] += 1
+            action = _gap_action(race_rows_by_id, race_id, reason)
+            skipped_actions[action] += 1
+            official_result_gap_actions[action] += 1
             continue
         if not shadow_boxes.issubset(strict_boxes):
-            skipped_reasons["strict_odds_incomplete_for_shadow_boxes"] += 1
-            continue
-        if int(record.get("official_result_db_race_identity_conflict_count") or 0) > 0:
-            skipped_reasons["official_result_race_identity_conflicts"] += 1
-            continue
-        if int(record.get("official_result_db_race_winner_conflict_count") or 0) > 0:
-            skipped_reasons["official_result_race_winner_conflicts"] += 1
+            reason = "strict_odds_incomplete_for_shadow_boxes"
+            skipped_reasons[reason] += 1
+            action = _gap_action(race_rows_by_id, race_id, reason)
+            skipped_actions[action] += 1
+            strict_odds_gap_actions[action] += 1
             continue
         if int(record.get("official_result_conflict_count") or 0) > 0:
-            skipped_reasons["official_result_conflicts"] += 1
+            reason = "official_result_conflicts"
+            skipped_reasons[reason] += 1
+            skipped_actions[reason] += 1
             continue
 
         results_by_box = record.get("official_result_by_box") or {}
@@ -1213,17 +774,23 @@ def build_scorecard(
             or parse_int(result.get("is_winner")) == 1
         ]
         if len(winner_boxes) != 1:
-            skipped_reasons["winner_box_not_unique"] += 1
+            reason = "winner_box_not_unique"
+            skipped_reasons[reason] += 1
+            skipped_actions[reason] += 1
             continue
         winner_box = winner_boxes[0]
 
         predictions_by_box = record.get("latest_shadow_prediction_by_box") or {}
         if not set(predictions_by_box).issuperset(shadow_boxes):
-            skipped_reasons["latest_shadow_prediction_rows_incomplete"] += 1
+            reason = "latest_shadow_prediction_rows_incomplete"
+            skipped_reasons[reason] += 1
+            skipped_actions[reason] += 1
             continue
         model_order = ranked_shadow_boxes(predictions_by_box)
         if winner_box not in model_order:
-            skipped_reasons["winner_box_missing_from_shadow_predictions"] += 1
+            reason = "winner_box_missing_from_shadow_predictions"
+            skipped_reasons[reason] += 1
+            skipped_actions[reason] += 1
             continue
         model_winner_rank = model_order.index(winner_box) + 1
         raw_model_probs = {
@@ -1246,7 +813,9 @@ def build_scorecard(
             market_candidates.append((decimal, int(box)))
             raw_market_probs[int(box)] = 1.0 / decimal
         if len(market_candidates) < len(shadow_boxes):
-            skipped_reasons["market_odds_missing_for_shadow_boxes"] += 1
+            reason = "market_odds_missing_for_shadow_boxes"
+            skipped_reasons[reason] += 1
+            skipped_actions[reason] += 1
             continue
         market_order = [box for _, box in sorted(market_candidates)]
         market_winner_rank = market_order.index(winner_box) + 1
@@ -1292,26 +861,38 @@ def build_scorecard(
         "schema_version": "race_evidence_scorecard_metrics_v1",
         "evaluation_race_count": len(rows),
         "model_top1_accuracy": (
-            sum(1 for row in rows if row.get("model_top1_correct")) / len(rows) if rows else None
+            sum(1 for row in rows if row.get("model_top1_correct")) / len(rows)
+            if rows
+            else None
         ),
         "model_top3_accuracy": (
-            sum(1 for row in rows if row.get("model_top3_correct")) / len(rows) if rows else None
+            sum(1 for row in rows if row.get("model_top3_correct")) / len(rows)
+            if rows
+            else None
         ),
         "model_mean_winner_rank": mean([float(row["model_winner_rank"]) for row in rows]),
         "model_logloss": mean(model_logloss_values),
         "market_top1_accuracy": (
-            sum(1 for row in rows if row.get("market_top1_correct")) / len(rows) if rows else None
+            sum(1 for row in rows if row.get("market_top1_correct")) / len(rows)
+            if rows
+            else None
         ),
         "market_top3_accuracy": (
-            sum(1 for row in rows if row.get("market_top3_correct")) / len(rows) if rows else None
+            sum(1 for row in rows if row.get("market_top3_correct")) / len(rows)
+            if rows
+            else None
         ),
         "market_mean_winner_rank": mean([float(row["market_winner_rank"]) for row in rows]),
         "market_logloss": mean(market_logloss_values),
         "skipped_race_reason_counts": dict(sorted(skipped_reasons.items())),
+        "skipped_race_action_counts": dict(sorted(skipped_actions.items())),
+        "official_result_gap_action_counts": dict(sorted(official_result_gap_actions.items())),
+        "strict_odds_gap_action_counts": dict(sorted(strict_odds_gap_actions.items())),
         "metric_notes": [
             "report_only_latest_shadow_prediction_per_race_box",
             "official_results_from_append_only_evidence_db",
             "market_baseline_from_latest_strict_sportsbet_odds_per_box",
+            "scorecard_gap_action_counts_use_recommended_next_action",
         ],
     }
     return rows, metrics
@@ -1374,18 +955,9 @@ def write_csv(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
         "official_artifact_path_count",
         "official_artifact_box_count",
         "official_result_db_race_rows",
-        "official_result_db_race_duplicate_count",
-        "official_result_db_race_result_variant_count",
-        "official_result_db_race_selected_position_count",
-        "official_result_db_race_identity_conflict_count",
-        "official_result_db_race_winner_conflict_count",
         "official_result_db_runner_rows",
-        "official_result_db_runner_duplicate_row_count",
-        "official_result_db_runner_duplicate_box_count",
         "official_result_db_box_count",
         "official_result_conflict_count",
-        "has_official_result_evidence_conflict",
-        "official_result_duplicate_certification",
         "live_odds_rows",
         "live_odds_box_count",
         "strict_live_odds_rows",
@@ -1406,7 +978,12 @@ def write_csv(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
         "sample_official_artifact_paths",
     ]
     with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=fieldnames,
+            extrasaction="ignore",
+            lineterminator="\n",
+        )
         writer.writeheader()
         for row in rows:
             writer.writerow(row)
@@ -1438,26 +1015,20 @@ def write_scorecard_csv(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
         "winner_prediction_raw_probability",
     ]
     with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=fieldnames,
+            extrasaction="ignore",
+            lineterminator="\n",
+        )
         writer.writeheader()
         for row in rows:
             writer.writerow(row)
 
 
 def summary_markdown(report: Mapping[str, Any]) -> str:
-    counts = (
-        report.get("summary_counts") if isinstance(report.get("summary_counts"), Mapping) else {}
-    )
-    metrics = (
-        report.get("scorecard_metrics")
-        if isinstance(report.get("scorecard_metrics"), Mapping)
-        else {}
-    )
-    duplicate_audit = (
-        report.get("official_result_duplicate_audit")
-        if isinstance(report.get("official_result_duplicate_audit"), Mapping)
-        else {}
-    )
+    counts = report.get("summary_counts") if isinstance(report.get("summary_counts"), Mapping) else {}
+    metrics = report.get("scorecard_metrics") if isinstance(report.get("scorecard_metrics"), Mapping) else {}
     return "\n".join(
         [
             "# Race Evidence Inventory",
@@ -1474,10 +1045,6 @@ def summary_markdown(report: Mapping[str, Any]) -> str:
             f"- Shadow races with official-result evidence DB: `{counts.get('shadow_races_with_official_result_evidence_db')}`",
             f"- Shadow races with strict pre-jump odds: `{counts.get('shadow_races_with_strict_prejump_odds')}`",
             f"- Shadow races complete for official result and strict odds: `{counts.get('shadow_races_complete_official_and_strict_odds')}`",
-            f"- Official-result scorecard duplicate certification: `{duplicate_audit.get('certification_status')}`",
-            f"- Official-result scorecard duplicate races: `{duplicate_audit.get('scorecard_duplicate_race_count')}`",
-            f"- Official-result scorecard duplicate conflict races: `{duplicate_audit.get('scorecard_conflict_race_count')}`",
-            f"- Official-result global duplicate certification: `{duplicate_audit.get('global_certification_status')}`",
             f"- Scorecard evaluation races: `{metrics.get('evaluation_race_count')}`",
             f"- Model Top1 / Top3: `{metrics.get('model_top1_accuracy')}` / `{metrics.get('model_top3_accuracy')}`",
             f"- Market Top1 / Top3: `{metrics.get('market_top1_accuracy')}` / `{metrics.get('market_top3_accuracy')}`",
@@ -1488,6 +1055,24 @@ def summary_markdown(report: Mapping[str, Any]) -> str:
             "",
             "```json",
             json.dumps(counts.get("action_counts") or {}, indent=2, sort_keys=True),
+            "```",
+            "",
+            "## Scorecard Gap Action Counts",
+            "",
+            "```json",
+            json.dumps(metrics.get("skipped_race_action_counts") or {}, indent=2, sort_keys=True),
+            "```",
+            "",
+            "## Official-Result Gap Action Counts",
+            "",
+            "```json",
+            json.dumps(metrics.get("official_result_gap_action_counts") or {}, indent=2, sort_keys=True),
+            "```",
+            "",
+            "## Strict-Odds Gap Action Counts",
+            "",
+            "```json",
+            json.dumps(metrics.get("strict_odds_gap_action_counts") or {}, indent=2, sort_keys=True),
             "```",
             "",
             "## No-Write Guarantees",
@@ -1525,8 +1110,7 @@ def build_packet(
     db_summary = scan_db(db_path=db_path, records=records)
     race_rows = build_race_rows(records)
     summary_counts = build_summary_counts(race_rows)
-    duplicate_audit = official_result_duplicate_audit(race_rows)
-    scorecard_rows, scorecard_metrics = build_scorecard(records)
+    scorecard_rows, scorecard_metrics = build_scorecard(records, race_rows)
     decision = recommended_decision(summary_counts)
     db_available = (db_summary.get("db_status") or {}).get("status") == "AVAILABLE"
     final_status = (
@@ -1545,16 +1129,13 @@ def build_packet(
         "final_status": final_status,
         "recommended_decision": decision,
         "output_dir": relpath(output_dir),
-        "artifact_roots": [
-            relpath(root if root.is_absolute() else ROOT / root) for root in artifact_roots
-        ],
+        "artifact_roots": [relpath(root if root.is_absolute() else ROOT / root) for root in artifact_roots],
         "db_path": str(db_path),
         "official_artifact_summary": official_artifact_summary,
         "shadow_prediction_summary": shadow_summary,
         "db_summary": db_summary,
         "latest_backlog_append_report": latest_backlog_append_report(artifact_roots),
         "summary_counts": summary_counts,
-        "official_result_duplicate_audit": duplicate_audit,
         "scorecard_metrics": scorecard_metrics,
         "top_gap_races": top_gaps(race_rows),
         "inventory_csv": relpath(output_dir / CSV_FILE),

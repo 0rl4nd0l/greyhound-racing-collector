@@ -1,0 +1,2 @@
+{"capture_window_minutes": null, "inserted_rows": 0, "plan_status": "NO_DUE_WINDOW", "race_id": "Race 1 - SHEPPARTON - 2026-06-18", "reasons": ["before_first_capture_window"], "schema_version": "autonomous_live_odds_capture_attempt_v1", "status": "SKIPPED_NOT_READY"}
+{"capture_window_minutes": null, "inserted_rows": 0, "plan_status": "NO_DUE_WINDOW", "race_id": "Race 2 - SHEPPARTON - 2026-06-18", "reasons": ["before_first_capture_window"], "schema_version": "autonomous_live_odds_capture_attempt_v1", "status": "SKIPPED_NOT_READY"}

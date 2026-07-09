@@ -28,9 +28,11 @@ sys.path.insert(0, ROOT_STR)
 from accuracy_program.odds_coverage import (
     summarize_read_only_odds_coverage_report,
 )
+from utils.report_output_dir_guard import assert_prefixed_report_output_dir  # noqa: E402
 
 DEFAULT_EVIDENCE_ROOT = ROOT / "artifacts/full_evidence_orchestration_20260525"
 OUTPUT_PREFIX = "artifacts/full_evidence_orchestration_20260525/forward_shadow_status_"
+OUTPUT_ARTIFACT_PREFIX = "forward_shadow_status_"
 DEFAULT_PROTECTED_PATHS = (
     ROOT / "greyhound_racing_data.db",
     ROOT / "greyhound_racing_data_writable.db",
@@ -210,6 +212,9 @@ def odds_snapshot_summary(
     odds_next_action = readiness.get("odds_research_next_action")
     if not odds_next_action and skipped_reason == "no_shadow_predictions":
         odds_next_action = "WAIT_FOR_SHADOW_PREDICTIONS"
+    approved_predictions = report.get("approved_odds_augmented_predictions")
+    if not isinstance(approved_predictions, Mapping):
+        approved_predictions = {}
     return {
         "final_status": report.get("final_status") or report.get("status"),
         "collection_attempted": report.get("collection_attempted"),
@@ -244,6 +249,22 @@ def odds_snapshot_summary(
             "DISABLED_REPORT_ONLY_NO_EV_OUTPUT",
         ),
         "odds_used_for_shadow_scoring": bool(readiness.get("odds_used_for_shadow_scoring")),
+        "approved_odds_augmented_candidate_key": approved_predictions.get(
+            "candidate_key"
+        ),
+        "approved_odds_augmented_prediction_status": approved_predictions.get("status"),
+        "approved_odds_augmented_ready_race_count": int(
+            approved_predictions.get("ready_race_count") or 0
+        ),
+        "approved_odds_augmented_blocked_race_count": int(
+            approved_predictions.get("blocked_race_count") or 0
+        ),
+        "approved_odds_augmented_prediction_rows": int(
+            approved_predictions.get("prediction_rows") or 0
+        ),
+        "approved_odds_augmented_prediction_report_path": report.get(
+            "approved_odds_augmented_prediction_report_path"
+        ),
     }
 
 
@@ -533,17 +554,19 @@ def build_status_report(
     }
 
 
-def assert_output_dir_safe(output_dir: Path) -> Path:
-    logical = output_dir if output_dir.is_absolute() else ROOT / output_dir
-    try:
-        relative = logical.absolute().relative_to(ROOT.absolute())
-    except ValueError as exc:
-        raise ValueError("output_dir_must_be_inside_repo") from exc
-    if ".." in relative.parts:
-        raise ValueError("output_dir_must_not_contain_parent_traversal")
-    if not relative.as_posix().startswith(OUTPUT_PREFIX):
-        raise ValueError(f"output_dir_must_be_forward_shadow_status_artifact:{relative}")
-    return logical.absolute()
+def assert_output_dir_safe(
+    output_dir: Path,
+    *,
+    evidence_root: Path | None = None,
+) -> Path:
+    return assert_prefixed_report_output_dir(
+        output_dir,
+        repo_root=ROOT,
+        repo_prefix=OUTPUT_PREFIX,
+        artifact_prefix=OUTPUT_ARTIFACT_PREFIX,
+        prefix_error="output_dir_must_be_forward_shadow_status_artifact",
+        evidence_root=evidence_root,
+    )
 
 
 def build_summary(report: Mapping[str, Any]) -> str:
@@ -598,7 +621,7 @@ def run_status_report(
 ) -> dict[str, Any]:
     generated_at = datetime.now().astimezone()
     output_dir = output_dir or evidence_root / f"forward_shadow_status_{generated_at.strftime('%Y%m%dT%H%M%S%z')}"
-    output_dir = assert_output_dir_safe(output_dir)
+    output_dir = assert_output_dir_safe(output_dir, evidence_root=evidence_root)
     output_dir.mkdir(parents=True, exist_ok=False)
     protected_before = protected_hashes()
     report = build_status_report(

@@ -33,12 +33,18 @@ from utils.runner_completeness import (
 )
 from utils.csv_metadata import (
     build_csv_download_provenance_payload,
+    build_safe_weather_track_metadata_payload,
     build_safe_target_metadata_payload,
     existing_prejump_sidecar_contract_status,
     normalize_verified_thedogs_export_content,
     normalize_target_distance,
     normalize_target_grade,
+    normalize_track_condition_text,
+    normalize_weather_track_text,
 )
+from utils.expert_form_metadata import build_expert_form_metadata_payload
+from utils.prejump_sportsbet import collect_sportsbet_track_metadata
+from utils.prejump_weather import collect_open_meteo_weather_metadata
 
 # Prefer centralized venue normalization if available
 try:
@@ -172,6 +178,96 @@ class UpcomingRaceBrowser:
         raw_path = self._raw_export_path(filename)
         raw_path.write_text(content, encoding="utf-8", newline="")
         return raw_path
+
+    def _detect_non_csv_export_payload(self, content, content_type: str = "") -> str | None:
+        if isinstance(content, bytes):
+            prefix = content[:256].lstrip()
+            text_prefix = prefix.decode("latin-1", errors="ignore")
+        else:
+            text_prefix = str(content or "")[:256].lstrip("\ufeff\x00 \t\r\n")
+        lowered_type = str(content_type or "").lower()
+        if text_prefix.startswith("%PDF-") or "application/pdf" in lowered_type:
+            return "pdf_masquerading_as_csv"
+        return None
+
+    def _try_expert_form_fallback(
+        self,
+        *,
+        race_url: str,
+        filename: str,
+        filepath: str,
+        race_info: dict,
+        existing_quarantine_result=None,
+        fallback_trigger: str | None = None,
+        rejected_export: dict | None = None,
+    ):
+        try:
+            print("   🔁 Fallback: attempting expert-form scraper path")
+            from expert_form_csv_scraper import ExpertFormCsvScraper
+
+            # Normalize first to avoid duplicated expert-form segments.
+            base_race_url, _ef_url = self._normalize_race_url(race_url)
+
+            scraper = ExpertFormCsvScraper(max_workers=1, verbose=False)
+            # Pass the base race URL; scraper will derive the expert-form URL.
+            ef_success = scraper.download_csv_from_expert_form(
+                base_race_url,
+                filename,
+                race_info={**race_info, "url": base_race_url},
+            )
+            if ef_success and os.path.exists(filepath):
+                fallback_contract = self._existing_prejump_sidecar_contract_status(
+                    filepath
+                )
+                if fallback_contract.get("status") != "PASS":
+                    quarantine_result = self._quarantine_existing_csv_and_sidecar(
+                        filepath,
+                        reason="fallback_prejump_sidecar_contract_failed",
+                    )
+                    result = {
+                        "success": False,
+                        "error": (
+                            "Expert-form fallback produced CSV without "
+                            "valid pre-jump sidecar contract"
+                        ),
+                        "existing_prejump_sidecar_contract": fallback_contract,
+                        "quarantine": quarantine_result,
+                        **(
+                            {"existing_quarantine": existing_quarantine_result}
+                            if existing_quarantine_result
+                            else {}
+                        ),
+                    }
+                    if fallback_trigger:
+                        result["fallback_trigger"] = fallback_trigger
+                    if rejected_export:
+                        result["rejected_export"] = rejected_export
+                    return result
+                print(f"   ✅ Fallback saved CSV via expert-form scraper: {filename}")
+                result = {
+                    "success": True,
+                    "filename": filename,
+                    "filepath": filepath,
+                    "runner_completeness": fallback_contract.get(
+                        "runner_completeness"
+                    ),
+                    "existing_prejump_sidecar_contract": fallback_contract,
+                    **(
+                        {"existing_quarantine": existing_quarantine_result}
+                        if existing_quarantine_result
+                        else {}
+                    ),
+                }
+                if fallback_trigger:
+                    result["fallback_trigger"] = fallback_trigger
+                if rejected_export:
+                    result["rejected_export"] = rejected_export
+                return result
+            else:
+                print("   ❌ Expert-form fallback did not produce a CSV; continuing to fail")
+        except Exception as _ef_e:
+            print(f"   ⚠️ Expert-form fallback failed: {_ef_e}")
+        return None
 
     def _normalize_race_url(self, race_url: str):
         """Return a tuple of (base_race_url, expert_form_url) with fragments/queries removed and expert-form deduped.
@@ -1210,6 +1306,276 @@ class UpcomingRaceBrowser:
             if value not in (None, "", "default_missing_target")
         }
 
+    def _extract_safe_weather_track_metadata_from_page(self, soup, race_url):
+        """Extract explicit current-race weather/track metadata from a pre-race page."""
+
+        if soup is None:
+            return {}
+
+        found = {}
+
+        def _candidate_texts(element):
+            candidates = []
+            try:
+                candidates.append(element.get_text(" ", strip=True))
+                sibling = element.find_next_sibling()
+                if sibling is not None:
+                    candidates.append(sibling.get_text(" ", strip=True))
+                parent = element.parent
+                if parent is not None:
+                    candidates.append(parent.get_text(" ", strip=True))
+            except Exception:
+                pass
+            return [text for text in candidates if text]
+
+        def _is_unsafe_metadata_context(element):
+            try:
+                if element.find_parent("table") is not None:
+                    return True
+                for node in [element, *list(element.parents)]:
+                    attrs = " ".join(
+                        [
+                            " ".join(node.get("class", []))
+                            if isinstance(node.get("class"), list)
+                            else str(node.get("class", "")),
+                            str(node.get("id", "")),
+                        ]
+                    ).lower()
+                    if any(
+                        marker in attrs
+                        for marker in (
+                            "result",
+                            "dividend",
+                            "payout",
+                            "runner-form",
+                            "form-guide",
+                            "race-runners",
+                        )
+                    ):
+                        return True
+            except Exception:
+                return True
+            return False
+
+        def _extract_labeled(label_patterns):
+            try:
+                for element in soup.find_all(True):
+                    if _is_unsafe_metadata_context(element):
+                        continue
+                    text = element.get_text(" ", strip=True)
+                    if not text:
+                        continue
+                    has_child_elements = element.find(True) is not None
+                    for label_pattern in label_patterns:
+                        if not has_child_elements:
+                            direct = re.search(
+                                rf"\b{label_pattern}\b\s*[:\-]?\s+([A-Za-z ]{{1,40}})",
+                                text,
+                                re.I,
+                            )
+                            if direct:
+                                value = normalize_track_condition_text(direct.group(1))
+                                if value:
+                                    return value
+                        if re.fullmatch(rf"\s*{label_pattern}\s*", text, re.I):
+                            for candidate in _candidate_texts(element):
+                                if candidate == text:
+                                    continue
+                                value = normalize_track_condition_text(candidate)
+                                if value:
+                                    return value
+            except Exception:
+                return None
+            return None
+
+        track_condition = _extract_labeled(
+            (r"Track\s+Condition", r"Track")
+        )
+        weather = _extract_labeled((r"Weather\s+Condition", r"Weather"))
+        if track_condition:
+            found["track_condition"] = track_condition
+        if weather:
+            found["weather_condition"] = weather
+
+        metadata = build_safe_weather_track_metadata_payload(
+            found,
+            source_url=race_url,
+        )
+        if metadata.get("weather_track_metadata_is_leakage_safe") is not True:
+            return {}
+        return {
+            key: value
+            for key, value in metadata.items()
+            if key != "rejected_weather_track_metadata_sources"
+            and value not in (None, "")
+        }
+
+    def _collect_safe_weather_metadata_from_forecast(self, race_info):
+        """Collect source-backed weather metadata without inventing track condition."""
+
+        if race_info.get("weather") or race_info.get("weather_condition"):
+            return {}
+        metadata = collect_open_meteo_weather_metadata(race_info, session=self.session)
+        if metadata.get("weather_track_metadata_is_leakage_safe") is True:
+            return {
+                key: value
+                for key, value in metadata.items()
+                if value not in (None, "", [])
+            }
+        rejected = metadata.get("rejected_weather_track_metadata_sources")
+        if rejected:
+            return {"rejected_weather_track_metadata_sources": list(rejected)}
+        return {}
+
+    def _collect_safe_track_metadata_from_sportsbet(self, race_info):
+        """Collect source-backed Sportsbet track metadata without inventing weather."""
+
+        if race_info.get("track_condition"):
+            return {}
+        metadata = collect_sportsbet_track_metadata(race_info, session=self.session)
+        if metadata.get("weather_track_metadata_is_leakage_safe") is True:
+            return {
+                key: value
+                for key, value in metadata.items()
+                if value not in (None, "", [])
+            }
+        rejected = metadata.get("rejected_weather_track_metadata_sources")
+        if rejected:
+            return {"rejected_weather_track_metadata_sources": list(rejected)}
+        return {}
+
+    def _merge_safe_weather_track_metadata(self, race_info, metadata):
+        """Merge partial safe weather/track metadata while preserving source URLs."""
+
+        if not metadata:
+            return
+        rejected = metadata.get("rejected_weather_track_metadata_sources")
+        if rejected:
+            current = list(race_info.get("rejected_weather_track_metadata_sources") or [])
+            race_info["rejected_weather_track_metadata_sources"] = sorted(
+                set([*current, *list(rejected)])
+            )
+        if metadata.get("weather_track_metadata_is_leakage_safe") is not True:
+            return
+
+        for key in ("track_condition", "weather", "weather_condition"):
+            if metadata.get(key) not in (None, "") and race_info.get(key) in (None, ""):
+                race_info[key] = metadata[key]
+
+        existing_source = race_info.get("weather_track_metadata_source")
+        incoming_source = metadata.get("weather_track_metadata_source")
+        if not incoming_source:
+            return
+
+        def _parts(value):
+            return [
+                part.strip()
+                for part in re.split(r"\s*\+\s*|\s*,\s*", str(value or ""))
+                if part.strip()
+            ]
+
+        sources = []
+        for part in [*_parts(existing_source), *_parts(incoming_source)]:
+            if part not in sources:
+                sources.append(part)
+        race_info["weather_track_metadata_source"] = "+".join(sources)
+        race_info["weather_track_metadata_is_leakage_safe"] = True
+
+        existing_url = race_info.get("weather_track_metadata_source_url")
+        incoming_url = metadata.get("weather_track_metadata_source_url")
+        if len(sources) == 1:
+            race_info["weather_track_metadata_source_url"] = incoming_url or existing_url
+        else:
+            url_map = {}
+            if isinstance(existing_url, dict):
+                url_map.update(existing_url)
+            elif existing_url and existing_source:
+                for part in _parts(existing_source):
+                    url_map[part] = existing_url
+            if isinstance(incoming_url, dict):
+                url_map.update(incoming_url)
+            elif incoming_url and incoming_source:
+                for part in _parts(incoming_source):
+                    url_map[part] = incoming_url
+            race_info["weather_track_metadata_source_url"] = {
+                part: url_map[part] for part in sources if url_map.get(part)
+            }
+
+        existing_detail = race_info.get("weather_track_metadata_detail")
+        incoming_detail = metadata.get("weather_track_metadata_detail")
+        if incoming_detail not in (None, ""):
+            detail = {}
+            if isinstance(existing_detail, dict):
+                if len(sources) > 1 and existing_source and not any(
+                    part in existing_detail for part in _parts(existing_source)
+                ):
+                    for part in _parts(existing_source):
+                        detail[part] = dict(existing_detail)
+                else:
+                    detail.update(existing_detail)
+            if len(sources) == 1:
+                detail.update(incoming_detail if isinstance(incoming_detail, dict) else {})
+            elif isinstance(incoming_detail, dict):
+                detail[str(incoming_source)] = incoming_detail
+            race_info["weather_track_metadata_detail"] = detail
+
+    def _collect_expert_form_metadata(self, race_url, race_info):
+        """Collect structured Expert Form page metadata for the CSV sidecar."""
+
+        base_race_url, expert_form_url = self._normalize_race_url(race_url)
+        response = None
+        try:
+            response = self.session.get(
+                expert_form_url,
+                timeout=15,
+                headers={
+                    "Referer": base_race_url,
+                    "Origin": self.base_url,
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Upgrade-Insecure-Requests": "1",
+                    "Sec-Fetch-Site": "same-origin",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-Dest": "document",
+                    "DNT": "1",
+                },
+            )
+            if response.status_code != 200:
+                return {
+                    "schema_version": "thedogs_expert_form_metadata_v1",
+                    "source": "thedogs_expert_form_page",
+                    "source_url": expert_form_url,
+                    "metadata_is_leakage_safe": False,
+                    "runner_count": 0,
+                    "runners": [],
+                    "rejected_reasons": [
+                        f"expert_form_source_fetch_failed:{response.status_code}"
+                    ],
+                }
+            return build_expert_form_metadata_payload(
+                response.text,
+                race_info=race_info,
+                source_url=expert_form_url,
+            )
+        except Exception as exc:
+            return {
+                "schema_version": "thedogs_expert_form_metadata_v1",
+                "source": "thedogs_expert_form_page",
+                "source_url": expert_form_url,
+                "metadata_is_leakage_safe": False,
+                "runner_count": 0,
+                "runners": [],
+                "rejected_reasons": [
+                    f"expert_form_source_fetch_failed:{type(exc).__name__}"
+                ],
+            }
+        finally:
+            if response is not None:
+                try:
+                    response.close()
+                except Exception:
+                    pass
+
     def download_race_csv(self, race_url):
         """Download CSV form guide for a specific race"""
         try:
@@ -1249,6 +1615,9 @@ class UpcomingRaceBrowser:
             race_info.update(
                 self._extract_safe_target_metadata_from_page(soup, race_url)
             )
+            race_info.update(
+                self._extract_safe_weather_track_metadata_from_page(soup, race_url)
+            )
             if not race_info.get("race_time"):
                 exact_race_time = self._extract_formatted_race_time(soup)
                 if exact_race_time:
@@ -1258,6 +1627,20 @@ class UpcomingRaceBrowser:
                 else:
                     race_info["race_time_source"] = "canonical_race_url"
                     race_info["race_time_mapping_status"] = "missing_race_time"
+            self._merge_safe_weather_track_metadata(
+                race_info,
+                self._collect_safe_track_metadata_from_sportsbet(
+                    {**race_info, "url": race_url}
+                ),
+            )
+            self._merge_safe_weather_track_metadata(
+                race_info,
+                self._collect_safe_weather_metadata_from_forecast(race_info)
+            )
+            race_info["expert_form_metadata"] = self._collect_expert_form_metadata(
+                race_url,
+                {**race_info, "url": race_url},
+            )
 
             # Generate filename
             filename = f"Race {race_info['race_number']} - {race_info['venue']} - {race_info['date']}.csv"
@@ -1291,68 +1674,16 @@ class UpcomingRaceBrowser:
             csv_info = self.find_csv_download_link(soup, race_url)
 
             if not csv_info:
-                # Fallback: try the dedicated expert-form scraper which knows how to submit
-                # the export form and save the CSV directly to UPCOMING_RACES_DIR.
-                try:
-                    print("   🔁 Fallback: attempting expert-form scraper path")
-                    from expert_form_csv_scraper import ExpertFormCsvScraper
-
-                    # Normalize first to avoid duplicated expert-form segments
-                    base_race_url, _ef_url = self._normalize_race_url(race_url)
-
-                    scraper = ExpertFormCsvScraper(max_workers=1, verbose=False)
-                    # Pass the base race URL; scraper will derive the expert-form URL
-                    ef_success = scraper.download_csv_from_expert_form(
-                        base_race_url,
-                        filename,
-                        race_info={**race_info, "url": base_race_url},
-                    )
-                    if ef_success and os.path.exists(filepath):
-                        fallback_contract = self._existing_prejump_sidecar_contract_status(
-                            filepath
-                        )
-                        if fallback_contract.get("status") != "PASS":
-                            quarantine_result = self._quarantine_existing_csv_and_sidecar(
-                                filepath,
-                                reason="fallback_prejump_sidecar_contract_failed",
-                            )
-                            return {
-                                "success": False,
-                                "error": (
-                                    "Expert-form fallback produced CSV without "
-                                    "valid pre-jump sidecar contract"
-                                ),
-                                "existing_prejump_sidecar_contract": fallback_contract,
-                                "quarantine": quarantine_result,
-                                **(
-                                    {"existing_quarantine": existing_quarantine_result}
-                                    if existing_quarantine_result
-                                    else {}
-                                ),
-                            }
-                        print(
-                            f"   ✅ Fallback saved CSV via expert-form scraper: {filename}"
-                        )
-                        return {
-                            "success": True,
-                            "filename": filename,
-                            "filepath": filepath,
-                            "runner_completeness": fallback_contract.get(
-                                "runner_completeness"
-                            ),
-                            "existing_prejump_sidecar_contract": fallback_contract,
-                            **(
-                                {"existing_quarantine": existing_quarantine_result}
-                                if existing_quarantine_result
-                                else {}
-                            ),
-                        }
-                    else:
-                        print(
-                            "   ❌ Expert-form fallback did not produce a CSV; continuing to fail"
-                        )
-                except Exception as _ef_e:
-                    print(f"   ⚠️ Expert-form fallback failed: {_ef_e}")
+                fallback = self._try_expert_form_fallback(
+                    race_url=race_url,
+                    filename=filename,
+                    filepath=filepath,
+                    race_info=race_info,
+                    existing_quarantine_result=existing_quarantine_result,
+                    fallback_trigger="no_csv_download_link",
+                )
+                if fallback is not None:
+                    return fallback
 
                 result = {"success": False, "error": "No CSV download link found"}
                 if existing_quarantine_result:
@@ -1362,6 +1693,7 @@ class UpcomingRaceBrowser:
             # Download CSV content
             content = None
             csv_response = None
+            csv_content_type = ""
             try:
                 if isinstance(csv_info, dict) and csv_info.get("type") == "direct_csv":
                     # We already have the CSV data
@@ -1399,6 +1731,7 @@ class UpcomingRaceBrowser:
                         }
                     
                     if csv_response:
+                        csv_content_type = csv_response.headers.get("content-type", "")
                         content = csv_response.text
                     else:
                         return {"success": False, "error": "No CSV content received"}
@@ -1416,6 +1749,41 @@ class UpcomingRaceBrowser:
                 return {"success": False, "error": "CSV has insufficient data"}
 
             raw_export_path = self._write_raw_export(filename, content)
+            non_csv_reason = self._detect_non_csv_export_payload(
+                content,
+                csv_content_type,
+            )
+            if non_csv_reason:
+                quarantine_path = quarantine_csv_content(
+                    content,
+                    self.upcoming_dir,
+                    filename,
+                    reason=non_csv_reason,
+                )
+                rejected_export = {
+                    "reason": non_csv_reason,
+                    "raw_export_path": str(raw_export_path),
+                    "quarantine_path": str(quarantine_path),
+                    "content_type": csv_content_type,
+                }
+                fallback = self._try_expert_form_fallback(
+                    race_url=race_url,
+                    filename=filename,
+                    filepath=filepath,
+                    race_info=race_info,
+                    existing_quarantine_result=existing_quarantine_result,
+                    fallback_trigger=non_csv_reason,
+                    rejected_export=rejected_export,
+                )
+                if fallback is not None:
+                    return fallback
+                return {
+                    "success": False,
+                    "error": "Downloaded export was PDF, not CSV",
+                    "raw_export_path": str(raw_export_path),
+                    "quarantine_path": str(quarantine_path),
+                    "rejected_export": rejected_export,
+                }
 
             # Check for expected headers
             first_line = lines[0].lower()

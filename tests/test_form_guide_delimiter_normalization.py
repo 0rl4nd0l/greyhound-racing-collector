@@ -10,6 +10,7 @@ from utils.csv_metadata import (
     THEDOGS_EXPERT_FORM_COLUMNS,
     build_csv_download_provenance_payload,
     build_safe_target_metadata_payload,
+    load_safe_weather_track_metadata,
     normalize_verified_thedogs_export_content,
     verify_canonical_sidecar_target_metadata,
 )
@@ -394,6 +395,117 @@ def test_safe_target_metadata_payload_requires_prejump_thedogs_source_and_comple
     )
 
     assert payload["metadata_is_leakage_safe"] is expected_safe
+
+
+def test_provenance_payload_writes_only_safe_weather_track_metadata(tmp_path):
+    accepted = tmp_path / "Race 1 - TEST - 2026-05-29.csv"
+    race_info = {
+        "date": "2026-05-29",
+        "venue": "TEST",
+        "race_number": 1,
+        "race_time": "11:15 AM",
+        "url": SYNTHETIC_RACE_URL,
+        "target_distance": "400m",
+        "target_distance_source": "canonical_pre_race_page",
+        "target_grade": "Maiden",
+        "target_grade_source": "canonical_pre_race_page",
+        "track_condition": "Soft",
+        "weather_condition": "Overcast",
+    }
+
+    payload = build_csv_download_provenance_payload(
+        filepath=accepted,
+        race_url=SYNTHETIC_RACE_URL,
+        csv_info={"type": "GET", "url": f"{SYNTHETIC_RACE_URL}/export-expert-form"},
+        content="Dog Name|BOX\n1. Alpha Runner|1\n",
+        completeness={"participants": [{"box_number": 1, "dog_name": "Alpha Runner"}]},
+        race_info=race_info,
+        allow_generic_fields=False,
+    )
+
+    assert payload["track_condition"] == "Soft"
+    assert payload["weather"] == "Overcast"
+    assert payload["weather_condition"] == "Overcast"
+    assert payload["weather_track_metadata_source"] == "canonical_pre_race_page"
+    assert payload["weather_track_metadata_is_leakage_safe"] is True
+    assert payload["race_info"]["track_condition"] == "Soft"
+    assert payload["race_info"]["weather_condition"] == "Overcast"
+
+    unsafe_payload = build_csv_download_provenance_payload(
+        filepath=accepted,
+        race_url="https://www.thedogs.com.au/racing/test/2026-05-29/1/results",
+        csv_info={"type": "GET", "url": f"{SYNTHETIC_RACE_URL}/export-expert-form"},
+        content="Dog Name|BOX\n1. Alpha Runner|1\n",
+        completeness={"participants": [{"box_number": 1, "dog_name": "Alpha Runner"}]},
+        race_info={**race_info, "track_condition": "0.0", "weather_condition": "20.0"},
+        allow_generic_fields=False,
+    )
+
+    assert unsafe_payload["track_condition"] is None
+    assert unsafe_payload["weather"] is None
+    assert unsafe_payload["weather_track_metadata_is_leakage_safe"] is False
+    assert "source_url_looks_post_result" in unsafe_payload[
+        "rejected_weather_track_metadata_sources"
+    ]
+
+
+def test_provenance_payload_accepts_combined_sportsbet_track_and_forecast_weather(tmp_path):
+    accepted = tmp_path / "Race 9 - SAL - 2099-06-17.csv"
+    race_url = "https://www.thedogs.com.au/racing/sale/2099-06-17/9/test?trial=false"
+    sportsbet_url = (
+        "https://www.sportsbet.com.au/apigw/sportsbook-racing/"
+        "Sportsbook/Racing/NextEvents?racingFilters=GH_DOMESTIC"
+    )
+    weather_url = "https://api.open-meteo.com/v1/forecast?latitude=-38.10&longitude=147.07"
+    race_info = {
+        "date": "2099-06-17",
+        "venue": "SAL",
+        "race_number": 9,
+        "race_time": "1:57 PM",
+        "url": race_url,
+        "target_distance": "435m",
+        "target_distance_source": "canonical_pre_race_page",
+        "target_grade": "Grade 5",
+        "target_grade_source": "canonical_pre_race_page",
+        "track_condition": "Good",
+        "weather_condition": "Overcast",
+        "weather_track_metadata_source": (
+            "sportsbet_pre_race_page+open_meteo_forecast_api"
+        ),
+        "weather_track_metadata_source_url": {
+            "sportsbet_pre_race_page": sportsbet_url,
+            "open_meteo_forecast_api": weather_url,
+        },
+        "weather_track_metadata_is_leakage_safe": True,
+    }
+
+    payload = build_csv_download_provenance_payload(
+        filepath=accepted,
+        race_url=race_url,
+        csv_info={"type": "GET", "url": f"{race_url}/export-expert-form"},
+        content="Dog Name|BOX\n1. Alpha Runner|1\n",
+        completeness={"participants": [{"box_number": 1, "dog_name": "Alpha Runner"}]},
+        race_info=race_info,
+        allow_generic_fields=False,
+    )
+
+    accepted.write_text("Dog Name|BOX\n1. Alpha Runner|1\n", encoding="utf-8")
+    accepted.with_name(accepted.name + ".metadata.json").write_text(
+        json.dumps(payload),
+        encoding="utf-8",
+    )
+    safe = load_safe_weather_track_metadata(accepted)
+
+    assert payload["weather_track_metadata_is_leakage_safe"] is True
+    assert payload["weather_track_metadata_source"] == (
+        "sportsbet_pre_race_page+open_meteo_forecast_api"
+    )
+    assert safe["track_condition"] == "Good"
+    assert safe["weather"] == "Overcast"
+    assert safe["weather_track_metadata_source_url"] == {
+        "sportsbet_pre_race_page": sportsbet_url,
+        "open_meteo_forecast_api": weather_url,
+    }
 
 
 def test_prejump_shadow_metadata_fails_closed_for_unsafe_canonical_runner_url(tmp_path):

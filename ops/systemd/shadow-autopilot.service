@@ -5,11 +5,11 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-WorkingDirectory=/home/l4nd0/greyhound_racing_collector
+WorkingDirectory=/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-runtime-master-live-20260621
 Environment=PYTHONUNBUFFERED=1
 Environment=GREYHOUND_ALLOW_TGR=0
 Environment=PATH=/home/l4nd0/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-ExecStart=/usr/bin/python3 /home/l4nd0/greyhound_racing_collector/scripts/shadow_autopilot_daemon.py run-once --days-ahead 1 --refresh-limit 16 --rejoin-pending-limit 8 --timeout-seconds 840
-TimeoutStartSec=900
+ExecStart=/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/.venv/bin/python /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-runtime-master-live-20260621/scripts/shadow_autopilot_daemon.py run-once --evidence-root /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525 --days-ahead 1 --refresh-limit 16 --db /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/greyhound_racing_data.db --shadow-model /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-high-accuracy-refinement-v1-20260610/artifacts/full_evidence_orchestration_20260525/shadow_evaluation_high_accuracy_stage2_20260610T_live_evidence/shadow_randomforest_model.joblib --lock-path /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/artifacts/full_evidence_orchestration_20260525/shadow_autopilot_daemon_runtime/shadow_autopilot.lock --state-path /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/shadow_autopilot_daemon_runtime/state.json --odds-capture-state-path /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/shadow_autopilot_daemon_runtime/odds_capture_state.json --enable-autonomous-odds-capture --execute-autonomous-odds-capture --allow-auto-scrape-odds --enable-autonomous-result-capture --require-safe-refresh-metadata --rejoin-pending-limit 8 --timeout-seconds 840
+TimeoutStartSec=3360
 Nice=10
 IOSchedulingClass=best-effort

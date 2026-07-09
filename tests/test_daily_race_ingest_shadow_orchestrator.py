@@ -771,6 +771,112 @@ def test_common_reports_write_waiting_same_distance_history_provenance(tmp_path)
     assert report["by_feature"]["same_distance_same_grade_best_time"]["status"] == "NOT_POPULATED"
 
 
+def test_waiting_matrix_reports_mark_data_missing_without_raising(tmp_path):
+    output_dir = tmp_path / "daily"
+    output_dir.mkdir()
+
+    orchestrator.write_matrix_reports_for_waiting(
+        output_dir=output_dir,
+        clean_dataset=tmp_path / "missing_clean.jsonl",
+        repaired_packet=tmp_path / "missing_repaired.csv",
+        schema_path=tmp_path / "missing_schema.json",
+        db_path=tmp_path / "missing.db",
+        all_missing_train_policy="quarantine_feature",
+    )
+
+    for name in (
+        "feature_population_report.json",
+        "shadow_feature_matrix_audit.json",
+        "train_eval_feature_parity_report.json",
+        "inactive_feature_policy_report.json",
+    ):
+        report = json.loads((output_dir / name).read_text(encoding="utf-8"))
+        assert report["status"] == "DATA_MISSING"
+        assert report["reason"] == "waiting_feature_matrix_inputs_missing"
+        assert report["live_input_status"] == "NO_ELIGIBLE_PREJUMP_RACES"
+        assert report["shadow_scoring_allowed"] is False
+        assert {row["name"] for row in report["missing_inputs"]} == {
+            "clean_dataset",
+            "repaired_packet",
+            "schema",
+            "db",
+        }
+
+
+def test_main_waits_when_no_eligible_inputs_and_matrix_inputs_missing(
+    tmp_path,
+    monkeypatch,
+):
+    repo_root = tmp_path / "repo"
+    input_dir = tmp_path / "empty_refreshed_upcoming"
+    output_dir = (
+        repo_root
+        / "artifacts/full_evidence_orchestration_20260525"
+        / "daily_race_ingest_shadow_empty_input"
+    )
+    input_dir.mkdir(parents=True)
+
+    monkeypatch.setattr(orchestrator, "ROOT", repo_root)
+    monkeypatch.setattr(
+        orchestrator,
+        "verify_db_state",
+        lambda _db: {
+            "status": "PASS",
+            "quick_check": "ok",
+            "official_races": 214,
+            "official_dog_rows": 1493,
+        },
+    )
+    monkeypatch.setattr(orchestrator, "protected_path_snapshot", lambda: {})
+    monkeypatch.setattr(
+        orchestrator,
+        "protected_path_verification",
+        lambda _before: {"protected_paths_unchanged": True},
+    )
+    monkeypatch.setattr(
+        orchestrator,
+        "output_file_manifest",
+        lambda output_path: {
+            "schema_version": "test_manifest_v1",
+            "output_dir": str(output_path),
+            "artifact_files": {},
+        },
+    )
+
+    status = orchestrator.main(
+        [
+            "--input-dir",
+            str(input_dir),
+            "--output-dir",
+            str(output_dir),
+            "--current-time",
+            "2026-06-20T13:47:11+10:00",
+            "--db",
+            str(tmp_path / "missing.db"),
+            "--clean-dataset",
+            str(tmp_path / "missing_clean.jsonl"),
+            "--repaired-packet",
+            str(tmp_path / "missing_repaired.csv"),
+            "--schema",
+            str(tmp_path / "missing_schema.json"),
+        ]
+    )
+
+    assert status == 0
+    assert (output_dir / "final_status.txt").read_text(encoding="utf-8").strip() == (
+        orchestrator.FINAL_STATUS_WAITING
+    )
+    assert not (output_dir / "daily_shadow_runtime_error.json").exists()
+    manifest = json.loads((output_dir / "shadow_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["final_status"] == orchestrator.FINAL_STATUS_WAITING
+    assert manifest["input_summary"]["eligible_count"] == 0
+    assert manifest["prediction_rows"] == 0
+    matrix_status = json.loads(
+        (output_dir / "shadow_feature_matrix_audit.json").read_text(encoding="utf-8")
+    )
+    assert matrix_status["status"] == "DATA_MISSING"
+
+
 def test_common_reports_copy_score_live_same_distance_history_provenance(tmp_path):
     output_dir = tmp_path / "daily"
     score_output_dir = tmp_path / "score"
@@ -900,6 +1006,28 @@ def test_score_live_command_reuses_shadow_model_without_training(tmp_path):
     assert "--train-if-missing" not in command
 
 
+def test_score_live_command_passes_retained_evidence_root(tmp_path):
+    evidence_root = (
+        tmp_path.parent
+        / f"{tmp_path.name}_retained"
+        / "artifacts/full_evidence_orchestration_20260525"
+    )
+
+    command = build_score_live_command(
+        input_dir=evidence_root / "daily_race_ingest_shadow_x" / "eligible_inputs",
+        output_dir=evidence_root / "daily_race_ingest_shadow_x" / "shadow_score_live",
+        db_path=Path("greyhound_racing_data.db"),
+        schema_path=Path("schema.json"),
+        clean_dataset=Path("clean.jsonl"),
+        repaired_packet=Path("packet.csv"),
+        all_missing_train_policy="quarantine_feature",
+        evidence_root=evidence_root,
+    )
+
+    assert "--evidence-root" in command
+    assert command[command.index("--evidence-root") + 1] == str(evidence_root)
+
+
 def test_score_live_command_auto_falls_back_to_uv_when_current_python_lacks_ml_deps(
     tmp_path,
     monkeypatch,
@@ -923,6 +1051,7 @@ def test_score_live_command_auto_falls_back_to_uv_when_current_python_lacks_ml_d
     assert "scikit-learn" not in command
     assert f"scikit-learn=={orchestrator.SHADOW_MODEL_SKLEARN_VERSION}" in command
     assert "numpy" in command
+    assert "requests" in command
     assert "python" in command
     assert command[command.index("python") + 1].endswith(
         "scripts/run_shadow_non_tgr_rf_evaluation.py"
@@ -943,7 +1072,9 @@ def test_score_live_subprocess_env_removes_repo_root_pythonpath():
 
 def test_daily_manifest_records_generated_and_score_live_timing(tmp_path):
     score_dir = tmp_path / "shadow_score_live"
+    output_dir = tmp_path / "daily_shadow"
     score_dir.mkdir()
+    output_dir.mkdir()
     (score_dir / "shadow_manifest.json").write_text(
         json.dumps(
             {
@@ -951,13 +1082,29 @@ def test_daily_manifest_records_generated_and_score_live_timing(tmp_path):
                 "generated_at": "2026-06-09T00:10:00+10:00",
                 "prediction_timestamp": "2026-06-09T00:10:00+10:00",
                 "feature_freeze_timestamp": "2026-06-09T00:05:00+10:00",
+                "stage2_forward_shadow_status": "STAGE2_FORWARD_SHADOW_COLLECTING",
             }
         ),
         encoding="utf-8",
     )
+    (score_dir / "shadow_feature_rows.json").write_text(
+        json.dumps(
+            [
+                {
+                    "race_id": "Race 1 - TEST - 2026-06-09",
+                    "source_csv": "upcoming/Race 1 - TEST - 2026-06-09.csv",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (output_dir / "stage2_shadow_predictions.jsonl").write_text(
+        json.dumps({"race_id": "Race 1 - TEST - 2026-06-09", "box": 1}) + "\n",
+        encoding="utf-8",
+    )
 
     orchestrator.write_manifest(
-        output_dir=tmp_path / "daily_shadow",
+        output_dir=output_dir,
         generated_at=datetime.fromisoformat("2026-06-09T00:12:00+10:00"),
         mode="full-dry-run",
         db_report={
@@ -982,6 +1129,15 @@ def test_daily_manifest_records_generated_and_score_live_timing(tmp_path):
     assert manifest["score_live_manifest"]["feature_freeze_timestamp"] == (
         "2026-06-09T00:05:00+10:00"
     )
+    assert manifest["stage2_shadow_predictions_jsonl"].endswith(
+        "daily_shadow/stage2_shadow_predictions.jsonl"
+    )
+    assert manifest["stage2_prediction_rows"] == 1
+    assert manifest["stage2_forward_shadow_status"] == "STAGE2_FORWARD_SHADOW_COLLECTING"
+    assert manifest["shadow_feature_rows_json"].endswith(
+        "daily_shadow/shadow_feature_rows.json"
+    )
+    assert (output_dir / "shadow_feature_rows.json").exists()
 
 
 def test_staging_uses_explicit_source_path_and_copies_sidecar(tmp_path):
@@ -1020,6 +1176,22 @@ def test_daily_output_guard_accepts_only_shadow_artifact_prefix():
     assert assert_daily_output_dir_safe(output_dir).name == (
         "daily_race_ingest_shadow_20260607T220000+1000"
     )
+
+
+def test_daily_output_guard_accepts_configured_external_output_parent(tmp_path):
+    evidence_root = tmp_path / "runtime_artifacts" / "full_evidence_orchestration_20260525"
+    output_dir = evidence_root / "daily_race_ingest_shadow_external"
+
+    assert (
+        assert_daily_output_dir_safe(output_dir, output_parent=evidence_root)
+        == output_dir.absolute()
+    )
+
+    with pytest.raises(ValueError, match="output_dir_must_be_daily_shadow_artifact"):
+        assert_daily_output_dir_safe(
+            evidence_root / "not_a_daily_shadow_artifact",
+            output_parent=evidence_root,
+        )
 
 
 def test_daily_output_guard_rejects_production_paths():

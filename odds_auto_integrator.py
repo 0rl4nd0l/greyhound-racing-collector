@@ -442,9 +442,9 @@ def fetch_odds_for_target_race(
         "race_id": None,
         "alias_race_id": None,
         "opt_in_source": opt_in_source,
-        "discovery_method": None,
-        "race_info": None,
+        "write_performed": False,
         "odds_data": [],
+        "race_info": None,
     }
     if not allowed:
         summary["warnings"].append(f"auto odds scraping disabled; {opt_in_source}")
@@ -512,18 +512,13 @@ def fetch_odds_for_target_race(
             enhanced.get("venue"), enhanced.get("race_date"), enhanced.get("race_number")
         ) or enhanced.get("race_id")
         alias = _alias_race_id(int(race_number), venue, target_date)
-        odds_data = list(enhanced.get("odds_data") or [])
-        summary.update(
-            {
-                "success": bool(odds_data),
-                "race_id": source_race_id,
-                "alias_race_id": alias,
-                "win_count": len(odds_data),
-                "place_count": len(enhanced.get("odds_data_place") or []),
-                "race_info": enhanced,
-                "odds_data": odds_data,
-            }
-        )
+        summary["race_id"] = source_race_id
+        summary["alias_race_id"] = alias
+        summary["win_count"] = len(enhanced.get("odds_data") or [])
+        summary["place_count"] = len(enhanced.get("odds_data_place") or [])
+        summary["race_info"] = dict(enhanced)
+        summary["odds_data"] = list(enhanced.get("odds_data") or [])
+        summary["success"] = summary["win_count"] > 0
         if not summary["success"]:
             summary["warnings"].append("race found but no win odds extracted")
         return summary

@@ -1,0 +1,5 @@
+feature,feature_rows,raw_present_rows,raw_present_pct,accepted_source_backed_rows,accepted_source_backed_pct,accepted_source_backed_races,unique_accepted_values,default_dominance_pct,status,train_rows,train_accepted_rows,train_accepted_pct,holdout_rows,holdout_accepted_rows,holdout_accepted_pct,unknown_rows,unknown_accepted_rows,unknown_accepted_pct
+weather,53415,7757,0.14522137976223906,7757,0.14522137976223906,,5,0.27562201882170945,ACCEPTED_COVERAGE,0,0,,0,0,,53415,7757,0.14522137976223906
+track_condition,53415,5795,0.10849012449686418,5795,0.10849012449686418,,1,1.0,ACCEPTED_COVERAGE,0,0,,0,0,,53415,5795,0.10849012449686418
+weather_track_both,53415,5795,0.10849012449686418,5795,0.10849012449686418,104,,,ACCEPTED_COVERAGE,,,,,,,,,
+weather_track_any,53415,7757,0.14522137976223906,7757,0.14522137976223906,136,,,ACCEPTED_COVERAGE,,,,,,,,,

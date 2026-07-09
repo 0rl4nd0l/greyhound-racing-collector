@@ -1,0 +1,55 @@
+{
+  "by_feature": {
+    "same_distance_same_grade_avg_time": {
+      "fail_reasons": [],
+      "history_cutoff": "strictly_before_target_race",
+      "history_cutoff_bases": [
+        "race_date_less_than_target_race_date"
+      ],
+      "history_cutoff_basis": "race_date_less_than_target_race_date",
+      "history_cutoffs": [
+        "strictly_before_target_race"
+      ],
+      "post_outcome_fields_used": [],
+      "post_outcome_rows_used": 0,
+      "present_rows": 1,
+      "prior_history_rows_used": 1,
+      "source": "prior_dog_history",
+      "sources": [
+        "prior_dog_history"
+      ],
+      "status": "PASS",
+      "target_race_rows_used": 0
+    },
+    "same_distance_same_grade_best_time": {
+      "fail_reasons": [],
+      "history_cutoff": "strictly_before_target_race",
+      "history_cutoff_bases": [
+        "race_date_less_than_target_race_date"
+      ],
+      "history_cutoff_basis": "race_date_less_than_target_race_date",
+      "history_cutoffs": [
+        "strictly_before_target_race"
+      ],
+      "post_outcome_fields_used": [],
+      "post_outcome_rows_used": 0,
+      "present_rows": 1,
+      "prior_history_rows_used": 1,
+      "source": "prior_dog_history",
+      "sources": [
+        "prior_dog_history"
+      ],
+      "status": "PASS",
+      "target_race_rows_used": 0
+    }
+  },
+  "cutoff_basis": "race_date_less_than_target_race_date",
+  "fail_reasons": [],
+  "feature_rows": 113,
+  "post_outcome_rows_allowed": 0,
+  "required_history_cutoff": "strictly_before_target_race",
+  "required_source": "prior_dog_history",
+  "schema_version": "same_distance_same_grade_history_provenance_v1",
+  "status": "PASS",
+  "target_race_rows_allowed": 0
+}

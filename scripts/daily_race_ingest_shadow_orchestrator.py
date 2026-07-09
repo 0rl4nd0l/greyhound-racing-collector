@@ -71,8 +71,14 @@ DEFAULT_SCORE_COMMAND_MODE = "auto"
 # The locked shadow RandomForest artifact was pickled with sklearn 1.7.2.
 # Floating scikit-learn breaks live scoring when uv resolves a newer version.
 SHADOW_MODEL_SKLEARN_VERSION = "1.7.2"
-UV_SCORE_LIVE_PACKAGES = ("joblib", f"scikit-learn=={SHADOW_MODEL_SKLEARN_VERSION}", "numpy")
+UV_SCORE_LIVE_PACKAGES = (
+    "joblib",
+    f"scikit-learn=={SHADOW_MODEL_SKLEARN_VERSION}",
+    "numpy",
+    "requests",
+)
 DAILY_OUTPUT_PREFIX = "artifacts/full_evidence_orchestration_20260525/daily_race_ingest_shadow_"
+DAILY_OUTPUT_ARTIFACT_PREFIX = "daily_race_ingest_shadow_"
 EXPECTED_OFFICIAL_RACES = 214
 EXPECTED_OFFICIAL_DOG_ROWS = 1493
 FINAL_STATUS_FORWARD_COMPLETE = "FORWARD_SHADOW_RUN_COMPLETE"
@@ -127,18 +133,45 @@ def parse_current_time(value: str | None) -> datetime:
     return parsed
 
 
-def assert_daily_output_dir_safe(output_dir: Path) -> Path:
+def assert_daily_output_dir_safe(
+    output_dir: Path,
+    *,
+    output_parent: Path | None = None,
+) -> Path:
     logical = output_dir if output_dir.is_absolute() else ROOT / output_dir
+    candidate = logical.absolute()
     try:
-        relative_path = logical.absolute().relative_to(ROOT.absolute())
+        relative_path = candidate.relative_to(ROOT.absolute())
     except ValueError as exc:
-        raise ValueError("output_dir_must_be_inside_repo") from exc
+        if output_parent is None:
+            raise ValueError("output_dir_must_be_inside_repo") from exc
+    else:
+        if ".." in relative_path.parts:
+            raise ValueError("output_dir_must_not_contain_parent_traversal")
+        relative = relative_path.as_posix()
+        if relative.startswith(DAILY_OUTPUT_PREFIX):
+            return candidate
+        raise ValueError(f"output_dir_must_be_daily_shadow_artifact:{relative}")
+
+    parent = output_parent if output_parent.is_absolute() else ROOT / output_parent
+    try:
+        relative_path = candidate.relative_to(parent.absolute())
+    except ValueError as exc:
+        raise ValueError("output_dir_must_be_inside_repo_or_output_parent") from exc
     if ".." in relative_path.parts:
         raise ValueError("output_dir_must_not_contain_parent_traversal")
-    relative = relative_path.as_posix()
-    if not relative.startswith(DAILY_OUTPUT_PREFIX):
-        raise ValueError(f"output_dir_must_be_daily_shadow_artifact:{relative}")
-    return logical.absolute()
+    if relative_path.parts and relative_path.parts[0].startswith(DAILY_OUTPUT_ARTIFACT_PREFIX):
+        return candidate
+    raise ValueError(f"output_dir_must_be_daily_shadow_artifact:{relative_path.as_posix()}")
+
+
+def path_is_inside_repo(path: Path) -> bool:
+    logical = path if path.is_absolute() else ROOT / path
+    try:
+        logical.absolute().relative_to(ROOT.absolute())
+    except ValueError:
+        return False
+    return True
 
 
 def verify_db_state(db_path: Path) -> dict[str, Any]:
@@ -1232,6 +1265,7 @@ def build_score_live_command(
     repaired_packet: Path,
     all_missing_train_policy: str,
     shadow_model: Path | None = None,
+    evidence_root: Path | None = None,
     score_command_mode: str = DEFAULT_SCORE_COMMAND_MODE,
 ) -> list[str]:
     command = [
@@ -1261,6 +1295,8 @@ def build_score_live_command(
             str(output_dir),
         ]
     )
+    if evidence_root is not None:
+        command.extend(["--evidence-root", str(evidence_root)])
     return command
 
 
@@ -1292,6 +1328,13 @@ def write_jsonl(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
     with path.open("w", encoding="utf-8") as handle:
         for row in rows:
             handle.write(json.dumps(row, sort_keys=True) + "\n")
+
+
+def count_jsonl_rows(path: Path) -> int:
+    if not path.exists():
+        return 0
+    with path.open("r", encoding="utf-8") as handle:
+        return sum(1 for line in handle if line.strip())
 
 
 def read_prediction_rows(score_output_dir: Path) -> list[dict[str, Any]]:
@@ -1379,7 +1422,35 @@ def pending_results_from_predictions(
 
 def write_empty_prediction_outputs(output_dir: Path) -> None:
     write_jsonl(output_dir / "shadow_predictions.jsonl", [])
+    write_jsonl(output_dir / "stage2_shadow_predictions.jsonl", [])
     write_csv(output_dir / "shadow_predictions.csv", [], PREDICTION_COLUMNS)
+
+
+def write_waiting_matrix_reports_unavailable(
+    *,
+    output_dir: Path,
+    reason: str,
+    missing_inputs: Sequence[Mapping[str, Any]] | None = None,
+    error: str | None = None,
+) -> None:
+    report = {
+        "schema_version": "waiting_shadow_feature_matrix_data_missing_v1",
+        "status": "DATA_MISSING",
+        "reason": reason,
+        "missing_inputs": list(missing_inputs or []),
+        "live_input_status": "NO_ELIGIBLE_PREJUMP_RACES",
+        "shadow_scoring_allowed": False,
+        "production_promotion": False,
+        "registry_mutation": False,
+        "db_writes": False,
+        "label_writes": False,
+    }
+    if error is not None:
+        report["error"] = error
+    write_json(output_dir / "feature_population_report.json", report)
+    write_json(output_dir / "shadow_feature_matrix_audit.json", report)
+    write_json(output_dir / "train_eval_feature_parity_report.json", report)
+    write_json(output_dir / "inactive_feature_policy_report.json", report)
 
 
 def write_matrix_reports_for_waiting(
@@ -1391,14 +1462,42 @@ def write_matrix_reports_for_waiting(
     db_path: Path,
     all_missing_train_policy: str,
 ) -> None:
-    dataset, feature_audit, population = build_shadow_feature_matrix(
-        clean_dataset=clean_dataset,
-        repaired_packet=repaired_packet,
-        schema_path=schema_path,
-        db_path=db_path,
-    )
-    parity = train_eval_feature_parity_report(dataset, policy=all_missing_train_policy)
-    policy = inactive_feature_policy_report(parity)
+    required_inputs = {
+        "clean_dataset": clean_dataset,
+        "repaired_packet": repaired_packet,
+        "schema": schema_path,
+        "db": db_path,
+    }
+    missing_inputs = [
+        {"name": name, "path": shadow_relpath(path)}
+        for name, path in required_inputs.items()
+        if not path.exists()
+    ]
+    if missing_inputs:
+        write_waiting_matrix_reports_unavailable(
+            output_dir=output_dir,
+            reason="waiting_feature_matrix_inputs_missing",
+            missing_inputs=missing_inputs,
+        )
+        return
+
+    try:
+        dataset, feature_audit, population = build_shadow_feature_matrix(
+            clean_dataset=clean_dataset,
+            repaired_packet=repaired_packet,
+            schema_path=schema_path,
+            db_path=db_path,
+        )
+        parity = train_eval_feature_parity_report(dataset, policy=all_missing_train_policy)
+        policy = inactive_feature_policy_report(parity)
+    except Exception as exc:
+        write_waiting_matrix_reports_unavailable(
+            output_dir=output_dir,
+            reason="waiting_feature_matrix_diagnostic_failed",
+            error=repr(exc),
+        )
+        return
+
     write_json(output_dir / "feature_population_report.json", population)
     write_json(output_dir / "shadow_feature_matrix_audit.json", feature_audit)
     write_json(output_dir / "train_eval_feature_parity_report.json", parity)
@@ -1423,6 +1522,13 @@ def write_manifest(
     if score_output_dir is not None and (score_output_dir / "shadow_manifest.json").exists():
         score_manifest = load_json(score_output_dir / "shadow_manifest.json")
     score_manifest_data = score_manifest if isinstance(score_manifest, Mapping) else {}
+    stage2_path = output_dir / "stage2_shadow_predictions.jsonl"
+    stage2_rows = count_jsonl_rows(stage2_path)
+    feature_rows_path = output_dir / "shadow_feature_rows.json"
+    if not feature_rows_path.exists() and score_output_dir is not None:
+        score_feature_rows_path = score_output_dir / "shadow_feature_rows.json"
+        if score_feature_rows_path.exists():
+            shutil.copy2(score_feature_rows_path, feature_rows_path)
     metadata_report = prejump_metadata_report_from_classification(classification)
     manifest = {
         "schema_version": "daily_shadow_manifest_v1",
@@ -1462,6 +1568,14 @@ def write_manifest(
         "all_missing_train_policy": all_missing_train_policy,
         "shadow_model": shadow_relpath(shadow_model) if shadow_model else None,
         "shadow_training_allowed": shadow_model is None,
+        "stage2_shadow_predictions_jsonl": (
+            shadow_relpath(stage2_path) if stage2_path.exists() else None
+        ),
+        "stage2_prediction_rows": stage2_rows,
+        "shadow_feature_rows_json": (
+            shadow_relpath(feature_rows_path) if feature_rows_path.exists() else None
+        ),
+        "stage2_forward_shadow_status": score_manifest_data.get("stage2_forward_shadow_status"),
         "calibration_method": CALIBRATION_METHOD_KEY,
         "tgr_enabled": False,
         "output_mode": SHADOW_OUTPUT_MODE,
@@ -1610,7 +1724,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.output_dir
         else (args.output_parent / f"daily_race_ingest_shadow_{now_id()}")
     )
-    output_dir = assert_daily_output_dir_safe(output_dir)
+    output_dir = assert_daily_output_dir_safe(output_dir, output_parent=args.output_parent)
     output_dir.mkdir(parents=True, exist_ok=False)
 
     protected_before = protected_path_snapshot()
@@ -1685,6 +1799,9 @@ def main(argv: list[str] | None = None) -> int:
                 repaired_packet=args.repaired_packet,
                 all_missing_train_policy=args.all_missing_train_policy,
                 shadow_model=args.shadow_model,
+                evidence_root=args.output_parent
+                if not path_is_inside_repo(score_output_dir)
+                else None,
                 score_command_mode=args.score_command_mode,
             )
             write_json(
@@ -1726,6 +1843,13 @@ def main(argv: list[str] | None = None) -> int:
                     )
                 else:
                     write_csv(output_dir / "shadow_predictions.csv", predictions, PREDICTION_COLUMNS)
+                if (score_output_dir / "stage2_shadow_predictions.jsonl").exists():
+                    shutil.copy2(
+                        score_output_dir / "stage2_shadow_predictions.jsonl",
+                        output_dir / "stage2_shadow_predictions.jsonl",
+                    )
+                else:
+                    write_jsonl(output_dir / "stage2_shadow_predictions.jsonl", [])
                 copy_shadow_feature_audit_reports(score_output_dir, output_dir)
 
                 probability_report = probability_sum_report_from_predictions(predictions)
