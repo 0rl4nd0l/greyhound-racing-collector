@@ -18,7 +18,7 @@ def _runner_rows() -> list[dict]:
     ]
 
 
-def _odds_rows(*, market: str = "win") -> list[dict]:
+def _odds_rows(*, market: str = "win", runners: list[dict] | None = None) -> list[dict]:
     base_price = 2.0 if market == "win" else 1.4
     return [
         {
@@ -33,7 +33,7 @@ def _odds_rows(*, market: str = "win") -> list[dict]:
                 f"{runner['box_number']}. {runner['dog_name']}"
             ),
         }
-        for runner in _runner_rows()
+        for runner in (runners or _runner_rows())
     ]
 
 
@@ -92,12 +92,17 @@ def _race_info() -> dict:
     }
 
 
-def _insert_existing_capture(db_path: Path, *, markets: tuple[str, ...]) -> None:
+def _insert_existing_capture(
+    db_path: Path,
+    *,
+    markets: tuple[str, ...],
+    rows_by_market: dict[str, list[dict]] | None = None,
+) -> None:
     integrator = SportsbetOddsIntegrator(str(db_path), setup_database=True)
     for market in markets:
         report = integrator.append_pre_jump_odds_snapshot(
             _race_info(),
-            _odds_rows(market=market),
+            (rows_by_market or {}).get(market) or _odds_rows(market=market),
             market_type=market,
             topN=3 if market == "place" else None,
             capture_mode=CAPTURE_MODE,
@@ -171,6 +176,87 @@ def test_execute_capture_plan_skips_existing_complete_win_place_capture(
     assert attempt["status"] == "SKIPPED_ALREADY_CAPTURED"
     assert attempt["existing_capture"]["status"] == "COMPLETE"
     assert attempt["existing_capture_rows"] == 4
+
+
+def test_existing_win_place_capture_with_extra_runner_is_not_complete(
+    tmp_path, monkeypatch
+):
+    db_path = tmp_path / "odds.db"
+    runners = _runner_rows() + [{"box_number": 3, "dog_name": "Charlie"}]
+    _insert_existing_capture(
+        db_path,
+        markets=("place", "win"),
+        rows_by_market={
+            "place": _odds_rows(market="place", runners=runners),
+            "win": _odds_rows(market="win", runners=runners),
+        },
+    )
+    fetch_count = 0
+
+    def fake_fetch(*_args, **_kwargs):
+        nonlocal fetch_count
+        fetch_count += 1
+        return _fetch_result(include_place=True)
+
+    monkeypatch.setattr(capture, "fetch_odds_for_target_race", fake_fetch)
+
+    report = capture.execute_capture_plan(
+        plan=_plan(),
+        db_path=db_path,
+        current_time=datetime.fromisoformat("2026-07-09T12:21:00+10:00"),
+        execute=True,
+        allow_auto_scrape_odds=True,
+    )
+
+    attempt = report["attempts"][0]
+    assert fetch_count == 1
+    assert attempt["status"] == "CAPTURED"
+    assert attempt["existing_capture"]["status"] == "INCOMPLETE"
+    assert attempt["existing_capture"]["extra_unexpected_runners_by_market"] == {
+        "place": [{"box_number": 3, "identity": "CHARLIE"}],
+        "win": [{"box_number": 3, "identity": "CHARLIE"}],
+    }
+
+
+def test_existing_win_place_capture_with_duplicate_runner_is_not_complete(
+    tmp_path, monkeypatch
+):
+    db_path = tmp_path / "odds.db"
+    win_rows = _odds_rows(market="win")
+    place_rows = _odds_rows(market="place")
+    _insert_existing_capture(
+        db_path,
+        markets=("place", "win"),
+        rows_by_market={
+            "place": place_rows + [dict(place_rows[0])],
+            "win": win_rows + [dict(win_rows[0])],
+        },
+    )
+    fetch_count = 0
+
+    def fake_fetch(*_args, **_kwargs):
+        nonlocal fetch_count
+        fetch_count += 1
+        return _fetch_result(include_place=True)
+
+    monkeypatch.setattr(capture, "fetch_odds_for_target_race", fake_fetch)
+
+    report = capture.execute_capture_plan(
+        plan=_plan(),
+        db_path=db_path,
+        current_time=datetime.fromisoformat("2026-07-09T12:21:00+10:00"),
+        execute=True,
+        allow_auto_scrape_odds=True,
+    )
+
+    attempt = report["attempts"][0]
+    assert fetch_count == 1
+    assert attempt["status"] == "CAPTURED"
+    assert attempt["existing_capture"]["status"] == "INCOMPLETE"
+    assert attempt["existing_capture"]["duplicate_runner_keys_by_market"] == {
+        "place": [{"box_number": 1, "identity": "ALPHA"}],
+        "win": [{"box_number": 1, "identity": "ALPHA"}],
+    }
 
 
 def test_execute_capture_plan_recaptures_existing_win_only_window(

@@ -484,6 +484,8 @@ def existing_capture_status(
         "complete_capture_rows": 0,
         "missing_required_markets": list(REQUIRED_CAPTURE_MARKETS),
         "missing_expected_runners_by_market": {},
+        "extra_unexpected_runners_by_market": {},
+        "duplicate_runner_keys_by_market": {},
         "reasons": [],
     }
     if not db_path.exists():
@@ -563,8 +565,10 @@ def existing_capture_status(
     group_reports: list[dict[str, Any]] = []
     for capture_timestamp, group_rows in grouped.items():
         market_sets: dict[str, set[tuple[int, str]]] = {}
+        market_keys: dict[str, list[tuple[int, str]]] = {}
         for market in REQUIRED_CAPTURE_MARKETS:
             market_set: set[tuple[int, str]] = set()
+            keys: list[tuple[int, str]] = []
             for row in group_rows:
                 row_market = str(row.get("market_type") or "win").strip().lower()
                 if row_market != market:
@@ -574,17 +578,44 @@ def existing_capture_status(
                     row.get("box_number"),
                 )
                 if runner:
-                    market_set.add((runner["box_number"], runner["identity"]))
+                    key = (runner["box_number"], runner["identity"])
+                    keys.append(key)
+                    market_set.add(key)
+            market_keys[market] = keys
             market_sets[market] = market_set
 
         missing_by_market = {
             market: sorted(expected_set - market_set)
             for market, market_set in market_sets.items()
         }
+        extra_by_market = {
+            market: sorted(market_set - expected_set)
+            for market, market_set in market_sets.items()
+        }
+        duplicate_by_market = {
+            market: sorted(
+                key
+                for key, count in Counter(market_keys[market]).items()
+                if count > 1
+            )
+            for market in REQUIRED_CAPTURE_MARKETS
+        }
         missing_markets = [
             market for market, market_set in market_sets.items() if not market_set
         ]
-        complete = all(not missing_by_market[market] for market in REQUIRED_CAPTURE_MARKETS)
+        group_reasons: list[str] = []
+        for market in missing_markets:
+            group_reasons.append(f"{market}:missing_required_market")
+        for market, missing in missing_by_market.items():
+            if missing:
+                group_reasons.append(f"{market}:missing_expected_runners")
+        for market, extra in extra_by_market.items():
+            if extra:
+                group_reasons.append(f"{market}:extra_unexpected_runners")
+        for market, duplicates in duplicate_by_market.items():
+            if duplicates:
+                group_reasons.append(f"{market}:duplicate_runner_keys")
+        complete = not group_reasons
         group_reports.append(
             {
                 "capture_timestamp": capture_timestamp or None,
@@ -602,6 +633,23 @@ def existing_capture_status(
                     for market, missing in missing_by_market.items()
                     if missing
                 },
+                "extra_unexpected_runners_by_market": {
+                    market: [
+                        {"box_number": box, "identity": identity}
+                        for box, identity in extra
+                    ]
+                    for market, extra in extra_by_market.items()
+                    if extra
+                },
+                "duplicate_runner_keys_by_market": {
+                    market: [
+                        {"box_number": box, "identity": identity}
+                        for box, identity in duplicates
+                    ]
+                    for market, duplicates in duplicate_by_market.items()
+                    if duplicates
+                },
+                "reasons": sorted(set(group_reasons)),
             }
         )
 
@@ -621,6 +669,8 @@ def existing_capture_status(
                 "complete_capture_rows": int(selected["existing_row_count"]),
                 "missing_required_markets": [],
                 "missing_expected_runners_by_market": {},
+                "extra_unexpected_runners_by_market": {},
+                "duplicate_runner_keys_by_market": {},
                 "selected_capture_timestamp": selected.get("capture_timestamp"),
                 "reasons": [],
             }
@@ -637,6 +687,7 @@ def existing_capture_status(
             "existing_capture_missing_required_markets:"
             + ",".join(status["missing_required_markets"])
         )
+    reasons.extend(str(reason) for reason in selected.get("reasons") or [])
     status.update(
         {
             "status": "INCOMPLETE",
@@ -644,8 +695,14 @@ def existing_capture_status(
             "missing_expected_runners_by_market": selected[
                 "missing_expected_runners_by_market"
             ],
+            "extra_unexpected_runners_by_market": selected[
+                "extra_unexpected_runners_by_market"
+            ],
+            "duplicate_runner_keys_by_market": selected[
+                "duplicate_runner_keys_by_market"
+            ],
             "selected_capture_timestamp": selected.get("capture_timestamp"),
-            "reasons": reasons,
+            "reasons": sorted(set(reasons)),
         }
     )
     return status
