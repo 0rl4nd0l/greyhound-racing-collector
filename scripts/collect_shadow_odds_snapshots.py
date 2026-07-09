@@ -31,7 +31,11 @@ sys.path = [path for path in sys.path if path != ROOT_STR]
 sys.path.insert(0, ROOT_STR)
 
 from accuracy_program.odds_coverage import normalize_dog_name, normalize_venue  # noqa: E402
-from accuracy_program.snapshots import TRUSTED_ODDS_SOURCES, classify_odds_snapshot_for_ev  # noqa: E402
+from accuracy_program.odds_provenance import (  # noqa: E402
+    TRUSTED_ODDS_SOURCES,
+    build_odds_snapshot_from_row,
+    classify_odds_snapshot_for_ev,
+)
 from scripts.refresh_prejump_upcoming import venue_exclusion_aliases  # noqa: E402
 from utils.report_output_dir_guard import assert_prefixed_report_output_dir  # noqa: E402
 
@@ -1208,69 +1212,14 @@ def odds_snapshot_from_row(
     duplicate_count: int,
     stale_odds_after_minutes: float = DEFAULT_STALE_ODDS_AFTER_MINUTES,
 ) -> dict[str, Any]:
-    odds_timestamp = row.get("timestamp") or row.get("capture_timestamp")
-    odds_dt = parse_timestamp(odds_timestamp)
-    age_at_prediction = seconds_between(prediction_time, odds_dt)
-    status_info = runner_status_info(row)
-    provenance = {
-        "source": row.get("source"),
-        "source_url": row.get("source_url"),
-        "source_table": "live_odds",
-        "odds_id": row.get("id"),
-        "odds_race_id": row.get("race_id"),
-        "odds_dog_name": row.get("dog_clean_name") or row.get("dog_name"),
-        "odds_box_number": row.get("box_number"),
-        "match_type": row.get("_match_basis") or "race_id_box_name",
-        "match_method": "race_id_box_name_exact",
-        "match_confidence": 1.0,
-        "candidate_count": duplicate_count,
-        "duplicate_count": duplicate_count,
-        "sportsbet_box_source": row.get("sportsbet_box_source") or "unknown",
-        "sportsbet_list_position": row.get("sportsbet_list_position"),
-        "sportsbet_raw_runner_text": row.get("sportsbet_raw_runner_text"),
-        "capture_mode": row.get("capture_mode"),
-        "runner_status": status_info["runner_status"],
-        "runner_status_raw": status_info["runner_status_raw"],
-        "runner_status_source": status_info["runner_status_source"],
-        "runner_status_source_column": status_info["runner_status_source_column"],
-        "runner_status_trusted": status_info["runner_status_trusted"],
-    }
-    snapshot = {
-        "market_odds_win": row.get("odds_decimal"),
-        "market_type": row.get("market_type") or "win",
-        "odds_level": row.get("odds_level") or "dog",
-        "runner_status": status_info["runner_status"],
-        "runner_status_raw": status_info["runner_status_raw"],
-        "runner_status_source": status_info["runner_status_source"],
-        "runner_status_source_column": status_info["runner_status_source_column"],
-        "runner_status_trusted": status_info["runner_status_trusted"],
-        "runner_active_for_odds_gate": status_info["runner_active_for_odds_gate"],
-        "odds_timestamp": odds_timestamp,
-        "odds_age_seconds_at_prediction": age_at_prediction,
-        "odds_age_minutes_at_prediction": (
-            age_at_prediction / 60.0 if age_at_prediction is not None else None
-        ),
-        "odds_captured_before_prediction": (
-            age_at_prediction is not None and age_at_prediction >= 0
-        ),
-        "odds_provenance": provenance,
-    }
-    if age_at_prediction is not None:
-        snapshot["odds_stale_at_prediction"] = (
-            age_at_prediction > stale_odds_after_minutes * 60.0
-        )
-        snapshot["stale_odds_after_minutes"] = stale_odds_after_minutes
-    age_at_feature_freeze = seconds_between(feature_freeze_time, odds_dt)
-    if age_at_feature_freeze is not None:
-        snapshot["odds_age_seconds_at_feature_freeze"] = age_at_feature_freeze
-        snapshot["odds_age_minutes_at_feature_freeze"] = age_at_feature_freeze / 60.0
-        snapshot["odds_captured_before_feature_freeze"] = age_at_feature_freeze >= 0
-    age_at_jump = seconds_between(jump_time, odds_dt)
-    if age_at_jump is not None:
-        snapshot["odds_age_seconds_at_jump"] = age_at_jump
-        snapshot["odds_age_minutes_at_jump"] = age_at_jump / 60.0
-        snapshot["odds_captured_before_jump"] = age_at_jump >= 0
-    return {key: value for key, value in snapshot.items() if value is not None}
+    return build_odds_snapshot_from_row(
+        row,
+        prediction_time=prediction_time,
+        feature_freeze_time=feature_freeze_time,
+        jump_time=jump_time,
+        duplicate_count=duplicate_count,
+        stale_odds_after_minutes=stale_odds_after_minutes,
+    )
 
 
 def _race_id_from_prediction(prediction: Mapping[str, Any]) -> str:
