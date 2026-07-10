@@ -179,6 +179,25 @@ def _insert_live_odds_rows(
         conn.commit()
 
 
+def _place_odds_rows(rows: list[dict]) -> list[dict]:
+    place_rows = []
+    for row in rows:
+        place_row = dict(row)
+        place_row["odds_decimal"] = max(1.1, round(float(row.get("odds_decimal", 2.2)) / 2, 2))
+        place_rows.append(place_row)
+    return place_rows
+
+
+def _win_place_live_odds_rows(rows: list[dict]) -> list[dict]:
+    return [
+        *[dict(row, market_type=row.get("market_type", "win")) for row in rows],
+        *[
+            dict(row, market_type="place", odds_decimal=max(1.1, round(float(row.get("odds_decimal", 2.2)) / 2, 2)))
+            for row in rows
+        ],
+    ]
+
+
 def test_build_capture_plan_selects_due_window_for_verified_sidecar(tmp_path):
     input_dir = tmp_path / "upcoming"
     _write_capture_input(input_dir)
@@ -640,11 +659,13 @@ def test_execute_capture_plan_skips_existing_superset_capture_without_retry(
     db_path = tmp_path / "odds.db"
     _insert_live_odds_rows(
         db_path,
-        [
-            {"dog_name": "Alpha", "box_number": 1, "odds_decimal": 2.4},
-            {"dog_name": "Bravo", "box_number": 2, "odds_decimal": 3.5},
-            {"dog_name": "Charlie", "box_number": 3, "odds_decimal": 6.0},
-        ],
+        _win_place_live_odds_rows(
+            [
+                {"dog_name": "Alpha", "box_number": 1, "odds_decimal": 2.4},
+                {"dog_name": "Bravo", "box_number": 2, "odds_decimal": 3.5},
+                {"dog_name": "Charlie", "box_number": 3, "odds_decimal": 6.0},
+            ]
+        ),
         capture_mode="autonomous_prejump_t60m",
     )
 
@@ -669,15 +690,15 @@ def test_execute_capture_plan_skips_existing_superset_capture_without_retry(
     assert report["runtime_action"] == "WAIT_FOR_NEXT_ODDS_CAPTURE_WINDOW"
     assert report["readiness_decision"] == "CONTINUE_ODDS_CAPTURE"
     assert report["attempts"][0]["status"] == "SKIPPED_EXISTING_CAPTURE_SUPERSET"
-    assert report["attempts"][0]["reasons"] == [
-        "existing_capture_extra_unexpected_runners:3:CHARLIE"
-    ]
+    assert "win:existing_capture_extra_unexpected_runners:3:CHARLIE" in report[
+        "attempts"
+    ][0]["reasons"]
     windows = {
         row["offset_minutes"]: row for row in report["capture_window_coverage"]["windows"]
     }
     assert windows[60]["status"] == "BLOCKED_EXISTING_CAPTURE_INVALID"
-    assert windows[60]["existing_capture_reasons"] == [
-        "existing_capture_extra_unexpected_runners:3:CHARLIE"
+    assert "win:existing_capture_extra_unexpected_runners:3:CHARLIE" in windows[60][
+        "existing_capture_reasons"
     ]
     assert windows[30]["status"] == "PENDING"
 
@@ -688,10 +709,12 @@ def test_execute_capture_plan_reports_complete_existing_window_coverage(tmp_path
     db_path = tmp_path / "odds.db"
     _insert_live_odds_rows(
         db_path,
-        [
-            {"dog_name": "Alpha", "box_number": 1, "odds_decimal": 2.4},
-            {"dog_name": "Bravo", "box_number": 2, "odds_decimal": 3.5},
-        ],
+        _win_place_live_odds_rows(
+            [
+                {"dog_name": "Alpha", "box_number": 1, "odds_decimal": 2.4},
+                {"dog_name": "Bravo", "box_number": 2, "odds_decimal": 3.5},
+            ]
+        ),
         capture_mode="autonomous_prejump_t60m",
         capture_timestamp="2026-06-10T14:05:00+10:00",
     )
@@ -713,7 +736,7 @@ def test_execute_capture_plan_reports_complete_existing_window_coverage(tmp_path
     windows = {row["offset_minutes"]: row for row in coverage["windows"]}
     assert windows[60]["status"] == "CAPTURED"
     assert windows[60]["existing_capture_status"] == "COMPLETE"
-    assert windows[60]["existing_capture_count"] == 2
+    assert windows[60]["existing_capture_count"] == 4
     assert windows[30]["status"] == "DUE"
 
 
@@ -725,47 +748,55 @@ def test_execute_capture_plan_recaptures_stale_existing_fixed_window_group(
     db_path = tmp_path / "odds.db"
     _insert_live_odds_rows(
         db_path,
-        [
-            {"dog_name": "Alpha", "box_number": 1, "odds_decimal": 2.4},
-            {"dog_name": "Bravo", "box_number": 2, "odds_decimal": 3.5},
-        ],
+        _win_place_live_odds_rows(
+            [
+                {"dog_name": "Alpha", "box_number": 1, "odds_decimal": 2.4},
+                {"dog_name": "Bravo", "box_number": 2, "odds_decimal": 3.5},
+            ]
+        ),
         capture_mode="autonomous_prejump_t30m",
         capture_timestamp="2026-06-10T14:10:00+10:00",
     )
     appended = {}
 
     def fake_fetch(db_path, venue, race_number, race_date, allow_auto_scrape_odds):
+        win_rows = [
+            {
+                "dog_name": "Alpha",
+                "box_number": 1,
+                "odds_decimal": 2.8,
+                "sportsbet_box_source": "runner_text",
+            },
+            {
+                "dog_name": "Bravo",
+                "box_number": 2,
+                "odds_decimal": 3.1,
+                "sportsbet_box_source": "runner_text",
+            },
+        ]
         return {
             "success": True,
+            "win_count": len(win_rows),
+            "place_count": len(win_rows),
             "race_info": {
                 "venue_url": (
                     "https://www.sportsbet.com.au/betting/greyhound-racing/"
                     "australia-nz/wentworth-park/race-1"
                 ),
                 "race_number": 1,
+                "odds_data_place": _place_odds_rows(win_rows),
             },
-            "odds_data": [
-                {
-                    "dog_name": "Alpha",
-                    "box_number": 1,
-                    "odds_decimal": 2.8,
-                    "sportsbet_box_source": "runner_text",
-                },
-                {
-                    "dog_name": "Bravo",
-                    "box_number": 2,
-                    "odds_decimal": 3.1,
-                    "sportsbet_box_source": "runner_text",
-                },
-            ],
+            "odds_data": win_rows,
         }
 
     def fake_append(*, db_path, plan_item, validation, current_time):
         appended["capture_mode"] = f"autonomous_prejump_t{plan_item['capture_window_minutes']}m"
         appended["capture_timestamp"] = current_time.isoformat()
+        appended["place_rows"] = validation["accepted_place_rows"]
         return {
             "status": "SUCCESS",
-            "inserted_rows": len(validation["accepted_rows"]),
+            "inserted_rows": len(validation["accepted_rows"])
+            + len(validation["accepted_place_rows"]),
             "warnings": [],
             "append_only": True,
         }
@@ -794,6 +825,30 @@ def test_execute_capture_plan_recaptures_stale_existing_fixed_window_group(
     assert appended == {
         "capture_mode": "autonomous_prejump_t30m",
         "capture_timestamp": "2026-06-10T14:40:00+10:00",
+        "place_rows": [
+            {
+                "dog_name": "Alpha",
+                "dog_clean_name": "Alpha",
+                "box_number": 1,
+                "identity": "ALPHA",
+                "odds_decimal": 1.4,
+                "odds_fractional": "",
+                "sportsbet_box_source": "runner_text",
+                "sportsbet_list_position": None,
+                "sportsbet_raw_runner_text": None,
+            },
+            {
+                "dog_name": "Bravo",
+                "dog_clean_name": "Bravo",
+                "box_number": 2,
+                "identity": "BRAVO",
+                "odds_decimal": 1.55,
+                "odds_fractional": "",
+                "sportsbet_box_source": "runner_text",
+                "sportsbet_list_position": None,
+                "sportsbet_raw_runner_text": None,
+            },
+        ],
     }
 
 
@@ -833,42 +888,48 @@ def test_execute_capture_plan_appends_after_exact_sportsbet_validation(
     appended = {}
 
     def fake_fetch(db_path, venue, race_number, race_date, allow_auto_scrape_odds):
+        win_rows = [
+            {
+                "dog_name": "Alpha",
+                "dog_clean_name": "ALPHA",
+                "box_number": 1,
+                "odds_decimal": 2.4,
+                "sportsbet_box_source": "runner_text",
+                "sportsbet_raw_runner_text": "1. Alpha",
+            },
+            {
+                "dog_name": "Bravo",
+                "dog_clean_name": "BRAVO",
+                "box_number": 2,
+                "odds_decimal": 3.5,
+                "sportsbet_box_source": "runner_text",
+                "sportsbet_raw_runner_text": "2. Bravo",
+            },
+        ]
         return {
             "success": True,
             "race_id": "sportsbet-race-1",
+            "win_count": len(win_rows),
+            "place_count": len(win_rows),
             "race_info": {
                 "venue_url": (
                     "https://www.sportsbet.com.au/betting/greyhound-racing/"
                     "australia-nz/wentworth-park/race-1"
                 ),
                 "race_number": 1,
+                "odds_data_place": _place_odds_rows(win_rows),
             },
-            "odds_data": [
-                {
-                    "dog_name": "Alpha",
-                    "dog_clean_name": "ALPHA",
-                    "box_number": 1,
-                    "odds_decimal": 2.4,
-                    "sportsbet_box_source": "runner_text",
-                    "sportsbet_raw_runner_text": "1. Alpha",
-                },
-                {
-                    "dog_name": "Bravo",
-                    "dog_clean_name": "BRAVO",
-                    "box_number": 2,
-                    "odds_decimal": 3.5,
-                    "sportsbet_box_source": "runner_text",
-                    "sportsbet_raw_runner_text": "2. Bravo",
-                },
-            ],
+            "odds_data": win_rows,
         }
 
     def fake_append(*, db_path, plan_item, validation, current_time):
         appended["capture_mode"] = f"autonomous_prejump_t{plan_item['capture_window_minutes']}m"
         appended["rows"] = validation["accepted_rows"]
+        appended["place_rows"] = validation["accepted_place_rows"]
         return {
             "status": "SUCCESS",
-            "inserted_rows": len(validation["accepted_rows"]),
+            "inserted_rows": len(validation["accepted_rows"])
+            + len(validation["accepted_place_rows"]),
             "warnings": [],
             "append_only": True,
         }
@@ -891,9 +952,145 @@ def test_execute_capture_plan_appends_after_exact_sportsbet_validation(
     assert report["appended_attempt_count"] == 1
     assert report["skipped_already_captured_count"] == 0
     assert report["validation_pass_count"] == 1
-    assert report["inserted_live_odds_rows"] == 2
+    assert report["inserted_live_odds_rows"] == 4
     assert appended["capture_mode"] == "autonomous_prejump_t30m"
     assert [row["box_number"] for row in appended["rows"]] == [1, 2]
+    assert [row["box_number"] for row in appended["place_rows"]] == [1, 2]
+
+
+def test_execute_capture_plan_persists_win_and_place_markets(tmp_path, monkeypatch):
+    input_dir = tmp_path / "upcoming"
+    _write_capture_input(input_dir)
+    db_path = tmp_path / "odds.db"
+    _insert_live_odds_rows(db_path, [])
+
+    def fake_fetch(db_path, venue, race_number, race_date, allow_auto_scrape_odds):
+        win_rows = [
+            {
+                "dog_name": "Alpha",
+                "dog_clean_name": "ALPHA",
+                "box_number": 1,
+                "odds_decimal": 2.4,
+                "sportsbet_box_source": "runner_text",
+                "sportsbet_raw_runner_text": "1. Alpha",
+            },
+            {
+                "dog_name": "Bravo",
+                "dog_clean_name": "BRAVO",
+                "box_number": 2,
+                "odds_decimal": 3.5,
+                "sportsbet_box_source": "runner_text",
+                "sportsbet_raw_runner_text": "2. Bravo",
+            },
+        ]
+        return {
+            "success": True,
+            "win_count": len(win_rows),
+            "place_count": len(win_rows),
+            "race_info": {
+                "venue_url": (
+                    "https://www.sportsbet.com.au/betting/greyhound-racing/"
+                    "australia-nz/wentworth-park/race-1"
+                ),
+                "race_number": 1,
+                "odds_data_place": _place_odds_rows(win_rows),
+            },
+            "odds_data": win_rows,
+        }
+
+    monkeypatch.setattr(capture, "fetch_odds_for_target_race", fake_fetch)
+
+    report = capture.execute_capture_plan(
+        _plan(input_dir),
+        db_path=db_path,
+        current_time=datetime.fromisoformat("2026-06-10T14:40:00+10:00"),
+        execute=True,
+        allow_auto_scrape_odds=True,
+        current_time_provider=lambda: datetime.fromisoformat("2026-06-10T14:40:00+10:00"),
+    )
+
+    assert report["final_status"] == "AUTONOMOUS_LIVE_ODDS_CAPTURE_APPENDED"
+    assert report["inserted_live_odds_rows"] == 4
+    assert report["attempts"][0]["append_report"]["win_inserted_rows"] == 2
+    assert report["attempts"][0]["append_report"]["place_inserted_rows"] == 2
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT market_type, COUNT(*), COUNT(DISTINCT box_number), MIN(topN), MAX(topN)
+            FROM live_odds
+            WHERE race_id = ? AND capture_mode = ?
+            GROUP BY market_type
+            ORDER BY market_type
+            """,
+            ("Race 1 - WPK - 2026-06-10", "autonomous_prejump_t30m"),
+        ).fetchall()
+
+    assert rows == [
+        ("place", 2, 2, 3, 3),
+        ("win", 2, 2, None, None),
+    ]
+
+
+def test_append_validated_capture_stops_before_win_when_place_append_fails(
+    tmp_path, monkeypatch
+):
+    from sportsbet_odds_integrator import SportsbetOddsIntegrator
+
+    calls = []
+
+    def fake_append(
+        self,
+        race_info,
+        odds_data,
+        *,
+        market_type="win",
+        topN=None,
+        **_kwargs,
+    ):
+        calls.append((market_type, topN, len(odds_data)))
+        return {
+            "status": "REJECTED",
+            "inserted_rows": 0,
+            "warnings": ["database_locked"],
+        }
+
+    monkeypatch.setattr(
+        SportsbetOddsIntegrator,
+        "append_pre_jump_odds_snapshot",
+        fake_append,
+    )
+
+    report = capture.append_validated_capture(
+        db_path=tmp_path / "odds.db",
+        plan_item={
+            "race_id": "Race 1 - WPK - 2026-06-10",
+            "venue": "WPK",
+            "race_number": 1,
+            "race_date": "2026-06-10",
+            "race_time": "15:00",
+            "capture_window_minutes": 30,
+        },
+        validation={
+            "source_url": (
+                "https://www.sportsbet.com.au/betting/greyhound-racing/"
+                "australia-nz/wentworth-park/race-1"
+            ),
+            "accepted_rows": [
+                {"dog_name": "Alpha", "box_number": 1, "odds_decimal": 2.4}
+            ],
+            "accepted_place_rows": [
+                {"dog_name": "Alpha", "box_number": 1, "odds_decimal": 1.4}
+            ],
+        },
+        current_time=datetime.fromisoformat("2026-06-10T14:40:00+10:00"),
+    )
+
+    assert calls == [("place", 3, 1)]
+    assert report["status"] == "FAILED"
+    assert report["win_inserted_rows"] == 0
+    assert report["place_inserted_rows"] == 0
+    assert report["market_reports"]["win"]["status"] == "SKIPPED"
+    assert report["warnings"] == ["place:database_locked"]
 
 
 def test_execute_capture_plan_skips_complete_existing_capture_without_fetch(
@@ -904,10 +1101,12 @@ def test_execute_capture_plan_skips_complete_existing_capture_without_fetch(
     db_path = tmp_path / "odds.db"
     _insert_live_odds_rows(
         db_path,
-        [
-            {"dog_name": "Alpha", "box_number": 1, "odds_decimal": 2.4},
-            {"dog_name": "Bravo", "box_number": 2, "odds_decimal": 3.5},
-        ],
+        _win_place_live_odds_rows(
+            [
+                {"dog_name": "Alpha", "box_number": 1, "odds_decimal": 2.4},
+                {"dog_name": "Bravo", "box_number": 2, "odds_decimal": 3.5},
+            ]
+        ),
     )
 
     def fail_fetch(*_args, **_kwargs):
@@ -926,9 +1125,85 @@ def test_execute_capture_plan_skips_complete_existing_capture_without_fetch(
 
     attempt = report["attempts"][0]
     assert attempt["status"] == "SKIPPED_ALREADY_CAPTURED"
-    assert attempt["existing_capture_count"] == 2
+    assert attempt["existing_capture_count"] == 4
     assert attempt["existing_capture"]["status"] == "COMPLETE"
     assert attempt["existing_capture"]["missing_expected_runners"] == []
+
+
+def test_execute_capture_plan_recaptures_complete_win_only_capture(
+    tmp_path, monkeypatch
+):
+    input_dir = tmp_path / "upcoming"
+    _write_capture_input(input_dir)
+    db_path = tmp_path / "odds.db"
+    _insert_live_odds_rows(
+        db_path,
+        [
+            {"dog_name": "Alpha", "box_number": 1, "odds_decimal": 2.4},
+            {"dog_name": "Bravo", "box_number": 2, "odds_decimal": 3.5},
+        ],
+    )
+    win_rows = [
+        {
+            "dog_name": "Alpha",
+            "box_number": 1,
+            "odds_decimal": 2.4,
+            "sportsbet_box_source": "runner_text",
+        },
+        {
+            "dog_name": "Bravo",
+            "box_number": 2,
+            "odds_decimal": 3.5,
+            "sportsbet_box_source": "runner_text",
+        },
+    ]
+
+    def fake_fetch(*_args, **_kwargs):
+        return {
+            "success": True,
+            "win_count": 2,
+            "place_count": 2,
+            "race_info": {
+                "venue_url": (
+                    "https://www.sportsbet.com.au/betting/greyhound-racing/"
+                    "australia-nz/wentworth-park/race-1"
+                ),
+                "race_number": 1,
+                "odds_data_place": _place_odds_rows(win_rows),
+            },
+            "odds_data": win_rows,
+        }
+
+    def fake_append(*, validation, **_kwargs):
+        return {
+            "status": "SUCCESS",
+            "inserted_rows": len(validation["accepted_rows"])
+            + len(validation["accepted_place_rows"]),
+            "warnings": [],
+            "append_only": True,
+        }
+
+    monkeypatch.setattr(capture, "fetch_odds_for_target_race", fake_fetch)
+    monkeypatch.setattr(capture, "append_validated_capture", fake_append)
+
+    report = capture.execute_capture_plan(
+        _plan(input_dir),
+        db_path=db_path,
+        current_time=datetime.fromisoformat("2026-06-10T14:40:00+10:00"),
+        execute=True,
+        allow_auto_scrape_odds=True,
+        current_time_provider=lambda: datetime.fromisoformat(
+            "2026-06-10T14:40:00+10:00"
+        ),
+    )
+
+    attempt = report["attempts"][0]
+    assert attempt["status"] == "APPENDED"
+    assert attempt["incomplete_existing_capture"]["status"] == "INCOMPLETE"
+    assert attempt["incomplete_existing_capture"]["missing_required_markets"] == [
+        "place"
+    ]
+    assert attempt["inserted_rows"] == 4
 
 
 def test_existing_capture_allows_missing_explicit_scratched_expected_runner(
@@ -943,7 +1218,9 @@ def test_existing_capture_allows_missing_explicit_scratched_expected_runner(
     db_path = tmp_path / "odds.db"
     _insert_live_odds_rows(
         db_path,
-        [{"dog_name": "Alpha", "box_number": 1, "odds_decimal": 2.4}],
+        _win_place_live_odds_rows(
+            [{"dog_name": "Alpha", "box_number": 1, "odds_decimal": 2.4}]
+        ),
     )
 
     def fail_fetch(*_args, **_kwargs):
@@ -983,10 +1260,12 @@ def test_existing_capture_blocks_priced_explicit_scratched_expected_runner(
     db_path = tmp_path / "odds.db"
     _insert_live_odds_rows(
         db_path,
-        [
-            {"dog_name": "Alpha", "box_number": 1, "odds_decimal": 2.4},
-            {"dog_name": "Bravo", "box_number": 2, "odds_decimal": 3.5},
-        ],
+        _win_place_live_odds_rows(
+            [
+                {"dog_name": "Alpha", "box_number": 1, "odds_decimal": 2.4},
+                {"dog_name": "Bravo", "box_number": 2, "odds_decimal": 3.5},
+            ]
+        ),
     )
 
     def fail_fetch(*_args, **_kwargs):
@@ -1009,7 +1288,7 @@ def test_existing_capture_blocks_priced_explicit_scratched_expected_runner(
         {"box_number": 2, "identity": "BRAVO"}
     ]
     assert (
-        "existing_capture_odds_present_for_inactive_expected_runners:2:BRAVO"
+        "win:existing_capture_odds_present_for_inactive_expected_runners:2:BRAVO"
         in attempt["reasons"]
     )
 
@@ -1027,10 +1306,23 @@ def test_execute_capture_plan_blocks_existing_capture_with_incomplete_provenance
                 "dog_name": "Alpha",
                 "box_number": 1,
                 "odds_decimal": 2.4,
+                "market_type": "win",
                 "source_url": "",
                 "odds_level": "",
             },
             {"dog_name": "Bravo", "box_number": 2, "odds_decimal": 3.5},
+            {
+                "dog_name": "Alpha",
+                "box_number": 1,
+                "odds_decimal": 1.2,
+                "market_type": "place",
+            },
+            {
+                "dog_name": "Bravo",
+                "box_number": 2,
+                "odds_decimal": 1.75,
+                "market_type": "place",
+            },
         ],
     )
 
@@ -1061,15 +1353,16 @@ def test_execute_capture_plan_blocks_existing_capture_with_incomplete_provenance
             "box_number": 1,
             "identity": "ALPHA",
             "reasons": ["odds_level_missing", "source_url_missing"],
+            "market_type": "win",
         }
     ]
     assert attempt["reasons"] == [
-        "existing_capture_invalid_rows:1",
-        "existing_capture_missing_expected_runners:1:ALPHA",
+        "win:existing_capture_invalid_rows:1",
+        "win:existing_capture_missing_expected_runners:1:ALPHA",
     ]
 
 
-def test_execute_capture_plan_blocks_partial_existing_capture_without_fetch(
+def test_execute_capture_plan_recaptures_partial_existing_capture(
     tmp_path, monkeypatch
 ):
     input_dir = tmp_path / "upcoming"
@@ -1080,10 +1373,47 @@ def test_execute_capture_plan_blocks_partial_existing_capture_without_fetch(
         [{"dog_name": "Alpha", "box_number": 1, "odds_decimal": 2.4}],
     )
 
-    def fail_fetch(*_args, **_kwargs):
-        raise AssertionError("fetch must not run for incomplete existing capture")
+    def fake_fetch(db_path, venue, race_number, race_date, allow_auto_scrape_odds):
+        win_rows = [
+            {
+                "dog_name": "Alpha",
+                "box_number": 1,
+                "odds_decimal": 2.4,
+                "sportsbet_box_source": "runner_text",
+            },
+            {
+                "dog_name": "Bravo",
+                "box_number": 2,
+                "odds_decimal": 3.5,
+                "sportsbet_box_source": "runner_text",
+            },
+        ]
+        return {
+            "success": True,
+            "win_count": len(win_rows),
+            "place_count": len(win_rows),
+            "race_info": {
+                "venue_url": (
+                    "https://www.sportsbet.com.au/betting/greyhound-racing/"
+                    "australia-nz/wentworth-park/race-1"
+                ),
+                "race_number": 1,
+                "odds_data_place": _place_odds_rows(win_rows),
+            },
+            "odds_data": win_rows,
+        }
 
-    monkeypatch.setattr(capture, "fetch_odds_for_target_race", fail_fetch)
+    def fake_append(*, db_path, plan_item, validation, current_time):
+        return {
+            "status": "SUCCESS",
+            "inserted_rows": len(validation["accepted_rows"])
+            + len(validation["accepted_place_rows"]),
+            "warnings": [],
+            "append_only": True,
+        }
+
+    monkeypatch.setattr(capture, "fetch_odds_for_target_race", fake_fetch)
+    monkeypatch.setattr(capture, "append_validated_capture", fake_append)
 
     report = capture.execute_capture_plan(
         _plan(input_dir),
@@ -1094,15 +1424,15 @@ def test_execute_capture_plan_blocks_partial_existing_capture_without_fetch(
         current_time_provider=lambda: datetime.fromisoformat("2026-06-10T14:40:00+10:00"),
     )
 
-    assert report["final_status"] == "AUTONOMOUS_LIVE_ODDS_CAPTURE_BLOCKED"
+    assert report["final_status"] == "AUTONOMOUS_LIVE_ODDS_CAPTURE_APPENDED"
     attempt = report["attempts"][0]
-    assert attempt["status"] == "BLOCKED_EXISTING_CAPTURE_INCOMPLETE"
+    assert attempt["status"] == "APPENDED"
     assert attempt["existing_capture_count"] == 1
-    assert attempt["existing_capture"]["status"] == "INCOMPLETE"
-    assert attempt["existing_capture"]["missing_expected_runners"] == [
+    assert attempt["incomplete_existing_capture"]["status"] == "INCOMPLETE"
+    assert attempt["incomplete_existing_capture"]["missing_expected_runners"] == [
         {"box_number": 2, "identity": "BRAVO"}
     ]
-    assert attempt["reasons"] == ["existing_capture_missing_expected_runners:2:BRAVO"]
+    assert attempt["inserted_rows"] == 4
 
 
 def test_execute_capture_plan_records_fetch_exception_and_continues(
@@ -1127,35 +1457,40 @@ def test_execute_capture_plan_records_fetch_exception_and_continues(
         fetch_calls.append((venue, race_number))
         if venue == "AAA":
             raise RuntimeError("stale element")
+        win_rows = [
+            {
+                "dog_name": "Alpha",
+                "box_number": 1,
+                "odds_decimal": 2.4,
+                "sportsbet_box_source": "runner_text",
+            },
+            {
+                "dog_name": "Bravo",
+                "box_number": 2,
+                "odds_decimal": 3.5,
+                "sportsbet_box_source": "runner_text",
+            },
+        ]
         return {
             "success": True,
+            "win_count": len(win_rows),
+            "place_count": len(win_rows),
             "race_info": {
                 "venue_url": (
                     "https://www.sportsbet.com.au/betting/greyhound-racing/"
                     "australia-nz/test/race-2"
                 ),
                 "race_number": 2,
+                "odds_data_place": _place_odds_rows(win_rows),
             },
-            "odds_data": [
-                {
-                    "dog_name": "Alpha",
-                    "box_number": 1,
-                    "odds_decimal": 2.4,
-                    "sportsbet_box_source": "runner_text",
-                },
-                {
-                    "dog_name": "Bravo",
-                    "box_number": 2,
-                    "odds_decimal": 3.5,
-                    "sportsbet_box_source": "runner_text",
-                },
-            ],
+            "odds_data": win_rows,
         }
 
     def fake_append(*, db_path, plan_item, validation, current_time):
         return {
             "status": "SUCCESS",
-            "inserted_rows": len(validation["accepted_rows"]),
+            "inserted_rows": len(validation["accepted_rows"])
+            + len(validation["accepted_place_rows"]),
             "warnings": [],
             "append_only": True,
         }
@@ -1183,7 +1518,7 @@ def test_execute_capture_plan_records_fetch_exception_and_continues(
         "CONTINUE_ODDS_CAPTURE_WITH_BLOCKER_REVIEW"
     )
     assert report["status_counts"] == {"BLOCKED_FETCH_EXCEPTION": 1, "APPENDED": 1}
-    assert report["inserted_live_odds_rows"] == 2
+    assert report["inserted_live_odds_rows"] == 4
     assert report["blocked_attempt_count"] == 1
     assert report["attempts"][0]["status"] == "BLOCKED_FETCH_EXCEPTION"
     assert report["attempts"][0]["reasons"] == ["fetch_exception:RuntimeError"]
@@ -1225,6 +1560,55 @@ def test_execute_capture_plan_blocks_fetch_timeout_and_flushes_progress(
     assert "BLOCKED_FETCH_TIMEOUT" in progress_text
 
 
+def test_validate_fetched_odds_rejects_missing_place_market():
+    plan_item = {
+        "race_id": "Race 1 - WPK - 2026-06-10",
+        "race_number": 1,
+        "expected_runners": [
+            {"box_number": 1, "dog_name": "Alpha", "identity": "ALPHA"},
+            {"box_number": 2, "dog_name": "Bravo", "identity": "BRAVO"},
+        ],
+    }
+    fetch_result = {
+        "success": True,
+        "win_count": 2,
+        "place_count": 0,
+        "race_info": {
+            "race_number": 1,
+            "venue_url": (
+                "https://www.sportsbet.com.au/betting/greyhound-racing/"
+                "australia-nz/wentworth-park/race-1"
+            ),
+        },
+        "odds_data": [
+            {
+                "dog_name": "Alpha",
+                "box_number": 1,
+                "odds_decimal": 2.4,
+                "sportsbet_box_source": "runner_text",
+            },
+            {
+                "dog_name": "Bravo",
+                "box_number": 2,
+                "odds_decimal": 3.5,
+                "sportsbet_box_source": "runner_text",
+            },
+        ],
+    }
+
+    validation = capture.validate_fetched_odds(plan_item, fetch_result)
+
+    assert validation["status"] == "FAIL"
+    assert validation["accepted_row_count"] == 2
+    assert validation["accepted_place_row_count"] == 0
+    assert validation["failure_root_cause"] == "sportsbet_place_market_missing"
+    assert validation["place_missing_expected_runners"] == [
+        {"box_number": 1, "identity": "ALPHA"},
+        {"box_number": 2, "identity": "BRAVO"},
+    ]
+    assert "sportsbet_place_accepted_runner_rows_zero" in validation["reasons"]
+
+
 def test_validate_fetched_odds_accepts_reserve_runner_text_final_box():
     plan_item = {
         "race_id": "Race 12 - MAND - 2026-06-11",
@@ -1241,6 +1625,17 @@ def test_validate_fetched_odds_accepts_reserve_runner_text_final_box():
                 "https://www.sportsbet.com.au/greyhound-racing/australia-nz/"
                 "mandurah/race-12-10573646"
             ),
+            "odds_data_place": [
+                {
+                    "dog_name": "High Rollin'",
+                    "dog_clean_name": "HIGH ROLLIN",
+                    "box_number": 9,
+                    "odds_decimal": 4.0,
+                    "sportsbet_box_source": "runner_text",
+                    "sportsbet_list_position": 8,
+                    "sportsbet_raw_runner_text": "9. High Rollin' (6)\nF: 388638\n4.00",
+                },
+            ],
         },
         "odds_data": [
             {
@@ -1279,6 +1674,17 @@ def test_validate_fetched_odds_accepts_abbreviated_name_period_runner_text():
                 "https://www.sportsbet.com.au/greyhound-racing/australia-nz/"
                 "bendigo/race-4-10577353"
             ),
+            "odds_data_place": [
+                {
+                    "dog_name": "Dr. Will",
+                    "dog_clean_name": "DR WILL",
+                    "box_number": 3,
+                    "odds_decimal": 4.2,
+                    "sportsbet_box_source": "runner_text",
+                    "sportsbet_list_position": 3,
+                    "sportsbet_raw_runner_text": "3. Dr. Will (3)\nF: 241112\n4.20",
+                },
+            ],
         },
         "odds_data": [
             {
@@ -1323,6 +1729,14 @@ def test_validate_fetched_odds_allows_missing_explicit_scratched_expected_runner
                 "https://www.sportsbet.com.au/betting/greyhound-racing/"
                 "australia-nz/wentworth-park/race-1"
             ),
+            "odds_data_place": [
+                {
+                    "dog_name": "Alpha",
+                    "box_number": 1,
+                    "odds_decimal": 1.2,
+                    "sportsbet_box_source": "runner_text",
+                },
+            ],
         },
         "odds_data": [
             {
@@ -1399,6 +1813,24 @@ def test_validate_fetched_odds_classifies_partial_win_market_when_place_complete
             {"box_number": 8, "dog_name": "Shep Hotel", "identity": "SHEPHOTEL"},
         ],
     }
+    place_rows = [
+        {
+            "dog_name": f"Shep {name}",
+            "box_number": box,
+            "odds_decimal": odds,
+            "sportsbet_box_source": "runner_text",
+        }
+        for box, name, odds in [
+            (1, "Alpha", 1.2),
+            (2, "Bravo", 1.4),
+            (3, "Charlie", 1.6),
+            (4, "Delta", 1.8),
+            (5, "Echo", 2.0),
+            (6, "Foxtrot", 2.2),
+            (7, "Golf", 2.4),
+            (8, "Hotel", 2.6),
+        ]
+    ]
     fetch_result = {
         "success": True,
         "win_count": 4,
@@ -1409,6 +1841,7 @@ def test_validate_fetched_odds_classifies_partial_win_market_when_place_complete
                 "https://www.sportsbet.com.au/betting/greyhound-racing/"
                 "australia-nz/shepparton/race-7"
             ),
+            "odds_data_place": place_rows,
         },
         "odds_data": [
             {
@@ -1449,6 +1882,9 @@ def test_validate_fetched_odds_classifies_partial_win_market_when_place_complete
         "accepted_win_row_count": 4,
         "missing_active_runner_count": 4,
         "extra_unexpected_runner_count": 0,
+        "accepted_place_row_count": 8,
+        "missing_place_runner_count": 0,
+        "extra_place_unexpected_runner_count": 0,
         "fetch_win_count": 4,
         "fetch_place_count": 8,
         "root_cause": "sportsbet_win_market_partial_but_place_complete",
@@ -1606,29 +2042,33 @@ def test_execute_capture_plan_rechecks_prejump_time_before_append(
     _write_capture_input(input_dir)
 
     def fake_fetch(db_path, venue, race_number, race_date, allow_auto_scrape_odds):
+        win_rows = [
+            {
+                "dog_name": "Alpha",
+                "box_number": 1,
+                "odds_decimal": 2.4,
+                "sportsbet_box_source": "runner_text",
+            },
+            {
+                "dog_name": "Bravo",
+                "box_number": 2,
+                "odds_decimal": 3.5,
+                "sportsbet_box_source": "runner_text",
+            },
+        ]
         return {
             "success": True,
+            "win_count": len(win_rows),
+            "place_count": len(win_rows),
             "race_info": {
                 "venue_url": (
                     "https://www.sportsbet.com.au/betting/greyhound-racing/"
                     "australia-nz/wentworth-park/race-1"
                 ),
                 "race_number": 1,
+                "odds_data_place": _place_odds_rows(win_rows),
             },
-            "odds_data": [
-                {
-                    "dog_name": "Alpha",
-                    "box_number": 1,
-                    "odds_decimal": 2.4,
-                    "sportsbet_box_source": "runner_text",
-                },
-                {
-                    "dog_name": "Bravo",
-                    "box_number": 2,
-                    "odds_decimal": 3.5,
-                    "sportsbet_box_source": "runner_text",
-                },
-            ],
+            "odds_data": win_rows,
         }
 
     def fail_append(**_kwargs):
@@ -1783,6 +2223,24 @@ def test_execute_capture_plan_reports_partial_win_market_place_complete(
     _write_shepparton_eight_runner_input(input_dir)
 
     def fake_fetch(db_path, venue, race_number, race_date, allow_auto_scrape_odds):
+        place_rows = [
+            {
+                "dog_name": f"Shep {name}",
+                "box_number": box,
+                "odds_decimal": odds,
+                "sportsbet_box_source": "runner_text",
+            }
+            for box, name, odds in [
+                (1, "Alpha", 1.2),
+                (2, "Bravo", 1.4),
+                (3, "Charlie", 1.6),
+                (4, "Delta", 1.8),
+                (5, "Echo", 2.0),
+                (6, "Foxtrot", 2.2),
+                (7, "Golf", 2.4),
+                (8, "Hotel", 2.6),
+            ]
+        ]
         return {
             "success": True,
             "win_count": 4,
@@ -1793,6 +2251,7 @@ def test_execute_capture_plan_reports_partial_win_market_place_complete(
                     "australia-nz/shepparton/race-7"
                 ),
                 "race_number": 7,
+                "odds_data_place": place_rows,
             },
             "odds_data": [
                 {

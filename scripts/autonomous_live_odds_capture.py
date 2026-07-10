@@ -3,7 +3,7 @@
 
 The default mode is report-only. Execution requires both ``--execute`` and
 ``--allow-auto-scrape-odds``. The only execution write is append-only dog-level
-WIN rows in ``live_odds`` for races whose pre-jump TheDogs sidecar and
+WIN and PLACE rows in ``live_odds`` for races whose pre-jump TheDogs sidecar and
 Sportsbet runner/box identity both validate exactly.
 """
 
@@ -45,6 +45,8 @@ DEFAULT_EVIDENCE_ROOT = ROOT / "artifacts/full_evidence_orchestration_20260525"
 OUTPUT_PREFIX = "artifacts/full_evidence_orchestration_20260525/autonomous_live_odds_capture_"
 OUTPUT_ARTIFACT_PREFIX = "autonomous_live_odds_capture_"
 CAPTURE_WINDOWS_MINUTES = (60, 30, 10, 2)
+REQUIRED_CAPTURE_MARKETS = ("win", "place")
+DEFAULT_PLACE_TOPN = 3
 ACCEPTED_SPORTSBET_BOX_SOURCES = {"explicit_dom", "runner_text"}
 ACCEPTED_DOG_LEVEL_ODDS_LEVELS = {"dog", "runner"}
 SCRATCHED_EXPECTED_RUNNER_STATUS_FIELDS = (
@@ -257,6 +259,9 @@ def validation_failure_detail(
     accepted_row_count: int,
     missing_count: int,
     extra_count: int,
+    accepted_place_row_count: int | None = None,
+    place_missing_count: int | None = None,
+    place_extra_count: int | None = None,
     fetch_result: Mapping[str, Any],
 ) -> dict[str, Any]:
     detail: dict[str, Any] = {
@@ -267,13 +272,24 @@ def validation_failure_detail(
         "fetch_win_count": parse_int_value(fetch_result.get("win_count")),
         "fetch_place_count": parse_int_value(fetch_result.get("place_count")),
     }
+    if accepted_place_row_count is not None:
+        detail["accepted_place_row_count"] = accepted_place_row_count
+    if place_missing_count is not None:
+        detail["missing_place_runner_count"] = place_missing_count
+    if place_extra_count is not None:
+        detail["extra_place_unexpected_runner_count"] = place_extra_count
     root_cause = None
-    if extra_count > 0:
+    if extra_count > 0 or (place_extra_count or 0) > 0:
         root_cause = "sportsbet_unexpected_runner_identity_mismatch"
     partial_win_rows = (
         missing_count > 0
         and accepted_row_count > 0
         and accepted_row_count < active_expected_count
+    )
+    partial_place_rows = (
+        (place_missing_count or 0) > 0
+        and (accepted_place_row_count or 0) > 0
+        and (accepted_place_row_count or 0) < active_expected_count
     )
     if (
         root_cause is None
@@ -283,6 +299,15 @@ def validation_failure_detail(
         root_cause = "sportsbet_win_market_partial_but_place_complete"
     elif root_cause is None and partial_win_rows:
         root_cause = "partial_same_race_win_market"
+    elif root_cause is None and partial_place_rows:
+        root_cause = "partial_same_race_place_market"
+    elif (
+        root_cause is None
+        and active_expected_count > 0
+        and accepted_row_count == active_expected_count
+        and accepted_place_row_count == 0
+    ):
+        root_cause = "sportsbet_place_market_missing"
     if root_cause is not None:
         detail["root_cause"] = root_cause
     return detail
@@ -296,9 +321,11 @@ def validation_failure_reason(detail: Mapping[str, Any]) -> str | None:
         f"{root_cause}:"
         f"active_expected={detail.get('active_expected_runner_count')},"
         f"accepted_win={detail.get('accepted_win_row_count')},"
+        f"accepted_place={detail.get('accepted_place_row_count')},"
         f"fetch_win={detail.get('fetch_win_count')},"
         f"fetch_place={detail.get('fetch_place_count')},"
         f"missing_active={detail.get('missing_active_runner_count')},"
+        f"missing_place={detail.get('missing_place_runner_count')},"
         f"extra_unexpected={detail.get('extra_unexpected_runner_count')}"
     )
 
@@ -1309,15 +1336,28 @@ def fetched_source_url(fetch_result: Mapping[str, Any]) -> str | None:
     return str(value).strip() if value not in (None, "") else None
 
 
-def fetched_odds_rows(fetch_result: Mapping[str, Any]) -> list[dict[str, Any]]:
-    rows = fetch_result.get("odds_data")
+def fetched_market_odds_rows(
+    fetch_result: Mapping[str, Any],
+    market_type: str,
+) -> list[dict[str, Any]]:
+    market = str(market_type or "win").strip().lower()
+    key = "odds_data_place" if market == "place" else "odds_data"
+    rows = fetch_result.get(key)
     if not isinstance(rows, list):
         race_info = fetch_result.get("race_info")
         if isinstance(race_info, Mapping):
-            rows = race_info.get("odds_data")
+            rows = race_info.get(key)
     if not isinstance(rows, list):
         return []
     return [dict(row) for row in rows if isinstance(row, Mapping)]
+
+
+def fetched_odds_rows(fetch_result: Mapping[str, Any]) -> list[dict[str, Any]]:
+    return fetched_market_odds_rows(fetch_result, "win")
+
+
+def fetched_place_odds_rows(fetch_result: Mapping[str, Any]) -> list[dict[str, Any]]:
+    return fetched_market_odds_rows(fetch_result, "place")
 
 
 def normalize_fetched_row(row: Mapping[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
@@ -1355,13 +1395,120 @@ def normalize_fetched_row(row: Mapping[str, Any]) -> tuple[dict[str, Any] | None
     }, None
 
 
+def _market_reason_name(market_type: str, reason: str) -> str:
+    market = str(market_type or "win").strip().lower()
+    win_names = {
+        "duplicate": "sportsbet_duplicate_runner_keys",
+        "scratched": "sportsbet_odds_present_for_scratched_expected_runners",
+        "missing": "sportsbet_missing_expected_runners",
+        "extra": "sportsbet_extra_unexpected_runners",
+        "rejected": "sportsbet_rejected_runner_rows",
+        "zero": "sportsbet_accepted_runner_rows_zero",
+    }
+    if market == "win":
+        return win_names[reason]
+    place_names = {
+        "duplicate": f"sportsbet_{market}_duplicate_runner_keys",
+        "scratched": f"sportsbet_{market}_odds_present_for_scratched_expected_runners",
+        "missing": f"sportsbet_{market}_missing_expected_runners",
+        "extra": f"sportsbet_{market}_extra_unexpected_runners",
+        "rejected": f"sportsbet_{market}_rejected_runner_rows",
+        "zero": f"sportsbet_{market}_accepted_runner_rows_zero",
+    }
+    return place_names[reason]
+
+
+def validate_fetched_market_rows(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    market_type: str,
+    expected_set: set[tuple[int, str]],
+    active_expected_set: set[tuple[int, str]],
+    scratched_expected_set: set[tuple[int, str]],
+) -> dict[str, Any]:
+    reasons: list[str] = []
+    rejected_rows: list[dict[str, Any]] = []
+    accepted_rows: list[dict[str, Any]] = []
+    for raw_row in rows:
+        normalized, reason = normalize_fetched_row(raw_row)
+        if normalized is None:
+            rejected_rows.append({"row": dict(raw_row), "reason": reason})
+            continue
+        accepted_rows.append(normalized)
+
+    accepted_set = {(int(row["box_number"]), row["identity"]) for row in accepted_rows}
+    duplicate_keys = sorted(
+        key
+        for key in accepted_set
+        if sum(
+            1
+            for row in accepted_rows
+            if (int(row["box_number"]), row["identity"]) == key
+        )
+        > 1
+    )
+    scratched_with_odds = sorted(scratched_expected_set & accepted_set)
+    missing = sorted(active_expected_set - accepted_set)
+    extra = sorted(accepted_set - expected_set)
+    if duplicate_keys:
+        reasons.append(
+            _market_reason_name(market_type, "duplicate")
+            + ":"
+            + ",".join(f"{box}:{identity}" for box, identity in duplicate_keys)
+        )
+    if scratched_with_odds:
+        reasons.append(
+            _market_reason_name(market_type, "scratched")
+            + ":"
+            + ",".join(f"{box}:{identity}" for box, identity in scratched_with_odds)
+        )
+    if missing:
+        reasons.append(
+            _market_reason_name(market_type, "missing")
+            + ":"
+            + ",".join(f"{box}:{identity}" for box, identity in missing)
+        )
+    if extra:
+        reasons.append(
+            _market_reason_name(market_type, "extra")
+            + ":"
+            + ",".join(f"{box}:{identity}" for box, identity in extra)
+        )
+    if rejected_rows:
+        reasons.append(
+            f"{_market_reason_name(market_type, 'rejected')}:{len(rejected_rows)}"
+        )
+    if not accepted_rows:
+        reasons.append(_market_reason_name(market_type, "zero"))
+
+    return {
+        "market_type": str(market_type or "win").strip().lower(),
+        "accepted_rows": accepted_rows,
+        "accepted_row_count": len(accepted_rows),
+        "rejected_rows": rejected_rows,
+        "missing_expected_runners": [
+            {"box_number": box, "identity": identity} for box, identity in missing
+        ],
+        "extra_unexpected_runners": [
+            {"box_number": box, "identity": identity} for box, identity in extra
+        ],
+        "scratched_expected_runners_with_odds": [
+            {"box_number": box, "identity": identity}
+            for box, identity in scratched_with_odds
+        ],
+        "duplicate_runner_keys": [
+            {"box_number": box, "identity": identity}
+            for box, identity in duplicate_keys
+        ],
+        "reasons": sorted(set(reasons)),
+    }
+
+
 def validate_fetched_odds(
     plan_item: Mapping[str, Any],
     fetch_result: Mapping[str, Any],
 ) -> dict[str, Any]:
     reasons: list[str] = []
-    rejected_rows: list[dict[str, Any]] = []
-    accepted_rows: list[dict[str, Any]] = []
     if fetch_result.get("success") is not True:
         reasons.append("sportsbet_fetch_not_successful")
     source_url = fetched_source_url(fetch_result)
@@ -1378,13 +1525,6 @@ def validate_fetched_odds(
         if fetched_race_number is not None and fetched_race_number != plan_item.get("race_number"):
             reasons.append("sportsbet_race_number_mismatch")
 
-    for raw_row in fetched_odds_rows(fetch_result):
-        normalized, reason = normalize_fetched_row(raw_row)
-        if normalized is None:
-            rejected_rows.append({"row": raw_row, "reason": reason})
-            continue
-        accepted_rows.append(normalized)
-
     expected_rows = [
         dict(row)
         for row in plan_item.get("expected_runners") or []
@@ -1394,57 +1534,49 @@ def validate_fetched_odds(
     expected_set = expected_sets["all"]
     active_expected_set = expected_sets["active"]
     scratched_expected_set = expected_sets["scratched"]
-    accepted_set = {(int(row["box_number"]), row["identity"]) for row in accepted_rows}
-    duplicate_keys = sorted(
-        key
-        for key in accepted_set
-        if sum(1 for row in accepted_rows if (int(row["box_number"]), row["identity"]) == key) > 1
+    win_validation = validate_fetched_market_rows(
+        fetched_odds_rows(fetch_result),
+        market_type="win",
+        expected_set=expected_set,
+        active_expected_set=active_expected_set,
+        scratched_expected_set=scratched_expected_set,
     )
-    if duplicate_keys:
-        reasons.append(
-            "sportsbet_duplicate_runner_keys:"
-            + ",".join(f"{box}:{identity}" for box, identity in duplicate_keys)
-        )
-    scratched_with_odds = sorted(scratched_expected_set & accepted_set)
-    missing = sorted(active_expected_set - accepted_set)
-    extra = sorted(accepted_set - expected_set)
-    if scratched_with_odds:
-        reasons.append(
-            "sportsbet_odds_present_for_scratched_expected_runners:"
-            + ",".join(f"{box}:{identity}" for box, identity in scratched_with_odds)
-        )
-    if missing:
-        reasons.append(
-            "sportsbet_missing_expected_runners:"
-            + ",".join(f"{box}:{identity}" for box, identity in missing)
-        )
-    if extra:
-        reasons.append(
-            "sportsbet_extra_unexpected_runners:"
-            + ",".join(f"{box}:{identity}" for box, identity in extra)
-        )
+    place_validation = validate_fetched_market_rows(
+        fetched_place_odds_rows(fetch_result),
+        market_type="place",
+        expected_set=expected_set,
+        active_expected_set=active_expected_set,
+        scratched_expected_set=scratched_expected_set,
+    )
+    reasons.extend(win_validation["reasons"])
+    reasons.extend(place_validation["reasons"])
     failure_detail = validation_failure_detail(
         active_expected_count=len(active_expected_set),
-        accepted_row_count=len(accepted_rows),
-        missing_count=len(missing),
-        extra_count=len(extra),
+        accepted_row_count=int(win_validation["accepted_row_count"]),
+        missing_count=len(win_validation["missing_expected_runners"]),
+        extra_count=len(win_validation["extra_unexpected_runners"]),
+        accepted_place_row_count=int(place_validation["accepted_row_count"]),
+        place_missing_count=len(place_validation["missing_expected_runners"]),
+        place_extra_count=len(place_validation["extra_unexpected_runners"]),
         fetch_result=fetch_result,
     )
     failure_reason = validation_failure_reason(failure_detail)
     if failure_reason:
         reasons.append(failure_reason)
-    if rejected_rows:
-        reasons.append(f"sportsbet_rejected_runner_rows:{len(rejected_rows)}")
-    if not accepted_rows:
-        reasons.append("sportsbet_accepted_runner_rows_zero")
-
     return {
         "schema_version": "autonomous_live_odds_capture_validation_v1",
         "status": "PASS" if not reasons else "FAIL",
         "source_url": source_url,
-        "accepted_rows": accepted_rows,
-        "accepted_row_count": len(accepted_rows),
-        "rejected_rows": rejected_rows,
+        "accepted_rows": win_validation["accepted_rows"],
+        "accepted_row_count": win_validation["accepted_row_count"],
+        "rejected_rows": win_validation["rejected_rows"],
+        "accepted_place_rows": place_validation["accepted_rows"],
+        "accepted_place_row_count": place_validation["accepted_row_count"],
+        "rejected_place_rows": place_validation["rejected_rows"],
+        "market_validations": {
+            "win": win_validation,
+            "place": place_validation,
+        },
         "expected_runner_count": len(expected_set),
         "active_expected_runner_count": len(active_expected_set),
         "scratched_expected_runner_count": len(scratched_expected_set),
@@ -1453,13 +1585,20 @@ def validate_fetched_odds(
             for box, identity in sorted(scratched_expected_set)
         ],
         "scratched_expected_runners_with_odds": [
-            {"box_number": box, "identity": identity} for box, identity in scratched_with_odds
+            dict(row)
+            for row in win_validation["scratched_expected_runners_with_odds"]
         ],
         "missing_expected_runners": [
-            {"box_number": box, "identity": identity} for box, identity in missing
+            dict(row) for row in win_validation["missing_expected_runners"]
         ],
         "extra_unexpected_runners": [
-            {"box_number": box, "identity": identity} for box, identity in extra
+            dict(row) for row in win_validation["extra_unexpected_runners"]
+        ],
+        "place_missing_expected_runners": [
+            dict(row) for row in place_validation["missing_expected_runners"]
+        ],
+        "place_extra_unexpected_runners": [
+            dict(row) for row in place_validation["extra_unexpected_runners"]
         ],
         "failure_root_cause": failure_detail.get("root_cause"),
         "failure_detail": failure_detail,
@@ -1580,7 +1719,9 @@ def runner_group_status(
     *,
     expected_set: set[tuple[int, str]],
     allowed_expected_set: set[tuple[int, str]] | None = None,
+    expected_market_type: str = "win",
 ) -> dict[str, Any]:
+    expected_market = str(expected_market_type or "win").strip().lower()
     observed_keys: list[tuple[int, str]] = []
     invalid_rows: list[dict[str, Any]] = []
     for index, row in enumerate(rows, start=1):
@@ -1607,8 +1748,11 @@ def runner_group_status(
                 reasons.append("source_url_post_race")
         if "capture_timestamp" in row and not str(row.get("capture_timestamp") or "").strip():
             reasons.append("capture_timestamp_missing")
-        if "market_type" in row and str(row.get("market_type") or "").strip().lower() != "win":
-            reasons.append("market_not_win")
+        if (
+            "market_type" in row
+            and str(row.get("market_type") or "").strip().lower() != expected_market
+        ):
+            reasons.append(f"market_not_{expected_market}")
         if "source" in row and str(row.get("source") or "").strip().lower() != "sportsbet":
             reasons.append("source_not_sportsbet")
         if "odds_level" in row:
@@ -1674,6 +1818,7 @@ def runner_group_status(
         existing_status = "INVALID"
     return {
         "status": existing_status,
+        "market_type": expected_market,
         "observed_runner_count": len(observed_set),
         "missing_expected_runners": [
             {"box_number": box, "identity": identity} for box, identity in missing
@@ -1689,6 +1834,98 @@ def runner_group_status(
             {"box_number": box, "identity": identity} for box, identity in duplicate_keys
         ],
         "invalid_rows": invalid_rows,
+        "reasons": sorted(set(reasons)),
+    }
+
+
+def runner_multi_market_group_status(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    expected_set: set[tuple[int, str]],
+    allowed_expected_set: set[tuple[int, str]] | None = None,
+) -> dict[str, Any]:
+    rows_by_market: dict[str, list[Mapping[str, Any]]] = {
+        market: [] for market in REQUIRED_CAPTURE_MARKETS
+    }
+    for row in rows:
+        market = str(row.get("market_type") or "win").strip().lower()
+        if market in rows_by_market:
+            rows_by_market[market].append(row)
+
+    market_statuses = {
+        market: runner_group_status(
+            rows_by_market[market],
+            expected_set=expected_set,
+            allowed_expected_set=allowed_expected_set,
+            expected_market_type=market,
+        )
+        for market in REQUIRED_CAPTURE_MARKETS
+    }
+    missing_required_markets = [
+        market for market, market_rows in rows_by_market.items() if not market_rows
+    ]
+    reasons: list[str] = []
+    if missing_required_markets:
+        reasons.append(
+            "existing_capture_missing_required_markets:"
+            + ",".join(missing_required_markets)
+        )
+    for market, market_status in market_statuses.items():
+        for reason in market_status.get("reasons") or []:
+            reasons.append(f"{market}:{reason}")
+
+    complete = all(
+        market_status.get("status") == "COMPLETE"
+        for market_status in market_statuses.values()
+    )
+    invalid = any(
+        market_status.get("status") == "INVALID"
+        for market_status in market_statuses.values()
+    )
+    if complete and not missing_required_markets:
+        existing_status = "COMPLETE"
+    elif invalid:
+        existing_status = "INVALID"
+    else:
+        existing_status = "INCOMPLETE"
+
+    selected_market = next(
+        (
+            market_status
+            for market_status in market_statuses.values()
+            if market_status.get("status") != "COMPLETE"
+        ),
+        market_statuses[REQUIRED_CAPTURE_MARKETS[0]],
+    )
+    return {
+        "status": existing_status,
+        "required_markets": list(REQUIRED_CAPTURE_MARKETS),
+        "observed_markets": [
+            market for market, market_rows in rows_by_market.items() if market_rows
+        ],
+        "missing_required_markets": missing_required_markets,
+        "market_statuses": market_statuses,
+        "observed_runner_count": min(
+            int(market_status.get("observed_runner_count") or 0)
+            for market_status in market_statuses.values()
+        ),
+        "missing_expected_runners": list(
+            selected_market.get("missing_expected_runners") or []
+        ),
+        "inactive_expected_runners_with_odds": list(
+            selected_market.get("inactive_expected_runners_with_odds") or []
+        ),
+        "extra_unexpected_runners": list(
+            selected_market.get("extra_unexpected_runners") or []
+        ),
+        "duplicate_runner_keys": list(
+            selected_market.get("duplicate_runner_keys") or []
+        ),
+        "invalid_rows": [
+            {**dict(row), "market_type": market}
+            for market, market_status in market_statuses.items()
+            for row in (market_status.get("invalid_rows") or [])
+        ],
         "reasons": sorted(set(reasons)),
     }
 
@@ -1719,6 +1956,9 @@ def existing_capture_runner_status(
         "duplicate_runner_keys": [],
         "invalid_rows": [],
         "stale_capture_groups": [],
+        "required_markets": list(REQUIRED_CAPTURE_MARKETS),
+        "missing_required_markets": [],
+        "market_statuses": {},
         "selected_capture_timestamp": None,
         "reasons": [],
     }
@@ -1811,7 +2051,7 @@ def existing_capture_runner_status(
     group_reports: list[dict[str, Any]] = []
     stale_groups: list[dict[str, Any]] = []
     for capture_timestamp, group_rows in sorted(grouped_rows.items()):
-        group = runner_group_status(
+        group = runner_multi_market_group_status(
             group_rows,
             expected_set=expected_set,
             allowed_expected_set=allowed_expected_set,
@@ -1889,7 +2129,17 @@ def existing_capture_runner_status(
                 for row in selected.get("duplicate_runner_keys") or []
             ]
             invalid_rows = list(selected.get("invalid_rows") or [])
+            missing_required_markets = list(
+                selected.get("missing_required_markets") or []
+            )
+            market_statuses = dict(selected.get("market_statuses") or {})
             reasons = list(selected.get("reasons") or [])
+    if complete_groups:
+        missing_required_markets = []
+        market_statuses = dict(selected.get("market_statuses") or {})
+    elif stale_groups and not actionable_groups:
+        missing_required_markets = []
+        market_statuses = {}
     status.update(
         {
             "status": existing_status,
@@ -1909,6 +2159,8 @@ def existing_capture_runner_status(
             ],
             "invalid_rows": invalid_rows,
             "stale_capture_groups": stale_groups,
+            "missing_required_markets": missing_required_markets,
+            "market_statuses": market_statuses,
             "selected_capture_timestamp": selected_capture_timestamp,
             "reasons": sorted(set(reasons)),
         }
@@ -1932,6 +2184,9 @@ def block_or_skip_existing_capture_attempt(
     if status == "STALE":
         attempt["stale_existing_capture"] = existing_status
         return False
+    if status == "INCOMPLETE":
+        attempt["incomplete_existing_capture"] = existing_status
+        return False
     if (
         status == "INVALID"
         and existing_status.get("extra_unexpected_runners")
@@ -1944,10 +2199,7 @@ def block_or_skip_existing_capture_attempt(
             "existing_capture_extra_unexpected_runners"
         ]
         return True
-    if status == "INCOMPLETE":
-        attempt["status"] = "BLOCKED_EXISTING_CAPTURE_INCOMPLETE"
-    else:
-        attempt["status"] = "BLOCKED_EXISTING_CAPTURE_INVALID"
+    attempt["status"] = "BLOCKED_EXISTING_CAPTURE_INVALID"
     attempt["reasons"] = existing_status.get("reasons") or [f"existing_capture_{status}"]
     return True
 
@@ -2038,9 +2290,6 @@ def capture_window_coverage_for_item(
         if existing_status == "COMPLETE":
             status = "CAPTURED"
             reason = "complete_existing_capture"
-        elif existing_status == "INCOMPLETE":
-            status = "BLOCKED_EXISTING_CAPTURE_INCOMPLETE"
-            reason = "existing_capture_incomplete"
         elif existing_status == "INVALID":
             status = "BLOCKED_EXISTING_CAPTURE_INVALID"
             reason = "existing_capture_invalid"
@@ -2197,13 +2446,83 @@ def append_validated_capture(
         allow_auto_scrape_odds=True,
         setup_database=False,
     )
-    return integrator.append_pre_jump_odds_snapshot(
+    place_report = integrator.append_pre_jump_odds_snapshot(
         race_info,
-        list(validation.get("accepted_rows") or []),
+        list(validation.get("accepted_place_rows") or []),
+        market_type="place",
+        topN=DEFAULT_PLACE_TOPN,
         capture_mode=capture_mode,
         capture_timestamp=current_time.isoformat(),
         write_race_metadata=False,
     )
+    if place_report.get("status") != "SUCCESS" or int(
+        place_report.get("inserted_rows") or 0
+    ) <= 0:
+        return {
+            "status": "FAILED",
+            "race_id": plan_item.get("race_id"),
+            "source_url": validation.get("source_url"),
+            "capture_mode": capture_mode,
+            "capture_timestamp": current_time.isoformat(),
+            "market_types": list(REQUIRED_CAPTURE_MARKETS),
+            "inserted_rows": int(place_report.get("inserted_rows") or 0),
+            "win_inserted_rows": 0,
+            "place_inserted_rows": int(place_report.get("inserted_rows") or 0),
+            "warnings": [
+                f"place:{warning}"
+                for warning in (place_report.get("warnings") or [])
+            ],
+            "append_only": True,
+            "market_reports": {
+                "win": {
+                    "status": "SKIPPED",
+                    "warnings": ["place_append_failed_before_win_append"],
+                    "inserted_rows": 0,
+                },
+                "place": place_report,
+            },
+        }
+    win_report = integrator.append_pre_jump_odds_snapshot(
+        race_info,
+        list(validation.get("accepted_rows") or []),
+        market_type="win",
+        capture_mode=capture_mode,
+        capture_timestamp=current_time.isoformat(),
+        write_race_metadata=False,
+    )
+    warnings = [
+        f"{market}:{warning}"
+        for market, report in (("place", place_report), ("win", win_report))
+        for warning in (report.get("warnings") or [])
+    ]
+    inserted_rows = int(place_report.get("inserted_rows") or 0) + int(
+        win_report.get("inserted_rows") or 0
+    )
+    status = (
+        "SUCCESS"
+        if place_report.get("status") == "SUCCESS"
+        and win_report.get("status") == "SUCCESS"
+        and int(place_report.get("inserted_rows") or 0) > 0
+        and int(win_report.get("inserted_rows") or 0) > 0
+        else "FAILED"
+    )
+    return {
+        "status": status,
+        "race_id": plan_item.get("race_id"),
+        "source_url": validation.get("source_url"),
+        "capture_mode": capture_mode,
+        "capture_timestamp": current_time.isoformat(),
+        "market_types": list(REQUIRED_CAPTURE_MARKETS),
+        "inserted_rows": inserted_rows,
+        "win_inserted_rows": int(win_report.get("inserted_rows") or 0),
+        "place_inserted_rows": int(place_report.get("inserted_rows") or 0),
+        "warnings": warnings,
+        "append_only": True,
+        "market_reports": {
+            "win": win_report,
+            "place": place_report,
+        },
+    }
 
 
 def execute_capture_plan(
@@ -2310,7 +2629,7 @@ def execute_capture_plan(
         attempt["fetch_result"] = {
             key: value
             for key, value in fetch_result.items()
-            if key not in {"odds_data", "race_info"}
+            if key not in {"odds_data", "odds_data_place", "race_info"}
         }
         attempt["validation"] = validation
         if validation.get("status") != "PASS":
