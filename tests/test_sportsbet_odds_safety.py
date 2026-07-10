@@ -10,6 +10,8 @@ from sportsbet_odds_integrator import (
     SPORTSBET_LIST_POSITION_BOX_SOURCE,
     SPORTSBET_RUNNER_TEXT_BOX_SOURCE,
     SportsbetOddsIntegrator,
+    sportsbet_paired_fixed_prices,
+    sportsbet_paired_market_rows,
     sportsbet_runner_header_count,
     sportsbet_runner_box_metadata,
 )
@@ -571,6 +573,240 @@ def test_runner_card_extractor_scans_all_candidates_before_deduping(monkeypatch,
         9.80,
     ]
     assert len(extracted) == 8
+
+
+def test_race_page_uses_explicit_paired_prices_without_generic_place_click(
+    monkeypatch, tmp_path
+):
+    class FakeRacePageDriver:
+        current_url = ""
+        title = "Race 4 Healesville Betting Odds"
+
+        def get(self, url):
+            self.current_url = url
+
+        def execute_script(self, *_args):
+            return "complete"
+
+        def find_elements(self, *_args):
+            return []
+
+    class FakeReadyWait:
+        def __init__(self, _driver, _timeout):
+            pass
+
+        def until(self, _condition):
+            return True
+
+    source_rows = [
+        {
+            "dog_name": "Proud Mary",
+            "dog_clean_name": "PROUD MARY",
+            "box_number": 1,
+            "odds_decimal": 5.0,
+            "odds_fractional": "5.00",
+            "sportsbet_box_source": SPORTSBET_RUNNER_TEXT_BOX_SOURCE,
+            "sportsbet_list_position": 1,
+            "sportsbet_raw_runner_text": (
+                "1. Proud Mary (1)\nF: 853614\nT: KATRINA EVANS\n"
+                "Early Speed:\n4.40\n4.80\n5.00\n1.80\nEW\nNo Awards"
+            ),
+        },
+        {
+            "dog_name": "Devil In Me",
+            "dog_clean_name": "DEVIL IN ME",
+            "box_number": 2,
+            "odds_decimal": 5.0,
+            "odds_fractional": "5.00",
+            "sportsbet_box_source": SPORTSBET_RUNNER_TEXT_BOX_SOURCE,
+            "sportsbet_list_position": 2,
+            "sportsbet_raw_runner_text": (
+                "2. Devil In Me (2)\nF: X75332\nT: KAY KING\n"
+                "Early Speed:\n4.50\n5.00\n5.50\n5.00\n1.67\nEW\nPlace Rate"
+            ),
+        },
+    ]
+    extractor_calls = []
+    integrator = SportsbetOddsIntegrator(
+        db_path=str(tmp_path / "odds.db"),
+        setup_database=False,
+    )
+    integrator.driver = FakeRacePageDriver()
+    monkeypatch.setattr("sportsbet_odds_integrator.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        integrator,
+        "_selenium_primitives",
+        lambda: (_FakeSportsbetBy, FakeReadyWait, _FakeSportsbetEC, TimeoutError),
+    )
+    monkeypatch.setattr(
+        integrator,
+        "extract_odds_strategy_runner_cards",
+        lambda: extractor_calls.append("runner_cards") or list(source_rows),
+    )
+    monkeypatch.setattr(
+        integrator,
+        "_select_place_market",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("generic Place click must not run for paired source rows")
+        ),
+    )
+    monkeypatch.setattr(integrator, "extract_race_number_from_page", lambda _venue: 4)
+
+    race = integrator.get_race_odds_from_page(
+        {
+            "race_id": "HEA_2026-07-10_4",
+            "venue": "Healesville",
+            "venue_slug": "healesville",
+            "race_number": 4,
+            "race_date": date(2026, 7, 10),
+            "venue_url": (
+                "https://www.sportsbet.com.au/greyhound-racing/australia-nz/"
+                "healesville/race-4-10680641"
+            ),
+        }
+    )
+
+    assert extractor_calls == ["runner_cards"]
+    assert [row["odds_decimal"] for row in race["odds_data"]] == [5.0, 5.0]
+    assert [row["odds_decimal"] for row in race["odds_data_place"]] == [1.8, 1.67]
+    assert [row["box_number"] for row in race["odds_data_place"]] == [1, 2]
+    assert race["place_topN"] == 3
+
+
+def test_paired_price_parser_requires_explicit_ew_pair_and_sane_market_order():
+    assert sportsbet_paired_fixed_prices(
+        "7. Dinosaur Deano (7)\nEarly Speed:\n2.60\n2.90\n3.00\n"
+        "2.90\nFav\n1.30\nEW\nPlace Rate"
+    ) == (2.9, 1.3)
+    assert sportsbet_paired_fixed_prices(
+        "7. Dinosaur Deano (7)\nEarly Speed:\n2.90\n1.30"
+    ) is None
+    assert sportsbet_paired_fixed_prices(
+        "7. Dinosaur Deano (7)\nEarly Speed:\n1.30\n2.90\nEW"
+    ) is None
+
+
+def test_paired_market_rows_uses_box_aligned_raw_pair_when_button_price_is_place():
+    favourite_row = {
+        "dog_name": "Dinosaur Deano",
+        "box_number": 7,
+        "odds_decimal": 1.30,
+        "sportsbet_raw_runner_text": (
+            "7. Dinosaur Deano (7)\nEarly Speed:\n2.60\n2.90\n3.00\n"
+            "2.90\nFav\n1.30\nEW"
+        ),
+    }
+    wrong_box_row = {
+        "dog_name": "Wrong Box Runner",
+        "box_number": 8,
+        "odds_decimal": 4.80,
+        "sportsbet_raw_runner_text": (
+            "6. Wrong Box Runner (6)\nEarly Speed:\n4.40\n4.80\n1.80\nEW"
+        ),
+    }
+
+    win_rows, place_rows = sportsbet_paired_market_rows(
+        [favourite_row, wrong_box_row]
+    )
+
+    assert [row["dog_name"] for row in win_rows] == ["Dinosaur Deano"]
+    assert [row["odds_decimal"] for row in win_rows] == [2.90]
+    assert [row["dog_name"] for row in place_rows] == ["Dinosaur Deano"]
+    assert [row["odds_decimal"] for row in place_rows] == [1.30]
+
+
+def test_race_page_recovers_win_and_place_from_second_explicit_paired_render(
+    monkeypatch, tmp_path
+):
+    class FakeRacePageDriver:
+        current_url = ""
+        title = "Race 6 Healesville Betting Odds"
+
+        def get(self, url):
+            self.current_url = url
+
+        def execute_script(self, *_args):
+            return "complete"
+
+        def find_elements(self, *_args):
+            return []
+
+    class FakeReadyWait:
+        def __init__(self, _driver, _timeout):
+            pass
+
+        def until(self, _condition):
+            return True
+
+    runners = [
+        (1, "Fiddles", 4.20, 1.44),
+        (2, "Little Master", 10.00, 2.40),
+        (3, "Archie Mcivor", 4.80, 1.57),
+        (4, "Fast Love", 17.00, 3.40),
+        (5, "Sunny Stride", 67.00, 10.00),
+        (6, "Minter Scorch", 6.00, 1.91),
+        (7, "Winking Willie", 2.45, 1.22),
+        (8, "Leon's Entity", 6.50, 1.88),
+    ]
+
+    def row(box, name, win, place, *, paired):
+        raw_text = f"{box}. {name} ({box})\nF: 123456\nT: TEST TRAINER\nEarly Speed:"
+        if paired:
+            raw_text += f"\n3.60\n3.70\n{win:.2f}\n{place:.2f}\nEW"
+        return {
+            "dog_name": name,
+            "dog_clean_name": name.upper(),
+            "box_number": box,
+            "odds_decimal": win,
+            "odds_fractional": f"{win:.2f}",
+            "sportsbet_box_source": SPORTSBET_RUNNER_TEXT_BOX_SOURCE,
+            "sportsbet_list_position": box,
+            "sportsbet_raw_runner_text": raw_text,
+        }
+
+    partial_first_render = [row(*runner, paired=False) for runner in runners[:4]]
+    complete_second_render = [row(*runner, paired=True) for runner in runners]
+    extractor_results = iter([partial_first_render, complete_second_render])
+    integrator = SportsbetOddsIntegrator(
+        db_path=str(tmp_path / "odds.db"),
+        setup_database=False,
+    )
+    integrator.driver = FakeRacePageDriver()
+    monkeypatch.setattr("sportsbet_odds_integrator.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        integrator,
+        "_selenium_primitives",
+        lambda: (_FakeSportsbetBy, FakeReadyWait, _FakeSportsbetEC, TimeoutError),
+    )
+    monkeypatch.setattr(
+        integrator,
+        "extract_odds_strategy_runner_cards",
+        lambda: next(extractor_results),
+    )
+    monkeypatch.setattr(integrator, "_select_place_market", lambda: 3)
+    monkeypatch.setattr(integrator, "extract_race_number_from_page", lambda _venue: 6)
+
+    race = integrator.get_race_odds_from_page(
+        {
+            "race_id": "HEA_2026-07-10_6",
+            "venue": "Healesville",
+            "venue_slug": "healesville",
+            "race_number": 6,
+            "race_date": date(2026, 7, 10),
+            "venue_url": (
+                "https://www.sportsbet.com.au/greyhound-racing/australia-nz/"
+                "healesville/race-6-10680654"
+            ),
+        }
+    )
+
+    assert [row["box_number"] for row in race["odds_data"]] == list(range(1, 9))
+    assert [row["odds_decimal"] for row in race["odds_data"]] == [
+        runner[2] for runner in runners
+    ]
+    assert [row["odds_decimal"] for row in race["odds_data_place"]] == [
+        runner[3] for runner in runners
+    ]
 
 
 def test_alias_odds_copy_rolls_back_when_metadata_upsert_fails(tmp_path, monkeypatch):

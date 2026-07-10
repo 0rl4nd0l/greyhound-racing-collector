@@ -9,7 +9,7 @@ supporting_lanes:
   - Reporting
 owner: Codex
 approval_required: true
-approval_source: "Owner approved the decision-complete P0 plan and requested implementation on 2026-07-10."
+approval_source: "Owner approved the decision-complete P0 plan and the bounded Sportsbet source-surface follow-up on 2026-07-10."
 allow_unapproved_safe_extension: false
 timeout_seconds: 21600
 output_dir: reports/agent_jobs/p0_runtime_reconciliation_capture_recovery_20260710
@@ -22,7 +22,9 @@ live_service_mutation_allowed: true
 owner_db_append_only_approval: true
 allowed_files:
   - docs/agent_tasks/p0_runtime_reconciliation_capture_recovery_20260710.md
+  - sportsbet_odds_integrator.py
   - scripts/autonomous_live_odds_capture.py
+  - tests/test_sportsbet_odds_safety.py
   - tests/test_autonomous_live_odds_capture.py
   - ops/systemd/shadow-autopilot.service
   - ops/systemd/shadow-autopilot-odds-capture.service
@@ -75,6 +77,8 @@ dirty launch/runtime evidence surfaces.
 
 - Preserve the launch checkout and legacy dirty runtime without cleanup.
 - Reconstruct only the PR #37 WIN plus PLACE semantics on current master.
+- Repair only a reproduced Sportsbet paired-row extraction failure when the
+  source row explicitly proves distinct WIN and PLACE fixed prices.
 - Validate current provenance, official-result retry, planner fallback, output
   guards and service generation rather than reimplementing them.
 - Commit, push, open a PR, deploy its reviewed exact head before merge, operate

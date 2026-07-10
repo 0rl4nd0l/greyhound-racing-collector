@@ -40,6 +40,14 @@ WIN-only groups are incomplete and may be recaptured append-only; they must not
 be reported as complete. PLACE is appended first with `topN=3`, then WIN. A
 failed PLACE append prevents the WIN append for that attempt.
 
+Sportsbet greyhound race cards expose fixed WIN and PLACE prices as two columns
+inside each runner row. Capture may split those prices only when the row has one
+explicit runner header, the header box agrees with the extracted box, and the
+last two decimal prices before the row's `EW` control prove the WIN-then-PLACE
+pair. A generic control containing `Place` is not market proof. The downstream
+exact active-runner validation remains authoritative and rejects either partial
+market before any append.
+
 ## Recent PR Boundaries
 
 Last verified on 2026-07-01 against PR #33 merge commit `cb869022`.
