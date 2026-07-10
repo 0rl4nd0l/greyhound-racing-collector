@@ -48,7 +48,9 @@ Replaying the retained rows through the new parser yields:
 | HEA R5 | 8 / 8 | 0 / 0 |
 | HEA R6 | 0 / 0 | 8 / 8 |
 
-The manual pre-jump odds-only gate remains required after the reviewed commit is
-published and deployed. Full-daemon and two-cycle proof must not resume until a
-complete paired-market run succeeds, and the owner's current no-DB-mutation
-boundary remains in force.
+Reviewed commit `31409160` was published to PR #41 and deployed into the clean
+detached runtime. A manual pre-jump odds-only gate then passed all eight targets
+with exact paired markets before two consecutive manual full-daemon cycles were
+run. All database writes were confined to a reflinked copy under `/tmp`; the
+three production DB hashes remained unchanged. Installed services and timers
+remained disabled throughout.
