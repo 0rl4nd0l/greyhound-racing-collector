@@ -1,0 +1,20 @@
+{
+  "schema_version": "tenn_git_guard_preflight_v1",
+  "topic": "PR 41 Sportsbet paired-market capture source diagnosis",
+  "repo_root": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector",
+  "launch_branch": "feature/dog-odds-snapshot-readiness",
+  "launch_head": "158ea4affc31d22c3dcebfc922076876792c9fb5",
+  "task_worktree": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-pr41-source-surface-20260710",
+  "task_head_before_closeout": "7b59f4d34e027f409166447f7fded2def5f7b447",
+  "path_ownership": "DIRTY_UNRELATED_WORKTREE",
+  "path_ownership_blocks_implementation": false,
+  "registry_status": "PASS",
+  "active_jobs": [],
+  "ledger_status": "DATA_MISSING",
+  "data_missing_sources": ["ledger:live", "ledger:committed"],
+  "duplicate_work_classification": "DATA_MISSING_FALLBACK_CHECKED",
+  "duplicate_work_matches": [],
+  "fallback_result": "Existing PR 41 and clean task/runtime worktrees found; no competing active job found.",
+  "final_decision": "warning",
+  "stop_reimplementation": false
+}

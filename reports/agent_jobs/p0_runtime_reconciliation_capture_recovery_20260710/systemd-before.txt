@@ -1,0 +1,6 @@
+shadow-autopilot.service ActiveState=inactive SubState=dead Result=success ExecMainStatus=0
+shadow-autopilot-odds-capture.service ActiveState=failed SubState=failed Result=exit-code ExecMainStatus=2
+shadow-autopilot.timer ActiveState=inactive SubState=dead UnitFileState=disabled
+shadow-autopilot-odds-capture.timer ActiveState=inactive SubState=dead UnitFileState=disabled
+full generated/installed sha256=8067d1a0dfbd94d76ee51821a0dfc73b9b9a6a32056f0e066c343c565239e6ce
+odds generated/installed sha256=a4fb752b4d04b3107bc93dfb4b7e86e004e22993c92dcabd2e3c805ba2ff5b1e
