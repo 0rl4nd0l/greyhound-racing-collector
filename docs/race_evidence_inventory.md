@@ -17,6 +17,37 @@ from one shadow run or one audit packet.
 - Main DB path used by the runtime:
   `/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/greyhound_racing_data.db`
 
+## Installed Runtime Truth
+
+Do not infer the active code checkout from this document, a Git branch, or an
+older report. The installed user units are authoritative:
+
+```bash
+systemctl --user cat shadow-autopilot.service
+systemctl --user cat shadow-autopilot-odds-capture.service
+systemctl --user show shadow-autopilot.service -p WorkingDirectory -p ActiveState -p SubState -p Result
+systemctl --user show shadow-autopilot-odds-capture.service -p WorkingDirectory -p ActiveState -p SubState -p Result
+```
+
+The generated `ops/systemd/*.service` files and installed files under
+`~/.config/systemd/user/` must be byte-identical before enabling timers. Record
+the deployed commit, unit hashes, DB/model/evidence paths and rollback evidence
+in the current runtime-reconciliation deployment manifest.
+
+An odds window is complete only when the same capture group contains validated
+dog-level WIN and PLACE rows for the complete active runner set. Historical
+WIN-only groups are incomplete and may be recaptured append-only; they must not
+be reported as complete. PLACE is appended first with `topN=3`, then WIN. A
+failed PLACE append prevents the WIN append for that attempt.
+
+Sportsbet greyhound race cards expose fixed WIN and PLACE prices as two columns
+inside each runner row. Capture may split those prices only when the row has one
+explicit runner header, the header box agrees with the extracted box, and the
+last two decimal prices before the row's `EW` control prove the WIN-then-PLACE
+pair. A generic control containing `Place` is not market proof. The downstream
+exact active-runner validation remains authoritative and rejects either partial
+market before any append.
+
 ## Recent PR Boundaries
 
 Last verified on 2026-07-01 against PR #33 merge commit `cb869022`.
@@ -235,17 +266,14 @@ metadata.
 - The venue map in `utils/prejump_weather.py` is also the timezone map used by
   Sportsbet track matching and expert-form metadata.
 
-The live daemon code checkout is:
-
-`/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-runtime-release-clean-20260621`
-
 The live daemon Python/runtime environment is:
 
 `/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/.venv/bin/python`
 
 Use a fresh sibling worktree from `origin/master` for merge and review work.
 A master-only patch will not affect the systemd daemon until it is deployed
-through the service path.
+through the service path. Always use the installed-unit commands above to find
+the current runtime checkout.
 
 Q/The Q aliases are mapped to the Purga/Ipswich venue family:
 

@@ -68,6 +68,7 @@ POST_RACE_SOURCE_URL_MARKERS = ("dividend", "payout", "result")
 SPORTSBET_LIST_POSITION_BOX_SOURCE = "list_position_fallback"
 SPORTSBET_RUNNER_TEXT_BOX_SOURCE = "runner_text"
 SPORTSBET_EXPLICIT_DOM_BOX_SOURCE = "explicit_dom"
+SPORTSBET_DECIMAL_PRICE_RE = re.compile(r"^\d+(?:\.\d{1,2})$")
 SPORTSBET_RUNNER_HEADER_RE = re.compile(
     r"^\s*(\d{1,2})\s*[.)]\s+[A-Za-z][A-Za-z'. -]+(?:\s*\((\d{1,2})\))?\s*$"
 )
@@ -212,6 +213,64 @@ def sportsbet_runner_box_metadata(
         "sportsbet_list_position": list_position,
         "sportsbet_raw_runner_text": raw_text[:500] if raw_text else None,
     }
+
+
+def sportsbet_paired_fixed_prices(raw_text: Any) -> Optional[Tuple[float, float]]:
+    """Return source-explicit WIN and PLACE prices from one paired runner row."""
+
+    lines = [line.strip() for line in str(raw_text or "").splitlines()]
+    try:
+        ew_index = next(index for index, line in enumerate(lines) if line.upper() == "EW")
+    except StopIteration:
+        return None
+
+    prices: List[float] = []
+    for line in lines[:ew_index]:
+        if not SPORTSBET_DECIMAL_PRICE_RE.fullmatch(line):
+            continue
+        value = float(line)
+        if value > 1.0:
+            prices.append(value)
+    if len(prices) < 2:
+        return None
+
+    win_price, place_price = prices[-2:]
+    if place_price > win_price:
+        return None
+    return win_price, place_price
+
+
+def sportsbet_paired_market_rows(
+    rows: List[Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Split only source-proven paired runner rows into WIN and PLACE rows."""
+
+    win_rows: List[Dict[str, Any]] = []
+    place_rows: List[Dict[str, Any]] = []
+    for row in rows:
+        raw_text = row.get("sportsbet_raw_runner_text")
+        if sportsbet_runner_header_count(raw_text) != 1:
+            continue
+        raw_box = parse_sportsbet_runner_box_from_text(raw_text)
+        try:
+            extracted_box = int(row["box_number"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if raw_box != extracted_box:
+            continue
+        prices = sportsbet_paired_fixed_prices(raw_text)
+        if prices is None:
+            continue
+        win_price, place_price = prices
+        win_row = dict(row)
+        win_row["odds_decimal"] = win_price
+        win_row["odds_fractional"] = f"{win_price:.2f}"
+        place_row = dict(row)
+        place_row["odds_decimal"] = place_price
+        place_row["odds_fractional"] = f"{place_price:.2f}"
+        win_rows.append(win_row)
+        place_rows.append(place_row)
+    return win_rows, place_rows
 
 
 def _metadata_value_is_present(column: str, value: Any) -> bool:
@@ -1479,6 +1538,12 @@ class SportsbetOddsIntegrator:
             if not odds_data:
                 # Strategy 4: Look for any elements with odds-like patterns
                 odds_data = self.extract_odds_strategy_generic()
+
+            paired_win_odds, paired_place_odds = sportsbet_paired_market_rows(odds_data)
+            explicit_paired_prices = bool(paired_win_odds)
+            if explicit_paired_prices:
+                odds_data = paired_win_odds
+
             if odds_data:
                 print(f"  ✅ Extracted {len(odds_data)} live WIN odds")
                 race_info["odds_data"] = odds_data
@@ -1517,22 +1582,38 @@ class SportsbetOddsIntegrator:
                 if race_number:
                     race_info["race_number"] = race_number
 
-            # Attempt to capture PLACE (Top 3) market odds as well for EV Place computation
-            try:
-                topN = self._select_place_market()  # often 3 for greyhounds
-                place_odds = self.extract_odds_strategy_runner_cards()
-                if not place_odds:
-                    # fallback to broader approach if targeted extraction fails
-                    place_odds = self._extract_from_broader_containers()
-                if place_odds:
-                    print(f"  ✅ Extracted {len(place_odds)} PLACE (Top {topN or 3}) odds")
-                    race_info["odds_data_place"] = place_odds
-                    if topN:
-                        race_info["place_topN"] = int(topN)
-                else:
-                    print("  ℹ️  No PLACE market odds detected")
-            except Exception as _pe:
-                print(f"  ⚠️  PLACE market extraction failed: {_pe}")
+            if explicit_paired_prices:
+                print(
+                    f"  ✅ Extracted {len(paired_place_odds)} source-paired "
+                    "PLACE (Top 3) odds"
+                )
+                race_info["odds_data_place"] = paired_place_odds
+                race_info["place_topN"] = 3
+            else:
+                # A second complete runner-card render can appear only after a
+                # market interaction. The click is not market proof: accept the
+                # second render only when each row still carries explicit paired
+                # WIN/PLACE prices before its EW control.
+                try:
+                    self._select_place_market()
+                    source_rows = self.extract_odds_strategy_runner_cards()
+                    if not source_rows:
+                        source_rows = self._extract_from_broader_containers()
+                    paired_win_odds, paired_place_odds = sportsbet_paired_market_rows(
+                        source_rows
+                    )
+                    if paired_win_odds:
+                        race_info["odds_data"] = paired_win_odds
+                        race_info["odds_data_place"] = paired_place_odds
+                        race_info["place_topN"] = 3
+                        print(
+                            f"  ✅ Extracted {len(paired_place_odds)} source-paired "
+                            "PLACE (Top 3) odds"
+                        )
+                    else:
+                        print("  ℹ️  No source-proven paired PLACE market odds detected")
+                except Exception as _pe:
+                    print(f"  ⚠️  PLACE market extraction failed: {_pe}")
 
             # NOTE: Do not persist here. Callers must persist exactly once via save_odds_to_database(race_info)
             return race_info
