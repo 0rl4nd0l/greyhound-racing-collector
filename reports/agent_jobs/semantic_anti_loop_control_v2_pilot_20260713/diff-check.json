@@ -1,0 +1,101 @@
+{
+  "changed_files": [
+    {
+      "path": ".gitignore",
+      "status": "M"
+    },
+    {
+      "path": "AGENTS.md",
+      "status": "M"
+    },
+    {
+      "path": ".codex/config.toml",
+      "status": "??"
+    },
+    {
+      "path": ".codex/hooks.json",
+      "status": "??"
+    },
+    {
+      "path": "docs/agent_decisions/greyhound_semantic_anti_loop_seed_v1.jsonl",
+      "status": "??"
+    },
+    {
+      "path": "docs/agent_tasks/semantic_anti_loop_control_v2_pilot_20260713.md",
+      "status": "??"
+    },
+    {
+      "path": "docs/semantic_anti_loop_control_v2.md",
+      "status": "??"
+    },
+    {
+      "path": "scripts/build_semantic_anti_loop_seed.py",
+      "status": "??"
+    },
+    {
+      "path": "tests/test_build_semantic_anti_loop_seed.py",
+      "status": "??"
+    }
+  ],
+  "disallowed_files": [],
+  "issues": [],
+  "ok": true,
+  "report_path": "reports/agent_jobs/semantic_anti_loop_control_v2_pilot_20260713/diff-check.json",
+  "validation": {
+    "issues": [],
+    "metadata": {
+      "allowed_files": [
+        ".codex/config.toml",
+        ".codex/hooks.json",
+        ".gitignore",
+        "AGENTS.md",
+        "docs/agent_decisions/greyhound_semantic_anti_loop_seed_v1.jsonl",
+        "docs/agent_tasks/semantic_anti_loop_control_v2_pilot_20260713.md",
+        "docs/semantic_anti_loop_control_v2.md",
+        "scripts/build_semantic_anti_loop_seed.py",
+        "tests/test_build_semantic_anti_loop_seed.py",
+        "reports/agent_jobs/semantic_anti_loop_control_v2_pilot_20260713/CODE_REVIEW.md",
+        "reports/agent_jobs/semantic_anti_loop_control_v2_pilot_20260713/DECISION_ENTRY.json",
+        "reports/agent_jobs/semantic_anti_loop_control_v2_pilot_20260713/PR_REVIEW.md",
+        "reports/agent_jobs/semantic_anti_loop_control_v2_pilot_20260713/RUN_OUTCOME.json",
+        "reports/agent_jobs/semantic_anti_loop_control_v2_pilot_20260713/SEED_EVIDENCE.md",
+        "reports/agent_jobs/semantic_anti_loop_control_v2_pilot_20260713/STATE.md",
+        "reports/agent_jobs/semantic_anti_loop_control_v2_pilot_20260713/VALIDATION.md",
+        "reports/agent_jobs/semantic_anti_loop_control_v2_pilot_20260713/diff-check.json",
+        "reports/agent_jobs/semantic_anti_loop_control_v2_pilot_20260713/status.json",
+        "reports/agent_jobs/semantic_anti_loop_control_v2_pilot_20260713/validation.json"
+      ],
+      "approval_required": true,
+      "capabilities": [
+        "READ",
+        "REPORT_WRITE",
+        "CODE_EDIT",
+        "PUBLISH"
+      ],
+      "claim_id": "semantic_anti_loop_control_v2_pilot",
+      "closeout_scope": "control_plane_only",
+      "computed_scope_fingerprint": "ae428870f9dcc54ad6cc7cbf55b9cd5cf3cd253703774e7db336e4c3a1d453e3",
+      "control_contract_version": 2,
+      "dataset_version": "master_224dc2dddace",
+      "entry_state": "non_trivial_runs_without_semantic_reuse_gate",
+      "evidence_hash": "sha256:a8cf759561d91c26f2c11c8bfa4d18ea7bc6ffe6efec1a096cf769cee7135ac7",
+      "exit_predicate": "Repo instructions and hooks require V2, the deterministic four-decision seed is reviewed and validated for merge, focused tests pass, and post-merge seed append plus the first-five-run observation gate remain explicitly pending.",
+      "hypothesis_id": "greyhound_instructions_hooks_and_stable_seed_v1",
+      "job_id": "semantic_anti_loop_control_v2_pilot_20260713",
+      "lane": "Reporting",
+      "mutation_mode": "safe_extension",
+      "output_dir": "reports/agent_jobs/semantic_anti_loop_control_v2_pilot_20260713",
+      "owner": "Codex",
+      "production_data_access": false,
+      "program_track": "offline_development",
+      "project_id": "greyhound_racing_collector",
+      "proof_question": "Can Greyhound enforce Tenn V2 semantic reuse and meaningful closeout while preserving strict research, persistence, promotion, and runtime boundaries?",
+      "resume_only_if": "Greyhound canonical source, Tenn V2 control semantics, or one of the four stable seed artifacts changes after a blocked closeout.",
+      "source_class": "greyhound_control_plane_source",
+      "target_transition": "greyhound_semantic_anti_loop_v2_pilot_validated_for_merge",
+      "timeout_seconds": 14400
+    },
+    "ok": true,
+    "warnings": []
+  }
+}

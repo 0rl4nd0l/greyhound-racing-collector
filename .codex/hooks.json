@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.agents/skills/tenn-git-guard/scripts/tenn_git_guard.py\" hook --repo-root . --platform codex --event Stop",
+            "statusMessage": "Checking Greyhound V2 task outcome..."
+          }
+        ]
+      }
+    ]
+  }
+}

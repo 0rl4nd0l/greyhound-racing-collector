@@ -1,0 +1,45 @@
+{
+  "blocks": [
+    "broader_semantic_anti_loop_adoption"
+  ],
+  "claim_id": "semantic_anti_loop_control_v2_pilot",
+  "dataset_version": "master_224dc2dddace",
+  "decision": "PASS",
+  "decision_delta": "Greyhound now enforces V2 task, preflight, capability, outcome, and decision semantics for non-trivial work, with a deterministic four-decision seed and an explicit first-five-run observation gate.",
+  "decision_id": "greyhound-semantic-anti-loop-v2-pilot-20260713",
+  "does_not_block": [
+    "greyhound_v2_pilot_operation",
+    "offline_research_fit"
+  ],
+  "evidence_hash": "sha256:a8cf759561d91c26f2c11c8bfa4d18ea7bc6ffe6efec1a096cf769cee7135ac7",
+  "evidence_refs": [
+    "AGENTS.md",
+    ".codex/hooks.json",
+    "docs/semantic_anti_loop_control_v2.md",
+    "docs/agent_decisions/greyhound_semantic_anti_loop_seed_v1.jsonl",
+    "reports/agent_jobs/semantic_anti_loop_control_v2_pilot_20260713/VALIDATION.md",
+    "reports/agent_jobs/semantic_anti_loop_control_v2_pilot_20260713/CODE_REVIEW.md"
+  ],
+  "hypothesis_id": "greyhound_instructions_hooks_and_stable_seed_v1",
+  "invalidation_conditions": [
+    "Greyhound canonical instructions or hook configuration no longer enforce the reviewed V2 contract.",
+    "The synced Tenn portable guard no longer selects the target repository canonical branch or active V2 claim correctly.",
+    "One of the four stable seed artifact hashes or validated semantic predicates changes."
+  ],
+  "outcome_status": "ADVANCED",
+  "phase_after": "greyhound_semantic_anti_loop_v2_pilot_validated_for_merge",
+  "phase_before": "non_trivial_runs_without_semantic_reuse_gate",
+  "program_track": "offline_development",
+  "project_id": "greyhound_racing_collector",
+  "reopen_conditions": [
+    "A materially different V2 enforcement hypothesis is proposed with changed evidence.",
+    "Review of the first five non-trivial post-pilot runs finds a false duplicate block or another enforcement defect.",
+    "Greyhound canonical source, Tenn V2 semantics, or a stable seed artifact changes."
+  ],
+  "run_id": "l4nd0-System-Product-Name:2721888:semantic_anti_loop_control_v2_pilot_20260713",
+  "scope_fingerprint": "ae428870f9dcc54ad6cc7cbf55b9cd5cf3cd253703774e7db336e4c3a1d453e3",
+  "source_class": "greyhound_control_plane_source",
+  "target_transition": "greyhound_semantic_anti_loop_v2_pilot_validated_for_merge",
+  "task_id": "semantic_anti_loop_control_v2_pilot_20260713",
+  "validated_at": "2026-07-13T19:50:08+10:00"
+}
