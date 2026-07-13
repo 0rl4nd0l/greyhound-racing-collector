@@ -1,0 +1,43 @@
+{
+  "blocked_by": [],
+  "changed_claims": [
+    "Greyhound non-trivial diagnosis, reporting, implementation, and runtime-proof work now requires the V2 semantic run contract.",
+    "The repo-local Stop hook enforces V2 outcome and decision closeout through the synced portable Tenn guard without an environment override.",
+    "Exactly four stable historical decisions are mechanically bound to verified evidence hashes and prepared for post-merge append.",
+    "Broader adoption remains blocked until the first five non-trivial post-pilot runs are reviewed for false duplicate stops."
+  ],
+  "decision_delta": "Greyhound advanced from instruction-only task ownership to repository-enforced V2 semantic reuse, capability-aware closeout, and a deterministic four-decision seed while preserving offline versus promotion boundaries and the first-five observation gate.",
+  "new_evidence": [
+    "Tenn PR #507 merged as ac5a56c142ee1a9781ae54ad0e8857ba5510f7d1 and the installed portable guard passed 40 tests.",
+    "The installed no-environment preflight selected Greyhound origin/master at 224dc2dddace3c50d131ada2e078a980090a7b3a and admitted the new semantic scope.",
+    "Eleven focused Greyhound pilot tests passed through the installed host guard.",
+    "The generated manifest contains exactly four decisions whose fingerprints and evidence hashes validate deterministically.",
+    "Independent code review is clean."
+  ],
+  "new_goal_permitted": false,
+  "next_goal_target_transition": "",
+  "produced_artifacts": [
+    "docs/semantic_anti_loop_control_v2.md",
+    "docs/agent_decisions/greyhound_semantic_anti_loop_seed_v1.jsonl",
+    "reports/agent_jobs/semantic_anti_loop_control_v2_pilot_20260713/STATE.md",
+    "reports/agent_jobs/semantic_anti_loop_control_v2_pilot_20260713/SEED_EVIDENCE.md",
+    "reports/agent_jobs/semantic_anti_loop_control_v2_pilot_20260713/CODE_REVIEW.md",
+    "reports/agent_jobs/semantic_anti_loop_control_v2_pilot_20260713/VALIDATION.md"
+  ],
+  "resume_only_if": "",
+  "reused_claims": [
+    "Offline research fitting remains independent of prospective promotion evidence unless an explicit dependency is declared.",
+    "Model persistence, canonical database writes, runtime changes, and production-data mutation remain unauthorized.",
+    "The four approved seed claims remain historical snapshot decisions rather than current runtime claims."
+  ],
+  "scope_fingerprint": "ae428870f9dcc54ad6cc7cbf55b9cd5cf3cd253703774e7db336e4c3a1d453e3",
+  "state_after": "greyhound_semantic_anti_loop_v2_pilot_validated_for_merge",
+  "state_before": "non_trivial_runs_without_semantic_reuse_gate",
+  "status": "ADVANCED",
+  "used_capabilities": [
+    "READ",
+    "REPORT_WRITE",
+    "CODE_EDIT",
+    "PUBLISH"
+  ]
+}

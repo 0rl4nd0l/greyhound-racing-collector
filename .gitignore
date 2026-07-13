@@ -146,6 +146,7 @@ dmypy.json
 
 # Report and analysis files
 *.json
+!.codex/hooks.json
 !package.json
 !requirements.json
 !config.json.example
