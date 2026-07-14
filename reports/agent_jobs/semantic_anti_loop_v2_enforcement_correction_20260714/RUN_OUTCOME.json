@@ -1,0 +1,40 @@
+{
+  "blocked_by": [],
+  "changed_claims": [
+    "greyhound_semantic_anti_loop_v2_pilot_enforcement"
+  ],
+  "decision_delta": "Greyhound advanced from merged-but-nonmandatory pilot instructions to repository-enforced V2 pre-tool and Stop hooks through the approved portable guard, release-owned decision publication, four-seed validation without replay, and a recorded five-run review with zero false duplicate blocks.",
+  "new_evidence": [
+    "The tracked four-entry seed and 14-row shared ledger validate, with each seed present exactly once and no seed replay.",
+    "The first five distinct post-pilot scopes have durable ADVANCED outcomes and zero false duplicate or loop blocks.",
+    "Twenty-two focused cross-repository hook, reuse, loop-guard, track-isolation, closeout, and linked-worktree tests passed.",
+    "Independent review found no critical findings, warnings, or suggestions."
+  ],
+  "new_goal_permitted": false,
+  "produced_artifacts": [
+    "reports/agent_jobs/semantic_anti_loop_v2_enforcement_correction_20260714/STATE.md",
+    "reports/agent_jobs/semantic_anti_loop_v2_enforcement_correction_20260714/VALIDATION.md",
+    "reports/agent_jobs/semantic_anti_loop_v2_enforcement_correction_20260714/CODE_REVIEW.md",
+    "reports/agent_jobs/semantic_anti_loop_v2_enforcement_correction_20260714/DECISIONS.md",
+    "reports/agent_jobs/semantic_anti_loop_v2_enforcement_correction_20260714/PR_REVIEW.md",
+    "reports/agent_jobs/semantic_anti_loop_v2_enforcement_correction_20260714/RUN_OUTCOME.json",
+    "reports/agent_jobs/semantic_anti_loop_v2_enforcement_correction_20260714/DECISION_ENTRY.json"
+  ],
+  "resume_only_if": "The merged Tenn control plane, Greyhound master, stable seed manifest, shared ledger identity, or focused pilot enforcement evidence changes after a blocked closeout.",
+  "reused_claims": [
+    "greyhound-thedogs-floor-663-20260709",
+    "greyhound-aggregate-challenger-keep-baseline-20260709",
+    "greyhound-strict-sportsbet-same-floor-data-missing-20260709",
+    "greyhound-historical-identity-bridge-report-only-ready-20260712"
+  ],
+  "scope_fingerprint": "0a97568c02b2b4e799b1e645170eda4b26b422664e4be69767c52928ba502dc8",
+  "state_after": "greyhound_pilot_enforced_with_validated_seed_reuse_and_first_five_review",
+  "state_before": "pilot_merged_but_v2_requirement_not_mechanically_enforced",
+  "status": "ADVANCED",
+  "used_capabilities": [
+    "READ",
+    "REPORT_WRITE",
+    "CODE_EDIT",
+    "PUBLISH"
+  ]
+}
