@@ -298,7 +298,7 @@ def test_portable_preflight_reuses_seed_and_admits_changed_dataset(
     guard = Path(
         configured_guard
         or Path.home()
-        / ".agents/skills/tenn-git-guard/scripts/tenn_git_guard.py"
+        / ".codex/skills/tenn-git-guard/scripts/tenn_git_guard.py"
     ).expanduser()
     ledger = control_root / "scripts/agent_decision_ledger.py"
     contract = control_root / "scripts/agent_job_contract.py"
@@ -413,6 +413,7 @@ def test_portable_preflight_reuses_seed_and_admits_changed_dataset(
                 str(repo),
                 "--entry-json",
                 json.dumps(entry, sort_keys=True),
+                "--authorize-unclaimed-seed",
             ],
             cwd=repo,
             env=env,

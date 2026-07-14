@@ -154,19 +154,24 @@ Every non-trivial diagnosis, report, implementation, or runtime-proof run must:
 3. Run the installed portable preflight before substantive work:
 
    ```bash
-   python3 "$HOME/.agents/skills/tenn-git-guard/scripts/tenn_git_guard.py" preflight \
+   python3 "$HOME/.codex/skills/tenn-git-guard/scripts/tenn_git_guard.py" preflight \
      --repo-root . --task-card <task-card> --json
    ```
 
 4. Stop without creating another report for `REUSED_COMPLETE`,
    `ACTIVE_DUPLICATE`, or `LOOP_GUARD_STOP`.
-5. Let the repo-local Stop hook select the sole non-stale V2 claim for this
-   worktree from the shared registry and validate `RUN_OUTCOME.json` plus the
-   matching durable decision. `TENN_AGENT_TASK_CARD` and
+5. Write `RUN_OUTCOME.json` and a matching `DECISION_ENTRY.json` candidate in
+   the task output directory, then run the V2 contract diff, artifact,
+   closeout, and decision-candidate checks.
+6. Release the claim through Tenn's job registry. Release revalidates the
+   task-card diff and candidates, appends the decision to the shared ledger
+   under the same registry lock, writes its receipt, and only then closes the
+   claim. A task must not append its own durable decision before release.
+7. Let the repo-local Stop hook validate the successful release receipt (or a
+   report-free semantic preflight stop when work was never claimed).
+   `TENN_AGENT_TASK_CARD` and
    `.tenn/active_agent_task` remain optional explicit overrides; neither is
    required or tracked for normal claimed runs.
-6. Run the V2 contract diff, artifact, closeout, and decision-ledger checks
-   before publication.
 
 The first missing Greyhound decision ledger must be initialized explicitly;
 it must never be silently created or truncated by preflight.
@@ -178,7 +183,20 @@ block its declared comparison or promotion transition, but it does not block
 offline research unless the decision entry names that dependency explicitly.
 
 Terminal/no-progress outcomes do not create `NEXT_GOAL.md`. A new goal is
-allowed only for a materially different authorized transition. The first five
-post-pilot non-trivial Greyhound runs must be reviewed for false duplicate
-blocks before this policy is proposed outside Greyhound; see
-`docs/semantic_anti_loop_control_v2.md`.
+allowed only for a materially different authorized transition.
+
+Standalone `agent_decision_ledger.py append` is reserved for an unclaimed,
+reviewed seed import and requires `--authorize-unclaimed-seed`; it is not a
+task closeout path. The four approved Greyhound seeds already exist in the
+shared ledger. Validate and search them, but do not replay them.
+
+The first-five Greyhound review is `FIRST_FIVE_REVIEW_PASSED`: five distinct
+post-pilot scopes were reviewed and none was falsely duplicate-blocked. This
+makes the local state `GREYHOUND_PILOT_ENFORCED`; adoption outside Greyhound
+remains a separate decision. See `docs/semantic_anti_loop_control_v2.md`.
+
+The hook is a declarative admission and closeout boundary, not an operating
+system sandbox. It checks the declared tool payload, paths, capabilities, and
+artifacts; it does not make opaque or unreviewed executable code trustworthy.
+Use only reviewed commands whose effects match the card, and retain every live
+daemon, database, model, promotion, timer, and service safety boundary above.

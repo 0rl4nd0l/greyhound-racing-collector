@@ -1,0 +1,40 @@
+{
+  "blocks": [
+    "automatic_broader_adoption_without_separate_review"
+  ],
+  "claim_id": "greyhound_semantic_anti_loop_v2_pilot_enforcement",
+  "dataset_version": "tenn_af1b33eb_greyhound_40f56646_ledger14_seed_v1",
+  "decision": "PASS",
+  "decision_delta": "Greyhound advanced from merged-but-nonmandatory pilot instructions to repository-enforced V2 pre-tool and Stop hooks through the approved portable guard, release-owned decision publication, four-seed validation without replay, and a recorded five-run review with zero false duplicate blocks.",
+  "decision_id": "greyhound-semantic-anti-loop-v2-enforcement-correction-20260714-pass-v1",
+  "does_not_block": [
+    "offline_research_fit",
+    "fresh_prospective_evidence_collection",
+    "separate_broader_adoption_review"
+  ],
+  "evidence_hash": "sha256:4e9ff7a1ccfc5ab285a6f72beb1cf9b41744be25bfefa595fd68aceb312adb53",
+  "evidence_refs": [
+    "reports/agent_jobs/semantic_anti_loop_v2_enforcement_correction_20260714/RUN_OUTCOME.json",
+    "reports/agent_jobs/semantic_anti_loop_v2_enforcement_correction_20260714/VALIDATION.md",
+    "reports/agent_jobs/semantic_anti_loop_v2_enforcement_correction_20260714/CODE_REVIEW.md"
+  ],
+  "hypothesis_id": "merged_tenn_v2_hook_release_and_first_five_correction_v1",
+  "invalidation_conditions": [
+    "The merged Tenn control plane, Greyhound hook policy, seed manifest, or shared-ledger identity changes.",
+    "A focused pilot enforcement regression or reviewed false duplicate block is found."
+  ],
+  "outcome_status": "ADVANCED",
+  "phase_after": "greyhound_pilot_enforced_with_validated_seed_reuse_and_first_five_review",
+  "phase_before": "pilot_merged_but_v2_requirement_not_mechanically_enforced",
+  "program_track": "offline_development",
+  "project_id": "greyhound_racing_collector",
+  "reopen_conditions": [
+    "The merged Tenn control plane, Greyhound master, stable seed manifest, shared ledger identity, or focused pilot enforcement evidence changes after a blocked closeout."
+  ],
+  "run_id": "l4nd0-System-Product-Name:2534951:semantic_anti_loop_v2_enforcement_correction_20260714",
+  "scope_fingerprint": "0a97568c02b2b4e799b1e645170eda4b26b422664e4be69767c52928ba502dc8",
+  "source_class": "merged_tenn_control_plane_and_greyhound_pilot_registry_snapshot",
+  "target_transition": "greyhound_pilot_enforced_with_validated_seed_reuse_and_first_five_review",
+  "task_id": "semantic_anti_loop_v2_enforcement_correction_20260714",
+  "validated_at": "2026-07-14T11:14:17Z"
+}
