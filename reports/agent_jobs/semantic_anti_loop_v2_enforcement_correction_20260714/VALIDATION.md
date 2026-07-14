@@ -50,5 +50,14 @@ result: WORKING
 - V2 task-card validation, allowed-file diff, candidate validation, and
   closeout validation: passed.
 
+## GitHub checks
+
+- PR #43 targets `master` from reviewed head
+  `e788f83ed960c7af372752cab2f23f9bd9b3cbbf`.
+- Hardening: two runs passed.
+- Comprehensive tests: passed in 2m05s.
+- Python 3.11 tests: passed in 5m40s.
+- UI end-to-end: passed in 3m30s.
+
 No model, database, timer, service, registry pointer, or production runtime
 mutation was performed.
