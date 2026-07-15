@@ -1,0 +1,23 @@
+Generated: 2026-06-16T17:22:33+10:00
+
+Commands/results:
+
+1. git status --short --branch
+   Primary tracked source had no tracked modifications before packet creation; preserved untracked artifact dirs remained.
+
+2. systemctl --user show shadow-autopilot.service shadow-autopilot-odds-capture.service shadow-autopilot.timer shadow-autopilot-odds-capture.timer --property=Id,ActiveState,SubState,Result,ExecMainStartTimestamp,InactiveEnterTimestamp,LastTriggerUSec,NextElapseUSecRealtime,WorkingDirectory
+   PASS. Services point at /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610.
+
+3. uv run --with-requirements requirements/requirements.lock python -m py_compile scripts/ingest_results_for_date.py scripts/join_forward_shadow_results.py scripts/shadow_autopilot_v1.py scripts/shadow_autopilot_daemon.py
+   PASS.
+
+4. uv run --with-requirements requirements/requirements.lock pytest -q tests/test_results_ingest_official_first.py::test_result_validation_rejects_official_boxes_outside_local_participants tests/test_join_forward_shadow_results.py::test_classify_join_rejects_fuzzy_name_mismatch tests/test_shadow_autopilot_daemon.py::test_feature_activation_gate_status_from_autopilot_packet tests/test_shadow_autopilot_v1.py::test_summary_surfaces_feature_activation_gate_status
+   PASS: 4 passed.
+
+5. git diff --check
+   PASS.
+
+6. Main-agent dry replay using scripts.join_forward_shadow_results.classify_result_identity_join against latest aggregate unsafe_result_matches.json
+   PASS: input_unsafe_count=70, safe_after_replay=60, unsafe_after_replay=10, accepted_reserve_remaps=66, rejected_reserve_remaps=0.
+
+No training, promotion, model registry mutation, label write, snapshot mutation, manifest mutation, production pointer write, betting action, EV action, or manual daemon trigger was performed.
