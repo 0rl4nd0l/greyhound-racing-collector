@@ -1,0 +1,1 @@
+PASS: py_compile src/predictor/market_form_residual.py tests/test_market_form_residual.py
