@@ -81,7 +81,7 @@ runtime_write_paths:
   - /home/l4nd0/.config/systemd/user/shadow-autopilot.timer
   - /home/l4nd0/.config/systemd/user/shadow-autopilot-odds-capture.service
   - /home/l4nd0/.config/systemd/user/shadow-autopilot-odds-capture.timer
-  - /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/shadow_evaluation_early_residual_*
+  - /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/daily_race_ingest_shadow_early_residual_*
   - /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/market_form_residual_shadow_predictions_v1.jsonl
 ---
 
