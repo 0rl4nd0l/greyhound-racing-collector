@@ -57,7 +57,7 @@ DEFAULT_LOCK_STALE_SECONDS = 3600
 DEFAULT_REJOIN_PENDING_LIMIT = 8
 DEFAULT_REJOIN_LOOKBACK_DAYS = 7
 DEFAULT_TIMER_FREQUENCY = "15min"
-DEFAULT_TIMER_ON_CALENDAR = "*:02/15"
+DEFAULT_TIMER_ON_UNIT_INACTIVE_SEC = "15min"
 DEFAULT_TIMER_ACCURACY = "30s"
 DEFAULT_ODDS_CAPTURE_ONLY_TIMER_FREQUENCY = "1min_except_full_daemon"
 DEFAULT_ODDS_CAPTURE_ONLY_TIMER_ON_CALENDAR = (
@@ -66,10 +66,14 @@ DEFAULT_ODDS_CAPTURE_ONLY_TIMER_ON_CALENDAR = (
 DEFAULT_ODDS_CAPTURE_ONLY_TIMER_ACCURACY = "15s"
 DEFAULT_ODDS_CAPTURE_ONLY_TIMEOUT_SECONDS = 600
 DEFAULT_ODDS_CAPTURE_ONLY_REFRESH_LIMIT = 16
+# Keep the minutely odds-only lane broad: it protects fixed pre-jump windows.
+# The full daemon does the expensive refresh, scoring, result, and artifact work.
+DEFAULT_FULL_DAEMON_REFRESH_LIMIT = 6
 DEFAULT_FULL_DAEMON_AUTONOMOUS_ODDS_CAPTURE_LIMIT = 16
-DEFAULT_FULL_DAEMON_RESULT_BACKLOG_LIMIT = 32
-DEFAULT_FULL_DAEMON_RESULT_BACKLOG_SHADOW_RUN_LIMIT = 64
+DEFAULT_FULL_DAEMON_RESULT_BACKLOG_LIMIT = 8
+DEFAULT_FULL_DAEMON_RESULT_BACKLOG_SHADOW_RUN_LIMIT = 16
 DEFAULT_FULL_DAEMON_RESULT_BACKLOG_LOOKBACK_DAYS = 2
+DEFAULT_HEAVY_SCHEDULING_PAUSE_PATH = DEFAULT_RUNTIME_DIR / "pause-heavy-scheduling"
 DEFAULT_ODDS_CAPTURE_ONLY_PREFLIGHT_MAX_AGE_SECONDS = 30 * 60
 DEFAULT_ODDS_CAPTURE_ONLY_PREFLIGHT_RESUME_BUFFER_SECONDS = 5 * 60
 DEFAULT_FULL_DAEMON_ODDS_DEFER_HORIZON_SECONDS = 8 * 60
@@ -1099,6 +1103,7 @@ def service_file_text(
     lock_path: Path | None = None,
     state_path: Path | None = None,
     odds_capture_state_path: Path | None = None,
+    pause_path: Path | None = DEFAULT_HEAVY_SCHEDULING_PAUSE_PATH,
 ) -> str:
     script_path = repo_path / "scripts/shadow_autopilot_daemon.py"
     service_python = python_path or Path("/usr/bin/python3")
@@ -1120,6 +1125,7 @@ def service_file_text(
             "Description=Greyhound shadow autopilot evidence collection",
             "Wants=network-online.target",
             "After=network-online.target",
+            *( [f"ConditionPathExists=!{pause_path}"] if pause_path is not None else [] ),
             "",
             "[Service]",
             "Type=oneshot",
@@ -1130,7 +1136,7 @@ def service_file_text(
             (
                 f"ExecStart={service_python} {script_path} run-once "
                 f"{evidence_root_segment}"
-                "--days-ahead 1 --refresh-limit 16 "
+                f"--days-ahead 1 --refresh-limit {DEFAULT_FULL_DAEMON_REFRESH_LIMIT} "
                 f"{explicit_path_segment}"
                 "--enable-autonomous-odds-capture "
                 "--execute-autonomous-odds-capture "
@@ -1138,11 +1144,16 @@ def service_file_text(
                 "--enable-autonomous-result-capture "
                 "--require-safe-refresh-metadata "
                 f"--rejoin-pending-limit {DEFAULT_REJOIN_PENDING_LIMIT} "
+                f"--autonomous-odds-capture-limit {DEFAULT_FULL_DAEMON_AUTONOMOUS_ODDS_CAPTURE_LIMIT} "
+                f"--result-backlog-limit {DEFAULT_FULL_DAEMON_RESULT_BACKLOG_LIMIT} "
+                f"--result-backlog-shadow-run-limit {DEFAULT_FULL_DAEMON_RESULT_BACKLOG_SHADOW_RUN_LIMIT} "
                 f"--timeout-seconds {timeout_seconds}"
             ),
             f"TimeoutStartSec={systemd_timeout_seconds}",
             "Nice=10",
-            "IOSchedulingClass=best-effort",
+            "CPUWeight=20",
+            "IOWeight=20",
+            "IOSchedulingClass=idle",
             "",
         ]
     )
@@ -1155,7 +1166,7 @@ def timer_file_text() -> str:
             "Description=Run greyhound shadow autopilot every 15 minutes",
             "",
             "[Timer]",
-            f"OnCalendar={DEFAULT_TIMER_ON_CALENDAR}",
+            f"OnUnitInactiveSec={DEFAULT_TIMER_ON_UNIT_INACTIVE_SEC}",
             f"AccuracySec={DEFAULT_TIMER_ACCURACY}",
             "Persistent=true",
             "Unit=shadow-autopilot.service",
@@ -1253,6 +1264,7 @@ def write_service_files(
     lock_path: Path | None = None,
     state_path: Path | None = None,
     odds_capture_state_path: Path | None = None,
+    pause_path: Path | None = DEFAULT_HEAVY_SCHEDULING_PAUSE_PATH,
 ) -> dict[str, Any]:
     service_dir.mkdir(parents=True, exist_ok=True)
     service_path = service_dir / SERVICE_NAME
@@ -1269,6 +1281,7 @@ def write_service_files(
             lock_path=lock_path,
             state_path=state_path,
             odds_capture_state_path=odds_capture_state_path,
+            pause_path=pause_path,
         ),
     )
     write_text(timer_path, timer_file_text())
@@ -1276,7 +1289,7 @@ def write_service_files(
         "service_path": relpath(service_path),
         "timer_path": relpath(timer_path),
         "timer_frequency": DEFAULT_TIMER_FREQUENCY,
-        "timer_calendar": DEFAULT_TIMER_ON_CALENDAR,
+        "timer_on_unit_inactive_sec": DEFAULT_TIMER_ON_UNIT_INACTIVE_SEC,
         "repo_path": str(repo_path),
         "timeout_seconds": timeout_seconds,
         "systemd_timeout_start_seconds": max(timeout_seconds + 60, timeout_seconds * 4),
@@ -1289,6 +1302,7 @@ def write_service_files(
         "odds_capture_state_path": (
             str(odds_capture_state_path) if odds_capture_state_path is not None else None
         ),
+        "pause_path": str(pause_path) if pause_path is not None else None,
     }
 
 
@@ -3695,7 +3709,7 @@ def install_markdown(service_info: Mapping[str, Any]) -> str:
             f"journalctl -u {SERVICE_NAME} -n 200 --no-pager",
             "```",
             "",
-            f"The timer runs every {DEFAULT_TIMER_FREQUENCY} on `{DEFAULT_TIMER_ON_CALENDAR}`. Overlap is prevented by systemd oneshot semantics and the daemon lock file.",
+            f"The timer waits `{DEFAULT_TIMER_ON_UNIT_INACTIVE_SEC}` after each completed service before the next activation. Overlap is prevented by systemd oneshot semantics and the daemon lock file.",
             "",
         ]
     )
@@ -3710,7 +3724,7 @@ def daemon_design_markdown() -> str:
             "Continuously collect forward-shadow evidence without changing production state.",
             "",
             "## Architecture",
-            f"- `shadow-autopilot.timer` activates every {DEFAULT_TIMER_FREQUENCY} on `{DEFAULT_TIMER_ON_CALENDAR}`.",
+            f"- `shadow-autopilot.timer` activates {DEFAULT_TIMER_ON_UNIT_INACTIVE_SEC} after each completed full-daemon service.",
             "- `shadow-autopilot.service` runs one bounded `shadow_autopilot_daemon.py run-once` cycle.",
             "- The daemon acquires a JSON lock before any work starts.",
             "- The daemon delegates refresh, scoring, current-run join, aggregate, and status generation to `scripts/shadow_autopilot_v1.py`.",
@@ -8986,9 +9000,10 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
         evidence_root=evidence_root,
         shadow_model=args.shadow_model,
         db_path=args.db,
-        lock_path=args.lock_path,
-        state_path=args.state_path,
-        odds_capture_state_path=args.odds_capture_state_path,
+        lock_path=lock_path,
+        state_path=state_path,
+        odds_capture_state_path=odds_state_path,
+        pause_path=lock_path.parent / "pause-heavy-scheduling",
     )
     service_path = DEFAULT_SERVICE_DIR / SERVICE_NAME
     timer_path = DEFAULT_SERVICE_DIR / TIMER_NAME
@@ -11314,7 +11329,7 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
         "timer_file": relpath(timer_path),
         "service_files_present": service_files_present,
         "timer_frequency": DEFAULT_TIMER_FREQUENCY,
-        "timer_calendar": DEFAULT_TIMER_ON_CALENDAR,
+        "timer_on_unit_inactive_sec": DEFAULT_TIMER_ON_UNIT_INACTIVE_SEC,
         "systemd_timer": True,
         "cron_fallback_required": False,
         "overlap_prevention": ["systemd_oneshot_unit", "daemon_lockfile"],
@@ -12715,7 +12730,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     run_parser.add_argument("--days-ahead", type=int, default=1)
     run_parser.add_argument("--min-minutes", type=float, default=20.0)
     run_parser.add_argument("--max-minutes", type=float, default=160.0)
-    run_parser.add_argument("--refresh-limit", type=int, default=16)
+    run_parser.add_argument("--refresh-limit", type=int, default=DEFAULT_FULL_DAEMON_REFRESH_LIMIT)
     run_parser.add_argument(
         "--autonomous-odds-capture-limit",
         type=int,
@@ -12847,6 +12862,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     service_parser.add_argument("--lock-path", type=Path)
     service_parser.add_argument("--state-path", type=Path)
     service_parser.add_argument("--odds-capture-state-path", type=Path)
+    service_parser.add_argument(
+        "--pause-path",
+        type=Path,
+        default=DEFAULT_HEAVY_SCHEDULING_PAUSE_PATH,
+        help="Path whose presence pauses future full-daemon starts without pausing odds-only collection.",
+    )
 
     odds_service_parser = subparsers.add_parser(
         "write-odds-capture-service-files",
@@ -12890,6 +12911,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             lock_path=args.lock_path,
             state_path=args.state_path,
             odds_capture_state_path=args.odds_capture_state_path,
+            pause_path=args.pause_path,
         )
         print(json.dumps(result, indent=2, sort_keys=True))
         return 0

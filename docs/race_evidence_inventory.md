@@ -34,6 +34,31 @@ The generated `ops/systemd/*.service` files and installed files under
 the deployed commit, unit hashes, DB/model/evidence paths and rollback evidence
 in the current runtime-reconciliation deployment manifest.
 
+## Resource-isolated scheduling
+
+The full `shadow-autopilot` timer schedules its next run **15 minutes after the
+previous service becomes inactive**, rather than from wall-clock activation.
+This prevents timer-driven full-daemon overlap when a cycle takes longer than
+15 minutes. It is intentionally constrained to a six-race refresh, eight
+result-backlog races, and sixteen backlog shadow runs. Its service has
+`Nice=10`, `CPUWeight=20`, `IOWeight=20`, and `IOSchedulingClass=idle`.
+
+The odds-only timer remains enabled on its existing near-minutely schedule with
+its 16-race capture capacity and best-effort I/O class; it is the prospective
+fixed-window collector and is not the heavy-refresh throttle.
+
+To pause only future heavy full-daemon starts while retaining odds-only
+collection, create the configured pause file and reload neither service nor
+timer:
+
+```bash
+touch /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/artifacts/full_evidence_orchestration_20260525/shadow_autopilot_daemon_runtime/pause-heavy-scheduling
+```
+
+Remove that file to resume the next completion-aware full-daemon activation.
+The condition is evaluated only when systemd starts the full unit, so this
+switch never interrupts a running cycle.
+
 An odds window is complete only when the same capture group contains validated
 dog-level WIN and PLACE rows for the complete active runner set. Historical
 WIN-only groups are incomplete and may be recaptured append-only; they must not
