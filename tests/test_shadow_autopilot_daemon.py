@@ -27,6 +27,7 @@ def test_daemon_default_min_joined_races_matches_review_target():
         == daemon.DEFAULT_FULL_DAEMON_AUTONOMOUS_ODDS_CAPTURE_LIMIT
     )
     assert daemon.DEFAULT_FULL_DAEMON_AUTONOMOUS_ODDS_CAPTURE_LIMIT == 16
+    assert args.refresh_limit == daemon.DEFAULT_FULL_DAEMON_REFRESH_LIMIT == 6
     assert args.result_backlog_limit == daemon.DEFAULT_FULL_DAEMON_RESULT_BACKLOG_LIMIT
     assert (
         args.result_backlog_shadow_run_limit
@@ -458,8 +459,8 @@ def test_run_once_releases_after_primary_when_odds_refresh_due(tmp_path, monkeyp
         if name != "autopilot_cycle":
             raise AssertionError(f"post-primary release should not run {name}")
         assert command[command.index("--autonomous-odds-capture-limit") + 1] == "16"
-        assert command[command.index("--result-backlog-limit") + 1] == "32"
-        assert command[command.index("--result-backlog-shadow-run-limit") + 1] == "64"
+        assert command[command.index("--result-backlog-limit") + 1] == "8"
+        assert command[command.index("--result-backlog-shadow-run-limit") + 1] == "16"
         assert command[command.index("--result-backlog-lookback-days") + 1] == "2"
         daemon.write_json(
             output_dir / "logs" / "autopilot_cycle.stdout.txt",
@@ -4263,6 +4264,10 @@ def test_service_and_timer_define_15_minute_oneshot_cycle():
     assert "--state-path /runtime/state.json" in service
     assert "--odds-capture-state-path /runtime/odds_capture_state.json" in service
     assert "--rejoin-pending-limit 8" in service
+    assert "--refresh-limit 6" in service
+    assert "--autonomous-odds-capture-limit 16" in service
+    assert "--result-backlog-limit 8" in service
+    assert "--result-backlog-shadow-run-limit 16" in service
     assert "--enable-autonomous-odds-capture" in service
     assert "--execute-autonomous-odds-capture" in service
     assert "--allow-auto-scrape-odds" in service
@@ -4271,10 +4276,15 @@ def test_service_and_timer_define_15_minute_oneshot_cycle():
     assert "TimeoutStartSec=3360" in service
     assert "GREYHOUND_ALLOW_TGR=0" in service
     assert "/home/l4nd0/.local/bin" in service
-    assert "OnCalendar=*:02/15" in timer
-    assert "OnUnitActiveSec" not in timer
+    assert "OnUnitInactiveSec=15min" in timer
+    assert "OnCalendar" not in timer
     assert "AccuracySec=30s" in timer
     assert "Persistent=true" in timer
+    assert f"ConditionPathExists=!{daemon.DEFAULT_HEAVY_SCHEDULING_PAUSE_PATH}" in service
+    assert "Nice=10" in service
+    assert "CPUWeight=20" in service
+    assert "IOWeight=20" in service
+    assert "IOSchedulingClass=idle" in service
 
 
 def test_odds_capture_service_and_timer_define_minutely_locked_lane():
