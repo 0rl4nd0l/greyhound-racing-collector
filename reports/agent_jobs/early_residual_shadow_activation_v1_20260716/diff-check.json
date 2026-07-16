@@ -5,7 +5,19 @@
       "status": "M"
     },
     {
-      "path": "reports/agent_jobs/early_residual_shadow_activation_v1_20260716/PR_REVIEW.md",
+      "path": "reports/agent_jobs/early_residual_shadow_activation_v1_20260716/STATE.md",
+      "status": "M"
+    },
+    {
+      "path": "reports/agent_jobs/early_residual_shadow_activation_v1_20260716/VALIDATION.md",
+      "status": "M"
+    },
+    {
+      "path": "reports/agent_jobs/early_residual_shadow_activation_v1_20260716/commands.log",
+      "status": "M"
+    },
+    {
+      "path": "reports/agent_jobs/early_residual_shadow_activation_v1_20260716/status.json",
       "status": "M"
     }
   ],

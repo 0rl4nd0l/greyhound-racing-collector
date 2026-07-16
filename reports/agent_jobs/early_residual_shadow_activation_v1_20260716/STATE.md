@@ -35,3 +35,12 @@ A read-only replay of only the repaired plan builder against the exact 23:08
 handoff changed its status from `BLOCKED(feature_model_missing)` to `READY`
 for `Race 12 - MAND - 2026-07-16`. The score command was not executed after
 jump and no prospective outcome was read.
+
+At closeout, V2 rejected the original administrative claim because the card's
+runtime evidence prefix had been corrected after that claim. The stale claim
+was explicitly abandoned without a success assertion. The final card is
+validated at SHA-256
+`225325723a2f78668804ba793aa1eefa3f89d355119d302cf5e50b022af22526`,
+and a fresh claim was acquired at clean head
+`87afc1d36938171ea21ed6bc5c7f65a148b92b7a` before the final preflight and
+release checks.

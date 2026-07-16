@@ -10,3 +10,6 @@
 2026-07-16T23:22+10:00 observed the normal timer load the repaired unit and return WAITING_FOR_FUTURE_WINDOW
 2026-07-16T23:24+10:00 read-only exact-plan replay against the sealed 23:08 handoff returned READY with zero blockers; scorer not executed post-jump
 2026-07-16T23:25+10:00 verified PR48 draft state, PR47 exact head and five passing checks, PR45 merged head and five passing checks, and required ancestry
+2026-07-16T23:30+10:00 V2 release rejected the original claim because the task-card byte hash changed after claim; no success was asserted
+2026-07-16T23:31+10:00 explicitly abandoned the stale administrative claim, validated final card SHA-256 225325723a2f78668804ba793aa1eefa3f89d355119d302cf5e50b022af22526, and acquired a fresh claim at 87afc1d36938171ea21ed6bc5c7f65a148b92b7a
+2026-07-16T23:31+10:00 final Git guard preflight admitted the scope; live decision ledger passed and missing task ledger used the declared fallback checks

@@ -38,10 +38,10 @@
     "A genuine scheduled strict pre-jump capture at or after 2026-07-17T09:55:00+10:00 emits early_residual_shadow_status.json and the outcome-free shadow JSONL can be inspected.",
     "A new exact fail-closed blocker is observed without reading prospective outcomes."
   ],
-  "run_id": "l4nd0-System-Product-Name:3075822:early_residual_shadow_activation_v1_20260716",
+  "run_id": "l4nd0-System-Product-Name:3228375:early_residual_shadow_activation_v1_20260716",
   "scope_fingerprint": "bfc82c49d3f731eebe40b0be3fc7cda03b8e10953660d39a2848da302c76ccb9",
   "source_class": "strict_prejump_sportsbet_capture_plus_verified_thedogs_form_plus_pr47_hash_bound_features_no_outcomes",
   "target_transition": "first_live_append_only_frozen_residual_shadow_record_materialized_prejump_inside_odds_capture_cycle",
   "task_id": "early_residual_shadow_activation_v1_20260716",
-  "validated_at": "2026-07-16T23:26:00+10:00"
+  "validated_at": "2026-07-16T23:32:00+10:00"
 }

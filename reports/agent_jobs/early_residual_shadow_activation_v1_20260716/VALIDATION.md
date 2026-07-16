@@ -10,6 +10,9 @@
 - Ruff: passed with repository-baseline F601 and F541 exclusions only.
 - `git diff --check`: passed.
 - V2 task-card validation and exact diff allowlist: passed.
+- Final fresh V2 claim and Git guard preflight: passed; the task ledger was
+  unavailable and the guard recorded `DATA_MISSING_FALLBACK_CHECKED` after
+  checking reports, branches, worktrees, and the valid live decision ledger.
 - Generated systemd unit verification: passed; only unrelated host-unit
   warnings were emitted.
 - Independent code review: no critical findings, warnings, or suggestions.
