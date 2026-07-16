@@ -25,7 +25,7 @@
   ],
   "hypothesis_id": "early_residual_scoring_inside_odds_lock_owner_v1",
   "invalidation_conditions": [
-    "The installed odds-only command loses the exact configured Stage-2 model path or stops pointing at commit cbbe78a2103da18a381263a9a2874ce02f243fbf.",
+    "The installed odds-only command loses the exact configured Stage-2 model path or its worktree no longer contains implementation commit cbbe78a2103da18a381263a9a2874ce02f243fbf.",
     "A future run reads outcomes, mutates the production model, writes SQL from the residual stage, changes capture windows, or drops PR 45 resource isolation.",
     "The focused deterministic, provenance, normalization, idempotency, or fail-closed tests stop passing."
   ],

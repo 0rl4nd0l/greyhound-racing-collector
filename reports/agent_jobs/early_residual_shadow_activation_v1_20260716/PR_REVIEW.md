@@ -2,7 +2,9 @@
 
 - Draft PR: #48, `Run frozen residual shadow scoring before odds lock release`
 - URL: https://github.com/0rl4nd0l/greyhound-racing-collector/pull/48
-- Head: `cbbe78a2103da18a381263a9a2874ce02f243fbf`
+- Reviewed implementation head: `cbbe78a2103da18a381263a9a2874ce02f243fbf`
+- Closeout note: report-only commits follow the reviewed implementation head;
+  final live PR head and checks must be queried at handoff.
 - Base: `codex/manual-live-residual-prediction-v1-20260716`
 - State: open draft, clean, mergeable
 - Current checks: two `hardening` checks successful

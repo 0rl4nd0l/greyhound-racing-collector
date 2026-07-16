@@ -1,52 +1,12 @@
 {
   "changed_files": [
     {
-      "path": "reports/agent_jobs/early_residual_shadow_activation_v1_20260716/DECISIONS.md",
-      "status": "A"
-    },
-    {
       "path": "reports/agent_jobs/early_residual_shadow_activation_v1_20260716/DECISION_ENTRY.json",
-      "status": "A"
-    },
-    {
-      "path": "reports/agent_jobs/early_residual_shadow_activation_v1_20260716/LIVE_PROOF.md",
-      "status": "A"
+      "status": "M"
     },
     {
       "path": "reports/agent_jobs/early_residual_shadow_activation_v1_20260716/PR_REVIEW.md",
-      "status": "A"
-    },
-    {
-      "path": "reports/agent_jobs/early_residual_shadow_activation_v1_20260716/REGRESSION_ADJUDICATION.md",
-      "status": "A"
-    },
-    {
-      "path": "reports/agent_jobs/early_residual_shadow_activation_v1_20260716/RUN_OUTCOME.json",
-      "status": "A"
-    },
-    {
-      "path": "reports/agent_jobs/early_residual_shadow_activation_v1_20260716/STATE.md",
-      "status": "A"
-    },
-    {
-      "path": "reports/agent_jobs/early_residual_shadow_activation_v1_20260716/VALIDATION.md",
-      "status": "A"
-    },
-    {
-      "path": "reports/agent_jobs/early_residual_shadow_activation_v1_20260716/commands.log",
-      "status": "A"
-    },
-    {
-      "path": "reports/agent_jobs/early_residual_shadow_activation_v1_20260716/diff-check.json",
-      "status": "A"
-    },
-    {
-      "path": "reports/agent_jobs/early_residual_shadow_activation_v1_20260716/status.json",
-      "status": "A"
-    },
-    {
-      "path": "reports/agent_jobs/early_residual_shadow_activation_v1_20260716/validation.json",
-      "status": "A"
+      "status": "M"
     }
   ],
   "disallowed_files": [],
