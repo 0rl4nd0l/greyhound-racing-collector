@@ -1,0 +1,27 @@
+{
+  "activation_ancestry_requirement": {
+    "frozen_model_pr": "this task's draft PR or its merged descendant",
+    "pr45_head_or_merged_descendant": "aa35fa70fc49199acde09f5561b521ddb00d45aa"
+  },
+  "base_ref": "master",
+  "base_sha": "63866bf4b9e640c74d40bb6e4a21be7b57e0a762",
+  "checks": [
+    {"conclusion": "SUCCESS", "name": "test (3.11)"},
+    {"conclusion": "SUCCESS", "name": "hardening"},
+    {"conclusion": "SUCCESS", "name": "hardening"},
+    {"conclusion": "SUCCESS", "name": "comprehensive-tests"},
+    {"conclusion": "SUCCESS", "name": "ui-e2e"}
+  ],
+  "draft": true,
+  "head_ref": "codex/greyhound-resource-isolation-20260716",
+  "head_sha": "aa35fa70fc49199acde09f5561b521ddb00d45aa",
+  "merge_state_status": "CLEAN",
+  "mergeable": true,
+  "number": 45,
+  "observed_at": "2026-07-16T18:14:22+10:00",
+  "required_for_activation": true,
+  "state": "OPEN",
+  "touched_by_this_task": false,
+  "updated_at": "2026-07-16T06:35:29Z",
+  "url": "https://github.com/0rl4nd0l/greyhound-racing-collector/pull/45"
+}

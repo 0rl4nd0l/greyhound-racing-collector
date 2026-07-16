@@ -1,0 +1,47 @@
+{
+  "blocks": [
+    "runtime_activation_without_dual_ancestry_owner_approval_idle_lock_and_exact_activation_card",
+    "deployment_promotion_or_merge_by_this_task"
+  ],
+  "claim_id": "prospective_market_form_residual_cohort_v2_20260716",
+  "dataset_version": "historical_win_forward_snapshot_eval_20260715_strict_timing_feature_provenance_678",
+  "decision": "PASS",
+  "decision_delta": "The contract-defect state advanced to one hash-bound deterministic frozen residual model and minimal append-only shadow scorer, while preserving the production market baseline and a separate dual-ancestry activation gate.",
+  "decision_id": "frozen-market-form-residual-model-ready-20260716-v1",
+  "does_not_block": [
+    "continued_market_only_production_baseline",
+    "PR_45_validation_or_resource_isolation_review",
+    "separately_owner_approved_activation_after_exact_prerequisites"
+  ],
+  "evidence_hash": "sha256:aeb1758953e48addd0717c9e1cac1c8f5e0c95c338120d10bc5788895825978f",
+  "evidence_refs": [
+    "artifacts/frozen_models/market_form_residual_v1/model.json",
+    "artifacts/frozen_models/market_form_residual_v1/manifest.json",
+    "reports/agent_jobs/prospective_market_form_residual_cohort_v2_20260716/fit_population.json",
+    "reports/agent_jobs/prospective_market_form_residual_cohort_v2_20260716/deterministic_proof.json",
+    "reports/agent_jobs/prospective_market_form_residual_cohort_v2_20260716/VALIDATION.md",
+    "reports/agent_jobs/prospective_market_form_residual_cohort_v2_20260716/CODE_REVIEW.md",
+    "reports/agent_jobs/prospective_market_form_residual_cohort_v2_20260716/pr45_gate.json"
+  ],
+  "hypothesis_id": "frozen_market_form_residual_materialization_v1",
+  "invalidation_conditions": [
+    "Any canonical model, manifest, population, source, candidate, or scorer contract hash changes.",
+    "The deterministic fixed fixture or focused fail-closed scorer tests stop passing.",
+    "A later activation omits either the frozen-model ancestry or PR #45 resource-isolation ancestry."
+  ],
+  "outcome_status": "ADVANCED",
+  "phase_after": "frozen_market_form_residual_model_and_shadow_scorer_ready_awaiting_separate_activation",
+  "phase_before": "blocked_contract_defect_no_cohort_registered_market_baseline_retained",
+  "program_track": "offline_development",
+  "project_id": "greyhound_racing_collector",
+  "reopen_conditions": [
+    "A separate owner-approved activation card is validated on a branch containing both required ancestries and the shared collector lock is idle.",
+    "A material artifact, source, deterministic replay, or scorer-contract defect is proven with new evidence."
+  ],
+  "run_id": "l4nd0-System-Product-Name:2079525:prospective_market_form_residual_cohort_v2_20260716",
+  "scope_fingerprint": "3dad1f07ab26e2568eeac1c1111923a883996e9d5c1111f487b82abfa25fcbff",
+  "source_class": "frozen_tier_a_strict_prejump_sportsbet_win_point_in_time_form_and_official_result_evidence_through_20260709",
+  "target_transition": "deterministic_frozen_market_form_residual_model_materialized_shadow_scorer_ready",
+  "task_id": "prospective_market_form_residual_cohort_v2_20260716",
+  "validated_at": "2026-07-16T18:14:22+10:00"
+}
