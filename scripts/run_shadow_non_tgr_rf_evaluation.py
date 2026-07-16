@@ -85,6 +85,17 @@ SAME_DISTANCE_HISTORY_SOURCE = "prior_dog_history"
 SAME_DISTANCE_HISTORY_CUTOFF = "strictly_before_target_race"
 SAME_DISTANCE_HISTORY_CUTOFF_BASIS = "race_date_less_than_target_race_date"
 AUXILIARY_LIVE_INPUT_DIR_NAMES = frozenset({"raw_exports", "quarantine"})
+IMPLEMENTATION_FILES = [
+    "scripts/run_shadow_non_tgr_rf_evaluation.py",
+    "scripts/run_feature_recovery_execution_v1.py",
+    "utils/expert_form_metadata.py",
+    "utils/prejump_weather.py",
+    "utils/http_client.py",
+    "utils/csv_metadata.py",
+    "utils/runner_completeness.py",
+    "utils/race_lifecycle.py",
+    "tests/test_run_shadow_non_tgr_rf_evaluation.py",
+]
 
 DEFAULT_FULL_EVIDENCE_PARENT = ROOT / "artifacts/full_evidence_orchestration_20260525"
 DEFAULT_LIVE_PARENT = ROOT / "artifacts/shadow_evaluation"
@@ -1524,10 +1535,11 @@ def output_file_manifest(output_dir: Path) -> dict[str, Any]:
         "output_dir": shadow_relpath(output_dir),
         "git_head": git_output(["rev-parse", "--short=12", "HEAD"]),
         "git_branch": git_output(["branch", "--show-current"]),
-        "implementation_files": [
-            "scripts/run_shadow_non_tgr_rf_evaluation.py",
-            "tests/test_run_shadow_non_tgr_rf_evaluation.py",
-        ],
+        "implementation_files": IMPLEMENTATION_FILES,
+        "implementation_file_hashes": {
+            relative: sha256_file(ROOT / relative)
+            for relative in IMPLEMENTATION_FILES
+        },
         "artifact_files": files,
     }
 

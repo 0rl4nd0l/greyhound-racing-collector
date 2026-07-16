@@ -9,6 +9,7 @@ activation, deployment, promotion, EV, or betting path.
 from __future__ import annotations
 
 import argparse
+import difflib
 import hashlib
 import json
 import math
@@ -63,8 +64,25 @@ FEATURE_MANIFEST_SCHEMA = "shadow_live_scoring_manifest_v1"
 IMPLEMENTATION_MANIFEST_SCHEMA = "shadow_implementation_file_manifest_v1"
 FEATURE_GENERATOR_BRANCH = "codex/greyhound-resource-isolation-20260716"
 FEATURE_GENERATOR_HEAD = "aa35fa70fc49"
+LEGACY_FEATURE_ROWS_SHA256 = (
+    "0ebecaf980665545aa8c19d1a4b1ef976bd069049d42f7f6ebde0f3b29a36b62"
+)
+LEGACY_IMPLEMENTATION_MANIFEST_SHA256 = (
+    "9822a77a4d69a72c8b7b2e7d234538b6207b99530b3b717fb9cb31f64929a651"
+)
+LEGACY_FEATURE_GENERATOR_FILES = [
+    "scripts/run_shadow_non_tgr_rf_evaluation.py",
+    "tests/test_run_shadow_non_tgr_rf_evaluation.py",
+]
 FEATURE_GENERATOR_FILES = [
     "scripts/run_shadow_non_tgr_rf_evaluation.py",
+    "scripts/run_feature_recovery_execution_v1.py",
+    "utils/expert_form_metadata.py",
+    "utils/prejump_weather.py",
+    "utils/http_client.py",
+    "utils/csv_metadata.py",
+    "utils/runner_completeness.py",
+    "utils/race_lifecycle.py",
     "tests/test_run_shadow_non_tgr_rf_evaluation.py",
 ]
 CAPTURE_REPORT_SCHEMAS = {
@@ -75,6 +93,7 @@ CAPTURE_REPORT_SCHEMAS = {
 CAPTURE_ATTEMPT_SCHEMA = "autonomous_live_odds_capture_attempt_v1"
 CAPTURE_VALIDATION_SCHEMA = "autonomous_live_odds_capture_validation_v1"
 OUTPUT_SCHEMA = "manual_market_form_residual_prediction_v2"
+DEFAULT_EVIDENCE_ROOT = ROOT / "artifacts/full_evidence_orchestration_20260525"
 
 
 class ManualPredictionError(RuntimeError):
@@ -157,6 +176,69 @@ def _parse_date(value: Any, label: str) -> date:
         return date.fromisoformat(str(value or "").strip())
     except ValueError as exc:
         raise ManualPredictionError(f"{label}_invalid") from exc
+
+
+def _race_id_parts(race_id: str) -> tuple[int, str, date]:
+    match = re.fullmatch(
+        r"Race\s+([0-9]{1,2})\s+-\s+(.+?)\s+-\s+([0-9]{4}-[0-9]{2}-[0-9]{2})",
+        str(race_id or "").strip(),
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        raise ManualPredictionError("discovery_race_id_invalid")
+    return int(match.group(1)), match.group(2).strip().upper(), _parse_date(
+        match.group(3), "discovery_race_date"
+    )
+
+
+def _race_query_parts(query: str) -> tuple[int, str]:
+    text = str(query or "").strip()
+    match = re.search(r"\b(?:R|RACE)\s*([0-9]{1,2})\b", text, flags=re.IGNORECASE)
+    if not match:
+        raise ManualPredictionError("race_query_number_missing")
+    race_number = int(match.group(1))
+    venue = _runner_token(f"{text[:match.start()]} {text[match.end():]}")
+    if not venue:
+        raise ManualPredictionError("race_query_venue_missing")
+    return race_number, venue
+
+
+def _venue_query_match_rank(
+    query: str,
+    *,
+    canonical_venue: str,
+    full_aliases: Sequence[str],
+) -> int | None:
+    canonical = _runner_token(canonical_venue)
+    aliases = {_runner_token(value) for value in full_aliases if _runner_token(value)}
+    if query == canonical:
+        return 0
+    if query in aliases:
+        return 1
+    if any(
+        (len(query) >= 4 and query in alias)
+        or (len(alias) >= 4 and alias in query)
+        for alias in aliases
+    ):
+        return 2
+    if any(
+        min(len(query), len(alias)) >= 5
+        and difflib.SequenceMatcher(a=query, b=alias).ratio() >= 0.8
+        for alias in aliases
+    ):
+        return 3
+    return None
+
+
+def _path_in_roots(path: Path, roots: Sequence[Path]) -> bool:
+    resolved = path.resolve()
+    for root in roots:
+        try:
+            resolved.relative_to(root.resolve())
+        except ValueError:
+            continue
+        return True
+    return False
 
 
 def _integer(value: Any, label: str, *, minimum: int = 0) -> int:
@@ -611,6 +693,55 @@ def _manifest_entry(
     return matches[0]
 
 
+def _validate_feature_generator_identity(
+    implementation_manifest: Mapping[str, Any],
+    *,
+    implementation_manifest_sha: str,
+    feature_rows_sha: str,
+) -> None:
+    legacy_branch = implementation_manifest.get("git_branch") == FEATURE_GENERATOR_BRANCH
+    legacy_head = implementation_manifest.get("git_head") == FEATURE_GENERATOR_HEAD
+    legacy_packet = (
+        implementation_manifest_sha == LEGACY_IMPLEMENTATION_MANIFEST_SHA256
+        and feature_rows_sha == LEGACY_FEATURE_ROWS_SHA256
+    )
+    if legacy_branch and legacy_head and legacy_packet:
+        if implementation_manifest.get("implementation_files") != (
+            LEGACY_FEATURE_GENERATOR_FILES
+        ):
+            raise ManualPredictionError("feature_generator_identity_missing")
+        return
+
+    declared_hashes = implementation_manifest.get("implementation_file_hashes")
+    if not isinstance(declared_hashes, Mapping):
+        if legacy_branch and legacy_head:
+            raise ManualPredictionError("feature_generator_legacy_packet_hash_mismatch")
+        if not legacy_branch:
+            raise ManualPredictionError("feature_generator_branch_mismatch")
+        raise ManualPredictionError("feature_generator_head_mismatch")
+    implementation_files = implementation_manifest.get("implementation_files")
+    if implementation_files != FEATURE_GENERATOR_FILES:
+        raise ManualPredictionError("feature_generator_identity_missing")
+    if set(declared_hashes) != set(FEATURE_GENERATOR_FILES):
+        raise ManualPredictionError("feature_generator_implementation_hash_set_mismatch")
+    for relative in FEATURE_GENERATOR_FILES:
+        declared = str(declared_hashes.get(relative) or "").strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{64}", declared):
+            raise ManualPredictionError("feature_generator_implementation_hash_invalid")
+        path = (ROOT / relative).resolve()
+        try:
+            path.relative_to(ROOT.resolve())
+            actual = _sha256_bytes(path.read_bytes())
+        except (OSError, ValueError) as exc:
+            raise ManualPredictionError(
+                "feature_generator_implementation_file_unreadable"
+            ) from exc
+        if actual != declared:
+            raise ManualPredictionError(
+                "feature_generator_implementation_hash_mismatch"
+            )
+
+
 def _feature_packet(
     *,
     feature_rows_path: Path,
@@ -621,6 +752,7 @@ def _feature_packet(
     feature_manifest_sha: str,
     implementation_manifest_path: Path,
     implementation_manifest: Mapping[str, Any],
+    implementation_manifest_sha: str,
     form_csv_path: Path,
     context: Mapping[str, Any],
     race_id: str,
@@ -638,15 +770,13 @@ def _feature_packet(
         raise ManualPredictionError("implementation_manifest_schema_mismatch")
     if _contains_outcome_key(implementation_manifest):
         raise ManualPredictionError("implementation_manifest_contains_outcome_field")
-    if implementation_manifest.get("git_branch") != FEATURE_GENERATOR_BRANCH:
-        raise ManualPredictionError("feature_generator_branch_mismatch")
-    if implementation_manifest.get("git_head") != FEATURE_GENERATOR_HEAD:
-        raise ManualPredictionError("feature_generator_head_mismatch")
     if Path(str(implementation_manifest.get("output_dir") or "")).resolve() != parent:
         raise ManualPredictionError("feature_generator_output_dir_mismatch")
-    implementation_files = implementation_manifest.get("implementation_files")
-    if implementation_files != FEATURE_GENERATOR_FILES:
-        raise ManualPredictionError("feature_generator_identity_missing")
+    _validate_feature_generator_identity(
+        implementation_manifest,
+        implementation_manifest_sha=implementation_manifest_sha,
+        feature_rows_sha=feature_rows_sha,
+    )
     for path, raw, sha, label in (
         (feature_rows_path, feature_rows_raw, feature_rows_sha, "feature_rows"),
         (
@@ -779,6 +909,241 @@ def _feature_packet(
     return by_box, feature_time, generated_time
 
 
+def discover_race_artifacts(
+    *,
+    race_query: str,
+    evidence_roots: Sequence[Path],
+    score_timestamp: datetime,
+) -> dict[str, Any]:
+    """Resolve one race to one sealed feature packet and one capture report."""
+
+    if score_timestamp.tzinfo is None or score_timestamp.utcoffset() is None:
+        raise ManualPredictionError("score_timestamp_timezone_missing")
+    roots = sorted({Path(root).resolve() for root in evidence_roots})
+    if not roots or any(not root.is_dir() for root in roots):
+        raise ManualPredictionError("evidence_root_missing_or_not_directory")
+    race_number, venue_query = _race_query_parts(race_query)
+
+    feature_candidates: list[dict[str, Any]] = []
+    seen_feature_packets: set[Path] = set()
+    for root in roots:
+        for feature_rows_path in sorted(root.rglob("shadow_feature_rows.json")):
+            feature_rows_path = feature_rows_path.resolve()
+            if feature_rows_path in seen_feature_packets:
+                continue
+            seen_feature_packets.add(feature_rows_path)
+            feature_manifest_path = feature_rows_path.with_name("shadow_manifest.json")
+            implementation_manifest_path = feature_rows_path.with_name(
+                "implementation_file_manifest.json"
+            )
+            if not all(
+                _path_in_roots(path, roots)
+                for path in (
+                    feature_rows_path,
+                    feature_manifest_path,
+                    implementation_manifest_path,
+                )
+            ):
+                raise ManualPredictionError("discovery_path_outside_evidence_root")
+            if (
+                not feature_manifest_path.is_file()
+                or not implementation_manifest_path.is_file()
+            ):
+                continue
+            feature_rows_raw, _ = _read_input(feature_rows_path, "discovery_feature_rows")
+            rows = _json_value(feature_rows_raw, "discovery_feature_rows")
+            if not isinstance(rows, list):
+                continue
+            if _contains_outcome_key(rows):
+                raise ManualPredictionError("discovery_feature_packet_contains_outcome")
+            race_ids = sorted(
+                {
+                    str(row.get("race_id"))
+                    for row in rows
+                    if isinstance(row, Mapping) and row.get("race_id") not in (None, "")
+                }
+            )
+            for race_id in race_ids:
+                try:
+                    candidate_number, candidate_venue, candidate_date = _race_id_parts(
+                        race_id
+                    )
+                except ManualPredictionError:
+                    continue
+                if candidate_number != race_number:
+                    continue
+                selected_rows = [
+                    row
+                    for row in rows
+                    if isinstance(row, Mapping) and row.get("race_id") == race_id
+                ]
+                aliases: list[str] = []
+                for row in selected_rows:
+                    row_venue = str(row.get("venue") or "")
+                    if _runner_token(row_venue) != _runner_token(candidate_venue):
+                        aliases.append(row_venue)
+                    source_url = str(row.get("target_metadata_source_url") or "")
+                    try:
+                        path_parts = [
+                            part for part in urlparse(source_url).path.split("/") if part
+                        ]
+                    except ValueError:
+                        path_parts = []
+                    for index, part in enumerate(path_parts[:-1]):
+                        if part.lower() == "racing":
+                            aliases.append(path_parts[index + 1])
+                            break
+                venue_match_rank = _venue_query_match_rank(
+                    venue_query,
+                    canonical_venue=candidate_venue,
+                    full_aliases=aliases,
+                )
+                if venue_match_rank is None:
+                    continue
+                source_csv_values = {
+                    str(row.get("source_csv") or "").strip() for row in selected_rows
+                }
+                source_csv_values.discard("")
+                if len(source_csv_values) != 1:
+                    continue
+                form_csv_path = Path(next(iter(source_csv_values)))
+                if not form_csv_path.is_absolute():
+                    form_csv_path = ROOT / form_csv_path
+                form_csv_path = form_csv_path.resolve()
+                sidecar_path = form_csv_path.with_name(
+                    form_csv_path.name + ".metadata.json"
+                )
+                if (
+                    not form_csv_path.is_file()
+                    or not sidecar_path.is_file()
+                    or not _path_in_roots(form_csv_path, roots)
+                    or not _path_in_roots(sidecar_path, roots)
+                ):
+                    continue
+                feature_manifest_raw, _ = _read_input(
+                    feature_manifest_path, "discovery_feature_manifest"
+                )
+                feature_manifest = _json_object(
+                    feature_manifest_raw, "discovery_feature_manifest"
+                )
+                if _contains_outcome_key(feature_manifest):
+                    raise ManualPredictionError(
+                        "discovery_feature_manifest_contains_outcome"
+                    )
+                generated_at = _parse_timestamp(
+                    feature_manifest.get("generated_at"),
+                    "discovery_feature_manifest_generated_at",
+                )
+                if generated_at > score_timestamp:
+                    continue
+                feature_candidates.append(
+                    {
+                        "race_id": race_id,
+                        "race_date": candidate_date,
+                        "venue_code": candidate_venue,
+                        "venue_match_rank": venue_match_rank,
+                        "generated_at": generated_at,
+                        "form_csv_path": form_csv_path,
+                        "sidecar_path": sidecar_path,
+                        "feature_rows_path": feature_rows_path,
+                        "feature_manifest_path": feature_manifest_path,
+                        "implementation_manifest_path": implementation_manifest_path,
+                    }
+                )
+
+    if not feature_candidates:
+        raise ManualPredictionError("race_feature_packet_not_found")
+    best_venue_rank = min(row["venue_match_rank"] for row in feature_candidates)
+    feature_candidates = [
+        row
+        for row in feature_candidates
+        if row["venue_match_rank"] == best_venue_rank
+    ]
+    if len({row["venue_code"] for row in feature_candidates}) != 1:
+        raise ManualPredictionError("race_query_ambiguous")
+    current_date = score_timestamp.astimezone(MELBOURNE).date()
+    available_dates = sorted(
+        {row["race_date"] for row in feature_candidates if row["race_date"] >= current_date}
+    )
+    target_date = available_dates[0] if available_dates else max(
+        row["race_date"] for row in feature_candidates
+    )
+    dated = [row for row in feature_candidates if row["race_date"] == target_date]
+    race_ids = {row["race_id"] for row in dated}
+    if len(race_ids) != 1:
+        raise ManualPredictionError("race_query_ambiguous")
+    latest_feature_time = max(row["generated_at"] for row in dated)
+    selected_features = [
+        row for row in dated if row["generated_at"] == latest_feature_time
+    ]
+    if len(selected_features) != 1:
+        raise ManualPredictionError("race_feature_packet_ambiguous")
+    selected_feature = selected_features[0]
+    race_id = str(selected_feature["race_id"])
+
+    capture_candidates: list[dict[str, Any]] = []
+    seen_capture_reports: set[Path] = set()
+    for root in roots:
+        for capture_path in sorted(root.rglob("autonomous_live_odds_capture_report.json")):
+            capture_path = capture_path.resolve()
+            if capture_path in seen_capture_reports:
+                continue
+            seen_capture_reports.add(capture_path)
+            if not _path_in_roots(capture_path, roots):
+                raise ManualPredictionError("discovery_path_outside_evidence_root")
+            capture_raw, _ = _read_input(capture_path, "discovery_capture")
+            try:
+                capture_payload = _json_object(capture_raw, "discovery_capture")
+            except ManualPredictionError:
+                continue
+            if _contains_outcome_key(capture_payload):
+                raise ManualPredictionError("discovery_capture_contains_outcome")
+            raw_attempts = capture_payload.get("attempts")
+            if not isinstance(raw_attempts, list) or not any(
+                isinstance(attempt, Mapping) and attempt.get("race_id") == race_id
+                for attempt in raw_attempts
+            ):
+                continue
+            try:
+                attempts = _capture_attempts(capture_raw, jsonl=False)
+            except ManualPredictionError as exc:
+                raise ManualPredictionError(
+                    "race_capture_report_invalid"
+                ) from exc
+            matches = [
+                attempt
+                for attempt in attempts
+                if attempt.get("race_id") == race_id
+                and attempt.get("status") == "APPENDED"
+                and isinstance(attempt.get("validation"), Mapping)
+                and attempt["validation"].get("status") == "PASS"
+            ]
+            if not matches:
+                continue
+            if len(matches) != 1:
+                raise ManualPredictionError("accepted_capture_attempt_ambiguous")
+            append_time = _parse_timestamp(
+                matches[0].get("append_time"), "discovery_capture_append_timestamp"
+            )
+            if append_time <= score_timestamp:
+                capture_candidates.append(
+                    {"capture_path": capture_path, "append_time": append_time}
+                )
+    if not capture_candidates:
+        raise ManualPredictionError("race_capture_report_not_found")
+    latest_append = max(row["append_time"] for row in capture_candidates)
+    selected_captures = [
+        row for row in capture_candidates if row["append_time"] == latest_append
+    ]
+    if len(selected_captures) != 1:
+        raise ManualPredictionError("race_capture_report_ambiguous")
+
+    return {
+        **selected_feature,
+        "capture_path": selected_captures[0]["capture_path"],
+    }
+
+
 def score_from_artifacts(
     *,
     race_id: str,
@@ -833,6 +1198,7 @@ def score_from_artifacts(
         feature_manifest_sha=feature_manifest_sha,
         implementation_manifest_path=implementation_manifest_path,
         implementation_manifest=implementation,
+        implementation_manifest_sha=implementation_sha,
         form_csv_path=form_csv_path,
         context=context,
         race_id=race_id,
@@ -847,16 +1213,25 @@ def score_from_artifacts(
     score_time = score_timestamp or datetime.now().astimezone()
     if score_time.tzinfo is None or score_time.utcoffset() is None:
         raise ManualPredictionError("score_timestamp_timezone_missing")
-    timeline = (
+    feature_timeline = (
         context["metadata_timestamp"],
         feature_time,
         feature_generated_time,
+        score_time,
+        jump,
+    )
+    odds_timeline = (
+        context["metadata_timestamp"],
         fetch_time,
         append_time,
         score_time,
         jump,
     )
-    if any(left > right for left, right in zip(timeline, timeline[1:])):
+    if any(
+        left > right
+        for timeline in (feature_timeline, odds_timeline)
+        for left, right in zip(timeline, timeline[1:])
+    ):
         raise ManualPredictionError("source_timestamp_order_invalid")
     if not score_time < jump:
         raise ManualPredictionError("manual_score_not_prejump")
@@ -980,37 +1355,94 @@ def score_from_artifacts(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--race-id", required=True)
-    parser.add_argument("--form-csv", required=True, type=Path)
+    parser.add_argument("--race-id")
+    parser.add_argument(
+        "--race",
+        help='Race-first query such as "sandown r6" over the evidence root.',
+    )
+    parser.add_argument(
+        "--evidence-root",
+        action="append",
+        type=Path,
+        help=(
+            "Outcome-free evidence root to search in race-first mode. May be repeated; "
+            "defaults to the repository evidence root."
+        ),
+    )
+    parser.add_argument("--form-csv", type=Path)
     parser.add_argument("--sidecar", type=Path)
-    parser.add_argument("--feature-rows", required=True, type=Path)
+    parser.add_argument("--feature-rows", type=Path)
     parser.add_argument("--feature-manifest", type=Path)
     parser.add_argument("--implementation-manifest", type=Path)
-    parser.add_argument("--capture", required=True, type=Path)
+    parser.add_argument("--capture", type=Path)
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     artifact_dir = ROOT / DEFAULT_ARTIFACT_DIR
-    sidecar = args.sidecar or args.form_csv.with_name(args.form_csv.name + ".metadata.json")
-    feature_manifest = args.feature_manifest or args.feature_rows.with_name(
-        "shadow_manifest.json"
-    )
-    implementation_manifest = args.implementation_manifest or args.feature_rows.with_name(
-        "implementation_file_manifest.json"
-    )
     try:
+        score_time = datetime.now().astimezone()
+        if args.race:
+            if any(
+                value is not None
+                for value in (
+                    args.race_id,
+                    args.form_csv,
+                    args.sidecar,
+                    args.feature_rows,
+                    args.feature_manifest,
+                    args.implementation_manifest,
+                    args.capture,
+                )
+            ):
+                raise ManualPredictionError(
+                    "race_first_mode_cannot_mix_explicit_artifact_arguments"
+                )
+            discovered = discover_race_artifacts(
+                race_query=args.race,
+                evidence_roots=args.evidence_root or [DEFAULT_EVIDENCE_ROOT],
+                score_timestamp=score_time,
+            )
+            race_id = str(discovered["race_id"])
+            form_csv = Path(discovered["form_csv_path"])
+            sidecar = Path(discovered["sidecar_path"])
+            feature_rows = Path(discovered["feature_rows_path"])
+            feature_manifest = Path(discovered["feature_manifest_path"])
+            implementation_manifest = Path(
+                discovered["implementation_manifest_path"]
+            )
+            capture = Path(discovered["capture_path"])
+        else:
+            if args.evidence_root:
+                raise ManualPredictionError("evidence_root_requires_race_first_mode")
+            if not args.race_id or args.form_csv is None or args.feature_rows is None or args.capture is None:
+                raise ManualPredictionError("explicit_artifact_arguments_incomplete")
+            race_id = args.race_id
+            form_csv = args.form_csv
+            sidecar = args.sidecar or form_csv.with_name(
+                form_csv.name + ".metadata.json"
+            )
+            feature_rows = args.feature_rows
+            feature_manifest = args.feature_manifest or feature_rows.with_name(
+                "shadow_manifest.json"
+            )
+            implementation_manifest = (
+                args.implementation_manifest
+                or feature_rows.with_name("implementation_file_manifest.json")
+            )
+            capture = args.capture
         output = score_from_artifacts(
-            race_id=args.race_id,
-            form_csv_path=args.form_csv,
+            race_id=race_id,
+            form_csv_path=form_csv,
             sidecar_path=sidecar,
-            feature_rows_path=args.feature_rows,
+            feature_rows_path=feature_rows,
             feature_manifest_path=feature_manifest,
             implementation_manifest_path=implementation_manifest,
-            capture_path=args.capture,
+            capture_path=capture,
             model_path=artifact_dir / "model.json",
             manifest_path=artifact_dir / "manifest.json",
+            score_timestamp=score_time if args.race else None,
         )
     except (ManualPredictionError, ResidualContractError) as exc:
         sys.stderr.buffer.write(

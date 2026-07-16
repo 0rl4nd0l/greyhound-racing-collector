@@ -12,7 +12,10 @@ a service, activate a model, or place a bet.
   `<form CSV>.metadata.json` sidecar.
 - A `shadow_feature_rows.json` packet with its adjacent `shadow_manifest.json`
   and `implementation_file_manifest.json`. The implementation manifest must
-  identify the reviewed PR #45 feature generator at head `aa35fa70fc49`.
+  either match the exact sealed legacy PR #45 packet (feature rows
+  `0ebecaf9...` and implementation manifest `9822a77a...`), or bind the exact
+  current generator, local feature dependencies, and test file by SHA-256.
+  Merely declaring the legacy branch/head is not sufficient.
 - An autonomous Sportsbet capture report, single-attempt JSON, or attempts
   JSONL containing exactly one `APPENDED` / `PASS` attempt for the race.
 - A race ID in the canonical form `Race <number> - <venue code> - YYYY-MM-DD`.
@@ -21,6 +24,29 @@ The command binds the race ID, race number, venue, date, runner boxes and
 normalized names across both sources. A verified scratched runner may remain
 in the complete form guide but must be declared scratched by the accepted
 capture and is not scored.
+
+## Race-first invocation
+
+From the canonical checkout, the normal operator command is:
+
+```bash
+python scripts/predict_market_form_residual.py --race 'sandown r6'
+```
+
+This searches only the default outcome-free evidence root. An external or
+additional evidence root can be named explicitly and repeated:
+
+```bash
+python scripts/predict_market_form_residual.py \
+  --race 'sandown r6' \
+  --evidence-root '/evidence/full_evidence_orchestration_20260525'
+```
+
+The query must contain a venue and race number. Venue matching accepts the
+canonical venue code, the verified TheDogs URL venue, and a close spelling
+only when the race resolves unambiguously. Discovery selects the nearest
+current/future race date, the latest exact feature packet for that race, and
+the latest strict accepted capture. Equal latest candidates fail closed.
 
 ## Explicit invocation
 
@@ -36,9 +62,14 @@ The sidecar is resolved only at the adjacent canonical path. `--sidecar` may
 be supplied for clarity, but a non-adjacent path is rejected.
 The two feature manifests are resolved only beside `--feature-rows`.
 `--feature-manifest` and `--implementation-manifest` may be supplied for
-clarity, but non-adjacent paths are rejected. This version is deliberately an
-explicit-input scorer: it does not discover or generate a missing feature
-packet from a race name alone.
+clarity, but non-adjacent paths are rejected.
+
+The scorer never generates features. In a full approved autopilot cycle, a
+successful strict capture whose race was omitted by the smaller primary
+refresh is now handed to the existing daily feature generator as one
+supplemental form input. A fresh cutoff is taken immediately before feature
+generation, so a race that jumped while odds were being captured is excluded.
+The primary refresh limit and resource-isolation settings are unchanged.
 
 ## Output and failure contract
 
@@ -55,11 +86,14 @@ among other things:
 - unsafe metadata, incomplete runners, box/name drift, or race-ID drift;
 - missing, extra, duplicate, ambiguously captured, or invalid-odds runners;
 - undeclared or inconsistent scratches;
-- naive, future, post-jump, or incorrectly ordered source timestamps;
+- naive, future, post-jump, or incorrectly ordered source timestamps; feature
+  generation and odds capture may occur in either order, but each independent
+  timeline must remain complete and pre-jump;
 - a current execution time at or after jump;
 - any outcome-like field in the sidecar or capture artifact;
 - target-day form rows or a frozen artifact schema/hash mismatch;
-- feature packets not generated at the reviewed PR #45 head, or packet,
+- feature packets that neither match the exact sealed legacy PR #45 packet nor
+  every declared current generator/dependency-file SHA-256, or packet,
   manifest, source-path, byte-count or SHA-256 drift;
 - probabilities that do not meet the frozen scorer contract.
 
@@ -69,9 +103,9 @@ fixture, but the CLI deliberately has no backdating option.
 
 ## Separate activation boundary
 
-This command consumes evidence that another approved capture path has already
-materialized. Race-only discovery, missing-feature generation, network
-fetching, scheduler or collector integration, database access, shadow
-persistence, deployment and model activation remain separately gated. Any
-later activation must descend from the PR #45 resource-isolation changes as
-well as the frozen-model lineage.
+This command consumes evidence that an approved capture and feature path has
+already materialized. This change does not deploy or activate the repaired
+handoff. Network fetching, direct database access, service/unit/timer changes,
+shadow persistence, deployment and model activation remain separately gated.
+Any later activation must descend from the PR #45 resource-isolation changes,
+the frozen-model lineage, and the reviewed handoff repair.

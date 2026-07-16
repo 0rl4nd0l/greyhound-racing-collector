@@ -124,12 +124,13 @@ def _seal_packet(paths: dict[str, Path], rows: list[dict], manifest: dict) -> No
         paths["implementation_manifest"],
         {
             "schema_version": "shadow_implementation_file_manifest_v1",
-            "git_branch": "codex/greyhound-resource-isolation-20260716",
-            "git_head": "aa35fa70fc49",
-            "implementation_files": [
-                "scripts/run_shadow_non_tgr_rf_evaluation.py",
-                "tests/test_run_shadow_non_tgr_rf_evaluation.py",
-            ],
+            "git_branch": "codex/residual-handoff-under-test",
+            "git_head": "feedfacefeed",
+            "implementation_files": manual.FEATURE_GENERATOR_FILES,
+            "implementation_file_hashes": {
+                relative: _sha256((ROOT / relative).read_bytes())
+                for relative in manual.FEATURE_GENERATOR_FILES
+            },
             "output_dir": str(paths["feature_rows"].parent.resolve()),
             "artifact_files": artifacts,
         },
@@ -341,6 +342,20 @@ def test_scores_exact_packet_deterministically(tmp_path):
     assert len(first["predictions"]) == 3
     for key in ("market", "half", "full"):
         assert first["probability_sums"][key] == pytest.approx(1.0)
+
+
+def test_scores_when_strict_odds_capture_precedes_feature_generation(tmp_path):
+    paths = _write_fixture(tmp_path)
+    capture = _json(paths["capture"])
+    assert isinstance(capture, dict)
+    capture["attempts"][0]["fetch_time"] = "2026-07-16T18:42:00+10:00"
+    capture["attempts"][0]["append_time"] = "2026-07-16T18:43:00+10:00"
+    _write_json(paths["capture"], capture)
+
+    output = _score_paths(paths)
+
+    assert output["odds_append_timestamp"] == "2026-07-16T18:43:00+10:00"
+    assert output["feature_manifest_generated_at"] == "2026-07-16T18:46:00+10:00"
 
 
 def test_uses_exact_top_level_golden_features(tmp_path, monkeypatch):
@@ -570,10 +585,63 @@ def test_rejects_wrong_feature_generator_head(tmp_path):
     paths = _write_fixture(tmp_path)
     manifest = _json(paths["implementation_manifest"])
     assert isinstance(manifest, dict)
+    manifest["git_branch"] = "codex/greyhound-resource-isolation-20260716"
     manifest["git_head"] = "deadbeefdead"
+    manifest.pop("implementation_file_hashes")
     _write_json(paths["implementation_manifest"], manifest)
 
     with pytest.raises(ManualPredictionError, match="feature_generator_head_mismatch"):
+        _score_paths(paths)
+
+
+def test_rejects_packet_impersonating_legacy_generator_identity(tmp_path):
+    paths = _write_fixture(tmp_path)
+    manifest = _json(paths["implementation_manifest"])
+    assert isinstance(manifest, dict)
+    manifest["git_branch"] = "codex/greyhound-resource-isolation-20260716"
+    manifest["git_head"] = "aa35fa70fc49"
+    manifest.pop("implementation_file_hashes")
+    _write_json(paths["implementation_manifest"], manifest)
+
+    with pytest.raises(
+        ManualPredictionError, match="feature_generator_legacy_packet_hash_mismatch"
+    ):
+        _score_paths(paths)
+
+
+def _bind_current_generator_hashes(paths: dict[str, Path]) -> dict:
+    manifest = _json(paths["implementation_manifest"])
+    assert isinstance(manifest, dict)
+    manifest["git_branch"] = "codex/residual-handoff-under-test"
+    manifest["git_head"] = "feedfacefeed"
+    manifest["implementation_file_hashes"] = {
+        relative: _sha256((ROOT / relative).read_bytes())
+        for relative in manifest["implementation_files"]
+    }
+    _write_json(paths["implementation_manifest"], manifest)
+    return manifest
+
+
+def test_accepts_new_packet_bound_to_current_generator_hashes(tmp_path):
+    paths = _write_fixture(tmp_path)
+    _bind_current_generator_hashes(paths)
+
+    output = _score_paths(paths)
+
+    assert output["status"] == "MANUAL_PREJUMP_FROZEN_RESIDUAL_PREDICTION"
+
+
+def test_rejects_new_packet_with_generator_hash_mismatch(tmp_path):
+    paths = _write_fixture(tmp_path)
+    manifest = _bind_current_generator_hashes(paths)
+    manifest["implementation_file_hashes"][manifest["implementation_files"][0]] = (
+        "0" * 64
+    )
+    _write_json(paths["implementation_manifest"], manifest)
+
+    with pytest.raises(
+        ManualPredictionError, match="feature_generator_implementation_hash_mismatch"
+    ):
         _score_paths(paths)
 
 
@@ -745,3 +813,174 @@ def test_cli_prints_canonical_json_and_writes_nothing(tmp_path):
         if path.is_file()
     }
     assert after == before
+
+
+def test_race_first_cli_discovers_exact_packet_with_one_query_and_writes_nothing(
+    tmp_path,
+):
+    paths = _write_fixture(tmp_path)
+    race_id = _retime_for_cli(paths)
+    before = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in sorted(tmp_path.rglob("*"))
+        if path.is_file()
+    }
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/predict_market_form_residual.py"),
+            "--race",
+            "sundown r2",
+            "--evidence-root",
+            str(tmp_path),
+        ],
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr.decode("utf-8")
+    assert completed.stderr == b""
+    payload = json.loads(completed.stdout)
+    assert payload["race_id"] == race_id
+    assert completed.stdout == _canonical_bytes(payload)
+    after = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in sorted(tmp_path.rglob("*"))
+        if path.is_file()
+    }
+    assert after == before
+
+
+def test_race_first_discovery_fails_closed_on_equal_latest_capture_reports(tmp_path):
+    paths = _write_fixture(tmp_path)
+    duplicate = tmp_path / "duplicate/autonomous_live_odds_capture_report.json"
+    duplicate.parent.mkdir()
+    duplicate.write_bytes(paths["capture"].read_bytes())
+
+    with pytest.raises(ManualPredictionError, match="race_capture_report_ambiguous"):
+        manual.discover_race_artifacts(
+            race_query="sandown r2",
+            evidence_roots=[tmp_path],
+            score_timestamp=SCORE_TIME,
+        )
+
+
+def test_race_first_discovery_does_not_treat_generic_url_path_as_venue(tmp_path):
+    _write_fixture(tmp_path)
+
+    with pytest.raises(ManualPredictionError, match="race_feature_packet_not_found"):
+        manual.discover_race_artifacts(
+            race_query="racing r2",
+            evidence_roots=[tmp_path],
+            score_timestamp=SCORE_TIME,
+        )
+
+
+def test_race_first_discovery_resolves_venue_before_race_date(tmp_path):
+    warrnambool = _write_fixture(tmp_path / "warrnambool")
+    warragul = _write_fixture(tmp_path / "warragul")
+
+    def retarget(paths, *, race_id, venue, url):
+        def mutate(rows, _manifest):
+            for row in rows:
+                row["race_id"] = race_id
+                row["race_date"] = race_id.rsplit(" - ", 1)[1]
+                row["venue"] = venue
+                row["target_metadata_source_url"] = url
+
+        _reseal(paths, mutate)
+
+    retarget(
+        warrnambool,
+        race_id="Race 2 - WAR - 2026-07-16",
+        venue="WAR",
+        url="https://www.thedogs.com.au/racing/warrnambool/2026-07-16/2/test",
+    )
+    retarget(
+        warragul,
+        race_id="Race 2 - WARG - 2026-07-17",
+        venue="WARG",
+        url="https://www.thedogs.com.au/racing/warragul/2026-07-17/2/test",
+    )
+
+    with pytest.raises(ManualPredictionError, match="race_query_ambiguous"):
+        manual.discover_race_artifacts(
+            race_query="warr r2",
+            evidence_roots=[tmp_path],
+            score_timestamp=SCORE_TIME,
+        )
+
+
+def test_race_first_discovery_rejects_capture_symlink_escape(tmp_path):
+    evidence_root = tmp_path / "evidence"
+    paths = _write_fixture(evidence_root)
+    outside_capture = tmp_path / "outside_capture.json"
+    outside_capture.write_bytes(paths["capture"].read_bytes())
+    paths["capture"].unlink()
+    paths["capture"].symlink_to(outside_capture)
+
+    with pytest.raises(
+        ManualPredictionError, match="discovery_path_outside_evidence_root"
+    ):
+        manual.discover_race_artifacts(
+            race_query="sandown r2",
+            evidence_roots=[evidence_root],
+            score_timestamp=SCORE_TIME,
+        )
+
+
+def test_race_first_discovery_rejects_unrelated_outcome_capture(tmp_path):
+    _write_fixture(tmp_path)
+    unrelated = tmp_path / "unrelated/autonomous_live_odds_capture_report.json"
+    _write_json(
+        unrelated,
+        {
+            "schema_version": "autonomous_live_odds_capture_report_v1",
+            "winner": "Must Not Be Read",
+            "attempts": [
+                {
+                    "race_id": "Race 9 - OTHER - 2026-07-16",
+                    "status": "APPENDED",
+                }
+            ],
+        },
+    )
+
+    with pytest.raises(
+        ManualPredictionError, match="discovery_capture_contains_outcome"
+    ):
+        manual.discover_race_artifacts(
+            race_query="sandown r2",
+            evidence_roots=[tmp_path],
+            score_timestamp=SCORE_TIME,
+        )
+
+
+def test_race_first_discovery_does_not_fallback_past_invalid_target_capture(
+    tmp_path,
+):
+    _write_fixture(tmp_path)
+    invalid = tmp_path / "later/autonomous_live_odds_capture_report.json"
+    invalid.parent.mkdir()
+    _write_json(
+        invalid,
+        {
+            "schema_version": "unexpected_capture_schema",
+            "attempts": [
+                {
+                    "race_id": RACE_ID,
+                    "status": "APPENDED",
+                    "validation": {"status": "PASS"},
+                }
+            ],
+        },
+    )
+
+    with pytest.raises(ManualPredictionError, match="race_capture_report_invalid"):
+        manual.discover_race_artifacts(
+            race_query="sandown r2",
+            evidence_roots=[tmp_path],
+            score_timestamp=SCORE_TIME,
+        )
