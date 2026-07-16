@@ -7,7 +7,7 @@ one shadow run, one result packet, or one daemon artifact.
 ## Canonical Runtime Paths
 
 - Runtime code checkout used by systemd:
-  `/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-runtime-master-live-20260621`
+  `/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-early-residual-shadow-activation-v1-20260716`
 - Runtime Python:
   `/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/.venv/bin/python`
 - Runtime evidence root:
@@ -74,6 +74,11 @@ The odds-capture-only lane is:
 5. `scripts/autonomous_live_odds_capture.py`
 6. `odds_auto_integrator.py`
 7. `sportsbet_odds_integrator.py` append-only `live_odds`
+8. `residual_feature_handoff_status.json` for exact newly appended races
+9. `scripts/run_shadow_non_tgr_rf_evaluation.py score-live` through SQLite
+   `mode=ro`
+10. `scripts/predict_market_form_residual.py --append-shadow-output` to the
+    outcome-free frozen residual shadow JSONL
 
 Keep these boundaries clear:
 
@@ -85,6 +90,10 @@ Keep these boundaries clear:
 - `scripts/autonomous_live_odds_capture.py` owns fixed-window planning,
   runner-set validation, duplicate/stale capture checks, Sportsbet fetch
   validation, and append-only persistence.
+- The odds-only daemon owns the bounded early-residual stage after a successful
+  capture and before releasing the shared lock. It must consume only the exact
+  PR #47 handoff, preserve the frozen residual artifact, and fail closed without
+  changing the capture result.
 
 Expected runner sources for odds capture are ordered:
 
@@ -107,6 +116,10 @@ Status interpretation matters:
 - A fixed claim needs live evidence from both the current run report and the DB:
   latest `live_odds.capture_timestamp`, current-window rows, and no blocked
   capture attempts.
+- Early residual readiness additionally requires
+  `early_residual_shadow_status.json`: `PASS` means every handed-off race was
+  appended or exactly replayed; `BLOCKED` names the feature or frozen-scoring
+  failure. Neither status authorizes model activation or outcome inspection.
 
 ## Promotion Boundary
 

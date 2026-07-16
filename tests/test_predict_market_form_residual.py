@@ -344,6 +344,26 @@ def test_scores_exact_packet_deterministically(tmp_path):
         assert first["probability_sums"][key] == pytest.approx(1.0)
 
 
+def test_explicit_shadow_output_appends_once_and_replays_idempotently(tmp_path):
+    paths = _write_fixture(tmp_path / "fixture")
+    shadow_output = tmp_path / "market_form_residual_shadow_predictions_v1.jsonl"
+
+    first = _score_paths(paths, shadow_output_path=shadow_output)
+    original = shadow_output.read_bytes()
+    second = _score_paths(paths, shadow_output_path=shadow_output)
+
+    assert first["persisted"] is True
+    assert first["persistence_status"] == "APPENDED"
+    assert second["persisted"] is True
+    assert second["persistence_status"] == "EXACT_REPLAY"
+    assert shadow_output.read_bytes() == original
+    records = [json.loads(line) for line in original.splitlines()]
+    assert len(records) == 1
+    assert records[0]["race_id"] == RACE_ID
+    assert records[0]["outcomes_present"] is False
+    assert records[0]["activation"] is False
+
+
 def test_scores_when_strict_odds_capture_precedes_feature_generation(tmp_path):
     paths = _write_fixture(tmp_path)
     capture = _json(paths["capture"])

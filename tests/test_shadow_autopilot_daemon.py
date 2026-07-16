@@ -1105,11 +1105,26 @@ def test_daemon_accepts_odds_capture_only_command_defaults():
     args = daemon.parse_args(["run-odds-capture-once"])
 
     assert args.command == "run-odds-capture-once"
+    assert args.shadow_model is None
     assert args.timeout_seconds == daemon.DEFAULT_ODDS_CAPTURE_ONLY_TIMEOUT_SECONDS
     assert args.refresh_limit == daemon.DEFAULT_ODDS_CAPTURE_ONLY_REFRESH_LIMIT
     assert args.odds_capture_refresh_limit == daemon.DEFAULT_ODDS_CAPTURE_ONLY_REFRESH_LIMIT
     assert args.state_path == daemon.DEFAULT_ODDS_CAPTURE_ONLY_STATE_PATH
     assert args.require_safe_refresh_metadata is True
+
+
+def test_daemon_accepts_pinned_shadow_model_for_odds_capture_only_command():
+    args = daemon.parse_args(
+        [
+            "run-odds-capture-once",
+            "--shadow-model",
+            "/models/stage2/shadow_randomforest_model.joblib",
+        ]
+    )
+
+    assert args.shadow_model == Path(
+        "/models/stage2/shadow_randomforest_model.joblib"
+    )
 
 
 def test_daemon_can_explicitly_allow_incomplete_refresh_metadata():
@@ -1208,6 +1223,215 @@ def test_odds_capture_only_autopilot_command_is_narrow_and_append_only():
         require_safe_refresh_metadata=False,
     )
     assert "--require-safe-refresh-metadata" not in permissive_command
+
+
+def test_recovers_pr47_handoff_after_odds_autopilot_timeout(tmp_path):
+    evidence_root = tmp_path / "artifacts/full_evidence_orchestration_20260525"
+    expected = evidence_root / "shadow_autopilot_v1_odds_run_autopilot"
+    expected.mkdir(parents=True)
+    daemon.write_json(
+        expected / "residual_feature_handoff_status.json",
+        {"schema_version": "residual_feature_handoff_v1", "status": "PASS"},
+    )
+
+    recovered = daemon.recover_odds_capture_autopilot_output_dir(
+        reported_output_dir=None,
+        evidence_root=evidence_root,
+        autopilot_run_id="odds_run_autopilot",
+    )
+
+    assert recovered == expected
+
+
+def test_odds_capture_cycle_timeout_leaves_handoff_grace():
+    assert daemon.odds_capture_autopilot_cycle_timeout_seconds(600) == 750
+
+
+def test_early_residual_plan_scores_new_capture_before_lock_release(
+    tmp_path, monkeypatch
+):
+    evidence_root = tmp_path / "artifacts/full_evidence_orchestration_20260525"
+    autopilot_output = evidence_root / "shadow_autopilot_v1_odds_run_autopilot"
+    capture_dir = evidence_root / "autonomous_live_odds_capture_odds_run_autopilot"
+    form_dir = autopilot_output / "odds_capture_refreshed_upcoming"
+    form_path = form_dir / "Race 7 - SAN - 2026-07-16.csv"
+    form_path.parent.mkdir(parents=True)
+    form_path.write_text("Dog Name|PLC|DATE\n1. Alpha|1|2026-07-09\n", encoding="utf-8")
+    daemon.write_json(
+        form_path.with_name(form_path.name + ".metadata.json"),
+        {"metadata_is_leakage_safe": True},
+    )
+    daemon.write_json(
+        autopilot_output / "residual_feature_handoff_status.json",
+        {
+            "schema_version": "residual_feature_handoff_v1",
+            "status": "PASS",
+            "successful_capture_race_ids": ["Race 7 - SAN - 2026-07-16"],
+            "supplemental_input_files": [str(form_path)],
+            "supplemental_input_count": 1,
+            "blocked": [],
+        },
+    )
+    capture_dir.mkdir(parents=True)
+    capture_path = capture_dir / "autonomous_live_odds_capture_attempts.progress.jsonl"
+    capture_path.write_text("{}\n", encoding="utf-8")
+    model_path = tmp_path / "configured_stage2/shadow_randomforest_model.joblib"
+    model_path.parent.mkdir(parents=True)
+    model_path.write_bytes(b"model")
+    db_path = tmp_path / "greyhound_racing_data.db"
+    db_path.write_bytes(b"db")
+    monkeypatch.setattr(daemon.autopilot, "latest_shadow_model", lambda _: None)
+
+    plan = daemon.early_residual_shadow_prediction_plan(
+        run_id="odds_run",
+        evidence_root=evidence_root,
+        db_path=db_path,
+        feature_model_path=model_path,
+        autopilot_output_dir=autopilot_output,
+        odds_status={"output_dir": str(capture_dir)},
+    )
+
+    assert plan["status"] == "READY"
+    assert plan["race_count"] == 1
+    item = plan["races"][0]
+    assert item["race_id"] == "Race 7 - SAN - 2026-07-16"
+    assert item["capture_path"] == str(capture_path)
+    assert "scripts/run_shadow_non_tgr_rf_evaluation.py" in item["feature_command"][1]
+    assert item["feature_command"][2:4] == ["score-live", "--input"]
+    assert str(form_path) in item["feature_command"]
+    assert "--db" in item["feature_command"]
+    assert "scripts/predict_market_form_residual.py" in item["score_command"][1]
+    assert item["score_command"][2:4] == ["--race-id", "Race 7 - SAN - 2026-07-16"]
+    assert "--append-shadow-output" in item["score_command"]
+    assert plan["shadow_output_path"] == str(
+        evidence_root / "market_form_residual_shadow_predictions_v1.jsonl"
+    )
+
+
+def test_odds_cycle_executes_early_residual_stage_before_releasing_lock(
+    tmp_path, monkeypatch
+):
+    evidence_root = tmp_path / "artifacts/full_evidence_orchestration_20260525"
+    output_dir = evidence_root / "shadow_autopilot_daemonization_v1_early"
+    autopilot_dir = evidence_root / "shadow_autopilot_v1_early_autopilot"
+    capture_dir = evidence_root / "autonomous_live_odds_capture_early_autopilot"
+    form_path = autopilot_dir / "odds_capture_refreshed_upcoming/Race 7 - SAN - 2026-07-16.csv"
+    model_path = tmp_path / "configured_stage2/shadow_randomforest_model.joblib"
+    db_path = tmp_path / "greyhound_racing_data.db"
+    lock_path = tmp_path / "runtime/shadow.lock"
+    state_path = tmp_path / "runtime/odds_capture_state.json"
+    db_path.write_bytes(b"db")
+    model_path.parent.mkdir(parents=True)
+    model_path.write_bytes(b"model")
+    events = []
+
+    monkeypatch.setattr(daemon, "ROOT", tmp_path)
+    monkeypatch.setattr(daemon.autopilot, "latest_shadow_model", lambda _: None)
+    original_release = daemon.release_lock
+
+    def tracked_release(path, run_id):
+        events.append("release")
+        return original_release(path, run_id)
+
+    def fake_run_command(*, name, command, output_dir, timeout_seconds, cwd=daemon.ROOT):
+        assert lock_path.exists()
+        events.append(name)
+        if name == "odds_capture_autopilot_cycle":
+            assert timeout_seconds == 750
+            form_path.parent.mkdir(parents=True)
+            form_path.write_text("Dog Name|PLC|DATE\n1. Alpha|1|2026-07-09\n", encoding="utf-8")
+            daemon.write_json(
+                form_path.with_name(form_path.name + ".metadata.json"),
+                {"metadata_is_leakage_safe": True},
+            )
+            daemon.write_json(
+                autopilot_dir / "residual_feature_handoff_status.json",
+                {
+                    "schema_version": "residual_feature_handoff_v1",
+                    "status": "PASS",
+                    "successful_capture_race_ids": ["Race 7 - SAN - 2026-07-16"],
+                    "supplemental_input_files": [str(form_path)],
+                    "supplemental_input_count": 1,
+                    "blocked": [],
+                },
+            )
+            capture_dir.mkdir(parents=True)
+            (capture_dir / "autonomous_live_odds_capture_attempts.progress.jsonl").write_text(
+                "{}\n", encoding="utf-8"
+            )
+            daemon.write_json(
+                autopilot_dir / "autonomous_live_odds_capture_status.json",
+                {
+                    "status": "AUTONOMOUS_LIVE_ODDS_CAPTURE_APPENDED",
+                    "final_status": "AUTONOMOUS_LIVE_ODDS_CAPTURE_APPENDED",
+                    "inserted_live_odds_rows": 8,
+                    "ready_count": 1,
+                    "status_counts": {"APPENDED": 1},
+                    "output_dir": str(capture_dir),
+                },
+            )
+            daemon.write_json(
+                autopilot_dir / "odds_capture_refresh_report.json",
+                {"status": "SUCCESS", "next_preferred_window": {}},
+            )
+            daemon.write_json(
+                output_dir / "logs/odds_capture_autopilot_cycle.stdout.txt",
+                {"output_dir": str(autopilot_dir), "final_verdict": "AUTOPILOT_READY"},
+            )
+        elif name == "early_residual_score_01":
+            daemon.write_json(
+                output_dir / "logs/early_residual_score_01.stdout.txt",
+                {
+                    "race_id": "Race 7 - SAN - 2026-07-16",
+                    "persisted": True,
+                    "persistence_status": "APPENDED",
+                    "outcomes_present": False,
+                    "activation": False,
+                },
+            )
+        return {
+            "name": name,
+            "command": list(command),
+            "returncode": 0,
+            "timeout_seconds": timeout_seconds,
+        }
+
+    monkeypatch.setattr(daemon, "release_lock", tracked_release)
+    monkeypatch.setattr(daemon, "run_command", fake_run_command)
+    args = daemon.parse_args(
+        [
+            "run-odds-capture-once",
+            "--run-id",
+            "early",
+            "--evidence-root",
+            str(evidence_root),
+            "--output-dir",
+            str(output_dir),
+            "--current-time",
+            "2026-07-16T20:00:00+10:00",
+            "--db",
+            str(db_path),
+            "--shadow-model",
+            str(model_path),
+            "--lock-path",
+            str(lock_path),
+            "--state-path",
+            str(state_path),
+        ]
+    )
+
+    report = daemon.run_odds_capture_once(args)
+
+    assert events == [
+        "odds_capture_autopilot_cycle",
+        "early_residual_features_01",
+        "early_residual_score_01",
+        "release",
+    ]
+    assert report["early_residual_shadow_status"]["status"] == "PASS"
+    assert report["early_residual_shadow_status"]["appended_count"] == 1
+    assert report["lock_release"]["released"] is True
+    assert not lock_path.exists()
 
 
 def test_gated_challenger_commands_use_report_only_packet_builders():
@@ -2287,7 +2511,10 @@ def test_run_odds_capture_once_uses_lock_and_writes_compact_report(tmp_path, mon
     assert report["autonomous_live_odds_capture_status_text"] == (
         "AUTONOMOUS_LIVE_ODDS_CAPTURE_NO_ELIGIBLE_WINDOWS"
     )
-    assert report["allowed_write_scope"] == "append_only_live_odds_rows_when_validation_passes"
+    assert report["allowed_write_scope"] == (
+        "append_only_live_odds_rows_and_outcome_free_frozen_residual_"
+        "shadow_records_when_validation_passes"
+    )
     assert not lock_path.exists()
     written = json.loads((output_dir / "odds_capture_only_daemon_report.json").read_text())
     manifest = json.loads((output_dir / "output_manifest.json").read_text())
@@ -4265,7 +4492,9 @@ def test_service_and_timer_define_15_minute_oneshot_cycle():
         in service
     )
     assert service.index("--evidence-root") < service.index("--days-ahead")
-    assert "--shadow-model /models/stage2/shadow_randomforest_model.joblib" in service
+    assert (
+        "--shadow-model /models/stage2/shadow_randomforest_model.joblib" in service
+    )
     assert "--db /data/greyhound_racing_data.db" in service
     assert "--lock-path /runtime/shared-shadow-autopilot.lock" in service
     assert "--state-path /runtime/state.json" in service
@@ -4300,6 +4529,7 @@ def test_odds_capture_service_and_timer_define_minutely_locked_lane():
         timeout_seconds=600,
         python_path=Path("/runtime/.venv/bin/python"),
         evidence_root=Path("/runtime/artifacts/full_evidence_orchestration_20260525"),
+        shadow_model=Path("/models/stage2/shadow_randomforest_model.joblib"),
         db_path=Path("/data/greyhound_racing_data.db"),
         lock_path=Path("/runtime/shared-shadow-autopilot.lock"),
         state_path=Path("/runtime/odds_capture_state.json"),
@@ -4315,6 +4545,9 @@ def test_odds_capture_service_and_timer_define_minutely_locked_lane():
         in service
     )
     assert service.index("--evidence-root") < service.index("--days-ahead")
+    assert (
+        "--shadow-model /models/stage2/shadow_randomforest_model.joblib" in service
+    )
     assert "--db /data/greyhound_racing_data.db" in service
     assert "--lock-path /runtime/shared-shadow-autopilot.lock" in service
     assert "--state-path /runtime/odds_capture_state.json" in service
@@ -4338,6 +4571,7 @@ def test_write_odds_capture_service_files_preserves_db_and_lock(tmp_path):
         timeout_seconds=600,
         python_path=Path("/runtime/.venv/bin/python"),
         evidence_root=Path("/runtime/artifacts/full_evidence_orchestration_20260525"),
+        shadow_model=Path("/models/stage2/shadow_randomforest_model.joblib"),
         db_path=Path("/data/greyhound_racing_data.db"),
         lock_path=Path("/runtime/shared-shadow-autopilot.lock"),
         state_path=Path("/runtime/odds_capture_state.json"),
@@ -4356,6 +4590,7 @@ def test_write_odds_capture_service_files_preserves_db_and_lock(tmp_path):
         == "/runtime/artifacts/full_evidence_orchestration_20260525"
     )
     assert result["db_path"] == "/data/greyhound_racing_data.db"
+    assert result["shadow_model"] == "/models/stage2/shadow_randomforest_model.joblib"
     assert result["lock_path"] == "/runtime/shared-shadow-autopilot.lock"
     assert "ExecStart=/runtime/.venv/bin/python" in service
     assert (
@@ -4363,6 +4598,7 @@ def test_write_odds_capture_service_files_preserves_db_and_lock(tmp_path):
         in service
     )
     assert service.index("--evidence-root") < service.index("--days-ahead")
+    assert "--shadow-model /models/stage2/shadow_randomforest_model.joblib" in service
     assert "--db /data/greyhound_racing_data.db" in service
     assert "--lock-path /runtime/shared-shadow-autopilot.lock" in service
     assert f"OnCalendar={daemon.DEFAULT_ODDS_CAPTURE_ONLY_TIMER_ON_CALENDAR}" in timer

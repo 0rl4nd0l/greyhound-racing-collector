@@ -1,0 +1,15 @@
+2026-07-16T22:35+10:00 validated and freshly claimed the V2 activation card in a clean PR47-descendant worktree
+2026-07-16T22:55+10:00 ran focused red/green tests for append persistence, handoff recovery, early plan, lock ordering, and fail-closed behavior
+2026-07-16T23:03+10:00 committed and pushed the initial early residual stage; opened draft PR 48
+2026-07-16T23:06+10:00 installed generated user units and ran systemctl --user daemon-reload without start, stop, or restart
+2026-07-16T23:08+10:00 observed one strict capture append 12 odds rows and the early stage fail closed as feature_model_missing
+2026-07-16T23:15+10:00 added red regression tests for the missing odds-only model pin
+2026-07-16T23:18+10:00 ran 185 focused tests; Python compile, Ruff, diff check, unit verification, and V2 diff allowlist passed
+2026-07-16T23:21+10:00 committed and pushed cbbe78a2103da18a381263a9a2874ce02f243fbf
+2026-07-16T23:21:53+10:00 installed only the repaired odds-only service and ran systemctl --user daemon-reload; timer bytes unchanged
+2026-07-16T23:22+10:00 observed the normal timer load the repaired unit and return WAITING_FOR_FUTURE_WINDOW
+2026-07-16T23:24+10:00 read-only exact-plan replay against the sealed 23:08 handoff returned READY with zero blockers; scorer not executed post-jump
+2026-07-16T23:25+10:00 verified PR48 draft state, PR47 exact head and five passing checks, PR45 merged head and five passing checks, and required ancestry
+2026-07-16T23:30+10:00 V2 release rejected the original claim because the task-card byte hash changed after claim; no success was asserted
+2026-07-16T23:31+10:00 explicitly abandoned the stale administrative claim, validated final card SHA-256 225325723a2f78668804ba793aa1eefa3f89d355119d302cf5e50b022af22526, and acquired a fresh claim at 87afc1d36938171ea21ed6bc5c7f65a148b92b7a
+2026-07-16T23:31+10:00 final Git guard preflight admitted the scope; live decision ledger passed and missing task ledger used the declared fallback checks

@@ -1,0 +1,47 @@
+{
+  "blocks": [
+    "claiming_first_live_residual_shadow_append_complete_before_a_real_post_repair_capture",
+    "production_model_replacement_promotion_betting_or_unreviewed_merge"
+  ],
+  "claim_id": "early_residual_shadow_activation_v1_20260716",
+  "dataset_version": "live_early_residual_shadow_activation_v1_20260716",
+  "decision": "PARKED",
+  "decision_delta": "The reviewed PR 47 handoff advanced from an external timing-starved prediction path to a committed, installed, model-pinned early shadow stage inside the legitimate lock owner; first live append proof is parked until the next real capture window.",
+  "decision_id": "early-residual-shadow-inside-lock-owner-20260716-v1",
+  "does_not_block": [
+    "continued_market_only_production_baseline",
+    "normal_odds_capture_timer_operation",
+    "review_of_draft_PR_48",
+    "outcome_free_observation_of_the_next_eligible_capture"
+  ],
+  "evidence_hash": "sha256:b54c9db90cde6b5d5fc686a1a5c65ae48528c739987af96bd02e50d567096497",
+  "evidence_refs": [
+    "reports/agent_jobs/early_residual_shadow_activation_v1_20260716/STATE.md",
+    "reports/agent_jobs/early_residual_shadow_activation_v1_20260716/VALIDATION.md",
+    "reports/agent_jobs/early_residual_shadow_activation_v1_20260716/LIVE_PROOF.md",
+    "reports/agent_jobs/early_residual_shadow_activation_v1_20260716/CODE_REVIEW.md",
+    "reports/agent_jobs/early_residual_shadow_activation_v1_20260716/PR_REVIEW.md",
+    "reports/agent_jobs/early_residual_shadow_activation_v1_20260716/REGRESSION_ADJUDICATION.md"
+  ],
+  "hypothesis_id": "early_residual_scoring_inside_odds_lock_owner_v1",
+  "invalidation_conditions": [
+    "The installed odds-only command loses the exact configured Stage-2 model path or its worktree no longer contains implementation commit cbbe78a2103da18a381263a9a2874ce02f243fbf.",
+    "A future run reads outcomes, mutates the production model, writes SQL from the residual stage, changes capture windows, or drops PR 45 resource isolation.",
+    "The focused deterministic, provenance, normalization, idempotency, or fail-closed tests stop passing."
+  ],
+  "outcome_status": "ADVANCED",
+  "phase_after": "early_residual_stage_installed_model_pin_repaired_first_live_append_waiting_for_capture_window",
+  "phase_before": "reviewed_pr47_handoff_not_live_and_external_prediction_starved_by_continuous_lock_handoff",
+  "program_track": "prospective_readiness",
+  "project_id": "greyhound_racing_collector",
+  "reopen_conditions": [
+    "A genuine scheduled strict pre-jump capture at or after 2026-07-17T09:55:00+10:00 emits early_residual_shadow_status.json and the outcome-free shadow JSONL can be inspected.",
+    "A new exact fail-closed blocker is observed without reading prospective outcomes."
+  ],
+  "run_id": "l4nd0-System-Product-Name:3228375:early_residual_shadow_activation_v1_20260716",
+  "scope_fingerprint": "bfc82c49d3f731eebe40b0be3fc7cda03b8e10953660d39a2848da302c76ccb9",
+  "source_class": "strict_prejump_sportsbet_capture_plus_verified_thedogs_form_plus_pr47_hash_bound_features_no_outcomes",
+  "target_transition": "first_live_append_only_frozen_residual_shadow_record_materialized_prejump_inside_odds_capture_cycle",
+  "task_id": "early_residual_shadow_activation_v1_20260716",
+  "validated_at": "2026-07-16T23:32:00+10:00"
+}
