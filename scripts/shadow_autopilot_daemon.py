@@ -9000,9 +9000,10 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
         evidence_root=evidence_root,
         shadow_model=args.shadow_model,
         db_path=args.db,
-        lock_path=args.lock_path,
-        state_path=args.state_path,
-        odds_capture_state_path=args.odds_capture_state_path,
+        lock_path=lock_path,
+        state_path=state_path,
+        odds_capture_state_path=odds_state_path,
+        pause_path=lock_path.parent / "pause-heavy-scheduling",
     )
     service_path = DEFAULT_SERVICE_DIR / SERVICE_NAME
     timer_path = DEFAULT_SERVICE_DIR / TIMER_NAME

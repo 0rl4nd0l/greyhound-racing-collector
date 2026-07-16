@@ -202,14 +202,16 @@ def test_run_once_exception_writes_terminal_daemon_report(tmp_path, monkeypatch)
     monkeypatch.setattr(daemon, "ROOT", tmp_path)
     monkeypatch.setattr(daemon, "protected_hashes", lambda: {})
     monkeypatch.setattr(daemon, "copy_if_exists", lambda source, dest: None)
-    monkeypatch.setattr(
-        daemon,
-        "write_service_files",
-        lambda **kwargs: {
+    generated = {}
+
+    def capture_write_service_files(**kwargs):
+        generated.update(kwargs)
+        return {
             "status": "SERVICE_FILES_WRITTEN",
             "systemd_deployment_ready": True,
-        },
-    )
+        }
+
+    monkeypatch.setattr(daemon, "write_service_files", capture_write_service_files)
     monkeypatch.setattr(
         daemon,
         "acquire_lock_with_odds_capture_retry",
@@ -258,6 +260,8 @@ def test_run_once_exception_writes_terminal_daemon_report(tmp_path, monkeypatch)
             str(db_path),
             "--shadow-model",
             str(shadow_model),
+            "--lock-path",
+            str(tmp_path / "shared-runtime" / "shadow_autopilot.lock"),
         ]
     )
 
@@ -269,6 +273,9 @@ def test_run_once_exception_writes_terminal_daemon_report(tmp_path, monkeypatch)
     assert report["exception_type"] == "RuntimeError"
     assert report["exception_message"] == "synthetic daemon failure"
     assert written["runtime_action"] == "CHECK_DAEMON_EXCEPTION"
+    assert generated["pause_path"] == (
+        tmp_path / "shared-runtime" / "pause-heavy-scheduling"
+    )
     assert (output_dir / "final_status.txt").read_text(encoding="utf-8") == (
         "PARTIAL_DAEMONIZATION\n"
     )
