@@ -1105,11 +1105,26 @@ def test_daemon_accepts_odds_capture_only_command_defaults():
     args = daemon.parse_args(["run-odds-capture-once"])
 
     assert args.command == "run-odds-capture-once"
+    assert args.shadow_model is None
     assert args.timeout_seconds == daemon.DEFAULT_ODDS_CAPTURE_ONLY_TIMEOUT_SECONDS
     assert args.refresh_limit == daemon.DEFAULT_ODDS_CAPTURE_ONLY_REFRESH_LIMIT
     assert args.odds_capture_refresh_limit == daemon.DEFAULT_ODDS_CAPTURE_ONLY_REFRESH_LIMIT
     assert args.state_path == daemon.DEFAULT_ODDS_CAPTURE_ONLY_STATE_PATH
     assert args.require_safe_refresh_metadata is True
+
+
+def test_daemon_accepts_pinned_shadow_model_for_odds_capture_only_command():
+    args = daemon.parse_args(
+        [
+            "run-odds-capture-once",
+            "--shadow-model",
+            "/models/stage2/shadow_randomforest_model.joblib",
+        ]
+    )
+
+    assert args.shadow_model == Path(
+        "/models/stage2/shadow_randomforest_model.joblib"
+    )
 
 
 def test_daemon_can_explicitly_allow_incomplete_refresh_metadata():
@@ -1260,17 +1275,18 @@ def test_early_residual_plan_scores_new_capture_before_lock_release(
     capture_dir.mkdir(parents=True)
     capture_path = capture_dir / "autonomous_live_odds_capture_attempts.progress.jsonl"
     capture_path.write_text("{}\n", encoding="utf-8")
-    model_path = evidence_root / "shadow_evaluation_implementation_test/shadow_randomforest_model.joblib"
+    model_path = tmp_path / "configured_stage2/shadow_randomforest_model.joblib"
     model_path.parent.mkdir(parents=True)
     model_path.write_bytes(b"model")
     db_path = tmp_path / "greyhound_racing_data.db"
     db_path.write_bytes(b"db")
-    monkeypatch.setattr(daemon.autopilot, "latest_shadow_model", lambda _: model_path)
+    monkeypatch.setattr(daemon.autopilot, "latest_shadow_model", lambda _: None)
 
     plan = daemon.early_residual_shadow_prediction_plan(
         run_id="odds_run",
         evidence_root=evidence_root,
         db_path=db_path,
+        feature_model_path=model_path,
         autopilot_output_dir=autopilot_output,
         odds_status={"output_dir": str(capture_dir)},
     )
@@ -1300,7 +1316,7 @@ def test_odds_cycle_executes_early_residual_stage_before_releasing_lock(
     autopilot_dir = evidence_root / "shadow_autopilot_v1_early_autopilot"
     capture_dir = evidence_root / "autonomous_live_odds_capture_early_autopilot"
     form_path = autopilot_dir / "odds_capture_refreshed_upcoming/Race 7 - SAN - 2026-07-16.csv"
-    model_path = evidence_root / "shadow_evaluation_implementation_test/shadow_randomforest_model.joblib"
+    model_path = tmp_path / "configured_stage2/shadow_randomforest_model.joblib"
     db_path = tmp_path / "greyhound_racing_data.db"
     lock_path = tmp_path / "runtime/shadow.lock"
     state_path = tmp_path / "runtime/odds_capture_state.json"
@@ -1310,7 +1326,7 @@ def test_odds_cycle_executes_early_residual_stage_before_releasing_lock(
     events = []
 
     monkeypatch.setattr(daemon, "ROOT", tmp_path)
-    monkeypatch.setattr(daemon.autopilot, "latest_shadow_model", lambda _: model_path)
+    monkeypatch.setattr(daemon.autopilot, "latest_shadow_model", lambda _: None)
     original_release = daemon.release_lock
 
     def tracked_release(path, run_id):
@@ -1395,6 +1411,8 @@ def test_odds_cycle_executes_early_residual_stage_before_releasing_lock(
             "2026-07-16T20:00:00+10:00",
             "--db",
             str(db_path),
+            "--shadow-model",
+            str(model_path),
             "--lock-path",
             str(lock_path),
             "--state-path",
@@ -4474,7 +4492,9 @@ def test_service_and_timer_define_15_minute_oneshot_cycle():
         in service
     )
     assert service.index("--evidence-root") < service.index("--days-ahead")
-    assert "--shadow-model /models/stage2/shadow_randomforest_model.joblib" in service
+    assert (
+        "--shadow-model /models/stage2/shadow_randomforest_model.joblib" in service
+    )
     assert "--db /data/greyhound_racing_data.db" in service
     assert "--lock-path /runtime/shared-shadow-autopilot.lock" in service
     assert "--state-path /runtime/state.json" in service
@@ -4509,6 +4529,7 @@ def test_odds_capture_service_and_timer_define_minutely_locked_lane():
         timeout_seconds=600,
         python_path=Path("/runtime/.venv/bin/python"),
         evidence_root=Path("/runtime/artifacts/full_evidence_orchestration_20260525"),
+        shadow_model=Path("/models/stage2/shadow_randomforest_model.joblib"),
         db_path=Path("/data/greyhound_racing_data.db"),
         lock_path=Path("/runtime/shared-shadow-autopilot.lock"),
         state_path=Path("/runtime/odds_capture_state.json"),
@@ -4524,6 +4545,9 @@ def test_odds_capture_service_and_timer_define_minutely_locked_lane():
         in service
     )
     assert service.index("--evidence-root") < service.index("--days-ahead")
+    assert (
+        "--shadow-model /models/stage2/shadow_randomforest_model.joblib" in service
+    )
     assert "--db /data/greyhound_racing_data.db" in service
     assert "--lock-path /runtime/shared-shadow-autopilot.lock" in service
     assert "--state-path /runtime/odds_capture_state.json" in service
@@ -4547,6 +4571,7 @@ def test_write_odds_capture_service_files_preserves_db_and_lock(tmp_path):
         timeout_seconds=600,
         python_path=Path("/runtime/.venv/bin/python"),
         evidence_root=Path("/runtime/artifacts/full_evidence_orchestration_20260525"),
+        shadow_model=Path("/models/stage2/shadow_randomforest_model.joblib"),
         db_path=Path("/data/greyhound_racing_data.db"),
         lock_path=Path("/runtime/shared-shadow-autopilot.lock"),
         state_path=Path("/runtime/odds_capture_state.json"),
@@ -4565,6 +4590,7 @@ def test_write_odds_capture_service_files_preserves_db_and_lock(tmp_path):
         == "/runtime/artifacts/full_evidence_orchestration_20260525"
     )
     assert result["db_path"] == "/data/greyhound_racing_data.db"
+    assert result["shadow_model"] == "/models/stage2/shadow_randomforest_model.joblib"
     assert result["lock_path"] == "/runtime/shared-shadow-autopilot.lock"
     assert "ExecStart=/runtime/.venv/bin/python" in service
     assert (
@@ -4572,6 +4598,7 @@ def test_write_odds_capture_service_files_preserves_db_and_lock(tmp_path):
         in service
     )
     assert service.index("--evidence-root") < service.index("--days-ahead")
+    assert "--shadow-model /models/stage2/shadow_randomforest_model.joblib" in service
     assert "--db /data/greyhound_racing_data.db" in service
     assert "--lock-path /runtime/shared-shadow-autopilot.lock" in service
     assert f"OnCalendar={daemon.DEFAULT_ODDS_CAPTURE_ONLY_TIMER_ON_CALENDAR}" in timer

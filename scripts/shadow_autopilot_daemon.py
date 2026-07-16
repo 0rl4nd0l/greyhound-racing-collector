@@ -1189,6 +1189,7 @@ def odds_capture_service_file_text(
     timeout_seconds: int,
     python_path: Path | None = None,
     evidence_root: Path | None = None,
+    shadow_model: Path | None = None,
     db_path: Path | None = None,
     lock_path: Path | None = None,
     state_path: Path | None = None,
@@ -1200,6 +1201,7 @@ def odds_capture_service_file_text(
     evidence_root_segment = f"{evidence_root_segment} " if evidence_root_segment else ""
     explicit_path_args = [
         *optional_path_cli_args("--db", db_path),
+        *shadow_model_cli_args(shadow_model),
         *optional_path_cli_args("--lock-path", lock_path),
         *optional_path_cli_args("--state-path", state_path),
     ]
@@ -1318,6 +1320,7 @@ def write_odds_capture_service_files(
     timeout_seconds: int = DEFAULT_ODDS_CAPTURE_ONLY_TIMEOUT_SECONDS,
     python_path: Path | None = None,
     evidence_root: Path | None = None,
+    shadow_model: Path | None = None,
     db_path: Path | None = None,
     lock_path: Path | None = None,
     state_path: Path | None = None,
@@ -1333,6 +1336,7 @@ def write_odds_capture_service_files(
             timeout_seconds=timeout_seconds,
             python_path=python_path or Path(sys.executable),
             evidence_root=evidence_root,
+            shadow_model=shadow_model,
             db_path=db_path,
             lock_path=lock_path,
             state_path=state_path,
@@ -1351,6 +1355,7 @@ def write_odds_capture_service_files(
         "systemd_timeout_start_seconds": max(timeout_seconds + 60, timeout_seconds * 2),
         "python_path": str(python_path or Path(sys.executable)),
         "evidence_root": str(evidence_root) if evidence_root is not None else None,
+        "shadow_model": str(shadow_model) if shadow_model is not None else None,
         "db_path": str(db_path) if db_path is not None else None,
         "lock_path": str(lock_path) if lock_path is not None else None,
         "state_path": str(state_path) if state_path is not None else None,
@@ -1717,6 +1722,7 @@ def early_residual_shadow_prediction_plan(
     run_id: str,
     evidence_root: Path,
     db_path: Path,
+    feature_model_path: Path | None = None,
     autopilot_output_dir: Path | None,
     odds_status: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -1771,18 +1777,24 @@ def early_residual_shadow_prediction_plan(
         evidence_root=evidence_root,
         odds_status=odds_status,
     )
-    feature_model = autopilot.latest_shadow_model(evidence_root)
+    feature_model_is_explicit = feature_model_path is not None
+    feature_model = (
+        feature_model_path
+        if feature_model_is_explicit
+        else autopilot.latest_shadow_model(evidence_root)
+    )
     blockers: list[str] = []
     if capture_blocker:
         blockers.append(capture_blocker)
     if feature_model is None or not feature_model.is_file():
         blockers.append("feature_model_missing")
     else:
-        try:
-            feature_model = feature_model.resolve()
-            feature_model.relative_to(evidence_root.resolve())
-        except (OSError, ValueError):
-            blockers.append("feature_model_outside_evidence_root")
+        feature_model = feature_model.resolve()
+        if not feature_model_is_explicit:
+            try:
+                feature_model.relative_to(evidence_root.resolve())
+            except (OSError, ValueError):
+                blockers.append("feature_model_outside_evidence_root")
     if not db_path.is_file():
         blockers.append("readonly_feature_db_missing")
     if not evidence_root.is_dir():
@@ -3852,6 +3864,7 @@ def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
             run_id=run_id,
             evidence_root=evidence_root,
             db_path=args.db,
+            feature_model_path=args.shadow_model,
             autopilot_output_dir=autopilot_output_dir,
             odds_status=odds_status,
         )
@@ -13173,6 +13186,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     odds_parser.add_argument("--output-dir", type=Path)
     odds_parser.add_argument("--current-time")
     odds_parser.add_argument("--db", type=Path, default=ROOT / "greyhound_racing_data.db")
+    odds_parser.add_argument("--shadow-model", type=Path)
     odds_parser.add_argument("--days-ahead", type=int, default=1)
     odds_parser.add_argument("--refresh-limit", type=int, default=DEFAULT_ODDS_CAPTURE_ONLY_REFRESH_LIMIT)
     odds_parser.add_argument(
@@ -13247,6 +13261,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     odds_service_parser.add_argument("--python-path", type=Path, default=Path(sys.executable))
     odds_service_parser.add_argument("--evidence-root", type=Path)
+    odds_service_parser.add_argument("--shadow-model", type=Path)
     odds_service_parser.add_argument("--db", type=Path)
     odds_service_parser.add_argument("--lock-path", type=Path)
     odds_service_parser.add_argument("--state-path", type=Path)
@@ -13287,6 +13302,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             timeout_seconds=args.timeout_seconds,
             python_path=args.python_path,
             evidence_root=args.evidence_root,
+            shadow_model=args.shadow_model,
             db_path=args.db,
             lock_path=args.lock_path,
             state_path=args.state_path,
