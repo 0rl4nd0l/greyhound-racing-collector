@@ -1,0 +1,6 @@
+{
+  "result": "PARTIAL_IMPROVEMENT",
+  "deployed_commit": "9395798f452e8c21dd28a59494e5fee11bf3f84d",
+  "reason": "Systemd controls and completion-aware cadence are installed, but no post-deployment full cycle was force-started or observed.",
+  "resume_only_if": "Observe the scheduled full cycle and compare its cgroup CPU, RSS, swap, and I/O counters without interrupting collection."
+}
