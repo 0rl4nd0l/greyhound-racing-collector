@@ -1,49 +1,41 @@
 {
   "blocked_by": [],
   "changed_claims": [
-    "The repaired contract now has one deterministic frozen market-form residual model and a fail-closed canonical shadow scorer ready for a separately authorized activation review.",
-    "The complete predeclared 678-race and 4,752-runner frozen Tier A population through 2026-07-09 is the final-fit identity.",
-    "Production remains market-only; no cohort cutoff, runtime hook, database access, activation, deployment, promotion, or merge occurred."
+    "The source-proven effective-state mutation class is closed by immutable loaded state, artifact-anchored effective-state verification, and writer-side canonical rescoring and identity reconstruction.",
+    "The frozen model and manifest bytes are unchanged.",
+    "The separately activated runtime is healthy but still uses the original writer API; it was not changed by this repair."
   ],
-  "decision_delta": "The contract-defect state advanced to one hash-bound deterministic frozen residual model and minimal append-only shadow scorer, while preserving the production market baseline and a separate dual-ancestry activation gate.",
+  "decision_delta": "The source-proven mutable-state identity defect is closed by immutable score state, artifact-anchored effective-state verification, and writer-side canonical rescoring and identity reconstruction, with frozen artifact bytes unchanged and no merge or activation by this task.",
   "new_evidence": [
-    "Exactly one primary artifact was persisted from the predeclared 678-race and 4,752-runner population; 140 exclusions are fully declared.",
-    "Two same-fit verification executions reproduced parameters, preprocessing, optimization, fixed-fixture predictions, and canonical model bytes without creating alternatives.",
-    "Twenty-five focused tests, Ruff, py_compile, hash validation, and independent review passed.",
-    "PR #45 remained open, draft, clean, and untouched at aa35fa70fc49199acde09f5561b521ddb00d45aa with five successful checks."
+    "The pre-repair exploit changed predictions while cached model, manifest, and record-key identity remained unchanged and the writer accepted the mutation.",
+    "Post-repair nested, array, cached-hash, forged-effective-key, caller-record, score-to-write, malformed-history, and noncanonical-history regressions fail closed.",
+    "Thirty-seven focused tests, 133 resource-lock tests, Ruff, format, py_compile, diff, artifact-hash and post-PR45 integration gates passed.",
+    "Model SHA-256 624bba020d24f93fac4d895a851195aed5d31cff2f35645d9253be1175cc694d and manifest SHA-256 8537cbc3d843d106a1fe48793ef01197454ef092c0244025fd65685636a42080 remained exact."
   ],
   "new_goal_permitted": false,
   "produced_artifacts": [
     "docs/agent_tasks/prospective_market_form_residual_cohort_v2_20260716.md",
-    "artifacts/frozen_models/market_form_residual_v1/model.json",
-    "artifacts/frozen_models/market_form_residual_v1/manifest.json",
     "src/predictor/market_form_residual.py",
     "tests/test_market_form_residual.py",
-    "reports/agent_jobs/prospective_market_form_residual_cohort_v2_20260716/fit_population.json",
-    "reports/agent_jobs/prospective_market_form_residual_cohort_v2_20260716/deterministic_proof.json",
     "reports/agent_jobs/prospective_market_form_residual_cohort_v2_20260716/README.md",
     "reports/agent_jobs/prospective_market_form_residual_cohort_v2_20260716/STATE.md",
     "reports/agent_jobs/prospective_market_form_residual_cohort_v2_20260716/VALIDATION.md",
     "reports/agent_jobs/prospective_market_form_residual_cohort_v2_20260716/CODE_REVIEW.md",
-    "reports/agent_jobs/prospective_market_form_residual_cohort_v2_20260716/PR_REVIEW.md",
-    "reports/agent_jobs/prospective_market_form_residual_cohort_v2_20260716/pr45_gate.json"
+    "reports/agent_jobs/prospective_market_form_residual_cohort_v2_20260716/PR_REVIEW.md"
   ],
-  "resume_only_if": "Runtime activation is a separate owner-approved task whose branch is a descendant of both this frozen-model PR and PR #45 resource-isolation head aa35fa70fc49199acde09f5561b521ddb00d45aa; the shared collector lock is idle and a new exact activation card authorizes runtime paths.",
+  "resume_only_if": "Independent merge review may begin only on the exact pushed repair head after all exact-head checks pass; merge, activation, deployment, promotion, runtime, service, unit, timer, production DB, outcome and artifact mutations remain separately forbidden.",
   "reused_claims": [
-    "The July 16 candidate algorithm, features, preprocessing, strengths, normalization, optimizer configuration, and seeds remained frozen.",
-    "Historical eligibility v2 and its exact source hashes remained the only final-fit evidence.",
-    "PR #45 resource isolation remains a separate mandatory activation ancestor.",
-    "Production remains KEEP_BASELINE / market-only implied probability."
+    "The frozen candidate, population, algorithm, feature order, preprocessing, strengths, normalization and artifact bytes remain unchanged.",
+    "Production remains KEEP_BASELINE / market-only implied probability.",
+    "PR #45 is merged in master at c1dfd464cf6ecfb2034f96ac1a8d3ea58d4e6afa."
   ],
-  "scope_fingerprint": "3dad1f07ab26e2568eeac1c1111923a883996e9d5c1111f487b82abfa25fcbff",
-  "state_after": "frozen_market_form_residual_model_and_shadow_scorer_ready_awaiting_separate_activation",
-  "state_before": "blocked_contract_defect_no_cohort_registered_market_baseline_retained",
+  "scope_fingerprint": "d302c845b81bca3c9a3a8290cfdc0f57cbd8bacf2066f05a47c1d5b605d50b95",
+  "state_after": "pr46_effective_state_repair_ready_for_independent_merge_review",
+  "state_before": "pr45_merged_pr46_blocked_on_source_proven_effective_state_identity_mutation",
   "status": "ADVANCED",
   "used_capabilities": [
     "READ",
     "REPORT_WRITE",
-    "RESEARCH_FIT",
-    "MODEL_PERSIST",
     "CODE_EDIT",
     "PUBLISH"
   ]

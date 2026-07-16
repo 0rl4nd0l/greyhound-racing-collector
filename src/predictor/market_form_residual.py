@@ -14,9 +14,10 @@ import json
 import math
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Mapping, Sequence
 
 import numpy as np
@@ -25,6 +26,7 @@ import numpy as np
 MODEL_SCHEMA = "market_form_residual_frozen_model_v1"
 MANIFEST_SCHEMA = "market_form_residual_frozen_manifest_v1"
 SHADOW_RECORD_SCHEMA = "market_form_residual_shadow_record_v1"
+EFFECTIVE_STATE_SCHEMA = "market_form_residual_effective_state_v1"
 DEFAULT_ARTIFACT_DIR = Path("artifacts/frozen_models/market_form_residual_v1")
 FEATURES = (
     "prior_start_count",
@@ -69,43 +71,62 @@ OUTCOME_FIELDS = {
     "winner_odds",
 }
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-FROZEN_ALGORITHM_CONTRACT = {
-    "initialization": "all_zero_coefficients",
-    "market_offset": "fixed_log_normalized_inverse_decimal_win_odds",
-    "market_offset_refit": False,
-    "normalization": "softmax(log(market_probability)+strength*capped_residual)",
-    "optimizer": "scipy.optimize.minimize:L-BFGS-B",
-    "optimizer_options": {
-        "ftol": 1e-12,
-        "gtol": 1e-8,
-        "maxiter": 500,
-        "maxls": 50,
-    },
-    "random_seed": None,
-    "randomness": "none",
-    "residual_cap": 0.35,
-    "ridge_l2": 1.0,
-    "strengths": {"full": 1.0, "half": 0.5},
-    "within_race_centering": True,
-}
-FROZEN_DERIVATION_CONTRACT = {
-    "full_strength": 1.0,
-    "half_strength": 0.5,
-    "shared_base_model_count": 1,
-    "variants_are_not_separate_models": True,
-}
+FROZEN_ALGORITHM_CONTRACT = MappingProxyType(
+    {
+        "initialization": "all_zero_coefficients",
+        "market_offset": "fixed_log_normalized_inverse_decimal_win_odds",
+        "market_offset_refit": False,
+        "normalization": "softmax(log(market_probability)+strength*capped_residual)",
+        "optimizer": "scipy.optimize.minimize:L-BFGS-B",
+        "optimizer_options": MappingProxyType(
+            {
+                "ftol": 1e-12,
+                "gtol": 1e-8,
+                "maxiter": 500,
+                "maxls": 50,
+            }
+        ),
+        "random_seed": None,
+        "randomness": "none",
+        "residual_cap": 0.35,
+        "ridge_l2": 1.0,
+        "strengths": MappingProxyType({"full": 1.0, "half": 0.5}),
+        "within_race_centering": True,
+    }
+)
+FROZEN_DERIVATION_CONTRACT = MappingProxyType(
+    {
+        "full_strength": 1.0,
+        "half_strength": 0.5,
+        "shared_base_model_count": 1,
+        "variants_are_not_separate_models": True,
+    }
+)
 
 
 class ResidualContractError(RuntimeError):
     """Raised when artifact, feature, provenance, or output validation fails."""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class FrozenResidualModel:
     model: Mapping[str, Any]
     manifest: Mapping[str, Any]
     model_sha256: str
     manifest_sha256: str
+    effective_state_sha256: str
+    beta: np.ndarray = field(repr=False)
+    medians: np.ndarray = field(repr=False)
+    means: np.ndarray = field(repr=False)
+    scales: np.ndarray = field(repr=False)
+    feature_order: tuple[str, ...]
+    expanded_feature_order: tuple[str, ...]
+    residual_cap: float
+    full_strength: float
+    half_strength: float
+    market_offset: str
+    normalization: str
+    within_race_centering: bool
 
 
 def _sha256_file(path: Path) -> str:
@@ -116,14 +137,41 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _json_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _json_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_value(item) for item in value]
+    if isinstance(value, np.ndarray):
+        return [_json_value(item) for item in value.tolist()]
+    if isinstance(value, np.generic):
+        return _json_value(value.item())
+    if value is None or isinstance(value, (str, bool, int, float)):
+        return value
+    raise TypeError(f"not_json_value:{type(value).__name__}")
+
+
 def _canonical_bytes(value: Any) -> bytes:
     try:
         text = json.dumps(
-            value, allow_nan=False, separators=(",", ":"), sort_keys=True
+            _json_value(value),
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
         )
     except (TypeError, ValueError) as exc:
         raise ResidualContractError("record_not_canonical_json") from exc
     return (text + "\n").encode("utf-8")
+
+
+def _deep_freeze(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return MappingProxyType(
+            {str(key): _deep_freeze(item) for key, item in value.items()}
+        )
+    if isinstance(value, (list, tuple)):
+        return tuple(_deep_freeze(item) for item in value)
+    return value
 
 
 def _read_json(path: Path) -> Mapping[str, Any]:
@@ -158,6 +206,92 @@ def _numeric_vector(value: Any, length: int, field: str) -> np.ndarray:
         [_finite_float(item, f"{field}[{index}]") for index, item in enumerate(value)],
         dtype=float,
     )
+
+
+def _immutable_vector(value: Any, length: int, field: str) -> np.ndarray:
+    vector = np.asarray(_numeric_vector(value, length, field), dtype=np.float64)
+    immutable = np.frombuffer(vector.tobytes(order="C"), dtype=np.float64)
+    if immutable.flags.writeable:
+        raise ResidualContractError(f"immutable_vector_construction_failed:{field}")
+    return immutable
+
+
+def _score_state_payload(frozen: FrozenResidualModel) -> dict[str, Any]:
+    return {
+        "beta": frozen.beta,
+        "medians": frozen.medians,
+        "means": frozen.means,
+        "scales": frozen.scales,
+        "feature_order": frozen.feature_order,
+        "expanded_feature_order": frozen.expanded_feature_order,
+        "residual_cap": frozen.residual_cap,
+        "full_strength": frozen.full_strength,
+        "half_strength": frozen.half_strength,
+        "market_offset": frozen.market_offset,
+        "normalization": frozen.normalization,
+        "within_race_centering": frozen.within_race_centering,
+    }
+
+
+def _artifact_score_state_payload(frozen: FrozenResidualModel) -> dict[str, Any]:
+    preprocessor = frozen.model["preprocessor"]
+    algorithm = frozen.model["algorithm"]
+    feature_contract = frozen.model["feature_contract"]
+    derivation = frozen.manifest["derivation_contract"]
+    return {
+        "beta": frozen.model["beta"],
+        "medians": preprocessor["medians"],
+        "means": preprocessor["means"],
+        "scales": preprocessor["scales"],
+        "feature_order": feature_contract["feature_order"],
+        "expanded_feature_order": feature_contract["expanded_feature_order"],
+        "residual_cap": algorithm["residual_cap"],
+        "full_strength": derivation["full_strength"],
+        "half_strength": derivation["half_strength"],
+        "market_offset": algorithm["market_offset"],
+        "normalization": algorithm["normalization"],
+        "within_race_centering": algorithm["within_race_centering"],
+    }
+
+
+def _effective_state_payload(frozen: FrozenResidualModel) -> dict[str, Any]:
+    return {
+        "schema_version": EFFECTIVE_STATE_SCHEMA,
+        "artifact_state": {
+            "model": frozen.model,
+            "manifest": frozen.manifest,
+        },
+        "score_state": _score_state_payload(frozen),
+    }
+
+
+def _effective_state_sha256(frozen: FrozenResidualModel) -> str:
+    return hashlib.sha256(
+        _canonical_bytes(_effective_state_payload(frozen))
+    ).hexdigest()
+
+
+def _verify_effective_state(frozen: FrozenResidualModel) -> str:
+    if not isinstance(frozen, FrozenResidualModel):
+        raise ResidualContractError("frozen_model_type_invalid")
+    model_state_sha256 = hashlib.sha256(_canonical_bytes(frozen.model)).hexdigest()
+    if model_state_sha256 != frozen.model_sha256:
+        raise ResidualContractError("model_state_sha256_mismatch")
+    manifest_state_sha256 = hashlib.sha256(
+        _canonical_bytes(frozen.manifest)
+    ).hexdigest()
+    if manifest_state_sha256 != frozen.manifest_sha256:
+        raise ResidualContractError("manifest_state_sha256_mismatch")
+    if frozen.manifest.get("model_sha256") != model_state_sha256:
+        raise ResidualContractError("manifest_model_state_sha256_mismatch")
+    effective_state_sha256 = _effective_state_sha256(frozen)
+    if effective_state_sha256 != frozen.effective_state_sha256:
+        raise ResidualContractError("effective_state_sha256_mismatch")
+    if _canonical_bytes(_score_state_payload(frozen)) != _canonical_bytes(
+        _artifact_score_state_payload(frozen)
+    ):
+        raise ResidualContractError("encapsulated_score_state_mismatch")
+    return effective_state_sha256
 
 
 def _require_sha256(value: Any, field: str) -> str:
@@ -212,7 +346,10 @@ def load_frozen_model(
         raise ResidualContractError("manifest_schema_mismatch")
     if manifest.get("status") != "FROZEN_MODEL_READY_AWAITING_ACTIVATION":
         raise ResidualContractError("manifest_status_not_frozen")
-    if _require_sha256(manifest.get("model_sha256"), "manifest.model_sha256") != model_sha256:
+    if (
+        _require_sha256(manifest.get("model_sha256"), "manifest.model_sha256")
+        != model_sha256
+    ):
         raise ResidualContractError("model_sha256_mismatch")
     if manifest.get("model_schema_version") != MODEL_SCHEMA:
         raise ResidualContractError("manifest_model_schema_mismatch")
@@ -233,15 +370,24 @@ def load_frozen_model(
     preprocessor = model.get("preprocessor")
     feature_contract = model.get("feature_contract")
     activation = model.get("activation")
-    if not all(isinstance(value, dict) for value in (algorithm, preprocessor, feature_contract, activation)):
+    if not all(
+        isinstance(value, dict)
+        for value in (algorithm, preprocessor, feature_contract, activation)
+    ):
         raise ResidualContractError("model_contract_section_missing")
     if model.get("model_family") != "race_conditional_logit_with_fixed_market_offset":
         raise ResidualContractError("model_family_contract_mismatch")
     if _canonical_bytes(algorithm) != _canonical_bytes(FROZEN_ALGORITHM_CONTRACT):
         raise ResidualContractError("algorithm_contract_mismatch")
-    if any(activation.get(field) is not False for field in (
-        "activated", "production_pointer_changed", "runtime_changed", "cohort_cutoff_assigned"
-    )):
+    if any(
+        activation.get(field) is not False
+        for field in (
+            "activated",
+            "production_pointer_changed",
+            "runtime_changed",
+            "cohort_cutoff_assigned",
+        )
+    ):
         raise ResidualContractError("artifact_is_activated")
     if tuple(feature_contract.get("feature_order") or ()) != FEATURES:
         raise ResidualContractError("feature_order_mismatch")
@@ -252,10 +398,16 @@ def load_frozen_model(
     if tuple(preprocessor.get("expanded_features") or ()) != EXPANDED_FEATURES:
         raise ResidualContractError("preprocessor_expanded_order_mismatch")
 
-    _numeric_vector(model.get("beta"), len(EXPANDED_FEATURES), "beta")
-    _numeric_vector(preprocessor.get("medians"), len(FEATURES), "preprocessor.medians")
-    _numeric_vector(preprocessor.get("means"), len(EXPANDED_FEATURES), "preprocessor.means")
-    scales = _numeric_vector(preprocessor.get("scales"), len(EXPANDED_FEATURES), "preprocessor.scales")
+    beta = _immutable_vector(model.get("beta"), len(EXPANDED_FEATURES), "beta")
+    medians = _immutable_vector(
+        preprocessor.get("medians"), len(FEATURES), "preprocessor.medians"
+    )
+    means = _immutable_vector(
+        preprocessor.get("means"), len(EXPANDED_FEATURES), "preprocessor.means"
+    )
+    scales = _immutable_vector(
+        preprocessor.get("scales"), len(EXPANDED_FEATURES), "preprocessor.scales"
+    )
     if np.any(scales <= 0.0):
         raise ResidualContractError("preprocessor_scale_not_positive")
     candidate_hashes = manifest.get("candidate_hashes")
@@ -264,12 +416,34 @@ def load_frozen_model(
     for name, value in candidate_hashes.items():
         _require_sha256(value, f"candidate_hashes.{name}")
     derivation = manifest.get("derivation_contract")
-    if (
-        not isinstance(derivation, dict)
-        or _canonical_bytes(derivation) != _canonical_bytes(FROZEN_DERIVATION_CONTRACT)
-    ):
+    if not isinstance(derivation, dict) or _canonical_bytes(
+        derivation
+    ) != _canonical_bytes(FROZEN_DERIVATION_CONTRACT):
         raise ResidualContractError("shared_base_model_contract_mismatch")
-    return FrozenResidualModel(model, manifest, model_sha256, manifest_sha256)
+    frozen = FrozenResidualModel(
+        model=_deep_freeze(model),
+        manifest=_deep_freeze(manifest),
+        model_sha256=model_sha256,
+        manifest_sha256=manifest_sha256,
+        effective_state_sha256="",
+        beta=beta,
+        medians=medians,
+        means=means,
+        scales=scales,
+        feature_order=tuple(feature_contract["feature_order"]),
+        expanded_feature_order=tuple(feature_contract["expanded_feature_order"]),
+        residual_cap=_finite_float(algorithm["residual_cap"], "residual_cap"),
+        full_strength=_finite_float(
+            derivation["full_strength"], "derivation.full_strength"
+        ),
+        half_strength=_finite_float(
+            derivation["half_strength"], "derivation.half_strength"
+        ),
+        market_offset=str(algorithm["market_offset"]),
+        normalization=str(algorithm["normalization"]),
+        within_race_centering=algorithm["within_race_centering"] is True,
+    )
+    return replace(frozen, effective_state_sha256=_effective_state_sha256(frozen))
 
 
 def _shadow_record_identity(record: Mapping[str, Any]) -> dict[str, str]:
@@ -284,6 +458,9 @@ def _shadow_record_identity(record: Mapping[str, Any]) -> dict[str, str]:
         "model_sha256": _require_sha256(record.get("model_sha256"), "model_sha256"),
         "manifest_sha256": _require_sha256(
             record.get("manifest_sha256"), "manifest_sha256"
+        ),
+        "effective_state_sha256": _require_sha256(
+            record.get("effective_state_sha256"), "effective_state_sha256"
         ),
     }
 
@@ -313,9 +490,14 @@ def score_race(
 ) -> dict[str, Any]:
     """Score one complete race and return an outcome-free shadow record."""
 
+    effective_state_sha256 = _verify_effective_state(frozen)
     if not isinstance(provenance, Mapping) or _contains_outcome(provenance):
         raise ResidualContractError("provenance_invalid_or_contains_outcome")
-    if not isinstance(runners, Sequence) or isinstance(runners, (str, bytes)) or len(runners) < 2:
+    if (
+        not isinstance(runners, Sequence)
+        or isinstance(runners, (str, bytes))
+        or len(runners) < 2
+    ):
         raise ResidualContractError("race_runner_count_invalid")
     race_id = str(provenance.get("race_id") or "")
     if not race_id:
@@ -328,7 +510,10 @@ def score_race(
         raise ResidualContractError("expected_runner_ids_duplicate")
     expected_runner_ids = sorted(expected_runner_ids)
     expected_hash = _runner_set_sha256(expected_runner_ids)
-    if _require_sha256(provenance.get("runner_set_sha256"), "runner_set_sha256") != expected_hash:
+    if (
+        _require_sha256(provenance.get("runner_set_sha256"), "runner_set_sha256")
+        != expected_hash
+    ):
         raise ResidualContractError("declared_runner_set_hash_mismatch")
 
     jump = _parse_timestamp(provenance.get("jump_timestamp"), "jump_timestamp")
@@ -370,13 +555,23 @@ def score_race(
         dog_token = re.sub(r"[^A-Z0-9]", "", dog_name.upper())
         if not dog_token or runner_id != f"{race_id}|box:{box}|dog:{dog_token}":
             raise ResidualContractError(f"runner_identity_mismatch:{runner_id}")
-        decimal_odds = _finite_float(runner["strict_win_odds"], f"strict_win_odds:{runner_id}")
+        decimal_odds = _finite_float(
+            runner["strict_win_odds"], f"strict_win_odds:{runner_id}"
+        )
         if decimal_odds <= 1.0:
             raise ResidualContractError(f"strict_win_odds_invalid:{runner_id}")
-        feature_hash = _require_sha256(runner["feature_source_sha256"], f"feature_source_sha256:{runner_id}")
-        odds_hash = _require_sha256(runner["odds_source_sha256"], f"odds_source_sha256:{runner_id}")
-        feature_time = _parse_timestamp(runner["feature_freeze_timestamp"], f"feature_freeze_timestamp:{runner_id}")
-        odds_time = _parse_timestamp(runner["odds_capture_timestamp"], f"odds_capture_timestamp:{runner_id}")
+        feature_hash = _require_sha256(
+            runner["feature_source_sha256"], f"feature_source_sha256:{runner_id}"
+        )
+        odds_hash = _require_sha256(
+            runner["odds_source_sha256"], f"odds_source_sha256:{runner_id}"
+        )
+        feature_time = _parse_timestamp(
+            runner["feature_freeze_timestamp"], f"feature_freeze_timestamp:{runner_id}"
+        )
+        odds_time = _parse_timestamp(
+            runner["odds_capture_timestamp"], f"odds_capture_timestamp:{runner_id}"
+        )
         if not feature_time < jump or not odds_time < jump:
             raise ResidualContractError(f"source_timestamp_not_prejump:{runner_id}")
         if score_time < feature_time or score_time < odds_time:
@@ -384,13 +579,19 @@ def score_race(
         features = runner["features"]
         if not isinstance(features, Mapping):
             raise ResidualContractError(f"features_not_object:{runner_id}")
-        extra_features = set(features) - set(FEATURES)
+        extra_features = set(features) - set(frozen.feature_order)
         if extra_features:
-            raise ResidualContractError(f"unexpected_features:{runner_id}:{sorted(extra_features)}")
+            raise ResidualContractError(
+                f"unexpected_features:{runner_id}:{sorted(extra_features)}"
+            )
         values: list[float] = []
-        for feature in FEATURES:
+        for feature in frozen.feature_order:
             value = features.get(feature)
-            values.append(float("nan") if value is None else _finite_float(value, f"{runner_id}.{feature}"))
+            values.append(
+                float("nan")
+                if value is None
+                else _finite_float(value, f"{runner_id}.{feature}")
+            )
         raw_features.append(values)
         odds.append(decimal_odds)
         normalized_runners.append(
@@ -413,23 +614,20 @@ def score_race(
     if _runner_set_sha256(actual_runner_ids) != expected_hash:
         raise ResidualContractError("actual_runner_set_hash_mismatch")
 
-    preprocessor = frozen.model["preprocessor"]
     raw = np.asarray(raw_features, dtype=float)
-    medians = _numeric_vector(preprocessor["medians"], len(FEATURES), "preprocessor.medians")
     missing = ~np.isfinite(raw)
-    imputed = np.where(missing, medians, raw)
+    imputed = np.where(missing, frozen.medians, raw)
     expanded = np.concatenate([imputed, missing.astype(float)], axis=1)
-    means = _numeric_vector(preprocessor["means"], len(EXPANDED_FEATURES), "preprocessor.means")
-    scales = _numeric_vector(preprocessor["scales"], len(EXPANDED_FEATURES), "preprocessor.scales")
-    transformed = (expanded - means) / scales
-    transformed -= np.mean(transformed, axis=0)
-    beta = _numeric_vector(frozen.model["beta"], len(EXPANDED_FEATURES), "beta")
-    cap = _finite_float(frozen.model["algorithm"]["residual_cap"], "residual_cap")
-    adjustment = cap * np.tanh((transformed @ beta) / cap)
+    transformed = (expanded - frozen.means) / frozen.scales
+    if frozen.within_race_centering:
+        transformed -= np.mean(transformed, axis=0)
+    adjustment = frozen.residual_cap * np.tanh(
+        (transformed @ frozen.beta) / frozen.residual_cap
+    )
     implied = 1.0 / np.asarray(odds, dtype=float)
     market = implied / np.sum(implied)
-    full = _softmax(np.log(market) + adjustment)
-    half = _softmax(np.log(market) + 0.5 * adjustment)
+    full = _softmax(np.log(market) + frozen.full_strength * adjustment)
+    half = _softmax(np.log(market) + frozen.half_strength * adjustment)
 
     predictions = []
     for index, runner in enumerate(normalized_runners):
@@ -447,6 +645,7 @@ def score_race(
         "runner_set_sha256": expected_hash,
         "model_sha256": frozen.model_sha256,
         "manifest_sha256": frozen.manifest_sha256,
+        "effective_state_sha256": effective_state_sha256,
     }
     record_key = _shadow_record_key(identity)
     return {
@@ -455,51 +654,126 @@ def score_race(
         **identity,
         "score_timestamp": str(provenance["score_timestamp"]),
         "jump_timestamp": str(provenance["jump_timestamp"]),
-        "variants": {"full_strength": 1.0, "half_strength": 0.5},
+        "variants": {
+            "full_strength": frozen.full_strength,
+            "half_strength": frozen.half_strength,
+        },
         "predictions": predictions,
         "outcomes_present": False,
         "activation": False,
     }
 
 
-def append_shadow_record(path: Path | str, record: Mapping[str, Any]) -> str:
+def _verified_shadow_record_identity(
+    record: Mapping[str, Any], frozen: FrozenResidualModel
+) -> dict[str, str]:
+    effective_state_sha256 = _verify_effective_state(frozen)
+    race_id = record.get("race_id")
+    if not isinstance(race_id, str) or not race_id:
+        raise ResidualContractError("shadow_record_race_id_invalid")
+    predictions = record.get("predictions")
+    if (
+        not isinstance(predictions, Sequence)
+        or isinstance(predictions, (str, bytes))
+        or not predictions
+    ):
+        raise ResidualContractError("shadow_record_predictions_invalid")
+    runner_ids: list[str] = []
+    for index, prediction in enumerate(predictions):
+        if not isinstance(prediction, Mapping):
+            raise ResidualContractError(f"shadow_record_prediction_invalid:{index}")
+        if prediction.get("race_id") != race_id:
+            raise ResidualContractError(
+                f"shadow_record_prediction_race_id_mismatch:{index}"
+            )
+        runner_id = prediction.get("runner_id")
+        if not isinstance(runner_id, str) or not runner_id:
+            raise ResidualContractError(
+                f"shadow_record_prediction_runner_id_invalid:{index}"
+            )
+        runner_ids.append(runner_id)
+    if len(runner_ids) != len(set(runner_ids)):
+        raise ResidualContractError("shadow_record_prediction_runner_id_duplicate")
+    identity = {
+        "race_id": race_id,
+        "runner_set_sha256": _runner_set_sha256(runner_ids),
+        "model_sha256": frozen.model_sha256,
+        "manifest_sha256": frozen.manifest_sha256,
+        "effective_state_sha256": effective_state_sha256,
+    }
+    for field_name, trusted_value in identity.items():
+        if record.get(field_name) != trusted_value:
+            raise ResidualContractError(
+                f"shadow_record_verified_identity_mismatch:{field_name}"
+            )
+    return identity
+
+
+def append_shadow_record(
+    path: Path | str,
+    record: Mapping[str, Any],
+    *,
+    frozen: FrozenResidualModel,
+    runners: Sequence[Mapping[str, Any]],
+    provenance: Mapping[str, Any],
+) -> str:
     """Append one canonical record, idempotently, without overwriting history."""
 
     output = Path(path)
     if output.suffix != ".jsonl" or not output.parent.is_dir():
         raise ResidualContractError("shadow_output_path_invalid")
-    if not isinstance(record, Mapping) or record.get("schema_version") != SHADOW_RECORD_SCHEMA:
+    if (
+        not isinstance(record, Mapping)
+        or record.get("schema_version") != SHADOW_RECORD_SCHEMA
+    ):
         raise ResidualContractError("shadow_record_schema_mismatch")
     if _contains_outcome(record) or record.get("outcomes_present") is not False:
         raise ResidualContractError("shadow_record_contains_outcome")
-    record_key = _require_sha256(record.get("record_key"), "record_key")
-    if record_key != _shadow_record_key(record):
-        raise ResidualContractError("shadow_record_key_mismatch")
-    encoded = _canonical_bytes(record)
+    _verify_effective_state(frozen)
+    expected = score_race(frozen, runners, provenance)
+    encoded = _canonical_bytes(expected)
+    if _canonical_bytes(record) != encoded:
+        raise ResidualContractError("shadow_record_not_canonical_score")
+    verified_identity = _verified_shadow_record_identity(expected, frozen)
+    record_key = hashlib.sha256(_canonical_bytes(verified_identity)).hexdigest()
+    if expected.get("record_key") != record_key:
+        raise ResidualContractError("shadow_record_verified_key_mismatch")
     try:
         with output.open("a+", encoding="utf-8", newline="\n") as handle:
             fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
             handle.seek(0)
             for line_number, line in enumerate(handle, start=1):
                 if not line.strip():
-                    raise ResidualContractError(f"existing_shadow_blank_line:{line_number}")
+                    raise ResidualContractError(
+                        f"existing_shadow_blank_line:{line_number}"
+                    )
                 try:
                     existing = json.loads(line)
                 except json.JSONDecodeError as exc:
-                    raise ResidualContractError(f"existing_shadow_invalid_json:{line_number}") from exc
+                    raise ResidualContractError(
+                        f"existing_shadow_invalid_json:{line_number}"
+                    ) from exc
+                if _canonical_bytes(existing).decode("utf-8") != line:
+                    raise ResidualContractError(
+                        f"existing_shadow_not_canonical_json:{line_number}"
+                    )
                 if (
                     not isinstance(existing, dict)
                     or existing.get("schema_version") != SHADOW_RECORD_SCHEMA
                     or _contains_outcome(existing)
                     or existing.get("outcomes_present") is not False
                 ):
-                    raise ResidualContractError(f"existing_shadow_invalid_record:{line_number}")
+                    raise ResidualContractError(
+                        f"existing_shadow_invalid_record:{line_number}"
+                    )
                 try:
                     existing_key = _require_sha256(
                         existing.get("record_key"), "existing.record_key"
                     )
                     if existing_key != _shadow_record_key(existing):
-                        raise ResidualContractError("existing_shadow_record_key_mismatch")
+                        raise ResidualContractError(
+                            "existing_shadow_record_key_mismatch"
+                        )
                 except ResidualContractError as exc:
                     raise ResidualContractError(
                         f"existing_shadow_invalid_record:{line_number}"
