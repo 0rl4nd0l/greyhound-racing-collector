@@ -66,6 +66,11 @@ DEFAULT_ODDS_CAPTURE_ONLY_TIMER_ON_CALENDAR = (
 DEFAULT_ODDS_CAPTURE_ONLY_TIMER_ACCURACY = "15s"
 DEFAULT_ODDS_CAPTURE_ONLY_TIMEOUT_SECONDS = 600
 DEFAULT_ODDS_CAPTURE_ONLY_REFRESH_LIMIT = 16
+DEFAULT_EARLY_RESIDUAL_FEATURE_TIMEOUT_SECONDS = 180
+DEFAULT_EARLY_RESIDUAL_SCORE_TIMEOUT_SECONDS = 60
+EARLY_RESIDUAL_SHADOW_OUTPUT_NAME = (
+    "market_form_residual_shadow_predictions_v1.jsonl"
+)
 # Keep the minutely odds-only lane broad: it protects fixed pre-jump windows.
 # The full daemon does the expensive refresh, scoring, result, and artifact work.
 DEFAULT_FULL_DAEMON_REFRESH_LIMIT = 6
@@ -1628,6 +1633,323 @@ def odds_capture_only_autopilot_command(
     if require_safe_refresh_metadata:
         command.append("--require-safe-refresh-metadata")
     return command
+
+
+def recover_odds_capture_autopilot_output_dir(
+    *,
+    reported_output_dir: Path | str | None,
+    evidence_root: Path,
+    autopilot_run_id: str,
+) -> Path | None:
+    """Recover only the exact PR #47 handoff packet for this capture cycle."""
+
+    expected_name = f"shadow_autopilot_v1_{autopilot_run_id}"
+    candidates: list[Path] = []
+    reported = rooted_path(reported_output_dir)
+    if reported is not None:
+        candidates.append(reported)
+    expected = evidence_root / expected_name
+    if expected not in candidates:
+        candidates.append(expected)
+    evidence_root_resolved = evidence_root.resolve()
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+            resolved.relative_to(evidence_root_resolved)
+        except (OSError, ValueError):
+            continue
+        if not resolved.name.startswith(expected_name):
+            continue
+        if reported is not None and resolved == reported.resolve() and resolved.is_dir():
+            return resolved
+        handoff = load_json(resolved / "residual_feature_handoff_status.json")
+        if (
+            handoff
+            and handoff.get("schema_version") == "residual_feature_handoff_v1"
+        ):
+            return resolved
+    return None
+
+
+def odds_capture_autopilot_cycle_timeout_seconds(step_timeout_seconds: int) -> int:
+    """Leave bounded grace for child timeout cleanup and the PR #47 handoff."""
+
+    return step_timeout_seconds + max(120, step_timeout_seconds // 4)
+
+
+def _early_residual_capture_path(
+    *,
+    evidence_root: Path,
+    odds_status: Mapping[str, Any],
+) -> tuple[Path | None, str | None]:
+    capture_dir = rooted_path(odds_status.get("output_dir"))
+    if capture_dir is None:
+        return None, "capture_output_dir_missing"
+    try:
+        capture_dir = capture_dir.resolve()
+        capture_dir.relative_to(evidence_root.resolve())
+    except (OSError, ValueError):
+        return None, "capture_output_dir_outside_evidence_root"
+    if not capture_dir.name.startswith("autonomous_live_odds_capture_"):
+        return None, "capture_output_dir_prefix_invalid"
+    candidates = (
+        capture_dir / "autonomous_live_odds_capture_attempts.progress.jsonl",
+        capture_dir / "autonomous_live_odds_capture_attempts.jsonl",
+        capture_dir / "autonomous_live_odds_capture_report.json",
+    )
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+            resolved.relative_to(capture_dir)
+        except (OSError, ValueError):
+            continue
+        if resolved.is_file() and resolved.stat().st_size > 0:
+            return resolved, None
+    return None, "capture_artifact_missing"
+
+
+def _early_residual_slug(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_") or "race"
+
+
+def early_residual_shadow_prediction_plan(
+    *,
+    run_id: str,
+    evidence_root: Path,
+    db_path: Path,
+    autopilot_output_dir: Path | None,
+    odds_status: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build exact feature/scoring commands from the successful capture handoff."""
+
+    base = {
+        "schema_version": "early_residual_shadow_prediction_plan_v1",
+        "run_id": run_id,
+        "autopilot_output_dir": relpath(autopilot_output_dir),
+        "shadow_output_path": str(
+            (evidence_root / EARLY_RESIDUAL_SHADOW_OUTPUT_NAME).resolve()
+        ),
+        "race_count": 0,
+        "races": [],
+        "blockers": [],
+        "outcomes_read": False,
+        "activation": False,
+        "production_db_access": "sqlite_mode_ro_feature_history_only",
+    }
+    if autopilot_output_dir is None:
+        return {**base, "status": "SKIPPED_NO_HANDOFF", "blockers": ["autopilot_output_dir_missing"]}
+    try:
+        autopilot_output_dir = autopilot_output_dir.resolve()
+        autopilot_output_dir.relative_to(evidence_root.resolve())
+    except (OSError, ValueError):
+        return {
+            **base,
+            "status": "BLOCKED",
+            "blockers": ["autopilot_output_dir_outside_evidence_root"],
+        }
+    handoff_path = autopilot_output_dir / "residual_feature_handoff_status.json"
+    handoff = load_json(handoff_path)
+    if handoff is None:
+        return {**base, "status": "SKIPPED_NO_HANDOFF", "blockers": ["residual_feature_handoff_missing"]}
+    if (
+        handoff.get("schema_version") != "residual_feature_handoff_v1"
+        or handoff.get("status") != "PASS"
+        or list(handoff.get("blocked") or [])
+    ):
+        return {**base, "status": "BLOCKED", "blockers": ["residual_feature_handoff_not_pass"]}
+    supplemental = list(handoff.get("supplemental_input_files") or [])
+    declared_count = int_or_zero(handoff.get("supplemental_input_count"))
+    if declared_count != len(supplemental):
+        return {**base, "status": "BLOCKED", "blockers": ["residual_feature_handoff_count_mismatch"]}
+    if not supplemental:
+        return {**base, "status": "SKIPPED_NO_NEW_CAPTURE", "blockers": []}
+
+    successful_race_ids = {
+        str(value) for value in handoff.get("successful_capture_race_ids") or []
+    }
+    capture_path, capture_blocker = _early_residual_capture_path(
+        evidence_root=evidence_root,
+        odds_status=odds_status,
+    )
+    feature_model = autopilot.latest_shadow_model(evidence_root)
+    blockers: list[str] = []
+    if capture_blocker:
+        blockers.append(capture_blocker)
+    if feature_model is None or not feature_model.is_file():
+        blockers.append("feature_model_missing")
+    else:
+        try:
+            feature_model = feature_model.resolve()
+            feature_model.relative_to(evidence_root.resolve())
+        except (OSError, ValueError):
+            blockers.append("feature_model_outside_evidence_root")
+    if not db_path.is_file():
+        blockers.append("readonly_feature_db_missing")
+    if not evidence_root.is_dir():
+        blockers.append("evidence_root_missing")
+    if blockers:
+        return {**base, "status": "BLOCKED", "blockers": blockers}
+
+    races: list[dict[str, Any]] = []
+    seen_race_ids: set[str] = set()
+    safe_run_id = _early_residual_slug(run_id)
+    for value in supplemental:
+        form_path = Path(str(value)).resolve()
+        race_id = form_path.stem
+        sidecar_path = form_path.with_name(form_path.name + ".metadata.json")
+        try:
+            form_path.relative_to(autopilot_output_dir)
+        except ValueError:
+            blockers.append(f"supplemental_form_outside_autopilot_output:{race_id}")
+            continue
+        if (
+            not form_path.is_file()
+            or not sidecar_path.is_file()
+            or race_id not in successful_race_ids
+            or race_id in seen_race_ids
+        ):
+            blockers.append(f"supplemental_form_contract_invalid:{race_id}")
+            continue
+        seen_race_ids.add(race_id)
+        feature_dir = evidence_root / (
+            "daily_race_ingest_shadow_early_residual_"
+            f"{safe_run_id}_{_early_residual_slug(race_id)}"
+        )
+        feature_command = [
+            sys.executable,
+            str(ROOT / "scripts/run_shadow_non_tgr_rf_evaluation.py"),
+            "score-live",
+            "--input",
+            str(form_path),
+            "--model",
+            str(feature_model),
+            "--db",
+            str(db_path),
+            "--output-dir",
+            str(feature_dir),
+            "--evidence-root",
+            str(evidence_root),
+        ]
+        score_command = [
+            sys.executable,
+            str(ROOT / "scripts/predict_market_form_residual.py"),
+            "--race-id",
+            race_id,
+            "--form-csv",
+            str(form_path),
+            "--sidecar",
+            str(sidecar_path),
+            "--feature-rows",
+            str(feature_dir / "shadow_feature_rows.json"),
+            "--feature-manifest",
+            str(feature_dir / "shadow_manifest.json"),
+            "--implementation-manifest",
+            str(feature_dir / "implementation_file_manifest.json"),
+            "--capture",
+            str(capture_path),
+            "--append-shadow-output",
+            str(evidence_root / EARLY_RESIDUAL_SHADOW_OUTPUT_NAME),
+        ]
+        races.append(
+            {
+                "race_id": race_id,
+                "form_csv_path": str(form_path),
+                "sidecar_path": str(sidecar_path),
+                "capture_path": str(capture_path),
+                "feature_model_path": str(feature_model),
+                "feature_output_dir": str(feature_dir),
+                "feature_command": feature_command,
+                "score_command": score_command,
+            }
+        )
+    if blockers:
+        return {
+            **base,
+            "status": "BLOCKED",
+            "race_count": len(races),
+            "races": races,
+            "blockers": blockers,
+        }
+    return {
+        **base,
+        "status": "READY",
+        "race_count": len(races),
+        "races": races,
+        "blockers": [],
+    }
+
+
+def execute_early_residual_shadow_prediction_plan(
+    *,
+    plan: Mapping[str, Any],
+    output_dir: Path,
+) -> dict[str, Any]:
+    """Run the exact planned stage and fail closed without changing capture status."""
+
+    status = {
+        "schema_version": "early_residual_shadow_prediction_status_v1",
+        "plan": dict(plan),
+        "status": plan.get("status"),
+        "race_count": int_or_zero(plan.get("race_count")),
+        "appended_count": 0,
+        "exact_replay_count": 0,
+        "blocked_count": 0,
+        "races": [],
+        "outcomes_read": False,
+        "activation": False,
+        "lock_release_preceded_stage_completion": False,
+    }
+    if plan.get("status") != "READY":
+        return status
+    race_results: list[dict[str, Any]] = []
+    for index, item in enumerate(plan.get("races") or [], start=1):
+        race_id = str(item.get("race_id") or "")
+        result: dict[str, Any] = {"race_id": race_id, "status": "BLOCKED"}
+        feature_step = run_command(
+            name=f"early_residual_features_{index:02d}",
+            command=list(item.get("feature_command") or []),
+            output_dir=output_dir,
+            timeout_seconds=DEFAULT_EARLY_RESIDUAL_FEATURE_TIMEOUT_SECONDS,
+        )
+        result["feature_step"] = feature_step
+        if feature_step.get("returncode") != 0:
+            result["blocker"] = "feature_generation_failed"
+            race_results.append(result)
+            continue
+        score_step = run_command(
+            name=f"early_residual_score_{index:02d}",
+            command=list(item.get("score_command") or []),
+            output_dir=output_dir,
+            timeout_seconds=DEFAULT_EARLY_RESIDUAL_SCORE_TIMEOUT_SECONDS,
+        )
+        result["score_step"] = score_step
+        score_output = load_json(
+            output_dir / "logs" / f"early_residual_score_{index:02d}.stdout.txt"
+        )
+        result["prediction"] = score_output
+        if (
+            score_step.get("returncode") == 0
+            and score_output
+            and score_output.get("persisted") is True
+            and score_output.get("persistence_status") in {"APPENDED", "EXACT_REPLAY"}
+            and score_output.get("outcomes_present") is False
+            and score_output.get("activation") is False
+        ):
+            result["status"] = str(score_output["persistence_status"])
+        else:
+            result["blocker"] = "frozen_residual_score_or_append_failed"
+        race_results.append(result)
+    appended_count = sum(row.get("status") == "APPENDED" for row in race_results)
+    exact_replay_count = sum(row.get("status") == "EXACT_REPLAY" for row in race_results)
+    blocked_count = sum(row.get("status") == "BLOCKED" for row in race_results)
+    return {
+        **status,
+        "status": "PASS" if blocked_count == 0 else "BLOCKED",
+        "appended_count": appended_count,
+        "exact_replay_count": exact_replay_count,
+        "blocked_count": blocked_count,
+        "races": race_results,
+    }
 
 
 def pre_race_gated_challenger_command(
@@ -3411,6 +3733,18 @@ def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
     autopilot_output_dir: Path | None = None
     odds_status: dict[str, Any] = {}
     refresh_report: dict[str, Any] = {}
+    early_residual_status: dict[str, Any] = {
+        "schema_version": "early_residual_shadow_prediction_status_v1",
+        "status": "SKIPPED_CAPTURE_CYCLE_NOT_RUN",
+        "race_count": 0,
+        "appended_count": 0,
+        "exact_replay_count": 0,
+        "blocked_count": 0,
+        "races": [],
+        "outcomes_read": False,
+        "activation": False,
+        "lock_release_preceded_stage_completion": False,
+    }
     previous_state = load_json(args.state_path) or {} if args.state_path else {}
     previous_next_preferred_window = (
         previous_state.get("next_preferred_window")
@@ -3440,8 +3774,9 @@ def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
             output_dir=output_dir,
             fixed_window_schedule=pre_lock_fixed_window_schedule,
         )
+        autopilot_run_id = f"{run_id}_autopilot"
         command = odds_capture_only_autopilot_command(
-            run_id=f"{run_id}_autopilot",
+            run_id=autopilot_run_id,
             evidence_root=evidence_root,
             current_time=current_time,
             db_path=args.db,
@@ -3480,7 +3815,8 @@ def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
                 ),
                 "timer_frequency_target": DEFAULT_ODDS_CAPTURE_ONLY_TIMER_FREQUENCY,
                 "allowed_write_scope": (
-                    "append_only_live_odds_rows_when_validation_passes"
+                    "append_only_live_odds_rows_and_outcome_free_frozen_"
+                    "residual_shadow_records_when_validation_passes"
                 ),
                 "autopilot_command": command,
                 "no_write_guarantees": dict(NO_WRITE_GUARANTEES),
@@ -3491,13 +3827,18 @@ def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
             name="odds_capture_autopilot_cycle",
             command=command,
             output_dir=output_dir,
-            timeout_seconds=args.timeout_seconds,
+            timeout_seconds=odds_capture_autopilot_cycle_timeout_seconds(
+                args.timeout_seconds
+            ),
         )
         steps.append(step)
         autopilot_stdout = output_dir / "logs" / "odds_capture_autopilot_cycle.stdout.txt"
         autopilot_result = load_json(autopilot_stdout)
-        if autopilot_result and autopilot_result.get("output_dir"):
-            autopilot_output_dir = rooted_path(autopilot_result.get("output_dir"))
+        autopilot_output_dir = recover_odds_capture_autopilot_output_dir(
+            reported_output_dir=(autopilot_result or {}).get("output_dir"),
+            evidence_root=evidence_root,
+            autopilot_run_id=autopilot_run_id,
+        )
         if autopilot_output_dir is not None:
             odds_status = (
                 load_json(autopilot_output_dir / "autonomous_live_odds_capture_status.json")
@@ -3507,6 +3848,25 @@ def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
                 load_json(autopilot_output_dir / "odds_capture_refresh_report.json")
                 or {}
             )
+        early_residual_plan = early_residual_shadow_prediction_plan(
+            run_id=run_id,
+            evidence_root=evidence_root,
+            db_path=args.db,
+            autopilot_output_dir=autopilot_output_dir,
+            odds_status=odds_status,
+        )
+        early_residual_status = execute_early_residual_shadow_prediction_plan(
+            plan=early_residual_plan,
+            output_dir=output_dir,
+        )
+        for race in early_residual_status.get("races") or []:
+            for step_key in ("feature_step", "score_step"):
+                if isinstance(race.get(step_key), Mapping):
+                    steps.append(dict(race[step_key]))
+        write_json(
+            output_dir / "early_residual_shadow_status.json",
+            early_residual_status,
+        )
         final_status = classify_odds_capture_only_final_status(
             step=step,
             autopilot_result=autopilot_result,
@@ -3583,6 +3943,7 @@ def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
         "t2_capture_miss_examples": list(odds_status.get("t2_miss_examples") or []),
         **t2_lock_skip_fields,
         "odds_capture_refresh_report": refresh_report,
+        "early_residual_shadow_status": early_residual_status,
         "pre_lock_odds_capture_fixed_window_schedule": pre_lock_fixed_window_schedule,
         "odds_capture_fixed_window_schedule": fixed_window_schedule,
         "next_meaningful_action": fixed_window_schedule.get("next_meaningful_action"),
@@ -3592,7 +3953,10 @@ def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
         **odds_capture_next_race_report_fields(fixed_window_schedule),
         "odds_capture_window_offsets_minutes": list(ODDS_CAPTURE_WINDOW_OFFSETS_MINUTES),
         "timer_frequency_target": DEFAULT_ODDS_CAPTURE_ONLY_TIMER_FREQUENCY,
-        "allowed_write_scope": "append_only_live_odds_rows_when_validation_passes",
+        "allowed_write_scope": (
+            "append_only_live_odds_rows_and_outcome_free_frozen_residual_"
+            "shadow_records_when_validation_passes"
+        ),
         "no_write_guarantees": {
             **NO_WRITE_GUARANTEES,
             **(odds_status.get("no_write_guarantees") or {}),
@@ -3663,6 +4027,7 @@ def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
                     odds_status.get("capture_window_coverage_status_counts") or {}
                 ),
                 "odds_capture_refresh_status": refresh_report.get("status"),
+                "early_residual_shadow_status": early_residual_status,
                 "next_preferred_window": next_preferred_window,
                 "recommended_rerun_after_local": resume_after_local
                 or source_recommended_rerun_after_local,

@@ -2,8 +2,10 @@
 """Score one race from exact sealed system features and strict pre-jump odds.
 
 The command reads already-materialized artifacts and prints canonical JSON to
-stdout. It has no database, network, feature-generation, output-file, service,
-activation, deployment, promotion, EV, or betting path.
+stdout. An explicit ``--append-shadow-output`` path may also persist the same
+outcome-free frozen record to one append-only JSONL. It has no database,
+network, feature-generation, service, activation, deployment, promotion, EV,
+or betting path.
 """
 
 from __future__ import annotations
@@ -33,6 +35,7 @@ from src.predictor.market_form_residual import (  # noqa: E402
     FEATURES,
     ResidualContractError,
     _runner_set_sha256,
+    append_shadow_record,
     load_frozen_model,
     score_race,
 )
@@ -1156,6 +1159,7 @@ def score_from_artifacts(
     model_path: Path,
     manifest_path: Path,
     score_timestamp: datetime | None = None,
+    shadow_output_path: Path | None = None,
 ) -> dict[str, Any]:
     """Validate immutable sealed inputs and return one outcome-free ranking."""
 
@@ -1294,6 +1298,11 @@ def score_from_artifacts(
         record["predictions"],
         key=lambda row: (-float(row["full_probability"]), int(row["box_number"])),
     )
+    persistence_status = (
+        append_shadow_record(shadow_output_path, record)
+        if shadow_output_path is not None
+        else None
+    )
     output = {
         "schema_version": OUTPUT_SCHEMA,
         "status": "MANUAL_PREJUMP_FROZEN_RESIDUAL_PREDICTION",
@@ -1346,7 +1355,13 @@ def score_from_artifacts(
             for key in ("market", "half", "full")
         },
         "activation": False,
-        "persisted": False,
+        "persisted": persistence_status is not None,
+        "persistence_status": persistence_status,
+        "shadow_output_path": (
+            str(shadow_output_path.resolve())
+            if shadow_output_path is not None
+            else None
+        ),
         "outcomes_present": False,
     }
     _canonical_bytes(output)
@@ -1375,6 +1390,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--feature-manifest", type=Path)
     parser.add_argument("--implementation-manifest", type=Path)
     parser.add_argument("--capture", type=Path)
+    parser.add_argument(
+        "--append-shadow-output",
+        type=Path,
+        help=(
+            "Explicit append-only .jsonl path for the canonical outcome-free "
+            "frozen shadow record. The parent directory must already exist."
+        ),
+    )
     return parser
 
 
@@ -1443,6 +1466,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             model_path=artifact_dir / "model.json",
             manifest_path=artifact_dir / "manifest.json",
             score_timestamp=score_time if args.race else None,
+            shadow_output_path=args.append_shadow_output,
         )
     except (ManualPredictionError, ResidualContractError) as exc:
         sys.stderr.buffer.write(

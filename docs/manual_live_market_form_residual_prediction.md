@@ -3,8 +3,10 @@
 `scripts/predict_market_form_residual.py` turns already captured, verified
 pre-jump evidence for one race into one outcome-free ranking. It is an offline
 operator command over the frozen `market_form_residual_v1` artifact. It does
-not fetch a race, open a database, write a file, append a shadow record, change
-a service, activate a model, or place a bet.
+not fetch a race, open a database, change a service, activate a model, or place
+a bet. By default it writes nothing. The explicit `--append-shadow-output`
+mode may append only the same canonical outcome-free record to a `.jsonl` file
+whose parent already exists.
 
 ## Required evidence
 
@@ -71,12 +73,30 @@ supplemental form input. A fresh cutoff is taken immediately before feature
 generation, so a race that jumped while odds were being captured is excluded.
 The primary refresh limit and resource-isolation settings are unchanged.
 
+The odds-only daemon consumes that exact handoff immediately after capture,
+while it still owns the shared lock. For each newly appended capture it runs
+the existing feature generator through its read-only SQLite path, then invokes
+the frozen residual scorer with explicit artifact paths and:
+
+```bash
+--append-shadow-output \
+  /evidence/full_evidence_orchestration_20260525/market_form_residual_shadow_predictions_v1.jsonl
+```
+
+The append is idempotent for an exact replay and rejects a conflicting record.
+Feature or scoring failure is reported as an early-residual blocker without
+changing the odds-capture result. The lock is released only after this bounded
+stage finishes or fails closed. Timer frequency and fixed capture windows do
+not change.
+
 ## Output and failure contract
 
 Success is one canonical JSON object on stdout. It includes the frozen model
 and manifest hashes, complete runner-set hash, raw and selected-source hashes,
 capture/freeze/jump timestamps, normalized market/half/full probabilities, and
-the ranking. `activation`, `persisted`, and `outcomes_present` are all `false`.
+the ranking. `activation` and `outcomes_present` are always `false`. In the
+default mode `persisted` is `false`. With `--append-shadow-output`, `persisted`
+is `true` and `persistence_status` is `APPENDED` or `EXACT_REPLAY`.
 
 Validation errors return exit code 2 and one canonical
 `BLOCKED_MANUAL_PREDICTION` JSON object on stderr. The command fails closed on,
@@ -101,11 +121,13 @@ The canonical model and manifest paths are fixed in the command and cannot be
 overridden. Tests may inject a historical score timestamp to replay a sealed
 fixture, but the CLI deliberately has no backdating option.
 
-## Separate activation boundary
+## Runtime boundary
 
-This command consumes evidence that an approved capture and feature path has
-already materialized. This change does not deploy or activate the repaired
-handoff. Network fetching, direct database access, service/unit/timer changes,
-shadow persistence, deployment and model activation remain separately gated.
-Any later activation must descend from the PR #45 resource-isolation changes,
-the frozen-model lineage, and the reviewed handoff repair.
+This command still consumes only already materialized evidence. The daemon,
+not the scorer, owns capture and feature generation. The feature generator's
+database access remains SQLite `mode=ro`; the scorer has no database or network
+path. The append-only JSONL is shadow evidence, not a production prediction
+pointer. Results, labels, outcomes, cohort assignment, betting, promotion,
+production model activation and merge remain outside this runtime path. The
+installed runtime must retain PR #45 resource isolation, the frozen-model
+lineage, and the reviewed PR #47 handoff repair.
