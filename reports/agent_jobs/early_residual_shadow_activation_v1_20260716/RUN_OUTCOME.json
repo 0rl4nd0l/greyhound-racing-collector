@@ -1,0 +1,53 @@
+{
+  "blocked_by": [
+    "The first post-repair append-only live shadow record awaits the next genuine eligible capture at 2026-07-17T09:55:00+10:00."
+  ],
+  "changed_claims": [
+    "Frozen residual scoring is now installed inside the odds-only lock owner and no longer depends on winning an external lock race.",
+    "The odds-only service now carries the same exact Stage-2 feature-model pin as the full service.",
+    "The repaired exact 23:08 handoff plan is READY with zero blockers, but no post-repair live race existed to prove the first JSONL append."
+  ],
+  "decision_delta": "The reviewed PR 47 handoff advanced from an external timing-starved prediction path to a committed, installed, model-pinned early shadow stage inside the legitimate lock owner; first live append proof is parked until the next real capture window.",
+  "new_evidence": [
+    "Five red regression assertions became green after the explicit odds-only model-path wiring; 185 focused tests pass.",
+    "Generated and installed odds-only service bytes are identical at SHA-256 8d798ce374495486c839c42a6687685c2acab8027d4fd73190bcf5b7bd50380e while timer bytes remain unchanged.",
+    "The ordinary 23:22 scheduled invocation loaded the repaired unit and safely reported WAITING_FOR_FUTURE_WINDOW.",
+    "A read-only exact-plan replay against the 23:08 sealed handoff returns READY for Race 12 - MAND - 2026-07-16 with the pinned Stage-2 model and no outcomes read."
+  ],
+  "new_goal_permitted": false,
+  "produced_artifacts": [
+    "scripts/predict_market_form_residual.py",
+    "scripts/shadow_autopilot_daemon.py",
+    "tests/test_predict_market_form_residual.py",
+    "tests/test_shadow_autopilot_daemon.py",
+    "ops/systemd/shadow-autopilot.service",
+    "ops/systemd/shadow-autopilot.timer",
+    "ops/systemd/shadow-autopilot-odds-capture.service",
+    "ops/systemd/shadow-autopilot-odds-capture.timer",
+    "reports/agent_jobs/early_residual_shadow_activation_v1_20260716/STATE.md",
+    "reports/agent_jobs/early_residual_shadow_activation_v1_20260716/DECISIONS.md",
+    "reports/agent_jobs/early_residual_shadow_activation_v1_20260716/VALIDATION.md",
+    "reports/agent_jobs/early_residual_shadow_activation_v1_20260716/LIVE_PROOF.md",
+    "reports/agent_jobs/early_residual_shadow_activation_v1_20260716/CODE_REVIEW.md",
+    "reports/agent_jobs/early_residual_shadow_activation_v1_20260716/PR_REVIEW.md",
+    "reports/agent_jobs/early_residual_shadow_activation_v1_20260716/REGRESSION_ADJUDICATION.md"
+  ],
+  "resume_only_if": "A genuine scheduled strict pre-jump capture at or after 2026-07-17T09:55:00+10:00 produces an early_residual_shadow_status.json and the outcome-free JSONL can be checked without inspecting race outcomes.",
+  "reused_claims": [
+    "The frozen 678-race, 4,752-runner fit population, model artifact, preprocessing, strengths 1.0 and 0.5, normalization, seeds, and hashes remain unchanged.",
+    "Production remains market-only and no prospective outcome may be inspected.",
+    "PR 45 resource isolation must remain in all activation ancestry.",
+    "PR 47 exact-packet provenance remains the only accepted live feature handoff."
+  ],
+  "scope_fingerprint": "bfc82c49d3f731eebe40b0be3fc7cda03b8e10953660d39a2848da302c76ccb9",
+  "state_after": "early_residual_stage_installed_model_pin_repaired_first_live_append_waiting_for_capture_window",
+  "state_before": "reviewed_pr47_handoff_not_live_and_external_prediction_starved_by_continuous_lock_handoff",
+  "status": "ADVANCED",
+  "used_capabilities": [
+    "READ",
+    "REPORT_WRITE",
+    "CODE_EDIT",
+    "RUNTIME_CHANGE",
+    "PUBLISH"
+  ]
+}
