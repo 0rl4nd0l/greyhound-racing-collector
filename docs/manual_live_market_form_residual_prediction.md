@@ -10,6 +10,9 @@ a service, activate a model, or place a bet.
 
 - A TheDogs form CSV with its canonical adjacent
   `<form CSV>.metadata.json` sidecar.
+- A `shadow_feature_rows.json` packet with its adjacent `shadow_manifest.json`
+  and `implementation_file_manifest.json`. The implementation manifest must
+  identify the reviewed PR #45 feature generator at head `aa35fa70fc49`.
 - An autonomous Sportsbet capture report, single-attempt JSON, or attempts
   JSONL containing exactly one `APPENDED` / `PASS` attempt for the race.
 - A race ID in the canonical form `Race <number> - <venue code> - YYYY-MM-DD`.
@@ -24,26 +27,18 @@ capture and is not scored.
 ```bash
 python scripts/predict_market_form_residual.py \
   --race-id 'Race 2 - SAN - 2026-07-16' \
-  --form-csv '/evidence/odds_capture_refreshed_upcoming/Race 2 - SAN - 2026-07-16.csv' \
+  --form-csv '/evidence/daily_run/eligible_inputs/source_0002/Race 2 - SAN - 2026-07-16.csv' \
+  --feature-rows '/evidence/daily_run/shadow_score_live/shadow_feature_rows.json' \
   --capture '/evidence/autonomous_live_odds_capture_report.json'
 ```
 
 The sidecar is resolved only at the adjacent canonical path. `--sidecar` may
 be supplied for clarity, but a non-adjacent path is rejected.
-
-When an evidence tree contains one semantic form/sidecar pair and one semantic
-accepted capture, discovery is also available:
-
-```bash
-python scripts/predict_market_form_residual.py \
-  --race-id 'Race 2 - SAN - 2026-07-16' \
-  --evidence-root '/evidence/full_evidence_orchestration_20260525'
-```
-
-Byte-identical duplicate copies are resolved by a stable path ordering.
-Semantically different matching forms or captures fail as ambiguous; the
-command never chooses between them using outcomes or filesystem modification
-times.
+The two feature manifests are resolved only beside `--feature-rows`.
+`--feature-manifest` and `--implementation-manifest` may be supplied for
+clarity, but non-adjacent paths are rejected. This version is deliberately an
+explicit-input scorer: it does not discover or generate a missing feature
+packet from a race name alone.
 
 ## Output and failure contract
 
@@ -64,6 +59,8 @@ among other things:
 - a current execution time at or after jump;
 - any outcome-like field in the sidecar or capture artifact;
 - target-day form rows or a frozen artifact schema/hash mismatch;
+- feature packets not generated at the reviewed PR #45 head, or packet,
+  manifest, source-path, byte-count or SHA-256 drift;
 - probabilities that do not meet the frozen scorer contract.
 
 The canonical model and manifest paths are fixed in the command and cannot be
@@ -73,7 +70,8 @@ fixture, but the CLI deliberately has no backdating option.
 ## Separate activation boundary
 
 This command consumes evidence that another approved capture path has already
-materialized. Automatic exact-event discovery and network fetching, scheduler
-or collector integration, database access, shadow persistence, deployment and
-model activation remain separately gated. Any later activation must descend
-from the PR #45 resource-isolation changes as well as the frozen-model lineage.
+materialized. Race-only discovery, missing-feature generation, network
+fetching, scheduler or collector integration, database access, shadow
+persistence, deployment and model activation remain separately gated. Any
+later activation must descend from the PR #45 resource-isolation changes as
+well as the frozen-model lineage.

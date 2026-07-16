@@ -61,6 +61,12 @@ POST_RACE_URL_TOKENS = {
 SIDECAR_SCHEMA = "form_guide_download_provenance_v1"
 FEATURE_MANIFEST_SCHEMA = "shadow_live_scoring_manifest_v1"
 IMPLEMENTATION_MANIFEST_SCHEMA = "shadow_implementation_file_manifest_v1"
+FEATURE_GENERATOR_BRANCH = "codex/greyhound-resource-isolation-20260716"
+FEATURE_GENERATOR_HEAD = "aa35fa70fc49"
+FEATURE_GENERATOR_FILES = [
+    "scripts/run_shadow_non_tgr_rf_evaluation.py",
+    "tests/test_run_shadow_non_tgr_rf_evaluation.py",
+]
 CAPTURE_REPORT_SCHEMAS = {
     "autonomous_live_odds_capture_report_v1",
     # Current capture reports overlay this summary after the report header.
@@ -148,7 +154,7 @@ def _parse_timestamp(value: Any, label: str) -> datetime:
 
 def _parse_date(value: Any, label: str) -> date:
     try:
-        return date.fromisoformat(str(value or "").strip()[:10])
+        return date.fromisoformat(str(value or "").strip())
     except ValueError as exc:
         raise ManualPredictionError(f"{label}_invalid") from exc
 
@@ -167,9 +173,18 @@ def _integer(value: Any, label: str, *, minimum: int = 0) -> int:
     return parsed
 
 
+def _box(value: Any, label: str) -> int:
+    parsed = _integer(value, label, minimum=1)
+    if parsed > 8:
+        raise ManualPredictionError(f"{label}_invalid")
+    return parsed
+
+
 def _nullable_float(value: Any, label: str) -> float | None:
     if value is None:
         return None
+    if isinstance(value, bool):
+        raise ManualPredictionError(f"{label}_invalid")
     try:
         parsed = float(value)
     except (TypeError, ValueError) as exc:
@@ -281,9 +296,18 @@ def _sidecar_context(sidecar: Mapping[str, Any]) -> dict[str, Any]:
         raise ManualPredictionError("sidecar_metadata_not_leakage_safe")
     race_info = sidecar.get("race_info")
     race_info = race_info if isinstance(race_info, Mapping) else {}
-    source_url = (
-        shadow.get("source_url") or sidecar.get("race_url") or race_info.get("url")
-    )
+    source_urls = [
+        str(value).strip()
+        for value in (
+            shadow.get("source_url"),
+            sidecar.get("race_url"),
+            race_info.get("url"),
+        )
+        if str(value or "").strip()
+    ]
+    if not source_urls or len(set(source_urls)) != 1:
+        raise ManualPredictionError("sidecar_source_url_alias_mismatch")
+    source_url = source_urls[0]
     if not _trusted_thedogs_url(source_url):
         raise ManualPredictionError("sidecar_source_url_not_trusted_thedogs")
     alignment = shadow.get("canonical_final_runner_alignment")
@@ -302,7 +326,7 @@ def _sidecar_context(sidecar: Mapping[str, Any]) -> dict[str, Any]:
     for row in participants:
         if not isinstance(row, Mapping):
             raise ManualPredictionError("sidecar_runner_invalid")
-        box = _integer(row.get("box_number"), "sidecar_runner_box", minimum=1)
+        box = _box(row.get("box_number"), "sidecar_runner_box")
         name = str(row.get("dog_name") or "").strip()
         identity = _runner_token(name)
         if not identity or box in runners or identity in identities:
@@ -327,7 +351,7 @@ def _sidecar_context(sidecar: Mapping[str, Any]) -> dict[str, Any]:
             raise ManualPredictionError("sidecar_runner_completeness_participant_invalid")
         complete_set.add(
             (
-                _integer(row.get("box_number"), "sidecar_complete_box", minimum=1),
+                _box(row.get("box_number"), "sidecar_complete_box"),
                 _runner_token(row.get("dog_name")),
             )
         )
@@ -367,6 +391,22 @@ def _sidecar_context(sidecar: Mapping[str, Any]) -> dict[str, Any]:
         "source_url": str(source_url),
         "expected_race_id": f"Race {race_number} - {venue} - {target_date.isoformat()}",
     }
+
+
+def _validate_form_binding(
+    sidecar: Mapping[str, Any],
+    *,
+    form_csv_path: Path,
+    form_raw: bytes,
+    form_sha: str,
+) -> None:
+    if (
+        sidecar.get("filename") != form_csv_path.name
+        or _integer(sidecar.get("content_length"), "sidecar_content_length", minimum=1)
+        != len(form_raw)
+        or sidecar.get("content_sha256") != form_sha
+    ):
+        raise ManualPredictionError("form_csv_sidecar_hash_mismatch")
 
 
 def _capture_attempts(raw: bytes, *, jsonl: bool) -> list[dict[str, Any]]:
@@ -478,7 +518,7 @@ def _active_capture_rows(
         if not isinstance(row, Mapping):
             raise ManualPredictionError("capture_scratched_runner_invalid")
         key = (
-            _integer(row.get("box_number"), "capture_scratched_box", minimum=1),
+            _box(row.get("box_number"), "capture_scratched_box"),
             _runner_token(row.get("dog_name") or row.get("identity")),
         )
         if (
@@ -525,7 +565,7 @@ def _active_capture_rows(
     for row in rows:
         if not isinstance(row, Mapping):
             raise ManualPredictionError("capture_runner_invalid")
-        box = _integer(row.get("box_number"), "capture_runner_box", minimum=1)
+        box = _box(row.get("box_number"), "capture_runner_box")
         name = str(row.get("dog_name") or "").strip()
         identity = _runner_token(name)
         declared_identity = _runner_token(row.get("identity"))
@@ -596,10 +636,16 @@ def _feature_packet(
         raise ManualPredictionError("implementation_manifest_not_adjacent")
     if implementation_manifest.get("schema_version") != IMPLEMENTATION_MANIFEST_SCHEMA:
         raise ManualPredictionError("implementation_manifest_schema_mismatch")
+    if _contains_outcome_key(implementation_manifest):
+        raise ManualPredictionError("implementation_manifest_contains_outcome_field")
+    if implementation_manifest.get("git_branch") != FEATURE_GENERATOR_BRANCH:
+        raise ManualPredictionError("feature_generator_branch_mismatch")
+    if implementation_manifest.get("git_head") != FEATURE_GENERATOR_HEAD:
+        raise ManualPredictionError("feature_generator_head_mismatch")
+    if Path(str(implementation_manifest.get("output_dir") or "")).resolve() != parent:
+        raise ManualPredictionError("feature_generator_output_dir_mismatch")
     implementation_files = implementation_manifest.get("implementation_files")
-    if not isinstance(implementation_files, list) or (
-        "scripts/run_shadow_non_tgr_rf_evaluation.py" not in implementation_files
-    ):
+    if implementation_files != FEATURE_GENERATOR_FILES:
         raise ManualPredictionError("feature_generator_identity_missing")
     for path, raw, sha, label in (
         (feature_rows_path, feature_rows_raw, feature_rows_sha, "feature_rows"),
@@ -616,6 +662,8 @@ def _feature_packet(
         ) != len(raw):
             raise ManualPredictionError(f"{label}_manifest_hash_mismatch")
     feature_manifest = _json_object(feature_manifest_raw, "feature_manifest")
+    if _contains_outcome_key(feature_manifest):
+        raise ManualPredictionError("feature_manifest_contains_outcome_field")
     if feature_manifest.get("schema_version") != FEATURE_MANIFEST_SCHEMA:
         raise ManualPredictionError("feature_manifest_schema_mismatch")
     exact_flags = {
@@ -655,7 +703,9 @@ def _feature_packet(
         raise ManualPredictionError("feature_rows_for_race_missing")
     by_box: dict[int, dict[str, Any]] = {}
     for row in selected:
-        box = _integer(row.get("box_number"), "feature_runner_box", minimum=1)
+        if "features" in row:
+            raise ManualPredictionError("feature_values_must_be_top_level_and_exact")
+        box = _box(row.get("box_number"), "feature_runner_box")
         name = str(row.get("dog_name") or "").strip()
         identity = _runner_token(name)
         if (
@@ -764,6 +814,12 @@ def score_from_artifacts(
     capture_raw, capture_sha = _read_input(capture_path, "capture")
 
     sidecar = _json_object(sidecar_raw, "sidecar")
+    _validate_form_binding(
+        sidecar,
+        form_csv_path=form_csv_path,
+        form_raw=form_raw,
+        form_sha=form_sha,
+    )
     context = _sidecar_context(sidecar)
     if race_id != context["expected_race_id"]:
         raise ManualPredictionError("race_id_sidecar_mismatch")

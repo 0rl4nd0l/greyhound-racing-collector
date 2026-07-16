@@ -124,7 +124,13 @@ def _seal_packet(paths: dict[str, Path], rows: list[dict], manifest: dict) -> No
         paths["implementation_manifest"],
         {
             "schema_version": "shadow_implementation_file_manifest_v1",
-            "implementation_files": ["scripts/run_shadow_non_tgr_rf_evaluation.py"],
+            "git_branch": "codex/greyhound-resource-isolation-20260716",
+            "git_head": "aa35fa70fc49",
+            "implementation_files": [
+                "scripts/run_shadow_non_tgr_rf_evaluation.py",
+                "tests/test_run_shadow_non_tgr_rf_evaluation.py",
+            ],
+            "output_dir": str(paths["feature_rows"].parent.resolve()),
             "artifact_files": artifacts,
         },
     )
@@ -170,6 +176,7 @@ def _write_fixture(tmp_path: Path) -> dict[str, Path]:
         "4. Gamma Rule|3|2026-07-07\n",
         encoding="utf-8",
     )
+    form_raw = form_csv.read_bytes()
     sidecar = form_csv.with_name(form_csv.name + ".metadata.json")
     participants = [
         {"box_number": box, "dog_name": name} for box, name, _, _ in RUNNERS
@@ -178,6 +185,9 @@ def _write_fixture(tmp_path: Path) -> dict[str, Path]:
         sidecar,
         {
             "schema_version": "form_guide_download_provenance_v1",
+            "filename": form_csv.name,
+            "content_length": len(form_raw),
+            "content_sha256": _sha256(form_raw),
             "metadata_is_leakage_safe": True,
             "race_url": SOURCE_URL,
             "canonical_runner_alignment": {"status": "aligned"},
@@ -385,6 +395,43 @@ def test_rejects_packet_hash_mismatch(tmp_path):
         _score_paths(paths)
 
 
+def test_rejects_form_csv_not_bound_by_sidecar(tmp_path):
+    paths = _write_fixture(tmp_path)
+    paths["form_csv"].write_bytes(paths["form_csv"].read_bytes() + b"tampered\n")
+
+    with pytest.raises(ManualPredictionError, match="form_csv_sidecar_hash_mismatch"):
+        _score_paths(paths)
+
+
+def test_rejects_date_with_trailing_content(tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["prejump_shadow_metadata"]["race_date"] = "2026-07-16garbage"
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="target_race_date_invalid"):
+        _score_paths(paths)
+
+
+def test_rejects_box_outside_greyhound_range_even_when_sources_agree(tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["prejump_shadow_metadata"]["runner_box_name_list"][0]["box_number"] = 9
+    sidecar["runner_completeness"]["participants"][0]["box_number"] = 9
+    _write_json(paths["sidecar"], sidecar)
+
+    _reseal(paths, lambda rows, _: rows[0].__setitem__("box_number", 9))
+    capture = _json(paths["capture"])
+    assert isinstance(capture, dict)
+    capture["attempts"][0]["validation"]["accepted_rows"][0]["box_number"] = 9
+    _write_json(paths["capture"], capture)
+
+    with pytest.raises(ManualPredictionError, match="sidecar_runner_box_invalid"):
+        _score_paths(paths)
+
+
 @pytest.mark.parametrize("feature", [FEATURES[0], FEATURES[-1]])
 def test_rejects_missing_feature(tmp_path, feature):
     paths = _write_fixture(tmp_path)
@@ -394,11 +441,43 @@ def test_rejects_missing_feature(tmp_path, feature):
         _score_paths(paths)
 
 
+def test_rejects_boolean_feature_value(tmp_path):
+    paths = _write_fixture(tmp_path)
+    _reseal(paths, lambda rows, _: rows[0].__setitem__(FEATURES[0], True))
+
+    with pytest.raises(
+        ManualPredictionError, match=f"feature_value:{FEATURES[0]}_invalid"
+    ):
+        _score_paths(paths)
+
+
 def test_rejects_nested_or_extra_feature_bundle(tmp_path):
     paths = _write_fixture(tmp_path)
     _reseal(paths, lambda rows, _: rows[0].__setitem__("features", {"extra": 1}))
 
     with pytest.raises(ManualPredictionError, match="feature.*top_level.*exact"):
+        _score_paths(paths)
+
+
+def test_rejects_outcome_field_in_feature_manifest(tmp_path):
+    paths = _write_fixture(tmp_path)
+    _reseal(paths, lambda _, manifest: manifest.__setitem__("winner", "Alpha Fast"))
+
+    with pytest.raises(
+        ManualPredictionError, match="feature_manifest_contains_outcome_field"
+    ):
+        _score_paths(paths)
+
+
+def test_rejects_outcome_field_in_implementation_manifest(tmp_path):
+    paths = _write_fixture(tmp_path)
+    manifest = _json(paths["implementation_manifest"])
+    manifest["result"] = "post-race"
+    _write_json(paths["implementation_manifest"], manifest)
+
+    with pytest.raises(
+        ManualPredictionError, match="implementation_manifest_contains_outcome_field"
+    ):
         _score_paths(paths)
 
 
@@ -469,9 +548,32 @@ def test_rejects_result_url_in_bound_sidecar(tmp_path):
     sidecar = _json(paths["sidecar"])
     assert isinstance(sidecar, dict)
     sidecar["prejump_shadow_metadata"]["source_url"] = SOURCE_URL + "/result"
+    sidecar["race_url"] = SOURCE_URL + "/result"
     _write_json(paths["sidecar"], sidecar)
 
     with pytest.raises(ManualPredictionError, match="sidecar_source_url_not_trusted"):
+        _score_paths(paths)
+
+
+def test_rejects_contradictory_sidecar_source_url_alias(tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["race_url"] = SOURCE_URL + "/result"
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="sidecar_source_url_alias_mismatch"):
+        _score_paths(paths)
+
+
+def test_rejects_wrong_feature_generator_head(tmp_path):
+    paths = _write_fixture(tmp_path)
+    manifest = _json(paths["implementation_manifest"])
+    assert isinstance(manifest, dict)
+    manifest["git_head"] = "deadbeefdead"
+    _write_json(paths["implementation_manifest"], manifest)
+
+    with pytest.raises(ManualPredictionError, match="feature_generator_head_mismatch"):
         _score_paths(paths)
 
 

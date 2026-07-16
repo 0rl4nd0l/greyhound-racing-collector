@@ -108,14 +108,6 @@ class FrozenResidualModel:
     manifest_sha256: str
 
 
-def _sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
 def _canonical_bytes(value: Any) -> bytes:
     try:
         text = json.dumps(
@@ -126,7 +118,7 @@ def _canonical_bytes(value: Any) -> bytes:
     return (text + "\n").encode("utf-8")
 
 
-def _read_json(path: Path) -> Mapping[str, Any]:
+def _read_json(path: Path) -> tuple[Mapping[str, Any], str]:
     try:
         raw = path.read_bytes()
         value = json.loads(raw.decode("utf-8"))
@@ -136,7 +128,7 @@ def _read_json(path: Path) -> Mapping[str, Any]:
         raise ResidualContractError(f"artifact_not_object:{path}")
     if raw != _canonical_bytes(value):
         raise ResidualContractError(f"artifact_not_canonical_json:{path}")
-    return value
+    return value, hashlib.sha256(raw).hexdigest()
 
 
 def _finite_float(value: Any, field: str) -> float:
@@ -201,10 +193,8 @@ def load_frozen_model(
 
     model_file = Path(model_path)
     manifest_file = Path(manifest_path)
-    model = _read_json(model_file)
-    manifest = _read_json(manifest_file)
-    model_sha256 = _sha256_file(model_file)
-    manifest_sha256 = _sha256_file(manifest_file)
+    model, model_sha256 = _read_json(model_file)
+    manifest, manifest_sha256 = _read_json(manifest_file)
 
     if model.get("schema_version") != MODEL_SCHEMA:
         raise ResidualContractError("model_schema_mismatch")
