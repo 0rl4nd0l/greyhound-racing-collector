@@ -1,8 +1,8 @@
 ---
 job_id: race_first_market_form_residual_prediction_v3_20260716
-lane: Evaluation
+lane: Provenance
 supporting_lanes:
-  - Provenance
+  - Evaluation
   - Testing
 owner: Codex
 allowed_files:
