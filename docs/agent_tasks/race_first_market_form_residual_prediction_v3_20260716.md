@@ -65,11 +65,11 @@ reason: Exact outcome-free pre-jump packets satisfy the released V3 decision's r
 
 # Race-first market-form residual prediction v3
 
-This original race-first card is amended in place for the source-proven V4
+This original race-first card is amended in place for the source-proven V6
 input-contract repair authorized on 2026-07-17. The already-released V3 handoff
 remains complete. This continuation changes only the manual scorer's read-only
 current-packet lookup, deterministic offline invocation, repository-canonical
-venue tokens and exact source-proven grade equivalences.
+venue tokens and the feature generator's exact finite declared grade aliases.
 
 Accept canonical venue strings made from uppercase letters, digits,
 underscores and internal hyphens without rewriting the identity bound into the
