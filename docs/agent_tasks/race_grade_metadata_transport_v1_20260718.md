@@ -10,6 +10,7 @@ allowed_files:
   - upcoming_race_browser.py
   - scripts/refresh_prejump_upcoming.py
   - scripts/predict_market_form_residual.py
+  - utils/csv_metadata.py
   - tests/test_csv_download_hardening.py
   - tests/test_prejump_prediction_loop.py
   - tests/test_predict_market_form_residual.py
