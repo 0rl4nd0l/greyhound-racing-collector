@@ -35,12 +35,12 @@ closeout_scope: repo_only
 control_contract_version: 2
 project_id: greyhound_racing_collector
 claim_id: race_first_market_form_residual_prediction_v3_20260716
-proof_question: Can one offline race-first command resolve the current sealed system packet, accept the repository's exact canonical hyphenated venue identity plus the feature generator's finite declared target-grade aliases, and continue to reject malformed venues, undeclared or genuinely different grades, stale or unsafe indexes, ambiguous races and every existing provenance, completeness, timing and outcome violation?
+proof_question: Can one offline race-first command resolve the current sealed system packet, accept the repository's exact canonical hyphenated venue identity plus the finite non-conflicting aliases and exact labels already admitted by the feature generator and preprocessing contract, and continue to reject malformed venues, undeclared, ambiguous or genuinely different grades, stale or unsafe indexes, ambiguous races and every existing provenance, completeness, timing and outcome violation?
 hypothesis_id: frozen_residual_known_input_and_current_index_contract_repair_v6
 program_track: offline_development
 entry_state: race_first_frozen_prediction_ready_but_default_lookup_misses_current_system_packets_and_source_proven_hyphenated_venue_restricted_and_ordinal_grade_packets_fail_before_scoring
 target_transition: frozen_residual_one_command_current_packet_and_known_input_contract_repaired_ready_not_activated
-exit_predicate: Sealed outcome-free regressions reproduce checkout-local race_feature_packet_not_found, target_venue_invalid for a canonical hyphenated venue, and feature_row_target_grade_mismatch for exact aliases already declared by the feature generator before the fix; the repaired offline race-first path resolves only current outcome-free packet directories declared by a fresh fail-closed system status index, applies an exact finite alias table derived from the existing generator contract without substring or regex inference, emits identical deterministic normalized full and half predictions, rejects malformed venue tokens, non-string, undeclared or genuinely different grades, stale, unsafe or escaping indexes, preserves every existing hash, runner, scratch, URL, timing, ambiguity and no-outcome gate, and performs no model, database, network, runtime, deployment, promotion, betting, merge or activation mutation.
+exit_predicate: Sealed outcome-free regressions reproduce checkout-local race_feature_packet_not_found, target_venue_invalid for a canonical hyphenated venue, and feature_row_target_grade_mismatch for exact aliases already declared by the feature generator before the fix; the repaired offline race-first path resolves only current outcome-free packet directories declared by a fresh fail-closed system status index, applies an immutable exact finite table derived from the existing generator maps plus its bounded canonical and source-observed preprocessing vocabulary without substring or regex inference, keeps exact ordinal-composite and mixed labels distinct unless the generator declares an alias, emits identical deterministic normalized full and half predictions, rejects malformed venue tokens, non-string, undeclared, ambiguous or genuinely different grades, stale, unsafe or escaping indexes, preserves every existing hash, runner, scratch, URL, timing, ambiguity and no-outcome gate, and performs no model, database, network, runtime, deployment, promotion, betting, merge or activation mutation.
 source_class: strict_prejump_sportsbet_capture_plus_verified_thedogs_form_and_hash_bound_shadow_feature_packet_no_outcomes
 dataset_version: frozen_residual_input_contract_regressions_20260717_no_outcomes
 evidence_hash: sha256:ae061ccaf9938b0d17a8d757a75f6ccf33c135f22c0dc3274df6f18fa68b3ebb
@@ -69,19 +69,24 @@ This original race-first card is amended in place for the source-proven V6
 input-contract repair authorized on 2026-07-17. The already-released V3 handoff
 remains complete. This continuation changes only the manual scorer's read-only
 current-packet lookup, deterministic offline invocation, repository-canonical
-venue tokens and the feature generator's exact finite declared grade aliases.
+venue tokens and the feature generator's exact finite grade contract.
 
 Accept canonical venue strings made from uppercase letters, digits,
 underscores and internal hyphens without rewriting the identity bound into the
 sidecar, feature packet, capture or race ID. Apply one deterministic grade
-canonicalization contract at comparison boundaries by reproducing only the
-finite aliases already declared by the feature generator's `GRADE_MAP` and
-`GRADE_VOCAB_MAP`. This includes `Restricted` / `Restricted Win`, ordinal and
-numeric forms such as `5th Grade` / `Grade 5`, and the generator's exact mixed,
-invitation, shorthand and tier labels. Do not infer additional aliases with
-substring extraction or open-ended numeric regexes. Empty, non-string,
-undeclared, ambiguous and genuinely different grade values must continue to
-fail closed.
+canonicalization contract at comparison boundaries by reproducing the finite
+non-conflicting aliases declared by the feature generator's `GRADE_MAP` and
+`GRADE_VOCAB_MAP`, their canonical values, and only the exact bounded labels
+already admitted or emitted by the same preprocessing path and observed in
+sealed packets. The latter set includes the exact ordinal-composite labels,
+`Best 8`, `Masters`, `Other`, and `Group 1` through `Group 3`; ordinal-composite
+labels remain distinct from `Mixed` labels. This also includes `Restricted` /
+`Restricted Win`, ordinal and numeric forms such as `5th Grade` / `Grade 5`,
+and the generator's exact mixed, invitation, shorthand and tier aliases. Bare
+`M` remains rejected because the two generator maps disagree on its meaning.
+Do not infer additional aliases with substring extraction or open-ended
+numeric regexes. Empty, non-string, undeclared, ambiguous and genuinely
+different grade values must continue to fail closed.
 
 The no-argument evidence resolver may read only the checkout-local evidence
 root and packet directories named by finalized outcome-free early-residual
