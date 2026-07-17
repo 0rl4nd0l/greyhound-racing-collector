@@ -19,6 +19,8 @@ a service, activate a model, or place a bet.
 - An autonomous Sportsbet capture report, single-attempt JSON, or attempts
   JSONL containing exactly one `APPENDED` / `PASS` attempt for the race.
 - A race ID in the canonical form `Race <number> - <venue code> - YYYY-MM-DD`.
+  Venue codes may contain uppercase letters, digits, underscores, and internal
+  single hyphens, for example `LADBROKES-Q1-LAKESIDE`.
 
 The command binds the race ID, race number, venue, date, runner boxes and
 normalized names across both sources. A verified scratched runner may remain
@@ -30,14 +32,27 @@ capture and is not scored.
 From the canonical checkout, the normal operator command is:
 
 ```bash
-python scripts/predict_market_form_residual.py --race 'sandown r6'
+uv run --offline scripts/predict_market_form_residual.py --race 'sandown r6'
 ```
 
-This searches only the default outcome-free evidence root. An external or
-additional evidence root can be named explicitly and repeated:
+The script declares its frozen NumPy dependency inline, so this command does
+not depend on a checkout-local virtual environment or a `python` shell alias.
+`--offline` prohibits package-registry access; the command fails before scoring
+if the declared Python and NumPy dependency are not already in the uv cache.
+
+By default this searches the checkout-local outcome-free evidence root plus the
+sealed packet directories named by finalized outcome-free status indexes in
+the existing retained system evidence root. Only indexes from the preceding
+36 hours are eligible. Unsafe, outcome-bearing, future-dated or path-escaping
+indexes fail closed. This avoids a recursive search of the large retained root
+and does not read the production database. The index is only a bounded search
+hint: the scorer still validates and hashes the selected sidecar, feature
+packet, implementation manifest and odds capture, and those emitted hashes are
+the prediction's provenance authority. An external or additional evidence root
+can still be named explicitly and repeated:
 
 ```bash
-python scripts/predict_market_form_residual.py \
+uv run --offline scripts/predict_market_form_residual.py \
   --race 'sandown r6' \
   --evidence-root '/evidence/full_evidence_orchestration_20260525'
 ```
@@ -51,7 +66,7 @@ the latest strict accepted capture. Equal latest candidates fail closed.
 ## Explicit invocation
 
 ```bash
-python scripts/predict_market_form_residual.py \
+uv run --offline scripts/predict_market_form_residual.py \
   --race-id 'Race 2 - SAN - 2026-07-16' \
   --form-csv '/evidence/daily_run/eligible_inputs/source_0002/Race 2 - SAN - 2026-07-16.csv' \
   --feature-rows '/evidence/daily_run/shadow_score_live/shadow_feature_rows.json' \
@@ -70,6 +85,17 @@ refresh is now handed to the existing daily feature generator as one
 supplemental form input. A fresh cutoff is taken immediately before feature
 generation, so a race that jumped while odds were being captured is excluded.
 The primary refresh limit and resource-isolation settings are unchanged.
+
+Target grade comparison uses an immutable finite table derived from the
+non-conflicting generator maps, their canonical values and the bounded exact
+labels already admitted by preprocessing and observed in sealed packets. This
+makes source-proven labels such as `Restricted` / `Restricted Win` and
+`5th Grade` / `Grade 5` equivalent. Exact ordinal-composite labels remain
+distinct from `Mixed` labels. Bare `M` is rejected because the generator maps
+disagree on its meaning. The scorer preserves identity-bearing punctuation,
+rejects non-string or unknown grades and does not treat genuinely different
+known grades as equal. Syntactically grade-like but undeclared values such as
+`Grade 999` and `NG14` also fail closed.
 
 ## Output and failure contract
 
@@ -108,4 +134,5 @@ already materialized. This change does not deploy or activate the repaired
 handoff. Network fetching, direct database access, service/unit/timer changes,
 shadow persistence, deployment and model activation remain separately gated.
 Any later activation must descend from the PR #45 resource-isolation changes,
-the frozen-model lineage, and the reviewed handoff repair.
+the final reviewed PR #46 effective-state repair, and the reviewed handoff and
+input-contract repair.

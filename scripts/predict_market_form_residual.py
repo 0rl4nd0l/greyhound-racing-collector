@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.11,<3.12"
+# dependencies = ["numpy==1.26.4"]
+# ///
 """Score one race from exact sealed system features and strict pre-jump odds.
 
 The command reads already-materialized artifacts and prints canonical JSON to
@@ -15,8 +19,9 @@ import json
 import math
 import re
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Mapping, Sequence
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
@@ -40,17 +45,47 @@ from src.predictor.market_form_residual import (  # noqa: E402
 
 MELBOURNE = ZoneInfo("Australia/Melbourne")
 ALLOWED_BOX_SOURCES = {"explicit_dom", "runner_text"}
-OUTCOME_KEYS = {
-    "actual_win",
-    "finish_position",
-    "official_result",
-    "outcome",
-    "placing",
-    "result",
-    "winner",
-    "winner_name",
-    "winner_odds",
-}
+OUTCOME_KEYS = frozenset(
+    {
+        "actual_win",
+        "finish_position",
+        "official_result",
+        "outcome",
+        "placing",
+        "result",
+        "winner",
+        "winner_name",
+        "winner_odds",
+    }
+)
+INDEX_OUTCOME_KEYS = OUTCOME_KEYS | frozenset(
+    {
+        "actual_wins",
+        "finish_positions",
+        "official_results",
+        "outcomes",
+        "placings",
+        "results",
+        "winners",
+        "winner_names",
+        "winner_odds_values",
+    }
+)
+INDEX_OUTCOME_TOKENS = frozenset(
+    {
+        "finish",
+        "finishes",
+        "outcome",
+        "outcomes",
+        "placing",
+        "placings",
+        "result",
+        "results",
+        "winner",
+        "winners",
+    }
+)
+INDEX_FALSE_OUTCOME_MARKERS = frozenset({"outcomes_present", "outcomes_read"})
 POST_RACE_URL_TOKENS = {
     "result",
     "results",
@@ -94,6 +129,243 @@ CAPTURE_ATTEMPT_SCHEMA = "autonomous_live_odds_capture_attempt_v1"
 CAPTURE_VALIDATION_SCHEMA = "autonomous_live_odds_capture_validation_v1"
 OUTPUT_SCHEMA = "manual_market_form_residual_prediction_v2"
 DEFAULT_EVIDENCE_ROOT = ROOT / "artifacts/full_evidence_orchestration_20260525"
+DEFAULT_RETAINED_EVIDENCE_ROOTS = (
+    ROOT.parent
+    / "greyhound-autonomous-accuracy-odds-v1-20260610"
+    / "artifacts/full_evidence_orchestration_20260525",
+)
+DEFAULT_INDEX_MAX_AGE = timedelta(hours=36)
+EARLY_RESIDUAL_STATUS_GLOB = (
+    "shadow_autopilot_daemonization_v1_*/early_residual_shadow_status.json"
+)
+EARLY_RESIDUAL_STATUS_SCHEMA = "early_residual_shadow_prediction_status_v1"
+EARLY_RESIDUAL_PLAN_SCHEMA = "early_residual_shadow_prediction_plan_v1"
+EARLY_RESIDUAL_STATUS_KEYS = frozenset(
+    {
+        "activation",
+        "appended_count",
+        "blocked_count",
+        "exact_replay_count",
+        "lock_release_preceded_stage_completion",
+        "outcomes_read",
+        "plan",
+        "race_count",
+        "races",
+        "schema_version",
+        "status",
+    }
+)
+EARLY_RESIDUAL_PLAN_KEYS = frozenset(
+    {
+        "activation",
+        "autopilot_output_dir",
+        "blockers",
+        "outcomes_read",
+        "production_db_access",
+        "race_count",
+        "races",
+        "run_id",
+        "schema_version",
+        "shadow_output_path",
+        "status",
+    }
+)
+EARLY_RESIDUAL_PLAN_RACE_KEYS = frozenset(
+    {
+        "capture_path",
+        "feature_command",
+        "feature_model_path",
+        "feature_output_dir",
+        "form_csv_path",
+        "race_id",
+        "score_command",
+        "sidecar_path",
+    }
+)
+EARLY_RESIDUAL_STATUS_RACE_KEYS = frozenset(
+    {"blocker", "feature_step", "prediction", "race_id", "score_step", "status"}
+)
+EARLY_RESIDUAL_STEP_KEYS = frozenset(
+    {
+        "command",
+        "cwd",
+        "duration_seconds",
+        "finished_at",
+        "name",
+        "returncode",
+        "started_at",
+        "status",
+        "stderr_path",
+        "stdout_path",
+        "timed_out",
+        "timeout_deadline_at",
+        "timeout_seconds",
+    }
+)
+EARLY_RESIDUAL_PREDICTION_KEYS = frozenset(
+    {
+        "activation",
+        "feature_freeze_timestamp",
+        "feature_manifest_generated_at",
+        "input_hashes",
+        "jump_timestamp",
+        "manifest_sha256",
+        "metadata_capture_timestamp",
+        "model_sha256",
+        "odds_append_timestamp",
+        "odds_capture_timestamp",
+        "outcomes_present",
+        "persisted",
+        "persistence_status",
+        "predictions",
+        "probability_sums",
+        "race_id",
+        "record_key",
+        "runner_set_sha256",
+        "schema_version",
+        "score_timestamp",
+        "shadow_output_path",
+        "source_contract",
+        "status",
+        "variants",
+    }
+)
+EARLY_RESIDUAL_INPUT_HASH_KEYS = frozenset(
+    {
+        "capture_artifact_sha256",
+        "feature_manifest_sha256",
+        "feature_rows_sha256",
+        "feature_source_sha256",
+        "form_csv_sha256",
+        "implementation_manifest_sha256",
+        "odds_source_sha256",
+        "selected_attempt_sha256",
+        "sidecar_sha256",
+    }
+)
+EARLY_RESIDUAL_RUNNER_PREDICTION_KEYS = frozenset(
+    {
+        "box",
+        "dog",
+        "full_minus_market",
+        "full_probability",
+        "half_probability",
+        "market_probability",
+        "rank",
+        "win_odds",
+    }
+)
+EARLY_RESIDUAL_PROBABILITY_SUM_KEYS = frozenset({"full", "half", "market"})
+EARLY_RESIDUAL_SOURCE_CONTRACT_KEYS = frozenset(
+    {
+        "database_access",
+        "feature_reconstruction_performed",
+        "feature_source",
+        "network_access",
+    }
+)
+EARLY_RESIDUAL_VARIANT_KEYS = frozenset({"full_strength", "half_strength"})
+VENUE_CODE_PATTERN = r"[A-Z0-9_]+(?:-[A-Z0-9_]+)*"
+# Finite union of the exact GRADE_MAP and GRADE_VOCAB_MAP contracts, their
+# canonical values, and source-observed exact labels covered by the scorer
+# tests. Bare ``M`` is intentionally absent because the source contracts
+# disagree on whether it means Maiden or Mixed.
+GRADE_ALIASES = MappingProxyType(
+    {
+    "1": "GRADE 1",
+    "1ST GRADE": "GRADE 1",
+    "2": "GRADE 2",
+    "2/3": "MIXED 2/3",
+    "2/3/4": "MIXED 2/3/4",
+    "2ND GRADE": "GRADE 2",
+    "3": "GRADE 3",
+    "3/4": "MIXED 3/4",
+    "3/4/5": "MIXED 3/4/5",
+    "3RD GRADE": "GRADE 3",
+    "3RD/4TH GRADE": "3RD/4TH GRADE",
+    "4": "GRADE 4",
+    "4/5": "MIXED 4/5",
+    "4TH GRADE": "GRADE 4",
+    "4TH/5TH GRADE": "4TH/5TH GRADE",
+    "5": "GRADE 5",
+    "5/6": "MIXED 5/6",
+    "5/M": "5/M",
+    "5TH GRADE": "GRADE 5",
+    "5TH/6TH GRADE": "5TH/6TH GRADE",
+    "6": "GRADE 6",
+    "6TH GRADE": "GRADE 6",
+    "7": "GRADE 7",
+    "7TH GRADE": "GRADE 7",
+    "8": "GRADE 8",
+    "BEST 8": "BEST 8",
+    "BT8": "BT8",
+    "FFA": "FREE FOR ALL",
+    "FREE FOR ALL": "FREE FOR ALL",
+    "GRADE 1": "GRADE 1",
+    "GRADE 2": "GRADE 2",
+    "GRADE 3": "GRADE 3",
+    "GRADE 4": "GRADE 4",
+    "GRADE 5": "GRADE 5",
+    "GRADE 6": "GRADE 6",
+    "GRADE 7": "GRADE 7",
+    "GRADE 8": "GRADE 8",
+    "GROUP 1": "GROUP 1",
+    "GROUP 2": "GROUP 2",
+    "GROUP 3": "GROUP 3",
+    "I": "I",
+    "INV": "INVITATION",
+    "INVITATION": "INVITATION",
+    "INVITATIONAL": "INVITATION",
+    "J/M": "J/M",
+    "M1/M2/M3": "M1/M2/M3",
+    "M2/M3": "M2/M3",
+    "M3": "M3",
+    "M4/M5": "M4/M5",
+    "M5": "M5",
+    "M6": "M6",
+    "MAIDEN": "MAIDEN",
+    "MASTERS": "MASTERS",
+    "MDN": "MAIDEN",
+    "MI4/5MA": "MI4/5MA",
+    "MIXED": "MIXED",
+    "MIXED 2/3": "MIXED 2/3",
+    "MIXED 2/3/4": "MIXED 2/3/4",
+    "MIXED 3/4": "MIXED 3/4",
+    "MIXED 3/4/5": "MIXED 3/4/5",
+    "MIXED 4/5": "MIXED 4/5",
+    "MIXED 5/6": "MIXED 5/6",
+    "MIXED 6/7": "MIXED 6/7",
+    "MX": "MIXED",
+    "N/P": "N/P",
+    "NG": "NON GRADED",
+    "NG1-4": "NG1-4",
+    "NON GRADED": "NON GRADED",
+    "NOV": "NOVICE",
+    "NOVICE": "NOVICE",
+    "NP": "N/P",
+    "OPEN": "OPEN",
+    "OTHER": "OTHER",
+    "P5": "P5",
+    "PM": "PM",
+    "R/W": "R/W",
+    "RESTRICTED": "RESTRICTED WIN",
+    "RESTRICTED WIN": "RESTRICTED WIN",
+    "RESTRICTED WIN FINAL": "RESTRICTED WIN",
+    "RESTRICTED WIN HEAT": "RESTRICTED WIN",
+    "RW": "R/W",
+    "S/E": "SPECIAL EVENT",
+    "SE": "SPECIAL EVENT",
+    "SPECIAL EVENT": "SPECIAL EVENT",
+    "TG1-4W": "TG1-4W",
+    "TG1-6W": "TG1-6W",
+    "TG5+W": "TG5+W",
+    "TIER 3 - GRADE 5": "GRADE 5",
+    "TIER 3 - GRADE 6": "GRADE 6",
+    "TIER 3 - GRADE 7": "GRADE 7",
+    "TIER 3 - MAIDEN": "MAIDEN",
+    "TIER 3 - RESTRICTED WIN": "RESTRICTED WIN",
+    }
+)
 
 
 class ManualPredictionError(RuntimeError):
@@ -145,15 +417,182 @@ def _runner_token(value: Any) -> str:
     return re.sub(r"[^A-Z0-9]", "", str(value or "").upper())
 
 
-def _contains_outcome_key(value: Any) -> bool:
+def _canonical_target_grade(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    return GRADE_ALIASES.get(value.strip().upper())
+
+
+def _contains_outcome_key(
+    value: Any,
+    forbidden_keys: frozenset[str] = OUTCOME_KEYS,
+) -> bool:
     if isinstance(value, Mapping):
         return any(
-            str(key).strip().lower() in OUTCOME_KEYS or _contains_outcome_key(item)
+            str(key).strip().lower() in forbidden_keys
+            or _contains_outcome_key(item, forbidden_keys)
             for key, item in value.items()
         )
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
-        return any(_contains_outcome_key(item) for item in value)
+        return any(_contains_outcome_key(item, forbidden_keys) for item in value)
     return False
+
+
+def _normalized_index_key(value: Any) -> str:
+    raw_key = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", str(value).strip())
+    return re.sub(r"[^a-z0-9]+", "_", raw_key.lower()).strip("_")
+
+
+def _index_key_is_outcome(value: Any) -> bool:
+    key = _normalized_index_key(value)
+    tokens = frozenset(token for token in key.split("_") if token)
+    return key in INDEX_OUTCOME_KEYS or bool(tokens & INDEX_OUTCOME_TOKENS)
+
+
+def _contains_index_outcome_key(value: Any) -> bool:
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            normalized_key = _normalized_index_key(key)
+            if normalized_key in INDEX_FALSE_OUTCOME_MARKERS and item is False:
+                continue
+            if _index_key_is_outcome(key) or _contains_index_outcome_key(item):
+                return True
+        return False
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        return any(_contains_index_outcome_key(item) for item in value)
+    return False
+
+
+def _require_index_keys(
+    value: Any,
+    allowed_keys: frozenset[str],
+) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ManualPredictionError("early_residual_status_index_shape_invalid")
+    if set(value) - allowed_keys:
+        raise ManualPredictionError("early_residual_status_index_unknown_field")
+    return value
+
+
+def _require_index_scalar_values(
+    value: Mapping[str, Any],
+    *,
+    excluded_keys: frozenset[str] = frozenset(),
+) -> None:
+    if any(
+        isinstance(item, (Mapping, list))
+        for key, item in value.items()
+        if key not in excluded_keys
+    ):
+        raise ManualPredictionError("early_residual_status_index_shape_invalid")
+
+
+def _require_index_string_list(value: Any) -> None:
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ManualPredictionError("early_residual_status_index_shape_invalid")
+
+
+def _validate_index_step(value: Any) -> None:
+    if value is None:
+        return
+    step = _require_index_keys(value, EARLY_RESIDUAL_STEP_KEYS)
+    if "command" in step:
+        _require_index_string_list(step["command"])
+    _require_index_scalar_values(step, excluded_keys=frozenset({"command"}))
+
+
+def _validate_index_prediction(value: Any, *, expected_race_id: Any) -> None:
+    if value is None:
+        return
+    prediction = _require_index_keys(value, EARLY_RESIDUAL_PREDICTION_KEYS)
+    nested_mappings = {
+        "input_hashes": EARLY_RESIDUAL_INPUT_HASH_KEYS,
+        "probability_sums": EARLY_RESIDUAL_PROBABILITY_SUM_KEYS,
+        "source_contract": EARLY_RESIDUAL_SOURCE_CONTRACT_KEYS,
+        "variants": EARLY_RESIDUAL_VARIANT_KEYS,
+    }
+    for key, allowed_keys in nested_mappings.items():
+        if key not in prediction:
+            continue
+        nested = _require_index_keys(prediction[key], allowed_keys)
+        _require_index_scalar_values(nested)
+    if "predictions" in prediction:
+        rows = prediction["predictions"]
+        if not isinstance(rows, list):
+            raise ManualPredictionError("early_residual_status_index_shape_invalid")
+        for row in rows:
+            runner = _require_index_keys(row, EARLY_RESIDUAL_RUNNER_PREDICTION_KEYS)
+            _require_index_scalar_values(runner)
+    _require_index_scalar_values(
+        prediction,
+        excluded_keys=frozenset({*nested_mappings, "predictions"}),
+    )
+    source_contract = prediction.get("source_contract")
+    variants = prediction.get("variants")
+    if (
+        prediction.get("activation") is not False
+        or prediction.get("outcomes_present") is not False
+        or prediction.get("persisted") is not True
+        or prediction.get("persistence_status") not in {"APPENDED", "EXACT_REPLAY"}
+        or prediction.get("schema_version") != OUTPUT_SCHEMA
+        or prediction.get("status")
+        != "MANUAL_PREJUMP_FROZEN_RESIDUAL_PREDICTION"
+        or not isinstance(expected_race_id, str)
+        or prediction.get("race_id") != expected_race_id
+        or not isinstance(source_contract, Mapping)
+        or source_contract.get("database_access") is not False
+        or source_contract.get("network_access") is not False
+        or source_contract.get("feature_reconstruction_performed") is not False
+        or source_contract.get("feature_source")
+        != "exact_hash_bound_system_shadow_feature_rows"
+        or not isinstance(variants, Mapping)
+        or type(variants.get("full_strength")) not in {int, float}
+        or type(variants.get("half_strength")) not in {int, float}
+        or float(variants["full_strength"]) != 1.0
+        or float(variants["half_strength"]) != 0.5
+    ):
+        raise ManualPredictionError("early_residual_status_index_unsafe")
+
+
+def _validate_index_authority_shape(status: Mapping[str, Any]) -> None:
+    _require_index_keys(status, EARLY_RESIDUAL_STATUS_KEYS)
+    plan = _require_index_keys(status.get("plan"), EARLY_RESIDUAL_PLAN_KEYS)
+    if "blockers" in plan:
+        _require_index_string_list(plan["blockers"])
+    plan_races = plan.get("races")
+    if not isinstance(plan_races, list):
+        raise ManualPredictionError("early_residual_status_index_shape_invalid")
+    for value in plan_races:
+        race = _require_index_keys(value, EARLY_RESIDUAL_PLAN_RACE_KEYS)
+        for key in ("feature_command", "score_command"):
+            if key in race:
+                _require_index_string_list(race[key])
+        _require_index_scalar_values(
+            race,
+            excluded_keys=frozenset({"feature_command", "score_command"}),
+        )
+    status_races = status.get("races")
+    if not isinstance(status_races, list):
+        raise ManualPredictionError("early_residual_status_index_shape_invalid")
+    for value in status_races:
+        race = _require_index_keys(value, EARLY_RESIDUAL_STATUS_RACE_KEYS)
+        _validate_index_step(race.get("feature_step"))
+        _validate_index_step(race.get("score_step"))
+        _validate_index_prediction(
+            race.get("prediction"), expected_race_id=race.get("race_id")
+        )
+        _require_index_scalar_values(
+            race,
+            excluded_keys=frozenset({"feature_step", "score_step", "prediction"}),
+        )
+    _require_index_scalar_values(
+        plan,
+        excluded_keys=frozenset({"blockers", "races"}),
+    )
+    _require_index_scalar_values(
+        status,
+        excluded_keys=frozenset({"plan", "races"}),
+    )
 
 
 def _parse_timestamp(value: Any, label: str) -> datetime:
@@ -241,6 +680,207 @@ def _path_in_roots(path: Path, roots: Sequence[Path]) -> bool:
     return False
 
 
+def _indexed_evidence_roots(
+    evidence_root: Path,
+    *,
+    score_timestamp: datetime,
+) -> list[Path]:
+    """Resolve current sealed packet directories from outcome-free status indexes."""
+
+    if score_timestamp.tzinfo is None or score_timestamp.utcoffset() is None:
+        raise ManualPredictionError("score_timestamp_timezone_missing")
+    root = evidence_root.resolve()
+    if not root.is_dir():
+        return []
+    score_time = score_timestamp.astimezone(MELBOURNE)
+    oldest_allowed = score_time - DEFAULT_INDEX_MAX_AGE
+    indexed_roots: set[Path] = set()
+    for status_path in sorted(root.glob(EARLY_RESIDUAL_STATUS_GLOB)):
+        timestamp_match = re.fullmatch(
+            r"shadow_autopilot_daemonization_v1_"
+            r"(\d{8}T\d{6}[+-]\d{4})_odds_capture",
+            status_path.parent.name,
+        )
+        if timestamp_match is None:
+            continue
+        try:
+            status_time = datetime.strptime(
+                timestamp_match.group(1), "%Y%m%dT%H%M%S%z"
+            ).astimezone(MELBOURNE)
+        except ValueError:
+            continue
+        if status_time < oldest_allowed or status_time > score_time:
+            continue
+        try:
+            status_relative = status_path.relative_to(root)
+        except ValueError:
+            raise ManualPredictionError(
+                "early_residual_status_index_path_escape"
+            ) from None
+        status_cursor = root
+        for part in status_relative.parts:
+            status_cursor = status_cursor / part
+            if status_cursor.is_symlink():
+                raise ManualPredictionError("early_residual_status_index_path_escape")
+        try:
+            resolved_status_path = status_path.resolve(strict=True)
+        except OSError:
+            raise ManualPredictionError(
+                "early_residual_status_index_unreadable"
+            ) from None
+        if not _path_in_roots(resolved_status_path, [root]):
+            raise ManualPredictionError("early_residual_status_index_path_escape")
+        status_raw, _ = _read_input(
+            resolved_status_path, "early_residual_status_index"
+        )
+        status = _json_object(status_raw, "early_residual_status_index")
+        if _contains_index_outcome_key(status):
+            raise ManualPredictionError("early_residual_status_index_contains_outcome")
+        plan = status.get("plan")
+        if (
+            not isinstance(plan, Mapping)
+            or status.get("status") not in {"PASS", "BLOCKED"}
+            or plan.get("status") != "READY"
+        ):
+            continue
+        _validate_index_authority_shape(status)
+        if (
+            status.get("activation") is not False
+            or status.get("outcomes_read") is not False
+            or status.get("lock_release_preceded_stage_completion") is not False
+            or plan.get("activation") is not False
+            or plan.get("outcomes_read") is not False
+            or plan.get("blockers") != []
+            or plan.get("production_db_access")
+            != "sqlite_mode_ro_feature_history_only"
+        ):
+            raise ManualPredictionError("early_residual_status_index_unsafe")
+        if (
+            status.get("schema_version") != EARLY_RESIDUAL_STATUS_SCHEMA
+            or plan.get("schema_version") != EARLY_RESIDUAL_PLAN_SCHEMA
+        ):
+            raise ManualPredictionError("early_residual_status_index_schema_mismatch")
+        expected_run_id = f"{timestamp_match.group(1)}_odds_capture"
+        if plan.get("run_id") != expected_run_id:
+            raise ManualPredictionError("early_residual_status_index_run_id_mismatch")
+        races = plan.get("races")
+        if not isinstance(races, list):
+            raise ManualPredictionError("early_residual_status_index_races_invalid")
+        if (
+            type(status.get("race_count")) is not int
+            or type(plan.get("race_count")) is not int
+            or status.get("race_count") != len(races)
+            or plan.get("race_count") != len(races)
+        ):
+            raise ManualPredictionError("early_residual_status_index_races_invalid")
+        status_races = status.get("races")
+        if (
+            not isinstance(status_races, list)
+            or len(status_races) != len(races)
+        ):
+            raise ManualPredictionError("early_residual_status_index_races_invalid")
+        if not all(
+            isinstance(race, Mapping) and isinstance(race.get("race_id"), str)
+            for race in races
+        ) or not all(
+            isinstance(race, Mapping)
+            and isinstance(race.get("race_id"), str)
+            and race.get("status") in {"APPENDED", "BLOCKED", "EXACT_REPLAY"}
+            for race in status_races
+        ):
+            raise ManualPredictionError("early_residual_status_index_races_invalid")
+        plan_race_ids = [str(race["race_id"]).strip() for race in races]
+        status_race_ids = [str(race["race_id"]).strip() for race in status_races]
+        if (
+            any(not race_id for race_id in plan_race_ids)
+            or status_race_ids != plan_race_ids
+            or len(set(plan_race_ids)) != len(plan_race_ids)
+        ):
+            raise ManualPredictionError("early_residual_status_index_races_invalid")
+        observed_counts = {
+            "APPENDED": sum(race["status"] == "APPENDED" for race in status_races),
+            "BLOCKED": sum(race["status"] == "BLOCKED" for race in status_races),
+            "EXACT_REPLAY": sum(
+                race["status"] == "EXACT_REPLAY" for race in status_races
+            ),
+        }
+        declared_counts = (
+            status.get("appended_count"),
+            status.get("blocked_count"),
+            status.get("exact_replay_count"),
+        )
+        if (
+            any(type(value) is not int or value < 0 for value in declared_counts)
+            or
+            status.get("appended_count") != observed_counts["APPENDED"]
+            or status.get("blocked_count") != observed_counts["BLOCKED"]
+            or status.get("exact_replay_count") != observed_counts["EXACT_REPLAY"]
+            or (
+                status.get("status") == "PASS"
+                and observed_counts["BLOCKED"] != 0
+            )
+            or (
+                status.get("status") == "BLOCKED"
+                and observed_counts["BLOCKED"] == 0
+            )
+        ):
+            raise ManualPredictionError("early_residual_status_index_unsafe")
+        for race in races:
+            if not isinstance(race, Mapping):
+                raise ManualPredictionError("early_residual_status_index_race_invalid")
+            try:
+                form_csv_path = Path(race["form_csv_path"]).resolve()
+                sidecar_path = Path(race["sidecar_path"]).resolve()
+                feature_output_dir = Path(race["feature_output_dir"]).resolve()
+                capture_path = Path(race["capture_path"]).resolve()
+            except (KeyError, TypeError):
+                raise ManualPredictionError(
+                    "early_residual_status_index_paths_invalid"
+                ) from None
+            indexed_paths = (
+                form_csv_path,
+                sidecar_path,
+                feature_output_dir,
+                capture_path,
+            )
+            if not all(_path_in_roots(path, [root]) for path in indexed_paths):
+                raise ManualPredictionError("early_residual_status_index_path_escape")
+            if sidecar_path != form_csv_path.with_name(
+                form_csv_path.name + ".metadata.json"
+            ):
+                raise ManualPredictionError("early_residual_status_index_sidecar_mismatch")
+            feature_files = (
+                feature_output_dir / "shadow_feature_rows.json",
+                feature_output_dir / "shadow_manifest.json",
+                feature_output_dir / "implementation_file_manifest.json",
+            )
+            if not (
+                form_csv_path.is_file()
+                and sidecar_path.is_file()
+                and capture_path.is_file()
+                and all(path.is_file() for path in feature_files)
+            ):
+                continue
+            indexed_roots.update(
+                {form_csv_path.parent, feature_output_dir, capture_path.parent}
+            )
+    return sorted(indexed_roots)
+
+
+def _default_race_first_evidence_roots(score_timestamp: datetime) -> list[Path]:
+    roots: set[Path] = set()
+    if DEFAULT_EVIDENCE_ROOT.is_dir():
+        roots.add(DEFAULT_EVIDENCE_ROOT.resolve())
+    for retained_root in DEFAULT_RETAINED_EVIDENCE_ROOTS:
+        roots.update(
+            _indexed_evidence_roots(
+                retained_root,
+                score_timestamp=score_timestamp,
+            )
+        )
+    return sorted(roots)
+
+
 def _integer(value: Any, label: str, *, minimum: int = 0) -> int:
     if isinstance(value, bool):
         raise ManualPredictionError(f"{label}_invalid")
@@ -318,7 +958,8 @@ def _trusted_sportsbet_url(value: Any, race_id: str) -> bool:
         r"/greyhound-racing/.+/race-(\d+)-\d+/?", parsed.path.lower()
     )
     race_match = re.fullmatch(
-        r"Race (\d+) - [A-Z0-9_]+ - \d{4}-\d{2}-\d{2}", race_id
+        rf"Race (\d+) - {VENUE_CODE_PATTERN} - \d{{4}}-\d{{2}}-\d{{2}}",
+        race_id,
     )
     return bool(
         path_match
@@ -448,13 +1089,41 @@ def _sidecar_context(sidecar: Mapping[str, Any]) -> dict[str, Any]:
         "target_race_number",
         minimum=1,
     )
-    venue = str(shadow.get("venue") or race_info.get("venue") or "").strip().upper()
-    if not venue or not re.fullmatch(r"[A-Z0-9_]+", venue):
+    venue_values = []
+    if "venue" in shadow:
+        venue_values.append(shadow.get("venue"))
+    if "venue" in race_info:
+        venue_values.append(race_info.get("venue"))
+    if not venue_values or any(not isinstance(value, str) for value in venue_values):
         raise ManualPredictionError("target_venue_invalid")
+    normalized_venues = [value.strip().upper() for value in venue_values]
+    if any(
+        not venue or not re.fullmatch(VENUE_CODE_PATTERN, venue)
+        for venue in normalized_venues
+    ):
+        raise ManualPredictionError("target_venue_invalid")
+    if len(set(normalized_venues)) != 1:
+        raise ManualPredictionError("target_venue_alias_mismatch")
+    venue = normalized_venues[0]
     target_distance = _distance_metres(shadow.get("distance") or race_info.get("distance"))
-    target_grade = str(shadow.get("grade") or race_info.get("grade") or "").strip()
-    if not target_grade:
+    target_grade_values = []
+    if "grade" in shadow:
+        target_grade_values.append(shadow.get("grade"))
+    if "grade" in race_info:
+        target_grade_values.append(race_info.get("grade"))
+    if not target_grade_values or any(
+        value is None or value == "" for value in target_grade_values
+    ):
         raise ManualPredictionError("target_grade_missing")
+    target_grade_canonicals = [
+        _canonical_target_grade(value) for value in target_grade_values
+    ]
+    if any(value is None for value in target_grade_canonicals):
+        raise ManualPredictionError("target_grade_invalid")
+    if len(set(target_grade_canonicals)) != 1:
+        raise ManualPredictionError("target_grade_alias_mismatch")
+    target_grade_value = target_grade_values[0]
+    target_grade_canonical = target_grade_canonicals[0]
     jump = _jump_timestamp(sidecar)
     if jump.astimezone(MELBOURNE).date() != target_date:
         raise ManualPredictionError("jump_date_target_date_mismatch")
@@ -469,7 +1138,8 @@ def _sidecar_context(sidecar: Mapping[str, Any]) -> dict[str, Any]:
         "target_race_number": race_number,
         "target_distance": target_distance,
         "target_venue": venue,
-        "target_grade": target_grade,
+        "target_grade": target_grade_value,
+        "target_grade_canonical": target_grade_canonical,
         "source_url": str(source_url),
         "expected_race_id": f"Race {race_number} - {venue} - {target_date.isoformat()}",
     }
@@ -877,9 +1547,10 @@ def _feature_packet(
             distance, float(context["target_distance"]), rel_tol=0.0, abs_tol=1e-9
         ):
             raise ManualPredictionError("feature_row_target_distance_mismatch")
-        if _runner_token(row.get("target_grade_safe")) != _runner_token(
-            context["target_grade"]
-        ):
+        feature_grade_canonical = _canonical_target_grade(row.get("target_grade_safe"))
+        if feature_grade_canonical is None:
+            raise ManualPredictionError("feature_row_target_grade_invalid")
+        if feature_grade_canonical != context["target_grade_canonical"]:
             raise ManualPredictionError("feature_row_target_grade_mismatch")
         if row.get("same_distance_same_grade_history_cutoff") != (
             "strictly_before_target_race"
@@ -1366,7 +2037,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help=(
             "Outcome-free evidence root to search in race-first mode. May be repeated; "
-            "defaults to the repository evidence root."
+            "defaults to the repository root plus current sealed system packet indexes."
         ),
     )
     parser.add_argument("--form-csv", type=Path)
@@ -1401,7 +2072,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             discovered = discover_race_artifacts(
                 race_query=args.race,
-                evidence_roots=args.evidence_root or [DEFAULT_EVIDENCE_ROOT],
+                evidence_roots=args.evidence_root
+                or _default_race_first_evidence_roots(score_time),
                 score_timestamp=score_time,
             )
             race_id = str(discovered["race_id"])

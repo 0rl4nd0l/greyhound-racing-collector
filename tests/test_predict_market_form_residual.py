@@ -776,6 +776,116 @@ def _retime_for_cli(paths: dict[str, Path]) -> str:
     return race_id
 
 
+def _retarget_fixture_contract(
+    paths: dict[str, Path],
+    *,
+    venue: str,
+    venue_slug: str,
+    sidecar_grade: str,
+    feature_grade: str,
+) -> str:
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    shadow = sidecar["prejump_shadow_metadata"]
+    race_number = int(shadow["race_number"])
+    race_date = str(shadow["race_date"])
+    race_id = f"Race {race_number} - {venue} - {race_date}"
+    thedogs_url = (
+        f"https://www.thedogs.com.au/racing/{venue_slug}/"
+        f"{race_date}/{race_number}/test"
+    )
+    shadow["venue"] = venue
+    shadow["grade"] = sidecar_grade
+    shadow["source_url"] = thedogs_url
+    sidecar["race_url"] = thedogs_url
+    old_form_csv = paths["form_csv"]
+    old_sidecar = paths["sidecar"]
+    form_csv = old_form_csv.with_name(f"{race_id}.csv")
+    sidecar_path = form_csv.with_name(form_csv.name + ".metadata.json")
+    if form_csv != old_form_csv:
+        old_form_csv.rename(form_csv)
+        old_sidecar.rename(sidecar_path)
+        paths["form_csv"] = form_csv
+        paths["sidecar"] = sidecar_path
+    sidecar["filename"] = form_csv.name
+    _write_json(paths["sidecar"], sidecar)
+
+    capture = _json(paths["capture"])
+    assert isinstance(capture, dict)
+    attempt = capture["attempts"][0]
+    attempt["race_id"] = race_id
+    attempt["validation"]["source_url"] = (
+        "https://www.sportsbet.com.au/greyhound-racing/"
+        f"australia-nz/{venue_slug}/race-{race_number}-123"
+    )
+    _write_json(paths["capture"], capture)
+
+    def retarget(rows, manifest):
+        manifest["input_files"] = [str(form_csv.resolve())]
+        for row in rows:
+            row["race_id"] = race_id
+            row["race_date"] = race_date
+            row["race_number"] = race_number
+            row["venue"] = venue
+            row["target_metadata_source_url"] = thedogs_url
+            row["target_grade_safe"] = feature_grade
+            row["source_csv"] = str(form_csv.resolve())
+
+    _reseal(paths, retarget)
+    return race_id
+
+
+def _early_residual_index_payload(
+    run_id: str, races: list[dict[str, object]]
+) -> dict[str, object]:
+    race_count = len(races)
+    return {
+        "activation": False,
+        "appended_count": race_count,
+        "blocked_count": 0,
+        "exact_replay_count": 0,
+        "lock_release_preceded_stage_completion": False,
+        "outcomes_read": False,
+        "race_count": race_count,
+        "races": [
+            {"race_id": race.get("race_id"), "status": "APPENDED"}
+            for race in races
+        ],
+        "schema_version": "early_residual_shadow_prediction_status_v1",
+        "status": "PASS",
+        "plan": {
+            "activation": False,
+            "blockers": [],
+            "outcomes_read": False,
+            "production_db_access": "sqlite_mode_ro_feature_history_only",
+            "race_count": race_count,
+            "races": races,
+            "run_id": run_id,
+            "schema_version": "early_residual_shadow_prediction_plan_v1",
+            "status": "READY",
+        },
+    }
+
+
+def _embedded_index_prediction(race_id: str) -> dict[str, object]:
+    return {
+        "activation": False,
+        "outcomes_present": False,
+        "persisted": True,
+        "persistence_status": "APPENDED",
+        "race_id": race_id,
+        "schema_version": "manual_market_form_residual_prediction_v2",
+        "source_contract": {
+            "database_access": False,
+            "feature_reconstruction_performed": False,
+            "feature_source": "exact_hash_bound_system_shadow_feature_rows",
+            "network_access": False,
+        },
+        "status": "MANUAL_PREJUMP_FROZEN_RESIDUAL_PREDICTION",
+        "variants": {"full_strength": 1.0, "half_strength": 0.5},
+    }
+
+
 def test_cli_prints_canonical_json_and_writes_nothing(tmp_path):
     paths = _write_fixture(tmp_path)
     race_id = _retime_for_cli(paths)
@@ -851,6 +961,926 @@ def test_race_first_cli_discovers_exact_packet_with_one_query_and_writes_nothing
         if path.is_file()
     }
     assert after == before
+
+
+def test_race_first_uses_current_indexed_system_evidence_root_by_default(
+    tmp_path, monkeypatch, capfd
+):
+    live_root = tmp_path / "retained_evidence"
+    paths = _write_fixture(live_root / "sealed_packet")
+    race_id = _retime_for_cli(paths)
+    now = datetime.now(tz=MELBOURNE)
+    run_id = f"{now.strftime('%Y%m%dT%H%M%S%z')}_odds_capture"
+    status_dir = live_root / (
+        f"shadow_autopilot_daemonization_v1_{run_id}"
+    )
+    status_dir.mkdir(parents=True)
+    _write_json(
+        status_dir / "early_residual_shadow_status.json",
+        _early_residual_index_payload(
+            run_id,
+            [
+                {
+                    "race_id": race_id,
+                    "form_csv_path": str(paths["form_csv"]),
+                    "sidecar_path": str(paths["sidecar"]),
+                    "feature_output_dir": str(paths["feature_rows"].parent),
+                    "capture_path": str(paths["capture"]),
+                }
+            ],
+        ),
+    )
+    local_root = tmp_path / "checkout_evidence"
+    local_root.mkdir()
+    monkeypatch.setattr(manual, "DEFAULT_EVIDENCE_ROOT", local_root)
+    monkeypatch.setattr(
+        manual, "DEFAULT_RETAINED_EVIDENCE_ROOTS", (live_root,)
+    )
+    before = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in sorted(tmp_path.rglob("*"))
+        if path.is_file()
+    }
+
+    returncode = manual.main(["--race", "sundown r2"])
+
+    captured = capfd.readouterr()
+    assert returncode == 0, captured.err
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["race_id"] == race_id
+    after = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in sorted(tmp_path.rglob("*"))
+        if path.is_file()
+    }
+    assert after == before
+
+
+def test_current_system_evidence_index_rejects_path_escape(tmp_path):
+    live_root = tmp_path / "retained_evidence"
+    now = datetime.now(tz=MELBOURNE)
+    run_id = f"{now.strftime('%Y%m%dT%H%M%S%z')}_odds_capture"
+    status_dir = live_root / (
+        f"shadow_autopilot_daemonization_v1_{run_id}"
+    )
+    status_dir.mkdir(parents=True)
+    escaped = tmp_path / "outside"
+    _write_json(
+        status_dir / "early_residual_shadow_status.json",
+        _early_residual_index_payload(
+            run_id,
+            [
+                {
+                    "race_id": RACE_ID,
+                    "form_csv_path": str(escaped / "race.csv"),
+                    "sidecar_path": str(escaped / "race.csv.metadata.json"),
+                    "feature_output_dir": str(escaped / "features"),
+                    "capture_path": str(escaped / "capture.json"),
+                }
+            ],
+        ),
+    )
+
+    with pytest.raises(
+        ManualPredictionError, match="early_residual_status_index_path_escape"
+    ):
+        manual._indexed_evidence_roots(live_root, score_timestamp=now)
+
+
+def test_current_system_evidence_index_rejects_symlinked_external_index(tmp_path):
+    live_root = tmp_path / "retained_evidence"
+    live_root.mkdir()
+    packet = _write_fixture(live_root / "sealed_packet")
+    now = datetime.now(tz=MELBOURNE)
+    run_id = f"{now.strftime('%Y%m%dT%H%M%S%z')}_odds_capture"
+    external_status_dir = tmp_path / "external_status"
+    external_status_dir.mkdir()
+    _write_json(
+        external_status_dir / "early_residual_shadow_status.json",
+        _early_residual_index_payload(
+            run_id,
+            [
+                {
+                    "race_id": RACE_ID,
+                    "form_csv_path": str(packet["form_csv"]),
+                    "sidecar_path": str(packet["sidecar"]),
+                    "feature_output_dir": str(packet["feature_rows"].parent),
+                    "capture_path": str(packet["capture"]),
+                }
+            ],
+        ),
+    )
+    (live_root / f"shadow_autopilot_daemonization_v1_{run_id}").symlink_to(
+        external_status_dir,
+        target_is_directory=True,
+    )
+
+    with pytest.raises(
+        ManualPredictionError, match="early_residual_status_index_path_escape"
+    ):
+        manual._indexed_evidence_roots(live_root, score_timestamp=now)
+
+
+@pytest.mark.parametrize(
+    ("status_schema", "plan_schema", "plan_run_id"),
+    [
+        ("wrong", "early_residual_shadow_prediction_plan_v1", "CURRENT"),
+        ("early_residual_shadow_prediction_status_v1", "wrong", "CURRENT"),
+        (
+            "early_residual_shadow_prediction_status_v1",
+            "early_residual_shadow_prediction_plan_v1",
+            "20200101T000000+1000_odds_capture",
+        ),
+    ],
+)
+def test_current_system_evidence_index_requires_exact_schema_and_run_binding(
+    status_schema, plan_schema, plan_run_id, tmp_path
+):
+    live_root = tmp_path / "retained_evidence"
+    now = datetime.now(tz=MELBOURNE)
+    run_id = f"{now.strftime('%Y%m%dT%H%M%S%z')}_odds_capture"
+    status_dir = live_root / f"shadow_autopilot_daemonization_v1_{run_id}"
+    status_dir.mkdir(parents=True)
+    payload = _early_residual_index_payload(run_id, [])
+    payload["schema_version"] = status_schema
+    payload["plan"]["schema_version"] = plan_schema
+    payload["plan"]["run_id"] = (
+        run_id if plan_run_id == "CURRENT" else plan_run_id
+    )
+    _write_json(
+        status_dir / "early_residual_shadow_status.json",
+        payload,
+    )
+
+    with pytest.raises(
+        ManualPredictionError,
+        match="early_residual_status_index_(schema|run_id)_mismatch",
+    ):
+        manual._indexed_evidence_roots(live_root, score_timestamp=now)
+
+
+@pytest.mark.parametrize(
+    "unsafe_case",
+    [
+        "plural_outcomes",
+        "plural_results",
+        "prefixed_outcomes",
+        "prefixed_results",
+        "camel_outcomes",
+        "winner_details",
+        "unsafe_outcomes_marker",
+        "actual_win_by_box",
+        "winning_dog",
+        "first_place_dog",
+        "positions",
+        "plan_blockers",
+        "read_write_db",
+        "early_lock_release",
+    ],
+)
+def test_current_system_evidence_index_rejects_unsafe_or_nonfinal_status(
+    unsafe_case, tmp_path
+):
+    live_root = tmp_path / "retained_evidence"
+    now = datetime.now(tz=MELBOURNE)
+    run_id = f"{now.strftime('%Y%m%dT%H%M%S%z')}_odds_capture"
+    status_dir = live_root / f"shadow_autopilot_daemonization_v1_{run_id}"
+    status_dir.mkdir(parents=True)
+    payload = _early_residual_index_payload(run_id, [])
+    if unsafe_case == "plural_outcomes":
+        payload["outcomes"] = []
+    elif unsafe_case == "plural_results":
+        payload["results"] = []
+    elif unsafe_case == "prefixed_outcomes":
+        payload["race_outcomes"] = []
+    elif unsafe_case == "prefixed_results":
+        payload["official_results"] = []
+    elif unsafe_case == "camel_outcomes":
+        payload["raceOutcomes"] = []
+    elif unsafe_case == "winner_details":
+        payload["winner_details"] = {}
+    elif unsafe_case == "unsafe_outcomes_marker":
+        payload["outcomes_present"] = True
+    elif unsafe_case == "actual_win_by_box":
+        payload["actualWinByBox"] = {}
+    elif unsafe_case == "winning_dog":
+        payload["winningDog"] = "synthetic"
+    elif unsafe_case == "first_place_dog":
+        payload["firstPlaceDog"] = "synthetic"
+    elif unsafe_case == "positions":
+        payload["positions"] = []
+    elif unsafe_case == "plan_blockers":
+        payload["plan"]["blockers"] = ["synthetic_blocker"]
+    elif unsafe_case == "read_write_db":
+        payload["plan"]["production_db_access"] = "sqlite_mode_rw"
+    elif unsafe_case == "early_lock_release":
+        payload["lock_release_preceded_stage_completion"] = True
+    _write_json(status_dir / "early_residual_shadow_status.json", payload)
+
+    with pytest.raises(
+        ManualPredictionError,
+        match="early_residual_status_index_(contains_outcome|unknown_field|unsafe)",
+    ):
+        manual._indexed_evidence_roots(live_root, score_timestamp=now)
+
+
+@pytest.mark.parametrize(
+    "unknown_location",
+    ["top", "plan", "plan_race", "status_race", "prediction"],
+)
+def test_current_system_evidence_index_rejects_unknown_nested_fields(
+    unknown_location, tmp_path
+):
+    live_root = tmp_path / "retained_evidence"
+    now = datetime.now(tz=MELBOURNE)
+    run_id = f"{now.strftime('%Y%m%dT%H%M%S%z')}_odds_capture"
+    status_dir = live_root / f"shadow_autopilot_daemonization_v1_{run_id}"
+    status_dir.mkdir(parents=True)
+    race = {
+        "race_id": RACE_ID,
+        "form_csv_path": str(live_root / "race.csv"),
+        "sidecar_path": str(live_root / "race.csv.metadata.json"),
+        "feature_output_dir": str(live_root / "features"),
+        "capture_path": str(live_root / "capture.json"),
+    }
+    payload = _early_residual_index_payload(run_id, [race])
+    if unknown_location == "top":
+        target = payload
+    elif unknown_location == "plan":
+        target = payload["plan"]
+    elif unknown_location == "plan_race":
+        target = payload["plan"]["races"][0]
+    elif unknown_location == "status_race":
+        target = payload["races"][0]
+    else:
+        payload["races"][0]["prediction"] = {}
+        target = payload["races"][0]["prediction"]
+    target["winningDog"] = "synthetic"
+    _write_json(status_dir / "early_residual_shadow_status.json", payload)
+
+    with pytest.raises(
+        ManualPredictionError, match="early_residual_status_index_unknown_field"
+    ):
+        manual._indexed_evidence_roots(live_root, score_timestamp=now)
+
+
+@pytest.mark.parametrize(
+    "unsafe_nested_prediction",
+    [
+        "activation",
+        "database_access",
+        "network_access",
+        "feature_reconstruction",
+        "race_id",
+        "strength",
+    ],
+)
+def test_current_system_evidence_index_rejects_unsafe_nested_prediction(
+    unsafe_nested_prediction, tmp_path
+):
+    live_root = tmp_path / "retained_evidence"
+    now = datetime.now(tz=MELBOURNE)
+    run_id = f"{now.strftime('%Y%m%dT%H%M%S%z')}_odds_capture"
+    status_dir = live_root / f"shadow_autopilot_daemonization_v1_{run_id}"
+    status_dir.mkdir(parents=True)
+    race = {
+        "race_id": RACE_ID,
+        "form_csv_path": str(live_root / "race.csv"),
+        "sidecar_path": str(live_root / "race.csv.metadata.json"),
+        "feature_output_dir": str(live_root / "features"),
+        "capture_path": str(live_root / "capture.json"),
+    }
+    payload = _early_residual_index_payload(run_id, [race])
+    prediction = _embedded_index_prediction(RACE_ID)
+    payload["races"][0]["prediction"] = prediction
+    if unsafe_nested_prediction == "activation":
+        prediction["activation"] = True
+    elif unsafe_nested_prediction == "database_access":
+        prediction["source_contract"]["database_access"] = True
+    elif unsafe_nested_prediction == "network_access":
+        prediction["source_contract"]["network_access"] = True
+    elif unsafe_nested_prediction == "feature_reconstruction":
+        prediction["source_contract"]["feature_reconstruction_performed"] = True
+    elif unsafe_nested_prediction == "race_id":
+        prediction["race_id"] = "Race 3 - SAN - 2026-07-16"
+    else:
+        prediction["variants"]["full_strength"] = 2.0
+    _write_json(status_dir / "early_residual_shadow_status.json", payload)
+
+    with pytest.raises(
+        ManualPredictionError, match="early_residual_status_index_unsafe"
+    ):
+        manual._indexed_evidence_roots(live_root, score_timestamp=now)
+
+
+@pytest.mark.parametrize("non_authority", ["plan_blocked", "missing_status", "skipped"])
+def test_current_system_evidence_index_skips_non_authoritative_status(
+    non_authority, tmp_path
+):
+    live_root = tmp_path / "retained_evidence"
+    now = datetime.now(tz=MELBOURNE)
+    run_id = f"{now.strftime('%Y%m%dT%H%M%S%z')}_odds_capture"
+    status_dir = live_root / f"shadow_autopilot_daemonization_v1_{run_id}"
+    status_dir.mkdir(parents=True)
+    payload = _early_residual_index_payload(run_id, [])
+    if non_authority == "plan_blocked":
+        payload["plan"]["status"] = "BLOCKED"
+    elif non_authority == "missing_status":
+        payload.pop("status")
+    else:
+        payload["status"] = "SKIPPED_NO_NEW_CAPTURE"
+        payload["plan"]["status"] = "SKIPPED_NO_NEW_CAPTURE"
+    _write_json(status_dir / "early_residual_shadow_status.json", payload)
+
+    assert manual._indexed_evidence_roots(live_root, score_timestamp=now) == []
+
+
+def test_current_system_evidence_index_rejects_outcome_key_on_skipped_status(tmp_path):
+    live_root = tmp_path / "retained_evidence"
+    now = datetime.now(tz=MELBOURNE)
+    run_id = f"{now.strftime('%Y%m%dT%H%M%S%z')}_odds_capture"
+    status_dir = live_root / f"shadow_autopilot_daemonization_v1_{run_id}"
+    status_dir.mkdir(parents=True)
+    payload = _early_residual_index_payload(run_id, [])
+    payload["status"] = "SKIPPED_NO_NEW_CAPTURE"
+    payload["plan"]["status"] = "SKIPPED_NO_NEW_CAPTURE"
+    payload["race_outcomes"] = []
+    _write_json(status_dir / "early_residual_shadow_status.json", payload)
+
+    with pytest.raises(
+        ManualPredictionError, match="early_residual_status_index_contains_outcome"
+    ):
+        manual._indexed_evidence_roots(live_root, score_timestamp=now)
+
+
+def test_current_system_evidence_index_skips_empty_index_before_usable_index(tmp_path):
+    live_root = tmp_path / "retained_evidence"
+    paths = _write_fixture(live_root / "sealed_packet")
+    now = datetime.now(tz=MELBOURNE).replace(microsecond=0)
+    skipped_time = now - timedelta(minutes=1)
+    skipped_run_id = f"{skipped_time.strftime('%Y%m%dT%H%M%S%z')}_odds_capture"
+    skipped_dir = live_root / (
+        f"shadow_autopilot_daemonization_v1_{skipped_run_id}"
+    )
+    skipped_dir.mkdir(parents=True)
+    skipped = _early_residual_index_payload(skipped_run_id, [])
+    skipped["status"] = "SKIPPED_NO_NEW_CAPTURE"
+    skipped["plan"]["status"] = "SKIPPED_NO_NEW_CAPTURE"
+    _write_json(skipped_dir / "early_residual_shadow_status.json", skipped)
+
+    run_id = f"{now.strftime('%Y%m%dT%H%M%S%z')}_odds_capture"
+    ready_dir = live_root / f"shadow_autopilot_daemonization_v1_{run_id}"
+    ready_dir.mkdir(parents=True)
+    ready = _early_residual_index_payload(
+        run_id,
+        [
+            {
+                "race_id": RACE_ID,
+                "form_csv_path": str(paths["form_csv"]),
+                "sidecar_path": str(paths["sidecar"]),
+                "feature_output_dir": str(paths["feature_rows"].parent),
+                "capture_path": str(paths["capture"]),
+            }
+        ],
+    )
+    _write_json(ready_dir / "early_residual_shadow_status.json", ready)
+
+    roots = manual._indexed_evidence_roots(live_root, score_timestamp=now)
+
+    assert set(roots) == {
+        paths["form_csv"].parent.resolve(),
+        paths["feature_rows"].parent.resolve(),
+        paths["capture"].parent.resolve(),
+    }
+
+
+def test_current_system_evidence_index_accepts_finalized_blocked_status_with_packet(
+    tmp_path,
+):
+    live_root = tmp_path / "retained_evidence"
+    paths = _write_fixture(live_root / "sealed_packet")
+    now = datetime.now(tz=MELBOURNE)
+    run_id = f"{now.strftime('%Y%m%dT%H%M%S%z')}_odds_capture"
+    status_dir = live_root / f"shadow_autopilot_daemonization_v1_{run_id}"
+    status_dir.mkdir(parents=True)
+    missing = live_root / "blocked_packet"
+    races = [
+        {
+            "race_id": RACE_ID,
+            "form_csv_path": str(paths["form_csv"]),
+            "sidecar_path": str(paths["sidecar"]),
+            "feature_output_dir": str(paths["feature_rows"].parent),
+            "capture_path": str(paths["capture"]),
+        },
+        {
+            "race_id": "Race 3 - SAN - 2026-07-16",
+            "form_csv_path": str(missing / "race.csv"),
+            "sidecar_path": str(missing / "race.csv.metadata.json"),
+            "feature_output_dir": str(missing / "features"),
+            "capture_path": str(missing / "capture.json"),
+        },
+    ]
+    payload = _early_residual_index_payload(run_id, races)
+    payload["status"] = "BLOCKED"
+    payload["appended_count"] = 1
+    payload["blocked_count"] = 1
+    payload["races"] = [
+        {"race_id": races[0]["race_id"], "status": "APPENDED"},
+        {"race_id": races[1]["race_id"], "status": "BLOCKED"},
+    ]
+    _write_json(status_dir / "early_residual_shadow_status.json", payload)
+
+    roots = manual._indexed_evidence_roots(live_root, score_timestamp=now)
+
+    assert set(roots) == {
+        paths["form_csv"].parent.resolve(),
+        paths["feature_rows"].parent.resolve(),
+        paths["capture"].parent.resolve(),
+    }
+
+
+@pytest.mark.parametrize("identity_case", ["mismatch", "duplicate"])
+def test_current_system_evidence_index_binds_unique_status_race_ids(
+    identity_case, tmp_path
+):
+    live_root = tmp_path / "retained_evidence"
+    now = datetime.now(tz=MELBOURNE)
+    run_id = f"{now.strftime('%Y%m%dT%H%M%S%z')}_odds_capture"
+    status_dir = live_root / f"shadow_autopilot_daemonization_v1_{run_id}"
+    status_dir.mkdir(parents=True)
+    races = [
+        {
+            "race_id": RACE_ID,
+            "form_csv_path": str(live_root / "one.csv"),
+            "sidecar_path": str(live_root / "one.csv.metadata.json"),
+            "feature_output_dir": str(live_root / "one_features"),
+            "capture_path": str(live_root / "one_capture.json"),
+        },
+        {
+            "race_id": "Race 3 - SAN - 2026-07-16",
+            "form_csv_path": str(live_root / "two.csv"),
+            "sidecar_path": str(live_root / "two.csv.metadata.json"),
+            "feature_output_dir": str(live_root / "two_features"),
+            "capture_path": str(live_root / "two_capture.json"),
+        },
+    ]
+    payload = _early_residual_index_payload(run_id, races)
+    if identity_case == "mismatch":
+        payload["races"][1]["race_id"] = "Race 4 - SAN - 2026-07-16"
+    else:
+        payload["races"][1]["race_id"] = RACE_ID
+    _write_json(status_dir / "early_residual_shadow_status.json", payload)
+
+    with pytest.raises(
+        ManualPredictionError, match="early_residual_status_index_races_invalid"
+    ):
+        manual._indexed_evidence_roots(live_root, score_timestamp=now)
+
+
+def test_stale_system_evidence_index_is_not_discovery_authority(tmp_path):
+    live_root = tmp_path / "retained_evidence"
+    now = datetime.now(tz=MELBOURNE)
+    stale = now - timedelta(hours=37)
+    status_dir = live_root / (
+        "shadow_autopilot_daemonization_v1_"
+        f"{stale.strftime('%Y%m%dT%H%M%S%z')}_odds_capture"
+    )
+    status_dir.mkdir(parents=True)
+    _write_json(
+        status_dir / "early_residual_shadow_status.json",
+        {"winner": "synthetic-outcome-that-must-not-be-read"},
+    )
+
+    assert manual._indexed_evidence_roots(live_root, score_timestamp=now) == []
+
+
+def test_race_first_cli_accepts_canonical_hyphenated_venue(tmp_path):
+    paths = _write_fixture(tmp_path)
+    baseline_race_id = _retime_for_cli(paths)
+    baseline = _score_paths(
+        paths,
+        race_id=baseline_race_id,
+        score_timestamp=datetime.now(MELBOURNE),
+    )
+    race_id = _retarget_fixture_contract(
+        paths,
+        venue="LADBROKES-Q1-LAKESIDE",
+        venue_slug="ladbrokes-q1-lakeside",
+        sidecar_grade="Grade 5",
+        feature_grade="Grade 5",
+    )
+    before = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in sorted(tmp_path.rglob("*"))
+        if path.is_file()
+    }
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/predict_market_form_residual.py"),
+            "--race",
+            "q1 lakeside r2",
+            "--evidence-root",
+            str(tmp_path),
+        ],
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr.decode("utf-8")
+    assert completed.stderr == b""
+    payload = json.loads(completed.stdout)
+    assert payload["race_id"] == race_id
+    assert payload["predictions"] == baseline["predictions"]
+    assert paths["form_csv"].name == f"{race_id}.csv"
+    assert paths["sidecar"].name == f"{race_id}.csv.metadata.json"
+    assert completed.stdout == _canonical_bytes(payload)
+    for key in ("market", "half", "full"):
+        assert payload["probability_sums"][key] == pytest.approx(1.0)
+    after = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in sorted(tmp_path.rglob("*"))
+        if path.is_file()
+    }
+    assert after == before
+
+
+def test_explicit_scorer_accepts_restricted_grade_alias_without_prediction_change(
+    tmp_path,
+):
+    paths = _write_fixture(tmp_path)
+    baseline = _score_paths(paths)
+    race_id = _retarget_fixture_contract(
+        paths,
+        venue="SAN",
+        venue_slug="sandown-park",
+        sidecar_grade="Restricted",
+        feature_grade="Restricted Win",
+    )
+
+    aliased = _score_paths(paths, race_id=race_id)
+
+    assert aliased["predictions"] == baseline["predictions"]
+    assert aliased["probability_sums"] == baseline["probability_sums"]
+
+
+@pytest.mark.parametrize(
+    ("sidecar_grade", "feature_grade"),
+    [
+        ("RW", "R/W"),
+        ("NP", "N/P"),
+        ("FFA", "Free For All"),
+        ("INVITATIONAL", "Invitation"),
+        ("Restricted Win Final", "Restricted Win"),
+        ("4/5", "Mixed 4/5"),
+        ("Tier 3 - Grade 5", "Grade 5"),
+        ("5th Grade", "Grade 5"),
+    ],
+)
+def test_accepts_finite_generator_grade_alias_equivalence(
+    sidecar_grade, feature_grade, tmp_path
+):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["prejump_shadow_metadata"]["grade"] = sidecar_grade
+    _write_json(paths["sidecar"], sidecar)
+
+    def set_feature_grade(rows, _manifest):
+        for row in rows:
+            row["target_grade_safe"] = feature_grade
+
+    _reseal(paths, set_feature_grade)
+
+    payload = _score_paths(paths)
+    for key in ("market", "half", "full"):
+        assert payload["probability_sums"][key] == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize(
+    "grade",
+    [
+        "Mystery Grade",
+        "Restricted nonsense",
+        "Mystery Grade 5",
+        "Grade 5 garbage",
+        "not Maiden at all",
+        "PM 390m",
+        "Other 515m",
+        "1th Grade",
+        "Grade 999",
+        "G999",
+        "P999",
+        "Group 999",
+        "99-100 Win",
+        "M999",
+        "NG999-999",
+        "NG14",
+        "M",
+        "1st/8th Grade",
+        "8th/1st Grade",
+        "8th/8th Grade",
+        "1st/1st Grade",
+        "2nd/7th Grade",
+    ],
+)
+def test_rejects_unknown_sidecar_grade(grade, tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["prejump_shadow_metadata"]["grade"] = grade
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="target_grade_invalid"):
+        _score_paths(paths)
+
+
+def test_rejects_unknown_feature_grade(tmp_path):
+    paths = _write_fixture(tmp_path)
+
+    def add_unknown_grade(rows, _manifest):
+        for row in rows:
+            row["target_grade_safe"] = "Grade 5 garbage"
+
+    _reseal(paths, add_unknown_grade)
+
+    with pytest.raises(ManualPredictionError, match="feature_row_target_grade_invalid"):
+        _score_paths(paths)
+
+
+@pytest.mark.parametrize(
+    "grade",
+    [
+        "5",
+        "FFA",
+        "NP",
+        "INVITATIONAL",
+        "Restricted Win Heat",
+        "Restricted Win Final",
+        "Tier 3 - Grade 5",
+        "Mixed 4/5",
+        "Mixed 5/6",
+        "BT8",
+        "J/M",
+        "I",
+        "TG1-4W",
+        "TG1-6W",
+        "TG5+W",
+        "MI4/5MA",
+        "5/M",
+    ],
+)
+def test_accepts_exact_generator_grade_contract(grade):
+    assert manual._canonical_target_grade(grade) is not None
+
+
+@pytest.mark.parametrize(
+    "grade",
+    [
+        "3rd/4th Grade",
+        "4th Grade",
+        "4th/5th Grade",
+        "5th Grade",
+        "5th/6th Grade",
+        "6th Grade",
+        "Best 8",
+        "Free For All",
+        "Grade 4",
+        "Grade 5",
+        "Grade 6",
+        "Grade 7",
+        "Invitation",
+        "M1/M2/M3",
+        "M3",
+        "M5",
+        "Maiden",
+        "Masters",
+        "Mixed",
+        "N/P",
+        "NG1-4",
+        "Open",
+        "Other",
+        "P5",
+        "R/W",
+        "Restricted",
+    ],
+)
+def test_accepts_current_system_grade_vocabulary(grade):
+    assert manual._canonical_target_grade(grade) is not None
+
+
+@pytest.mark.parametrize("grade", ["Restricted/Win", "Restricted-Win"])
+def test_rejects_undeclared_restricted_aliases(grade):
+    assert manual._canonical_target_grade(grade) is None
+
+
+@pytest.mark.parametrize(
+    "grade",
+    [
+        "M",
+        "1st/8th Grade",
+        "8th/1st Grade",
+        "8th/8th Grade",
+        "1st/1st Grade",
+        "2nd/7th Grade",
+    ],
+)
+def test_rejects_ambiguous_or_undeclared_ordinal_grade_aliases(grade):
+    assert manual._canonical_target_grade(grade) is None
+
+
+def test_finite_grade_alias_contract_is_immutable():
+    with pytest.raises(TypeError):
+        manual.GRADE_ALIASES["GRADE 999"] = "GRADE 5"
+
+
+@pytest.mark.parametrize("grade", [["Grade 5"], {"grade": "Grade 5"}, 5])
+def test_rejects_non_string_sidecar_grade(grade, tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["prejump_shadow_metadata"]["grade"] = grade
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="target_grade_invalid"):
+        _score_paths(paths)
+
+
+def test_rejects_falsey_non_string_primary_grade_instead_of_falling_back(tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["prejump_shadow_metadata"]["grade"] = False
+    sidecar["race_info"] = {"grade": "Grade 5"}
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="target_grade_invalid"):
+        _score_paths(paths)
+
+
+def test_rejects_conflicting_sidecar_grade_aliases(tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["race_info"] = {"grade": "Grade 4"}
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="target_grade_alias_mismatch"):
+        _score_paths(paths)
+
+
+@pytest.mark.parametrize("grade", [["Grade 5"], {"grade": "Grade 5"}, 5])
+def test_rejects_non_string_feature_grade(grade, tmp_path):
+    paths = _write_fixture(tmp_path)
+
+    def set_feature_grade(rows, _manifest):
+        for row in rows:
+            row["target_grade_safe"] = grade
+
+    _reseal(paths, set_feature_grade)
+
+    with pytest.raises(ManualPredictionError, match="feature_row_target_grade_invalid"):
+        _score_paths(paths)
+
+
+@pytest.mark.parametrize(
+    ("sidecar_grade", "feature_grade"),
+    [
+        ("Group 1", "Group 2"),
+        ("Grade 4", "Grade 5"),
+        ("Mixed 4/5", "Mixed 5/6"),
+        ("4th/5th Grade", "Mixed 4/5"),
+    ],
+)
+def test_rejects_distinct_known_grade_contracts(
+    sidecar_grade, feature_grade, tmp_path
+):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["prejump_shadow_metadata"]["grade"] = sidecar_grade
+    _write_json(paths["sidecar"], sidecar)
+
+    def set_feature_grade(rows, _manifest):
+        for row in rows:
+            row["target_grade_safe"] = feature_grade
+
+    _reseal(paths, set_feature_grade)
+
+    with pytest.raises(ManualPredictionError, match="feature_row_target_grade_mismatch"):
+        _score_paths(paths)
+
+
+def test_rejects_genuinely_different_known_grades(tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["prejump_shadow_metadata"]["grade"] = "Restricted"
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="feature_row_target_grade_mismatch"):
+        _score_paths(paths)
+
+
+@pytest.mark.parametrize(
+    "venue",
+    [
+        "-SAN",
+        "SAN-",
+        "SAN--PARK",
+        "SAN/PARK",
+        "SAN PARK",
+        "SAN\nPARK",
+    ],
+)
+def test_rejects_malformed_canonical_venue(venue, tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["prejump_shadow_metadata"]["venue"] = venue
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="target_venue_invalid"):
+        _score_paths(paths)
+
+
+def test_rejects_falsey_non_string_primary_venue_instead_of_falling_back(tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["prejump_shadow_metadata"]["venue"] = False
+    sidecar["race_info"] = {"venue": "SAN"}
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="target_venue_invalid"):
+        _score_paths(paths)
+
+
+def test_rejects_conflicting_sidecar_venue_aliases(tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["race_info"] = {"venue": "HEA"}
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="target_venue_alias_mismatch"):
+        _score_paths(paths)
+
+
+@pytest.mark.parametrize(
+    ("url", "race_id", "expected"),
+    [
+        (
+            "https://www.sportsbet.com.au/greyhound-racing/australia-nz/"
+            "ladbrokes-q1-lakeside/race-7-123",
+            "Race 7 - LADBROKES-Q1-LAKESIDE - 2026-07-17",
+            True,
+        ),
+        (
+            "https://www.sportsbet.com.au/greyhound-racing/australia-nz/"
+            "ladbrokes-q1-lakeside/race-8-123",
+            "Race 7 - LADBROKES-Q1-LAKESIDE - 2026-07-17",
+            False,
+        ),
+        (
+            "https://www.sportsbet.com.au/greyhound-racing/australia-nz/"
+            "ladbrokes-q1-lakeside/race-7-123",
+            "Race 7 - LADBROKES--Q1 - 2026-07-17",
+            False,
+        ),
+        (
+            "https://www.sportsbet.com.au/greyhound-racing/australia-nz/"
+            "ladbrokes-q1-lakeside/race-7-123",
+            "Race 7 - -LADBROKES - 2026-07-17",
+            False,
+        ),
+        (
+            "https://www.sportsbet.com.au/greyhound-racing/australia-nz/"
+            "ladbrokes-q1-lakeside/race-7-123",
+            "Race 7 - LADBROKES- - 2026-07-17",
+            False,
+        ),
+        (
+            "https://www.sportsbet.com.au/greyhound-racing/australia-nz/"
+            "ladbrokes-q1-lakeside/results/race-7-123",
+            "Race 7 - LADBROKES-Q1-LAKESIDE - 2026-07-17",
+            False,
+        ),
+        (
+            "https://www.sportsbet.com.au/greyhound-racing/australia-nz/"
+            "ladbrokes-q1-lakeside/dividends/race-7-123",
+            "Race 7 - LADBROKES-Q1-LAKESIDE - 2026-07-17",
+            False,
+        ),
+    ],
+)
+def test_sportsbet_url_validator_binds_hyphenated_venue_race_id(
+    url, race_id, expected
+):
+    assert manual._trusted_sportsbet_url(url, race_id) is expected
 
 
 def test_race_first_discovery_fails_closed_on_equal_latest_capture_reports(tmp_path):
