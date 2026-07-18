@@ -386,6 +386,16 @@ def run_command(
         return output
 
     try:
+        current_time = now_provider()
+        if current_time >= jump:
+            output = base_output(
+                status="BLOCKED_RACE_ALREADY_JUMPED",
+                current_time=current_time,
+                target=target,
+            )
+            output["jump_timestamp"] = jump.isoformat()
+            output["reason"] = "race_jumped_while_waiting_for_daemon_lock"
+            return output
         with tempfile.TemporaryDirectory(prefix="manual-priority-race-") as temp_name:
             work_dir = Path(temp_name)
             upcoming_dir = work_dir / "upcoming"

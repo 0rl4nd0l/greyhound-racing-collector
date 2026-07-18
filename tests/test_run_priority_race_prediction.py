@@ -247,11 +247,24 @@ def test_explicit_execution_produces_only_nonpersisted_normalized_stdout_payload
 def test_feature_and_score_use_fresh_post_capture_timestamps(tmp_path):
     dependencies = _execution_dependencies(tmp_path)
     dependencies.pop("released")
+    collection_time = NOW.replace(second=30)
     feature_time = NOW.replace(minute=1)
     score_time = NOW.replace(minute=2)
     seen = {}
+    original_refresh = dependencies["refresh_fn"]
+    original_capture_plan = dependencies["capture_plan_fn"]
     original_seal = dependencies["feature_seal_fn"]
     original_score = dependencies["score_fn"]
+
+    def refresh(refresh_args):
+        seen["refresh_time"] = refresh_args.current_time
+        return original_refresh(refresh_args)
+
+    def capture_plan(input_dirs, *, current_time, limit):
+        seen["capture_plan_time"] = current_time
+        return original_capture_plan(
+            input_dirs, current_time=current_time, limit=limit
+        )
 
     def seal(**kwargs):
         seen["feature_time"] = kwargs["current_time"]
@@ -262,9 +275,11 @@ def test_feature_and_score_use_fresh_post_capture_timestamps(tmp_path):
         kwargs["score_timestamp"] = NOW
         return original_score(**kwargs)
 
+    dependencies["refresh_fn"] = refresh
+    dependencies["capture_plan_fn"] = capture_plan
     dependencies["feature_seal_fn"] = seal
     dependencies["score_fn"] = score
-    times = iter([feature_time, score_time])
+    times = iter([collection_time, feature_time, score_time])
     output = run_command(
         args(tmp_path, execute_collection=True, allow_auto_scrape_odds=True),
         races=[race()],
@@ -273,7 +288,12 @@ def test_feature_and_score_use_fresh_post_capture_timestamps(tmp_path):
         **dependencies,
     )
     assert output["status"] == "PREDICTION_READY"
-    assert seen == {"feature_time": feature_time, "score_time": score_time}
+    assert seen == {
+        "refresh_time": collection_time.isoformat(),
+        "capture_plan_time": collection_time,
+        "feature_time": feature_time,
+        "score_time": score_time,
+    }
 
 
 def test_not_due_fixed_window_releases_lock_and_returns_wait_status(tmp_path):
