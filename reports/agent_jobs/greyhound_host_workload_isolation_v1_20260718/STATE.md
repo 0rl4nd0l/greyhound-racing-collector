@@ -40,3 +40,7 @@ result: WORKING
   task-card/report/worktree/branch search found no duplicate scope.
 - Documentation impact: `DOCS_UPDATED` in `AGENTS.md` and
   `docs/development/bounded_offline_workloads.md`.
+- Publication: draft PR #52 is open from
+  `codex/host-workload-isolation-v1-20260718` to `master`; GitHub reported it
+  mergeable. Both hardening jobs and comprehensive tests passed; the Python
+  3.11 job remained pending at the bounded closeout observation.

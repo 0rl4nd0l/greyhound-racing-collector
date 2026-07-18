@@ -24,5 +24,13 @@ smoke, and container cleanup with no deferred item.
 
 ## PR state
 
-Draft PR creation is authorised by the task card and will be recorded here after
-the reviewed commit is pushed.
+- Draft PR: https://github.com/0rl4nd0l/greyhound-racing-collector/pull/52
+- State at creation: `OPEN`, `isDraft=true`, base `master`.
+- Head branch: `codex/host-workload-isolation-v1-20260718`.
+- Implementation commit:
+  `c2ff517265978a49217fb517e1f67936234d439d`.
+- GitHub reported `MERGEABLE`.
+- Bounded closeout observation: both `hardening` jobs and
+  `comprehensive-tests` passed; `test (3.11)` remained pending. Completion did
+  not wait indefinitely for the remaining remote job because the focused local
+  suite had already passed.
