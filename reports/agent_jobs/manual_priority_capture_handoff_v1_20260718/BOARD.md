@@ -162,3 +162,19 @@ problem and is not silently solved here.
 - Production-readiness value: proves the standalone primitive; deployment and
   PR #48 disposition remain separately owner-bound.
 
+## Post-implementation adjudication
+
+The selected handoff is implemented and the board's code findings were closed:
+producer finalization, strict source/venue/date/race identity, one-to-one
+runner boxes, fetch and append windows, lossless odds, newer-invalid fallback,
+read-once staging, query-only exact-row binding, lock non-use, and pre-seal/
+pre-score window changes all have focused negative tests. The final relevant
+suite passes 521 tests with one skip, and a real pre-jump receipt bound to 16
+exact WIN/PLACE rows without a write.
+
+Two independent reviewers found one remaining authority issue. The existing
+fresh-feature builder queries historical `finish_position` and `placing`
+columns, while this card authorizes only the exact receipt artifacts and exact
+`live_odds` group. The chair therefore approves the implementation transition
+but forbids the optional live score under this claim. Final operational stop:
+`BLOCKED_TASK_CONTRACT`.

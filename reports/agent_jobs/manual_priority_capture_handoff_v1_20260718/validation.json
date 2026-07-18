@@ -1,0 +1,15 @@
+{
+  "actual_receipt_probe": {"db_rows": 16, "status": "PASS_QUERY_ONLY"},
+  "compile": "PASS",
+  "diff_check": "PASS",
+  "focused_tests": {"passed": 54, "status": "PASS"},
+  "full_tests": {
+    "collected_with_e2e": 2143,
+    "collected_without_e2e": 2142,
+    "status": "PREEXISTING_BASELINE_FAILURES_AND_LEGACY_HARNESS_ABORT"
+  },
+  "optional_manual_prediction": "BLOCKED_TASK_CONTRACT",
+  "relevant_regression_tests": {"passed": 521, "skipped": 1, "status": "PASS"},
+  "ruff_scoped": "PASS",
+  "status": "PASS_WITH_TASK_CONTRACT_BLOCKER"
+}

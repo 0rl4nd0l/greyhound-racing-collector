@@ -1,0 +1,6 @@
+PREEXISTING_BASELINE_FAILURES_AND_LEGACY_HARNESS_ABORT
+Fresh full-suite attempt collected 2143 tests after dependencies were supplied.
+The monolithic run exposed existing failures, then its self-mutating tests/test_e2e.py collector aborted the pytest process at about 35 percent.
+A second fresh run excluded only tests/test_e2e.py, collected 2142 tests, reproduced the same early baseline failures, and the legacy browser test process again terminated pytest at tests/test_evasion_scraping.py near 36 percent without a summary.
+All ignored prediction and E2E fixture files created by these attempts were removed from the clean lane.
+Changed-command coverage is carried by the clean 54-test file and 521-pass relevant regression suite.

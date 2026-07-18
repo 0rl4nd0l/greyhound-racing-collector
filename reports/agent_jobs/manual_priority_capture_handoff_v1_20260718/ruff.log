@@ -1,0 +1,4 @@
+PASS
+uv run --with ruff ruff check scripts/run_priority_race_prediction.py tests/test_run_priority_race_prediction.py
+All checks passed.
+

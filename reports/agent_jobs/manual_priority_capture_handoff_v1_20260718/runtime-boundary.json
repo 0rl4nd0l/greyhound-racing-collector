@@ -1,0 +1,16 @@
+{
+  "betting_mutated": false,
+  "canonical_db_mutated_by_task": false,
+  "cohort_cutoff_mutated": false,
+  "deployment_mutated": false,
+  "github_mutated": false,
+  "lock_mutated_by_reuse_probe": false,
+  "merge_performed": false,
+  "model_or_threshold_mutated": false,
+  "pr48_code_worktree_service_timer": "READ_ONLY_LEGACY_RUNTIME",
+  "pr48_recommended_later_disposition": "Separate owner-approved lane should decide whether to retire, supersede, or rebase only the still-needed runtime hook after this command is authorized and reviewed.",
+  "production_outcome_accessed": false,
+  "service_or_timer_mutated": false,
+  "status": "PASS"
+}
+

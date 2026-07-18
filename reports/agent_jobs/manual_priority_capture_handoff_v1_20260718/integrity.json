@@ -1,0 +1,15 @@
+{
+  "append_only_gate_tests": "PASS",
+  "command_sha256": "ed31086ee8072a83cf0a57e270e43d61cbb3eb861d5cbb93c18fcdfea472bf00",
+  "db_access_for_receipt": "SQLITE_MODE_RO_QUERY_ONLY",
+  "exact_receipt_db_row_count": 16,
+  "exact_receipt_db_rows_sha256": "562b4ceb8c23710e1d2339d91bc6178eb422494fa59cff97c7a51db7c5e20fad",
+  "idempotency_gate_tests": "PASS",
+  "model_manifest_sha256": "8537cbc3d843d106a1fe48793ef01197454ef092c0244025fd65685636a42080",
+  "model_mutated": false,
+  "model_sha256": "624bba020d24f93fac4d895a851195aed5d31cff2f35645d9253be1175cc694d",
+  "outcomes_accessed": false,
+  "prediction_persisted": false,
+  "status": "PASS"
+}
+

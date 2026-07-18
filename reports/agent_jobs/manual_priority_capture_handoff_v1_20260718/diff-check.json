@@ -1,5 +1,110 @@
 {
-  "changed_files": [],
+  "changed_files": [
+    {
+      "path": "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/ADVERSARIAL_REVIEW.md",
+      "status": "A"
+    },
+    {
+      "path": "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/BOARD.md",
+      "status": "M"
+    },
+    {
+      "path": "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/BOARD_DECISION.json",
+      "status": "M"
+    },
+    {
+      "path": "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/CODE_REVIEW.json",
+      "status": "A"
+    },
+    {
+      "path": "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/DECISIONS.md",
+      "status": "A"
+    },
+    {
+      "path": "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/DECISION_ENTRY.json",
+      "status": "A"
+    },
+    {
+      "path": "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/README.md",
+      "status": "A"
+    },
+    {
+      "path": "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/RUNTIME_PROOF.md",
+      "status": "A"
+    },
+    {
+      "path": "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/RUN_OUTCOME.json",
+      "status": "A"
+    },
+    {
+      "path": "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/STATE.md",
+      "status": "A"
+    },
+    {
+      "path": "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/VALIDATION.md",
+      "status": "A"
+    },
+    {
+      "path": "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/WAIT_RESULT.json",
+      "status": "A"
+    },
+    {
+      "path": "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/WAIT_RESULT.json.log",
+      "status": "A"
+    },
+    {
+      "path": "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/append-only.json",
+      "status": "A"
+    },
+    {
+      "path": "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/compile.log",
+      "status": "A"
+    },
+    {
+      "path": "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/determinism.json",
+      "status": "A"
+    },
+    {
+      "path": "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/determinism.log",
+      "status": "A"
+    },
+    {
+      "path": "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/diff-check.log",
+      "status": "A"
+    },
+    {
+      "path": "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/focused-pytest.log",
+      "status": "A"
+    },
+    {
+      "path": "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/full-pytest.log",
+      "status": "A"
+    },
+    {
+      "path": "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/integrity.json",
+      "status": "A"
+    },
+    {
+      "path": "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/optional-manual-proof.json",
+      "status": "A"
+    },
+    {
+      "path": "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/provenance.json",
+      "status": "A"
+    },
+    {
+      "path": "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/ruff.log",
+      "status": "A"
+    },
+    {
+      "path": "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/runtime-boundary.json",
+      "status": "A"
+    },
+    {
+      "path": "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/validation.json",
+      "status": "A"
+    }
+  ],
   "disallowed_files": [],
   "issues": [],
   "ok": true,
