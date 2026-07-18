@@ -867,6 +867,83 @@ def _early_residual_index_payload(
     }
 
 
+def _write_missing_grade_quarantine_diagnostic(
+    live_root: Path,
+    *,
+    score_timestamp: datetime,
+    include_outcome_key: bool = False,
+    status_state: str = "SKIPPED_NO_NEW_CAPTURE",
+    report_time_offset: timedelta = timedelta(0),
+    normalization_failure_reason: str = (
+        "target_metadata_not_verified:missing_target_grade"
+    ),
+) -> dict[str, Path]:
+    status_time = score_timestamp - timedelta(minutes=1)
+    run_id = f"{status_time.strftime('%Y%m%dT%H%M%S%z')}_odds_capture"
+    status_dir = live_root / f"shadow_autopilot_daemonization_v1_{run_id}"
+    output_dir = live_root / f"shadow_autopilot_v1_{run_id}_autopilot"
+    status_dir.mkdir(parents=True)
+    output_dir.mkdir(parents=True)
+    status = _early_residual_index_payload(run_id, [])
+    status["status"] = status_state
+    status["plan"]["status"] = status_state
+    status["plan"]["blockers"] = (
+        ["residual_feature_handoff_not_pass"]
+        if status_state == "BLOCKED"
+        else []
+    )
+    status["plan"]["autopilot_output_dir"] = str(output_dir)
+    _write_json(status_dir / "early_residual_shadow_status.json", status)
+
+    race_url = (
+        "https://www.thedogs.com.au/racing/mandurah/2026-07-17/10/"
+        "auto-owls-bentley?trial=false"
+    )
+    report = {
+        "status": "METADATA_COVERAGE_INCOMPLETE",
+        "generated_at": (status_time + report_time_offset).isoformat(),
+        "selected_count": 1,
+        "selected_races": [
+            {
+                "date": "2026-07-17",
+                "race_id": "Race 10 - MAND - 2026-07-17",
+                "race_id_aliases": [
+                    "Race 10 - MAND - 2026-07-17",
+                    "Race 10 - MANDURAH - 2026-07-17",
+                ],
+                "race_number": "10",
+                "race_url": race_url,
+                "venue": "MAND",
+            }
+        ],
+        "downloads": [
+            {
+                "race_url": race_url,
+                "success": False,
+                "result": {
+                    "success": False,
+                    "normalization": {
+                        "normalization_status": "rejected",
+                        "normalization_failure_reason": normalization_failure_reason,
+                    },
+                },
+            }
+        ],
+        "quarantine_count": 1,
+        "no_snapshot_persist": True,
+        "no_odds_capture": True,
+        "no_result_ingest": True,
+        "no_label_write": True,
+        "no_retrain_or_promotion": True,
+    }
+    if include_outcome_key:
+        report["winner"] = "must-not-be-read"
+    report_path = output_dir / "odds_capture_refresh_report.json"
+    status_path = status_dir / "early_residual_shadow_status.json"
+    _write_json(report_path, report)
+    return {"status": status_path, "report": report_path}
+
+
 def _embedded_index_prediction(race_id: str) -> dict[str, object]:
     return {
         "activation": False,
@@ -1312,6 +1389,195 @@ def test_current_system_evidence_index_rejects_outcome_key_on_skipped_status(tmp
         ManualPredictionError, match="early_residual_status_index_contains_outcome"
     ):
         manual._indexed_evidence_roots(live_root, score_timestamp=now)
+
+
+def test_race_first_reports_exact_missing_grade_quarantine_without_packet(tmp_path):
+    live_root = tmp_path / "retained_evidence"
+    packet_root = tmp_path / "packet_search"
+    packet_root.mkdir()
+    score_timestamp = datetime(2026, 7, 17, 23, 20, tzinfo=MELBOURNE)
+    _write_missing_grade_quarantine_diagnostic(
+        live_root,
+        score_timestamp=score_timestamp,
+    )
+
+    with pytest.raises(
+        ManualPredictionError,
+        match=r"^race_feature_packet_quarantined:missing_target_grade$",
+    ):
+        manual.discover_race_artifacts_with_diagnostics(
+            race_query="mandurah r10",
+            evidence_roots=[packet_root],
+            diagnostic_roots=[live_root],
+            score_timestamp=score_timestamp,
+        )
+
+    assert manual._indexed_evidence_roots(
+        live_root,
+        score_timestamp=score_timestamp,
+    ) == []
+
+
+def test_race_first_accepts_exact_blocked_refresh_authority_state(tmp_path):
+    live_root = tmp_path / "retained_evidence"
+    packet_root = tmp_path / "packet_search"
+    packet_root.mkdir()
+    score_timestamp = datetime(2026, 7, 17, 23, 20, tzinfo=MELBOURNE)
+    _write_missing_grade_quarantine_diagnostic(
+        live_root,
+        score_timestamp=score_timestamp,
+        status_state="BLOCKED",
+    )
+
+    with pytest.raises(
+        ManualPredictionError,
+        match=r"^race_feature_packet_quarantined:missing_target_grade$",
+    ):
+        manual.discover_race_artifacts_with_diagnostics(
+            race_query="mandurah r10",
+            evidence_roots=[packet_root],
+            diagnostic_roots=[live_root],
+            score_timestamp=score_timestamp,
+        )
+
+
+def test_race_first_rejects_report_copied_from_another_run(tmp_path):
+    live_root = tmp_path / "retained_evidence"
+    packet_root = tmp_path / "packet_search"
+    packet_root.mkdir()
+    score_timestamp = datetime(2026, 7, 17, 23, 20, tzinfo=MELBOURNE)
+    _write_missing_grade_quarantine_diagnostic(
+        live_root,
+        score_timestamp=score_timestamp,
+        report_time_offset=timedelta(seconds=-1),
+    )
+
+    with pytest.raises(
+        ManualPredictionError,
+        match="refresh_quarantine_report_run_time_mismatch",
+    ):
+        manual.discover_race_artifacts_with_diagnostics(
+            race_query="mandurah r10",
+            evidence_roots=[packet_root],
+            diagnostic_roots=[live_root],
+            score_timestamp=score_timestamp,
+        )
+
+
+def test_race_first_rejects_internally_inconsistent_report_identity(tmp_path):
+    live_root = tmp_path / "retained_evidence"
+    packet_root = tmp_path / "packet_search"
+    packet_root.mkdir()
+    score_timestamp = datetime(2026, 7, 17, 23, 20, tzinfo=MELBOURNE)
+    paths = _write_missing_grade_quarantine_diagnostic(
+        live_root,
+        score_timestamp=score_timestamp,
+    )
+    report = json.loads(paths["report"].read_text(encoding="utf-8"))
+    report["selected_races"][0]["venue"] = "CANN"
+    _write_json(paths["report"], report)
+
+    with pytest.raises(
+        ManualPredictionError,
+        match="refresh_quarantine_race_identity_mismatch",
+    ):
+        manual.discover_race_artifacts_with_diagnostics(
+            race_query="mandurah r10",
+            evidence_roots=[packet_root],
+            diagnostic_roots=[live_root],
+            score_timestamp=score_timestamp,
+        )
+
+
+@pytest.mark.parametrize(
+    "unsafe_url",
+    [
+        "https://attacker@www.thedogs.com.au/racing/mandurah/2026-07-17/10/test",
+        "https://form.thedogs.com.au/racing/mandurah/2026-07-17/10/test",
+        "https://www.thedogs.com.au/racing/mandurah/2026-7-17/10/test",
+        "https://www.thedogs.com.au/racing/mandurah/2026-07-17/10/results",
+        "https://www.thedogs.com.au/racing/mandurah/2026-07-17/10/test?winner=1",
+    ],
+)
+def test_refresh_quarantine_url_parser_rejects_noncanonical_urls(unsafe_url):
+    assert manual._normalized_thedogs_race_url(unsafe_url) is None
+
+
+def test_race_first_cli_prints_exact_missing_grade_quarantine_reason(
+    tmp_path,
+    monkeypatch,
+    capfd,
+):
+    live_root = tmp_path / "retained_evidence"
+    packet_root = tmp_path / "packet_search"
+    packet_root.mkdir()
+    score_timestamp = datetime(2026, 7, 17, 23, 20, tzinfo=MELBOURNE)
+    _write_missing_grade_quarantine_diagnostic(
+        live_root,
+        score_timestamp=score_timestamp,
+    )
+
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return score_timestamp if tz is None else score_timestamp.astimezone(tz)
+
+    monkeypatch.setattr(manual, "datetime", FixedDateTime)
+    monkeypatch.setattr(manual, "DEFAULT_EVIDENCE_ROOT", packet_root)
+    monkeypatch.setattr(manual, "DEFAULT_RETAINED_EVIDENCE_ROOTS", (live_root,))
+
+    returncode = manual.main(["--race", "mandurah r10"])
+
+    captured = capfd.readouterr()
+    assert returncode == 2
+    assert captured.out == ""
+    assert json.loads(captured.err) == {
+        "reason": "race_feature_packet_quarantined:missing_target_grade",
+        "status": "BLOCKED_MANUAL_PREDICTION",
+    }
+
+
+def test_race_first_quarantine_diagnostic_rejects_outcome_bearing_report(tmp_path):
+    live_root = tmp_path / "retained_evidence"
+    packet_root = tmp_path / "packet_search"
+    packet_root.mkdir()
+    score_timestamp = datetime(2026, 7, 17, 23, 20, tzinfo=MELBOURNE)
+    _write_missing_grade_quarantine_diagnostic(
+        live_root,
+        score_timestamp=score_timestamp,
+        include_outcome_key=True,
+    )
+
+    with pytest.raises(
+        ManualPredictionError,
+        match="refresh_quarantine_report_contains_outcome",
+    ):
+        manual.discover_race_artifacts_with_diagnostics(
+            race_query="mandurah r10",
+            evidence_roots=[packet_root],
+            diagnostic_roots=[live_root],
+            score_timestamp=score_timestamp,
+        )
+
+
+def test_race_first_does_not_surface_unrecognized_quarantine_reason(tmp_path):
+    live_root = tmp_path / "retained_evidence"
+    packet_root = tmp_path / "packet_search"
+    packet_root.mkdir()
+    score_timestamp = datetime(2026, 7, 17, 23, 20, tzinfo=MELBOURNE)
+    _write_missing_grade_quarantine_diagnostic(
+        live_root,
+        score_timestamp=score_timestamp,
+        normalization_failure_reason="raw_exception:do-not-expose",
+    )
+
+    with pytest.raises(ManualPredictionError, match="race_feature_packet_not_found"):
+        manual.discover_race_artifacts_with_diagnostics(
+            race_query="mandurah r10",
+            evidence_roots=[packet_root],
+            diagnostic_roots=[live_root],
+            score_timestamp=score_timestamp,
+        )
 
 
 def test_current_system_evidence_index_skips_empty_index_before_usable_index(tmp_path):

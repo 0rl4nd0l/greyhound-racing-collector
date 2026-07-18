@@ -41,6 +41,8 @@ from src.predictor.market_form_residual import (  # noqa: E402
     load_frozen_model,
     score_race,
 )
+from config.venue_mapping import normalize_venue  # noqa: E402
+from utils.csv_metadata import canonical_thedogs_race_identity  # noqa: E402
 
 
 MELBOURNE = ZoneInfo("Australia/Melbourne")
@@ -137,6 +139,29 @@ DEFAULT_RETAINED_EVIDENCE_ROOTS = (
 DEFAULT_INDEX_MAX_AGE = timedelta(hours=36)
 EARLY_RESIDUAL_STATUS_GLOB = (
     "shadow_autopilot_daemonization_v1_*/early_residual_shadow_status.json"
+)
+REFRESH_REPORT_FILENAME = "odds_capture_refresh_report.json"
+MAX_REFRESH_REPORT_RUN_LAG = timedelta(minutes=5)
+DIAGNOSTIC_VENUE_CODE_OVERRIDES = MappingProxyType(
+    {
+        "ALBION": "ALBION",
+        "ALBIONPARK": "ALBION",
+        "ANGLEPARK": "APK",
+        "AP": "ALBION",
+        "APK": "APK",
+        "GOSF": "GOSF",
+        "GOSFORD": "GOSF",
+        "MOUNT": "MOUNT",
+        "MOUNTGAMBIER": "MOUNT",
+        "MTG": "MOUNT",
+        "TARE": "TAREE",
+        "TAREE": "TAREE",
+    }
+)
+REFRESH_QUARANTINE_REASONS = MappingProxyType(
+    {
+        "target_metadata_not_verified:missing_target_grade": "missing_target_grade",
+    }
 )
 EARLY_RESIDUAL_STATUS_SCHEMA = "early_residual_shadow_prediction_status_v1"
 EARLY_RESIDUAL_PLAN_SCHEMA = "early_residual_shadow_prediction_plan_v1"
@@ -1815,6 +1840,481 @@ def discover_race_artifacts(
     }
 
 
+def _normalized_thedogs_race_url(value: Any) -> str | None:
+    identity = canonical_thedogs_race_identity(value)
+    return str(identity["canonical_url"]) if identity is not None else None
+
+
+def _thedogs_race_url_parts(value: Any) -> tuple[str, date, int] | None:
+    identity = canonical_thedogs_race_identity(value)
+    if identity is None:
+        return None
+    return (
+        str(identity["venue_slug"]),
+        date.fromisoformat(str(identity["race_date"])),
+        int(identity["race_number"]),
+    )
+
+
+def _diagnostic_venue_identity_matches(selected_venue: str, venue_slug: str) -> bool:
+    """Require the report venue and URL slug to belong to one declared identity."""
+
+    def configured(value: str) -> str:
+        raw = str(value or "").strip()
+        token = _runner_token(raw)
+        if token in DIAGNOSTIC_VENUE_CODE_OVERRIDES:
+            return DIAGNOSTIC_VENUE_CODE_OVERRIDES[token]
+        candidates = (
+            raw,
+            raw.replace("-", " "),
+            raw.replace("-", "_"),
+            raw.replace("_", " "),
+            raw.replace("_", "-"),
+        )
+        for candidate in candidates:
+            normalized = normalize_venue(candidate)
+            if normalized != candidate.upper():
+                normalized_token = _runner_token(normalized)
+                return DIAGNOSTIC_VENUE_CODE_OVERRIDES.get(
+                    normalized_token, normalized_token
+                )
+        return DIAGNOSTIC_VENUE_CODE_OVERRIDES.get(token, token)
+
+    return configured(selected_venue) == configured(venue_slug)
+
+
+def _refresh_report_contains_outcome_key(
+    value: Any,
+    *,
+    path: tuple[str, ...] = (),
+) -> bool:
+    """Reject outcome fields while allowing the downloader's operation result wrapper."""
+
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            normalized_key = _normalized_index_key(key)
+            if normalized_key == "no_result_ingest" and item is True:
+                continue
+            if normalized_key in INDEX_FALSE_OUTCOME_MARKERS and item is False:
+                continue
+            if normalized_key == "result" and path == ("downloads", "*"):
+                if _refresh_report_contains_outcome_key(
+                    item,
+                    path=(*path, normalized_key),
+                ):
+                    return True
+                continue
+            if _index_key_is_outcome(key):
+                return True
+            if _refresh_report_contains_outcome_key(
+                item,
+                path=(*path, normalized_key),
+            ):
+                return True
+        return False
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        return any(
+            _refresh_report_contains_outcome_key(item, path=(*path, "*"))
+            for item in value
+        )
+    return False
+
+
+def _resolve_diagnostic_path(
+    root: Path,
+    raw_path: Any,
+    *,
+    label: str,
+    directory: bool,
+) -> Path:
+    path = Path(str(raw_path or ""))
+    if not path.is_absolute() or ".." in path.parts:
+        raise ManualPredictionError(f"{label}_path_invalid")
+    try:
+        relative = path.relative_to(root)
+    except ValueError:
+        raise ManualPredictionError(f"{label}_path_escape") from None
+    cursor = root
+    for part in relative.parts:
+        cursor = cursor / part
+        if cursor.is_symlink():
+            raise ManualPredictionError(f"{label}_path_escape")
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError:
+        raise ManualPredictionError(f"{label}_unreadable") from None
+    if not _path_in_roots(resolved, [root]):
+        raise ManualPredictionError(f"{label}_path_escape")
+    if directory and not resolved.is_dir():
+        raise ManualPredictionError(f"{label}_unreadable")
+    if not directory and not resolved.is_file():
+        raise ManualPredictionError(f"{label}_unreadable")
+    return resolved
+
+
+def _quarantined_race_reason(
+    *,
+    race_query: str,
+    diagnostic_roots: Sequence[Path],
+    score_timestamp: datetime,
+) -> str | None:
+    """Return one closed outcome-free refresh quarantine reason for an exact race."""
+
+    if score_timestamp.tzinfo is None or score_timestamp.utcoffset() is None:
+        raise ManualPredictionError("score_timestamp_timezone_missing")
+    race_number, venue_query = _race_query_parts(race_query)
+    score_time = score_timestamp.astimezone(MELBOURNE)
+    oldest_allowed = score_time - DEFAULT_INDEX_MAX_AGE
+    candidates: list[dict[str, Any]] = []
+
+    for raw_root in sorted({Path(root).resolve() for root in diagnostic_roots}):
+        if not raw_root.is_dir():
+            continue
+        root = raw_root.resolve()
+        for status_path in sorted(root.glob(EARLY_RESIDUAL_STATUS_GLOB)):
+            timestamp_match = re.fullmatch(
+                r"shadow_autopilot_daemonization_v1_"
+                r"(\d{8}T\d{6}[+-]\d{4})_odds_capture",
+                status_path.parent.name,
+            )
+            if timestamp_match is None:
+                continue
+            try:
+                status_time = datetime.strptime(
+                    timestamp_match.group(1), "%Y%m%dT%H%M%S%z"
+                ).astimezone(MELBOURNE)
+            except ValueError:
+                continue
+            if status_time < oldest_allowed or status_time > score_time:
+                continue
+            status_path = _resolve_diagnostic_path(
+                root,
+                status_path,
+                label="refresh_quarantine_status_index",
+                directory=False,
+            )
+            status_raw, _ = _read_input(
+                status_path,
+                "refresh_quarantine_status_index",
+            )
+            status = _json_object(status_raw, "refresh_quarantine_status_index")
+            if _contains_index_outcome_key(status):
+                raise ManualPredictionError(
+                    "refresh_quarantine_status_index_contains_outcome"
+                )
+            plan = status.get("plan")
+            if not isinstance(plan, Mapping):
+                continue
+            status_state = status.get("status")
+            plan_state = plan.get("status")
+            if (status_state, plan_state) == (
+                "SKIPPED_NO_NEW_CAPTURE",
+                "SKIPPED_NO_NEW_CAPTURE",
+            ):
+                if plan.get("blockers") != []:
+                    continue
+                expected_blockers: list[str] = []
+            elif (status_state, plan_state) == ("BLOCKED", "BLOCKED"):
+                if plan.get("blockers") != [
+                    "residual_feature_handoff_not_pass"
+                ]:
+                    continue
+                expected_blockers = ["residual_feature_handoff_not_pass"]
+            else:
+                continue
+            _validate_index_authority_shape(status)
+            expected_run_id = f"{timestamp_match.group(1)}_odds_capture"
+            if (
+                status.get("schema_version") != EARLY_RESIDUAL_STATUS_SCHEMA
+                or plan.get("schema_version") != EARLY_RESIDUAL_PLAN_SCHEMA
+                or plan.get("run_id") != expected_run_id
+            ):
+                raise ManualPredictionError(
+                    "refresh_quarantine_status_index_identity_mismatch"
+                )
+            if (
+                status.get("activation") is not False
+                or status.get("outcomes_read") is not False
+                or status.get("lock_release_preceded_stage_completion") is not False
+                or plan.get("activation") is not False
+                or plan.get("outcomes_read") is not False
+                or plan.get("blockers") != expected_blockers
+                or plan.get("production_db_access")
+                != "sqlite_mode_ro_feature_history_only"
+                or status.get("race_count") != 0
+                or plan.get("race_count") != 0
+                or status.get("races") != []
+                or plan.get("races") != []
+                or status.get("appended_count") != 0
+                or status.get("blocked_count") != 0
+                or status.get("exact_replay_count") != 0
+            ):
+                raise ManualPredictionError("refresh_quarantine_status_index_unsafe")
+
+            expected_output_name = f"shadow_autopilot_v1_{expected_run_id}_autopilot"
+            output_dir = _resolve_diagnostic_path(
+                root,
+                plan.get("autopilot_output_dir"),
+                label="refresh_quarantine_output_dir",
+                directory=True,
+            )
+            if output_dir.name != expected_output_name:
+                raise ManualPredictionError(
+                    "refresh_quarantine_output_dir_identity_mismatch"
+                )
+            shadow_output_path = plan.get("shadow_output_path")
+            if shadow_output_path and not _path_in_roots(
+                Path(str(shadow_output_path)).resolve(),
+                [root],
+            ):
+                raise ManualPredictionError("refresh_quarantine_status_index_path_escape")
+
+            report_path = _resolve_diagnostic_path(
+                root,
+                output_dir / REFRESH_REPORT_FILENAME,
+                label="refresh_quarantine_report",
+                directory=False,
+            )
+            report_raw, _ = _read_input(report_path, "refresh_quarantine_report")
+            report = _json_object(report_raw, "refresh_quarantine_report")
+            if _refresh_report_contains_outcome_key(report):
+                raise ManualPredictionError(
+                    "refresh_quarantine_report_contains_outcome"
+                )
+            report_time = _parse_timestamp(
+                report.get("generated_at"),
+                "refresh_quarantine_report_generated_at",
+            ).astimezone(MELBOURNE)
+            if report_time < oldest_allowed or report_time > score_time:
+                continue
+            if not (
+                status_time <= report_time <= status_time + MAX_REFRESH_REPORT_RUN_LAG
+            ):
+                raise ManualPredictionError(
+                    "refresh_quarantine_report_run_time_mismatch"
+                )
+            selected_races = report.get("selected_races")
+            downloads = report.get("downloads")
+            if (
+                report.get("no_snapshot_persist") is not True
+                or report.get("no_odds_capture") is not True
+                or report.get("no_result_ingest") is not True
+                or report.get("no_label_write") is not True
+                or report.get("no_retrain_or_promotion") is not True
+                or type(report.get("selected_count")) is not int
+                or not isinstance(selected_races, list)
+                or report.get("selected_count") != len(selected_races)
+                or not isinstance(downloads, list)
+                or type(report.get("quarantine_count")) is not int
+            ):
+                raise ManualPredictionError("refresh_quarantine_report_unsafe")
+            if (
+                report.get("status") != "METADATA_COVERAGE_INCOMPLETE"
+                or report.get("quarantine_count") < 1
+            ):
+                continue
+
+            for selected in selected_races:
+                if not isinstance(selected, Mapping):
+                    raise ManualPredictionError("refresh_quarantine_report_shape_invalid")
+                source_url = selected.get("race_url")
+                normalized_url = _normalized_thedogs_race_url(source_url)
+                url_parts = _thedogs_race_url_parts(source_url)
+                if normalized_url is None or url_parts is None:
+                    raise ManualPredictionError("refresh_quarantine_race_url_invalid")
+                venue_slug, candidate_date, candidate_number = url_parts
+                try:
+                    selected_number = _integer(
+                        selected.get("race_number"),
+                        "refresh_quarantine_race_number",
+                        minimum=1,
+                    )
+                    selected_date = _parse_date(
+                        selected.get("date"),
+                        "refresh_quarantine_race_date",
+                    )
+                except ManualPredictionError as exc:
+                    raise ManualPredictionError(
+                        "refresh_quarantine_report_shape_invalid"
+                    ) from exc
+                if (
+                    selected_number != candidate_number
+                    or selected_date != candidate_date
+                    or candidate_number != race_number
+                ):
+                    continue
+
+                canonical_venue = str(selected.get("venue") or "").strip().upper()
+                raw_aliases = selected.get("race_id_aliases")
+                try:
+                    primary_number, primary_venue, primary_date = _race_id_parts(
+                        str(selected.get("race_id") or "")
+                    )
+                except ManualPredictionError as exc:
+                    raise ManualPredictionError(
+                        "refresh_quarantine_race_identity_mismatch"
+                    ) from exc
+                if (
+                    not canonical_venue
+                    or not _diagnostic_venue_identity_matches(
+                        canonical_venue, venue_slug
+                    )
+                    or primary_number != candidate_number
+                    or primary_date != candidate_date
+                    or _runner_token(primary_venue) != _runner_token(canonical_venue)
+                    or not isinstance(raw_aliases, list)
+                    or not all(isinstance(value, str) for value in raw_aliases)
+                    or len(set(raw_aliases)) != len(raw_aliases)
+                    or selected.get("race_id") not in raw_aliases
+                ):
+                    raise ManualPredictionError(
+                        "refresh_quarantine_race_identity_mismatch"
+                    )
+                aliases = []
+                for raw_race_id in raw_aliases:
+                    try:
+                        alias_number, alias_venue, alias_date = _race_id_parts(
+                            raw_race_id
+                        )
+                    except ManualPredictionError as exc:
+                        raise ManualPredictionError(
+                            "refresh_quarantine_race_identity_mismatch"
+                        ) from exc
+                    if (
+                        alias_number != candidate_number
+                        or alias_date != candidate_date
+                        or not _diagnostic_venue_identity_matches(
+                            canonical_venue, alias_venue
+                        )
+                    ):
+                        raise ManualPredictionError(
+                            "refresh_quarantine_race_identity_mismatch"
+                        )
+                    aliases.append(alias_venue)
+                if _runner_token(venue_slug) not in {
+                    _runner_token(alias) for alias in aliases
+                }:
+                    raise ManualPredictionError(
+                        "refresh_quarantine_race_identity_mismatch"
+                    )
+                venue_match_rank = _venue_query_match_rank(
+                    venue_query,
+                    canonical_venue=canonical_venue,
+                    full_aliases=aliases,
+                )
+                if venue_match_rank is None:
+                    continue
+
+                matching_downloads = [
+                    download
+                    for download in downloads
+                    if isinstance(download, Mapping)
+                    and _normalized_thedogs_race_url(download.get("race_url"))
+                    == normalized_url
+                ]
+                if len(matching_downloads) != 1:
+                    raise ManualPredictionError(
+                        "refresh_quarantine_download_ambiguous"
+                    )
+                download = matching_downloads[0]
+                result = download.get("result")
+                normalization = (
+                    result.get("normalization")
+                    if isinstance(result, Mapping)
+                    and isinstance(result.get("normalization"), Mapping)
+                    else None
+                )
+                if (
+                    download.get("success") is not False
+                    or not isinstance(result, Mapping)
+                    or result.get("success") is not False
+                    or not isinstance(normalization, Mapping)
+                    or normalization.get("normalization_status") != "rejected"
+                ):
+                    continue
+                reason = REFRESH_QUARANTINE_REASONS.get(
+                    normalization.get("normalization_failure_reason")
+                )
+                if reason is None:
+                    continue
+                candidates.append(
+                    {
+                        "race_date": candidate_date,
+                        "report_time": report_time,
+                        "reason": reason,
+                        "venue": canonical_venue,
+                        "venue_match_rank": venue_match_rank,
+                    }
+                )
+
+    if not candidates:
+        return None
+    best_venue_rank = min(candidate["venue_match_rank"] for candidate in candidates)
+    candidates = [
+        candidate
+        for candidate in candidates
+        if candidate["venue_match_rank"] == best_venue_rank
+    ]
+    if len({candidate["venue"] for candidate in candidates}) != 1:
+        raise ManualPredictionError("race_quarantine_report_ambiguous")
+    current_date = score_time.date()
+    available_dates = sorted(
+        {
+            candidate["race_date"]
+            for candidate in candidates
+            if candidate["race_date"] >= current_date
+        }
+    )
+    target_date = available_dates[0] if available_dates else max(
+        candidate["race_date"] for candidate in candidates
+    )
+    candidates = [
+        candidate for candidate in candidates if candidate["race_date"] == target_date
+    ]
+    latest_report_time = max(candidate["report_time"] for candidate in candidates)
+    candidates = [
+        candidate
+        for candidate in candidates
+        if candidate["report_time"] == latest_report_time
+    ]
+    if len(candidates) != 1:
+        raise ManualPredictionError("race_quarantine_report_ambiguous")
+    return str(candidates[0]["reason"])
+
+
+def discover_race_artifacts_with_diagnostics(
+    *,
+    race_query: str,
+    evidence_roots: Sequence[Path],
+    diagnostic_roots: Sequence[Path],
+    score_timestamp: datetime,
+) -> dict[str, Any]:
+    """Discover a scoreable packet or expose one closed upstream quarantine reason."""
+
+    try:
+        return discover_race_artifacts(
+            race_query=race_query,
+            evidence_roots=evidence_roots,
+            score_timestamp=score_timestamp,
+        )
+    except ManualPredictionError as exc:
+        if str(exc) not in {
+            "race_feature_packet_not_found",
+            "evidence_root_missing_or_not_directory",
+        }:
+            raise
+        reason = _quarantined_race_reason(
+            race_query=race_query,
+            diagnostic_roots=diagnostic_roots,
+            score_timestamp=score_timestamp,
+        )
+        if reason is not None:
+            raise ManualPredictionError(
+                f"race_feature_packet_quarantined:{reason}"
+            ) from None
+        raise
+
+
 def score_from_artifacts(
     *,
     race_id: str,
@@ -2070,10 +2570,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                 raise ManualPredictionError(
                     "race_first_mode_cannot_mix_explicit_artifact_arguments"
                 )
-            discovered = discover_race_artifacts(
+            evidence_roots = args.evidence_root or _default_race_first_evidence_roots(
+                score_time
+            )
+            diagnostic_roots = args.evidence_root or [
+                DEFAULT_EVIDENCE_ROOT,
+                *DEFAULT_RETAINED_EVIDENCE_ROOTS,
+            ]
+            discovered = discover_race_artifacts_with_diagnostics(
                 race_query=args.race,
-                evidence_roots=args.evidence_root
-                or _default_race_first_evidence_roots(score_time),
+                evidence_roots=evidence_roots,
+                diagnostic_roots=diagnostic_roots,
                 score_timestamp=score_time,
             )
             race_id = str(discovered["race_id"])
