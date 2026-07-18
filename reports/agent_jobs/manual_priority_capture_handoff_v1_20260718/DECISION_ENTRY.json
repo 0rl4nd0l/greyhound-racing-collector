@@ -6,7 +6,7 @@
   "claim_id": "manual_priority_capture_handoff_v1_20260718",
   "dataset_version": "master_c1dfd464_baseline_5c235643_pr45_aa35fa70_pr46_2c595d27_pr47_0ae5937c_pr48_f776bfd1_issue50_20260718",
   "decision": "PASS",
-  "decision_delta": "The exact finalized autonomous-capture handoff is implemented and statically/runtime-receipt proven without writer-lock use. The optional score stopped before feature access because the card does not authorize historical result-column reads required by the existing feature builder.",
+  "decision_delta": "Implemented and independently reviewed the finalized autonomous-capture handoff with strict race, window, runner, provenance, append-only, lossless value, read-once hash, query-only SQLite, idempotency, and lock-nonuse gates. A real pre-jump receipt passed read-only binding, but the live score stopped before feature access as BLOCKED_TASK_CONTRACT.",
   "decision_id": "manual-priority-capture-handoff-v1-20260718-pass-with-task-contract-blocker",
   "does_not_block": [
     "review_of_the_local_implementation_commit",
