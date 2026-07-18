@@ -1,0 +1,9 @@
+{
+  "compile": "PASS",
+  "diff_check": "PASS",
+  "focused_tests": {"passed": 536, "skipped": 1, "status": "PASS"},
+  "full_tests": {"errors": 21, "failed": 60, "passed": 1970, "skipped": 50, "status": "PREEXISTING_BASELINE_FAILURES"},
+  "live_manual_attempt": "BLOCKED_RUNNER_IDENTITY",
+  "ruff_scoped": "PASS",
+  "status": "PASS_WITH_LIVE_SOURCE_BLOCKER"
+}

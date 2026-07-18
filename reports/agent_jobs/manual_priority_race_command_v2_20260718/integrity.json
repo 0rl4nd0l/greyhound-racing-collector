@@ -1,0 +1,11 @@
+{
+  "append_only_gate_tests": "PASS",
+  "exact_live_race_rows_after_attempt": 0,
+  "idempotency_gate_tests": "PASS",
+  "model_manifest_sha256": "8537cbc3d843d106a1fe48793ef01197454ef092c0244025fd65685636a42080",
+  "model_sha256": "624bba020d24f93fac4d895a851195aed5d31cff2f35645d9253be1175cc694d",
+  "model_sha256_bound_by_manifest": true,
+  "outcomes_accessed": false,
+  "shared_lock_absent_after_attempt": true,
+  "status": "PASS"
+}

@@ -1,0 +1,9 @@
+{
+  "attempt_count": 1,
+  "bounded_wait_seconds": 600,
+  "daemon_interrupted": false,
+  "final_command_status": "BLOCKED_RUNNER_IDENTITY",
+  "lock_released": true,
+  "result": "PARTIAL",
+  "status": "BLOCKED"
+}

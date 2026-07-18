@@ -1,0 +1,19 @@
+{
+  "attempt_count": 1,
+  "capture_status_counts": {"BLOCKED_VALIDATION_FAILED": 1},
+  "exit_code": 2,
+  "inserted_live_odds_rows": 0,
+  "outcomes_accessed": false,
+  "persisted_prediction": false,
+  "race_id": "Race 1 - BAL - 2026-07-18",
+  "reasons": [
+    "sportsbet_accepted_runner_rows_zero",
+    "sportsbet_fetch_not_successful",
+    "sportsbet_missing_expected_runners",
+    "sportsbet_place_accepted_runner_rows_zero",
+    "sportsbet_place_missing_expected_runners",
+    "sportsbet_source_url_missing"
+  ],
+  "status": "BLOCKED_RUNNER_IDENTITY",
+  "stdout_line_count": 1
+}

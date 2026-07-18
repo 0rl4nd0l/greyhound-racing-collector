@@ -1,0 +1,43 @@
+{
+  "blocks": [
+    "claiming_a_successful_live_manual_prediction",
+    "activation_deployment_promotion_betting_or_merge"
+  ],
+  "claim_id": "manual_priority_race_command_v2_20260718",
+  "dataset_version": "master_c1dfd464_pr45_aa35fa70_pr46_2c595d27_pr47_0ae5937c_pr48_f776bfd1_issue50_20260718",
+  "decision": "PASS",
+  "decision_delta": "Issue 50's standalone command is implemented and statically proven, including exact ancestry, target isolation, bounded lock waiting, strict append-only gates, fresh ephemeral features, and canonical non-persisted output; the single authorized live attempt failed closed before append or prediction because Sportsbet source and runner identity evidence was missing.",
+  "decision_id": "manual-priority-race-command-v2-20260718-pass-with-live-source-blocker",
+  "does_not_block": [
+    "continued_market_only_baseline_runtime",
+    "review_of_the_local_implementation_branch",
+    "a_separately_authorized_future_source_identity_investigation"
+  ],
+  "evidence_hash": "sha256:bdcd21ac8b6ad89df09db8d18bec61dcc5db2b77779f96fbd081d1173e7a20b0",
+  "evidence_refs": [
+    "reports/agent_jobs/manual_priority_race_command_v2_20260718/STATE.md",
+    "reports/agent_jobs/manual_priority_race_command_v2_20260718/VALIDATION.md",
+    "reports/agent_jobs/manual_priority_race_command_v2_20260718/RUNTIME_PROOF.md",
+    "reports/agent_jobs/manual_priority_race_command_v2_20260718/optional-manual-proof.json"
+  ],
+  "hypothesis_id": "standalone_lock_aware_named_race_priority_command_v2",
+  "invalidation_conditions": [
+    "The exact PR45, PR46, or PR47 ancestry proof changes.",
+    "The command can append odds without strict source and exact runner identity.",
+    "The command persists a prediction, reads a target outcome, or mutates runtime activation."
+  ],
+  "outcome_status": "ADVANCED",
+  "phase_after": "standalone_named_race_priority_command_implemented_live_prediction_blocked_by_sportsbet_source_and_runner_identity",
+  "phase_before": "issue_50_open_without_a_standalone_exact_race_priority_command",
+  "program_track": "prospective_readiness",
+  "project_id": "greyhound_racing_collector",
+  "reopen_conditions": [
+    "A separate owner-approved card identifies a fresh pre-jump race after the Sportsbet source/runner failure is resolved."
+  ],
+  "run_id": "l4nd0-System-Product-Name:1596757:manual_priority_race_command_v2_20260718",
+  "scope_fingerprint": "1260a58ab339232b7d71c89110c60437645ce913667ebe72c2a3140c5a33e451",
+  "source_class": "live_issue_50_plus_current_origin_master_and_exact_reviewed_pr45_pr46_pr47_heads_with_read_only_pr48_runtime",
+  "target_transition": "standalone_named_race_priority_command_proven_awaiting_separate_activation",
+  "task_id": "manual_priority_race_command_v2_20260718",
+  "validated_at": "2026-07-18T16:09:31+10:00"
+}

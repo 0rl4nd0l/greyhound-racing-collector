@@ -1,0 +1,14 @@
+{
+  "findings_open": [],
+  "findings_repaired": [
+    "plan-only browser construction created the default upcoming directory",
+    "post-capture feature timestamps reused a stale command-start timestamp",
+    "post-lock collection planning reused the pre-wait timestamp",
+    "dependency diagnostics contaminated canonical stdout",
+    "weather metadata used the track-condition normalizer",
+    "dependency exceptions lacked explicit terminal statuses",
+    "lock release failure could be silently accepted"
+  ],
+  "review_scope": "implementation delta after exact PR46 and PR47 adoption",
+  "status": "PASS_WITH_LIVE_SOURCE_BLOCKER"
+}
