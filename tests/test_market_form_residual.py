@@ -10,6 +10,11 @@ import numpy as np
 import pytest
 
 from src.predictor.market_form_residual import (
+    OUTCOME_FIELDS,
+    PREDICTION_FIELDS,
+    PROVENANCE_FIELDS,
+    RUNNER_FIELDS,
+    SHADOW_RECORD_FIELDS,
     ResidualContractError,
     _effective_state_sha256,
     append_shadow_record,
@@ -20,6 +25,28 @@ from src.predictor.market_form_residual import (
 
 ROOT = Path(__file__).resolve().parents[1]
 ARTIFACT_DIR = ROOT / "artifacts/frozen_models/market_form_residual_v1"
+
+
+def canonical_bytes(value):
+    return (
+        json.dumps(value, allow_nan=False, separators=(",", ":"), sort_keys=True) + "\n"
+    ).encode("utf-8")
+
+
+def reseal_record(record):
+    content = copy.deepcopy(record)
+    content.pop("record_key", None)
+    content.pop("record_checksum_sha256", None)
+    checksum = hashlib.sha256(canonical_bytes(content)).hexdigest()
+    record["record_checksum_sha256"] = checksum
+    record["record_key"] = hashlib.sha256(
+        canonical_bytes(
+            {
+                "record_checksum_sha256": checksum,
+                "schema_version": record["schema_version"],
+            }
+        )
+    ).hexdigest()
 
 
 def load_fixture():
@@ -87,6 +114,21 @@ def test_loaded_score_state_is_deeply_immutable():
         frozen.manifest["derivation_contract"]["half_strength"] = 0.75
     with pytest.raises(FrozenInstanceError):
         frozen.model_sha256 = "0" * 64
+
+
+@pytest.mark.parametrize(
+    "contract",
+    [
+        RUNNER_FIELDS,
+        PROVENANCE_FIELDS,
+        PREDICTION_FIELDS,
+        SHADOW_RECORD_FIELDS,
+        OUTCOME_FIELDS,
+    ],
+)
+def test_v2_schema_contract_collections_are_immutable(contract):
+    with pytest.raises(AttributeError):
+        contract.add("forged_field")
 
 
 def test_score_arrays_are_read_only_and_copies_cannot_alias_state():
@@ -366,6 +408,145 @@ def test_append_only_writer_is_idempotent_and_rejects_conflict(tmp_path):
     assert path.read_bytes() == original
 
 
+def test_v2_record_stores_complete_inputs_and_binds_full_content():
+    frozen, runners, provenance = load_fixture()
+    record = score_race(frozen, runners, provenance)
+
+    assert record["schema_version"] == "market_form_residual_shadow_record_v2"
+    assert record["inputs"]["provenance"] == {
+        "expected_runner_ids": sorted(provenance["expected_runner_ids"]),
+        "jump_timestamp": provenance["jump_timestamp"],
+        "race_id": provenance["race_id"],
+        "runner_set_sha256": provenance["runner_set_sha256"],
+        "score_timestamp": provenance["score_timestamp"],
+    }
+    assert [row["runner_id"] for row in record["inputs"]["runners"]] == sorted(
+        provenance["expected_runner_ids"]
+    )
+    assert all(
+        tuple(row["features"]) == tuple(frozen.feature_order)
+        for row in record["inputs"]["runners"]
+    )
+
+    expected = copy.deepcopy(record)
+    reseal_record(expected)
+    assert expected == record
+
+
+@pytest.mark.parametrize("field", ["record_key", "record_checksum_sha256"])
+def test_existing_history_rejects_mismatched_content_digest(tmp_path, field):
+    frozen, runners, provenance = load_fixture()
+    record = score_race(frozen, runners, provenance)
+    record[field] = "0" * 64
+    path = tmp_path / f"mismatched-{field}.jsonl"
+    path.write_bytes(canonical_bytes(record))
+
+    with pytest.raises(
+        ResidualContractError, match="existing_shadow_checksum_mismatch"
+    ):
+        append_record(
+            path, frozen, score_race(frozen, runners, provenance), runners, provenance
+        )
+
+
+def test_existing_history_rejects_accidental_prediction_edit(tmp_path):
+    frozen, runners, provenance = load_fixture()
+    existing = score_race(frozen, runners, provenance)
+    existing["predictions"][0]["full_probability"] += 1e-6
+    path = tmp_path / "accidental-edit.jsonl"
+    path.write_bytes(canonical_bytes(existing))
+
+    with pytest.raises(
+        ResidualContractError, match="existing_shadow_checksum_mismatch"
+    ):
+        append_record(
+            path, frozen, score_race(frozen, runners, provenance), runners, provenance
+        )
+
+
+def test_existing_history_rejects_resealed_prediction_input_mismatch(tmp_path):
+    frozen, runners, provenance = load_fixture()
+    existing = score_race(frozen, runners, provenance)
+    existing["inputs"]["runners"][0]["features"]["prior_start_count"] = 1.0
+    reseal_record(existing)
+    path = tmp_path / "prediction-input-mismatch.jsonl"
+    path.write_bytes(canonical_bytes(existing))
+
+    with pytest.raises(
+        ResidualContractError, match="existing_shadow_prediction_input_mismatch"
+    ):
+        append_record(
+            path, frozen, score_race(frozen, runners, provenance), runners, provenance
+        )
+
+
+@pytest.mark.parametrize("history_shape", ["v1", "mixed", "insufficient_v2"])
+def test_legacy_mixed_and_insufficient_history_require_migration(
+    tmp_path, history_shape
+):
+    frozen, runners, provenance = load_fixture()
+    current = score_race(frozen, runners, provenance)
+    legacy = copy.deepcopy(current)
+    legacy["schema_version"] = "market_form_residual_shadow_record_v1"
+    reseal_record(legacy)
+    insufficient = copy.deepcopy(current)
+    insufficient.pop("inputs")
+    reseal_record(insufficient)
+    rows = {
+        "v1": [legacy],
+        "mixed": [current, legacy],
+        "insufficient_v2": [insufficient],
+    }[history_shape]
+    path = tmp_path / f"{history_shape}.jsonl"
+    path.write_bytes(b"".join(canonical_bytes(row) for row in rows))
+
+    with pytest.raises(ResidualContractError, match="^history_migration_required$"):
+        append_record(path, frozen, current, runners, provenance)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["runner_order", "unsupported_field", "invalid_runner_id", "invalid_variants"],
+)
+def test_existing_history_rejects_noncanonical_and_unsupported_content(
+    tmp_path, mutation
+):
+    frozen, runners, provenance = load_fixture()
+    existing = score_race(frozen, runners, provenance)
+    if mutation == "runner_order":
+        existing["inputs"]["runners"].reverse()
+        expected_error = "existing_shadow_noncanonical_order"
+    elif mutation == "unsupported_field":
+        existing["unsupported"] = True
+        expected_error = "existing_shadow_unsupported_fields"
+    elif mutation == "invalid_runner_id":
+        existing["inputs"]["runners"][0]["runner_id"] = None
+        expected_error = "existing_shadow_noncanonical_order"
+    else:
+        existing["variants"] = []
+        expected_error = "existing_shadow_invalid_record:variants"
+    reseal_record(existing)
+    path = tmp_path / f"{mutation}.jsonl"
+    path.write_bytes(canonical_bytes(existing))
+
+    with pytest.raises(ResidualContractError, match=expected_error):
+        append_record(
+            path, frozen, score_race(frozen, runners, provenance), runners, provenance
+        )
+
+
+def test_complete_coordinated_rewrite_is_documented_out_of_scope(tmp_path):
+    """A host actor can replace a complete canonical row and recompute its digests."""
+
+    frozen, runners, provenance = load_fixture()
+    runners[0]["features"]["prior_start_count"] = 1.0
+    rewritten = score_race(frozen, runners, provenance)
+    path = tmp_path / "coordinated-host-rewrite-out-of-scope.jsonl"
+    path.write_bytes(canonical_bytes(rewritten))
+
+    assert append_record(path, frozen, rewritten, runners, provenance) == "EXACT_REPLAY"
+
+
 def test_writer_rejects_model_mutation_between_score_and_append(tmp_path):
     frozen, runners, provenance = load_fixture()
     record = score_race(frozen, runners, provenance)
@@ -388,6 +569,7 @@ def test_writer_rejects_model_mutation_between_score_and_append(tmp_path):
         ("manifest_sha256", "0" * 64),
         ("effective_state_sha256", "0" * 64),
         ("runner_set_sha256", "0" * 64),
+        ("record_checksum_sha256", "0" * 64),
     ],
 )
 def test_writer_rejects_forged_identity_fields(tmp_path, field, value):
@@ -396,6 +578,20 @@ def test_writer_rejects_forged_identity_fields(tmp_path, field, value):
     record[field] = value
 
     path = tmp_path / f"forged-{field}.jsonl"
+    with pytest.raises(
+        ResidualContractError, match="shadow_record_not_canonical_score"
+    ):
+        append_record(path, frozen, record, runners, provenance)
+    assert not path.exists()
+
+
+def test_writer_rejects_forged_caller_inputs_even_when_resealed(tmp_path):
+    frozen, runners, provenance = load_fixture()
+    record = score_race(frozen, runners, provenance)
+    record["inputs"]["runners"][0]["features"]["prior_start_count"] = 1.0
+    reseal_record(record)
+
+    path = tmp_path / "forged-inputs.jsonl"
     with pytest.raises(
         ResidualContractError, match="shadow_record_not_canonical_score"
     ):
@@ -422,7 +618,9 @@ def test_append_only_writer_validates_new_and_existing_record_keys(tmp_path):
             + "\n"
         ).encode("utf-8")
     )
-    with pytest.raises(ResidualContractError, match="existing_shadow_invalid_record"):
+    with pytest.raises(
+        ResidualContractError, match="existing_shadow_checksum_mismatch"
+    ):
         append_record(path, frozen, record, runners, provenance)
 
 
@@ -438,6 +636,16 @@ def test_append_only_writer_rejects_outcomes_and_malformed_history(tmp_path):
     clean = score_race(frozen, runners, provenance)
     with pytest.raises(ResidualContractError, match="existing_shadow_invalid_json"):
         append_record(malformed, frozen, clean, runners, provenance)
+
+    truncated = tmp_path / "truncated.jsonl"
+    truncated.write_bytes(canonical_bytes(clean)[:-7])
+    with pytest.raises(ResidualContractError, match="existing_shadow_invalid_json"):
+        append_record(truncated, frozen, clean, runners, provenance)
+
+    invalid_utf8 = tmp_path / "invalid-utf8.jsonl"
+    invalid_utf8.write_bytes(b"\xff\n")
+    with pytest.raises(ResidualContractError, match="existing_shadow_invalid_utf8"):
+        append_record(invalid_utf8, frozen, clean, runners, provenance)
 
 
 def test_append_only_writer_rejects_noncanonical_existing_record(tmp_path):

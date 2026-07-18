@@ -4,6 +4,11 @@ This module has no collector, database, registry, service, or activation hook.
 It loads one hash-bound base model, derives the frozen full and half variants,
 and can append deterministic outcome-free shadow records to an explicit JSONL
 path supplied by a future separately authorized caller.
+
+V2 record checksums detect accidental corruption and inconsistent record
+construction. They are not authentication: a malicious actor with filesystem
+access can replace a complete canonical row and recompute its checksum and
+identifier. External signing and key management are deliberately out of scope.
 """
 
 from __future__ import annotations
@@ -25,7 +30,7 @@ import numpy as np
 
 MODEL_SCHEMA = "market_form_residual_frozen_model_v1"
 MANIFEST_SCHEMA = "market_form_residual_frozen_manifest_v1"
-SHADOW_RECORD_SCHEMA = "market_form_residual_shadow_record_v1"
+SHADOW_RECORD_SCHEMA = "market_form_residual_shadow_record_v2"
 EFFECTIVE_STATE_SCHEMA = "market_form_residual_effective_state_v1"
 DEFAULT_ARTIFACT_DIR = Path("artifacts/frozen_models/market_form_residual_v1")
 FEATURES = (
@@ -47,29 +52,70 @@ FEATURES = (
     "same_grade_win_rate",
 )
 EXPANDED_FEATURES = FEATURES + tuple(f"{name}__missing" for name in FEATURES)
-RUNNER_FIELDS = {
-    "race_id",
-    "runner_id",
-    "box_number",
-    "dog_name",
-    "strict_win_odds",
-    "features",
-    "feature_source_sha256",
-    "odds_source_sha256",
-    "feature_freeze_timestamp",
-    "odds_capture_timestamp",
-}
-OUTCOME_FIELDS = {
-    "actual_win",
-    "finish_position",
-    "official_result",
-    "outcome",
-    "placing",
-    "result",
-    "winner",
-    "winner_name",
-    "winner_odds",
-}
+RUNNER_FIELDS = frozenset(
+    {
+        "race_id",
+        "runner_id",
+        "box_number",
+        "dog_name",
+        "strict_win_odds",
+        "features",
+        "feature_source_sha256",
+        "odds_source_sha256",
+        "feature_freeze_timestamp",
+        "odds_capture_timestamp",
+    }
+)
+PROVENANCE_FIELDS = frozenset(
+    {
+        "expected_runner_ids",
+        "jump_timestamp",
+        "race_id",
+        "runner_set_sha256",
+        "score_timestamp",
+    }
+)
+PREDICTION_FIELDS = frozenset(
+    (RUNNER_FIELDS - {"features"})
+    | {
+        "market_probability",
+        "residual_adjustment",
+        "full_probability",
+        "half_probability",
+    }
+)
+SHADOW_RECORD_FIELDS = frozenset(
+    {
+        "schema_version",
+        "record_key",
+        "record_checksum_sha256",
+        "race_id",
+        "runner_set_sha256",
+        "model_sha256",
+        "manifest_sha256",
+        "effective_state_sha256",
+        "score_timestamp",
+        "jump_timestamp",
+        "variants",
+        "inputs",
+        "predictions",
+        "outcomes_present",
+        "activation",
+    }
+)
+OUTCOME_FIELDS = frozenset(
+    {
+        "actual_win",
+        "finish_position",
+        "official_result",
+        "outcome",
+        "placing",
+        "result",
+        "winner",
+        "winner_name",
+        "winner_odds",
+    }
+)
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 FROZEN_ALGORITHM_CONTRACT = MappingProxyType(
     {
@@ -446,7 +492,7 @@ def load_frozen_model(
     return replace(frozen, effective_state_sha256=_effective_state_sha256(frozen))
 
 
-def _shadow_record_identity(record: Mapping[str, Any]) -> dict[str, str]:
+def _shadow_duplicate_identity(record: Mapping[str, Any]) -> dict[str, str]:
     race_id = record.get("race_id")
     if not isinstance(race_id, str) or not race_id:
         raise ResidualContractError("shadow_record_race_id_invalid")
@@ -465,8 +511,35 @@ def _shadow_record_identity(record: Mapping[str, Any]) -> dict[str, str]:
     }
 
 
+def _shadow_record_content(record: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        str(key): value
+        for key, value in record.items()
+        if key not in {"record_key", "record_checksum_sha256"}
+    }
+
+
+def _shadow_record_checksum(record: Mapping[str, Any]) -> str:
+    return hashlib.sha256(_canonical_bytes(_shadow_record_content(record))).hexdigest()
+
+
 def _shadow_record_key(record: Mapping[str, Any]) -> str:
-    return hashlib.sha256(_canonical_bytes(_shadow_record_identity(record))).hexdigest()
+    checksum = _shadow_record_checksum(record)
+    return hashlib.sha256(
+        _canonical_bytes(
+            {
+                "record_checksum_sha256": checksum,
+                "schema_version": record.get("schema_version"),
+            }
+        )
+    ).hexdigest()
+
+
+def _seal_shadow_record(content: Mapping[str, Any]) -> dict[str, Any]:
+    record = dict(content)
+    record["record_checksum_sha256"] = _shadow_record_checksum(record)
+    record["record_key"] = _shadow_record_key(record)
+    return record
 
 
 def _softmax(values: np.ndarray) -> np.ndarray:
@@ -493,6 +566,13 @@ def score_race(
     effective_state_sha256 = _verify_effective_state(frozen)
     if not isinstance(provenance, Mapping) or _contains_outcome(provenance):
         raise ResidualContractError("provenance_invalid_or_contains_outcome")
+    extra_provenance = set(provenance) - PROVENANCE_FIELDS
+    missing_provenance = PROVENANCE_FIELDS - set(provenance)
+    if extra_provenance or missing_provenance:
+        raise ResidualContractError(
+            "provenance_field_contract_mismatch:"
+            f"missing={sorted(missing_provenance)}:extra={sorted(extra_provenance)}"
+        )
     if (
         not isinstance(runners, Sequence)
         or isinstance(runners, (str, bytes))
@@ -585,13 +665,16 @@ def score_race(
                 f"unexpected_features:{runner_id}:{sorted(extra_features)}"
             )
         values: list[float] = []
+        normalized_features: dict[str, float | None] = {}
         for feature in frozen.feature_order:
             value = features.get(feature)
-            values.append(
-                float("nan")
-                if value is None
-                else _finite_float(value, f"{runner_id}.{feature}")
-            )
+            if value is None:
+                values.append(float("nan"))
+                normalized_features[feature] = None
+            else:
+                normalized = _finite_float(value, f"{runner_id}.{feature}")
+                values.append(normalized)
+                normalized_features[feature] = normalized
         raw_features.append(values)
         odds.append(decimal_odds)
         normalized_runners.append(
@@ -601,6 +684,7 @@ def score_race(
                 "box_number": box,
                 "dog_name": dog_name,
                 "strict_win_odds": decimal_odds,
+                "features": normalized_features,
                 "feature_source_sha256": feature_hash,
                 "odds_source_sha256": odds_hash,
                 "feature_freeze_timestamp": str(runner["feature_freeze_timestamp"]),
@@ -633,7 +717,7 @@ def score_race(
     for index, runner in enumerate(normalized_runners):
         predictions.append(
             {
-                **runner,
+                **{key: value for key, value in runner.items() if key != "features"},
                 "market_probability": float(market[index]),
                 "residual_adjustment": float(adjustment[index]),
                 "full_probability": float(full[index]),
@@ -647,66 +731,148 @@ def score_race(
         "manifest_sha256": frozen.manifest_sha256,
         "effective_state_sha256": effective_state_sha256,
     }
-    record_key = _shadow_record_key(identity)
-    return {
-        "schema_version": SHADOW_RECORD_SCHEMA,
-        "record_key": record_key,
-        **identity,
-        "score_timestamp": str(provenance["score_timestamp"]),
-        "jump_timestamp": str(provenance["jump_timestamp"]),
-        "variants": {
-            "full_strength": frozen.full_strength,
-            "half_strength": frozen.half_strength,
-        },
-        "predictions": predictions,
-        "outcomes_present": False,
-        "activation": False,
-    }
-
-
-def _verified_shadow_record_identity(
-    record: Mapping[str, Any], frozen: FrozenResidualModel
-) -> dict[str, str]:
-    effective_state_sha256 = _verify_effective_state(frozen)
-    race_id = record.get("race_id")
-    if not isinstance(race_id, str) or not race_id:
-        raise ResidualContractError("shadow_record_race_id_invalid")
-    predictions = record.get("predictions")
-    if (
-        not isinstance(predictions, Sequence)
-        or isinstance(predictions, (str, bytes))
-        or not predictions
-    ):
-        raise ResidualContractError("shadow_record_predictions_invalid")
-    runner_ids: list[str] = []
-    for index, prediction in enumerate(predictions):
-        if not isinstance(prediction, Mapping):
-            raise ResidualContractError(f"shadow_record_prediction_invalid:{index}")
-        if prediction.get("race_id") != race_id:
-            raise ResidualContractError(
-                f"shadow_record_prediction_race_id_mismatch:{index}"
-            )
-        runner_id = prediction.get("runner_id")
-        if not isinstance(runner_id, str) or not runner_id:
-            raise ResidualContractError(
-                f"shadow_record_prediction_runner_id_invalid:{index}"
-            )
-        runner_ids.append(runner_id)
-    if len(runner_ids) != len(set(runner_ids)):
-        raise ResidualContractError("shadow_record_prediction_runner_id_duplicate")
-    identity = {
+    canonical_provenance = {
         "race_id": race_id,
-        "runner_set_sha256": _runner_set_sha256(runner_ids),
-        "model_sha256": frozen.model_sha256,
-        "manifest_sha256": frozen.manifest_sha256,
-        "effective_state_sha256": effective_state_sha256,
+        "expected_runner_ids": expected_runner_ids,
+        "runner_set_sha256": expected_hash,
+        "jump_timestamp": str(provenance["jump_timestamp"]),
+        "score_timestamp": str(provenance["score_timestamp"]),
     }
-    for field_name, trusted_value in identity.items():
-        if record.get(field_name) != trusted_value:
-            raise ResidualContractError(
-                f"shadow_record_verified_identity_mismatch:{field_name}"
-            )
-    return identity
+    return _seal_shadow_record(
+        {
+            "schema_version": SHADOW_RECORD_SCHEMA,
+            **identity,
+            "score_timestamp": str(provenance["score_timestamp"]),
+            "jump_timestamp": str(provenance["jump_timestamp"]),
+            "variants": {
+                "full_strength": frozen.full_strength,
+                "half_strength": frozen.half_strength,
+            },
+            "inputs": {
+                "runners": normalized_runners,
+                "provenance": canonical_provenance,
+            },
+            "predictions": predictions,
+            "outcomes_present": False,
+            "activation": False,
+        }
+    )
+
+
+def _history_inputs(record: Mapping[str, Any]) -> tuple[list[Any], Mapping[str, Any]]:
+    inputs = record.get("inputs")
+    if not isinstance(inputs, Mapping):
+        raise ResidualContractError("history_migration_required")
+    missing_input_sections = {"runners", "provenance"} - set(inputs)
+    if missing_input_sections:
+        raise ResidualContractError("history_migration_required")
+    if set(inputs) != {"runners", "provenance"}:
+        raise ResidualContractError("existing_shadow_unsupported_fields:inputs")
+    runners = inputs["runners"]
+    provenance = inputs["provenance"]
+    if (
+        not isinstance(runners, list)
+        or not runners
+        or not isinstance(provenance, Mapping)
+    ):
+        raise ResidualContractError("history_migration_required")
+    if PROVENANCE_FIELDS - set(provenance):
+        raise ResidualContractError("history_migration_required")
+    if set(provenance) != PROVENANCE_FIELDS:
+        raise ResidualContractError("existing_shadow_unsupported_fields:provenance")
+    for runner in runners:
+        if not isinstance(runner, Mapping) or RUNNER_FIELDS - set(runner):
+            raise ResidualContractError("history_migration_required")
+        if set(runner) != RUNNER_FIELDS:
+            raise ResidualContractError("existing_shadow_unsupported_fields:runner")
+        features = runner.get("features")
+        if not isinstance(features, Mapping) or set(features) != set(FEATURES):
+            if isinstance(features, Mapping) and set(features) - set(FEATURES):
+                raise ResidualContractError(
+                    "existing_shadow_unsupported_fields:features"
+                )
+            raise ResidualContractError("history_migration_required")
+    return runners, provenance
+
+
+def _require_canonical_history_order(
+    record: Mapping[str, Any],
+    runners: Sequence[Mapping[str, Any]],
+    provenance: Mapping[str, Any],
+) -> None:
+    input_runner_ids = [runner.get("runner_id") for runner in runners]
+    predictions = record.get("predictions")
+    if not isinstance(predictions, list):
+        raise ResidualContractError("existing_shadow_invalid_record:predictions")
+    prediction_runner_ids: list[Any] = []
+    for prediction in predictions:
+        if not isinstance(prediction, Mapping):
+            raise ResidualContractError("existing_shadow_invalid_record:prediction")
+        if set(prediction) != PREDICTION_FIELDS:
+            raise ResidualContractError("existing_shadow_unsupported_fields:prediction")
+        prediction_runner_ids.append(prediction.get("runner_id"))
+    expected_runner_ids = provenance.get("expected_runner_ids")
+
+    def ordered_runner_ids(values: Any) -> bool:
+        return (
+            isinstance(values, list)
+            and bool(values)
+            and all(isinstance(value, str) and value for value in values)
+            and values == sorted(values)
+        )
+
+    if (
+        not ordered_runner_ids(input_runner_ids)
+        or not ordered_runner_ids(prediction_runner_ids)
+        or not ordered_runner_ids(expected_runner_ids)
+        or input_runner_ids != prediction_runner_ids
+        or input_runner_ids != expected_runner_ids
+    ):
+        raise ResidualContractError("existing_shadow_noncanonical_order")
+
+
+def _validate_existing_shadow_record(
+    existing: Any, frozen: FrozenResidualModel, line_number: int
+) -> tuple[dict[str, str], bytes]:
+    if not isinstance(existing, dict):
+        raise ResidualContractError(f"existing_shadow_invalid_record:{line_number}")
+    if existing.get("schema_version") != SHADOW_RECORD_SCHEMA:
+        raise ResidualContractError("history_migration_required")
+    runners, provenance = _history_inputs(existing)
+    if set(existing) != SHADOW_RECORD_FIELDS:
+        raise ResidualContractError("existing_shadow_unsupported_fields:record")
+    if _contains_outcome(existing) or existing.get("outcomes_present") is not False:
+        raise ResidualContractError(f"existing_shadow_invalid_record:{line_number}")
+    if existing.get("activation") is not False:
+        raise ResidualContractError(f"existing_shadow_invalid_record:{line_number}")
+    variants = existing.get("variants")
+    if not isinstance(variants, Mapping):
+        raise ResidualContractError("existing_shadow_invalid_record:variants")
+    if set(variants) != {"full_strength", "half_strength"}:
+        raise ResidualContractError("existing_shadow_unsupported_fields:variants")
+    _require_canonical_history_order(existing, runners, provenance)
+    try:
+        checksum = _require_sha256(
+            existing.get("record_checksum_sha256"),
+            "existing.record_checksum_sha256",
+        )
+        record_key = _require_sha256(existing.get("record_key"), "existing.record_key")
+    except ResidualContractError as exc:
+        raise ResidualContractError("existing_shadow_checksum_mismatch") from exc
+    if checksum != _shadow_record_checksum(
+        existing
+    ) or record_key != _shadow_record_key(existing):
+        raise ResidualContractError("existing_shadow_checksum_mismatch")
+    try:
+        rescored = score_race(frozen, runners, provenance)
+    except ResidualContractError as exc:
+        raise ResidualContractError(
+            f"existing_shadow_invalid_inputs:{line_number}"
+        ) from exc
+    encoded = _canonical_bytes(rescored)
+    if _canonical_bytes(existing) != encoded:
+        raise ResidualContractError("existing_shadow_prediction_input_mismatch")
+    return _shadow_duplicate_identity(rescored), encoded
 
 
 def append_shadow_record(
@@ -717,7 +883,11 @@ def append_shadow_record(
     runners: Sequence[Mapping[str, Any]],
     provenance: Mapping[str, Any],
 ) -> str:
-    """Append one canonical record, idempotently, without overwriting history."""
+    """Re-score and append one v2 record after validating all prior history.
+
+    The embedded SHA-256 values detect corruption and inconsistent construction;
+    they do not authenticate a row against coordinated host-level rewriting.
+    """
 
     output = Path(path)
     if output.suffix != ".jsonl" or not output.parent.is_dir():
@@ -734,14 +904,16 @@ def append_shadow_record(
     encoded = _canonical_bytes(expected)
     if _canonical_bytes(record) != encoded:
         raise ResidualContractError("shadow_record_not_canonical_score")
-    verified_identity = _verified_shadow_record_identity(expected, frozen)
-    record_key = hashlib.sha256(_canonical_bytes(verified_identity)).hexdigest()
-    if expected.get("record_key") != record_key:
+    if expected.get("record_checksum_sha256") != _shadow_record_checksum(
+        expected
+    ) or expected.get("record_key") != _shadow_record_key(expected):
         raise ResidualContractError("shadow_record_verified_key_mismatch")
+    candidate_identity = _shadow_duplicate_identity(expected)
     try:
         with output.open("a+", encoding="utf-8", newline="\n") as handle:
             fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
             handle.seek(0)
+            exact_replay = False
             for line_number, line in enumerate(handle, start=1):
                 if not line.strip():
                     raise ResidualContractError(
@@ -757,35 +929,22 @@ def append_shadow_record(
                     raise ResidualContractError(
                         f"existing_shadow_not_canonical_json:{line_number}"
                     )
-                if (
-                    not isinstance(existing, dict)
-                    or existing.get("schema_version") != SHADOW_RECORD_SCHEMA
-                    or _contains_outcome(existing)
-                    or existing.get("outcomes_present") is not False
-                ):
-                    raise ResidualContractError(
-                        f"existing_shadow_invalid_record:{line_number}"
-                    )
-                try:
-                    existing_key = _require_sha256(
-                        existing.get("record_key"), "existing.record_key"
-                    )
-                    if existing_key != _shadow_record_key(existing):
-                        raise ResidualContractError(
-                            "existing_shadow_record_key_mismatch"
-                        )
-                except ResidualContractError as exc:
-                    raise ResidualContractError(
-                        f"existing_shadow_invalid_record:{line_number}"
-                    ) from exc
-                if existing_key == record_key:
-                    if _canonical_bytes(existing) == encoded:
-                        return "EXACT_REPLAY"
-                    raise ResidualContractError("conflicting_shadow_duplicate")
+                existing_identity, existing_encoded = _validate_existing_shadow_record(
+                    existing, frozen, line_number
+                )
+                if existing_identity == candidate_identity:
+                    if existing_encoded == encoded:
+                        exact_replay = True
+                    else:
+                        raise ResidualContractError("conflicting_shadow_duplicate")
+            if exact_replay:
+                return "EXACT_REPLAY"
             handle.seek(0, os.SEEK_END)
             handle.write(encoded.decode("utf-8"))
             handle.flush()
             os.fsync(handle.fileno())
+    except UnicodeError as exc:
+        raise ResidualContractError("existing_shadow_invalid_utf8") from exc
     except OSError as exc:
         raise ResidualContractError(f"shadow_output_write_failed:{output}") from exc
     return "APPENDED"
