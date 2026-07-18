@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from src.predictor import market_form_residual as residual_module
 from src.predictor.market_form_residual import (
     OUTCOME_FIELDS,
     PREDICTION_FIELDS,
@@ -71,6 +72,26 @@ def append_record(path, frozen, record, runners, provenance):
         runners=runners,
         provenance=provenance,
     )
+
+
+def shifted_race_inputs(runners, provenance, suffix):
+    shifted_runners = copy.deepcopy(runners)
+    shifted_provenance = copy.deepcopy(provenance)
+    original_race_id = shifted_provenance["race_id"]
+    shifted_race_id = f"{original_race_id}-{suffix}"
+    shifted_runner_ids = []
+    for runner in shifted_runners:
+        runner["race_id"] = shifted_race_id
+        runner["runner_id"] = (
+            shifted_race_id + runner["runner_id"][len(original_race_id) :]
+        )
+        shifted_runner_ids.append(runner["runner_id"])
+    shifted_provenance["race_id"] = shifted_race_id
+    shifted_provenance["expected_runner_ids"] = shifted_runner_ids
+    shifted_provenance["runner_set_sha256"] = hashlib.sha256(
+        ("\n".join(sorted(shifted_runner_ids)) + "\n").encode("utf-8")
+    ).hexdigest()
+    return shifted_runners, shifted_provenance
 
 
 def write_tampered_artifacts(tmp_path, mutate_model=None, mutate_manifest=None):
@@ -406,6 +427,118 @@ def test_append_only_writer_is_idempotent_and_rejects_conflict(tmp_path):
     with pytest.raises(ResidualContractError, match="conflicting_shadow_duplicate"):
         append_record(path, frozen, changed_timestamp, runners, changed_provenance)
     assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    ("history_kind", "expected_error"),
+    [
+        ("identical", "duplicate_shadow_history_identity"),
+        ("conflicting", "conflicting_shadow_duplicate"),
+    ],
+)
+def test_repeated_history_identity_blocks_unrelated_append_without_byte_change(
+    tmp_path, history_kind, expected_error
+):
+    frozen, runners, provenance = load_fixture()
+    first = score_race(frozen, runners, provenance)
+    if history_kind == "identical":
+        second = copy.deepcopy(first)
+    else:
+        changed_provenance = copy.deepcopy(provenance)
+        changed_provenance["score_timestamp"] = "2026-06-11T18:32:15+10:00"
+        second = score_race(frozen, runners, changed_provenance)
+
+    path = tmp_path / f"repeated-{history_kind}.jsonl"
+    path.write_bytes(canonical_bytes(first) + canonical_bytes(second))
+    before = path.read_bytes()
+    unrelated_runners, unrelated_provenance = shifted_race_inputs(
+        runners, provenance, history_kind
+    )
+    unrelated = score_race(frozen, unrelated_runners, unrelated_provenance)
+
+    with pytest.raises(ResidualContractError, match=f"^{expected_error}$"):
+        append_record(
+            path,
+            frozen,
+            unrelated,
+            unrelated_runners,
+            unrelated_provenance,
+        )
+    assert path.read_bytes() == before
+
+
+def test_unique_multi_row_history_allows_append_and_exact_replay(tmp_path):
+    frozen, runners, provenance = load_fixture()
+    first = score_race(frozen, runners, provenance)
+    path = tmp_path / "unique-multi-row.jsonl"
+    path.write_bytes(canonical_bytes(first))
+
+    unrelated_runners, unrelated_provenance = shifted_race_inputs(
+        runners, provenance, "unique"
+    )
+    unrelated = score_race(frozen, unrelated_runners, unrelated_provenance)
+    assert (
+        append_record(
+            path,
+            frozen,
+            unrelated,
+            unrelated_runners,
+            unrelated_provenance,
+        )
+        == "APPENDED"
+    )
+    unique_history = path.read_bytes()
+    assert unique_history == canonical_bytes(first) + canonical_bytes(unrelated)
+    assert append_record(path, frozen, first, runners, provenance) == "EXACT_REPLAY"
+    assert path.read_bytes() == unique_history
+
+
+def test_history_validation_and_append_are_lock_scoped(tmp_path, monkeypatch):
+    frozen, runners, provenance = load_fixture()
+    existing = score_race(frozen, runners, provenance)
+    path = tmp_path / "lock-scoped.jsonl"
+    path.write_bytes(canonical_bytes(existing))
+    unrelated_runners, unrelated_provenance = shifted_race_inputs(
+        runners, provenance, "lock"
+    )
+    unrelated = score_race(frozen, unrelated_runners, unrelated_provenance)
+    state = {"locked": False, "validated": False, "synced": False}
+    real_flock = residual_module.fcntl.flock
+    real_validate = residual_module._validate_existing_shadow_record
+    real_fsync = residual_module.os.fsync
+
+    def tracked_flock(file_descriptor, operation):
+        assert operation == residual_module.fcntl.LOCK_EX
+        real_flock(file_descriptor, operation)
+        state["locked"] = True
+
+    def tracked_validate(*args, **kwargs):
+        assert state["locked"]
+        state["validated"] = True
+        return real_validate(*args, **kwargs)
+
+    def tracked_fsync(file_descriptor):
+        assert state["locked"]
+        state["synced"] = True
+        return real_fsync(file_descriptor)
+
+    monkeypatch.setattr(residual_module.fcntl, "flock", tracked_flock)
+    monkeypatch.setattr(
+        residual_module, "_validate_existing_shadow_record", tracked_validate
+    )
+    monkeypatch.setattr(residual_module.os, "fsync", tracked_fsync)
+
+    assert (
+        append_record(
+            path,
+            frozen,
+            unrelated,
+            unrelated_runners,
+            unrelated_provenance,
+        )
+        == "APPENDED"
+    )
+    assert state == {"locked": True, "validated": True, "synced": True}
 
 
 def test_v2_record_stores_complete_inputs_and_binds_full_content():

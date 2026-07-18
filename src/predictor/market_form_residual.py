@@ -883,10 +883,13 @@ def append_shadow_record(
     runners: Sequence[Mapping[str, Any]],
     provenance: Mapping[str, Any],
 ) -> str:
-    """Re-score and append one v2 record after validating all prior history.
+    """Re-score and append one v2 record after validating unique prior history.
 
     The embedded SHA-256 values detect corruption and inconsistent construction;
     they do not authenticate a row against coordinated host-level rewriting.
+    Repeated prior stable identities fail as ``duplicate_shadow_history_identity``
+    when their canonical content matches, or ``conflicting_shadow_duplicate`` when
+    it differs.
     """
 
     output = Path(path)
@@ -913,7 +916,7 @@ def append_shadow_record(
         with output.open("a+", encoding="utf-8", newline="\n") as handle:
             fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
             handle.seek(0)
-            exact_replay = False
+            history_by_identity: dict[bytes, bytes] = {}
             for line_number, line in enumerate(handle, start=1):
                 if not line.strip():
                     raise ResidualContractError(
@@ -932,13 +935,20 @@ def append_shadow_record(
                 existing_identity, existing_encoded = _validate_existing_shadow_record(
                     existing, frozen, line_number
                 )
-                if existing_identity == candidate_identity:
-                    if existing_encoded == encoded:
-                        exact_replay = True
-                    else:
-                        raise ResidualContractError("conflicting_shadow_duplicate")
-            if exact_replay:
-                return "EXACT_REPLAY"
+                identity_key = _canonical_bytes(existing_identity)
+                prior_encoded = history_by_identity.get(identity_key)
+                if prior_encoded is not None:
+                    if prior_encoded == existing_encoded:
+                        raise ResidualContractError("duplicate_shadow_history_identity")
+                    raise ResidualContractError("conflicting_shadow_duplicate")
+                history_by_identity[identity_key] = existing_encoded
+            candidate_history = history_by_identity.get(
+                _canonical_bytes(candidate_identity)
+            )
+            if candidate_history is not None:
+                if candidate_history == encoded:
+                    return "EXACT_REPLAY"
+                raise ResidualContractError("conflicting_shadow_duplicate")
             handle.seek(0, os.SEEK_END)
             handle.write(encoded.decode("utf-8"))
             handle.flush()
