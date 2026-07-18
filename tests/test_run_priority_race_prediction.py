@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from datetime import datetime
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from scripts.run_priority_race_prediction import (
     FIXED_CAPTURE_WINDOWS_MINUTES,
     acquire_with_bounded_wait,
     canonical_json,
+    main,
     resolve_target_race,
     run_command,
 )
@@ -330,3 +332,36 @@ def test_refresh_selector_never_admits_unrelated_races():
         "preferred_window",
         "not_exact_included_race",
     ]
+
+
+def test_cli_routes_dependency_noise_to_stderr_and_emits_one_canonical_stdout(
+    monkeypatch, capsys
+):
+    class NoisyBrowser:
+        def __init__(self, *, create_upcoming_dir):
+            assert create_upcoming_dir is False
+
+        def get_upcoming_races(self, *, days_ahead):
+            assert days_ahead == 1
+            print("browser diagnostic")
+            return [race()]
+
+    monkeypatch.setattr(
+        "upcoming_race_browser.UpcomingRaceBrowser", NoisyBrowser
+    )
+    exit_code = main(
+        [
+            "--race-id",
+            "Race 7 - SAN - 2026-07-18",
+            "--current-time",
+            NOW.isoformat(),
+        ]
+    )
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.err == "browser diagnostic\n"
+    stdout_lines = captured.out.splitlines()
+    assert len(stdout_lines) == 1
+    payload = json.loads(stdout_lines[0])
+    assert payload["status"] == "PLAN_ONLY"
+    assert payload["persisted"] is False

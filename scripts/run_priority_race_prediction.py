@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import re
@@ -612,9 +613,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     from upcoming_race_browser import UpcomingRaceBrowser
 
     try:
-        races = UpcomingRaceBrowser(create_upcoming_dir=False).get_upcoming_races(
-            days_ahead=args.days_ahead
-        )
+        with contextlib.redirect_stdout(sys.stderr):
+            races = UpcomingRaceBrowser(create_upcoming_dir=False).get_upcoming_races(
+                days_ahead=args.days_ahead
+            )
     except Exception as exc:
         output = base_output(
             status="BLOCKED_EXACT_METADATA", current_time=current_time
@@ -622,7 +624,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         output["reason"] = f"schedule_discovery_failed:{type(exc).__name__}:{exc}"
     else:
         try:
-            output = run_command(args, races=races, current_time=current_time)
+            with contextlib.redirect_stdout(sys.stderr):
+                output = run_command(args, races=races, current_time=current_time)
         except Exception as exc:
             output = base_output(
                 status="BLOCKED_MANUAL_PREDICTION", current_time=current_time
