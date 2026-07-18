@@ -1,0 +1,84 @@
+{
+  "schema_version": "form_only_v1_reproducibility_v1",
+  "trusted_inputs": {
+    "development": {
+      "files": {
+        "eligibility_races": {
+          "path": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-historical-win-eligibility-20260715/reports/agent_jobs/historical_win_eligibility_reconciliation_20260715/historical_win_eligibility_races_v1.csv",
+          "sha256": "93ec30dbf95baa9b59cf4eccab98b8bf92b53e0261cb9064096e16064e4a7edc",
+          "bytes": 836965
+        },
+        "eligibility_runners": {
+          "path": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-historical-win-eligibility-20260715/reports/agent_jobs/historical_win_eligibility_reconciliation_20260715/historical_win_eligibility_runners_v1.csv",
+          "sha256": "5f59eb932562f30f6c59536abee7e53432fbc421ad43f8feec8e4d5e7a90a0f3",
+          "bytes": 5296158
+        },
+        "tier_a_provenance": {
+          "path": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-historical-win-eligibility-20260715/reports/agent_jobs/historical_win_eligibility_reconciliation_20260715/historical_win_tier_a_race_provenance_v1.json",
+          "sha256": "a9457dd1dd2061e00a5517755c594faa595662faeca1f00989b2593df860226e",
+          "bytes": 3662379
+        },
+        "training_rows": {
+          "path": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-training-first-data-evidence-20260713/historical_training_dataset_v1/thedogs_training_rows_v1.csv",
+          "sha256": "e2f4bc975a586e043291b12c52a9cb74191f81b94805a9834bcb78403c31fc6f",
+          "bytes": 7600258
+        }
+      },
+      "source_record_count": 3269,
+      "source_set_sha256": "e7077b6006696460d9869f103a6b170344cc0871a7cc65a87c4ce146566cdba3"
+    },
+    "out_of_time_freeze": {
+      "path": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-form-only-v1-acquisition-20260718/reports/agent_jobs/form_only_v1_acquisition_foundation_20260718",
+      "aggregate_sha256": "30671f48d0d9a8b08d3bc1dd096258570f6e76bd6c3e9e78ff588949a50fe7cc",
+      "files": {
+        "source_inventory": {
+          "sha256": "71f0fa491f92ac07f93d26f8ca8cdde2ab72e01acaaeaadd9c612d5075d4e435",
+          "bytes": 78259
+        },
+        "exclusions": {
+          "sha256": "d24b0e470e36438d5a6685f6380dd36b184388434970c8c137d65524f3d533a2",
+          "bytes": 1292966
+        },
+        "manifest": {
+          "sha256": "cff28cfcd5de228087c5eea40a5aef9f7029e73b0043c8f5dfdd95e8abea341f",
+          "bytes": 721
+        }
+      }
+    }
+  },
+  "expected_output": {
+    "counts": {
+      "candidate_races": 1267,
+      "candidate_runners": 8914,
+      "included_races": 917,
+      "included_runners": 6456,
+      "sidecar_only_exclusions": 67,
+      "overlap_races": 73,
+      "overlap_runners": 530,
+      "history_differences": 486,
+      "recency_differences": 527,
+      "grade_differences": 0,
+      "unexplained_differences": 504,
+      "out_of_time_races": 88,
+      "out_of_time_runners": 617
+    },
+    "artifact_files": {
+      "development_exclusions.csv": "25a243ae5c1718e3cb8f5efd63e2906f5ef99d6774d99f232a82338615e16d87",
+      "development_features.csv": "9063efab2e7b594f39479631eb2d5faaaca676cea591ff02d430607f95c04314",
+      "development_manifest.json": "f27cb1ceb220603f980b5074b83bdb82f187939b97a32b4ed244886dda0b3199",
+      "development_races.csv": "be6b5c71430bbad4f47e8c3a79b9a38409154873b7e85fcc7fdc5f945f5cf348",
+      "development_runners.csv": "2169861c5764417371771e4d2d78da820621616777171871d1ff74ddd2b0e7db",
+      "development_source_inventory.csv": "2fd4f8183b45c34a9b0e57ef1a596dd31adbd209a8ec7477cf2495422739cc47",
+      "feature_contract.json": "a8284f63b6e8048169b965cd9cff88bae676e3fd063e740d21719fcbc0bf8fb6",
+      "market_coverage.json": "00b27f3f25e807a5656fb1ca846a2adbcd0a70c50693fb29103cb11e04f25c95",
+      "out_of_time_exclusions.csv": "d24b0e470e36438d5a6685f6380dd36b184388434970c8c137d65524f3d533a2",
+      "out_of_time_manifest.json": "ae18d63170ec4b4927afc8b53c03770f67b77160ab8f3a54e507bd0b85c82112",
+      "out_of_time_races.csv": "9ad6e0f2a89c2dac04f1c8f4be2dbea2a6ea7751fa3af486c490a71fb961c711",
+      "out_of_time_runners.csv": "49403eb43f9787cd42126e53136fa74d6fed15a099fef11fd6d016e86efc52bb",
+      "out_of_time_source_inventory.csv": "71f0fa491f92ac07f93d26f8ca8cdde2ab72e01acaaeaadd9c612d5075d4e435",
+      "overlap_reconciliation.csv": "c1f43bc244388d443e6c064568fdd17ca8d53697ff2e04ebbbea2ba2deab1c8c",
+      "reconciliation_summary.json": "2a627230237f2502e8e7527a99c22fb6f2b99819630e8348d8a7332ea4c7a582"
+    },
+    "artifact_manifest_sha256": "584ca92cbb20b644aff9a021a0c8778e06317b7dbc928b6037d9104fe274b557"
+  }
+}

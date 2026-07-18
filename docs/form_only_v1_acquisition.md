@@ -3,9 +3,9 @@
 ## Status and boundary
 
 `FORM_ONLY_V1` is an acquisition and feature-lineage contract. It does not fit,
-calibrate, rank, evaluate, blend, promote, or activate a model. Market-only
-implied probability remains the safe baseline and the residual challenger
-remains `NO_CREDIBLE_CHALLENGER`.
+calibrate, rank, evaluate, blend, promote, or activate a model. Model and market
+dispositions are deliberately quarantined from this trusted path; this packet
+makes no predictive-performance or edge claim.
 
 The development population ends on 2026-07-09. The separate 2026-07-11 through
 2026-08-09 packet is `OUTCOME_UNOPENED_OUT_OF_TIME`; it is not called
@@ -20,8 +20,11 @@ The candidate union is the set union of:
 2. races marked `used_for_training=1` whose rows are in
    `thedogs_training_rows_v1.csv`.
 
-Race and dog identity use `race_id`, box, and an uppercase alphanumeric dog-name
-token. Identity is a join key only and is never a feature.
+Inside the minimal sealed alignment boundary, race and dog identity use
+`race_id`, box, and an uppercase alphanumeric dog-name token. No dog token,
+token-only digest, source runner ID, or plaintext identity is emitted. Exported
+`row_id` values are SHA-256 opaque and domain-separated by split and race, so
+they cannot link the same dog across races or development/out-of-time packets.
 
 For races in both sources, the raw form CSVs must be byte-identical. An eligible
 Tier-A raw card has precedence over an eligible published-history raw card. If
@@ -32,6 +35,13 @@ Label provenance remains separate:
   provenance declares it.
 - `THEDOGS_PUBLISHED_HISTORY_NOT_TIER_A` is never promoted to Tier A.
 - no label value is copied into either input packet.
+
+Every selected card roster must exactly equal its COMPLETE sidecar's canonical
+box/name multiset. A label roster may omit a sidecar participant only when the
+hash-bound published-history input independently binds the listed and active
+counts plus scratch/reserve state; every such participant receives an explicit
+opaque exclusion row and evidence digest. Missing, extra, swapped, duplicate,
+or colliding identities otherwise fail closed.
 
 Card availability is exact: `capture_timestamp <= jump_timestamp - 60 minutes`.
 Tier-A jump time comes from its frozen race provenance. Published-history jump
@@ -47,9 +57,11 @@ legacy builder output or from a mutable database.
 - Each non-empty `Dog Name` row starts that runner's history block; blank-name
   continuation rows remain in that block.
 - Rows are accepted only when `history_date < target_date`.
-- Exact duplicate rows are removed using date, track, distance, grade, finish,
-  box, and margin.
-- Accepted rows are sorted newest first and capped at 20. Recent windows use the
+- Rows are normalized before deduplication using canonical date, venue,
+  distance, grade, finish, box, and margin values.
+- Accepted rows are sorted newest first and capped at 20. Multiple distinct
+  same-day rows require one unique verified timestamp or race-ordinal key;
+  input order is never used and unprovable ordering fails closed. Recent windows use the
   newest 3 or 5; `career_*` means all available accepted rows within that
   explicit 20-start evidence cap, not an assertion of complete lifetime starts.
 - Recency is integer calendar days from target date to the newest accepted row.
@@ -90,6 +102,40 @@ are considered. Paths marked as result, replay, reconstruction, repair,
 backfill, or official-result material are rejected before content is read. For
 each race, the freshest valid card at or before T-60 is selected. No label or
 outcome source is opened.
+
+Frozen mode binds only three construction inputs: the OOT source inventory,
+exclusion inventory, and OOT manifest. The builder verifies their bytes and
+digests, then rederives each selected path, filename/race identity, sidecar
+identity, timezone-aware capture and jump timestamps, Jul 11-Aug 9 membership,
+T-60 eligibility, and card/sidecar roster. Manifest counts are checked against
+the rederived population; neither 88/617 nor an older artifact hash is hardcoded
+in source. Capture declarations must carry an explicit offset. Canonical race
+times must be exact URL matches and are interpreted in the source display zone
+`Australia/Melbourne`, which is emitted in the rebuilt manifest.
+
+## Durable reproduction
+
+The tracked [reproducibility descriptor](form_only_v1_reproducibility.json)
+binds the four development construction inputs, 3,269 unique card, sidecar,
+label, and reconciliation source records, the three-file OOT freeze at
+`/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-form-only-v1-acquisition-20260718/reports/agent_jobs/form_only_v1_acquisition_foundation_20260718`,
+the expected current counts, and all 15 output hashes. The OOT freeze aggregate
+is `30671f48...e7cc`; the expected output manifest is
+`584ca92c...b557`. Reviewers on the evidence host can reproduce without raw or
+large Git commits using:
+
+```bash
+python3 scripts/build_form_only_v1_packet.py \
+  --eligibility-dir /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-historical-win-eligibility-20260715/reports/agent_jobs/historical_win_eligibility_reconciliation_20260715 \
+  --training-dir /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-training-first-data-evidence-20260713/historical_training_dataset_v1 \
+  --out-of-time-freeze-dir /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-form-only-v1-acquisition-20260718/reports/agent_jobs/form_only_v1_acquisition_foundation_20260718 \
+  --reproducibility-contract docs/form_only_v1_reproducibility.json \
+  --output-dir /tmp/form-only-v1-review
+```
+
+Any one-bit change in a bound construction input or any output count/hash
+causes a non-zero exit. The descriptor intentionally carries no raw cards,
+labels, outcomes, databases, models, or large generated packet files.
 
 ## Market separation
 
