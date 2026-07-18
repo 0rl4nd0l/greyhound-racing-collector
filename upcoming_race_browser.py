@@ -59,7 +59,7 @@ except Exception:
 
 
 class UpcomingRaceBrowser:
-    def __init__(self):
+    def __init__(self, *, create_upcoming_dir=True):
         self.base_url = "https://www.thedogs.com.au"
         # Honor configured UPCOMING_RACES_DIR if provided; default to ./upcoming_races
         self.upcoming_dir = os.getenv("UPCOMING_RACES_DIR", "./upcoming_races")
@@ -70,7 +70,8 @@ class UpcomingRaceBrowser:
             self.enhance_limit = 5
 
         # Create directories
-        os.makedirs(self.upcoming_dir, exist_ok=True)
+        if create_upcoming_dir:
+            os.makedirs(self.upcoming_dir, exist_ok=True)
 
         # Setup session
         self.session = get_shared_session()
@@ -1682,7 +1683,7 @@ class UpcomingRaceBrowser:
                 return True
             return False
 
-        def _extract_labeled(label_patterns):
+        def _extract_labeled(label_patterns, *, normalizer):
             try:
                 for element in soup.find_all(True):
                     if _is_unsafe_metadata_context(element):
@@ -1699,14 +1700,14 @@ class UpcomingRaceBrowser:
                                 re.I,
                             )
                             if direct:
-                                value = normalize_track_condition_text(direct.group(1))
+                                value = normalizer(direct.group(1))
                                 if value:
                                     return value
                         if re.fullmatch(rf"\s*{label_pattern}\s*", text, re.I):
                             for candidate in _candidate_texts(element):
                                 if candidate == text:
                                     continue
-                                value = normalize_track_condition_text(candidate)
+                                value = normalizer(candidate)
                                 if value:
                                     return value
             except Exception:
@@ -1714,9 +1715,13 @@ class UpcomingRaceBrowser:
             return None
 
         track_condition = _extract_labeled(
-            (r"Track\s+Condition", r"Track")
+            (r"Track\s+Condition", r"Track"),
+            normalizer=normalize_track_condition_text,
         )
-        weather = _extract_labeled((r"Weather\s+Condition", r"Weather"))
+        weather = _extract_labeled(
+            (r"Weather\s+Condition", r"Weather"),
+            normalizer=normalize_weather_track_text,
+        )
         if track_condition:
             found["track_condition"] = track_condition
         if weather:
