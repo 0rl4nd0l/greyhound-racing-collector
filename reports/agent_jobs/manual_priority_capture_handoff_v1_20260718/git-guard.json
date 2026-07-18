@@ -1,0 +1,18 @@
+{
+  "schema_version": "tenn_git_guard_preflight_v2_summary",
+  "head": "5c2356431a96659a7cd68edd5b94b50a5877de84",
+  "branch": "codex/manual-priority-capture-handoff-v1-20260718",
+  "control_contract_status": "V2",
+  "task_card_valid": true,
+  "registry_status": "PASS",
+  "decision_ledger_status": "PASS",
+  "task_ledger_status": "DATA_MISSING",
+  "duplicate_work_classification": "DATA_MISSING_FALLBACK_CHECKED",
+  "stop_reimplementation": false,
+  "substantive_work_permitted": true,
+  "report_write_permitted": true,
+  "guard_final_decision": "warning",
+  "guard_warning": "The generic guard selected an unavailable migration canonical ref; origin/master was separately freshly fetched and verified.",
+  "origin_master_verified": "c1dfd464cf6ecfb2034f96ac1a8d3ea58d4e6afa"
+}
+

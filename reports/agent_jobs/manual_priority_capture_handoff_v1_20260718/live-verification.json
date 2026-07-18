@@ -1,0 +1,27 @@
+{
+  "schema_version": "manual_priority_capture_handoff_live_verification_v1",
+  "verified_at_date": "2026-07-18",
+  "origin_master": "c1dfd464cf6ecfb2034f96ac1a8d3ea58d4e6afa",
+  "pr45_ancestor": "aa35fa70fc49199acde09f5561b521ddb00d45aa",
+  "pr46": {
+    "head": "2c595d27ac748d3df8e4031d5491c76606c5be89",
+    "state": "open_draft",
+    "mergeable_state": "clean",
+    "checks": "5_success"
+  },
+  "pr47": {
+    "head": "0ae5937cde87131c714fb7383c58ce13e3cfbc06",
+    "state": "open_draft",
+    "mergeable_state": "clean",
+    "checks": "5_success"
+  },
+  "pr48": {
+    "head": "f776bfd142b1e8acd3befca330eee36f490402ed",
+    "state": "open_draft",
+    "mergeable_state": "dirty",
+    "boundary": "read_only_legacy_runtime"
+  },
+  "issue50": "open",
+  "github_mutation": false,
+  "runtime_mutation": false
+}
