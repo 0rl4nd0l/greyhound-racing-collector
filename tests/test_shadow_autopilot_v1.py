@@ -12,13 +12,13 @@ def test_autopilot_default_min_joined_races_matches_review_target():
     assert autopilot.DEFAULT_MIN_JOINED_RACES_FOR_STATUS == 100
     assert autopilot.DEFAULT_ODDS_CAPTURE_MIN_MINUTES == 0.0
     assert autopilot.DEFAULT_ODDS_CAPTURE_MAX_MINUTES == 60.0
-    assert autopilot.DEFAULT_ODDS_CAPTURE_REFRESH_LIMIT == 8
+    assert autopilot.DEFAULT_ODDS_CAPTURE_REFRESH_LIMIT == 16
     assert autopilot.DEFAULT_HISTORICAL_UNIFIED_EVIDENCE_REPORT_LIMIT == 600
     assert args.target_joined_races == 100
     assert args.min_joined_races == 100
     assert args.odds_capture_min_minutes == 0.0
     assert args.odds_capture_max_minutes == 60.0
-    assert args.odds_capture_refresh_limit == 8
+    assert args.odds_capture_refresh_limit == 16
     assert args.autonomous_odds_capture_limit is None
     assert args.enable_autonomous_odds_capture is False
     assert args.execute_autonomous_odds_capture is False
@@ -3961,6 +3961,11 @@ def test_autonomous_live_odds_capture_runs_before_daily_shadow_run(tmp_path, mon
 
     monkeypatch.setattr(autopilot, "ROOT", tmp_path)
     monkeypatch.setattr(autopilot, "protected_hashes", lambda: {})
+    monkeypatch.setattr(
+        autopilot,
+        "current_step_time_iso",
+        lambda: "2026-06-11T20:22:00+10:00",
+    )
 
     def command_value(command, flag):
         return Path(command[command.index(flag) + 1])
@@ -4001,6 +4006,35 @@ def test_autonomous_live_odds_capture_runs_before_daily_shadow_run(tmp_path, mon
             assert command_value(command, "--input-dir") == (
                 output_dir / "odds_capture_refreshed_upcoming"
             )
+            captured_form = (
+                output_dir
+                / "odds_capture_refreshed_upcoming"
+                / "Race 6 - SAN - 2026-06-11.csv"
+            )
+            captured_form.parent.mkdir(parents=True, exist_ok=True)
+            captured_form.write_text("Dog Name|DATE\n1. Example|2026-06-01\n", encoding="utf-8")
+            autopilot.write_json(
+                captured_form.with_name(captured_form.name + ".metadata.json"),
+                {
+                    "prejump_shadow_metadata": {
+                        "race_date": "2026-06-11",
+                        "race_number": 6,
+                        "venue": "SAN",
+                    }
+                },
+            )
+            autopilot.write_json(
+                capture_dir / "autonomous_live_odds_capture_plan.json",
+                {
+                    "schema_version": "autonomous_live_odds_capture_plan_v1",
+                    "races": [
+                        {
+                            "race_id": "Race 6 - SAN - 2026-06-11",
+                            "csv_path": str(captured_form),
+                        }
+                    ],
+                },
+            )
             autopilot.write_json(
                 capture_dir / "autonomous_live_odds_capture_report.json",
                 {
@@ -4011,13 +4045,30 @@ def test_autonomous_live_odds_capture_runs_before_daily_shadow_run(tmp_path, mon
                     "validation_pass_count": 1,
                     "inserted_live_odds_rows": 0,
                     "status_counts": {"READY_FOR_CAPTURE": 1},
+                    "attempts": [
+                        {
+                            "race_id": "Race 6 - SAN - 2026-06-11",
+                            "status": "APPENDED",
+                        }
+                    ],
                 },
             )
         elif name == "daily_shadow_run":
             assert (output_dir / "autonomous_live_odds_capture_status.json").exists()
             daily_dir = command_value(command, "--output-dir")
-            assert command_value(command, "--input-dir") == (
-                output_dir / "refreshed_upcoming"
+            input_dirs = [
+                Path(command[index + 1])
+                for index, value in enumerate(command)
+                if value == "--input-dir"
+            ]
+            assert input_dirs == [
+                output_dir / "refreshed_upcoming",
+                output_dir
+                / "odds_capture_refreshed_upcoming"
+                / "Race 6 - SAN - 2026-06-11.csv",
+            ]
+            assert command[command.index("--current-time") + 1] == (
+                "2026-06-11T20:22:00+10:00"
             )
             autopilot.write_json(
                 daily_dir / "shadow_manifest.json",
@@ -4052,6 +4103,8 @@ def test_autonomous_live_odds_capture_runs_before_daily_shadow_run(tmp_path, mon
             "--skip-unified-dataset",
             "--autonomous-odds-capture-limit",
             "2",
+            "--odds-capture-refresh-limit",
+            "8",
             "--require-safe-refresh-metadata",
         ]
     )
@@ -4071,7 +4124,13 @@ def test_autonomous_live_odds_capture_runs_before_daily_shadow_run(tmp_path, mon
         "autonomous_live_odds_capture",
         "daily_shadow_run",
     ]
-    assert [step["name"] for step in report["steps"][:4]] == step_names[:4]
+    assert [step["name"] for step in report["steps"][:5]] == [
+        "refresh_prejump_races",
+        "refresh_odds_capture_candidates",
+        "autonomous_live_odds_capture",
+        "residual_feature_handoff",
+        "daily_shadow_run",
+    ]
     odds_refresh_command = commands_by_step["refresh_odds_capture_candidates"]
     assert odds_refresh_command[
         odds_refresh_command.index("--min-minutes") + 1
@@ -4103,6 +4162,91 @@ def test_autonomous_live_odds_capture_runs_before_daily_shadow_run(tmp_path, mon
     assert "--require-safe-metadata" in odds_refresh_command
     daily_command = commands_by_step["daily_shadow_run"]
     assert daily_command[daily_command.index("--output-parent") + 1] == str(evidence_root)
+
+
+def _write_handoff_form(path: Path, race_id: str) -> None:
+    race_prefix, venue, race_date = race_id.split(" - ")
+    race_number = int(race_prefix.removeprefix("Race "))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("Dog Name|DATE\n1. Example|2026-06-01\n", encoding="utf-8")
+    autopilot.write_json(
+        path.with_name(path.name + ".metadata.json"),
+        {
+            "prejump_shadow_metadata": {
+                "race_date": race_date,
+                "race_number": race_number,
+                "venue": venue,
+            }
+        },
+    )
+
+
+def test_residual_feature_handoff_does_not_duplicate_primary_race(tmp_path):
+    race_id = "Race 6 - SAN - 2026-06-11"
+    primary = tmp_path / "primary" / f"{race_id}.csv"
+    captured = tmp_path / "capture" / f"{race_id}.csv"
+    _write_handoff_form(primary, race_id)
+    _write_handoff_form(captured, race_id)
+
+    handoff = autopilot.residual_feature_handoff(
+        primary_input_paths=[primary.parent],
+        capture_input_paths=[captured.parent],
+        capture_report={"attempts": [{"race_id": race_id, "status": "APPENDED"}]},
+        capture_plan={"races": [{"race_id": race_id, "csv_path": str(captured)}]},
+    )
+
+    assert handoff["status"] == "PASS"
+    assert handoff["already_primary_race_ids"] == [race_id]
+    assert handoff["supplemental_input_files"] == []
+
+
+def test_residual_feature_handoff_fails_closed_without_exact_plan_form(tmp_path):
+    race_id = "Race 6 - SAN - 2026-06-11"
+
+    handoff = autopilot.residual_feature_handoff(
+        primary_input_paths=[tmp_path / "primary"],
+        capture_input_paths=[tmp_path / "capture"],
+        capture_report={"attempts": [{"race_id": race_id, "status": "APPENDED"}]},
+        capture_plan={"races": []},
+    )
+
+    assert handoff["status"] == "BLOCKED"
+    assert handoff["returncode"] == 1
+    assert handoff["blocked"] == [
+        {
+            "race_id": race_id,
+            "reason": "capture_plan_form_path_missing_or_ambiguous",
+            "candidate_count": 0,
+        }
+    ]
+
+
+def test_residual_feature_handoff_admits_nothing_when_any_capture_is_blocked(
+    tmp_path,
+):
+    valid_race = "Race 6 - SAN - 2026-06-11"
+    blocked_race = "Race 7 - SAN - 2026-06-11"
+    captured = tmp_path / "capture" / f"{valid_race}.csv"
+    _write_handoff_form(captured, valid_race)
+
+    handoff = autopilot.residual_feature_handoff(
+        primary_input_paths=[tmp_path / "primary"],
+        capture_input_paths=[captured.parent],
+        capture_report={
+            "attempts": [
+                {"race_id": valid_race, "status": "APPENDED"},
+                {"race_id": blocked_race, "status": "APPENDED"},
+            ]
+        },
+        capture_plan={
+            "races": [{"race_id": valid_race, "csv_path": str(captured)}]
+        },
+    )
+
+    assert handoff["status"] == "BLOCKED"
+    assert handoff["candidate_supplemental_input_files"] == [str(captured.resolve())]
+    assert handoff["supplemental_input_files"] == []
+    assert handoff["supplemental_input_count"] == 0
 
 
 def test_autonomous_official_result_capture_uses_fresh_step_time(

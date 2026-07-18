@@ -632,11 +632,44 @@ def test_refresh_prejump_upcoming_reports_top_level_artifact_counts(tmp_path, mo
                     "race_time": "1:45 PM",
                     "race_number": 1,
                     "venue": "TEST",
+                    "distance": "400",
+                    "grade": "Grade 5",
+                    "target_grade_context_schema": (
+                        "thedogs_meeting_card_exact_race_v1"
+                    ),
+                    "target_grade_equivalence_key": "GRADE:5",
+                    "target_grade_exact_value": "Grade 5",
+                    "target_grade_race_url": (
+                        "https://example.test/racing/test/2026-05-29/1/example"
+                    ),
+                    "target_grade_source_url": (
+                        "https://www.thedogs.com.au/racing/2026-05-29"
+                    ),
                 }
             ]
 
-        def download_race_csv(self, url):
+        def download_race_csv(self, url, *, race_info_hint=None):
             assert url.endswith("trial=false")
+            assert race_info_hint == {
+                "url": url,
+                "date": "2026-05-29",
+                "race_time": "1:45 PM",
+                "race_number": 1,
+                "venue": "TEST",
+                "distance": "400",
+                "grade": "Grade 5",
+                "target_grade_context_schema": (
+                    "thedogs_meeting_card_exact_race_v1"
+                ),
+                "target_grade_equivalence_key": "GRADE:5",
+                "target_grade_exact_value": "Grade 5",
+                "target_grade_race_url": (
+                    "https://example.test/racing/test/2026-05-29/1/example"
+                ),
+                "target_grade_source_url": (
+                    "https://www.thedogs.com.au/racing/2026-05-29"
+                ),
+            }
             upcoming_dir = tmp_path / "upcoming"
             csv_path = upcoming_dir / "Race 1 - TEST - 2026-05-29.csv"
             csv_path.write_text("box|dog_name\n1|Alpha Runner\n", encoding="utf-8")
@@ -700,7 +733,7 @@ def test_refresh_prejump_upcoming_honors_supplied_current_time(tmp_path, monkeyp
                 }
             ]
 
-        def download_race_csv(self, url):
+        def download_race_csv(self, url, *, race_info_hint=None):
             csv_path = tmp_path / "upcoming" / "Race 1 - MURR - 2026-06-24.csv"
             csv_path.write_text("box|dog_name\n1|Alpha Runner\n", encoding="utf-8")
             csv_path.with_name(csv_path.name + ".metadata.json").write_text(
@@ -822,7 +855,7 @@ def test_refresh_prejump_upcoming_can_fail_closed_on_incomplete_safe_metadata(
                 }
             ]
 
-        def download_race_csv(self, url):
+        def download_race_csv(self, url, *, race_info_hint=None):
             csv_path = tmp_path / "upcoming" / "Race 9 - SAL - 2026-06-17.csv"
             _write_safe_collection_sidecar(csv_path, expert_form=False)
             return {"success": True, "filepath": str(csv_path)}

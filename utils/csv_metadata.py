@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Union
 from urllib.parse import urlparse
 
+from config.venue_mapping import normalize_venue
 from utils.runner_completeness import (
     align_csv_text_to_canonical_final_runner_set,
     analyze_csv_text_runner_completeness,
@@ -47,6 +48,21 @@ CANONICAL_SIDECAR_TARGET_SOURCES = {
     "canonical_pre_race_page",
     "sidecar_target_metadata",
 }
+THEDOGS_MEETING_CARD_GRADE_SOURCE = "thedogs_meeting_card_exact_race"
+THEDOGS_VENUE_CODE_OVERRIDES = {
+    "ALBION": "ALBION",
+    "ALBIONPARK": "ALBION",
+    "ANGLEPARK": "APK",
+    "AP": "ALBION",
+    "APK": "APK",
+    "GOSF": "GOSF",
+    "GOSFORD": "GOSF",
+    "MOUNT": "MOUNT",
+    "MOUNTGAMBIER": "MOUNT",
+    "MTG": "MOUNT",
+    "TARE": "TAREE",
+    "TAREE": "TAREE",
+}
 UNSAFE_TARGET_SOURCE_MARKERS = (
     "embedded_form_history",
     "post_result",
@@ -54,6 +70,8 @@ UNSAFE_TARGET_SOURCE_MARKERS = (
     "sportsbet_result",
 )
 POST_RESULT_URL_MARKERS = ("result", "results", "dividend", "dividends", "payout", "payouts")
+THEDOGS_CANONICAL_HOST = "www.thedogs.com.au"
+THEDOGS_SAFE_RACE_QUERIES = {"", "trial=false", "trial=true"}
 WEATHER_TRACK_PLACEHOLDERS = {
     "",
     "-",
@@ -223,6 +241,262 @@ def normalize_target_grade(value: Any) -> Optional[str]:
                 return re.sub(r"\bGRADE\b", "Grade", value)
             return value.upper() if value.upper() == "FFA" else value.title()
     return None
+
+
+def _exact_target_grade_core(value: Any) -> Optional[str]:
+    """Return one finite whole-value grade token, never a substring match."""
+
+    if value is None:
+        return None
+    text = re.sub(r"\s+", " ", str(value).strip())
+    if not text:
+        return None
+    labeled = re.fullmatch(r"(?:Race\s+)?(?:Grade|Class)\s*:\s*(.+)", text, re.I)
+    if labeled:
+        text = labeled.group(1).strip()
+    text = re.sub(r"\s+\d{3,4}\s*m\s*$", "", text, flags=re.I).strip()
+    exact_patterns = (
+        r"\d+(?:st|nd|rd|th)(?:/\d+(?:st|nd|rd|th))*\s+Grade",
+        r"Grade\s*\d+",
+        r"No\s+Grade",
+        r"Non\s+Graded",
+        r"Other",
+        r"NG\d+(?:-\d+)?",
+        r"M\d+(?:/M\d+)*",
+        r"PM",
+        r"R/?W",
+        r"N\s*[/.-]\s*P",
+        r"G\d+",
+        r"P\d+",
+        r"\d+\s*-\s*\d+\s+Win",
+        r"Best\s*8",
+        r"Maiden",
+        r"Novice",
+        r"Open",
+        r"Mixed(?:\s+\d+(?:/\d+)+)?",
+        r"Restricted(?:\s+Win(?:\s+(?:Heat|Final))?)?",
+        r"Free\s+For\s+All",
+        r"FFA",
+        r"Pathways",
+        r"Invitation(?:al)?",
+        r"Special\s+Event",
+        r"Group\s*\d+",
+        r"Final",
+        r"Heat",
+        r"Masters",
+        r"Tier\s+3\s*-\s*(?:Maiden|Grade\s*\d+|Restricted\s+Win)",
+    )
+    if any(re.fullmatch(pattern, text, re.I) for pattern in exact_patterns):
+        return text
+    return None
+
+
+def normalize_exact_target_grade(value: Any) -> Optional[str]:
+    """Normalize one complete grade value without any substring extraction."""
+
+    core = _exact_target_grade_core(value)
+    if core is None:
+        return None
+    upper = re.sub(r"\s+", " ", core.strip().upper())
+    tier = re.fullmatch(
+        r"TIER\s+3\s*-\s*(MAIDEN|GRADE\s*\d+|RESTRICTED\s+WIN)",
+        upper,
+    )
+    if tier:
+        upper = tier.group(1)
+    ordinal = re.fullmatch(
+        r"\d+(?:ST|ND|RD|TH)(?:/\d+(?:ST|ND|RD|TH))*\s+GRADE",
+        upper,
+    )
+    if ordinal:
+        numbers = [str(int(item)) for item in re.findall(r"\d+", upper)]
+        if len(numbers) == 1:
+            return f"Grade {numbers[0]}"
+        mixed = "/".join(numbers)
+        if mixed in {
+            "2/3",
+            "2/3/4",
+            "3/4",
+            "3/4/5",
+            "4/5",
+            "5/6",
+            "6/7",
+        }:
+            return f"Mixed {mixed}"
+        return None
+    grade_number = re.fullmatch(r"(?:GRADE\s*|G)(\d+)", upper)
+    if grade_number:
+        return f"Grade {int(grade_number.group(1))}"
+    mixed = re.fullmatch(r"MIXED\s+(\d+(?:/\d+)+)", upper)
+    if mixed:
+        value = mixed.group(1)
+        return (
+            f"Mixed {value}"
+            if value
+            in {"2/3", "2/3/4", "3/4", "3/4/5", "4/5", "5/6", "6/7"}
+            else None
+        )
+    if re.fullmatch(r"NG\d+(?:-\d+)?", upper):
+        return upper
+    if re.fullmatch(r"M\d+(?:/M\d+)*", upper):
+        return upper
+    if re.fullmatch(r"P\d+", upper):
+        return upper
+    range_win = re.fullmatch(r"(\d+)\s*-\s*(\d+)\s+WIN", upper)
+    if range_win:
+        return f"{int(range_win.group(1))}-{int(range_win.group(2))} Win"
+    aliases = {
+        "NO GRADE": "No Grade",
+        "NON GRADED": "Non Graded",
+        "OTHER": "Other",
+        "PM": "PM",
+        "R/W": "R/W",
+        "RW": "R/W",
+        "N/P": "N/P",
+        "N-P": "N/P",
+        "N.P": "N/P",
+        "BEST 8": "Best 8",
+        "MAIDEN": "Maiden",
+        "NOVICE": "Novice",
+        "OPEN": "Open",
+        "MIXED": "Mixed",
+        "RESTRICTED": "Restricted",
+        "RESTRICTED WIN": "Restricted Win",
+        "RESTRICTED WIN HEAT": "Restricted Win",
+        "RESTRICTED WIN FINAL": "Restricted Win",
+        "FREE FOR ALL": "Free For All",
+        "FFA": "Free For All",
+        "PATHWAYS": "Pathways",
+        "INVITATION": "Invitation",
+        "INVITATIONAL": "Invitation",
+        "SPECIAL EVENT": "Special Event",
+        "FINAL": "Final",
+        "HEAT": "Heat",
+        "MASTERS": "Masters",
+    }
+    if upper in aliases:
+        return aliases[upper]
+    group = re.fullmatch(r"GROUP\s*(\d+)", upper)
+    return f"Group {int(group.group(1))}" if group else None
+
+
+def target_grade_equivalence_key(value: Any) -> Optional[str]:
+    """Return a comparison key for exact grade aliases without changing storage."""
+
+    normalized = normalize_exact_target_grade(value)
+    if normalized is None:
+        return None
+    grade_number = re.fullmatch(r"Grade\s+(\d+)", normalized, re.I)
+    if grade_number:
+        return f"GRADE:{int(grade_number.group(1))}"
+    mixed = re.fullmatch(r"Mixed\s+(\d+(?:/\d+)+)", normalized, re.I)
+    if mixed:
+        return f"MIXED:{mixed.group(1)}"
+    return re.sub(r"[^A-Z0-9]+", "", str(normalized or "").upper()) or None
+
+
+def canonical_thedogs_race_identity(value: Any) -> Optional[Dict[str, Any]]:
+    """Parse one strict, pre-result canonical TheDogs race URL."""
+
+    try:
+        parsed = urlparse(str(value or "").strip())
+        unsafe_authority = bool(
+            parsed.username or parsed.password or parsed.port is not None
+        )
+    except (TypeError, ValueError):
+        return None
+    if (
+        parsed.scheme.lower() != "https"
+        or (parsed.hostname or "").lower() != THEDOGS_CANONICAL_HOST
+        or unsafe_authority
+        or parsed.fragment
+        or parsed.query.lower() not in THEDOGS_SAFE_RACE_QUERIES
+    ):
+        return None
+    stripped_path = parsed.path.rstrip("/")
+    parts = [part for part in stripped_path.split("/") if part]
+    if (
+        stripped_path != "/" + "/".join(parts)
+        or len(parts) not in {4, 5}
+        or parts[0].lower() != "racing"
+        or not re.fullmatch(r"[a-z0-9-]+", parts[1], re.I)
+        or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", parts[2])
+        or not parts[3].isdigit()
+        or int(parts[3]) < 1
+    ):
+        return None
+    try:
+        parsed_date = datetime.strptime(parts[2], "%Y-%m-%d")
+    except ValueError:
+        return None
+    if parsed_date.strftime("%Y-%m-%d") != parts[2]:
+        return None
+    unsafe_tokens = set(POST_RESULT_URL_MARKERS)
+    if len(parts) == 5:
+        if (
+            not re.fullmatch(r"[a-z0-9-]+", parts[4], re.I)
+            or parts[4].lower() in unsafe_tokens
+        ):
+            return None
+    canonical_parts = ["racing", parts[1].lower(), parts[2], str(int(parts[3]))]
+    if len(parts) == 5:
+        canonical_parts.append(parts[4].lower())
+    return {
+        "canonical_url": f"https://{THEDOGS_CANONICAL_HOST}/{'/'.join(canonical_parts)}",
+        "race_date": parts[2],
+        "race_number": int(parts[3]),
+        "venue_slug": parts[1].lower(),
+    }
+
+
+def canonical_thedogs_meeting_card_url(value: Any, *, race_date: str) -> Optional[str]:
+    """Return the exact date-card URL that can carry live race-card provenance."""
+
+    expected = f"https://{THEDOGS_CANONICAL_HOST}/racing/{race_date}"
+    try:
+        parsed = urlparse(str(value or "").strip())
+        unsafe_authority = bool(
+            parsed.username or parsed.password or parsed.port is not None
+        )
+    except (TypeError, ValueError):
+        return None
+    candidate = f"https://{THEDOGS_CANONICAL_HOST}{parsed.path.rstrip('/')}"
+    if (
+        parsed.scheme.lower() != "https"
+        or (parsed.hostname or "").lower() != THEDOGS_CANONICAL_HOST
+        or unsafe_authority
+        or parsed.query
+        or parsed.fragment
+        or candidate.lower() != expected.lower()
+    ):
+        return None
+    return expected
+
+
+def canonical_thedogs_venue_identity(value: Any) -> Optional[str]:
+    """Return a dependency-light venue identity shared by proof and diagnostics."""
+
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    token = re.sub(r"[^A-Z0-9]", "", raw.upper())
+    if token in THEDOGS_VENUE_CODE_OVERRIDES:
+        return THEDOGS_VENUE_CODE_OVERRIDES[token]
+    candidates = (
+        raw,
+        raw.replace("-", " "),
+        raw.replace("-", "_"),
+        raw.replace("_", " "),
+        raw.replace("_", "-"),
+    )
+    for candidate in candidates:
+        normalized = normalize_venue(candidate)
+        if normalized != candidate.upper():
+            normalized_token = re.sub(r"[^A-Z0-9]", "", normalized.upper())
+            return THEDOGS_VENUE_CODE_OVERRIDES.get(
+                normalized_token, normalized_token
+            )
+    return THEDOGS_VENUE_CODE_OVERRIDES.get(token, token)
 
 
 def normalize_weather_track_text(value: Any) -> Optional[str]:
@@ -454,6 +728,122 @@ def _safe_int(value: Any) -> Optional[int]:
         return None
 
 
+def _meeting_card_grade_provenance_is_valid(
+    payload: Mapping[str, Any],
+    *,
+    canonical_race_url: Any,
+    grade_value: Any,
+) -> bool:
+    """Validate every field required by the exact live meeting-card grade source."""
+
+    race_info = (
+        payload.get("race_info")
+        if isinstance(payload.get("race_info"), Mapping)
+        else {}
+    )
+
+    def one_value(key: str) -> Any:
+        values = [
+            value
+            for value in (payload.get(key), race_info.get(key))
+            if value not in (None, "")
+        ]
+        if not values or any(value != values[0] for value in values[1:]):
+            return None
+        return values[0]
+
+    schema = one_value("target_grade_context_schema")
+    exact_value = one_value("target_grade_exact_value")
+    declared_key = one_value("target_grade_equivalence_key")
+    target_race_url = one_value("target_grade_race_url")
+    target_race_date = one_value("target_grade_race_date")
+    target_race_number = _safe_int(one_value("target_grade_race_number"))
+    target_venue = one_value("target_grade_venue")
+    grade_source_url = one_value("target_grade_source_url")
+    requested_identity = canonical_thedogs_race_identity(canonical_race_url)
+    target_identity = canonical_thedogs_race_identity(target_race_url)
+    normalized_exact = normalize_exact_target_grade(exact_value)
+    normalized_grade = normalize_exact_target_grade(grade_value)
+    if (
+        schema != "thedogs_meeting_card_exact_race_v1"
+        or requested_identity is None
+        or target_identity is None
+        or target_identity["canonical_url"] != requested_identity["canonical_url"]
+        or target_race_date != requested_identity["race_date"]
+        or target_race_number != requested_identity["race_number"]
+        or canonical_thedogs_venue_identity(target_venue)
+        != canonical_thedogs_venue_identity(requested_identity["venue_slug"])
+        or normalized_exact is None
+        or normalized_grade != normalized_exact
+        or declared_key != target_grade_equivalence_key(exact_value)
+        or canonical_thedogs_meeting_card_url(
+            grade_source_url,
+            race_date=str(requested_identity["race_date"]),
+        )
+        is None
+    ):
+        return False
+    race_dates = [
+        str(value).strip()
+        for value in (
+            payload.get("race_date"),
+            payload.get("date"),
+            race_info.get("race_date"),
+            race_info.get("date"),
+        )
+        if value not in (None, "")
+    ]
+    race_numbers = [
+        _safe_int(value)
+        for value in (
+            payload.get("race_number"),
+            race_info.get("race_number"),
+        )
+        if value not in (None, "")
+    ]
+    race_venues = [
+        value
+        for value in (
+            payload.get("venue"),
+            payload.get("venue_name"),
+            race_info.get("venue"),
+            race_info.get("venue_name"),
+        )
+        if value not in (None, "")
+    ]
+    return bool(
+        all(value == requested_identity["race_date"] for value in race_dates)
+        and all(value == requested_identity["race_number"] for value in race_numbers)
+        and all(
+            canonical_thedogs_venue_identity(value)
+            == canonical_thedogs_venue_identity(requested_identity["venue_slug"])
+            for value in race_venues
+        )
+    )
+
+
+def _grade_source_is_safe(
+    source: Any,
+    payload: Mapping[str, Any],
+    *,
+    canonical_race_url: Any,
+    grade_value: Any,
+    canonical: bool = False,
+) -> bool:
+    text = str(source or "").strip()
+    if text == THEDOGS_MEETING_CARD_GRADE_SOURCE:
+        return _meeting_card_grade_provenance_is_valid(
+            payload,
+            canonical_race_url=canonical_race_url,
+            grade_value=grade_value,
+        )
+    return (
+        is_canonical_sidecar_target_source(text)
+        if canonical
+        else is_safe_sidecar_target_source(text)
+    )
+
+
 def _filename_race_number(csv_path: Union[str, os.PathLike]) -> Optional[int]:
     match = re.search(r"Race\s+(\d+)", os.path.basename(os.fspath(csv_path)), re.I)
     return _safe_int(match.group(1)) if match else None
@@ -538,7 +928,12 @@ def verify_canonical_sidecar_payload(
     distance_source = payload_dict.get("target_distance_source")
     grade_source = payload_dict.get("target_grade_source")
     distance = normalize_target_distance(payload_dict.get("target_distance"))
-    grade = normalize_target_grade(payload_dict.get("target_grade"))
+    grade_value = payload_dict.get("target_grade")
+    grade = (
+        normalize_exact_target_grade(grade_value)
+        if grade_source == THEDOGS_MEETING_CARD_GRADE_SOURCE
+        else normalize_target_grade(grade_value)
+    )
     leakage_safe = payload_dict.get("metadata_is_leakage_safe") is True
     race_time_mapping_status = _sidecar_field(
         payload_dict, race_info, "race_time_mapping_status"
@@ -559,7 +954,13 @@ def verify_canonical_sidecar_payload(
         unsafe.append("metadata_is_leakage_safe_not_true")
     if not is_canonical_sidecar_target_source(distance_source):
         unsafe.append(f"noncanonical_target_distance_source:{distance_source or 'missing'}")
-    if not is_canonical_sidecar_target_source(grade_source):
+    if not _grade_source_is_safe(
+        grade_source,
+        payload_dict,
+        canonical_race_url=canonical_race_url,
+        grade_value=grade_value,
+        canonical=True,
+    ):
         unsafe.append(f"noncanonical_target_grade_source:{grade_source or 'missing'}")
     if str(race_time_mapping_status or "") != "exact_url_match":
         mismatch.append(
@@ -687,7 +1088,11 @@ def build_safe_target_metadata_payload(
     if grade_value in (None, "") and allow_generic_fields:
         grade_value = race_info.get("grade")
     distance = normalize_target_distance(distance_value)
-    grade = normalize_target_grade(grade_value)
+    grade = (
+        normalize_exact_target_grade(grade_value)
+        if grade_source == THEDOGS_MEETING_CARD_GRADE_SOURCE
+        else normalize_target_grade(grade_value)
+    )
     payload: Dict[str, Any] = {
         "target_distance": None,
         "target_distance_source": "default_missing_target",
@@ -703,7 +1108,12 @@ def build_safe_target_metadata_payload(
     if distance and is_safe_sidecar_target_source(distance_source):
         payload["target_distance"] = distance
         payload["target_distance_source"] = distance_source
-    if grade and is_safe_sidecar_target_source(grade_source):
+    if grade and _grade_source_is_safe(
+        grade_source,
+        race_info,
+        canonical_race_url=source_url,
+        grade_value=grade_value,
+    ):
         payload["target_grade"] = grade
         payload["target_grade_source"] = grade_source
     payload["metadata_is_leakage_safe"] = bool(
@@ -1090,6 +1500,14 @@ def build_csv_download_provenance_payload(
                 "race_time_source",
                 "title",
                 "track_condition",
+                "target_grade_context_schema",
+                "target_grade_equivalence_key",
+                "target_grade_exact_value",
+                "target_grade_race_date",
+                "target_grade_race_number",
+                "target_grade_race_url",
+                "target_grade_source_url",
+                "target_grade_venue",
                 "url",
                 "venue",
                 "venue_name",
@@ -1110,6 +1528,18 @@ def build_csv_download_provenance_payload(
         payload["source"] = source
     if filename:
         payload["filename"] = filename
+    for key in (
+        "target_grade_context_schema",
+        "target_grade_equivalence_key",
+        "target_grade_exact_value",
+        "target_grade_race_date",
+        "target_grade_race_number",
+        "target_grade_race_url",
+        "target_grade_source_url",
+        "target_grade_venue",
+    ):
+        if race_info_dict.get(key) not in (None, ""):
+            payload[key] = race_info_dict[key]
     payload.update(
         build_safe_target_metadata_payload(
             race_info_dict,
@@ -1167,7 +1597,12 @@ def build_prejump_shadow_metadata_payload(payload: Mapping[str, Any]) -> Dict[st
     distance_source = payload.get("target_distance_source")
     grade_source = payload.get("target_grade_source")
     target_distance = normalize_target_distance(payload.get("target_distance"))
-    target_grade = normalize_target_grade(payload.get("target_grade"))
+    target_grade_value = payload.get("target_grade")
+    target_grade = (
+        normalize_exact_target_grade(target_grade_value)
+        if grade_source == THEDOGS_MEETING_CARD_GRADE_SOURCE
+        else normalize_target_grade(target_grade_value)
+    )
     participants = _participant_box_name_list(payload)
     alignment = (
         payload.get("canonical_runner_alignment")
@@ -1185,7 +1620,12 @@ def build_prejump_shadow_metadata_payload(payload: Mapping[str, Any]) -> Dict[st
         fail_reasons.append("metadata_is_leakage_safe_not_true")
     if not target_distance or not is_safe_sidecar_target_source(distance_source):
         fail_reasons.append("target_distance_missing_or_unsafe")
-    if not target_grade or not is_safe_sidecar_target_source(grade_source):
+    if not target_grade or not _grade_source_is_safe(
+        grade_source,
+        payload,
+        canonical_race_url=source_url,
+        grade_value=target_grade_value,
+    ):
         fail_reasons.append("target_grade_missing_or_unsafe")
     if not (race_info.get("date") or payload.get("race_date")):
         fail_reasons.append("race_date_missing")
@@ -1525,12 +1965,22 @@ def load_safe_sidecar_target_metadata(csv_path: Union[str, os.PathLike]) -> Dict
         or shadow_metadata.get("target_grade_source")
         or "sidecar_target_metadata"
     )
-    grade = normalize_target_grade(
+    grade_value = (
         payload.get("target_grade")
         or shadow_metadata.get("target_grade_safe")
         or shadow_metadata.get("grade")
     )
-    if grade and leakage_safe and is_safe_sidecar_target_source(grade_source):
+    grade = (
+        normalize_exact_target_grade(grade_value)
+        if grade_source == THEDOGS_MEETING_CARD_GRADE_SOURCE
+        else normalize_target_grade(grade_value)
+    )
+    if grade and leakage_safe and _grade_source_is_safe(
+        grade_source,
+        payload,
+        canonical_race_url=source_url,
+        grade_value=grade_value,
+    ):
         result["target_grade"] = grade
         result["target_grade_source"] = str(grade_source)
         result["metadata_is_leakage_safe"] = True

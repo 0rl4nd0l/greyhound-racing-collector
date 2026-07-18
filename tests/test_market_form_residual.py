@@ -801,3 +801,23 @@ def test_artifact_files_are_canonical_json_bytes():
             + "\n"
         ).encode("utf-8")
         assert path.read_bytes() == expected
+
+
+def test_loader_reads_and_hashes_each_artifact_from_one_open(monkeypatch):
+    watched = {
+        (ARTIFACT_DIR / "model.json").resolve(),
+        (ARTIFACT_DIR / "manifest.json").resolve(),
+    }
+    counts = {path: 0 for path in watched}
+    original = Path.open
+
+    def counted(path, *args, **kwargs):
+        resolved = path.resolve()
+        if resolved in counts:
+            counts[resolved] += 1
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", counted)
+    load_frozen_model()
+
+    assert counts == {path: 1 for path in watched}
