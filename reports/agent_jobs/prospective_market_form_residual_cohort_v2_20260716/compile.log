@@ -1,0 +1,4 @@
+python3 -m py_compile src/predictor/market_form_residual.py tests/test_market_form_residual.py: passed
+post-PR45 integration py_compile: passed
+model SHA-256: 624bba020d24f93fac4d895a851195aed5d31cff2f35645d9253be1175cc694d
+manifest SHA-256: 8537cbc3d843d106a1fe48793ef01197454ef092c0244025fd65685636a42080

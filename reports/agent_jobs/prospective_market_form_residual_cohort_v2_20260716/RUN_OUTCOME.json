@@ -1,0 +1,42 @@
+{
+  "blocked_by": [],
+  "changed_claims": [
+    "The source-proven effective-state mutation class is closed by immutable loaded state, artifact-anchored effective-state verification, and writer-side canonical rescoring and identity reconstruction.",
+    "The frozen model and manifest bytes are unchanged.",
+    "The separately activated runtime is healthy but still uses the original writer API; it was not changed by this repair."
+  ],
+  "decision_delta": "The source-proven mutable-state identity defect is closed by immutable score state, artifact-anchored effective-state verification, and writer-side canonical rescoring and identity reconstruction, with frozen artifact bytes unchanged and no merge or activation by this task.",
+  "new_evidence": [
+    "The pre-repair exploit changed predictions while cached model, manifest, and record-key identity remained unchanged and the writer accepted the mutation.",
+    "Post-repair nested, array, cached-hash, forged-effective-key, caller-record, score-to-write, malformed-history, and noncanonical-history regressions fail closed.",
+    "Thirty-seven focused tests, 133 resource-lock tests, Ruff, format, py_compile, diff, artifact-hash and post-PR45 integration gates passed.",
+    "Model SHA-256 624bba020d24f93fac4d895a851195aed5d31cff2f35645d9253be1175cc694d and manifest SHA-256 8537cbc3d843d106a1fe48793ef01197454ef092c0244025fd65685636a42080 remained exact."
+  ],
+  "new_goal_permitted": false,
+  "produced_artifacts": [
+    "docs/agent_tasks/prospective_market_form_residual_cohort_v2_20260716.md",
+    "src/predictor/market_form_residual.py",
+    "tests/test_market_form_residual.py",
+    "reports/agent_jobs/prospective_market_form_residual_cohort_v2_20260716/README.md",
+    "reports/agent_jobs/prospective_market_form_residual_cohort_v2_20260716/STATE.md",
+    "reports/agent_jobs/prospective_market_form_residual_cohort_v2_20260716/VALIDATION.md",
+    "reports/agent_jobs/prospective_market_form_residual_cohort_v2_20260716/CODE_REVIEW.md",
+    "reports/agent_jobs/prospective_market_form_residual_cohort_v2_20260716/PR_REVIEW.md"
+  ],
+  "resume_only_if": "Independent merge review may begin only on the exact pushed repair head after all exact-head checks pass; merge, activation, deployment, promotion, runtime, service, unit, timer, production DB, outcome and artifact mutations remain separately forbidden.",
+  "reused_claims": [
+    "The frozen candidate, population, algorithm, feature order, preprocessing, strengths, normalization and artifact bytes remain unchanged.",
+    "Production remains KEEP_BASELINE / market-only implied probability.",
+    "PR #45 is merged in master at c1dfd464cf6ecfb2034f96ac1a8d3ea58d4e6afa."
+  ],
+  "scope_fingerprint": "d302c845b81bca3c9a3a8290cfdc0f57cbd8bacf2066f05a47c1d5b605d50b95",
+  "state_after": "pr46_effective_state_repair_ready_for_independent_merge_review",
+  "state_before": "pr45_merged_pr46_blocked_on_source_proven_effective_state_identity_mutation",
+  "status": "ADVANCED",
+  "used_capabilities": [
+    "READ",
+    "REPORT_WRITE",
+    "CODE_EDIT",
+    "PUBLISH"
+  ]
+}
