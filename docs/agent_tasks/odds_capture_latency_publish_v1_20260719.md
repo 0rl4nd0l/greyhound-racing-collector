@@ -1,0 +1,73 @@
+---
+job_id: odds_capture_latency_publish_v1_20260719
+lane: Evaluation
+supporting_lanes:
+  - Provenance
+owner: Codex
+approval_required: true
+approval_source: The owner said "proceed" after being told the immediate next action was to push codex/odds-capture-latency-v1-20260719 and open a draft PR stacked on PR 48.
+allow_unapproved_safe_extension: false
+timeout_seconds: 3600
+output_dir: reports/agent_jobs/odds_capture_latency_publish_v1_20260719
+mutation_mode: safe_extension
+production_data_access: false
+production_data_boundary: No production data, runtime artifact, browser, database, service, timer, lock, model pointer, or installed unit may be read or mutated.
+live_service_mutation_allowed: false
+closeout_scope: report_only
+control_contract_version: 2
+project_id: greyhound_racing_collector
+claim_id: odds_capture_latency_publish_v1_20260719
+proof_question: Can the reviewed clean implementation commit f4409e43 be pushed and opened as one draft PR against PR 48 exact branch without changing code, base ancestry, runtime state, or merge state?
+hypothesis_id: publish_reviewed_odds_capture_latency_stack_v1
+program_track: offline_development
+entry_state: reviewed clean local implementation branch has no remote branch or pull request
+target_transition: exact reviewed implementation branch is published as a draft pull request stacked on PR 48 and remains unmerged
+exit_predicate: Remote head equals local f4409e43 descendant plus this publish packet; one draft PR targets codex/early-residual-shadow-activation-v1-20260716 at exact PR 48 head f776bfd; checks are reported without merge or runtime mutation.
+source_class: reviewed_local_f4409e43_plus_live_pr48_f776bfd_publish_metadata
+dataset_version: local_f4409e43_pr48_f776bfd_20260719
+evidence_hash: sha256:b84f5f6ad78892c93c0377f9c8e9787b968585b91476d5b365ab0a5136db10c5
+capabilities:
+  - READ
+  - REPORT_WRITE
+  - PUBLISH
+resume_only_if: Stop if PR 48 head changes, the implementation worktree becomes dirty outside this publish packet, the remote branch or PR already exists with conflicting identity, authentication fails, push requires force, the PR base cannot be the PR 48 head branch, checks reveal a blocker, or merge/runtime mutation becomes necessary.
+docs_impact: DOCS_NOT_REQUIRED
+docs_checked:
+  - AGENTS.md
+  - docs/manual_live_market_form_residual_prediction.md
+docs_changed: []
+docs_followup: None; this task publishes already documented behavior without changing it.
+reason: Publishing adds GitHub review metadata only and does not change behavior, commands, schemas, operator steps, or runtime state.
+task_tier: small
+recommended_model: standard
+actual_model: Codex GPT-5
+why_this_model: The task is a bounded authenticated Git push and exact-base draft PR creation after completed implementation and review.
+worker_model_allowed: false
+worker_decision_limit: No delegation; one agent verifies identity, pushes, creates the draft PR, and records the receipt.
+escalation_needed: false
+allowed_files:
+  - docs/agent_tasks/odds_capture_latency_publish_v1_20260719.md
+  - reports/agent_jobs/odds_capture_latency_publish_v1_20260719/STATE.md
+  - reports/agent_jobs/odds_capture_latency_publish_v1_20260719/VALIDATION.md
+  - reports/agent_jobs/odds_capture_latency_publish_v1_20260719/PR.json
+  - reports/agent_jobs/odds_capture_latency_publish_v1_20260719/pr-body.md
+  - reports/agent_jobs/odds_capture_latency_publish_v1_20260719/RUN_OUTCOME.json
+  - reports/agent_jobs/odds_capture_latency_publish_v1_20260719/DECISION_ENTRY.json
+  - reports/agent_jobs/odds_capture_latency_publish_v1_20260719/status.json
+  - reports/agent_jobs/odds_capture_latency_publish_v1_20260719/validation.json
+  - reports/agent_jobs/odds_capture_latency_publish_v1_20260719/diff-check.json
+  - reports/agent_jobs/odds_capture_latency_publish_v1_20260719/commands.log
+---
+
+# Publish odds-capture latency remediation v1
+
+Push the reviewed branch and open exactly one draft PR with base
+`codex/early-residual-shadow-activation-v1-20260716`.
+
+## Hard boundaries
+
+- Do not change implementation, tests, documentation, task ancestry, or the
+  completed implementation closeout.
+- Do not force-push, merge, mark ready, install units, reload systemd, restart
+  services, inspect production data, or execute a live capture.
+- Stop on any remote identity, base, head, authentication, or validation drift.
