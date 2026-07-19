@@ -117,6 +117,21 @@ def assert_output_snapshot(path, expected):
     assert actual["rows"] == expected["rows"]
 
 
+def open_descriptors_for_path(path):
+    fd_root = Path("/proc/self/fd")
+    assert fd_root.is_dir()
+    expected_targets = {str(path), f"{path} (deleted)"}
+    descriptors = []
+    for fd_path in fd_root.iterdir():
+        try:
+            target = os.readlink(fd_path)
+        except FileNotFoundError:
+            continue
+        if target in expected_targets:
+            descriptors.append(int(fd_path.name))
+    return sorted(descriptors)
+
+
 def distinct_record(frozen, runners, provenance, suffix):
     shifted_runners, shifted_provenance = shifted_race_inputs(
         runners, provenance, suffix
@@ -728,6 +743,139 @@ def test_cleanup_failure_preserves_target_and_retry_removes_leftover(
         )
         == "EXACT_REPLAY"
     )
+
+
+@pytest.mark.parametrize(
+    ("fault_point", "target_exists"),
+    [("fchmod", True), ("fdopen", False)],
+)
+def test_pretransfer_staged_fd_failures_do_not_leak_and_retry_cleanly(
+    tmp_path, monkeypatch, fault_point, target_exists
+):
+    frozen, runners, provenance = load_fixture()
+    original = score_race(frozen, runners, provenance)
+    path = tmp_path / f"pretransfer-{fault_point}.jsonl"
+    if target_exists:
+        assert append_record(path, frozen, original, runners, provenance) == "APPENDED"
+        candidate, candidate_runners, candidate_provenance = distinct_record(
+            frozen, runners, provenance, fault_point
+        )
+    else:
+        candidate, candidate_runners, candidate_provenance = (
+            original,
+            runners,
+            provenance,
+        )
+    before = output_snapshot(path)
+    _, staged_path = residual_module._shadow_transaction_paths(path)
+    real_open = residual_module.os.open
+    real_close = residual_module.os.close
+    opened_staged_fds = []
+    closed_staged_fds = []
+
+    def record_open(open_path, *args, **kwargs):
+        fd = real_open(open_path, *args, **kwargs)
+        if Path(open_path) == staged_path:
+            opened_staged_fds.append(fd)
+        return fd
+
+    def record_close(fd):
+        if opened_staged_fds and fd == opened_staged_fds[-1]:
+            closed_staged_fds.append(fd)
+        return real_close(fd)
+
+    def injected_failure(*args, **kwargs):
+        raise OSError(f"injected:{fault_point}")
+
+    monkeypatch.setattr(residual_module.os, "open", record_open)
+    monkeypatch.setattr(residual_module.os, "close", record_close)
+    monkeypatch.setattr(residual_module.os, fault_point, injected_failure)
+    for _ in range(8):
+        with pytest.raises(ResidualContractError, match="^shadow_output_write_failed:"):
+            append_record(
+                path,
+                frozen,
+                candidate,
+                candidate_runners,
+                candidate_provenance,
+            )
+        assert_output_snapshot(path, before)
+        assert not staged_path.exists()
+    assert closed_staged_fds == opened_staged_fds
+    assert open_descriptors_for_path(staged_path) == []
+
+    monkeypatch.undo()
+    assert (
+        append_record(
+            path,
+            frozen,
+            candidate,
+            candidate_runners,
+            candidate_provenance,
+        )
+        == "APPENDED"
+    )
+    assert output_snapshot(path)["rows"] == before["rows"] + 1
+    assert (
+        append_record(
+            path,
+            frozen,
+            candidate,
+            candidate_runners,
+            candidate_provenance,
+        )
+        == "EXACT_REPLAY"
+    )
+
+
+def test_transferred_staged_fd_is_not_closed_again_after_managed_close(
+    tmp_path, monkeypatch
+):
+    frozen, runners, provenance = load_fixture()
+    record = score_race(frozen, runners, provenance)
+    path = tmp_path / "transferred-fd.jsonl"
+    unrelated_path = tmp_path / "unrelated.txt"
+    unrelated_path.write_bytes(b"unrelated")
+    _, staged_path = residual_module._shadow_transaction_paths(path)
+    real_fdopen = residual_module.os.fdopen
+    real_remove = residual_module._remove_staged_shadow_file
+    transferred_fd = None
+    unrelated_fd = None
+    remove_calls = 0
+
+    def record_transfer(fd, *args, **kwargs):
+        nonlocal transferred_fd
+        transferred_fd = fd
+        return real_fdopen(fd, *args, **kwargs)
+
+    def injected_write_failure(*args, **kwargs):
+        raise OSError("injected:write-after-transfer")
+
+    def remove_then_reuse_fd(staged):
+        nonlocal remove_calls, unrelated_fd
+        remove_calls += 1
+        real_remove(staged)
+        if remove_calls == 2:
+            unrelated_fd = os.open(unrelated_path, os.O_RDONLY)
+
+    monkeypatch.setattr(residual_module.os, "fdopen", record_transfer)
+    monkeypatch.setattr(
+        residual_module, "_write_staged_shadow_bytes", injected_write_failure
+    )
+    monkeypatch.setattr(
+        residual_module, "_remove_staged_shadow_file", remove_then_reuse_fd
+    )
+    try:
+        with pytest.raises(ResidualContractError, match="^shadow_output_write_failed:"):
+            append_record(path, frozen, record, runners, provenance)
+        assert transferred_fd is not None
+        assert unrelated_fd == transferred_fd
+        assert os.read(unrelated_fd, len(b"unrelated")) == b"unrelated"
+        assert not path.exists()
+        assert not staged_path.exists()
+    finally:
+        if unrelated_fd is not None:
+            os.close(unrelated_fd)
 
 
 @pytest.mark.parametrize("target_exists", [False, True])
