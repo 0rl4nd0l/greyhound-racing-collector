@@ -3,6 +3,10 @@
   "diff_check": "PASS",
   "exact_uv_help": "PASS",
   "focused_tests": {"passed": 27, "status": "PASS"},
+  "github_checks": {
+    "head": "f9c732c94cc48e3069340e4fe7062a06eb2d4639",
+    "status": "PASS"
+  },
   "independent_review": "PASS_WITH_DEPENDENCY_BLOCK",
   "live_prediction": "NOT_RUN_NOT_AUTHORIZED",
   "pr46": "BLOCKED_DO_NOT_MERGE",

@@ -1,104 +1,24 @@
 {
   "changed_files": [
     {
-      "path": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/CODE_REVIEW.json",
-      "status": "A"
-    },
-    {
-      "path": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/DECISIONS.md",
-      "status": "A"
-    },
-    {
       "path": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/DECISION_ENTRY.json",
-      "status": "A"
-    },
-    {
-      "path": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/INDEPENDENT_REVIEW.md",
-      "status": "A"
-    },
-    {
-      "path": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/README.md",
-      "status": "A"
-    },
-    {
-      "path": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/RUNTIME_PROOF.md",
-      "status": "A"
-    },
-    {
-      "path": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/RUN_OUTCOME.json",
-      "status": "A"
-    },
-    {
-      "path": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/STATE.md",
-      "status": "A"
+      "status": "M"
     },
     {
       "path": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/VALIDATION.md",
-      "status": "A"
-    },
-    {
-      "path": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/ancestry.json",
-      "status": "A"
-    },
-    {
-      "path": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/commands.log",
-      "status": "A"
-    },
-    {
-      "path": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/compile.log",
-      "status": "A"
-    },
-    {
-      "path": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/determinism.json",
-      "status": "A"
+      "status": "M"
     },
     {
       "path": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/diff-check.json",
-      "status": "A"
-    },
-    {
-      "path": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/diff-check.log",
-      "status": "A"
-    },
-    {
-      "path": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/fixture-e2e.json",
-      "status": "A"
-    },
-    {
-      "path": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/focused-pytest.log",
-      "status": "A"
-    },
-    {
-      "path": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/full-pytest.log",
-      "status": "A"
-    },
-    {
-      "path": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/guard-preflight.json",
-      "status": "A"
-    },
-    {
-      "path": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/pr-body.md",
-      "status": "A"
-    },
-    {
-      "path": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/pr46-integrity.json",
-      "status": "A"
-    },
-    {
-      "path": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/ruff.log",
-      "status": "A"
+      "status": "M"
     },
     {
       "path": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/status.json",
-      "status": "A"
-    },
-    {
-      "path": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/tamper-probes.json",
-      "status": "A"
+      "status": "M"
     },
     {
       "path": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/validation.json",
-      "status": "A"
+      "status": "M"
     }
   ],
   "disallowed_files": [],

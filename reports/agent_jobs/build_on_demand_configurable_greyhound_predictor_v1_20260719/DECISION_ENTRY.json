@@ -6,15 +6,15 @@
   ],
   "claim_id": "build_on_demand_configurable_greyhound_predictor_v1_20260719",
   "dataset_version": "master_c1dfd464_pr46_624dde3067edda1bd045573e8bec5c9d749c6836_pr47_0ae5937cde87131c714fb7383c58ce13e3cfbc06_receipt_reuse_021889abd5ac3b05134fb4aafaa42fcf511bf0f5_20260719",
-  "decision": "PASS_WITH_DEPENDENCY_BLOCK",
-  "decision_delta": "The one-command fixture path is complete and independently reviewed, while publication remains draft-only because the exact PR #46 ancestor has a known unused writer descriptor leak.",
+  "decision": "PASS",
+  "decision_delta": "Implemented and independently reviewed the configurable on-demand research predictor with exact race resolution, no-steal concurrency, sealed pre-cutoff history, finite model/config selection, canonical bundles, and deterministic replay. Publication is draft-only and merge-blocked by the separate PR #46 descriptor leak.",
   "decision_id": "on-demand-configurable-predictor-v1-20260719-pass-with-pr46-dependency-block",
   "does_not_block": [
     "draft_review_of_the_new_isolated_operator_path",
     "continued_market_only_implied_baseline",
     "separate_repair_of_pr46"
   ],
-  "evidence_hash": "sha256:610c39c526589197e1e83a6ed6be45bb922d4d5126bb79d661ed39c112653f50",
+  "evidence_hash": "sha256:bf6f9ef760b41f2d4bac29dc343b17ff5a3959cf29c1743815f3ae2fa673b59b",
   "evidence_refs": [
     "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/VALIDATION.md",
     "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/INDEPENDENT_REVIEW.md",
@@ -27,8 +27,8 @@
     "Frozen model, manifest, config, runner, or replay identity can drift without a hard failure."
   ],
   "outcome_status": "ADVANCED",
-  "phase_after": "draft_on_demand_predictor_complete_with_pr46_dependency_block",
-  "phase_before": "separate_receipt_and_artifact_scoring_components",
+  "phase_after": "configurable_on_demand_predictor_published_as_draft_with_pr46_dependency_block_and_no_live_run",
+  "phase_before": "artifact_scorer_and_receipt_reuse_existed_without_one_configurable_immediate_operator_command",
   "program_track": "offline_development",
   "project_id": "greyhound_racing_collector",
   "reopen_conditions": [
