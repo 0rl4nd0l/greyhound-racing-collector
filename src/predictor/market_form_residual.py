@@ -1037,14 +1037,27 @@ def append_shadow_record(
         try:
             if target_mode is not None:
                 os.fchmod(staged_fd, target_mode)
-            staged_handle = os.fdopen(staged_fd, "wb", closefd=True)
+            staged_handle = os.fdopen(staged_fd, "wb", closefd=False)
+            try:
+                _write_staged_shadow_bytes(staged_handle, replacement)
+                _flush_staged_shadow_file(staged_handle)
+                _fsync_staged_shadow_file(staged_handle)
+            except BaseException:
+                try:
+                    staged_handle.close()
+                except BaseException:
+                    pass
+                raise
+            else:
+                staged_handle.close()
         except BaseException:
-            os.close(staged_fd)
+            try:
+                os.close(staged_fd)
+            except BaseException:
+                pass
             raise
-        with staged_handle:
-            _write_staged_shadow_bytes(staged_handle, replacement)
-            _flush_staged_shadow_file(staged_handle)
-            _fsync_staged_shadow_file(staged_handle)
+        else:
+            os.close(staged_fd)
 
         try:
             _publish_staged_shadow_file(staged_path, output)

@@ -828,6 +828,501 @@ def test_pretransfer_staged_fd_failures_do_not_leak_and_retry_cleanly(
     )
 
 
+@pytest.mark.parametrize("target_exists", [False, True])
+def test_partial_wrapper_construction_retains_raw_staged_fd_ownership(
+    tmp_path, monkeypatch, target_exists
+):
+    frozen, runners, provenance = load_fixture()
+    original = score_race(frozen, runners, provenance)
+    path = tmp_path / f"partial-wrapper-{target_exists}.jsonl"
+    if target_exists:
+        assert append_record(path, frozen, original, runners, provenance) == "APPENDED"
+        path.chmod(0o640)
+        candidate, candidate_runners, candidate_provenance = distinct_record(
+            frozen, runners, provenance, "partial-wrapper"
+        )
+    else:
+        candidate, candidate_runners, candidate_provenance = (
+            original,
+            runners,
+            provenance,
+        )
+    before = output_snapshot(path)
+    before_mode = stat.S_IMODE(path.stat().st_mode) if target_exists else None
+    _, staged_path = residual_module._shadow_transaction_paths(path)
+    unrelated_path = tmp_path / "partial-wrapper-unrelated.txt"
+    unrelated_path.write_bytes(b"unrelated")
+    real_open = residual_module.os.open
+    real_close = residual_module.os.close
+    real_fdopen = residual_module.os.fdopen
+    staged_fd = None
+    unrelated_fd = None
+    closefd_values = []
+    raw_close_attempts = []
+    fd_count_before = len(os.listdir("/proc/self/fd"))
+
+    def tracked_open(open_path, *args, **kwargs):
+        nonlocal staged_fd
+        fd = real_open(open_path, *args, **kwargs)
+        if Path(open_path) == staged_path:
+            staged_fd = fd
+        return fd
+
+    def partial_fdopen(fd, *args, **kwargs):
+        nonlocal unrelated_fd
+        closefd = kwargs["closefd"]
+        closefd_values.append(closefd)
+        try:
+            return real_fdopen(
+                fd,
+                "w",
+                encoding="definitely-not-a-codec",
+                closefd=closefd,
+            )
+        except LookupError:
+            unrelated_fd = real_open(unrelated_path, os.O_RDONLY)
+            raise
+
+    def tracked_close(fd):
+        if fd == staged_fd:
+            raw_close_attempts.append(fd)
+        return real_close(fd)
+
+    monkeypatch.setattr(residual_module.os, "open", tracked_open)
+    monkeypatch.setattr(residual_module.os, "fdopen", partial_fdopen)
+    monkeypatch.setattr(residual_module.os, "close", tracked_close)
+    try:
+        with pytest.raises(LookupError, match="unknown encoding"):
+            append_record(
+                path,
+                frozen,
+                candidate,
+                candidate_runners,
+                candidate_provenance,
+            )
+        assert closefd_values == [False]
+        assert staged_fd is not None
+        assert raw_close_attempts == [staged_fd]
+        assert unrelated_fd is not None
+        assert unrelated_fd != staged_fd
+        assert os.read(unrelated_fd, len(b"unrelated")) == b"unrelated"
+        with pytest.raises(OSError, match="Bad file descriptor"):
+            os.fstat(staged_fd)
+        assert_output_snapshot(path, before)
+        if target_exists:
+            assert stat.S_IMODE(path.stat().st_mode) == before_mode
+        assert not staged_path.exists()
+        assert open_descriptors_for_path(staged_path) == []
+    finally:
+        if unrelated_fd is not None:
+            try:
+                real_close(unrelated_fd)
+            except OSError:
+                pass
+
+    monkeypatch.undo()
+    assert len(os.listdir("/proc/self/fd")) == fd_count_before
+    assert (
+        append_record(
+            path,
+            frozen,
+            candidate,
+            candidate_runners,
+            candidate_provenance,
+        )
+        == "APPENDED"
+    )
+    assert output_snapshot(path)["bytes"] == before["bytes"] + canonical_bytes(
+        candidate
+    )
+    assert (
+        append_record(
+            path,
+            frozen,
+            candidate,
+            candidate_runners,
+            candidate_provenance,
+        )
+        == "EXACT_REPLAY"
+    )
+
+
+@pytest.mark.parametrize("fault_point", ["fchmod", "fdopen", "write", "flush", "fsync"])
+def test_primary_staging_fault_precedes_wrapper_and_raw_close_failures(
+    tmp_path, monkeypatch, fault_point
+):
+    frozen, runners, provenance = load_fixture()
+    existing = score_race(frozen, runners, provenance)
+    path = tmp_path / f"primary-precedence-{fault_point}.jsonl"
+    assert append_record(path, frozen, existing, runners, provenance) == "APPENDED"
+    path.chmod(0o640)
+    candidate, candidate_runners, candidate_provenance = distinct_record(
+        frozen, runners, provenance, f"primary-precedence-{fault_point}"
+    )
+    before = output_snapshot(path)
+    _, staged_path = residual_module._shadow_transaction_paths(path)
+    unrelated_path = tmp_path / f"primary-precedence-{fault_point}-unrelated.txt"
+    unrelated_path.write_bytes(b"unrelated")
+    real_open = residual_module.os.open
+    real_close = residual_module.os.close
+    real_fdopen = residual_module.os.fdopen
+    opened_staged_fds = []
+    raw_close_attempts = []
+    closefd_values = []
+    wrapper_close_count = 0
+    unrelated_fds = []
+    fd_count_before = len(os.listdir("/proc/self/fd"))
+    primary_message = f"PRIMARY_{fault_point.upper()}_FAILURE"
+
+    class CloseFailingBorrower:
+        def __init__(self, handle):
+            self.handle = handle
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.close()
+
+        def write(self, value):
+            return self.handle.write(value)
+
+        def flush(self):
+            return self.handle.flush()
+
+        def fileno(self):
+            return self.handle.fileno()
+
+        def close(self):
+            nonlocal wrapper_close_count
+            wrapper_close_count += 1
+            self.handle.close()
+            raise OSError("SECONDARY_WRAPPER_CLOSE_FAILURE")
+
+    def tracked_open(open_path, *args, **kwargs):
+        fd = real_open(open_path, *args, **kwargs)
+        if Path(open_path) == staged_path:
+            opened_staged_fds.append(fd)
+        return fd
+
+    def tracked_fdopen(fd, *args, **kwargs):
+        closefd = kwargs["closefd"]
+        closefd_values.append(closefd)
+        if fault_point == "fdopen":
+            try:
+                return real_fdopen(
+                    fd,
+                    "w",
+                    encoding="definitely-not-a-codec",
+                    closefd=closefd,
+                )
+            except LookupError as exc:
+                raise OSError(primary_message) from exc
+        return CloseFailingBorrower(real_fdopen(fd, *args, **kwargs))
+
+    def close_then_reuse_and_fail(fd):
+        if opened_staged_fds and fd == opened_staged_fds[-1]:
+            raw_close_attempts.append(fd)
+            try:
+                real_close(fd)
+            except OSError:
+                pass
+            else:
+                unrelated_fd = real_open(unrelated_path, os.O_RDONLY)
+                unrelated_fds.append(unrelated_fd)
+            raise OSError("SECONDARY_RAW_CLOSE_FAILURE")
+        return real_close(fd)
+
+    def primary_failure(*args, **kwargs):
+        raise OSError(primary_message)
+
+    monkeypatch.setattr(residual_module.os, "open", tracked_open)
+    monkeypatch.setattr(residual_module.os, "fdopen", tracked_fdopen)
+    monkeypatch.setattr(residual_module.os, "close", close_then_reuse_and_fail)
+    if fault_point == "fchmod":
+        monkeypatch.setattr(residual_module.os, "fchmod", primary_failure)
+    elif fault_point != "fdopen":
+        helper_by_fault = {
+            "write": "_write_staged_shadow_bytes",
+            "flush": "_flush_staged_shadow_file",
+            "fsync": "_fsync_staged_shadow_file",
+        }
+        monkeypatch.setattr(
+            residual_module, helper_by_fault[fault_point], primary_failure
+        )
+
+    try:
+        for _ in range(8):
+            with pytest.raises(ResidualContractError) as captured:
+                append_record(
+                    path,
+                    frozen,
+                    candidate,
+                    candidate_runners,
+                    candidate_provenance,
+                )
+            assert str(captured.value).startswith("shadow_output_write_failed:")
+            assert str(captured.value.__cause__) == primary_message
+            assert_output_snapshot(path, before)
+            assert stat.S_IMODE(path.stat().st_mode) == 0o640
+            assert not staged_path.exists()
+            assert open_descriptors_for_path(staged_path) == []
+            if unrelated_fds:
+                unrelated_fd = unrelated_fds.pop()
+                assert unrelated_fd == opened_staged_fds[-1]
+                assert os.read(unrelated_fd, len(b"unrelated")) == b"unrelated"
+                real_close(unrelated_fd)
+        assert raw_close_attempts == opened_staged_fds
+        expected_wrapper_closes = 0 if fault_point in {"fchmod", "fdopen"} else 8
+        assert wrapper_close_count == expected_wrapper_closes
+        expected_constructions = 0 if fault_point == "fchmod" else 8
+        assert closefd_values == [False] * expected_constructions
+        assert len(os.listdir("/proc/self/fd")) == fd_count_before
+    finally:
+        for unrelated_fd in unrelated_fds:
+            try:
+                real_close(unrelated_fd)
+            except OSError:
+                pass
+
+    monkeypatch.undo()
+    assert (
+        append_record(
+            path,
+            frozen,
+            candidate,
+            candidate_runners,
+            candidate_provenance,
+        )
+        == "APPENDED"
+    )
+    assert output_snapshot(path)["bytes"] == before["bytes"] + canonical_bytes(
+        candidate
+    )
+    assert stat.S_IMODE(path.stat().st_mode) == 0o640
+    assert (
+        append_record(
+            path,
+            frozen,
+            candidate,
+            candidate_runners,
+            candidate_provenance,
+        )
+        == "EXACT_REPLAY"
+    )
+
+
+@pytest.mark.parametrize("target_exists", [False, True])
+@pytest.mark.parametrize("cleanup_fails", [False, True])
+def test_raw_close_only_failure_is_classified_once_and_retry_is_exact(
+    tmp_path, monkeypatch, target_exists, cleanup_fails
+):
+    frozen, runners, provenance = load_fixture()
+    original = score_race(frozen, runners, provenance)
+    path = tmp_path / f"raw-close-only-{target_exists}-{cleanup_fails}.jsonl"
+    old_umask = os.umask(0o027)
+    try:
+        if target_exists:
+            assert (
+                append_record(path, frozen, original, runners, provenance) == "APPENDED"
+            )
+            candidate, candidate_runners, candidate_provenance = distinct_record(
+                frozen, runners, provenance, "raw-close-only"
+            )
+        else:
+            candidate, candidate_runners, candidate_provenance = (
+                original,
+                runners,
+                provenance,
+            )
+        before = output_snapshot(path)
+        _, staged_path = residual_module._shadow_transaction_paths(path)
+        replacement = before["bytes"] + canonical_bytes(candidate)
+        unrelated_path = tmp_path / "raw-close-only-unrelated.txt"
+        unrelated_path.write_bytes(b"unrelated")
+        real_open = residual_module.os.open
+        real_close = residual_module.os.close
+        real_fdopen = residual_module.os.fdopen
+        real_remove = residual_module._remove_staged_shadow_file
+        opened_staged_fds = []
+        raw_close_attempts = []
+        closefd_values = []
+        unrelated_fds = []
+        cleanup_calls = 0
+        fd_count_before = len(os.listdir("/proc/self/fd"))
+
+        def tracked_open(open_path, *args, **kwargs):
+            fd = real_open(open_path, *args, **kwargs)
+            if Path(open_path) == staged_path:
+                opened_staged_fds.append(fd)
+            return fd
+
+        def tracked_fdopen(fd, *args, **kwargs):
+            closefd_values.append(kwargs["closefd"])
+            return real_fdopen(fd, *args, **kwargs)
+
+        def close_then_reuse_and_fail(fd):
+            if opened_staged_fds and fd == opened_staged_fds[-1]:
+                raw_close_attempts.append(fd)
+                real_close(fd)
+                unrelated_fd = real_open(unrelated_path, os.O_RDONLY)
+                unrelated_fds.append(unrelated_fd)
+                raise OSError("ONLY_RAW_CLOSE_FAILURE")
+            return real_close(fd)
+
+        def maybe_retain_stage(staged):
+            nonlocal cleanup_calls
+            cleanup_calls += 1
+            if cleanup_fails and cleanup_calls % 2 == 0:
+                raise OSError("FINAL_STAGE_CLEANUP_FAILURE")
+            real_remove(staged)
+
+        monkeypatch.setattr(residual_module.os, "open", tracked_open)
+        monkeypatch.setattr(residual_module.os, "fdopen", tracked_fdopen)
+        monkeypatch.setattr(residual_module.os, "close", close_then_reuse_and_fail)
+        monkeypatch.setattr(
+            residual_module, "_remove_staged_shadow_file", maybe_retain_stage
+        )
+        try:
+            for _ in range(8):
+                with pytest.raises(ResidualContractError) as captured:
+                    append_record(
+                        path,
+                        frozen,
+                        candidate,
+                        candidate_runners,
+                        candidate_provenance,
+                    )
+                assert str(captured.value).startswith("shadow_output_write_failed:")
+                assert str(captured.value.__cause__) == "ONLY_RAW_CLOSE_FAILURE"
+                assert raw_close_attempts[-1] == opened_staged_fds[-1]
+                assert len(raw_close_attempts) == len(opened_staged_fds)
+                assert unrelated_fds[-1] == opened_staged_fds[-1]
+                assert os.read(unrelated_fds[-1], len(b"unrelated")) == b"unrelated"
+                real_close(unrelated_fds.pop())
+                assert_output_snapshot(path, before)
+                if cleanup_fails:
+                    assert staged_path.read_bytes() == replacement
+                    assert stat.S_IMODE(staged_path.stat().st_mode) == 0o640
+                else:
+                    assert not staged_path.exists()
+                assert open_descriptors_for_path(staged_path) == []
+            assert closefd_values == [False] * 8
+            assert raw_close_attempts == opened_staged_fds
+            assert len(os.listdir("/proc/self/fd")) == fd_count_before
+        finally:
+            for unrelated_fd in unrelated_fds:
+                try:
+                    real_close(unrelated_fd)
+                except OSError:
+                    pass
+
+        monkeypatch.undo()
+        assert (
+            append_record(
+                path,
+                frozen,
+                candidate,
+                candidate_runners,
+                candidate_provenance,
+            )
+            == "APPENDED"
+        )
+        assert not staged_path.exists()
+        after = output_snapshot(path)
+        assert after["bytes"] == replacement
+        assert after["rows"] == before["rows"] + 1
+        assert stat.S_IMODE(path.stat().st_mode) == 0o640
+        assert (
+            append_record(
+                path,
+                frozen,
+                candidate,
+                candidate_runners,
+                candidate_provenance,
+            )
+            == "EXACT_REPLAY"
+        )
+    finally:
+        os.umask(old_umask)
+
+
+def test_staged_wrapper_and_raw_fd_close_before_publication(tmp_path, monkeypatch):
+    frozen, runners, provenance = load_fixture()
+    record = score_race(frozen, runners, provenance)
+    path = tmp_path / "close-before-publication.jsonl"
+    _, staged_path = residual_module._shadow_transaction_paths(path)
+    real_open = residual_module.os.open
+    real_close = residual_module.os.close
+    real_fdopen = residual_module.os.fdopen
+    real_publish = residual_module._publish_staged_shadow_file
+    staged_fd = None
+    raw_closed = False
+    closefd_values = []
+    events = []
+
+    class TrackedBorrower:
+        def __init__(self, handle):
+            self.handle = handle
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.close()
+
+        def write(self, value):
+            return self.handle.write(value)
+
+        def flush(self):
+            return self.handle.flush()
+
+        def fileno(self):
+            return self.handle.fileno()
+
+        def close(self):
+            events.append("wrapper_close")
+            self.handle.close()
+
+    def tracked_open(open_path, *args, **kwargs):
+        nonlocal staged_fd
+        fd = real_open(open_path, *args, **kwargs)
+        if Path(open_path) == staged_path:
+            staged_fd = fd
+        return fd
+
+    def tracked_fdopen(fd, *args, **kwargs):
+        closefd_values.append(kwargs["closefd"])
+        return TrackedBorrower(real_fdopen(fd, *args, **kwargs))
+
+    def tracked_close(fd):
+        nonlocal raw_closed
+        if fd == staged_fd and not raw_closed:
+            events.append("raw_close")
+            raw_closed = True
+        return real_close(fd)
+
+    def checked_publish(staged, output):
+        assert events == ["wrapper_close", "raw_close"]
+        assert staged_fd is not None
+        with pytest.raises(OSError, match="Bad file descriptor"):
+            os.fstat(staged_fd)
+        events.append("publish")
+        real_publish(staged, output)
+
+    monkeypatch.setattr(residual_module.os, "open", tracked_open)
+    monkeypatch.setattr(residual_module.os, "fdopen", tracked_fdopen)
+    monkeypatch.setattr(residual_module.os, "close", tracked_close)
+    monkeypatch.setattr(residual_module, "_publish_staged_shadow_file", checked_publish)
+
+    assert append_record(path, frozen, record, runners, provenance) == "APPENDED"
+    assert closefd_values == [False]
+    assert events == ["wrapper_close", "raw_close", "publish"]
+    assert path.read_bytes() == canonical_bytes(record)
+    assert not staged_path.exists()
+    assert append_record(path, frozen, record, runners, provenance) == "EXACT_REPLAY"
+
+
 def test_transferred_staged_fd_is_not_closed_again_after_managed_close(
     tmp_path, monkeypatch
 ):
