@@ -2309,13 +2309,15 @@ def build_live_feature_rows(
     input_paths: Sequence[Path],
     schema: Mapping[str, Any],
     db_path: Path,
+    history_index: Mapping[str, list[dict[str, Any]]] | None = None,
 ) -> list[dict[str, Any]]:
     features = list(schema["feature_columns"])
-    connection = sqlite_ro(db_path)
-    try:
-        history_index = load_db_history(connection)
-    finally:
-        connection.close()
+    if history_index is None:
+        connection = sqlite_ro(db_path)
+        try:
+            history_index = load_db_history(connection)
+        finally:
+            connection.close()
     output: list[dict[str, Any]] = []
     for path in input_paths:
         rows = load_live_csv(path)
@@ -2524,7 +2526,7 @@ def score_live(args: argparse.Namespace) -> int:
     protected_before = protected_path_snapshot()
     final_status = "IMPLEMENTATION_ABORTED"
     try:
-        schema = load_json(args.schema)
+        schema = getattr(args, "_preloaded_schema", None) or load_json(args.schema)
         schema_audit = validate_schema_contract(schema)
         if schema_audit["status"] != "PASS":
             raise RuntimeError(f"schema_contract_failed:{schema_audit['fail_reasons']}")
@@ -2532,11 +2534,16 @@ def score_live(args: argparse.Namespace) -> int:
         input_paths = input_files_from_path(args.input)
         if not input_paths:
             raise RuntimeError("live_input_csv_files_missing_after_auxiliary_filter")
-        deps = sklearn_imports()
+        deps = getattr(args, "_preloaded_deps", None) or sklearn_imports()
         if deps["status"] != "OK":
             raise RuntimeError(f"missing_ml_dependencies:{deps['error']}")
-        active_features = list(schema["feature_columns"])
-        active_feature_policy = {
+        active_features = list(
+            getattr(args, "_preloaded_active_features", None)
+            or schema["feature_columns"]
+        )
+        active_feature_policy = getattr(
+            args, "_preloaded_active_feature_policy", None
+        ) or {
             "schema_version": "loaded_shadow_model_feature_policy_v1",
             "source": "canonical_schema_default",
             "reason": "initialized_before_model_selection",
@@ -2544,7 +2551,12 @@ def score_live(args: argparse.Namespace) -> int:
             "schema_feature_count": len(active_features),
             "inactive_features_due_to_train_all_missing": [],
         }
-        if args.model:
+        preloaded_pipeline = getattr(args, "_preloaded_pipeline", None)
+        if preloaded_pipeline is not None:
+            pipeline = preloaded_pipeline
+            model_source = str(getattr(args, "_preloaded_model_source"))
+            model_version = str(getattr(args, "_preloaded_model_version"))
+        elif args.model:
             pipeline = deps["load"](args.model)
             model_source = shadow_relpath(args.model)
             model_version = f"shadow_loaded_{args.model.stem}"
@@ -2594,7 +2606,12 @@ def score_live(args: argparse.Namespace) -> int:
 
         write_json(output_dir / "active_feature_policy_report.json", active_feature_policy)
         feature_freeze_at = datetime.now().astimezone()
-        rows = build_live_feature_rows(input_paths=input_paths, schema=schema, db_path=args.db)
+        rows = build_live_feature_rows(
+            input_paths=input_paths,
+            schema=schema,
+            db_path=args.db,
+            history_index=getattr(args, "_preloaded_history_index", None),
+        )
         write_json(output_dir / "shadow_feature_rows.json", rows)
         same_distance_history_report = same_distance_same_grade_history_provenance_report(rows)
         write_json(
@@ -2732,9 +2749,134 @@ def score_live(args: argparse.Namespace) -> int:
         write_text(output_dir / "final_status.txt", final_status + "\n")
 
 
+def score_live_batch(args: argparse.Namespace) -> int:
+    """Score isolated race outputs while reusing one model and DB history load."""
+
+    ensure_shadow_runtime_guard()
+    if args.evidence_root is None:
+        raise RuntimeError("live_score_batch_evidence_root_required")
+    output_report = args.output_report.resolve()
+    try:
+        output_report.relative_to(args.evidence_root.resolve())
+    except (OSError, ValueError) as exc:
+        raise RuntimeError("live_score_batch_report_outside_evidence_root") from exc
+    manifest = load_json(args.input_manifest)
+    if not isinstance(manifest, Mapping):
+        raise RuntimeError("live_score_batch_manifest_invalid")
+    if manifest.get("schema_version") != "shadow_live_score_batch_manifest_v1":
+        raise RuntimeError("live_score_batch_manifest_schema_mismatch")
+    items = manifest.get("items")
+    if not isinstance(items, list) or not items:
+        raise RuntimeError("live_score_batch_manifest_items_missing")
+    schema = load_json(args.schema)
+    schema_audit = validate_schema_contract(schema)
+    if schema_audit["status"] != "PASS":
+        raise RuntimeError(f"schema_contract_failed:{schema_audit['fail_reasons']}")
+    deps = sklearn_imports()
+    if deps["status"] != "OK":
+        raise RuntimeError(f"missing_ml_dependencies:{deps['error']}")
+    pipeline = deps["load"](args.model)
+    active_features, active_feature_policy = active_features_for_loaded_model(
+        model_path=args.model,
+        schema=schema,
+    )
+    connection = sqlite_ro(args.db)
+    try:
+        history_index = load_db_history(connection)
+    finally:
+        connection.close()
+
+    model_source = shadow_relpath(args.model)
+    model_version = f"shadow_loaded_{args.model.stem}"
+    seen_race_ids: set[str] = set()
+    seen_output_dirs: set[Path] = set()
+    results: list[dict[str, Any]] = []
+    for raw_item in items:
+        if not isinstance(raw_item, Mapping):
+            raise RuntimeError("live_score_batch_item_invalid")
+        race_id = str(raw_item.get("race_id") or "").strip()
+        input_path = Path(str(raw_item.get("input") or ""))
+        output_dir = Path(str(raw_item.get("output_dir") or ""))
+        resolved_output_dir = output_dir.resolve()
+        if (
+            not race_id
+            or race_id in seen_race_ids
+            or input_path.stem != race_id
+            or resolved_output_dir in seen_output_dirs
+        ):
+            raise RuntimeError("live_score_batch_race_id_missing_or_duplicate")
+        if not input_path.is_file() or not str(raw_item.get("output_dir") or "").strip():
+            raise RuntimeError(f"live_score_batch_item_path_invalid:{race_id}")
+        seen_race_ids.add(race_id)
+        seen_output_dirs.add(resolved_output_dir)
+        item_args = argparse.Namespace(
+            command="score-live",
+            input=input_path,
+            model=args.model,
+            train_if_missing=False,
+            clean_dataset=args.clean_dataset,
+            repaired_packet=args.repaired_packet,
+            schema=args.schema,
+            db=args.db,
+            output_dir=output_dir,
+            evidence_root=args.evidence_root,
+            all_missing_train_policy=args.all_missing_train_policy,
+            _preloaded_schema=schema,
+            _preloaded_deps=deps,
+            _preloaded_pipeline=pipeline,
+            _preloaded_active_features=active_features,
+            _preloaded_active_feature_policy=active_feature_policy,
+            _preloaded_model_source=model_source,
+            _preloaded_model_version=model_version,
+            _preloaded_history_index=history_index,
+        )
+        error = None
+        try:
+            returncode = score_live(item_args)
+        except Exception as exc:
+            returncode = 2
+            error = f"{type(exc).__name__}:{str(exc)[:500]}"
+        item_result = {
+            "race_id": race_id,
+            "input": str(input_path),
+            "output_dir": str(output_dir),
+            "returncode": returncode,
+            "status": "PASS" if returncode == 0 else "BLOCKED",
+        }
+        if error is not None:
+            item_result["error"] = error
+        results.append(item_result)
+    blocked_count = sum(item["status"] == "BLOCKED" for item in results)
+    report = {
+        "schema_version": "shadow_live_score_batch_report_v1",
+        "status": (
+            "PASS"
+            if blocked_count == 0
+            else "BLOCKED"
+            if blocked_count == len(results)
+            else "PARTIAL"
+        ),
+        "input_manifest": str(args.input_manifest),
+        "model": str(args.model),
+        "db_access": "sqlite_mode_ro_loaded_once",
+        "model_load_count": 1,
+        "db_history_load_count": 1,
+        "race_count": len(results),
+        "blocked_count": blocked_count,
+        "items": results,
+        "outcomes_read": False,
+        "production_prediction_write": False,
+        "registry_mutation": False,
+        "betting_output": False,
+        "ev_output": False,
+    }
+    write_json(output_report, report)
+    return 0
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     args_list = list(argv if argv is not None else sys.argv[1:])
-    if not args_list or args_list[0] not in {"run", "score-live"}:
+    if not args_list or args_list[0] not in {"run", "score-live", "score-live-batch"}:
         args_list.insert(0, "run")
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -2771,6 +2913,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="report_only",
         help="How to handle features with no observed train values when --train-if-missing is used.",
     )
+    batch_parser = subparsers.add_parser(
+        "score-live-batch",
+        help="shadow-score isolated upcoming races with one model and history load",
+    )
+    batch_parser.add_argument("--input-manifest", type=Path, required=True)
+    batch_parser.add_argument("--output-report", type=Path, required=True)
+    batch_parser.add_argument("--model", type=Path, required=True)
+    batch_parser.add_argument("--clean-dataset", type=Path, default=DEFAULT_CLEAN_DATASET)
+    batch_parser.add_argument("--repaired-packet", type=Path, default=DEFAULT_REPAIRED_PACKET)
+    batch_parser.add_argument("--schema", type=Path, default=DEFAULT_SCHEMA)
+    batch_parser.add_argument("--db", type=Path, default=DEFAULT_DB)
+    batch_parser.add_argument("--evidence-root", type=Path, required=True)
+    batch_parser.add_argument(
+        "--all-missing-train-policy",
+        choices=ALL_MISSING_TRAIN_POLICIES,
+        default="report_only",
+    )
     return parser.parse_args(args_list)
 
 
@@ -2780,6 +2939,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_shadow(args)
     if args.command == "score-live":
         return score_live(args)
+    if args.command == "score-live-batch":
+        return score_live_batch(args)
     raise SystemExit(f"unknown_command:{args.command}")
 
 

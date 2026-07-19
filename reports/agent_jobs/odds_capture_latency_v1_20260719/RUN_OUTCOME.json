@@ -1,0 +1,51 @@
+{
+  "status": "ADVANCED",
+  "scope_fingerprint": "5f6b64a02bdc64f18f09b06a39ff56634be0aca138f5d8ca864377aed5391057",
+  "state_before": "live odds-only cycles run the full reporting tail and repeat database and browser setup per captured race",
+  "state_after": "one reviewed stacked implementation provides a separate lightweight child contract, one history load and browser session per batch, and durable low-priority service controls without changing capture semantics",
+  "decision_delta": "The PR48-stacked repository now has an explicit lightweight odds child, cycle-scoped model/history and browser reuse, per-race fail-closed isolation, preserved early scoring before lock release, and durable best-effort service controls; live latency improvement remains unclaimed until separately authorized runtime proof.",
+  "reused_claims": [
+    "Strict pre-jump timing, source fallback, URL and runner validation, WIN and PLACE checks, append-only odds persistence, and the 16-race cap remain mandatory.",
+    "The full 15-minute daemon retains its complete reporting and evidence contract.",
+    "Early frozen residual scoring remains inside the odds-only shared-lock owner before release."
+  ],
+  "changed_claims": [
+    "The odds-only command explicitly selects a lightweight child that does not run global reporting builders.",
+    "Feature generation reuses one frozen model load and one read-only SQLite history load per batch while preserving per-race artifacts and failures.",
+    "Autonomous Sportsbet capture reuses one browser session per cycle and resets it after timeout or exception.",
+    "The odds-only service contract now includes durable CPU and I/O weights and best-effort priority 7."
+  ],
+  "new_evidence": [
+    "302 affected autopilot, daemon, evaluation, and capture tests pass.",
+    "47 residual-prediction compatibility tests pass.",
+    "Python compile, CI-critical Flake8, git diff, service-generation, lock-order, output-containment, failure-isolation, and full-mode compatibility gates pass.",
+    "No runtime or production data surface was touched, so observed PC latency remains DATA_MISSING."
+  ],
+  "produced_artifacts": [
+    "scripts/shadow_autopilot_v1.py",
+    "scripts/shadow_autopilot_daemon.py",
+    "scripts/run_shadow_non_tgr_rf_evaluation.py",
+    "scripts/autonomous_live_odds_capture.py",
+    "odds_auto_integrator.py",
+    "ops/systemd/shadow-autopilot-odds-capture.service",
+    "AGENTS.md",
+    "docs/manual_live_market_form_residual_prediction.md",
+    "tests/test_shadow_autopilot_v1.py",
+    "tests/test_shadow_autopilot_daemon.py",
+    "tests/test_run_shadow_non_tgr_rf_evaluation.py",
+    "tests/test_autonomous_live_odds_capture.py",
+    "reports/agent_jobs/odds_capture_latency_v1_20260719/STATE.md",
+    "reports/agent_jobs/odds_capture_latency_v1_20260719/DECISIONS.md",
+    "reports/agent_jobs/odds_capture_latency_v1_20260719/VALIDATION.md",
+    "reports/agent_jobs/odds_capture_latency_v1_20260719/RUNTIME_PROOF.md",
+    "reports/agent_jobs/odds_capture_latency_v1_20260719/CODE_REVIEW.json"
+  ],
+  "resume_only_if": "A separate owner-authorized runtime lane installs the reviewed unit and observes a natural strict pre-jump capture without restarting the active daemon or weakening capture and provenance contracts.",
+  "new_goal_permitted": false,
+  "used_capabilities": [
+    "READ",
+    "REPORT_WRITE",
+    "CODE_EDIT"
+  ],
+  "blocked_by": []
+}

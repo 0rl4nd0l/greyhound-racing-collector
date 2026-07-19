@@ -1199,6 +1199,7 @@ def test_odds_capture_only_autopilot_command_is_narrow_and_append_only():
     assert "--enable-autonomous-odds-capture" in command
     assert "--execute-autonomous-odds-capture" in command
     assert "--allow-auto-scrape-odds" in command
+    assert "--odds-capture-lightweight" in command
     assert "--skip-primary-refresh" in command
     assert "--skip-shadow-run" in command
     assert "--skip-odds-snapshot" in command
@@ -1293,13 +1294,16 @@ def test_early_residual_plan_scores_new_capture_before_lock_release(
 
     assert plan["status"] == "READY"
     assert plan["race_count"] == 1
+    assert plan["feature_batch_manifest"]["schema_version"] == (
+        "shadow_live_score_batch_manifest_v1"
+    )
+    assert plan["feature_batch_manifest"]["items"][0]["race_id"] == (
+        "Race 7 - SAN - 2026-07-16"
+    )
+    assert "score-live-batch" in plan["feature_batch_command"]
     item = plan["races"][0]
     assert item["race_id"] == "Race 7 - SAN - 2026-07-16"
     assert item["capture_path"] == str(capture_path)
-    assert "scripts/run_shadow_non_tgr_rf_evaluation.py" in item["feature_command"][1]
-    assert item["feature_command"][2:4] == ["score-live", "--input"]
-    assert str(form_path) in item["feature_command"]
-    assert "--db" in item["feature_command"]
     assert "scripts/predict_market_form_residual.py" in item["score_command"][1]
     assert item["score_command"][2:4] == ["--race-id", "Race 7 - SAN - 2026-07-16"]
     assert "--append-shadow-output" in item["score_command"]
@@ -1378,6 +1382,22 @@ def test_odds_cycle_executes_early_residual_stage_before_releasing_lock(
                 output_dir / "logs/odds_capture_autopilot_cycle.stdout.txt",
                 {"output_dir": str(autopilot_dir), "final_verdict": "AUTOPILOT_READY"},
             )
+        elif name == "early_residual_features_batch":
+            report_path = Path(command[command.index("--output-report") + 1])
+            daemon.write_json(
+                report_path,
+                {
+                    "schema_version": "shadow_live_score_batch_report_v1",
+                    "status": "PASS",
+                    "items": [
+                        {
+                            "race_id": "Race 7 - SAN - 2026-07-16",
+                            "returncode": 0,
+                            "status": "PASS",
+                        }
+                    ],
+                },
+            )
         elif name == "early_residual_score_01":
             daemon.write_json(
                 output_dir / "logs/early_residual_score_01.stdout.txt",
@@ -1424,7 +1444,7 @@ def test_odds_cycle_executes_early_residual_stage_before_releasing_lock(
 
     assert events == [
         "odds_capture_autopilot_cycle",
-        "early_residual_features_01",
+        "early_residual_features_batch",
         "early_residual_score_01",
         "release",
     ]
@@ -4554,6 +4574,11 @@ def test_odds_capture_service_and_timer_define_minutely_locked_lane():
     assert "--odds-capture-refresh-limit 8" in service
     assert "--require-safe-refresh-metadata" in service
     assert "--skip-primary-refresh" in service
+    assert "CPUWeight=20" in service
+    assert "IOWeight=20" in service
+    assert "IOSchedulingClass=best-effort" in service
+    assert "IOSchedulingPriority=7" in service
+    assert "IOSchedulingClass=idle" not in service
     assert "TimeoutStartSec=1200" in service
     assert "GREYHOUND_ALLOW_TGR=0" in service
     assert f"OnCalendar={daemon.DEFAULT_ODDS_CAPTURE_ONLY_TIMER_ON_CALENDAR}" in timer

@@ -1,0 +1,43 @@
+{
+  "decision_id": "odds-capture-latency-draft-pr54-publication-20260719-v1",
+  "scope_fingerprint": "009da9b6de1d1c62ebaf29c8f0203746a33759418734ca21e73d3c8d14284b3d",
+  "task_id": "odds_capture_latency_publish_v1_20260719",
+  "run_id": "l4nd0-System-Product-Name:3356106:odds_capture_latency_publish_v1_20260719",
+  "project_id": "greyhound_racing_collector",
+  "claim_id": "odds_capture_latency_publish_v1_20260719",
+  "hypothesis_id": "publish_reviewed_odds_capture_latency_stack_v1",
+  "program_track": "offline_development",
+  "source_class": "reviewed_local_f4409e43_plus_live_pr48_f776bfd_publish_metadata",
+  "dataset_version": "local_f4409e43_pr48_f776bfd_20260719",
+  "evidence_hash": "sha256:b84f5f6ad78892c93c0377f9c8e9787b968585b91476d5b365ab0a5136db10c5",
+  "target_transition": "exact reviewed implementation branch is published as a draft pull request stacked on PR 48 and remains unmerged",
+  "phase_before": "reviewed clean local implementation branch has no remote branch or pull request",
+  "phase_after": "exact reviewed implementation branch is published as a draft pull request stacked on PR 48 and remains unmerged",
+  "decision": "PASS",
+  "outcome_status": "ADVANCED",
+  "decision_delta": "The reviewed odds-capture latency branch is now published as draft PR 54 against PR 48 exact branch and remains unmerged; one current hardening check was pending at observation and no runtime claim changed.",
+  "evidence_refs": [
+    "reports/agent_jobs/odds_capture_latency_publish_v1_20260719/STATE.md",
+    "reports/agent_jobs/odds_capture_latency_publish_v1_20260719/VALIDATION.md",
+    "reports/agent_jobs/odds_capture_latency_publish_v1_20260719/PR.json"
+  ],
+  "blocks": [
+    "merging or retargeting PR 54 before PR 48 dependency state and current checks are separately reviewed",
+    "claiming live PC latency improvement before authorized deployment and runtime proof"
+  ],
+  "does_not_block": [
+    "draft review of PR 54",
+    "continued unchanged live runtime operation"
+  ],
+  "validated_at": "2026-07-19T14:59:38+10:00",
+  "invalidation_conditions": [
+    "PR 54 ceases to be draft, changes base away from the PR 48 branch, or its published diff diverges from the reviewed local branch.",
+    "PR 48 head changes from f776bfd142b1e8acd3befca330eee36f490402ed before dependency review.",
+    "A current check or review finds an actionable blocker."
+  ],
+  "reopen_conditions": [
+    "PR 48 merges or changes head.",
+    "PR 54 checks complete or review feedback arrives.",
+    "The owner explicitly authorizes retargeting, ready-state change, merge, or runtime proof."
+  ]
+}

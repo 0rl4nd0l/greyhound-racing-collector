@@ -4,6 +4,7 @@ import os
 import shutil
 import sqlite3
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -46,6 +47,138 @@ def _schema(features):
         "categorical_features": [],
         "numeric_or_boolean_features": features,
     }
+
+
+def test_score_live_batch_reuses_model_and_history_and_isolates_races(
+    tmp_path, monkeypatch
+):
+    first = tmp_path / "Race 1 - TEST - 2026-07-19.csv"
+    second = tmp_path / "Race 2 - TEST - 2026-07-19.csv"
+    third = tmp_path / "Race 3 - TEST - 2026-07-19.csv"
+    first.write_text("Dog Name|PLC\n1. Alpha|1\n", encoding="utf-8")
+    second.write_text("Dog Name|PLC\n1. Beta|1\n", encoding="utf-8")
+    third.write_text("Dog Name|PLC\n1. Gamma|1\n", encoding="utf-8")
+    manifest_path = tmp_path / "batch.json"
+    report_path = tmp_path / "batch-report.json"
+    schema_path = tmp_path / "schema.json"
+    model_path = tmp_path / "model.joblib"
+    db_path = tmp_path / "history.db"
+    manifest = {
+        "schema_version": "shadow_live_score_batch_manifest_v1",
+        "items": [
+            {
+                "race_id": first.stem,
+                "input": str(first),
+                "output_dir": str(tmp_path / "first-output"),
+            },
+            {
+                "race_id": second.stem,
+                "input": str(second),
+                "output_dir": str(tmp_path / "second-output"),
+            },
+            {
+                "race_id": third.stem,
+                "input": str(third),
+                "output_dir": str(tmp_path / "third-output"),
+            },
+        ],
+    }
+    schema = _schema(["feature_a"])
+    load_calls = []
+    history_calls = []
+    score_calls = []
+
+    class Connection:
+        def close(self):
+            return None
+
+    def fake_load_json(path):
+        if Path(path) == manifest_path:
+            return manifest
+        if Path(path) == schema_path:
+            return schema
+        raise AssertionError(f"unexpected_json:{path}")
+
+    def fake_score_live(item_args):
+        score_calls.append(item_args)
+        assert item_args._preloaded_pipeline == "pipeline"
+        assert item_args._preloaded_history_index == {"alpha": [{"race_id": "old"}]}
+        if Path(item_args.input) == second:
+            raise RuntimeError("bad_second_race")
+        return 0
+
+    monkeypatch.setattr(shadow_eval, "ensure_shadow_runtime_guard", lambda: None)
+    monkeypatch.setattr(shadow_eval, "load_json", fake_load_json)
+    monkeypatch.setattr(
+        shadow_eval,
+        "validate_schema_contract",
+        lambda _schema: {"status": "PASS", "fail_reasons": []},
+    )
+    monkeypatch.setattr(
+        shadow_eval,
+        "sklearn_imports",
+        lambda: {
+            "status": "OK",
+            "load": lambda path: load_calls.append(Path(path)) or "pipeline",
+        },
+    )
+    monkeypatch.setattr(
+        shadow_eval,
+        "active_features_for_loaded_model",
+        lambda **_kwargs: (["feature_a"], {"source": "test"}),
+    )
+    monkeypatch.setattr(shadow_eval, "sqlite_ro", lambda _path: Connection())
+    monkeypatch.setattr(
+        shadow_eval,
+        "load_db_history",
+        lambda _connection: history_calls.append(True)
+        or {"alpha": [{"race_id": "old"}]},
+    )
+    monkeypatch.setattr(shadow_eval, "score_live", fake_score_live)
+
+    result = shadow_eval.score_live_batch(
+        SimpleNamespace(
+            input_manifest=manifest_path,
+            output_report=report_path,
+            model=model_path,
+            schema=schema_path,
+            db=db_path,
+            evidence_root=tmp_path,
+            clean_dataset=tmp_path / "clean.csv",
+            repaired_packet=tmp_path / "repair.json",
+            all_missing_train_policy="report_only",
+        )
+    )
+
+    assert result == 0
+    assert load_calls == [model_path]
+    assert history_calls == [True]
+    assert len(score_calls) == 3
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["status"] == "PARTIAL"
+    assert [row["status"] for row in report["items"]] == [
+        "PASS",
+        "BLOCKED",
+        "PASS",
+    ]
+    assert report["items"][1]["error"] == "RuntimeError:bad_second_race"
+
+
+def test_score_live_batch_rejects_report_outside_evidence_root(tmp_path, monkeypatch):
+    evidence_root = tmp_path / "evidence"
+    evidence_root.mkdir()
+    monkeypatch.setattr(shadow_eval, "ensure_shadow_runtime_guard", lambda: None)
+
+    with pytest.raises(
+        RuntimeError, match="live_score_batch_report_outside_evidence_root"
+    ):
+        shadow_eval.score_live_batch(
+            SimpleNamespace(
+                input_manifest=evidence_root / "batch.json",
+                output_report=tmp_path / "escaped-report.json",
+                evidence_root=evidence_root,
+            )
+        )
 
 
 def test_output_manifest_binds_declared_implementation_file_hashes(

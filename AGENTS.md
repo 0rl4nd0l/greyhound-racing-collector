@@ -69,7 +69,7 @@ The odds-capture-only lane is:
 
 1. `shadow-autopilot-odds-capture.timer`
 2. `scripts/shadow_autopilot_daemon.py run-odds-capture-once`
-3. `scripts/shadow_autopilot_v1.py`
+3. `scripts/shadow_autopilot_v1.py --odds-capture-lightweight`
 4. `scripts/refresh_prejump_upcoming.py`
 5. `scripts/autonomous_live_odds_capture.py`
 6. `odds_auto_integrator.py`
@@ -94,6 +94,18 @@ Keep these boundaries clear:
   capture and before releasing the shared lock. It must consume only the exact
   PR #47 handoff, preserve the frozen residual artifact, and fail closed without
   changing the capture result.
+- The explicit lightweight child stops after refresh, capture, and residual
+  handoff. Full dashboard, cumulative history, drift, readiness, and daily
+  status reconstruction remains mandatory in the 15-minute full daemon and is
+  not produced by the near-minute odds child.
+- One odds cycle may reuse one browser session and one read-only SQLite history
+  load across its race batch. Every race still receives an isolated hash-bound
+  feature packet, independent validation and failure status, and frozen
+  residual scoring before the lock is released. A browser timeout or driver
+  exception resets the shared session before the next race.
+- The generated odds service keeps `Nice=10`, `CPUWeight=20`, `IOWeight=20`,
+  `IOSchedulingClass=best-effort`, and `IOSchedulingPriority=7`. Do not replace
+  best-effort I/O with idle scheduling for this time-sensitive lane.
 
 Expected runner sources for odds capture are ordered:
 

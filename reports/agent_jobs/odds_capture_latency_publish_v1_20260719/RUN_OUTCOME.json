@@ -1,0 +1,35 @@
+{
+  "status": "ADVANCED",
+  "scope_fingerprint": "009da9b6de1d1c62ebaf29c8f0203746a33759418734ca21e73d3c8d14284b3d",
+  "state_before": "reviewed clean local implementation branch has no remote branch or pull request",
+  "state_after": "exact reviewed implementation branch is published as a draft pull request stacked on PR 48 and remains unmerged",
+  "decision_delta": "The reviewed odds-capture latency branch is now published as draft PR 54 against PR 48 exact branch and remains unmerged; one current hardening check was pending at observation and no runtime claim changed.",
+  "reused_claims": [
+    "The implementation packet passed 302 affected tests, 47 residual-prediction tests, compile, CI-critical lint, diff, V2 closeout, and code review.",
+    "The implementation remains repo-only and observed PC-latency improvement remains DATA_MISSING until a separately authorized runtime lane."
+  ],
+  "changed_claims": [
+    "The local reviewed branch now exists on origin.",
+    "Draft PR 54 now exposes the implementation for stacked review against PR 48 exact branch."
+  ],
+  "new_evidence": [
+    "PR 48 was reverified at f776bfd142b1e8acd3befca330eee36f490402ed immediately before publication.",
+    "GitHub reports PR 54 open, draft, correctly based, and mergeable.",
+    "One hardening check passed and one newer hardening check was pending at the closeout observation."
+  ],
+  "produced_artifacts": [
+    "docs/agent_tasks/odds_capture_latency_publish_v1_20260719.md",
+    "reports/agent_jobs/odds_capture_latency_publish_v1_20260719/STATE.md",
+    "reports/agent_jobs/odds_capture_latency_publish_v1_20260719/VALIDATION.md",
+    "reports/agent_jobs/odds_capture_latency_publish_v1_20260719/PR.json",
+    "reports/agent_jobs/odds_capture_latency_publish_v1_20260719/pr-body.md"
+  ],
+  "resume_only_if": "PR 48 merges or changes head, PR 54 checks complete or fail, review feedback arrives, or the owner separately authorizes retargeting, ready-state change, merge, or runtime proof.",
+  "new_goal_permitted": false,
+  "used_capabilities": [
+    "READ",
+    "REPORT_WRITE",
+    "PUBLISH"
+  ],
+  "blocked_by": []
+}

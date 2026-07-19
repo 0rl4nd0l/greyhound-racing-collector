@@ -4,7 +4,81 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+import odds_auto_integrator as odds_auto
 from scripts import autonomous_live_odds_capture as capture
+
+
+def test_sportsbet_fetch_session_reuses_driver_and_restarts_on_demand(monkeypatch):
+    instances = []
+    fetch_integrators = []
+
+    class FakeIntegrator:
+        def __init__(self, *_args, **_kwargs):
+            self.driver = None
+            instances.append(self)
+
+        def close_driver(self):
+            self.driver = None
+
+    def fake_fetch(*_args, integrator, **_kwargs):
+        fetch_integrators.append(integrator)
+        if integrator.driver is None:
+            integrator.driver = object()
+        return {"success": True}
+
+    monkeypatch.setattr(
+        __import__("sportsbet_odds_integrator"),
+        "SportsbetOddsIntegrator",
+        FakeIntegrator,
+    )
+    monkeypatch.setattr(odds_auto, "fetch_odds_for_target_race", fake_fetch)
+    session = odds_auto.SportsbetOddsFetchSession("odds.db")
+
+    session.fetch("odds.db", "AAA", 1, "2026-07-19", allow_auto_scrape_odds=True)
+    session.fetch("odds.db", "BBB", 2, "2026-07-19", allow_auto_scrape_odds=True)
+    assert len(instances) == 1
+    assert fetch_integrators == [instances[0], instances[0]]
+    assert session.setup_count == 1
+
+    session.reset()
+    session.fetch("odds.db", "CCC", 3, "2026-07-19", allow_auto_scrape_odds=True)
+    assert len(instances) == 2
+    assert fetch_integrators[-1] is instances[1]
+    assert session.setup_count == 2
+    assert session.restart_count == 1
+    session.close()
+
+
+def test_sportsbet_fetch_session_counts_browser_setup_when_fetch_fails(monkeypatch):
+    class FakeIntegrator:
+        def __init__(self, *_args, **_kwargs):
+            self.driver = None
+
+        def close_driver(self):
+            self.driver = None
+
+    def fake_fetch(*_args, integrator, **_kwargs):
+        integrator.driver = object()
+        raise RuntimeError("fetch_failed_after_browser_setup")
+
+    monkeypatch.setattr(
+        __import__("sportsbet_odds_integrator"),
+        "SportsbetOddsIntegrator",
+        FakeIntegrator,
+    )
+    monkeypatch.setattr(odds_auto, "fetch_odds_for_target_race", fake_fetch)
+    session = odds_auto.SportsbetOddsFetchSession("odds.db")
+
+    try:
+        session.fetch("odds.db", "AAA", 1, "2026-07-19")
+    except RuntimeError as exc:
+        assert str(exc) == "fetch_failed_after_browser_setup"
+    else:
+        raise AssertionError("fetch failure must propagate to the caller")
+
+    assert session.setup_count == 1
+    session.reset()
+    assert session.restart_count == 1
 
 
 def test_output_guard_accepts_configured_external_evidence_root(
@@ -1453,38 +1527,55 @@ def test_execute_capture_plan_records_fetch_exception_and_continues(
     )
     fetch_calls = []
 
-    def fake_fetch(db_path, venue, race_number, race_date, allow_auto_scrape_odds):
-        fetch_calls.append((venue, race_number))
-        if venue == "AAA":
-            raise RuntimeError("stale element")
-        win_rows = [
-            {
-                "dog_name": "Alpha",
-                "box_number": 1,
-                "odds_decimal": 2.4,
-                "sportsbet_box_source": "runner_text",
-            },
-            {
-                "dog_name": "Bravo",
-                "box_number": 2,
-                "odds_decimal": 3.5,
-                "sportsbet_box_source": "runner_text",
-            },
-        ]
-        return {
-            "success": True,
-            "win_count": len(win_rows),
-            "place_count": len(win_rows),
-            "race_info": {
-                "venue_url": (
-                    "https://www.sportsbet.com.au/betting/greyhound-racing/"
-                    "australia-nz/test/race-2"
-                ),
-                "race_number": 2,
-                "odds_data_place": _place_odds_rows(win_rows),
-            },
-            "odds_data": win_rows,
-        }
+    class FakeFetchSession:
+        setup_count = 1
+        restart_count = 0
+
+        def fetch(
+            self,
+            db_path,
+            venue,
+            race_number,
+            race_date,
+            *,
+            allow_auto_scrape_odds,
+        ):
+            fetch_calls.append((venue, race_number))
+            if venue == "AAA":
+                raise RuntimeError("stale element")
+            win_rows = [
+                {
+                    "dog_name": "Alpha",
+                    "box_number": 1,
+                    "odds_decimal": 2.4,
+                    "sportsbet_box_source": "runner_text",
+                },
+                {
+                    "dog_name": "Bravo",
+                    "box_number": 2,
+                    "odds_decimal": 3.5,
+                    "sportsbet_box_source": "runner_text",
+                },
+            ]
+            return {
+                "success": True,
+                "win_count": len(win_rows),
+                "place_count": len(win_rows),
+                "race_info": {
+                    "venue_url": (
+                        "https://www.sportsbet.com.au/betting/greyhound-racing/"
+                        "australia-nz/test/race-2"
+                    ),
+                    "race_number": 2,
+                    "odds_data_place": _place_odds_rows(win_rows),
+                },
+                "odds_data": win_rows,
+            }
+
+        def reset(self):
+            self.restart_count += 1
+
+    fetch_session = FakeFetchSession()
 
     def fake_append(*, db_path, plan_item, validation, current_time):
         return {
@@ -1495,7 +1586,6 @@ def test_execute_capture_plan_records_fetch_exception_and_continues(
             "append_only": True,
         }
 
-    monkeypatch.setattr(capture, "fetch_odds_for_target_race", fake_fetch)
     monkeypatch.setattr(capture, "append_validated_capture", fake_append)
 
     report = capture.execute_capture_plan(
@@ -1508,9 +1598,13 @@ def test_execute_capture_plan_records_fetch_exception_and_continues(
         execute=True,
         allow_auto_scrape_odds=True,
         current_time_provider=lambda: datetime.fromisoformat("2026-06-10T14:40:00+10:00"),
+        fetch_session=fetch_session,
     )
 
     assert fetch_calls == [("AAA", 1), ("BBB", 2)]
+    assert fetch_session.restart_count == 1
+    assert report["browser_setup_count"] == 1
+    assert report["browser_restart_count"] == 1
     assert report["final_status"] == "AUTONOMOUS_LIVE_ODDS_CAPTURE_APPENDED"
     assert report["status"] == "APPENDED_WITH_BLOCKED_ATTEMPTS"
     assert report["runtime_action"] == "REVIEW_CAPTURE_BLOCKERS_AFTER_APPEND"

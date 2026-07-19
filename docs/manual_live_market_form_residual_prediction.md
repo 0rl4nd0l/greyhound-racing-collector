@@ -74,9 +74,13 @@ generation, so a race that jumped while odds were being captured is excluded.
 The primary refresh limit and resource-isolation settings are unchanged.
 
 The odds-only daemon consumes that exact handoff immediately after capture,
-while it still owns the shared lock. For each newly appended capture it runs
-the existing feature generator through its read-only SQLite path, then invokes
-the frozen residual scorer with explicit artifact paths and:
+while it still owns the shared lock. Its explicit lightweight child does not
+rebuild the full dashboard, cumulative history, drift, readiness, or daily
+status artifacts; the 15-minute full daemon retains that complete reporting
+contract. The early-residual stage loads the RF model and read-only SQLite
+history once per captured batch, writes the same isolated hash-bound feature
+packet for each race, then invokes the frozen residual scorer with explicit
+artifact paths and:
 
 ```bash
 --append-shadow-output \
@@ -87,7 +91,10 @@ The append is idempotent for an exact replay and rejects a conflicting record.
 Feature or scoring failure is reported as an early-residual blocker without
 changing the odds-capture result. The lock is released only after this bounded
 stage finishes or fails closed. Timer frequency and fixed capture windows do
-not change.
+not change. Sportsbet capture reuses one browser session across the bounded
+batch and recreates it after a timeout or driver exception; the pre-fetch and
+pre-append timing, race identity, URL, runner-set, WIN, and PLACE checks remain
+per race.
 
 ## Output and failure contract
 

@@ -1234,7 +1234,10 @@ def odds_capture_service_file_text(
             ),
             f"TimeoutStartSec={systemd_timeout_seconds}",
             "Nice=10",
+            "CPUWeight=20",
+            "IOWeight=20",
             "IOSchedulingClass=best-effort",
+            "IOSchedulingPriority=7",
             "",
         ]
     )
@@ -1627,6 +1630,7 @@ def odds_capture_only_autopilot_command(
         "--enable-autonomous-odds-capture",
         "--execute-autonomous-odds-capture",
         "--allow-auto-scrape-odds",
+        "--odds-capture-lightweight",
         "--skip-primary-refresh",
         "--skip-shadow-run",
         "--skip-odds-snapshot",
@@ -1827,21 +1831,6 @@ def early_residual_shadow_prediction_plan(
             "daily_race_ingest_shadow_early_residual_"
             f"{safe_run_id}_{_early_residual_slug(race_id)}"
         )
-        feature_command = [
-            sys.executable,
-            str(ROOT / "scripts/run_shadow_non_tgr_rf_evaluation.py"),
-            "score-live",
-            "--input",
-            str(form_path),
-            "--model",
-            str(feature_model),
-            "--db",
-            str(db_path),
-            "--output-dir",
-            str(feature_dir),
-            "--evidence-root",
-            str(evidence_root),
-        ]
         score_command = [
             sys.executable,
             str(ROOT / "scripts/predict_market_form_residual.py"),
@@ -1870,7 +1859,6 @@ def early_residual_shadow_prediction_plan(
                 "capture_path": str(capture_path),
                 "feature_model_path": str(feature_model),
                 "feature_output_dir": str(feature_dir),
-                "feature_command": feature_command,
                 "score_command": score_command,
             }
         )
@@ -1882,12 +1870,49 @@ def early_residual_shadow_prediction_plan(
             "races": races,
             "blockers": blockers,
         }
+    feature_batch_manifest_path = evidence_root / (
+        f"early_residual_feature_batch_{safe_run_id}.json"
+    )
+    feature_batch_report_path = evidence_root / (
+        f"early_residual_feature_batch_{safe_run_id}_report.json"
+    )
+    feature_batch_manifest = {
+        "schema_version": "shadow_live_score_batch_manifest_v1",
+        "run_id": run_id,
+        "items": [
+            {
+                "race_id": item["race_id"],
+                "input": item["form_csv_path"],
+                "output_dir": item["feature_output_dir"],
+            }
+            for item in races
+        ],
+    }
+    feature_batch_command = [
+        sys.executable,
+        str(ROOT / "scripts/run_shadow_non_tgr_rf_evaluation.py"),
+        "score-live-batch",
+        "--input-manifest",
+        str(feature_batch_manifest_path),
+        "--output-report",
+        str(feature_batch_report_path),
+        "--model",
+        str(feature_model),
+        "--db",
+        str(db_path),
+        "--evidence-root",
+        str(evidence_root),
+    ]
     return {
         **base,
         "status": "READY",
         "race_count": len(races),
         "races": races,
         "blockers": [],
+        "feature_batch_manifest_path": str(feature_batch_manifest_path),
+        "feature_batch_report_path": str(feature_batch_report_path),
+        "feature_batch_manifest": feature_batch_manifest,
+        "feature_batch_command": feature_batch_command,
     }
 
 
@@ -1913,18 +1938,62 @@ def execute_early_residual_shadow_prediction_plan(
     }
     if plan.get("status") != "READY":
         return status
+    feature_batch_manifest_path = Path(
+        str(plan.get("feature_batch_manifest_path") or "")
+    )
+    feature_batch_report_path = Path(
+        str(plan.get("feature_batch_report_path") or "")
+    )
+    feature_batch_manifest = plan.get("feature_batch_manifest")
+    feature_batch_command = list(plan.get("feature_batch_command") or [])
+    if (
+        not feature_batch_manifest_path.name
+        or not feature_batch_report_path.name
+        or not isinstance(feature_batch_manifest, Mapping)
+        or not feature_batch_command
+    ):
+        return {
+            **status,
+            "status": "BLOCKED",
+            "blocked_count": int_or_zero(plan.get("race_count")),
+            "blockers": ["feature_batch_plan_incomplete"],
+        }
+    evidence_root = Path(str(plan.get("shadow_output_path") or "")).parent.resolve()
+    try:
+        feature_batch_manifest_path.resolve().relative_to(evidence_root)
+        feature_batch_report_path.resolve().relative_to(evidence_root)
+    except (OSError, ValueError):
+        return {
+            **status,
+            "status": "BLOCKED",
+            "blocked_count": int_or_zero(plan.get("race_count")),
+            "blockers": ["feature_batch_paths_outside_evidence_root"],
+        }
+    write_json(feature_batch_manifest_path, feature_batch_manifest)
+    feature_batch_step = run_command(
+        name="early_residual_features_batch",
+        command=feature_batch_command,
+        output_dir=output_dir,
+        timeout_seconds=DEFAULT_EARLY_RESIDUAL_FEATURE_TIMEOUT_SECONDS,
+    )
+    feature_batch_report = load_json(feature_batch_report_path) or {}
+    feature_results = {
+        str(item.get("race_id") or ""): dict(item)
+        for item in feature_batch_report.get("items") or []
+        if isinstance(item, Mapping)
+    }
     race_results: list[dict[str, Any]] = []
     for index, item in enumerate(plan.get("races") or [], start=1):
         race_id = str(item.get("race_id") or "")
         result: dict[str, Any] = {"race_id": race_id, "status": "BLOCKED"}
-        feature_step = run_command(
-            name=f"early_residual_features_{index:02d}",
-            command=list(item.get("feature_command") or []),
-            output_dir=output_dir,
-            timeout_seconds=DEFAULT_EARLY_RESIDUAL_FEATURE_TIMEOUT_SECONDS,
-        )
-        result["feature_step"] = feature_step
-        if feature_step.get("returncode") != 0:
+        feature_result = feature_results.get(race_id)
+        result["feature_result"] = feature_result
+        if (
+            feature_batch_step.get("returncode") != 0
+            or not feature_result
+            or feature_result.get("status") != "PASS"
+            or feature_result.get("returncode") != 0
+        ):
             result["blocker"] = "feature_generation_failed"
             race_results.append(result)
             continue
@@ -1961,6 +2030,8 @@ def execute_early_residual_shadow_prediction_plan(
         "exact_replay_count": exact_replay_count,
         "blocked_count": blocked_count,
         "races": race_results,
+        "feature_batch_step": feature_batch_step,
+        "feature_batch_report": feature_batch_report,
     }
 
 

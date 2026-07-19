@@ -1,0 +1,32 @@
+{
+  "schema_version": "greyhound_draft_pr_publication_receipt_v1",
+  "number": 54,
+  "state": "open",
+  "draft": true,
+  "title": "Reduce odds-only capture I/O and setup overhead",
+  "url": "https://github.com/0rl4nd0l/greyhound-racing-collector/pull/54",
+  "head_ref": "codex/odds-capture-latency-v1-20260719",
+  "head_sha_at_creation": "78a6753de536009100a9d2ca268bfca5e1967490",
+  "base_ref": "codex/early-residual-shadow-activation-v1-20260716",
+  "base_sha": "f776bfd142b1e8acd3befca330eee36f490402ed",
+  "mergeable_at_observation": true,
+  "mergeable_state_at_observation": "unstable",
+  "checks_at_observation": [
+    {
+      "name": "hardening",
+      "status": "pass",
+      "duration": "8s",
+      "url": "https://github.com/0rl4nd0l/greyhound-racing-collector/actions/runs/29674144320/job/88158215883"
+    },
+    {
+      "name": "hardening",
+      "status": "pending",
+      "duration": "0",
+      "url": "https://github.com/0rl4nd0l/greyhound-racing-collector/actions/runs/29674148278/job/88158227423"
+    }
+  ],
+  "merged": false,
+  "marked_ready": false,
+  "runtime_changed": false,
+  "observed_at": "2026-07-19T14:59:38+10:00"
+}
