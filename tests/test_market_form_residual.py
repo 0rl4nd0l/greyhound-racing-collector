@@ -3,8 +3,12 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import os
+import stat
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import FrozenInstanceError
 from pathlib import Path
+from threading import Barrier
 
 import numpy as np
 import pytest
@@ -92,6 +96,36 @@ def shifted_race_inputs(runners, provenance, suffix):
         ("\n".join(sorted(shifted_runner_ids)) + "\n").encode("utf-8")
     ).hexdigest()
     return shifted_runners, shifted_provenance
+
+
+def output_snapshot(path):
+    exists = path.exists()
+    raw = path.read_bytes() if exists else b""
+    return {
+        "exists": exists,
+        "bytes": raw,
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "rows": len(raw.splitlines()),
+    }
+
+
+def assert_output_snapshot(path, expected):
+    actual = output_snapshot(path)
+    assert actual["exists"] is expected["exists"]
+    assert actual["bytes"] == expected["bytes"]
+    assert actual["sha256"] == expected["sha256"]
+    assert actual["rows"] == expected["rows"]
+
+
+def distinct_record(frozen, runners, provenance, suffix):
+    shifted_runners, shifted_provenance = shifted_race_inputs(
+        runners, provenance, suffix
+    )
+    return (
+        score_race(frozen, shifted_runners, shifted_provenance),
+        shifted_runners,
+        shifted_provenance,
+    )
 
 
 def write_tampered_artifacts(tmp_path, mutate_model=None, mutate_manifest=None):
@@ -502,20 +536,43 @@ def test_history_validation_and_append_are_lock_scoped(tmp_path, monkeypatch):
         runners, provenance, "lock"
     )
     unrelated = score_race(frozen, unrelated_runners, unrelated_provenance)
-    state = {"locked": False, "validated": False, "synced": False}
+    lock_path, _ = residual_module._shadow_transaction_paths(path)
+    lock_path.touch(mode=0o600)
+    lock_inode = lock_path.stat().st_ino
+    state = {
+        "locked": False,
+        "cleaned": False,
+        "validated": False,
+        "published": False,
+        "synced": False,
+    }
     real_flock = residual_module.fcntl.flock
+    real_remove = residual_module._remove_staged_shadow_file
     real_validate = residual_module._validate_existing_shadow_record
+    real_publish = residual_module._publish_staged_shadow_file
     real_fsync = residual_module.os.fsync
 
     def tracked_flock(file_descriptor, operation):
         assert operation == residual_module.fcntl.LOCK_EX
         real_flock(file_descriptor, operation)
+        assert os.fstat(file_descriptor).st_ino == lock_inode
         state["locked"] = True
+
+    def tracked_remove(*args, **kwargs):
+        assert state["locked"]
+        state["cleaned"] = True
+        return real_remove(*args, **kwargs)
 
     def tracked_validate(*args, **kwargs):
         assert state["locked"]
         state["validated"] = True
         return real_validate(*args, **kwargs)
+
+    def tracked_publish(*args, **kwargs):
+        assert state["locked"]
+        assert lock_path.stat().st_ino == lock_inode
+        state["published"] = True
+        return real_publish(*args, **kwargs)
 
     def tracked_fsync(file_descriptor):
         assert state["locked"]
@@ -523,9 +580,11 @@ def test_history_validation_and_append_are_lock_scoped(tmp_path, monkeypatch):
         return real_fsync(file_descriptor)
 
     monkeypatch.setattr(residual_module.fcntl, "flock", tracked_flock)
+    monkeypatch.setattr(residual_module, "_remove_staged_shadow_file", tracked_remove)
     monkeypatch.setattr(
         residual_module, "_validate_existing_shadow_record", tracked_validate
     )
+    monkeypatch.setattr(residual_module, "_publish_staged_shadow_file", tracked_publish)
     monkeypatch.setattr(residual_module.os, "fsync", tracked_fsync)
 
     assert (
@@ -538,7 +597,342 @@ def test_history_validation_and_append_are_lock_scoped(tmp_path, monkeypatch):
         )
         == "APPENDED"
     )
-    assert state == {"locked": True, "validated": True, "synced": True}
+    assert state == {
+        "locked": True,
+        "cleaned": True,
+        "validated": True,
+        "published": True,
+        "synced": True,
+    }
+    assert lock_path.stat().st_ino == lock_inode
+
+
+@pytest.mark.parametrize("target_exists", [False, True])
+@pytest.mark.parametrize(
+    "fault_point",
+    [
+        "_write_staged_shadow_bytes",
+        "_flush_staged_shadow_file",
+        "_fsync_staged_shadow_file",
+        "_publish_staged_shadow_file",
+    ],
+)
+def test_precommit_failures_preserve_exact_target_and_retry_cleanly(
+    tmp_path, monkeypatch, target_exists, fault_point
+):
+    frozen, runners, provenance = load_fixture()
+    original = score_race(frozen, runners, provenance)
+    path = tmp_path / f"precommit-{target_exists}-{fault_point}.jsonl"
+    if target_exists:
+        assert append_record(path, frozen, original, runners, provenance) == "APPENDED"
+        candidate, candidate_runners, candidate_provenance = distinct_record(
+            frozen, runners, provenance, fault_point
+        )
+    else:
+        candidate, candidate_runners, candidate_provenance = (
+            original,
+            runners,
+            provenance,
+        )
+    before = output_snapshot(path)
+
+    def injected_failure(*args, **kwargs):
+        raise OSError(f"injected:{fault_point}")
+
+    monkeypatch.setattr(residual_module, fault_point, injected_failure)
+    with pytest.raises(ResidualContractError, match="^shadow_output_write_failed:"):
+        append_record(
+            path,
+            frozen,
+            candidate,
+            candidate_runners,
+            candidate_provenance,
+        )
+    assert_output_snapshot(path, before)
+    _, staged_path = residual_module._shadow_transaction_paths(path)
+    assert not staged_path.exists()
+
+    monkeypatch.undo()
+    assert (
+        append_record(
+            path,
+            frozen,
+            candidate,
+            candidate_runners,
+            candidate_provenance,
+        )
+        == "APPENDED"
+    )
+    assert (
+        append_record(
+            path,
+            frozen,
+            candidate,
+            candidate_runners,
+            candidate_provenance,
+        )
+        == "EXACT_REPLAY"
+    )
+
+
+def test_cleanup_failure_preserves_target_and_retry_removes_leftover(
+    tmp_path, monkeypatch
+):
+    frozen, runners, provenance = load_fixture()
+    existing = score_race(frozen, runners, provenance)
+    path = tmp_path / "cleanup-failure.jsonl"
+    assert append_record(path, frozen, existing, runners, provenance) == "APPENDED"
+    candidate, candidate_runners, candidate_provenance = distinct_record(
+        frozen, runners, provenance, "cleanup"
+    )
+    before = output_snapshot(path)
+    _, staged_path = residual_module._shadow_transaction_paths(path)
+    staged_path.write_bytes(b"partial-leftover")
+
+    def injected_cleanup_failure(*args, **kwargs):
+        raise OSError("injected:cleanup")
+
+    monkeypatch.setattr(
+        residual_module, "_remove_staged_shadow_file", injected_cleanup_failure
+    )
+    with pytest.raises(ResidualContractError, match="^shadow_output_write_failed:"):
+        append_record(
+            path,
+            frozen,
+            candidate,
+            candidate_runners,
+            candidate_provenance,
+        )
+    assert_output_snapshot(path, before)
+    assert staged_path.read_bytes() == b"partial-leftover"
+
+    monkeypatch.undo()
+    assert (
+        append_record(
+            path,
+            frozen,
+            candidate,
+            candidate_runners,
+            candidate_provenance,
+        )
+        == "APPENDED"
+    )
+    assert not staged_path.exists()
+    assert (
+        append_record(
+            path,
+            frozen,
+            candidate,
+            candidate_runners,
+            candidate_provenance,
+        )
+        == "EXACT_REPLAY"
+    )
+
+
+@pytest.mark.parametrize("target_exists", [False, True])
+def test_directory_fsync_failure_is_postcommit_and_retry_is_exact(
+    tmp_path, monkeypatch, target_exists
+):
+    frozen, runners, provenance = load_fixture()
+    original = score_race(frozen, runners, provenance)
+    path = tmp_path / f"directory-fsync-{target_exists}.jsonl"
+    if target_exists:
+        assert append_record(path, frozen, original, runners, provenance) == "APPENDED"
+        candidate, candidate_runners, candidate_provenance = distinct_record(
+            frozen, runners, provenance, "directory-fsync"
+        )
+    else:
+        candidate, candidate_runners, candidate_provenance = (
+            original,
+            runners,
+            provenance,
+        )
+    before = output_snapshot(path)
+
+    def injected_directory_fsync_failure(*args, **kwargs):
+        raise OSError("injected:directory-fsync")
+
+    monkeypatch.setattr(
+        residual_module,
+        "_fsync_parent_directory",
+        injected_directory_fsync_failure,
+    )
+    assert (
+        append_record(
+            path,
+            frozen,
+            candidate,
+            candidate_runners,
+            candidate_provenance,
+        )
+        == "APPENDED"
+    )
+    after = output_snapshot(path)
+    assert after["exists"] is True
+    assert after["bytes"] == before["bytes"] + canonical_bytes(candidate)
+    assert after["sha256"] != before["sha256"]
+    assert after["rows"] == before["rows"] + 1
+    assert (
+        append_record(
+            path,
+            frozen,
+            candidate,
+            candidate_runners,
+            candidate_provenance,
+        )
+        == "EXACT_REPLAY"
+    )
+
+
+def test_publish_then_raise_is_recognized_as_committed(tmp_path, monkeypatch):
+    frozen, runners, provenance = load_fixture()
+    record = score_race(frozen, runners, provenance)
+    path = tmp_path / "publish-then-raise.jsonl"
+    real_publish = residual_module._publish_staged_shadow_file
+
+    def publish_then_raise(staged, output):
+        real_publish(staged, output)
+        raise OSError("injected:post-publication")
+
+    monkeypatch.setattr(
+        residual_module, "_publish_staged_shadow_file", publish_then_raise
+    )
+    assert append_record(path, frozen, record, runners, provenance) == "APPENDED"
+    assert path.read_bytes() == canonical_bytes(record)
+    assert append_record(path, frozen, record, runners, provenance) == "EXACT_REPLAY"
+
+
+def test_publication_exception_with_unexpected_valid_target_reports_unknown(
+    tmp_path, monkeypatch
+):
+    frozen, runners, provenance = load_fixture()
+    intended = score_race(frozen, runners, provenance)
+    other, _, _ = distinct_record(frozen, runners, provenance, "uncertain-other")
+    path = tmp_path / "publication-unknown.jsonl"
+
+    def publish_unexpected_target_then_raise(staged, output):
+        output.write_bytes(canonical_bytes(other))
+        raise OSError("injected:uncertain-publication")
+
+    monkeypatch.setattr(
+        residual_module,
+        "_publish_staged_shadow_file",
+        publish_unexpected_target_then_raise,
+    )
+    assert (
+        append_record(path, frozen, intended, runners, provenance)
+        == "COMMIT_STATE_UNKNOWN"
+    )
+    assert path.read_bytes() == canonical_bytes(other)
+
+    monkeypatch.undo()
+    assert append_record(path, frozen, intended, runners, provenance) == "APPENDED"
+    assert append_record(path, frozen, intended, runners, provenance) == "EXACT_REPLAY"
+
+
+def test_existing_target_permissions_survive_atomic_publication(tmp_path):
+    frozen, runners, provenance = load_fixture()
+    existing = score_race(frozen, runners, provenance)
+    path = tmp_path / "existing-permissions.jsonl"
+    assert append_record(path, frozen, existing, runners, provenance) == "APPENDED"
+    path.chmod(0o640)
+    candidate, candidate_runners, candidate_provenance = distinct_record(
+        frozen, runners, provenance, "existing-mode"
+    )
+
+    assert (
+        append_record(
+            path,
+            frozen,
+            candidate,
+            candidate_runners,
+            candidate_provenance,
+        )
+        == "APPENDED"
+    )
+    assert stat.S_IMODE(path.stat().st_mode) == 0o640
+
+
+def test_absent_target_uses_normal_create_permissions(tmp_path):
+    frozen, runners, provenance = load_fixture()
+    record = score_race(frozen, runners, provenance)
+    path = tmp_path / "absent-permissions.jsonl"
+    old_umask = os.umask(0o027)
+    try:
+        assert append_record(path, frozen, record, runners, provenance) == "APPENDED"
+    finally:
+        os.umask(old_umask)
+    assert stat.S_IMODE(path.stat().st_mode) == 0o640
+
+
+def test_concurrent_retries_share_stable_sidecar_and_publish_one_row(tmp_path):
+    frozen, runners, provenance = load_fixture()
+    record = score_race(frozen, runners, provenance)
+    path = tmp_path / "concurrent.jsonl"
+    worker_count = 8
+    barrier = Barrier(worker_count)
+
+    def append_concurrently():
+        barrier.wait()
+        return append_record(path, frozen, record, runners, provenance)
+
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        results = list(
+            executor.map(lambda _: append_concurrently(), range(worker_count))
+        )
+
+    assert results.count("APPENDED") == 1
+    assert results.count("EXACT_REPLAY") == worker_count - 1
+    assert path.read_bytes() == canonical_bytes(record)
+    lock_path, staged_path = residual_module._shadow_transaction_paths(path)
+    assert lock_path.is_file()
+    lock_inode = lock_path.stat().st_ino
+    assert not staged_path.exists()
+    assert append_record(path, frozen, record, runners, provenance) == "EXACT_REPLAY"
+    assert lock_path.stat().st_ino == lock_inode
+
+
+def test_concurrent_distinct_appends_do_not_lose_a_replacement(tmp_path):
+    frozen, runners, provenance = load_fixture()
+    first = score_race(frozen, runners, provenance)
+    second, second_runners, second_provenance = distinct_record(
+        frozen, runners, provenance, "concurrent-distinct"
+    )
+    path = tmp_path / "concurrent-distinct.jsonl"
+    barrier = Barrier(2)
+
+    def append_after_barrier(candidate, candidate_runners, candidate_provenance):
+        barrier.wait()
+        return append_record(
+            path,
+            frozen,
+            candidate,
+            candidate_runners,
+            candidate_provenance,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [
+            executor.submit(append_after_barrier, first, runners, provenance),
+            executor.submit(
+                append_after_barrier,
+                second,
+                second_runners,
+                second_provenance,
+            ),
+        ]
+        results = [future.result() for future in futures]
+
+    assert results == ["APPENDED", "APPENDED"]
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    assert {row["record_key"] for row in rows} == {
+        first["record_key"],
+        second["record_key"],
+    }
+    assert len(rows) == 2
+    _, staged_path = residual_module._shadow_transaction_paths(path)
+    assert not staged_path.exists()
 
 
 def test_v2_record_stores_complete_inputs_and_binds_full_content():
