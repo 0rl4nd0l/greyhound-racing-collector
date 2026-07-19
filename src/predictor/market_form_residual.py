@@ -971,9 +971,9 @@ def append_shadow_record(
     they do not authenticate a row against coordinated host-level rewriting.
     Repeated prior stable identities fail as ``duplicate_shadow_history_identity``
     when their canonical content matches, or ``conflicting_shadow_duplicate`` when
-    it differs. A persistent sidecar inode serializes the complete transaction;
-    the target is never used as its own lock because atomic publication replaces
-    that inode.
+    it differs. A non-symlink regular persistent sidecar inode serializes the
+    complete transaction; the target is never used as its own lock because atomic
+    publication replaces that inode.
 
     A fully written, flushed, and fsynced same-directory staged file is atomically
     replaced onto the target. Successful replacement is the commit point.
@@ -1009,8 +1009,13 @@ def append_shadow_record(
     lock_fd: int | None = None
     staged_exists = False
     try:
-        lock_flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0)
+        no_follow = getattr(os, "O_NOFOLLOW", None)
+        if no_follow is None:
+            raise OSError("shadow lock no-follow unavailable")
+        lock_flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0) | no_follow
         lock_fd = os.open(lock_path, lock_flags, 0o600)
+        if not stat.S_ISREG(os.fstat(lock_fd).st_mode):
+            raise OSError("shadow lock is not a regular file")
         fcntl.flock(lock_fd, fcntl.LOCK_EX)
 
         _remove_staged_shadow_file(staged_path)

@@ -1578,6 +1578,53 @@ def test_concurrent_distinct_appends_do_not_lose_a_replacement(tmp_path):
     assert not staged_path.exists()
 
 
+@pytest.mark.parametrize("target_exists", [False, True])
+def test_sidecar_lock_symlink_is_rejected_without_transaction_mutation(
+    tmp_path, target_exists
+):
+    frozen, runners, provenance = load_fixture()
+    record = score_race(frozen, runners, provenance)
+    path = tmp_path / "symlink-lock.jsonl"
+    lock_path, staged_path = residual_module._shadow_transaction_paths(path)
+    if target_exists:
+        path.write_bytes(canonical_bytes(record))
+    before = output_snapshot(path)
+    staged_path.write_bytes(b"retained-stage")
+    lock_path.symlink_to(staged_path.name)
+
+    with pytest.raises(ResidualContractError, match="shadow_output_write_failed"):
+        append_record(path, frozen, record, runners, provenance)
+
+    assert lock_path.is_symlink()
+    assert os.readlink(lock_path) == staged_path.name
+    assert_output_snapshot(path, before)
+    assert staged_path.read_bytes() == b"retained-stage"
+
+
+@pytest.mark.parametrize("target_exists", [False, True])
+def test_nonregular_sidecar_lock_is_rejected_without_transaction_mutation(
+    tmp_path, target_exists
+):
+    frozen, runners, provenance = load_fixture()
+    record = score_race(frozen, runners, provenance)
+    path = tmp_path / "fifo-lock.jsonl"
+    lock_path, staged_path = residual_module._shadow_transaction_paths(path)
+    if target_exists:
+        path.write_bytes(canonical_bytes(record))
+    before = output_snapshot(path)
+    staged_path.write_bytes(b"retained-stage")
+    os.mkfifo(lock_path)
+    fd_count_before = len(os.listdir("/proc/self/fd"))
+
+    with pytest.raises(ResidualContractError, match="shadow_output_write_failed"):
+        append_record(path, frozen, record, runners, provenance)
+
+    assert stat.S_ISFIFO(lock_path.stat().st_mode)
+    assert_output_snapshot(path, before)
+    assert staged_path.read_bytes() == b"retained-stage"
+    assert len(os.listdir("/proc/self/fd")) == fd_count_before
+
+
 def test_v2_record_stores_complete_inputs_and_binds_full_content():
     frozen, runners, provenance = load_fixture()
     record = score_race(frozen, runners, provenance)
