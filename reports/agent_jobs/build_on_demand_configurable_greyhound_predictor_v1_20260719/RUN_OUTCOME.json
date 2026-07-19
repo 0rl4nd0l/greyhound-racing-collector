@@ -1,7 +1,15 @@
 {
   "blocked_by": [
-    "PR #46 exact head is BLOCKED_DO_NOT_MERGE because append_shadow_record can leak the staged descriptor after os.open when os.fchmod or os.fdopen fails.",
-    "Live network/browser behavior remains unproven because no named race and live authorization were supplied."
+    {
+      "blocker": "PR #46 exact head is BLOCKED_DO_NOT_MERGE because append_shadow_record can leak the staged descriptor after os.open when os.fchmod or os.fdopen fails.",
+      "explicit_dependency": true,
+      "program_track": "offline_development"
+    },
+    {
+      "blocker": "Live network/browser behavior remains unproven because no named race and live authorization were supplied.",
+      "explicit_dependency": true,
+      "program_track": "offline_development"
+    }
   ],
   "changed_claims": [
     "One packaged command now produces an isolated configurable pre-jump research prediction from a verified receipt or immediate isolated capture.",
