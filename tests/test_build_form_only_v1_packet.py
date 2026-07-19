@@ -301,6 +301,16 @@ def build_fixture(fixture: dict[str, Path], output: Path, *, enforce: bool) -> d
     )
 
 
+def authoritative_bytes(output: Path) -> dict[str, dict[str, bytes]]:
+    return {
+        domain: {
+            path.name: path.read_bytes()
+            for path in sorted((output / domain).iterdir())
+        }
+        for domain in MODULE.AUTHORITATIVE_DOMAIN_ROOT_NAMES
+    }
+
+
 def bind_expected_output(fixture: dict[str, Path], summary: dict[str, object]) -> None:
     contract = json.loads(fixture["contract"].read_text(encoding="utf-8"))
     development = summary["development"]
@@ -967,6 +977,633 @@ def test_build_rejects_preexisting_output_entries_before_writing(
     assert after == before
 
 
+def test_authoritative_directory_replacement_fails_before_redirected_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = make_fixture(tmp_path)
+    output = tmp_path / "build"
+    trainer = output / "trainer"
+    displaced = tmp_path / "displaced-trainer"
+    real_stable_csv = MODULE.stable_csv
+    swapped = False
+
+    def swap_before_first_trainer_write(
+        target: object, *args: object, **kwargs: object
+    ) -> None:
+        nonlocal swapped
+        is_trainer_write = (
+            isinstance(target, Path) and target.parent == trainer
+        ) or getattr(target, "name", None) == MODULE.TRAINER_ROOT_NAME
+        if is_trainer_write and not swapped:
+            swapped = True
+            trainer.rename(displaced)
+            trainer.mkdir()
+        real_stable_csv(target, *args, **kwargs)
+
+    monkeypatch.setattr(MODULE, "stable_csv", swap_before_first_trainer_write)
+    with pytest.raises(ValueError, match="changed|identity|replaced"):
+        build_fixture(fixture, output, enforce=False)
+
+    assert swapped is True
+    assert not list(trainer.iterdir())
+    assert not list(displaced.iterdir())
+
+
+@pytest.mark.parametrize("domain_name", MODULE.AUTHORITATIVE_DOMAIN_ROOT_NAMES)
+def test_each_authoritative_domain_descriptor_rejects_directory_replacement(
+    tmp_path: Path, domain_name: str
+) -> None:
+    output = tmp_path / "packet"
+    displaced = tmp_path / f"displaced-{domain_name}"
+    replacement = output / domain_name
+
+    with pytest.raises(ValueError, match="entry identity changed"):
+        with MODULE._prepare_empty_packet_output(output) as domains:
+            replacement.rename(displaced)
+            replacement.mkdir()
+            domains[domain_name].write_bytes("probe.txt", b"must-not-redirect\n")
+
+    assert not list(replacement.iterdir())
+    assert not list(displaced.iterdir())
+
+
+def test_authoritative_replacement_during_write_rolls_back_bound_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "packet"
+    trainer = output / MODULE.TRAINER_ROOT_NAME
+    displaced = tmp_path / "displaced-trainer"
+    real_write = MODULE.os.write
+    swapped = False
+
+    def swap_after_first_bound_write(file_fd: int, payload: bytes) -> int:
+        nonlocal swapped
+        written = real_write(file_fd, payload)
+        if not swapped:
+            swapped = True
+            trainer.rename(displaced)
+            trainer.mkdir()
+        return written
+
+    monkeypatch.setattr(MODULE.os, "write", swap_after_first_bound_write)
+    with pytest.raises(ValueError, match="entry identity changed"):
+        with MODULE._prepare_empty_packet_output(output) as domains:
+            domains[MODULE.TRAINER_ROOT_NAME].write_bytes(
+                "probe.txt", b"bound-object-only\n"
+            )
+
+    assert swapped is True
+    assert not list(trainer.iterdir())
+    assert not list(displaced.iterdir())
+
+
+@pytest.mark.parametrize("failure_point", ["stat", "read", "fsync"])
+def test_post_publish_verification_failure_removes_partial_packet(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_point: str,
+) -> None:
+    output = tmp_path / "packet"
+    real_replace = MODULE.os.replace
+    real_stat = MODULE.os.stat
+    real_read_regular = MODULE._read_regular_at
+    real_fsync = MODULE.os.fsync
+    published = False
+    injected = False
+
+    def mark_published(*args: object, **kwargs: object) -> None:
+        nonlocal published
+        real_replace(*args, **kwargs)
+        published = True
+
+    def fail_final_stat(*args: object, **kwargs: object) -> object:
+        nonlocal injected
+        if failure_point == "stat" and published and not injected:
+            injected = True
+            raise OSError("injected post-publish stat failure")
+        return real_stat(*args, **kwargs)
+
+    def fail_final_read(*args: object, **kwargs: object) -> bytes:
+        nonlocal injected
+        if failure_point == "read" and published and not injected:
+            injected = True
+            raise OSError("injected post-publish read failure")
+        return real_read_regular(*args, **kwargs)
+
+    def fail_directory_fsync(file_fd: int) -> None:
+        nonlocal injected
+        if failure_point == "fsync" and published and not injected:
+            injected = True
+            raise OSError("injected post-publish fsync failure")
+        real_fsync(file_fd)
+
+    monkeypatch.setattr(MODULE.os, "replace", mark_published)
+    monkeypatch.setattr(MODULE.os, "stat", fail_final_stat)
+    monkeypatch.setattr(MODULE, "_read_regular_at", fail_final_read)
+    monkeypatch.setattr(MODULE.os, "fsync", fail_directory_fsync)
+
+    with pytest.raises(OSError, match="injected post-publish"):
+        with MODULE._prepare_empty_packet_output(output) as domains:
+            domains[MODULE.TRAINER_ROOT_NAME].write_bytes(
+                "probe.txt", b"must-roll-back\n"
+            )
+
+    assert injected is True
+    assert not output.exists()
+
+
+def test_replace_side_effect_then_exception_removes_partial_packet(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "packet"
+    real_replace = MODULE.os.replace
+
+    def replace_then_fail(*args: object, **kwargs: object) -> None:
+        real_replace(*args, **kwargs)
+        raise OSError("injected replace completion error")
+
+    monkeypatch.setattr(MODULE.os, "replace", replace_then_fail)
+    with pytest.raises(OSError, match="injected replace completion error"):
+        with MODULE._prepare_empty_packet_output(output) as domains:
+            domains[MODULE.TRAINER_ROOT_NAME].write_bytes(
+                "probe.txt", b"must-roll-back\n"
+            )
+
+    assert not output.exists()
+
+
+def test_pre_enter_failure_closes_every_owned_descriptor_and_cleans_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "packet"
+    scope = MODULE._prepare_empty_packet_output(output)
+    captured_fds = [
+        scope._parent_fd,
+        scope._packet_fd,
+        *(domain.fd for domain in scope._domains.values()),
+    ]
+
+    def fail_entry_validation() -> None:
+        raise ValueError("injected pre-enter validation failure")
+
+    monkeypatch.setattr(scope, "verify_for_close", fail_entry_validation)
+    with pytest.raises(ValueError, match="injected pre-enter validation failure"):
+        scope.__enter__()
+
+    assert scope._closed is True
+    assert not output.exists()
+    for file_fd in captured_fds:
+        with pytest.raises(OSError):
+            MODULE.os.fstat(file_fd)
+
+
+def test_close_side_effect_then_exception_rolls_back_with_retained_cleanup_fds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "packet"
+    real_close = MODULE._OutputDomain.close
+    injected = False
+
+    def close_then_fail(domain: object) -> None:
+        nonlocal injected
+        real_close(domain)
+        if domain.name == MODULE.TRAINER_ROOT_NAME and not injected:
+            injected = True
+            raise OSError("injected close completion error")
+
+    monkeypatch.setattr(MODULE._OutputDomain, "close", close_then_fail)
+    with pytest.raises(OSError, match="injected close completion error"):
+        with MODULE._prepare_empty_packet_output(output) as domains:
+            domains[MODULE.TRAINER_ROOT_NAME].write_bytes(
+                "probe.txt", b"must-roll-back\n"
+            )
+
+    assert injected is True
+    assert not output.exists()
+
+
+def test_same_inode_content_mutation_before_close_fails_and_rolls_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "packet"
+    real_close = MODULE._OutputDomain.close
+    mutated = False
+
+    def mutate_then_close(domain: object) -> None:
+        nonlocal mutated
+        if domain.name == MODULE.TRAINER_ROOT_NAME and not mutated:
+            mutated = True
+            file_fd = MODULE.os.open(
+                "probe.txt", MODULE.os.O_WRONLY | MODULE.os.O_TRUNC, dir_fd=domain.fd
+            )
+            try:
+                MODULE.os.write(file_fd, b"mutated\n")
+                MODULE.os.fsync(file_fd)
+            finally:
+                MODULE.os.close(file_fd)
+        real_close(domain)
+
+    monkeypatch.setattr(MODULE._OutputDomain, "close", mutate_then_close)
+    with pytest.raises(ValueError, match="content changed"):
+        with MODULE._prepare_empty_packet_output(output) as domains:
+            domains[MODULE.TRAINER_ROOT_NAME].write_bytes(
+                "probe.txt", b"original\n"
+            )
+
+    assert mutated is True
+    assert not output.exists()
+
+
+def test_base_exception_during_staged_write_closes_local_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "packet"
+    real_open = MODULE.os.open
+    opened: list[int] = []
+
+    def capture_open(*args: object, **kwargs: object) -> int:
+        file_fd = real_open(*args, **kwargs)
+        if isinstance(args[0], str) and ".probe.txt.tmp-" in args[0]:
+            opened.append(file_fd)
+        return file_fd
+
+    def interrupt_write(file_fd: int, payload: bytes) -> int:
+        raise KeyboardInterrupt("injected staged-write interrupt")
+
+    monkeypatch.setattr(MODULE.os, "open", capture_open)
+    monkeypatch.setattr(MODULE.os, "write", interrupt_write)
+    with pytest.raises(KeyboardInterrupt, match="injected staged-write interrupt"):
+        with MODULE._prepare_empty_packet_output(output) as domains:
+            domains[MODULE.TRAINER_ROOT_NAME].write_bytes("probe.txt", b"payload\n")
+
+    assert not output.exists()
+    assert opened
+    for file_fd in opened:
+        with pytest.raises(OSError):
+            MODULE.os.fstat(file_fd)
+
+
+def test_staged_fstat_failure_removes_unverified_temporary_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "packet"
+    real_fstat = MODULE.os.fstat
+    staged_fd: int | None = None
+    injected = False
+
+    def fail_first_staged_fstat(file_fd: int) -> object:
+        nonlocal injected, staged_fd
+        if staged_fd is not None and file_fd == staged_fd and not injected:
+            injected = True
+            raise OSError("injected staged fstat failure")
+        return real_fstat(file_fd)
+
+    real_open = MODULE.os.open
+
+    def capture_staged_open(*args: object, **kwargs: object) -> int:
+        nonlocal staged_fd
+        file_fd = real_open(*args, **kwargs)
+        if isinstance(args[0], str) and ".probe.txt.tmp-" in args[0]:
+            staged_fd = file_fd
+        return file_fd
+
+    monkeypatch.setattr(MODULE.os, "open", capture_staged_open)
+    monkeypatch.setattr(MODULE.os, "fstat", fail_first_staged_fstat)
+    with pytest.raises(OSError, match="injected staged fstat failure"):
+        with MODULE._prepare_empty_packet_output(output) as domains:
+            domains[MODULE.TRAINER_ROOT_NAME].write_bytes("probe.txt", b"payload\n")
+
+    assert injected is True
+    assert not output.exists()
+
+
+def test_late_unexpected_regular_file_fails_closed_and_removes_owned_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "packet"
+    real_close = MODULE._OutputDomain.close
+    injected = False
+
+    def inject_unexpected(domain: object) -> None:
+        nonlocal injected
+        if domain.name == MODULE.TRAINER_ROOT_NAME and not injected:
+            injected = True
+            file_fd = MODULE.os.open(
+                "unexpected.txt",
+                MODULE.os.O_WRONLY | MODULE.os.O_CREAT | MODULE.os.O_EXCL,
+                0o600,
+                dir_fd=domain.fd,
+            )
+            MODULE.os.close(file_fd)
+        real_close(domain)
+
+    monkeypatch.setattr(MODULE._OutputDomain, "close", inject_unexpected)
+    with pytest.raises(ValueError, match="surface changed"):
+        with MODULE._prepare_empty_packet_output(output) as domains:
+            domains[MODULE.TRAINER_ROOT_NAME].write_bytes("probe.txt", b"owned\n")
+
+    assert injected is True
+    assert not (output / MODULE.TRAINER_ROOT_NAME / "probe.txt").exists()
+    assert (output / MODULE.TRAINER_ROOT_NAME / "unexpected.txt").exists()
+
+
+def test_close_window_directory_substitution_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "packet"
+    trainer = output / MODULE.TRAINER_ROOT_NAME
+    displaced = tmp_path / "displaced-trainer"
+    real_close = MODULE._OutputDomain.close
+    substituted = False
+
+    def substitute_then_close(domain: object) -> None:
+        nonlocal substituted
+        if domain.name == MODULE.TRAINER_ROOT_NAME and not substituted:
+            substituted = True
+            trainer.rename(displaced)
+            trainer.mkdir()
+        real_close(domain)
+
+    monkeypatch.setattr(MODULE._OutputDomain, "close", substitute_then_close)
+    with pytest.raises(ValueError, match="entry identity changed"):
+        with MODULE._prepare_empty_packet_output(output) as domains:
+            domains[MODULE.TRAINER_ROOT_NAME].write_bytes("probe.txt", b"owned\n")
+
+    assert substituted is True
+    assert not list(displaced.iterdir())
+    assert not list(trainer.iterdir())
+
+
+def test_partial_write_failure_removes_packet_and_closes_owned_descriptors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = make_fixture(tmp_path)
+    output = tmp_path / "build"
+    real_init = MODULE._PacketOutputScope.__init__
+    real_write = MODULE.os.write
+    captured_fds: list[int] = []
+    write_calls = 0
+
+    def capture_scope_fds(scope: object, *args: object, **kwargs: object) -> None:
+        real_init(scope, *args, **kwargs)
+        captured_fds.extend([scope._parent_fd, scope._packet_fd])
+
+    def partial_then_fail(file_fd: int, payload: bytes) -> int:
+        nonlocal write_calls
+        write_calls += 1
+        if write_calls == 1:
+            return real_write(file_fd, payload[:3])
+        raise OSError("injected partial write failure")
+
+    real_add_domain = MODULE._PacketOutputScope.add_domain
+
+    def capture_domain_fd(
+        scope: object, name: str, directory_fd: int, *, writable: bool
+    ) -> None:
+        captured_fds.append(directory_fd)
+        real_add_domain(scope, name, directory_fd, writable=writable)
+
+    monkeypatch.setattr(MODULE._PacketOutputScope, "__init__", capture_scope_fds)
+    monkeypatch.setattr(MODULE._PacketOutputScope, "add_domain", capture_domain_fd)
+    monkeypatch.setattr(MODULE.os, "write", partial_then_fail)
+
+    with pytest.raises(OSError, match="injected partial write failure"):
+        build_fixture(fixture, output, enforce=False)
+
+    assert write_calls == 2
+    assert not output.exists()
+    for file_fd in captured_fds:
+        with pytest.raises(OSError):
+            MODULE.os.fstat(file_fd)
+
+
+@pytest.mark.parametrize("substitution", ["ordinary", "authoritative_alias"])
+def test_diagnostic_substitution_fails_before_bytes_and_preserves_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    substitution: str,
+) -> None:
+    fixture = make_fixture(tmp_path)
+    bootstrap = build_fixture(fixture, tmp_path / "bootstrap", enforce=False)
+    bind_expected_output(fixture, bootstrap)
+    output = tmp_path / "authoritative"
+    MODULE.build_authoritative_packet(
+        fixture["eligibility"],
+        fixture["training"],
+        [fixture["evidence"]],
+        output,
+        fixture["freeze"],
+        fixture["contract"],
+        enforce_expected_output=True,
+    )
+    before = authoritative_bytes(output)
+    expected_trainer = MODULE.load_verified_trainer_inputs(
+        output, fixture["contract"]
+    )
+    diagnostic = output / "non_authoritative_diagnostic"
+    displaced = tmp_path / f"displaced-diagnostic-{substitution}"
+    real_stable_csv = MODULE.stable_csv
+    swapped = False
+
+    def substitute_before_first_diagnostic_write(
+        target: object, *args: object, **kwargs: object
+    ) -> None:
+        nonlocal swapped
+        if (
+            getattr(target, "name", None) == "non_authoritative_diagnostic"
+            and not swapped
+        ):
+            swapped = True
+            diagnostic.rename(displaced)
+            if substitution == "ordinary":
+                diagnostic.mkdir()
+            else:
+                diagnostic.symlink_to(
+                    output / MODULE.TRAINER_ROOT_NAME,
+                    target_is_directory=True,
+                )
+        real_stable_csv(target, *args, **kwargs)
+
+    monkeypatch.setattr(
+        MODULE, "stable_csv", substitute_before_first_diagnostic_write
+    )
+    with pytest.raises(ValueError, match="identity changed"):
+        MODULE.build_optional_diagnostics(output, fixture["contract"])
+
+    assert swapped is True
+    assert not list(displaced.iterdir())
+    if substitution == "ordinary":
+        assert not list(diagnostic.iterdir())
+    assert authoritative_bytes(output) == before
+    assert (
+        MODULE.load_verified_trainer_inputs(output, fixture["contract"])
+        == expected_trainer
+    )
+
+
+def test_prebound_diagnostic_alias_is_rejected_before_any_diagnostic_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = make_fixture(tmp_path)
+    bootstrap = build_fixture(fixture, tmp_path / "bootstrap", enforce=False)
+    bind_expected_output(fixture, bootstrap)
+    output = tmp_path / "authoritative"
+    MODULE.build_authoritative_packet(
+        fixture["eligibility"],
+        fixture["training"],
+        [fixture["evidence"]],
+        output,
+        fixture["freeze"],
+        fixture["contract"],
+        enforce_expected_output=True,
+    )
+    before = authoritative_bytes(output)
+    diagnostic = output / "non_authoritative_diagnostic"
+    diagnostic.symlink_to(
+        output / MODULE.TRAINER_ROOT_NAME, target_is_directory=True
+    )
+    writes = 0
+    real_stable_csv = MODULE.stable_csv
+
+    def count_diagnostic_writes(
+        target: object, *args: object, **kwargs: object
+    ) -> None:
+        nonlocal writes
+        if getattr(target, "name", None) == "non_authoritative_diagnostic":
+            writes += 1
+        real_stable_csv(target, *args, **kwargs)
+
+    monkeypatch.setattr(MODULE, "stable_csv", count_diagnostic_writes)
+    with pytest.raises(ValueError, match="symlink|directory"):
+        MODULE.build_optional_diagnostics(output, fixture["contract"])
+
+    assert writes == 0
+    assert authoritative_bytes(output) == before
+
+
+def test_diagnostic_partial_packet_is_removed_and_authority_is_unchanged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = make_fixture(tmp_path)
+    bootstrap = build_fixture(fixture, tmp_path / "bootstrap", enforce=False)
+    bind_expected_output(fixture, bootstrap)
+    output = tmp_path / "authoritative"
+    MODULE.build_authoritative_packet(
+        fixture["eligibility"],
+        fixture["training"],
+        [fixture["evidence"]],
+        output,
+        fixture["freeze"],
+        fixture["contract"],
+        enforce_expected_output=True,
+    )
+    before = authoritative_bytes(output)
+    real_stable_json = MODULE.stable_json
+
+    def fail_after_diagnostic_csv(
+        target: object, *args: object, **kwargs: object
+    ) -> None:
+        if getattr(target, "name", None) == "non_authoritative_diagnostic":
+            raise OSError("injected diagnostic JSON failure")
+        real_stable_json(target, *args, **kwargs)
+
+    monkeypatch.setattr(MODULE, "stable_json", fail_after_diagnostic_csv)
+    with pytest.raises(OSError, match="injected diagnostic JSON failure"):
+        MODULE.build_optional_diagnostics(output, fixture["contract"])
+
+    assert not (output / "non_authoritative_diagnostic").exists()
+    assert authoritative_bytes(output) == before
+
+
+def test_domain_descriptors_are_live_through_final_verification_then_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = make_fixture(tmp_path)
+    bootstrap = build_fixture(fixture, tmp_path / "bootstrap", enforce=False)
+    bind_expected_output(fixture, bootstrap)
+    captured_fds: list[int] = []
+    real_verified = MODULE._verified_trainer_read_surface_from_fds
+    real_declared = MODULE._verify_declared_domain
+
+    def verify_open_trainer_fds(
+        domain_fds: dict[str, int],
+    ) -> tuple[dict[str, bytes], dict[str, bytes]]:
+        for file_fd in domain_fds.values():
+            MODULE.os.fstat(file_fd)
+            captured_fds.append(file_fd)
+        return real_verified(domain_fds)
+
+    def verify_open_declared_fd(
+        directory_fd: int,
+        domain: str,
+        expected_output: dict[str, object],
+    ) -> dict[str, bytes]:
+        MODULE.os.fstat(directory_fd)
+        captured_fds.append(directory_fd)
+        return real_declared(directory_fd, domain, expected_output)
+
+    monkeypatch.setattr(
+        MODULE,
+        "_verified_trainer_read_surface_from_fds",
+        verify_open_trainer_fds,
+    )
+    monkeypatch.setattr(MODULE, "_verify_declared_domain", verify_open_declared_fd)
+    build_fixture(fixture, tmp_path / "verified", enforce=True)
+
+    assert captured_fds
+    for file_fd in set(captured_fds):
+        with pytest.raises(OSError):
+            MODULE.os.fstat(file_fd)
+
+
+def test_scope_cleanup_duplicates_are_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "packet"
+    real_dup = MODULE.os.dup
+    duplicate_fds: list[int] = []
+
+    def capture_dup(file_fd: int) -> int:
+        duplicate_fd = real_dup(file_fd)
+        duplicate_fds.append(duplicate_fd)
+        return duplicate_fd
+
+    monkeypatch.setattr(MODULE.os, "dup", capture_dup)
+    with MODULE._prepare_empty_packet_output(output):
+        pass
+
+    assert len(duplicate_fds) == 5
+    for file_fd in duplicate_fds:
+        with pytest.raises(OSError):
+            MODULE.os.fstat(file_fd)
+
+
+@pytest.mark.parametrize("target", ["packet", "parent"])
+def test_scope_root_close_completion_error_rolls_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, target: str
+) -> None:
+    output = tmp_path / "packet"
+    scope = MODULE._prepare_empty_packet_output(output)
+    target_fd = scope._packet_fd if target == "packet" else scope._parent_fd
+    real_close = MODULE.os.close
+    injected = False
+
+    def close_then_fail(file_fd: int) -> None:
+        nonlocal injected
+        real_close(file_fd)
+        if file_fd == target_fd and not injected:
+            injected = True
+            raise OSError(f"injected {target} close completion error")
+
+    monkeypatch.setattr(MODULE.os, "close", close_then_fail)
+    with pytest.raises(OSError, match=f"injected {target} close completion error"):
+        with scope:
+            scope[MODULE.TRAINER_ROOT_NAME].write_bytes("probe.txt", b"owned\n")
+
+    assert injected is True
+    assert not output.exists()
+
+
 @pytest.mark.parametrize(
     "mutation",
     [
@@ -1041,8 +1678,14 @@ def test_diagnostic_build_cannot_change_authoritative_files(tmp_path: Path) -> N
         fixture["eligibility"], fixture["training"], reproducibility
     )
     loaded = MODULE.load_diagnostic_sources(loaded, reproducibility)
-    authoritative = tmp_path / "authoritative"
-    MODULE.build_development_packet(loaded, authoritative, tmp_path / "sealed")
+    packet = tmp_path / "packet"
+    with MODULE._prepare_empty_packet_output(packet) as domains:
+        MODULE.build_development_packet(
+            loaded,
+            domains[MODULE.TRAINER_ROOT_NAME],
+            domains["sealed_validation"],
+        )
+    authoritative = packet / MODULE.TRAINER_ROOT_NAME
     before = {
         name: MODULE.sha256_path(authoritative / name)
         for name in (
@@ -1056,7 +1699,10 @@ def test_diagnostic_build_cannot_change_authoritative_files(tmp_path: Path) -> N
     write_json(mutated_shadow, payload)
     for record_value in loaded["shadow_source_by_race"].values():
         record_value.update(record(mutated_shadow))
-    MODULE.build_overlap_reconciliation(loaded, tmp_path / "diagnostic")
+    with MODULE._prepare_empty_diagnostic_output(packet) as domains:
+        MODULE.build_overlap_reconciliation(
+            loaded, domains["non_authoritative_diagnostic"]
+        )
     after = {name: MODULE.sha256_path(authoritative / name) for name in before}
     assert before == after
 

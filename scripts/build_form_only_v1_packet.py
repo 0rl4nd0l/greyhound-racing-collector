@@ -12,10 +12,11 @@ import os
 import re
 import stat
 from collections import Counter, defaultdict
+from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path, PurePosixPath
 from statistics import mean
-from typing import Any, Iterable, Mapping
+from typing import Any, Callable, Iterable, Iterator, Mapping
 from zoneinfo import ZoneInfo
 
 
@@ -238,18 +239,25 @@ def load_reproducibility_contract(
     return payload
 
 
-def stable_json(path: Path, value: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+def stable_json(output_domain: _OutputDomain, name: str, value: Any) -> None:
+    output_domain.write_bytes(
+        name,
+        (json.dumps(value, indent=2, sort_keys=True) + "\n").encode("utf-8"),
+    )
 
 
-def stable_csv(path: Path, fieldnames: list[str], rows: Iterable[Mapping[str, Any]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fieldnames, lineterminator="\n")
-        writer.writeheader()
-        for row in rows:
-            writer.writerow({key: row.get(key, "") for key in fieldnames})
+def stable_csv(
+    output_domain: _OutputDomain,
+    name: str,
+    fieldnames: list[str],
+    rows: Iterable[Mapping[str, Any]],
+) -> None:
+    handle = io.StringIO(newline="")
+    writer = csv.DictWriter(handle, fieldnames=fieldnames, lineterminator="\n")
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({key: row.get(key, "") for key in fieldnames})
+    output_domain.write_bytes(name, handle.getvalue().encode("utf-8"))
 
 
 def parse_timestamp(value: str, *, require_timezone: bool = False) -> datetime:
@@ -1100,9 +1108,10 @@ def reconcile_development_roster(
 
 
 def build_development_packet(
-    loaded: Mapping[str, Any], output_dir: Path, sealed_dir: Path | None = None
+    loaded: Mapping[str, Any],
+    output_domain: _OutputDomain,
+    sealed_domain: _OutputDomain,
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
-    sealed_dir = sealed_dir or output_dir
     selected, excluded = select_development_sources(loaded)
     candidate_runners = loaded["candidate_runners"]
     race_rows: list[dict[str, Any]] = []
@@ -1206,20 +1215,28 @@ def build_development_packet(
     exclusion_rows.sort(key=lambda row: (row["race_id"], row["entity_type"], row["entity_id"], row["reason"]))
     source_rows.sort(key=lambda row: (row["race_id"], row["source_class"], row["role"], row["path"]))
 
-    stable_csv(output_dir / "development_races.csv", list(race_rows[0]), race_rows)
-    stable_csv(output_dir / "development_runners.csv", list(runner_rows[0]), runner_rows)
-    stable_csv(output_dir / "development_features.csv", list(feature_rows[0]), feature_rows)
+    stable_csv(output_domain, "development_races.csv", list(race_rows[0]), race_rows)
+    stable_csv(output_domain, "development_runners.csv", list(runner_rows[0]), runner_rows)
+    stable_csv(output_domain, "development_features.csv", list(feature_rows[0]), feature_rows)
     exclusion_fields = [
         "entity_type", "entity_id", "race_id", "reason", "history_date",
     ]
-    stable_csv(output_dir / "development_exclusions.csv", exclusion_fields, exclusion_rows)
-    stable_csv(sealed_dir / "development_source_inventory.csv", list(source_rows[0]), source_rows)
+    stable_csv(output_domain, "development_exclusions.csv", exclusion_fields, exclusion_rows)
     stable_csv(
-        sealed_dir / "development_runner_alignment.csv",
+        sealed_domain,
+        "development_source_inventory.csv",
+        list(source_rows[0]),
+        source_rows,
+    )
+    stable_csv(
+        sealed_domain,
+        "development_runner_alignment.csv",
         list(alignment_rows[0]),
         alignment_rows,
     )
-    source_inventory_record = file_record(sealed_dir / "development_source_inventory.csv")
+    source_inventory_record = sealed_domain.file_record(
+        "development_source_inventory.csv"
+    )
 
     feature_columns = list(feature_rows[0])
     forbidden_columns = sorted(set(feature_columns).intersection(FORBIDDEN_FEATURE_TOKENS))
@@ -1239,7 +1256,7 @@ def build_development_packet(
         "outcome_feature_count": 0, "market_feature_count": 0, "dog_identity_feature_count": 0,
         "feature_columns": feature_columns,
     }
-    stable_json(output_dir / "development_manifest.json", {
+    stable_json(output_domain, "development_manifest.json", {
         "schema_version": "form_only_v1_development_manifest_v2",
         "status": "ACQUISITION_ONLY_NO_MODEL_FIT",
         "development_end": DEVELOPMENT_END.isoformat(),
@@ -1343,7 +1360,9 @@ def mismatch_cause(
     return f"UNEXPLAINED_{family.upper()}_DIFFERENCE"
 
 
-def build_overlap_reconciliation(loaded: Mapping[str, Any], output_dir: Path) -> dict[str, Any]:
+def build_overlap_reconciliation(
+    loaded: Mapping[str, Any], output_domain: _OutputDomain
+) -> dict[str, Any]:
     overlap_ids = sorted(set(loaded["provenance"]).intersection(loaded["published_rows"]))
     shadow_rows = load_shadow_feature_rows(loaded["shadow_source_by_race"])
     expected_keys = {
@@ -1425,7 +1444,7 @@ def build_overlap_reconciliation(loaded: Mapping[str, Any], output_dir: Path) ->
                 "unexplained_mismatch": unexplained,
             })
     rows.sort(key=lambda row: (row["race_id"], row["box_number"], row["row_id"]))
-    stable_csv(output_dir / "overlap_reconciliation.csv", list(rows[0]), rows)
+    stable_csv(output_domain, "overlap_reconciliation.csv", list(rows[0]), rows)
     summary = {
         "authority": "NON_AUTHORITATIVE_DIAGNOSTIC",
         "trainer_dependency": False,
@@ -1456,7 +1475,7 @@ def build_overlap_reconciliation(loaded: Mapping[str, Any], output_dir: Path) ->
         ),
         "canonical_rule": "rebuild from byte-identical raw pre-race card; never select a legacy builder value",
     }
-    stable_json(output_dir / "reconciliation_summary.json", summary)
+    stable_json(output_domain, "reconciliation_summary.json", summary)
     return summary
 
 
@@ -1770,12 +1789,13 @@ def load_frozen_out_of_time_sources(
 
 def build_out_of_time_manifest(
     evidence_roots: list[Path],
-    output_dir: Path,
+    output_domain: _OutputDomain,
     reproducibility: Mapping[str, Any],
     freeze_dir: Path | None = None,
-    sealed_dir: Path | None = None,
+    sealed_domain: _OutputDomain | None = None,
 ) -> dict[str, Any]:
-    sealed_dir = sealed_dir or output_dir
+    if sealed_domain is None:
+        raise ValueError("sealed output domain is required")
     freeze_binding: dict[str, Any] | None = None
     if freeze_dir is None:
         selected, exclusions = scan_out_of_time_sources(evidence_roots)
@@ -1831,16 +1851,37 @@ def build_out_of_time_manifest(
                 "bytes": path.stat().st_size, "capture_timestamp": option["capture"].isoformat(),
                 "jump_timestamp": option["jump"].isoformat(), "status": "OUTCOME_UNOPENED_OUT_OF_TIME",
             })
-    stable_csv(output_dir / "out_of_time_races.csv", list(race_rows[0]) if race_rows else ["race_id"], race_rows)
-    stable_csv(output_dir / "out_of_time_runners.csv", list(runner_rows[0]) if runner_rows else ["row_id"], runner_rows)
-    stable_csv(sealed_dir / "out_of_time_source_inventory.csv", list(source_rows[0]) if source_rows else ["race_id"], source_rows)
     stable_csv(
-        sealed_dir / "out_of_time_runner_alignment.csv",
+        output_domain,
+        "out_of_time_races.csv",
+        list(race_rows[0]) if race_rows else ["race_id"],
+        race_rows,
+    )
+    stable_csv(
+        output_domain,
+        "out_of_time_runners.csv",
+        list(runner_rows[0]) if runner_rows else ["row_id"],
+        runner_rows,
+    )
+    stable_csv(
+        sealed_domain,
+        "out_of_time_source_inventory.csv",
+        list(source_rows[0]) if source_rows else ["race_id"],
+        source_rows,
+    )
+    stable_csv(
+        sealed_domain,
+        "out_of_time_runner_alignment.csv",
         list(alignment_rows[0]) if alignment_rows else ["race_id"],
         alignment_rows,
     )
     exclusion_fields = ["race_id", "race_date", "source_path", "source_sha256", "source_bytes", "reason"]
-    stable_csv(sealed_dir / "out_of_time_exclusions.csv", exclusion_fields, exclusions)
+    stable_csv(
+        sealed_domain,
+        "out_of_time_exclusions.csv",
+        exclusion_fields,
+        exclusions,
+    )
     summary = {
         "schema_version": "form_only_v1_out_of_time_manifest_v2",
         "status": "OUTCOME_UNOPENED_OUT_OF_TIME", "outcomes_opened": False,
@@ -1876,12 +1917,12 @@ def build_out_of_time_manifest(
             ("out_of_time_sidecar", option["sidecar_path"]),
         )
     )
-    stable_json(output_dir / "out_of_time_manifest.json", summary)
+    stable_json(output_domain, "out_of_time_manifest.json", summary)
     return summary
 
 
-def write_feature_contract(output_dir: Path) -> None:
-    stable_json(output_dir / "feature_contract.json", {
+def write_feature_contract(output_domain: _OutputDomain) -> None:
+    stable_json(output_domain, "feature_contract.json", {
         "schema_version": "form_only_v1_feature_contract_v1",
         "mode": "ACQUISITION_ONLY_NO_MODEL_FIT_OR_EVALUATION",
         "as_of": {
@@ -1919,8 +1960,8 @@ def write_feature_contract(output_dir: Path) -> None:
     })
 
 
-def write_market_coverage(output_dir: Path) -> None:
-    stable_json(output_dir / "market_coverage.json", {
+def write_market_coverage(output_domain: _OutputDomain) -> None:
+    stable_json(output_domain, "market_coverage.json", {
         "schema_version": "form_only_v1_separate_market_coverage_v1",
         "status": "DATA_MISSING",
         "separate_from_form_input_eligibility": True,
@@ -1938,37 +1979,44 @@ def write_market_coverage(output_dir: Path) -> None:
     })
 
 
-def validate_trainer_visible_artifacts(output_dir: Path) -> None:
+def validate_trainer_visible_artifacts(
+    output_domain: Path | _OutputDomain,
+) -> None:
+    if isinstance(output_domain, Path):
+        with _bound_existing_output_domain(
+            output_domain, label="trainer output domain", writable=False
+        ) as bound_domain:
+            validate_trainer_visible_artifacts(bound_domain)
+        return
     identity_scopes: dict[str, set[tuple[str, str]]] = defaultdict(set)
     required_nonempty_csv = {
         "development_features.csv", "development_races.csv", "development_runners.csv",
         "out_of_time_races.csv", "out_of_time_runners.csv",
     }
     for name in sorted(TRAINER_ARTIFACT_NAMES):
-        path = output_dir / name
-        if not path.is_file() or path.stat().st_size == 0:
+        payload_bytes = output_domain.read_bytes(name)
+        if not payload_bytes:
             raise ValueError(f"missing or empty trainer artifact: {name}")
-        text = path.read_text(encoding="utf-8")
+        text = payload_bytes.decode("utf-8")
         if "|dog:" in text:
             raise ValueError(f"sealed dog alignment key leaked into artifact: {name}")
-        if path.suffix == ".csv":
-            with path.open(encoding="utf-8", newline="") as handle:
-                reader = csv.DictReader(handle)
-                forbidden = set(reader.fieldnames or []).intersection(FORBIDDEN_ARTIFACT_FIELDS)
-                if forbidden:
-                    raise ValueError(f"identity-bearing fields in {name}: {sorted(forbidden)}")
-                rows_seen = 0
-                split = OUT_OF_TIME_SCOPE if name.startswith("out_of_time_") else DEVELOPMENT_SCOPE
-                for row in reader:
-                    rows_seen += 1
-                    race_id = row.get("race_id") or ""
-                    for key in ("row_id", "entity_id"):
-                        value = row.get(key) or ""
-                        if re.fullmatch(r"[0-9a-f]{64}", value):
-                            identity_scopes[value].add((split, race_id))
-                if name in required_nonempty_csv and rows_seen == 0:
-                    raise ValueError(f"empty generated trainer CSV: {name}")
-        elif path.suffix == ".json":
+        if name.endswith(".csv"):
+            reader = csv.DictReader(io.StringIO(text, newline=""))
+            forbidden = set(reader.fieldnames or []).intersection(FORBIDDEN_ARTIFACT_FIELDS)
+            if forbidden:
+                raise ValueError(f"identity-bearing fields in {name}: {sorted(forbidden)}")
+            rows_seen = 0
+            split = OUT_OF_TIME_SCOPE if name.startswith("out_of_time_") else DEVELOPMENT_SCOPE
+            for row in reader:
+                rows_seen += 1
+                race_id = row.get("race_id") or ""
+                for key in ("row_id", "entity_id"):
+                    value = row.get(key) or ""
+                    if re.fullmatch(r"[0-9a-f]{64}", value):
+                        identity_scopes[value].add((split, race_id))
+            if name in required_nonempty_csv and rows_seen == 0:
+                raise ValueError(f"empty generated trainer CSV: {name}")
+        elif name.endswith(".json"):
             payload = json.loads(text)
             stack = [payload]
             while stack:
@@ -1986,8 +2034,8 @@ def validate_trainer_visible_artifacts(output_dir: Path) -> None:
 
 
 def write_trainer_input_manifest(
-    trainer_dir: Path,
-    control_dir: Path,
+    trainer_domain: _OutputDomain,
+    control_domain: _OutputDomain,
     trainer_manifest: Mapping[str, Any],
 ) -> None:
     allowed = []
@@ -1995,27 +2043,27 @@ def write_trainer_input_manifest(
     if set(manifest_rows) != TRAINER_ARTIFACT_NAMES:
         raise ValueError("trainer artifact manifest does not match the declared read surface")
     for name in sorted(TRAINER_ARTIFACT_NAMES):
-        path = trainer_dir / name
-        if not path.is_file() or path.stat().st_size == 0:
-            raise ValueError(f"missing or empty generated artifact: {path}")
+        payload = trainer_domain.read_bytes(name)
+        if not payload:
+            raise ValueError(f"missing or empty generated artifact: {name}")
         allowed.append({
             **manifest_rows[name],
             "type": "regular_file",
             "role": TRAINER_ARTIFACT_ROLES[name],
         })
-    signature = control_dir / "artifact-manifest.sha256"
-    stable_json(control_dir / "trainer_input_manifest.json", {
+    signature = control_domain.read_bytes("artifact-manifest.sha256")
+    stable_json(control_domain, "trainer_input_manifest.json", {
         "schema_version": "form_only_v1_trainer_input_manifest_v2",
         "trust_domain": "TRAINER_VISIBLE_AUTHORITATIVE",
         "trainer_root": TRAINER_ROOT_NAME,
         "allowed_files": allowed,
         "declared_file_count": len(allowed),
         "artifact_manifest": {
-            "path": signature.name,
+            "path": "artifact-manifest.sha256",
             "type": "regular_file",
             "role": "CONTROL_INTEGRITY_SIGNATURE",
-            "sha256": sha256_path(signature),
-            "bytes": signature.stat().st_size,
+            "sha256": hashlib.sha256(signature).hexdigest(),
+            "bytes": len(signature),
             "trainer_aggregate_sha256": trainer_manifest["aggregate_sha256"],
         },
         "row_identity": "sha256(FORM_ONLY_V1|race_box|race_id|box_number)",
@@ -2028,30 +2076,64 @@ def write_trainer_input_manifest(
 
 
 def write_artifact_manifest(
-    output_dir: Path,
+    output_domain: Path | _OutputDomain,
     names: set[str],
     *,
     filename: str = "artifact-manifest.sha256",
-    manifest_dir: Path | None = None,
+    manifest_domain: _OutputDomain | None = None,
 ) -> dict[str, Any]:
-    manifest = artifact_manifest_records(output_dir, names)
-    destination = (manifest_dir or output_dir) / filename
-    destination.write_text(manifest["text"], encoding="utf-8")
+    if isinstance(output_domain, Path):
+        with _bound_existing_output_domain(
+            output_domain, label="artifact manifest domain", writable=True
+        ) as bound_domain:
+            return write_artifact_manifest(
+                bound_domain,
+                names,
+                filename=filename,
+                manifest_domain=bound_domain,
+            )
+    manifest = artifact_manifest_records(output_domain, names)
+    destination = manifest_domain or output_domain
+    destination.write_bytes(filename, manifest["text"].encode("utf-8"))
     return {key: value for key, value in manifest.items() if key != "text"}
 
 
-def artifact_manifest_records(output_dir: Path, names: set[str]) -> dict[str, Any]:
+def artifact_manifest_records(
+    output_domain: Path | _OutputDomain, names: set[str]
+) -> dict[str, Any]:
+    if isinstance(output_domain, Path):
+        with _bound_existing_output_domain(
+            output_domain, label="artifact record domain", writable=False
+        ) as bound_domain:
+            return artifact_manifest_records(bound_domain, names)
     rows = []
     for name in sorted(names):
-        path = output_dir / name
-        if not path.is_file() or path.stat().st_size == 0:
-            raise ValueError(f"missing or empty generated artifact: {path}")
-        rows.append({"path": name, "sha256": sha256_path(path), "bytes": path.stat().st_size})
+        payload = output_domain.read_bytes(name)
+        if not payload:
+            raise ValueError(f"missing or empty generated artifact: {name}")
+        rows.append({
+            "path": name,
+            "sha256": hashlib.sha256(payload).hexdigest(),
+            "bytes": len(payload),
+        })
     text = "".join(f"{row['sha256']}  {row['path']}\n" for row in rows)
     return {
         "files": rows,
         "aggregate_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
         "text": text,
+    }
+
+
+def _snapshot_bound_domains(
+    domains: _PacketOutputScope,
+    manifests: Mapping[str, Mapping[str, Any]],
+) -> dict[str, dict[str, bytes]]:
+    return {
+        domain: {
+            str(row["path"]): domains[domain].read_bytes(str(row["path"]))
+            for row in manifest["files"]
+        }
+        for domain, manifest in manifests.items()
     }
 
 
@@ -2144,6 +2226,718 @@ def _read_regular_at(directory_fd: int, name: str, *, label: str) -> bytes:
         return b"".join(chunks)
     finally:
         os.close(file_fd)
+
+
+def _directory_identity(metadata: os.stat_result) -> tuple[int, int, int, int]:
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        stat.S_IFMT(metadata.st_mode),
+        metadata.st_nlink,
+    )
+
+
+def _entry_identity(metadata: os.stat_result) -> tuple[int, int, int, int]:
+    return _directory_identity(metadata)
+
+
+_OutputEntryRecord = tuple[tuple[int, int, int, int], int, str]
+
+
+def _output_component(name: str, *, label: str) -> str:
+    if (
+        not name
+        or name in {".", ".."}
+        or name.startswith(".")
+        or "/" in name
+        or "\\" in name
+    ):
+        raise ValueError(f"unsafe {label} component: {name!r}")
+    return name
+
+
+class _OutputDomain:
+    """A validated output directory held open for its complete write phase."""
+
+    def __init__(
+        self,
+        *,
+        name: str,
+        directory_fd: int,
+        container_fd: int,
+        container_verifier: Callable[[], None],
+        writable: bool,
+    ) -> None:
+        self.name = _output_component(name, label="output domain")
+        self.fd = directory_fd
+        self._container_fd = container_fd
+        self._container_verifier = container_verifier
+        self._writable = writable
+        self._closed = False
+        self._write_counter = 0
+        self._owned_entries: dict[str, _OutputEntryRecord] = {}
+        self._temporary_entries: dict[
+            str, tuple[int, int, int, int] | None
+        ] = {}
+        metadata = os.fstat(self.fd)
+        if not stat.S_ISDIR(metadata.st_mode) or metadata.st_nlink < 1:
+            raise ValueError(f"output domain is not a live directory: {self.name}")
+        self._identity = _directory_identity(metadata)
+        self._baseline_entries = {
+            entry_name: self._entry_record(entry_name, label="baseline output artifact")
+            for entry_name in os.listdir(self.fd)
+        }
+        self.assert_bound()
+
+    def _assert_open(self) -> None:
+        if self._closed:
+            raise ValueError(f"output domain descriptor is closed: {self.name}")
+
+    def _assert_descriptor_identity(self) -> None:
+        self._assert_open()
+        try:
+            metadata = os.fstat(self.fd)
+        except OSError as exc:
+            raise ValueError(f"output domain descriptor is invalid: {self.name}") from exc
+        if (
+            not stat.S_ISDIR(metadata.st_mode)
+            or metadata.st_nlink < 1
+            or _directory_identity(metadata) != self._identity
+        ):
+            raise ValueError(f"output domain descriptor identity changed: {self.name}")
+
+    def _entry_record(self, name: str, *, label: str) -> _OutputEntryRecord:
+        try:
+            before = os.stat(name, dir_fd=self.fd, follow_symlinks=False)
+        except FileNotFoundError as exc:
+            raise ValueError(f"{label} disappeared: {self.name}/{name}") from exc
+        if (
+            stat.S_ISLNK(before.st_mode)
+            or not stat.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+        ):
+            raise ValueError(
+                f"{label} is not a regular single-link file: {self.name}/{name}"
+            )
+        identity = _entry_identity(before)
+        payload = _read_regular_at(self.fd, name, label=label)
+        try:
+            after = os.stat(name, dir_fd=self.fd, follow_symlinks=False)
+        except FileNotFoundError as exc:
+            raise ValueError(f"{label} disappeared: {self.name}/{name}") from exc
+        if _entry_identity(after) != identity:
+            raise ValueError(f"{label} identity changed: {self.name}/{name}")
+        return identity, len(payload), hashlib.sha256(payload).hexdigest()
+
+    def _assert_record(
+        self,
+        name: str,
+        expected: _OutputEntryRecord,
+        *,
+        label: str,
+    ) -> None:
+        actual = self._entry_record(name, label=label)
+        if actual[0] != expected[0]:
+            raise ValueError(f"{label} identity changed: {self.name}/{name}")
+        if actual[1:] != expected[1:]:
+            raise ValueError(f"{label} content changed: {self.name}/{name}")
+
+    def _assert_exact_entries(self) -> None:
+        actual = set(os.listdir(self.fd))
+        expected = (
+            set(self._baseline_entries)
+            | set(self._owned_entries)
+            | set(self._temporary_entries)
+        )
+        if actual != expected:
+            raise ValueError(
+                f"output domain surface changed: {self.name}: "
+                f"unexpected={sorted(actual - expected)} "
+                f"missing={sorted(expected - actual)}"
+            )
+
+    def _assert_tracked_entries(self) -> None:
+        for name, expected in self._baseline_entries.items():
+            self._assert_record(
+                name, expected, label="baseline output artifact"
+            )
+        for name, expected in self._owned_entries.items():
+            self._assert_record(name, expected, label="output artifact")
+        for name, expected in self._temporary_entries.items():
+            if expected is None:
+                raise ValueError(
+                    f"staged output identity was not established: {self.name}/{name}"
+                )
+            try:
+                metadata = os.stat(name, dir_fd=self.fd, follow_symlinks=False)
+            except FileNotFoundError as exc:
+                raise ValueError(
+                    f"staged output disappeared: {self.name}/{name}"
+                ) from exc
+            if (
+                stat.S_ISLNK(metadata.st_mode)
+                or not stat.S_ISREG(metadata.st_mode)
+                or metadata.st_nlink != 1
+                or _entry_identity(metadata) != expected
+            ):
+                raise ValueError(
+                    f"staged output identity changed: {self.name}/{name}"
+                )
+
+    def assert_bound(self) -> None:
+        self._assert_open()
+        self._container_verifier()
+        self._assert_descriptor_identity()
+        try:
+            entry = os.stat(
+                self.name,
+                dir_fd=self._container_fd,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError as exc:
+            raise ValueError(f"output domain entry disappeared: {self.name}") from exc
+        if (
+            stat.S_ISLNK(entry.st_mode)
+            or not stat.S_ISDIR(entry.st_mode)
+            or _directory_identity(entry) != self._identity
+        ):
+            raise ValueError(f"output domain entry identity changed: {self.name}")
+        self._assert_exact_entries()
+        self._assert_tracked_entries()
+
+    def list_names(self) -> set[str]:
+        self.assert_bound()
+        names = set(os.listdir(self.fd))
+        self.assert_bound()
+        return names
+
+    def read_bytes(self, name: str) -> bytes:
+        name = _output_component(name, label="output artifact")
+        self.assert_bound()
+        payload = _read_regular_at(
+            self.fd, name, label=f"{self.name} output artifact"
+        )
+        self.assert_bound()
+        return payload
+
+    def file_record(self, name: str) -> dict[str, Any]:
+        payload = self.read_bytes(name)
+        return {
+            "path": name,
+            "sha256": hashlib.sha256(payload).hexdigest(),
+            "bytes": len(payload),
+        }
+
+    def _remove_owned_entry(
+        self,
+        name: str,
+        identity: tuple[int, int, int, int],
+        *,
+        directory_fd: int | None = None,
+    ) -> None:
+        target_fd = self.fd if directory_fd is None else directory_fd
+        try:
+            metadata = os.stat(name, dir_fd=target_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            return
+        actual = _entry_identity(metadata)
+        if actual[:3] != identity[:3]:
+            return
+        try:
+            os.unlink(name, dir_fd=target_fd)
+        except FileNotFoundError:
+            return
+
+    def rollback(self, *, directory_fd: int | None = None) -> None:
+        target_fd = self.fd if directory_fd is None else directory_fd
+        if directory_fd is None:
+            self._assert_open()
+        for name, identity in reversed(tuple(self._temporary_entries.items())):
+            if identity is not None:
+                self._remove_owned_entry(name, identity, directory_fd=target_fd)
+            self._temporary_entries.pop(name, None)
+        for name, record in reversed(tuple(self._owned_entries.items())):
+            self._remove_owned_entry(name, record[0], directory_fd=target_fd)
+            self._owned_entries.pop(name, None)
+        try:
+            os.fsync(target_fd)
+        except OSError:
+            pass
+
+    def write_bytes(self, name: str, payload: bytes) -> None:
+        if not self._writable:
+            raise ValueError(f"output domain is read-only: {self.name}")
+        name = _output_component(name, label="output artifact")
+        if not payload:
+            raise ValueError(f"refusing to write empty output artifact: {self.name}/{name}")
+        self.assert_bound()
+        try:
+            os.stat(name, dir_fd=self.fd, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            raise ValueError(f"output artifact already exists: {self.name}/{name}")
+
+        self._write_counter += 1
+        temporary_name = (
+            f".{name}.tmp-{os.getpid()}-{self._write_counter}"
+        )
+        flags = (
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+        )
+        file_fd: int | None = None
+        temporary_identity: tuple[int, int, int, int] | None = None
+        try:
+            file_fd = os.open(
+                temporary_name, flags, 0o600, dir_fd=self.fd
+            )
+            self._temporary_entries[temporary_name] = None
+            temporary_metadata = os.fstat(file_fd)
+            if (
+                not stat.S_ISREG(temporary_metadata.st_mode)
+                or temporary_metadata.st_nlink != 1
+            ):
+                raise ValueError(
+                    f"staged output is not a regular single-link file: "
+                    f"{self.name}/{name}"
+                )
+            temporary_identity = _entry_identity(temporary_metadata)
+            self._temporary_entries[temporary_name] = temporary_identity
+            offset = 0
+            while offset < len(payload):
+                written = os.write(file_fd, payload[offset:])
+                if written <= 0:
+                    raise OSError("short write while staging output artifact")
+                offset += written
+            os.fsync(file_fd)
+            completed = os.fstat(file_fd)
+            if (
+                _entry_identity(completed) != temporary_identity
+                or completed.st_size != len(payload)
+                or not stat.S_ISREG(completed.st_mode)
+                or completed.st_nlink != 1
+            ):
+                raise ValueError(f"staged output identity changed: {self.name}/{name}")
+
+            self.assert_bound()
+            try:
+                os.stat(name, dir_fd=self.fd, follow_symlinks=False)
+            except FileNotFoundError:
+                pass
+            else:
+                raise ValueError(f"output artifact appeared during write: {self.name}/{name}")
+            os.replace(
+                temporary_name,
+                name,
+                src_dir_fd=self.fd,
+                dst_dir_fd=self.fd,
+            )
+            payload_record = (
+                temporary_identity,
+                len(payload),
+                hashlib.sha256(payload).hexdigest(),
+            )
+            self._owned_entries[name] = payload_record
+            self._temporary_entries.pop(temporary_name, None)
+            final_metadata = os.stat(name, dir_fd=self.fd, follow_symlinks=False)
+            final_identity = _entry_identity(final_metadata)
+            if (
+                final_identity != temporary_identity
+                or not stat.S_ISREG(final_metadata.st_mode)
+                or final_metadata.st_nlink != 1
+            ):
+                raise ValueError(f"published output identity changed: {self.name}/{name}")
+            os.fsync(self.fd)
+            if self.read_bytes(name) != payload:
+                raise ValueError(f"published output verification failed: {self.name}/{name}")
+            self.assert_bound()
+        except BaseException as original_error:
+            if file_fd is not None:
+                try:
+                    if temporary_identity is None:
+                        try:
+                            temporary_identity = _entry_identity(os.fstat(file_fd))
+                        except OSError:
+                            temporary_identity = None
+                    os.close(file_fd)
+                except BaseException as cleanup_error:
+                    if hasattr(original_error, "add_note"):
+                        original_error.add_note(
+                            f"staged descriptor cleanup error: {cleanup_error}"
+                        )
+                file_fd = None
+            record = self._owned_entries.pop(name, None)
+            try:
+                if temporary_identity is not None:
+                    self._remove_owned_entry(name, temporary_identity)
+                if record is not None and record[0] != temporary_identity:
+                    self._remove_owned_entry(name, record[0])
+                staged_identity = self._temporary_entries.pop(temporary_name, None)
+                if staged_identity is None:
+                    staged_identity = temporary_identity
+                if staged_identity is not None:
+                    self._remove_owned_entry(temporary_name, staged_identity)
+            except BaseException as cleanup_error:
+                if hasattr(original_error, "add_note"):
+                    original_error.add_note(
+                        f"staged pathname cleanup error: {cleanup_error}"
+                    )
+            raise
+        finally:
+            if file_fd is not None:
+                os.close(file_fd)
+
+    def verify_for_close(self) -> None:
+        self.assert_bound()
+        if self._temporary_entries:
+            raise ValueError(f"staged output files remain in domain: {self.name}")
+
+    def _close_descriptor(self) -> None:
+        if self._closed:
+            return
+        try:
+            os.close(self.fd)
+        finally:
+            self._closed = True
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self.verify_for_close()
+        self._close_descriptor()
+
+
+class _PacketOutputScope:
+    """Own the packet root and all bound output-domain descriptors."""
+
+    def __init__(
+        self,
+        *,
+        parent_fd: int,
+        packet_fd: int,
+        packet_name: str,
+        root_names: tuple[str, ...],
+        created_root: bool,
+        created_domains: set[str],
+    ) -> None:
+        self._parent_fd = parent_fd
+        self._packet_fd = packet_fd
+        self._packet_name = packet_name
+        self._root_names = root_names
+        self._created_root = created_root
+        self._created_domains = created_domains
+        self._domains: dict[str, _OutputDomain] = {}
+        self._closed = False
+        parent_metadata = os.fstat(parent_fd)
+        packet_metadata = os.fstat(packet_fd)
+        if not stat.S_ISDIR(parent_metadata.st_mode):
+            raise ValueError("packet root parent is not a directory")
+        if not stat.S_ISDIR(packet_metadata.st_mode) or packet_metadata.st_nlink < 1:
+            raise ValueError("packet root is not a live directory")
+        self._parent_identity = (
+            parent_metadata.st_dev,
+            parent_metadata.st_ino,
+            stat.S_IFMT(parent_metadata.st_mode),
+        )
+        self._packet_identity = _directory_identity(packet_metadata)
+
+    def _assert_packet_bound(self) -> None:
+        if self._closed:
+            raise ValueError("packet output scope is closed")
+        parent = os.fstat(self._parent_fd)
+        parent_identity = (
+            parent.st_dev,
+            parent.st_ino,
+            stat.S_IFMT(parent.st_mode),
+        )
+        if parent_identity != self._parent_identity or not stat.S_ISDIR(parent.st_mode):
+            raise ValueError("packet root parent descriptor identity changed")
+        packet = os.fstat(self._packet_fd)
+        if (
+            not stat.S_ISDIR(packet.st_mode)
+            or packet.st_nlink < 1
+            or _directory_identity(packet) != self._packet_identity
+        ):
+            raise ValueError("packet root descriptor identity changed")
+        try:
+            entry = os.stat(
+                self._packet_name,
+                dir_fd=self._parent_fd,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError as exc:
+            raise ValueError("packet root entry disappeared") from exc
+        if (
+            stat.S_ISLNK(entry.st_mode)
+            or not stat.S_ISDIR(entry.st_mode)
+            or _directory_identity(entry) != self._packet_identity
+        ):
+            raise ValueError("packet root entry identity changed")
+        actual_names = set(os.listdir(self._packet_fd))
+        if actual_names != set(self._root_names):
+            raise ValueError(
+                "packet root surface changed during write phase: "
+                f"unexpected={sorted(actual_names - set(self._root_names))} "
+                f"missing={sorted(set(self._root_names) - actual_names)}"
+            )
+
+    def add_domain(self, name: str, directory_fd: int, *, writable: bool) -> None:
+        self._domains[name] = _OutputDomain(
+            name=name,
+            directory_fd=directory_fd,
+            container_fd=self._packet_fd,
+            container_verifier=self._assert_packet_bound,
+            writable=writable,
+        )
+
+    def __getitem__(self, name: str) -> _OutputDomain:
+        return self._domains[name]
+
+    @property
+    def packet_fd(self) -> int:
+        return self._packet_fd
+
+    def verify_for_close(self) -> None:
+        self._assert_packet_bound()
+        for domain in self._domains.values():
+            domain.verify_for_close()
+        identities = {
+            (domain._identity[0], domain._identity[1])
+            for domain in self._domains.values()
+        }
+        if len(identities) != len(self._domains):
+            raise ValueError("packet output domains alias the same directory object")
+
+    def rollback(self, *, directory_fds: Mapping[str, int] | None = None) -> None:
+        errors: list[BaseException] = []
+        for name, domain in reversed(tuple(self._domains.items())):
+            try:
+                domain.rollback(
+                    directory_fd=None
+                    if directory_fds is None
+                    else directory_fds.get(name)
+                )
+            except BaseException as caught:
+                errors.append(caught)
+        if errors:
+            first = errors[0]
+            for extra in errors[1:]:
+                if hasattr(first, "add_note"):
+                    first.add_note(f"additional output rollback error: {extra}")
+            raise first
+
+    def _remove_created_directories(self, *, packet_fd: int | None = None) -> None:
+        target_fd = self._packet_fd if packet_fd is None else packet_fd
+        for name in reversed(self._root_names):
+            if name not in self._created_domains:
+                continue
+            domain = self._domains.get(name)
+            if domain is None:
+                continue
+            try:
+                entry = os.stat(
+                    name, dir_fd=target_fd, follow_symlinks=False
+                )
+                if _directory_identity(entry) != domain._identity:
+                    continue
+                os.rmdir(name, dir_fd=target_fd)
+            except OSError:
+                continue
+
+    def __enter__(self) -> _PacketOutputScope:
+        try:
+            self.verify_for_close()
+        except BaseException as caught:
+            try:
+                self.__exit__(type(caught), caught, caught.__traceback__)
+            except BaseException as cleanup_error:
+                if hasattr(caught, "add_note"):
+                    caught.add_note(f"pre-enter cleanup error: {cleanup_error}")
+            raise
+        return self
+
+    def __exit__(self, exc_type: object, exc: BaseException | None, tb: object) -> bool:
+        validation_error: BaseException | None = exc
+        cleanup_domains: dict[str, int] = {}
+        cleanup_packet_fd: int | None = None
+        cleanup_parent_fd: int | None = None
+        if validation_error is None:
+            try:
+                self.verify_for_close()
+            except BaseException as caught:
+                validation_error = caught
+        if validation_error is not None:
+            try:
+                self.rollback()
+            except BaseException as cleanup_error:
+                validation_error.add_note(f"output rollback error: {cleanup_error}")
+        else:
+            try:
+                cleanup_parent_fd = os.dup(self._parent_fd)
+                cleanup_packet_fd = os.dup(self._packet_fd)
+                for name, domain in self._domains.items():
+                    cleanup_domains[name] = os.dup(domain.fd)
+            except BaseException as caught:
+                validation_error = caught
+                try:
+                    self.rollback()
+                except BaseException as cleanup_error:
+                    validation_error.add_note(
+                        f"output rollback error: {cleanup_error}"
+                    )
+
+        if validation_error is None:
+            for domain in reversed(tuple(self._domains.values())):
+                try:
+                    domain.close()
+                except BaseException as close_error:
+                    validation_error = close_error
+                    break
+            if validation_error is not None and cleanup_domains:
+                try:
+                    self.rollback(directory_fds=cleanup_domains)
+                except BaseException as cleanup_error:
+                    validation_error.add_note(
+                        f"output rollback error: {cleanup_error}"
+                    )
+        if validation_error is not None and cleanup_packet_fd is not None:
+            self._remove_created_directories(packet_fd=cleanup_packet_fd)
+        elif validation_error is not None:
+            self._remove_created_directories()
+
+        for domain in self._domains.values():
+            if not domain._closed:
+                try:
+                    domain._close_descriptor()
+                except BaseException as close_error:
+                    if validation_error is None:
+                        validation_error = close_error
+                    else:
+                        validation_error.add_note(
+                            f"output descriptor close error: {close_error}"
+                        )
+
+        try:
+            os.close(self._packet_fd)
+        except OSError as close_error:
+            if validation_error is None:
+                validation_error = close_error
+        if validation_error is not None and cleanup_domains:
+            try:
+                self.rollback(directory_fds=cleanup_domains)
+            except BaseException as cleanup_error:
+                validation_error.add_note(f"output rollback error: {cleanup_error}")
+            if cleanup_packet_fd is not None:
+                self._remove_created_directories(packet_fd=cleanup_packet_fd)
+        if (
+            validation_error is not None
+            and self._created_root
+        ):
+            try:
+                entry = os.stat(
+                    self._packet_name,
+                    dir_fd=self._parent_fd,
+                    follow_symlinks=False,
+                )
+                if _directory_identity(entry)[:3] == self._packet_identity[:3]:
+                    os.rmdir(self._packet_name, dir_fd=self._parent_fd)
+            except OSError:
+                pass
+        try:
+            os.close(self._parent_fd)
+        except OSError as close_error:
+            if validation_error is None:
+                validation_error = close_error
+        if validation_error is not None and cleanup_domains:
+            try:
+                self.rollback(directory_fds=cleanup_domains)
+            except BaseException as cleanup_error:
+                validation_error.add_note(f"output rollback error: {cleanup_error}")
+            if cleanup_packet_fd is not None:
+                self._remove_created_directories(packet_fd=cleanup_packet_fd)
+            if self._created_root and cleanup_parent_fd is not None:
+                try:
+                    entry = os.stat(
+                        self._packet_name,
+                        dir_fd=cleanup_parent_fd,
+                        follow_symlinks=False,
+                    )
+                    if _directory_identity(entry)[:3] == self._packet_identity[:3]:
+                        os.rmdir(self._packet_name, dir_fd=cleanup_parent_fd)
+                except OSError:
+                    pass
+        for cleanup_fd in set(cleanup_domains.values()):
+            try:
+                os.close(cleanup_fd)
+            except OSError:
+                pass
+        for cleanup_fd in (cleanup_packet_fd, cleanup_parent_fd):
+            if cleanup_fd is not None:
+                try:
+                    os.close(cleanup_fd)
+                except OSError:
+                    pass
+        self._closed = True
+        if exc is None and validation_error is not None:
+            raise validation_error
+        return False
+
+
+@contextmanager
+def _bound_existing_output_domain(
+    path: Path, *, label: str, writable: bool
+) -> Iterator[_OutputDomain]:
+    if not path.is_absolute() or ".." in path.parts or path.name in {"", ".", ".."}:
+        raise ValueError(f"{label} path must be absolute and traversal-free: {path}")
+    parent_fd = _open_directory_no_follow(path.parent, label=f"{label} parent")
+    directory_fd: int | None = None
+    domain: _OutputDomain | None = None
+    parent_metadata = os.fstat(parent_fd)
+    parent_identity = (
+        parent_metadata.st_dev,
+        parent_metadata.st_ino,
+        stat.S_IFMT(parent_metadata.st_mode),
+    )
+
+    def verify_parent() -> None:
+        current = os.fstat(parent_fd)
+        current_identity = (
+            current.st_dev,
+            current.st_ino,
+            stat.S_IFMT(current.st_mode),
+        )
+        if current_identity != parent_identity:
+            raise ValueError(f"{label} parent descriptor identity changed")
+
+    try:
+        directory_fd = _open_child_directory_no_follow(
+            parent_fd, path.name, label=label
+        )
+        domain = _OutputDomain(
+            name=path.name,
+            directory_fd=directory_fd,
+            container_fd=parent_fd,
+            container_verifier=verify_parent,
+            writable=writable,
+        )
+        try:
+            yield domain
+            domain.verify_for_close()
+        except BaseException:
+            if writable:
+                domain.rollback()
+            raise
+        finally:
+            domain.close()
+            directory_fd = None
+    finally:
+        if directory_fd is not None:
+            os.close(directory_fd)
+        os.close(parent_fd)
 
 
 def _read_regular_path_no_follow(path: Path, *, label: str) -> bytes:
@@ -2295,6 +3089,128 @@ def _safe_declaration_name(value: Any) -> str:
     return value
 
 
+def _verified_trainer_read_surface_from_fds(
+    domain_fds: Mapping[str, int],
+) -> tuple[dict[str, bytes], dict[str, bytes]]:
+    control_fd = domain_fds[CONTROL_PLANE_ROOT_NAME]
+    trainer_fd = domain_fds[TRAINER_ROOT_NAME]
+    sealed_fd = domain_fds["sealed_validation"]
+    sealed_names = set(os.listdir(sealed_fd))
+    expected_sealed_names = set(SEALED_VALIDATION_ARTIFACT_ROLES)
+    if sealed_names != expected_sealed_names:
+        raise ValueError(
+            "sealed_validation physical surface mismatch: "
+            f"unexpected={sorted(sealed_names - expected_sealed_names)} "
+            f"missing={sorted(expected_sealed_names - sealed_names)}"
+        )
+    sealed_payloads = {
+        name: _read_regular_at(
+            sealed_fd, name, label="sealed_validation artifact"
+        )
+        for name in sorted(expected_sealed_names)
+    }
+    sealed_signature = sealed_payloads["sealed-validation-manifest.sha256"]
+    expected_sealed_signature = "".join(
+        f"{hashlib.sha256(sealed_payloads[name]).hexdigest()}  {name}\n"
+        for name in sorted(SEALED_VALIDATION_ARTIFACT_NAMES)
+    ).encode("utf-8")
+    if sealed_signature != expected_sealed_signature:
+        raise ValueError("sealed_validation signature content mismatch")
+    control_names = set(os.listdir(control_fd))
+    if control_names != CONTROL_PLANE_ARTIFACT_NAMES:
+        raise ValueError(
+            "control-plane surface mismatch: "
+            f"unexpected={sorted(control_names - CONTROL_PLANE_ARTIFACT_NAMES)} "
+            f"missing={sorted(CONTROL_PLANE_ARTIFACT_NAMES - control_names)}"
+        )
+    manifest_bytes = _read_regular_at(
+        control_fd,
+        "trainer_input_manifest.json",
+        label="control-plane manifest",
+    )
+    signature_bytes = _read_regular_at(
+        control_fd, "artifact-manifest.sha256", label="trainer signature"
+    )
+    try:
+        manifest = json.loads(manifest_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("malformed trainer input manifest") from exc
+    if manifest.get("schema_version") != "form_only_v1_trainer_input_manifest_v2":
+        raise ValueError("unexpected trainer input manifest schema")
+    if manifest.get("trainer_root") != TRAINER_ROOT_NAME:
+        raise ValueError("trainer root declaration mismatch")
+    declarations = manifest.get("allowed_files")
+    if not isinstance(declarations, list):
+        raise ValueError("trainer declarations must be a list")
+    declared: dict[str, Mapping[str, Any]] = {}
+    for declaration in declarations:
+        if not isinstance(declaration, dict):
+            raise ValueError("malformed trainer declaration")
+        name = _safe_declaration_name(declaration.get("path"))
+        if name in declared:
+            raise ValueError(f"duplicate trainer declaration: {name}")
+        declared[name] = declaration
+    expected_names = set(TRAINER_ARTIFACT_ROLES)
+    if set(declared) != expected_names:
+        raise ValueError(
+            "declared trainer read surface mismatch: "
+            f"unexpected={sorted(set(declared) - expected_names)} "
+            f"missing={sorted(expected_names - set(declared))}"
+        )
+    if manifest.get("declared_file_count") != len(declared):
+        raise ValueError("declared trainer file count mismatch")
+    actual_names = set(os.listdir(trainer_fd))
+    if actual_names != set(declared):
+        raise ValueError(
+            "trainer read surface mismatch: "
+            f"unexpected={sorted(actual_names - set(declared))} "
+            f"missing={sorted(set(declared) - actual_names)}"
+        )
+    payloads: dict[str, bytes] = {}
+    signature_rows = []
+    for name in sorted(declared):
+        declaration = declared[name]
+        if declaration.get("type") != "regular_file":
+            raise ValueError(f"trainer type declaration mismatch: {name}")
+        if declaration.get("role") != TRAINER_ARTIFACT_ROLES[name]:
+            raise ValueError(f"trainer role declaration mismatch: {name}")
+        payload = _read_regular_at(trainer_fd, name, label="trainer artifact")
+        expected_bytes = declaration.get("bytes")
+        if type(expected_bytes) is not int or expected_bytes < 1:
+            raise ValueError(f"invalid trainer byte length declaration: {name}")
+        if len(payload) != expected_bytes:
+            raise ValueError(f"trainer artifact byte length mismatch: {name}")
+        actual_sha256 = hashlib.sha256(payload).hexdigest()
+        if actual_sha256 != declaration.get("sha256"):
+            raise ValueError(f"trainer artifact sha256 mismatch: {name}")
+        signature_rows.append(f"{actual_sha256}  {name}\n")
+        payloads[name] = payload
+    expected_signature = "".join(signature_rows).encode("utf-8")
+    if signature_bytes != expected_signature:
+        raise ValueError("trainer artifact signature content mismatch")
+    signature = manifest.get("artifact_manifest")
+    if not isinstance(signature, dict):
+        raise ValueError("missing trainer artifact signature declaration")
+    if signature.get("path") != "artifact-manifest.sha256":
+        raise ValueError("trainer artifact signature path mismatch")
+    if (
+        signature.get("type") != "regular_file"
+        or signature.get("role") != "CONTROL_INTEGRITY_SIGNATURE"
+    ):
+        raise ValueError("trainer artifact signature type or role mismatch")
+    if signature.get("bytes") != len(signature_bytes):
+        raise ValueError("trainer artifact signature byte length mismatch")
+    if signature.get("sha256") != hashlib.sha256(signature_bytes).hexdigest():
+        raise ValueError("trainer artifact signature sha256 mismatch")
+    aggregate = hashlib.sha256(signature_bytes).hexdigest()
+    if signature.get("trainer_aggregate_sha256") != aggregate:
+        raise ValueError("trainer aggregate sha256 mismatch")
+    return payloads, {
+        "trainer_input_manifest.json": manifest_bytes,
+        "artifact-manifest.sha256": signature_bytes,
+    }
+
+
 def _verified_trainer_read_surface(
     packet_root: Path,
 ) -> tuple[dict[str, bytes], dict[str, bytes]]:
@@ -2308,123 +3224,10 @@ def _verified_trainer_read_surface(
             domain_fds[name] = _open_child_directory_no_follow(
                 packet_fd, name, label=f"packet domain {name}"
             )
-        control_fd = domain_fds[CONTROL_PLANE_ROOT_NAME]
-        trainer_fd = domain_fds[TRAINER_ROOT_NAME]
-        sealed_fd = domain_fds["sealed_validation"]
-        try:
-            sealed_names = set(os.listdir(sealed_fd))
-            expected_sealed_names = set(SEALED_VALIDATION_ARTIFACT_ROLES)
-            if sealed_names != expected_sealed_names:
-                raise ValueError(
-                    "sealed_validation physical surface mismatch: "
-                    f"unexpected={sorted(sealed_names - expected_sealed_names)} "
-                    f"missing={sorted(expected_sealed_names - sealed_names)}"
-                )
-            sealed_payloads = {
-                name: _read_regular_at(
-                    sealed_fd, name, label="sealed_validation artifact"
-                )
-                for name in sorted(expected_sealed_names)
-            }
-            sealed_signature = sealed_payloads["sealed-validation-manifest.sha256"]
-            expected_sealed_signature = "".join(
-                f"{hashlib.sha256(sealed_payloads[name]).hexdigest()}  {name}\n"
-                for name in sorted(SEALED_VALIDATION_ARTIFACT_NAMES)
-            ).encode("utf-8")
-            if sealed_signature != expected_sealed_signature:
-                raise ValueError("sealed_validation signature content mismatch")
-            control_names = set(os.listdir(control_fd))
-            if control_names != CONTROL_PLANE_ARTIFACT_NAMES:
-                raise ValueError(
-                    "control-plane surface mismatch: "
-                    f"unexpected={sorted(control_names - CONTROL_PLANE_ARTIFACT_NAMES)} "
-                    f"missing={sorted(CONTROL_PLANE_ARTIFACT_NAMES - control_names)}"
-                )
-            manifest_bytes = _read_regular_at(
-                control_fd, "trainer_input_manifest.json", label="control-plane manifest"
-            )
-            signature_bytes = _read_regular_at(
-                control_fd, "artifact-manifest.sha256", label="trainer signature"
-            )
-            try:
-                manifest = json.loads(manifest_bytes.decode("utf-8"))
-            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-                raise ValueError("malformed trainer input manifest") from exc
-            if manifest.get("schema_version") != "form_only_v1_trainer_input_manifest_v2":
-                raise ValueError("unexpected trainer input manifest schema")
-            if manifest.get("trainer_root") != TRAINER_ROOT_NAME:
-                raise ValueError("trainer root declaration mismatch")
-            declarations = manifest.get("allowed_files")
-            if not isinstance(declarations, list):
-                raise ValueError("trainer declarations must be a list")
-            declared: dict[str, Mapping[str, Any]] = {}
-            for declaration in declarations:
-                if not isinstance(declaration, dict):
-                    raise ValueError("malformed trainer declaration")
-                name = _safe_declaration_name(declaration.get("path"))
-                if name in declared:
-                    raise ValueError(f"duplicate trainer declaration: {name}")
-                declared[name] = declaration
-            expected_names = set(TRAINER_ARTIFACT_ROLES)
-            if set(declared) != expected_names:
-                raise ValueError(
-                    "declared trainer read surface mismatch: "
-                    f"unexpected={sorted(set(declared) - expected_names)} "
-                    f"missing={sorted(expected_names - set(declared))}"
-                )
-            if manifest.get("declared_file_count") != len(declared):
-                raise ValueError("declared trainer file count mismatch")
-            actual_names = set(os.listdir(trainer_fd))
-            if actual_names != set(declared):
-                raise ValueError(
-                    "trainer read surface mismatch: "
-                    f"unexpected={sorted(actual_names - set(declared))} "
-                    f"missing={sorted(set(declared) - actual_names)}"
-                )
-            payloads: dict[str, bytes] = {}
-            signature_rows = []
-            for name in sorted(declared):
-                declaration = declared[name]
-                if declaration.get("type") != "regular_file":
-                    raise ValueError(f"trainer type declaration mismatch: {name}")
-                if declaration.get("role") != TRAINER_ARTIFACT_ROLES[name]:
-                    raise ValueError(f"trainer role declaration mismatch: {name}")
-                payload = _read_regular_at(trainer_fd, name, label="trainer artifact")
-                expected_bytes = declaration.get("bytes")
-                if type(expected_bytes) is not int or expected_bytes < 1:
-                    raise ValueError(f"invalid trainer byte length declaration: {name}")
-                if len(payload) != expected_bytes:
-                    raise ValueError(f"trainer artifact byte length mismatch: {name}")
-                actual_sha256 = hashlib.sha256(payload).hexdigest()
-                if actual_sha256 != declaration.get("sha256"):
-                    raise ValueError(f"trainer artifact sha256 mismatch: {name}")
-                signature_rows.append(f"{actual_sha256}  {name}\n")
-                payloads[name] = payload
-            expected_signature = "".join(signature_rows).encode("utf-8")
-            if signature_bytes != expected_signature:
-                raise ValueError("trainer artifact signature content mismatch")
-            signature = manifest.get("artifact_manifest")
-            if not isinstance(signature, dict):
-                raise ValueError("missing trainer artifact signature declaration")
-            if signature.get("path") != "artifact-manifest.sha256":
-                raise ValueError("trainer artifact signature path mismatch")
-            if signature.get("type") != "regular_file" or signature.get("role") != "CONTROL_INTEGRITY_SIGNATURE":
-                raise ValueError("trainer artifact signature type or role mismatch")
-            if signature.get("bytes") != len(signature_bytes):
-                raise ValueError("trainer artifact signature byte length mismatch")
-            if signature.get("sha256") != hashlib.sha256(signature_bytes).hexdigest():
-                raise ValueError("trainer artifact signature sha256 mismatch")
-            aggregate = hashlib.sha256(signature_bytes).hexdigest()
-            if signature.get("trainer_aggregate_sha256") != aggregate:
-                raise ValueError("trainer aggregate sha256 mismatch")
-            return payloads, {
-                "trainer_input_manifest.json": manifest_bytes,
-                "artifact-manifest.sha256": signature_bytes,
-            }
-        finally:
-            for directory_fd in reversed(tuple(domain_fds.values())):
-                os.close(directory_fd)
+        return _verified_trainer_read_surface_from_fds(domain_fds)
     finally:
+        for directory_fd in reversed(tuple(domain_fds.values())):
+            os.close(directory_fd)
         os.close(packet_fd)
 
 
@@ -2535,84 +3338,148 @@ def verify_expected_output(
 def _prepare_empty_packet_output(
     output_dir: Path,
     domain_names: tuple[str, ...] = AUTHORITATIVE_DOMAIN_ROOT_NAMES,
-) -> dict[str, Path]:
-    """Create an empty packet using descriptor-relative, no-follow operations."""
+) -> _PacketOutputScope:
+    """Bind empty authoritative domains for their complete write lifetime."""
+    return _open_packet_output_scope(
+        output_dir,
+        root_names=domain_names,
+        required_existing=(),
+        creatable=set(domain_names),
+        empty_domains=set(domain_names),
+        writable_domains=set(domain_names),
+        allow_create_root=True,
+    )
+
+
+def _open_packet_output_scope(
+    output_dir: Path,
+    *,
+    root_names: tuple[str, ...],
+    required_existing: tuple[str, ...],
+    creatable: set[str],
+    empty_domains: set[str],
+    writable_domains: set[str],
+    allow_create_root: bool,
+) -> _PacketOutputScope:
     if not output_dir.is_absolute() or ".." in output_dir.parts:
         raise ValueError(f"packet root must be absolute and traversal-free: {output_dir}")
+    packet_name = _output_component(output_dir.name, label="packet root")
+    parent_fd = _open_directory_no_follow(
+        output_dir.parent, label="packet root parent"
+    )
+    packet_fd: int | None = None
+    created_root = False
+    created_domains: set[str] = set()
+    domain_fds: dict[str, int] = {}
+    scope: _PacketOutputScope | None = None
     try:
-        packet_fd = _open_directory_no_follow(output_dir, label="packet root")
-    except ValueError:
-        if output_dir.exists() or output_dir.is_symlink():
-            raise
-        parent_fd = _open_directory_no_follow(output_dir.parent, label="packet root parent")
         try:
+            os.stat(packet_name, dir_fd=parent_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            if not allow_create_root:
+                raise ValueError(f"missing packet root: {output_dir}")
             try:
-                os.mkdir(output_dir.name, mode=0o700, dir_fd=parent_fd)
+                os.mkdir(packet_name, mode=0o700, dir_fd=parent_fd)
             except OSError as mkdir_exc:
-                raise ValueError(f"cannot safely create packet root: {output_dir}") from mkdir_exc
-            packet_fd = _open_child_directory_no_follow(
-                parent_fd, output_dir.name, label="packet root"
-            )
-        finally:
-            os.close(parent_fd)
-    try:
+                raise ValueError(
+                    f"cannot safely create packet root: {output_dir}"
+                ) from mkdir_exc
+            created_root = True
+        packet_fd = _open_child_directory_no_follow(
+            parent_fd, packet_name, label="packet root"
+        )
         entries = set(os.listdir(packet_fd))
-        unexpected = entries - set(domain_names)
+        unexpected = entries - set(root_names)
         if unexpected:
             raise ValueError(
                 f"packet root has unexpected pre-existing entries: {sorted(unexpected)}"
             )
-        for name in domain_names:
+        missing_required = set(required_existing) - entries
+        if missing_required:
+            raise ValueError(
+                "packet root is missing required authoritative domains: "
+                f"{sorted(missing_required)}"
+            )
+        for name in root_names:
             if name not in entries:
+                if name not in creatable:
+                    raise ValueError(f"packet root is missing required domain: {name}")
                 try:
                     os.mkdir(name, mode=0o700, dir_fd=packet_fd)
                 except OSError as exc:
                     raise ValueError(f"cannot safely create packet domain: {name}") from exc
-            domain_fd = _open_child_directory_no_follow(
+                created_domains.add(name)
+            domain_fds[name] = _open_child_directory_no_follow(
                 packet_fd, name, label=f"packet domain {name}"
             )
-            try:
-                domain_entries = os.listdir(domain_fd)
+            if name in empty_domains:
+                domain_entries = os.listdir(domain_fds[name])
                 if domain_entries:
                     raise ValueError(
                         f"packet domain has unexpected pre-existing entries: {name}: "
                         f"{sorted(domain_entries)}"
                     )
-            finally:
-                os.close(domain_fd)
-    finally:
-        os.close(packet_fd)
-    return {name: output_dir / name for name in domain_names}
-
-
-def _prepare_empty_diagnostic_output(packet_root: Path) -> Path:
-    packet_fd = _open_directory_no_follow(packet_root, label="packet root")
-    name = "non_authoritative_diagnostic"
-    try:
-        entries = set(os.listdir(packet_fd))
-        unexpected = entries - set(PACKET_DOMAIN_ROOT_NAMES)
-        missing_authoritative = set(AUTHORITATIVE_DOMAIN_ROOT_NAMES) - entries
-        if unexpected or missing_authoritative:
-            raise ValueError(
-                "packet root surface mismatch before diagnostic phase: "
-                f"unexpected={sorted(unexpected)} missing={sorted(missing_authoritative)}"
-            )
-        if name not in entries:
-            os.mkdir(name, mode=0o700, dir_fd=packet_fd)
-        diagnostic_fd = _open_child_directory_no_follow(
-            packet_fd, name, label="diagnostic output domain"
+        scope = _PacketOutputScope(
+            parent_fd=parent_fd,
+            packet_fd=packet_fd,
+            packet_name=packet_name,
+            root_names=root_names,
+            created_root=created_root,
+            created_domains=created_domains,
         )
+        added: set[str] = set()
         try:
-            existing = os.listdir(diagnostic_fd)
-            if existing:
-                raise ValueError(
-                    f"diagnostic domain has unexpected pre-existing entries: {sorted(existing)}"
+            for name in root_names:
+                scope.add_domain(
+                    name,
+                    domain_fds[name],
+                    writable=name in writable_domains,
                 )
-        finally:
-            os.close(diagnostic_fd)
-    finally:
-        os.close(packet_fd)
-    return packet_root / name
+                added.add(name)
+            scope.verify_for_close()
+        except BaseException as exc:
+            for name, directory_fd in domain_fds.items():
+                if name not in added:
+                    os.close(directory_fd)
+            scope.__exit__(type(exc), exc, exc.__traceback__)
+            raise
+        return scope
+    except BaseException:
+        if scope is None:
+            for directory_fd in reversed(tuple(domain_fds.values())):
+                try:
+                    os.close(directory_fd)
+                except OSError:
+                    pass
+            if packet_fd is not None:
+                for name in reversed(root_names):
+                    if name in created_domains:
+                        try:
+                            os.rmdir(name, dir_fd=packet_fd)
+                        except OSError:
+                            pass
+                os.close(packet_fd)
+                if created_root:
+                    try:
+                        os.rmdir(packet_name, dir_fd=parent_fd)
+                    except OSError:
+                        pass
+            os.close(parent_fd)
+        raise
+
+
+def _prepare_empty_diagnostic_output(packet_root: Path) -> _PacketOutputScope:
+    """Independently bind all domains before the first diagnostic byte."""
+    diagnostic_name = "non_authoritative_diagnostic"
+    return _open_packet_output_scope(
+        packet_root,
+        root_names=PACKET_DOMAIN_ROOT_NAMES,
+        required_existing=AUTHORITATIVE_DOMAIN_ROOT_NAMES,
+        creatable={diagnostic_name},
+        empty_domains={diagnostic_name},
+        writable_domains={diagnostic_name},
+        allow_create_root=False,
+    )
 
 
 def _build_authoritative_packet(
@@ -2628,61 +3495,81 @@ def _build_authoritative_packet(
     reproducibility = load_reproducibility_contract(
         reproducibility_contract_path, include_diagnostic=False
     )
-    domains = _prepare_empty_packet_output(output_dir)
-    trainer_dir = domains[TRAINER_ROOT_NAME]
-    control_dir = domains[CONTROL_PLANE_ROOT_NAME]
-    sealed_dir = domains["sealed_validation"]
-    loaded = load_development_sources(eligibility_dir, training_dir, reproducibility)
-    development_summary, _selected = build_development_packet(loaded, trainer_dir, sealed_dir)
-    out_of_time_summary = build_out_of_time_manifest(
-        evidence_roots,
-        trainer_dir,
-        reproducibility,
-        out_of_time_freeze_dir,
-        sealed_dir,
-    )
-    write_feature_contract(trainer_dir)
-    write_market_coverage(trainer_dir)
-    validate_trainer_visible_artifacts(trainer_dir)
-    trainer_manifest = write_artifact_manifest(
-        trainer_dir, TRAINER_ARTIFACT_NAMES, manifest_dir=control_dir
-    )
-    write_trainer_input_manifest(trainer_dir, control_dir, trainer_manifest)
-    sealed_payload_manifest = write_artifact_manifest(
-        sealed_dir,
-        SEALED_VALIDATION_ARTIFACT_NAMES,
-        filename="sealed-validation-manifest.sha256",
-    )
-    sealed_manifest = artifact_manifest_records(
-        sealed_dir, set(SEALED_VALIDATION_ARTIFACT_ROLES)
-    )
-    sealed_manifest.pop("text")
-    sealed_manifest["payload_aggregate_sha256"] = sealed_payload_manifest[
-        "aggregate_sha256"
-    ]
-    validate_trainer_read_surface(output_dir)
-    control_manifest = artifact_manifest_records(
-        control_dir, CONTROL_PLANE_ARTIFACT_NAMES
-    )
-    control_manifest.pop("text")
-    manifests = {
-        "trainer": trainer_manifest,
-        "control_plane": control_manifest,
-        "sealed_validation": sealed_manifest,
-    }
-    summary = {
-        "phase": "AUTHORITATIVE",
-        "development": development_summary,
-        "out_of_time": out_of_time_summary,
-        "artifact_manifest": trainer_manifest,
-        "domain_manifests": manifests,
-    }
-    if enforce_expected_output:
-        verify_expected_output(
-            summary, manifests, reproducibility.get("expected_output") or {},
-            include_diagnostic=False,
+    with _prepare_empty_packet_output(output_dir) as domains:
+        trainer_domain = domains[TRAINER_ROOT_NAME]
+        control_domain = domains[CONTROL_PLANE_ROOT_NAME]
+        sealed_domain = domains["sealed_validation"]
+        loaded = load_development_sources(
+            eligibility_dir, training_dir, reproducibility
         )
-    return summary, loaded, reproducibility
+        development_summary, _selected = build_development_packet(
+            loaded, trainer_domain, sealed_domain
+        )
+        out_of_time_summary = build_out_of_time_manifest(
+            evidence_roots,
+            trainer_domain,
+            reproducibility,
+            out_of_time_freeze_dir,
+            sealed_domain,
+        )
+        write_feature_contract(trainer_domain)
+        write_market_coverage(trainer_domain)
+        validate_trainer_visible_artifacts(trainer_domain)
+        trainer_manifest = write_artifact_manifest(
+            trainer_domain,
+            TRAINER_ARTIFACT_NAMES,
+            manifest_domain=control_domain,
+        )
+        write_trainer_input_manifest(
+            trainer_domain, control_domain, trainer_manifest
+        )
+        sealed_payload_manifest = write_artifact_manifest(
+            sealed_domain,
+            SEALED_VALIDATION_ARTIFACT_NAMES,
+            filename="sealed-validation-manifest.sha256",
+        )
+        sealed_manifest = artifact_manifest_records(
+            sealed_domain, set(SEALED_VALIDATION_ARTIFACT_ROLES)
+        )
+        sealed_manifest.pop("text")
+        sealed_manifest["payload_aggregate_sha256"] = sealed_payload_manifest[
+            "aggregate_sha256"
+        ]
+        _verified_trainer_read_surface_from_fds(
+            {
+                name: domains[name].fd
+                for name in AUTHORITATIVE_DOMAIN_ROOT_NAMES
+            }
+        )
+        control_manifest = artifact_manifest_records(
+            control_domain, CONTROL_PLANE_ARTIFACT_NAMES
+        )
+        control_manifest.pop("text")
+        manifests = {
+            "trainer": trainer_manifest,
+            "control_plane": control_manifest,
+            "sealed_validation": sealed_manifest,
+        }
+        summary = {
+            "phase": "AUTHORITATIVE",
+            "development": development_summary,
+            "out_of_time": out_of_time_summary,
+            "artifact_manifest": trainer_manifest,
+            "domain_manifests": manifests,
+        }
+        if enforce_expected_output:
+            expected_output = reproducibility.get("expected_output") or {}
+            verify_expected_output(
+                summary,
+                manifests,
+                expected_output,
+                include_diagnostic=False,
+            )
+            for name in AUTHORITATIVE_DOMAIN_ROOT_NAMES:
+                _verify_declared_domain(
+                    domains[name].fd, name, expected_output
+                )
+        return summary, loaded, reproducibility
 
 
 def build_authoritative_packet(
@@ -2727,51 +3614,70 @@ def build_all(
         reproducibility_contract_path,
         enforce_expected_output=enforce_expected_output,
     )
-    trainer_dir = output_dir / TRAINER_ROOT_NAME
-    diagnostic_dir = _prepare_empty_diagnostic_output(output_dir)
-    diagnostic_loaded = load_diagnostic_sources(loaded, reproducibility)
-    trainer_manifest = authoritative["artifact_manifest"]
-    trainer_before_diagnostics = trainer_manifest["aggregate_sha256"]
-    reconciliation_summary = build_overlap_reconciliation(diagnostic_loaded, diagnostic_dir)
-    diagnostic_payload_manifest = write_artifact_manifest(
-        diagnostic_dir,
-        DIAGNOSTIC_ARTIFACT_NAMES,
-        filename="non-authoritative-diagnostic-manifest.sha256",
-    )
-    diagnostic_manifest = artifact_manifest_records(
-        diagnostic_dir, set(DIAGNOSTIC_ARTIFACT_ROLES)
-    )
-    diagnostic_manifest.pop("text")
-    diagnostic_manifest["payload_aggregate_sha256"] = diagnostic_payload_manifest[
-        "aggregate_sha256"
-    ]
-    trainer_after_diagnostics = artifact_manifest_records(
-        trainer_dir, TRAINER_ARTIFACT_NAMES
-    )["aggregate_sha256"]
-    if trainer_before_diagnostics != trainer_after_diagnostics:
-        raise ValueError("diagnostic construction changed trainer artifacts")
-    validate_trainer_read_surface(output_dir)
-    manifests = {
-        **authoritative["domain_manifests"],
-        "non_authoritative_diagnostic": diagnostic_manifest,
-    }
-    summary = {
-        **authoritative,
-        "phase": "AUTHORITATIVE_PLUS_OPTIONAL_DIAGNOSTIC",
-        "reconciliation": reconciliation_summary,
-        "domain_manifests": manifests,
-        "diagnostic_isolation": {
-            "trainer_aggregate_before": trainer_before_diagnostics,
-            "trainer_aggregate_after": trainer_after_diagnostics,
-            "byte_identical": True,
-        },
-    }
-    if enforce_expected_output:
-        verify_expected_output(
-            summary, manifests, reproducibility.get("expected_output") or {},
-            include_diagnostic=True,
+    with _prepare_empty_diagnostic_output(output_dir) as domains:
+        authoritative_before = _snapshot_bound_domains(
+            domains, authoritative["domain_manifests"]
         )
-    return summary
+        diagnostic_loaded = load_diagnostic_sources(loaded, reproducibility)
+        trainer_manifest = authoritative["artifact_manifest"]
+        trainer_before_diagnostics = trainer_manifest["aggregate_sha256"]
+        diagnostic_domain = domains["non_authoritative_diagnostic"]
+        reconciliation_summary = build_overlap_reconciliation(
+            diagnostic_loaded, diagnostic_domain
+        )
+        diagnostic_payload_manifest = write_artifact_manifest(
+            diagnostic_domain,
+            DIAGNOSTIC_ARTIFACT_NAMES,
+            filename="non-authoritative-diagnostic-manifest.sha256",
+        )
+        diagnostic_manifest = artifact_manifest_records(
+            diagnostic_domain, set(DIAGNOSTIC_ARTIFACT_ROLES)
+        )
+        diagnostic_manifest.pop("text")
+        diagnostic_manifest["payload_aggregate_sha256"] = (
+            diagnostic_payload_manifest["aggregate_sha256"]
+        )
+        authoritative_after = _snapshot_bound_domains(
+            domains, authoritative["domain_manifests"]
+        )
+        if authoritative_before != authoritative_after:
+            raise ValueError("diagnostic construction changed authoritative packet bytes")
+        trainer_after_diagnostics = artifact_manifest_records(
+            domains[TRAINER_ROOT_NAME], TRAINER_ARTIFACT_NAMES
+        )["aggregate_sha256"]
+        if trainer_before_diagnostics != trainer_after_diagnostics:
+            raise ValueError("diagnostic construction changed trainer artifacts")
+        _verified_trainer_read_surface_from_fds(
+            {
+                name: domains[name].fd
+                for name in AUTHORITATIVE_DOMAIN_ROOT_NAMES
+            }
+        )
+        manifests = {
+            **authoritative["domain_manifests"],
+            "non_authoritative_diagnostic": diagnostic_manifest,
+        }
+        summary = {
+            **authoritative,
+            "phase": "AUTHORITATIVE_PLUS_OPTIONAL_DIAGNOSTIC",
+            "reconciliation": reconciliation_summary,
+            "domain_manifests": manifests,
+            "diagnostic_isolation": {
+                "trainer_aggregate_before": trainer_before_diagnostics,
+                "trainer_aggregate_after": trainer_after_diagnostics,
+                "byte_identical": True,
+            },
+        }
+        if enforce_expected_output:
+            expected_output = reproducibility.get("expected_output") or {}
+            verify_expected_output(
+                summary, manifests, expected_output, include_diagnostic=True
+            )
+            for name in PACKET_DOMAIN_ROOT_NAMES:
+                _verify_declared_domain(
+                    domains[name].fd, name, expected_output
+                )
+        return summary
 
 
 def build_optional_diagnostics(
@@ -2785,93 +3691,106 @@ def build_optional_diagnostics(
         reproducibility_contract_path, include_diagnostic=True
     )
     expected_output = reproducibility.get("expected_output") or {}
-    authoritative_before = _verify_declared_packet_domains(
-        packet_root,
-        expected_output,
-        AUTHORITATIVE_DOMAIN_ROOT_NAMES,
-        enumerate_packet_root=False,
-    )
-    loaded = _diagnostic_context_from_authoritative_packet(
-        authoritative_before, reproducibility
-    )
-    diagnostic_dir = _prepare_empty_diagnostic_output(packet_root)
-    reconciliation = build_overlap_reconciliation(loaded, diagnostic_dir)
-    diagnostic_payload_manifest = write_artifact_manifest(
-        diagnostic_dir,
-        DIAGNOSTIC_ARTIFACT_NAMES,
-        filename="non-authoritative-diagnostic-manifest.sha256",
-    )
-    diagnostic_manifest = artifact_manifest_records(
-        diagnostic_dir, set(DIAGNOSTIC_ARTIFACT_ROLES)
-    )
-    diagnostic_manifest.pop("text")
-    diagnostic_manifest["payload_aggregate_sha256"] = diagnostic_payload_manifest[
-        "aggregate_sha256"
-    ]
-    authoritative_after = _verify_declared_packet_domains(
-        packet_root,
-        expected_output,
-        AUTHORITATIVE_DOMAIN_ROOT_NAMES,
-        enumerate_packet_root=False,
-    )
-    before_hashes = {
-        domain: {
-            name: hashlib.sha256(payload).hexdigest()
-            for name, payload in sorted(files.items())
-        }
-        for domain, files in authoritative_before.items()
-    }
-    after_hashes = {
-        domain: {
-            name: hashlib.sha256(payload).hexdigest()
-            for name, payload in sorted(files.items())
-        }
-        for domain, files in authoritative_after.items()
-    }
-    if before_hashes != after_hashes:
-        raise ValueError("diagnostic construction changed authoritative packet bytes")
-    if enforce_expected_output:
-        actual_counts = {
-            "overlap_races": reconciliation["overlap_race_count"],
-            "overlap_runners": reconciliation["overlap_runner_count"],
-            "history_differences": reconciliation["history_discrepancy_count"],
-            "recency_differences": reconciliation["recency_discrepancy_count"],
-            "grade_differences": reconciliation["grade_discrepancy_count"],
-            "unexplained_differences": reconciliation["unexplained_mismatch_count"],
-        }
-        if actual_counts != expected_output.get("diagnostic_counts"):
-            raise ValueError(f"expected diagnostic count mismatch: {actual_counts}")
-        expected_domain = (
-            (expected_output.get("domains") or {}).get(
-                "non_authoritative_diagnostic"
+    with _prepare_empty_diagnostic_output(packet_root) as domains:
+        authoritative_before = {
+            domain: _verify_declared_domain(
+                domains[domain].fd, domain, expected_output
             )
-            or {}
-        )
-        actual_files = {
-            row["path"]: row["sha256"] for row in diagnostic_manifest["files"]
+            for domain in AUTHORITATIVE_DOMAIN_ROOT_NAMES
         }
-        if actual_files != expected_domain.get("artifact_files"):
-            raise ValueError("expected non_authoritative_diagnostic artifact hash mismatch")
-        if diagnostic_manifest["aggregate_sha256"] != expected_domain.get(
-            "aggregate_sha256"
-        ):
-            raise ValueError("expected non_authoritative_diagnostic aggregate hash mismatch")
-    _verify_declared_packet_domains(
-        packet_root,
-        expected_output,
-        ("non_authoritative_diagnostic",),
-        enumerate_packet_root=False,
-    )
-    validate_complete_packet(packet_root, reproducibility_contract_path)
-    return {
-        "phase": "NON_AUTHORITATIVE_DIAGNOSTIC",
-        "authority": "NON_AUTHORITATIVE_DIAGNOSTIC",
-        "reconciliation": reconciliation,
-        "domain_manifest": diagnostic_manifest,
-        "authoritative_hashes_before": before_hashes,
-        "authoritative_hashes_after": after_hashes,
-        "authoritative_bytes_identical": True,
-    }
+        loaded = _diagnostic_context_from_authoritative_packet(
+            authoritative_before, reproducibility
+        )
+        diagnostic_domain = domains["non_authoritative_diagnostic"]
+        reconciliation = build_overlap_reconciliation(loaded, diagnostic_domain)
+        diagnostic_payload_manifest = write_artifact_manifest(
+            diagnostic_domain,
+            DIAGNOSTIC_ARTIFACT_NAMES,
+            filename="non-authoritative-diagnostic-manifest.sha256",
+        )
+        diagnostic_manifest = artifact_manifest_records(
+            diagnostic_domain, set(DIAGNOSTIC_ARTIFACT_ROLES)
+        )
+        diagnostic_manifest.pop("text")
+        diagnostic_manifest["payload_aggregate_sha256"] = (
+            diagnostic_payload_manifest["aggregate_sha256"]
+        )
+        authoritative_after = {
+            domain: _verify_declared_domain(
+                domains[domain].fd, domain, expected_output
+            )
+            for domain in AUTHORITATIVE_DOMAIN_ROOT_NAMES
+        }
+        before_hashes = {
+            domain: {
+                name: hashlib.sha256(payload).hexdigest()
+                for name, payload in sorted(files.items())
+            }
+            for domain, files in authoritative_before.items()
+        }
+        after_hashes = {
+            domain: {
+                name: hashlib.sha256(payload).hexdigest()
+                for name, payload in sorted(files.items())
+            }
+            for domain, files in authoritative_after.items()
+        }
+        if before_hashes != after_hashes:
+            raise ValueError(
+                "diagnostic construction changed authoritative packet bytes"
+            )
+        if enforce_expected_output:
+            actual_counts = {
+                "overlap_races": reconciliation["overlap_race_count"],
+                "overlap_runners": reconciliation["overlap_runner_count"],
+                "history_differences": reconciliation["history_discrepancy_count"],
+                "recency_differences": reconciliation["recency_discrepancy_count"],
+                "grade_differences": reconciliation["grade_discrepancy_count"],
+                "unexplained_differences": reconciliation[
+                    "unexplained_mismatch_count"
+                ],
+            }
+            if actual_counts != expected_output.get("diagnostic_counts"):
+                raise ValueError(f"expected diagnostic count mismatch: {actual_counts}")
+            expected_domain = (
+                (expected_output.get("domains") or {}).get(
+                    "non_authoritative_diagnostic"
+                )
+                or {}
+            )
+            actual_files = {
+                row["path"]: row["sha256"]
+                for row in diagnostic_manifest["files"]
+            }
+            if actual_files != expected_domain.get("artifact_files"):
+                raise ValueError(
+                    "expected non_authoritative_diagnostic artifact hash mismatch"
+                )
+            if diagnostic_manifest["aggregate_sha256"] != expected_domain.get(
+                "aggregate_sha256"
+            ):
+                raise ValueError(
+                    "expected non_authoritative_diagnostic aggregate hash mismatch"
+                )
+        for domain in PACKET_DOMAIN_ROOT_NAMES:
+            _verify_declared_domain(
+                domains[domain].fd, domain, expected_output
+            )
+        _verified_trainer_read_surface_from_fds(
+            {
+                name: domains[name].fd
+                for name in AUTHORITATIVE_DOMAIN_ROOT_NAMES
+            }
+        )
+        return {
+            "phase": "NON_AUTHORITATIVE_DIAGNOSTIC",
+            "authority": "NON_AUTHORITATIVE_DIAGNOSTIC",
+            "reconciliation": reconciliation,
+            "domain_manifest": diagnostic_manifest,
+            "authoritative_hashes_before": before_hashes,
+            "authoritative_hashes_after": after_hashes,
+            "authoritative_bytes_identical": True,
+        }
 
 
 def parse_args() -> argparse.Namespace:

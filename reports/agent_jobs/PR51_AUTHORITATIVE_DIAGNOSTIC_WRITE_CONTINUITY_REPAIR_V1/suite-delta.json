@@ -1,0 +1,7 @@
+{
+  "baseline_99be6c": {"total": 1953, "passed": 1820, "failed": 62, "skipped": 50, "errors": 21},
+  "repair_head_local": {"total": 1974, "passed": 1842, "failed": 61, "skipped": 50, "errors": 21},
+  "delta": {"total": 21, "passed": 22, "failed": -1, "skipped": 0, "errors": 0},
+  "attributable_regression": false,
+  "baseline_debt": "pre-existing samples, Selenium/network, legacy fixture and integration failures"
+}

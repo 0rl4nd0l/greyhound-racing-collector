@@ -1,0 +1,2 @@
+uvx ruff check scripts/build_form_only_v1_packet.py tests/test_build_form_only_v1_packet.py
+All checks passed!

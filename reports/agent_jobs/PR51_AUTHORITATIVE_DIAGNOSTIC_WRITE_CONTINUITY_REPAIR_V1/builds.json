@@ -1,0 +1,8 @@
+{
+  "build_root": "/tmp/pr51-final-build-proof.C8gggO",
+  "authoritative_with_diagnostics": "PASS",
+  "authoritative_without_diagnostics": "PASS",
+  "diagnostic_replay": "PASS",
+  "authoritative_diff": "PASS",
+  "outcomes_opened": false
+}

@@ -93,6 +93,24 @@ or requires a diagnostic source or output. The optional `--phase diagnostic`
 phase starts only after the completed authoritative packet validates, consumes
 that packet read-only, and may fail without invalidating it.
 
+Write continuity is descriptor-scoped as well as read-scoped. Each build owns
+the packet-root descriptor and validated trainer, control-plane, sealed, and
+optional diagnostic directory descriptors through the last payload write,
+manifest/signature write, descriptor-relative readback, and close verification.
+Staged files are created with exclusive no-follow flags in the bound directory,
+fully written and fsynced before descriptor-relative replacement. Every tracked
+entry is checked for regular single-link type, device/inode identity, byte
+length, and SHA-256; the exact domain surface is checked before writes and at
+close. Any exception, including staged-write interrupts, post-publish
+verification errors, close-time substitution, and partial scope construction,
+rolls back entries created by the scope and closes all owned descriptors.
+
+The diagnostic scope binds all four domains before its first diagnostic byte and
+rejects any device/inode alias between diagnostic and authoritative domains.
+Diagnostic writes use only the diagnostic descriptor. Authoritative domains are
+snapshotted through their bound descriptors before and after diagnostics and
+must remain byte-identical; diagnostic failure or absence is local.
+
 All authoritative loader reads walk each absolute, traversal-free path from
 `/` with component-relative `openat` operations using `O_NOFOLLOW`. Every ancestor,
 packet/domain component, and final file is checked before and after open by
@@ -194,6 +212,13 @@ sealed-validation, and diagnostic physical aggregates are respectively
 `97967ab3...4e31`, `1712d3d6...5462`, `3b1284f3...691c`, and
 `bb6306bc...15b2`. The non-self-referential sealed and diagnostic payload
 signature hashes remain `4ce9d105...26ed` and `e5eaf492...995f`.
+The implementation identity changed from builder SHA-256
+`cf20ffc050e43b490ad0adfa5456b36cb3d23942c7cb7a844eaca6d85fb11359` to
+`0136e4759d792a76530fc28930135c211ab79831c2e52877440741a6352dd52b`.
+The tracked reproducibility descriptor stayed byte-identical at
+`8fa8966e6cad819baccda0d07314ae0db51693b1a60f769edd7a019cdeea89ad`; real
+input builds prove the delta is implementation identity only, with all four
+physical aggregates unchanged.
 Reviewers on the evidence host can build authority first without touching any
 diagnostic source or output, then optionally generate diagnostics:
 
@@ -225,14 +250,19 @@ The independent-review diagnostic baseline was 504/530 unexplained rows across
 73/73 overlap races. Parsing numeric zero as a real value reclassifies 245
 zero-history rows and recomputes the diagnostic to 259/530 unexplained across
 71/73 races. This delta changes no authoritative count or trainer byte. The
-focused adversarial suite contains 152 tests, including every-domain exact-set,
+tracked FORM_ONLY_V1 suite contains 177 tests, including every-domain exact-set,
+descriptor continuity, staged/partial cleanup, close-window substitution,
 declaration mutation, ancestor-link, and component-swap attacks; no "zero
 unexplained" claim is made. The repository-wide baseline is not green: at the
 rejected head it collected 1,885 tests with 1,753 passed, 61 failed, 50 skipped,
 and 21 errors. Its parent collected 1,857 with 1,725 passed and the same
 failure/skip/error counts; all 28 head-only tests passed. This repair reports a
 fresh rejected-head/repair-head delta rather than describing the broad suite as
-passing.
+passing. The fresh repair-tree run collected 1,974 tests: 1,842 passed, 61
+failed, 50 skipped, and 21 errors. Against the exact 99be6c baseline (1,953 /
+1,820 / 62 / 50 / 21), that is +21 tests, +22 passes, and one fewer failure with
+no error or skip transition; the added tests are continuity tests, and the
+remaining broad failures are baseline/environmental debt.
 
 ## Market separation
 

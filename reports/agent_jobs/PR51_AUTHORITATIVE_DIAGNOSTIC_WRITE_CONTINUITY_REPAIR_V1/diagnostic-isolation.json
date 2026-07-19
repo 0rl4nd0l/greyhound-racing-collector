@@ -1,0 +1,7 @@
+{
+  "diagnostic_binding": "all_four_domains_bound_before_first_diagnostic_byte",
+  "authoritative_aliases": "rejected",
+  "ordinary_substitution": "rejected",
+  "authoritative_bytes_preserved": true,
+  "diagnostic_failure_local": true
+}
