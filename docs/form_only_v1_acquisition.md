@@ -50,6 +50,15 @@ counts plus scratch/reserve state; every such participant receives an explicit
 opaque exclusion row and evidence digest. Missing, extra, swapped, duplicate,
 or colliding identities otherwise fail closed.
 
+Each raw pre-race card is opened once per construction context and retained as
+immutable bytes. Its byte length, SHA-256, target roster, prior-history blocks,
+features, and sealed source-inventory identity all derive from that same byte
+value. The combined build carries the retained development bytes into optional
+diagnostics; a separately invoked diagnostic phase opens each sealed-declared
+overlap card once, verifies that buffer against the declared length and SHA-256,
+and parses only that buffer. A same-length pathname mutation after validation
+therefore cannot influence emitted artifacts under the earlier digest.
+
 Card availability is exact: `capture_timestamp <= jump_timestamp - 60 minutes`.
 Tier-A jump time comes from its frozen race provenance. Published-history jump
 time comes from frozen `race_timestamp_utc`, which is authoritative over the
@@ -212,9 +221,9 @@ sealed-validation, and diagnostic physical aggregates are respectively
 `97967ab3...4e31`, `1712d3d6...5462`, `3b1284f3...691c`, and
 `bb6306bc...15b2`. The non-self-referential sealed and diagnostic payload
 signature hashes remain `4ce9d105...26ed` and `e5eaf492...995f`.
-The implementation identity changed from builder SHA-256
-`cf20ffc050e43b490ad0adfa5456b36cb3d23942c7cb7a844eaca6d85fb11359` to
-`0136e4759d792a76530fc28930135c211ab79831c2e52877440741a6352dd52b`.
+The source-byte repair changes the rejected-head builder SHA-256 from
+`0136e4759d792a76530fc28930135c211ab79831c2e52877440741a6352dd52b` to
+`11b56970de0e53975a444d0ad066f7ea566ffc717757b074d5eb0d5f8865f086`.
 The tracked reproducibility descriptor stayed byte-identical at
 `8fa8966e6cad819baccda0d07314ae0db51693b1a60f769edd7a019cdeea89ad`; real
 input builds prove the delta is implementation identity only, with all four

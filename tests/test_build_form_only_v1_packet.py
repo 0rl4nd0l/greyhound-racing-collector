@@ -628,6 +628,118 @@ def test_synthetic_full_build_is_deterministic_and_identity_safe(tmp_path: Path)
     assert "SCRATCHEDDOG" not in (trainer / "development_exclusions.csv").read_text()
 
 
+def test_retained_development_card_bytes_survive_same_length_path_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = make_fixture(tmp_path)
+    bootstrap_root = tmp_path / "bootstrap"
+    bootstrap = build_fixture(fixture, bootstrap_root, enforce=False)
+    bind_expected_output(fixture, bootstrap)
+    original_bytes = fixture["card_one"].read_bytes()
+    original_sha256 = MODULE.sha256_path(fixture["card_one"])
+    real_select = MODULE.select_development_sources
+    mutated = False
+
+    def mutate_card_after_validation(
+        loaded: dict[str, object],
+    ) -> tuple[dict[str, dict[str, object]], dict[str, str]]:
+        nonlocal mutated
+        selected, excluded = real_select(loaded)
+        replacement = original_bytes.replace(b"|1|1|1.5\n", b"|9|1|1.5\n", 1)
+        assert replacement != original_bytes
+        assert len(replacement) == len(original_bytes)
+        fixture["card_one"].write_bytes(replacement)
+        mutated = True
+        return selected, excluded
+
+    monkeypatch.setattr(MODULE, "select_development_sources", mutate_card_after_validation)
+    output = tmp_path / "mutated-path-build"
+    summary = build_fixture(fixture, output, enforce=True)
+
+    assert mutated is True
+    assert fixture["card_one"].stat().st_size == len(original_bytes)
+    assert MODULE.sha256_path(fixture["card_one"]) != original_sha256
+    assert summary["artifact_manifest"] == bootstrap["artifact_manifest"]
+    assert authoritative_bytes(output) == authoritative_bytes(bootstrap_root)
+    inventory = list(
+        csv.DictReader(
+            (output / "sealed_validation" / "development_source_inventory.csv").open()
+        )
+    )
+    card_rows = [
+        row
+        for row in inventory
+        if row["role"] == "raw_pre_race_card"
+        and row["path"] == str(fixture["card_one"].resolve())
+    ]
+    assert card_rows
+    assert {row["sha256"] for row in card_rows} == {original_sha256}
+    assert {int(row["bytes"]) for row in card_rows} == {len(original_bytes)}
+
+
+def test_each_raw_card_is_opened_once_for_combined_construction(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = make_fixture(tmp_path)
+    bootstrap = build_fixture(fixture, tmp_path / "bootstrap", enforce=False)
+    bind_expected_output(fixture, bootstrap)
+    expected_paths = {
+        fixture["card_one"].resolve(),
+        fixture["card_two"].resolve(),
+        fixture["oot_card"].resolve(),
+    }
+    read_counts = {path: 0 for path in expected_paths}
+    real_read = MODULE._read_regular_path_no_follow
+    real_path_open = Path.open
+
+    def count_retained_reads(path: Path, *, label: str) -> bytes:
+        resolved = path.resolve()
+        if resolved in read_counts:
+            read_counts[resolved] += 1
+        return real_read(path, label=label)
+
+    def reject_unbound_card_open(path: Path, *args: object, **kwargs: object) -> object:
+        if path.resolve() in expected_paths:
+            raise AssertionError(f"raw card bypassed retained-byte loader: {path}")
+        return real_path_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(MODULE, "_read_regular_path_no_follow", count_retained_reads)
+    monkeypatch.setattr(Path, "open", reject_unbound_card_open)
+    build_fixture(fixture, tmp_path / "single-read-build", enforce=True)
+
+    assert read_counts == {path: 1 for path in expected_paths}
+
+
+def test_standalone_diagnostic_rejects_same_length_card_path_mutation(
+    tmp_path: Path,
+) -> None:
+    fixture = make_fixture(tmp_path)
+    bootstrap = build_fixture(fixture, tmp_path / "bootstrap", enforce=False)
+    bind_expected_output(fixture, bootstrap)
+    output = tmp_path / "authoritative"
+    MODULE.build_authoritative_packet(
+        fixture["eligibility"],
+        fixture["training"],
+        [fixture["evidence"]],
+        output,
+        fixture["freeze"],
+        fixture["contract"],
+        enforce_expected_output=True,
+    )
+    before = authoritative_bytes(output)
+    original = fixture["card_one"].read_bytes()
+    replacement = original.replace(b"|1|1|1.5\n", b"|9|1|1.5\n", 1)
+    assert replacement != original
+    assert len(replacement) == len(original)
+    fixture["card_one"].write_bytes(replacement)
+
+    with pytest.raises(ValueError, match="source hash mismatch"):
+        MODULE.build_optional_diagnostics(output, fixture["contract"])
+
+    assert authoritative_bytes(output) == before
+    assert not (output / "non_authoritative_diagnostic").exists()
+
+
 @pytest.mark.parametrize("mutation", ["count", "file_hash", "aggregate_hash"])
 def test_expected_output_mutation_is_rejected(tmp_path: Path, mutation: str) -> None:
     fixture = make_fixture(tmp_path)

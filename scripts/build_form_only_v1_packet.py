@@ -141,6 +141,32 @@ def file_record(path: Path) -> dict[str, Any]:
     return {"path": str(path.resolve()), "sha256": sha256_path(path), "bytes": path.stat().st_size}
 
 
+def retained_file_record(path: Path, payload: bytes) -> dict[str, Any]:
+    return {
+        "path": str(path.resolve()),
+        "sha256": hashlib.sha256(payload).hexdigest(),
+        "bytes": len(payload),
+    }
+
+
+def verify_retained_file_record(
+    path: Path,
+    payload: bytes,
+    *,
+    expected_sha256: str,
+    expected_bytes: int | str | None = None,
+    require_expected_bytes: bool = False,
+) -> dict[str, Any]:
+    actual = retained_file_record(path, payload)
+    if actual["sha256"] != expected_sha256:
+        raise ValueError(f"source hash mismatch: {path}")
+    if require_expected_bytes and expected_bytes in (None, ""):
+        raise ValueError(f"source byte declaration missing: {path}")
+    if expected_bytes not in (None, "") and actual["bytes"] != int(expected_bytes):
+        raise ValueError(f"source byte mismatch: {path}")
+    return actual
+
+
 def verify_file_record(
     path: Path,
     *,
@@ -362,12 +388,12 @@ def fmt_number(value: float | None) -> str:
     return f"{value:.8f}".rstrip("0").rstrip(".")
 
 
-def parse_form_blocks(path: Path) -> dict[str, list[dict[str, Any]]]:
-    lines = _read_regular_path_no_follow(
-        path, label="pre-race form card"
-    ).decode("utf-8", errors="replace").splitlines()
+def parse_form_blocks_bytes(
+    payload: bytes, *, source: str
+) -> dict[str, list[dict[str, Any]]]:
+    lines = payload.decode("utf-8", errors="replace").splitlines()
     if not lines:
-        raise ValueError(f"empty form CSV: {path}")
+        raise ValueError(f"empty form CSV: {source}")
     delimiter = "|" if lines[0].count("|") > lines[0].count(",") else ","
     blocks: dict[str, list[dict[str, Any]]] = defaultdict(list)
     current = ""
@@ -378,6 +404,11 @@ def parse_form_blocks(path: Path) -> dict[str, list[dict[str, Any]]]:
         if current:
             blocks[current].append(dict(raw))
     return blocks
+
+
+def parse_form_blocks(path: Path) -> dict[str, list[dict[str, Any]]]:
+    payload = _read_regular_path_no_follow(path, label="pre-race form card")
+    return parse_form_blocks_bytes(payload, source=str(path))
 
 
 def canonical_roster(
@@ -414,10 +445,12 @@ def sidecar_roster(metadata: Mapping[str, Any], *, source: str) -> list[tuple[in
     return roster
 
 
-def parse_card_target_roster(path: Path) -> list[tuple[int, str]]:
-    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+def parse_card_target_roster_bytes(
+    payload: bytes, *, source: str
+) -> list[tuple[int, str]]:
+    lines = payload.decode("utf-8", errors="replace").splitlines()
     if not lines:
-        raise ValueError(f"empty form CSV: {path}")
+        raise ValueError(f"empty form CSV: {source}")
     delimiter = "|" if lines[0].count("|") > lines[0].count(",") else ","
     participants: list[dict[str, Any]] = []
     for raw in csv.DictReader(lines, delimiter=delimiter):
@@ -426,15 +459,28 @@ def parse_card_target_roster(path: Path) -> list[tuple[int, str]]:
             continue
         match = re.fullmatch(r"\s*(\d+)\.\s*(.+?)\s*", name)
         if not match:
-            raise ValueError(f"target runner lacks verified box prefix in {path}: {name}")
+            raise ValueError(f"target runner lacks verified box prefix in {source}: {name}")
         participants.append({"box": match.group(1), "name": match.group(2)})
-    return canonical_roster(participants, box_key="box", name_key="name", source=str(path))
+    return canonical_roster(participants, box_key="box", name_key="name", source=source)
+
+
+def parse_card_target_roster(path: Path) -> list[tuple[int, str]]:
+    payload = _read_regular_path_no_follow(path, label="pre-race form card")
+    return parse_card_target_roster_bytes(payload, source=str(path))
 
 
 def verify_card_sidecar_roster(
-    csv_path: Path, metadata: Mapping[str, Any], *, race_id: str
+    csv_path: Path,
+    metadata: Mapping[str, Any],
+    *,
+    race_id: str,
+    csv_bytes: bytes | None = None,
 ) -> list[tuple[int, str]]:
-    card = parse_card_target_roster(csv_path)
+    card = (
+        parse_card_target_roster(csv_path)
+        if csv_bytes is None
+        else parse_card_target_roster_bytes(csv_bytes, source=str(csv_path))
+    )
     sidecar = sidecar_roster(metadata, source=f"sidecar:{race_id}")
     if Counter(card) != Counter(sidecar):
         raise ValueError(f"card and COMPLETE sidecar roster mismatch: {race_id}")
@@ -583,7 +629,9 @@ def feature_row(
     return result
 
 
-def validate_sidecar(csv_path: Path, sidecar_path: Path) -> dict[str, Any]:
+def validate_sidecar(
+    csv_path: Path, sidecar_path: Path, *, csv_bytes: bytes | None = None
+) -> dict[str, Any]:
     metadata = json.loads(sidecar_path.read_text(encoding="utf-8"))
     if not isinstance(metadata, dict):
         raise ValueError(f"malformed metadata sidecar: {sidecar_path}")
@@ -594,16 +642,21 @@ def validate_sidecar(csv_path: Path, sidecar_path: Path) -> dict[str, Any]:
         raise ValueError(f"malformed runner completeness: {sidecar_path}")
     if completeness.get("status") != "COMPLETE":
         raise ValueError(f"incomplete runner sidecar: {sidecar_path}")
-    if not csv_path.is_file():
-        raise ValueError(f"missing source CSV: {csv_path}")
-    actual_sha = sha256_path(csv_path)
+    if csv_bytes is None:
+        try:
+            csv_bytes = _read_regular_path_no_follow(
+                csv_path, label="pre-race form card"
+            )
+        except FileNotFoundError as exc:
+            raise ValueError(f"missing source CSV: {csv_path}") from exc
+    actual_sha = hashlib.sha256(csv_bytes).hexdigest()
     if actual_sha != metadata.get("content_sha256"):
         raise ValueError(f"source CSV hash mismatch: {csv_path}")
     if not isinstance(metadata.get("content_sha256"), str) or not isinstance(
         metadata.get("content_length"), int
     ):
         raise ValueError(f"malformed sidecar content identity: {sidecar_path}")
-    if csv_path.stat().st_size != metadata.get("content_length"):
+    if len(csv_bytes) != metadata.get("content_length"):
         raise ValueError(f"source CSV byte mismatch: {csv_path}")
     return metadata
 
@@ -687,6 +740,16 @@ def load_development_sources(
     source_options: dict[str, list[dict[str, Any]]] = defaultdict(list)
     trusted_source_records: list[dict[str, Any]] = []
     semantic_records: list[dict[str, Any]] = []
+    retained_card_bytes_by_path: dict[str, bytes] = {}
+
+    def retained_card_bytes(path: Path) -> bytes:
+        resolved = str(path.resolve())
+        if resolved not in retained_card_bytes_by_path:
+            retained_card_bytes_by_path[resolved] = _read_regular_path_no_follow(
+                path, label="pre-race form card"
+            )
+        return retained_card_bytes_by_path[resolved]
+
     for race_id in candidate_ids:
         if race_id in tier_a_runners:
             candidate_runners[race_id] = sorted(tier_a_runners[race_id], key=lambda row: (row["box"], dog_token(row["dog_name"])))
@@ -696,8 +759,13 @@ def load_development_sources(
             item = provenance[race_id]
             csv_path = Path(item["source_csv_path"])
             sidecar_path = Path(item["sidecar_path"])
-            metadata = validate_sidecar(csv_path, sidecar_path)
-            csv_record = verify_file_record(csv_path, expected_sha256=item["source_csv_sha256"])
+            csv_bytes = retained_card_bytes(csv_path)
+            metadata = validate_sidecar(csv_path, sidecar_path, csv_bytes=csv_bytes)
+            csv_record = verify_retained_file_record(
+                csv_path,
+                csv_bytes,
+                expected_sha256=item["source_csv_sha256"],
+            )
             sidecar_record = verify_file_record(sidecar_path, expected_sha256=item["sidecar_sha256"])
             canonical_jump = parse_timestamp(item["jump_timestamp"])
             semantic_records.append(validate_sidecar_semantics(
@@ -712,6 +780,7 @@ def load_development_sources(
                     name_key="dog_name",
                     source=f"tier-a:{race_id}",
                 ),
+                csv_bytes=csv_bytes,
             ))
             trusted_source_records.extend([
                 {"role": "development_card", **csv_record},
@@ -730,6 +799,7 @@ def load_development_sources(
                 "source_class": "OFFICIAL_RACE_PAGE_TIER_A",
                 "precedence": 0,
                 "csv_path": csv_path,
+                "csv_bytes": csv_bytes,
                 "sidecar_path": sidecar_path,
                 "csv_sha256": csv_record["sha256"],
                 "sidecar_sha256": sidecar_record["sha256"],
@@ -746,8 +816,13 @@ def load_development_sources(
             first = published_rows[race_id][0]
             csv_path = Path(first["source_csv_path"])
             sidecar_path = Path(str(csv_path) + ".metadata.json")
-            metadata = validate_sidecar(csv_path, sidecar_path)
-            csv_record = verify_file_record(csv_path, expected_sha256=first["source_csv_sha256"])
+            csv_bytes = retained_card_bytes(csv_path)
+            metadata = validate_sidecar(csv_path, sidecar_path, csv_bytes=csv_bytes)
+            csv_record = verify_retained_file_record(
+                csv_path,
+                csv_bytes,
+                expected_sha256=first["source_csv_sha256"],
+            )
             sidecar_record = file_record(sidecar_path)
             trusted_source_records.extend([
                 {"role": "development_card", **csv_record},
@@ -761,6 +836,7 @@ def load_development_sources(
                 "source_class": "THEDOGS_PUBLISHED_HISTORY_NOT_TIER_A",
                 "precedence": 1,
                 "csv_path": csv_path,
+                "csv_bytes": csv_bytes,
                 "sidecar_path": sidecar_path,
                 "csv_sha256": csv_record["sha256"],
                 "sidecar_sha256": sidecar_record["sha256"],
@@ -807,6 +883,7 @@ def load_development_sources(
                 expected_url=first.get("odds_url"),
                 enforce_jump_equality=False,
                 allow_roster_superset=True,
+                csv_bytes=csv_bytes,
             ))
             if race_id not in candidate_runners:
                 candidate_runners[race_id] = published_runner_list
@@ -839,6 +916,7 @@ def load_development_sources(
             semantic_records, key=lambda row: (row["race_id"], row["source_path"])
         )),
         "semantic_records": semantic_records,
+        "retained_card_bytes_by_path": retained_card_bytes_by_path,
     }
 
 
@@ -849,6 +927,19 @@ def load_diagnostic_sources(
     overlap_ids = sorted(
         set(authoritative["provenance"]).intersection(authoritative["published_rows"])
     )
+    retained_by_path = authoritative.get("retained_card_bytes_by_path")
+    if not isinstance(retained_by_path, Mapping):
+        raise ValueError("diagnostic phase has no retained development card bytes")
+    diagnostic_card_bytes_by_race: dict[str, bytes] = {}
+    for race_id in overlap_ids:
+        item = authoritative["provenance"][race_id]
+        path = Path(item["source_csv_path"])
+        payload = retained_by_path.get(str(path.resolve()))
+        if not isinstance(payload, bytes):
+            raise ValueError(f"diagnostic phase lacks retained card bytes: {race_id}")
+        if hashlib.sha256(payload).hexdigest() != item["source_csv_sha256"]:
+            raise ValueError(f"diagnostic retained card hash mismatch: {race_id}")
+        diagnostic_card_bytes_by_race[race_id] = payload
     shadow_source_by_race: dict[str, dict[str, Any]] = {}
     diagnostic_source_records: list[dict[str, Any]] = []
     for race_id in overlap_ids:
@@ -886,6 +977,7 @@ def load_diagnostic_sources(
         "diagnostic_source_records": diagnostic_source_records,
         "diagnostic_source_set_sha256": diagnostic_digest,
         "shadow_source_by_race": shadow_source_by_race,
+        "diagnostic_card_bytes_by_race": diagnostic_card_bytes_by_race,
         "diagnostic_contract_sha256": canonical_digest(diagnostic_contract),
     }
 
@@ -997,18 +1089,37 @@ def _diagnostic_context_from_authoritative_packet(
         raise ValueError("malformed diagnostic tier-A provenance") from exc
 
     provenance: dict[str, dict[str, Any]] = {}
+    retained_card_bytes_by_path: dict[str, bytes] = {}
     for race_id in overlap_ids:
         item = all_provenance.get(race_id)
         card = tier_a_cards[race_id]
         if not isinstance(item, dict):
             raise ValueError(f"diagnostic provenance missing overlap race: {race_id}")
+        card_path = Path(card["path"])
+        resolved_card_path = str(card_path.resolve())
+        if resolved_card_path not in retained_card_bytes_by_path:
+            card_bytes = _read_regular_path_no_follow(
+                card_path, label="diagnostic pre-race form card"
+            )
+            verify_retained_file_record(
+                card_path,
+                card_bytes,
+                expected_sha256=card["sha256"],
+                expected_bytes=card["bytes"],
+                require_expected_bytes=True,
+            )
+            retained_card_bytes_by_path[resolved_card_path] = card_bytes
         provenance[race_id] = {
             **item,
             "source_csv_path": card["path"],
             "source_csv_sha256": card["sha256"],
         }
     return load_diagnostic_sources(
-        {"provenance": provenance, "published_rows": published_rows},
+        {
+            "provenance": provenance,
+            "published_rows": published_rows,
+            "retained_card_bytes_by_path": retained_card_bytes_by_path,
+        },
         reproducibility,
     )
 
@@ -1070,7 +1181,12 @@ def target_metadata(option: Mapping[str, Any], race_id: str) -> tuple[str, int |
 def reconcile_development_roster(
     option: Mapping[str, Any], runners: list[dict[str, Any]], race_id: str
 ) -> tuple[list[tuple[int, str]], list[dict[str, Any]]]:
-    sidecar = verify_card_sidecar_roster(option["csv_path"], option["metadata"], race_id=race_id)
+    sidecar = verify_card_sidecar_roster(
+        option["csv_path"],
+        option["metadata"],
+        race_id=race_id,
+        csv_bytes=option.get("csv_bytes"),
+    )
     active = canonical_roster(
         runners, box_key="box", name_key="dog_name", source=f"active-label-roster:{race_id}"
     )
@@ -1138,10 +1254,15 @@ def build_development_packet(
                 ("raw_pre_race_card", option["csv_path"], option["csv_sha256"]),
                 ("raw_pre_race_sidecar", option["sidecar_path"], option["sidecar_sha256"]),
             ):
+                source_bytes = (
+                    len(option["csv_bytes"])
+                    if role == "raw_pre_race_card"
+                    else path.stat().st_size
+                )
                 source_rows.append({
                     "race_id": race_id, "selection_status": status, "source_class": option["source_class"],
                     "role": role, "path": str(path.resolve()), "sha256": digest,
-                    "bytes": path.stat().st_size, "capture_timestamp": option["capture"].isoformat(),
+                    "bytes": source_bytes, "capture_timestamp": option["capture"].isoformat(),
                     "jump_timestamp": option["jump"].isoformat(), "lead_minutes": fmt_number(lead),
                 })
             for path_text, digest in zip(
@@ -1164,7 +1285,9 @@ def build_development_packet(
         _active_roster, roster_exclusions = reconcile_development_roster(option, runners, race_id)
         exclusion_rows.extend(roster_exclusions)
         field_size = len(runners)
-        blocks = parse_form_blocks(option["csv_path"])
+        blocks = parse_form_blocks_bytes(
+            option["csv_bytes"], source=str(option["csv_path"])
+        )
         race_rows.append({
             "race_id": race_id, "race_date": race_date.isoformat(), "target_venue": venue,
             "race_number": int(re.search(r"Race (\d+)", race_id).group(1)),
@@ -1383,7 +1506,10 @@ def build_overlap_reconciliation(
         if tier_a["source_csv_sha256"] != published[0]["source_csv_sha256"]:
             raise ValueError(f"overlap raw card hash mismatch: {race_id}")
         raw_identical_races += 1
-        blocks = parse_form_blocks(Path(tier_a["source_csv_path"]))
+        blocks = parse_form_blocks_bytes(
+            loaded["diagnostic_card_bytes_by_race"][race_id],
+            source=str(tier_a["source_csv_path"]),
+        )
         target_date = date.fromisoformat(published[0]["race_date"])
         for published_row in sorted(published, key=lambda row: (int(row["box_number"]), dog_token(row["csv_dog_name"]))):
             token = dog_token(published_row["csv_dog_name"])
@@ -1523,13 +1649,16 @@ def validate_sidecar_semantics(
     *,
     expected_jump: datetime,
     expected_roster: Iterable[tuple[int, str]],
+    csv_bytes: bytes | None = None,
     expected_url: str | None = None,
     enforce_jump_equality: bool = True,
     allow_roster_superset: bool = False,
 ) -> dict[str, Any]:
     """Bind meaning independently from inventory hashes."""
     race_date = validate_race_identity(race_id, sidecar_path, metadata)
-    actual_roster = verify_card_sidecar_roster(csv_path, metadata, race_id=race_id)
+    actual_roster = verify_card_sidecar_roster(
+        csv_path, metadata, race_id=race_id, csv_bytes=csv_bytes
+    )
     expected_roster = list(expected_roster)
     actual_counter = Counter(actual_roster)
     expected_counter = Counter(expected_roster)
@@ -1608,9 +1737,13 @@ def scan_out_of_time_sources(evidence_roots: Iterable[Path]) -> tuple[dict[str, 
                     continue
                 csv_path = Path(str(sidecar_path)[:-14])
                 try:
-                    metadata = validate_sidecar(csv_path, sidecar_path)
+                    csv_bytes = _read_regular_path_no_follow(
+                        csv_path, label="pre-race form card"
+                    )
+                    metadata = validate_sidecar(
+                        csv_path, sidecar_path, csv_bytes=csv_bytes
+                    )
                     validate_race_identity(race_id, sidecar_path, metadata)
-                    verify_card_sidecar_roster(csv_path, metadata, race_id=race_id)
                     capture = capture_timestamp(metadata, require_timezone=True)
                     jump = sidecar_jump_timestamp(metadata, race_id)
                     validate_sidecar_semantics(
@@ -1622,6 +1755,7 @@ def scan_out_of_time_sources(evidence_roots: Iterable[Path]) -> tuple[dict[str, 
                         expected_roster=sidecar_roster(
                             metadata, source=f"live-discovery:{race_id}"
                         ),
+                        csv_bytes=csv_bytes,
                     )
                 except (ValueError, FileNotFoundError, json.JSONDecodeError) as exc:
                     exclusions.append({
@@ -1639,8 +1773,10 @@ def scan_out_of_time_sources(evidence_roots: Iterable[Path]) -> tuple[dict[str, 
                     continue
                 by_race[race_id].append({
                     "race_id": race_id, "race_date": race_date, "csv_path": csv_path,
-                    "sidecar_path": sidecar_path, "metadata": metadata, "capture": capture, "jump": jump,
-                    "csv_sha256": metadata["content_sha256"], "sidecar_sha256": sha256_path(sidecar_path),
+                    "csv_bytes": csv_bytes, "sidecar_path": sidecar_path,
+                    "metadata": metadata, "capture": capture, "jump": jump,
+                    "csv_sha256": hashlib.sha256(csv_bytes).hexdigest(),
+                    "sidecar_sha256": sha256_path(sidecar_path),
                 })
     selected: dict[str, dict[str, Any]] = {}
     for race_id, options in by_race.items():
@@ -1735,9 +1871,13 @@ def load_frozen_out_of_time_sources(
             raise ValueError(f"frozen sidecar path is forbidden: {sidecar_path}")
         if csv_path.resolve() != Path(str(sidecar_path)[:-14]).resolve():
             raise ValueError(f"frozen card/sidecar path mismatch: {race_id}")
-        metadata = validate_sidecar(csv_path, sidecar_path)
-        csv_record = verify_file_record(
+        csv_bytes = _read_regular_path_no_follow(
+            csv_path, label="pre-race form card"
+        )
+        metadata = validate_sidecar(csv_path, sidecar_path, csv_bytes=csv_bytes)
+        csv_record = verify_retained_file_record(
             csv_path,
+            csv_bytes,
             expected_sha256=csv_row["sha256"],
             expected_bytes=csv_row.get("bytes"),
             require_expected_bytes=True,
@@ -1771,10 +1911,12 @@ def load_frozen_out_of_time_sources(
             metadata,
             expected_jump=jump,
             expected_roster=sidecar_roster(metadata, source=f"freeze:{race_id}"),
+            csv_bytes=csv_bytes,
         )
         selected[race_id] = {
             "race_id": race_id, "race_date": race_date,
-            "csv_path": csv_path, "sidecar_path": sidecar_path, "metadata": metadata,
+            "csv_path": csv_path, "csv_bytes": csv_bytes,
+            "sidecar_path": sidecar_path, "metadata": metadata,
             "capture": capture, "jump": jump,
             "csv_sha256": csv_record["sha256"], "sidecar_sha256": sidecar_record["sha256"],
         }
@@ -1814,7 +1956,10 @@ def build_out_of_time_manifest(
         venue, distance, grade, field_size = target_metadata(option, race_id)
         participants = (option["metadata"].get("runner_completeness") or {}).get("participants") or []
         verified_roster = verify_card_sidecar_roster(
-            option["csv_path"], option["metadata"], race_id=race_id
+            option["csv_path"],
+            option["metadata"],
+            race_id=race_id,
+            csv_bytes=option.get("csv_bytes"),
         )
         race_rows.append({
             "race_id": race_id, "race_date": option["race_date"].isoformat(), "target_venue": venue,
@@ -1846,9 +1991,14 @@ def build_out_of_time_manifest(
             ("raw_pre_race_card", option["csv_path"], option["csv_sha256"]),
             ("raw_pre_race_sidecar", option["sidecar_path"], option["sidecar_sha256"]),
         ):
+            source_bytes = (
+                len(option["csv_bytes"])
+                if role == "raw_pre_race_card"
+                else path.stat().st_size
+            )
             source_rows.append({
                 "race_id": race_id, "role": role, "path": str(path.resolve()), "sha256": digest,
-                "bytes": path.stat().st_size, "capture_timestamp": option["capture"].isoformat(),
+                "bytes": source_bytes, "capture_timestamp": option["capture"].isoformat(),
                 "jump_timestamp": option["jump"].isoformat(), "status": "OUTCOME_UNOPENED_OUT_OF_TIME",
             })
     stable_csv(
@@ -1906,16 +2056,20 @@ def build_out_of_time_manifest(
             "aggregate_sha256": freeze_binding["freeze_aggregate_sha256"],
             "file_count": len(freeze_binding["freeze_records"]),
         }
+    selected_source_records: list[dict[str, Any]] = []
+    for option in selected.values():
+        selected_source_records.extend([
+            {
+                "role": "out_of_time_card",
+                **retained_file_record(option["csv_path"], option["csv_bytes"]),
+            },
+            {
+                "role": "out_of_time_sidecar",
+                **file_record(option["sidecar_path"]),
+            },
+        ])
     summary["selected_source_set_sha256"] = source_set_digest(
-        {
-            "role": role,
-            **file_record(path),
-        }
-        for option in selected.values()
-        for role, path in (
-            ("out_of_time_card", option["csv_path"]),
-            ("out_of_time_sidecar", option["sidecar_path"]),
-        )
+        selected_source_records
     )
     stable_json(output_domain, "out_of_time_manifest.json", summary)
     return summary
