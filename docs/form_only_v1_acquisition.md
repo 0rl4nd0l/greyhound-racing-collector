@@ -20,15 +20,19 @@ The candidate union is the set union of:
 2. races marked `used_for_training=1` whose rows are in
    `thedogs_training_rows_v1.csv`.
 
-Inside the minimal sealed alignment boundary, race and dog identity use
-`race_id`, box, and an uppercase alphanumeric dog-name token. No dog token,
-token-only digest, source runner ID, or plaintext identity is emitted. Exported
-`row_id` values are SHA-256 opaque and domain-separated by split and race, so
-they cannot link the same dog across races or development/out-of-time packets.
+Trainer-visible `row_id` values derive only from `race_id` plus box. Dog names,
+tokens, digests, source-runner IDs, alignment mappings, source paths, and URLs
+exist only in the separately hashed `sealed_validation/` bundle and are absent
+from the trainer allowlist. Reusing a dog name in another race creates no
+trainer-visible join key; development/out-of-time row-ID intersections are
+required to be zero. Hashing a dog token is not treated as anonymization.
 
 For races in both sources, the raw form CSVs must be byte-identical. An eligible
 Tier-A raw card has precedence over an eligible published-history raw card. If
 only the published-history card meets the availability rule, that card is used.
+Within the winning precedence, the freshest eligible capture wins. Equal-time
+winners fail closed unless card and sidecar bytes prove one identical canonical
+source identity; pathnames never decide conflicting source content.
 Label provenance remains separate:
 
 - `OFFICIAL_RACE_PAGE_TIER_A` is retained only when the frozen Tier-A
@@ -49,6 +53,27 @@ time comes from frozen `race_timestamp_utc`, which is authoritative over the
 older sidecar display time. Naive card capture timestamps are interpreted in
 `Australia/Melbourne`.
 
+Every sidecar is also validated semantically, independently from its supplied
+hash: filename/race ID, date, venue, race number, canonical source URL, jump and
+capture evidence, card path, and canonical roster must agree with the bound
+card/acquisition evidence. Rebinding inventory hashes cannot make a wrong-race
+sidecar valid. Missing byte lengths, duplicate declarations, malformed schema
+or types, and incomplete or duplicate freeze roles fail closed.
+
+## Trust domains
+
+The build has three independent manifests:
+
+- `TRAINER_VISIBLE_AUTHORITATIVE` contains the canonical feature/race/runner and
+  eligibility files plus `trainer_input_manifest.json`. That manifest is the
+  complete trainer allowlist and forbids both other bundle roots.
+- `sealed_validation/` contains source inventories and dog/card alignment used
+  only to validate semantics and provenance. It is not a trainer input.
+- `non_authoritative_diagnostic/` contains the legacy overlap reconciliation.
+  It cannot affect canonical features, eligibility, expected authoritative
+  counts, or the trainer manifest; pre/post diagnostic trainer hashes must be
+  byte-identical.
+
 ## Canonical prior-history semantics
 
 Features are rebuilt from the selected raw pre-race card, never selected from a
@@ -58,7 +83,8 @@ legacy builder output or from a mutable database.
   continuation rows remain in that block.
 - Rows are accepted only when `history_date < target_date`.
 - Rows are normalized before deduplication using canonical date, venue,
-  distance, grade, finish, box, and margin values.
+  distance, grade, finish, box, margin, and verified start identity. Distinct
+  same-day starts with otherwise identical results remain distinct.
 - Accepted rows are sorted newest first and capped at 20. Multiple distinct
   same-day rows require one unique verified timestamp or race-ordinal key;
   input order is never used and unprovable ordering fails closed. Recent windows use the
@@ -103,6 +129,10 @@ backfill, or official-result material are rejected before content is read. For
 each race, the freshest valid card at or before T-60 is selected. No label or
 outcome source is opened.
 
+Equal freshest capture times fail closed when their bytes differ. Byte-identical
+aliases collapse to one canonical source identity; discovering the same live
+path twice is an error rather than a silent skip.
+
 Frozen mode binds only three construction inputs: the OOT source inventory,
 exclusion inventory, and OOT manifest. The builder verifies their bytes and
 digests, then rederives each selected path, filename/race identity, sidecar
@@ -116,12 +146,14 @@ times must be exact URL matches and are interpreted in the source display zone
 ## Durable reproduction
 
 The tracked [reproducibility descriptor](form_only_v1_reproducibility.json)
-binds the four development construction inputs, 3,269 unique card, sidecar,
-label, and reconciliation source records, the three-file OOT freeze at
+binds four development construction inputs, 3,231 authoritative card, sidecar,
+and label records, 38 separately non-authoritative shadow sources, and the
+three-file OOT freeze at
 `/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-form-only-v1-acquisition-20260718/reports/agent_jobs/form_only_v1_acquisition_foundation_20260718`,
-the expected current counts, and all 15 output hashes. The OOT freeze aggregate
-is `30671f48...e7cc`; the expected output manifest is
-`584ca92c...b557`. Reviewers on the evidence host can reproduce without raw or
+the expected current counts, and 18 hashes across three domains. The OOT freeze
+aggregate is `30671f48...e7cc`; trainer, sealed-validation, and diagnostic
+aggregates are respectively `2a117944...3c2a`, `4ce9d105...26ed`, and
+`e5eaf492...995f`. Reviewers on the evidence host can reproduce without raw or
 large Git commits using:
 
 ```bash
@@ -133,9 +165,16 @@ python3 scripts/build_form_only_v1_packet.py \
   --output-dir /tmp/form-only-v1-review
 ```
 
-Any one-bit change in a bound construction input or any output count/hash
-causes a non-zero exit. The descriptor intentionally carries no raw cards,
+Any one-bit change in a bound input for its trust domain or any expected
+count/hash causes a non-zero exit. The descriptor intentionally carries no raw cards,
 labels, outcomes, databases, models, or large generated packet files.
+
+The independent-review diagnostic baseline was 504/530 unexplained rows across
+73/73 overlap races. Parsing numeric zero as a real value reclassifies 245
+zero-history rows and recomputes the diagnostic to 259/530 unexplained across
+71/73 races. This delta changes no authoritative count or trainer byte. The
+focused adversarial suite contains 56 tests; no "zero unexplained" claim is
+made.
 
 ## Market separation
 

@@ -55,6 +55,10 @@ def make_card(
     match = MODULE.re.fullmatch(r"Race (\d+) - (.+) - (\d{4}-\d{2}-\d{2})", race_id)
     assert match
     jump_dt = MODULE.parse_timestamp(jump)
+    url = (
+        f"https://www.thedogs.com.au/racing/{match.group(2).lower()}/"
+        f"{match.group(3)}/{int(match.group(1))}/fixture"
+    )
     metadata = {
         "metadata_is_leakage_safe": True,
         "metadata_captured_at": capture,
@@ -69,7 +73,10 @@ def make_card(
             "race_time": jump_dt.strftime("%I:%M %p"),
             "race_time_mapping_status": "exact_url_match",
             "race_time_source": "canonical_race_url",
+            "url": url,
         },
+        "race_url": url,
+        "metadata_source_url": url,
         "runner_completeness": {
             "status": "COMPLETE",
             "runner_count": len(participants),
@@ -254,11 +261,16 @@ def make_fixture(
     ]
     contract_path = tmp_path / "reproducibility.json"
     write_json(contract_path, {
-        "schema_version": "form_only_v1_reproducibility_v1",
+        "schema_version": "form_only_v1_reproducibility_v2",
         "trusted_inputs": {
             "development": {
-                "files": top_files, "source_record_count": 8,
-                "source_set_sha256": MODULE.source_set_digest(dev_sources),
+                "files": top_files, "authoritative_source_record_count": 7,
+                "authoritative_source_set_sha256": MODULE.source_set_digest(dev_sources[:-1]),
+            },
+            "diagnostic": {
+                "source_record_count": 1,
+                "source_set_sha256": MODULE.source_set_digest(dev_sources[-1:]),
+                "authority": "NON_AUTHORITATIVE_DIAGNOSTIC",
             },
             "out_of_time_freeze": {
                 "path": str(freeze), "aggregate_sha256": MODULE.source_set_digest(freeze_records),
@@ -275,7 +287,9 @@ def make_fixture(
         "eligibility": eligibility, "training": training, "evidence": evidence,
         "freeze": freeze, "contract": contract_path, "oot_card": oot_card,
         "oot_sidecar": oot_sidecar, "card_one": card_one, "sidecar_one": sidecar_one,
-        "official_races": official_races, "shadow": shadow_path,
+        "card_two": card_two, "sidecar_two": sidecar_two,
+        "official_races": official_races, "official_runners": official_runners,
+        "shadow": shadow_path,
     }
 
 
@@ -291,25 +305,32 @@ def bind_expected_output(fixture: dict[str, Path], summary: dict[str, object]) -
     development = summary["development"]
     reconciliation = summary["reconciliation"]
     oot = summary["out_of_time"]
-    artifact = summary["artifact_manifest"]
+    manifests = summary["domain_manifests"]
     contract["expected_output"] = {
-        "counts": {
+        "authoritative_counts": {
             "candidate_races": development["candidate_race_count"],
             "candidate_runners": development["candidate_runner_count"],
             "included_races": development["included_race_count"],
             "included_runners": development["included_runner_count"],
             "sidecar_only_exclusions": development["sidecar_only_runner_exclusion_count"],
+            "out_of_time_races": oot["included_race_count"],
+            "out_of_time_runners": oot["included_runner_count"],
+        },
+        "diagnostic_counts": {
             "overlap_races": reconciliation["overlap_race_count"],
             "overlap_runners": reconciliation["overlap_runner_count"],
             "history_differences": reconciliation["history_discrepancy_count"],
             "recency_differences": reconciliation["recency_discrepancy_count"],
             "grade_differences": reconciliation["grade_discrepancy_count"],
             "unexplained_differences": reconciliation["unexplained_mismatch_count"],
-            "out_of_time_races": oot["included_race_count"],
-            "out_of_time_runners": oot["included_runner_count"],
         },
-        "artifact_files": {row["path"]: row["sha256"] for row in artifact["files"]},
-        "artifact_manifest_sha256": artifact["aggregate_sha256"],
+        "domains": {
+            domain: {
+                "artifact_files": {row["path"]: row["sha256"] for row in manifest["files"]},
+                "aggregate_sha256": manifest["aggregate_sha256"],
+            }
+            for domain, manifest in manifests.items()
+        },
     }
     write_json(fixture["contract"], contract)
 
@@ -382,11 +403,13 @@ def test_history_cap_and_recent_windows_are_newest_first() -> None:
     assert feature["recent_finish_mean_5"] != ""
 
 
-def test_identity_is_race_and_split_scoped() -> None:
+def test_identity_is_derived_only_from_race_and_box() -> None:
     a = MODULE.row_id("Race 1 - BAL - 2026-07-09", 1, "Same Dog", scope="development")
     b = MODULE.row_id("Race 2 - BAL - 2026-07-09", 1, "Same Dog", scope="development")
     c = MODULE.row_id("Race 1 - BAL - 2026-07-09", 1, "Same Dog", scope="out_of_time")
-    assert len({a, b, c}) == 3
+    d = MODULE.row_id("Race 1 - BAL - 2026-07-09", 1, "Different Dog")
+    assert len({a, b}) == 2
+    assert a == c == d
     assert all("SAMEDOG" not in value for value in (a, b, c))
 
 
@@ -504,17 +527,29 @@ def test_duplicate_box_name_or_normalized_token_collisions_fail_closed(
         MODULE.canonical_roster(participants, box_key="box", name_key="name", source="test")
 
 
-@pytest.mark.parametrize("kind", ["top", "card", "sidecar", "label", "shadow", "freeze_inventory", "freeze_exclusions", "freeze_manifest", "oot_card"])
+@pytest.mark.parametrize("kind", [
+    "eligibility_races", "eligibility_runners", "tier_a_provenance", "training_rows",
+    "development_card", "development_sidecar", "official_race_label",
+    "official_runner_label", "shadow", "freeze_inventory", "freeze_exclusions",
+    "freeze_manifest", "oot_card", "oot_sidecar",
+])
 def test_one_bit_mutation_fails_closed(tmp_path: Path, kind: str) -> None:
     fixture = make_fixture(tmp_path)
     targets = {
-        "top": fixture["eligibility"] / "historical_win_eligibility_races_v1.csv",
-        "card": fixture["card_one"], "sidecar": fixture["sidecar_one"],
-        "label": fixture["official_races"], "shadow": fixture["shadow"],
+        "eligibility_races": fixture["eligibility"] / "historical_win_eligibility_races_v1.csv",
+        "eligibility_runners": fixture["eligibility"] / "historical_win_eligibility_runners_v1.csv",
+        "tier_a_provenance": fixture["eligibility"] / "historical_win_tier_a_race_provenance_v1.json",
+        "training_rows": fixture["training"] / "thedogs_training_rows_v1.csv",
+        "development_card": fixture["card_one"],
+        "development_sidecar": fixture["sidecar_one"],
+        "official_race_label": fixture["official_races"],
+        "official_runner_label": fixture["official_runners"],
+        "shadow": fixture["shadow"],
         "freeze_inventory": fixture["freeze"] / "out_of_time_source_inventory.csv",
         "freeze_exclusions": fixture["freeze"] / "out_of_time_exclusions.csv",
         "freeze_manifest": fixture["freeze"] / "out_of_time_manifest.json",
         "oot_card": fixture["oot_card"],
+        "oot_sidecar": fixture["oot_sidecar"],
     }
     target = targets[kind]
     data = bytearray(target.read_bytes())
@@ -564,7 +599,9 @@ def test_synthetic_full_build_is_deterministic_and_identity_safe(tmp_path: Path)
     assert {row["row_id"] for row in dev_rows}.isdisjoint({row["row_id"] for row in oot_rows})
     exclusions = list(csv.DictReader((tmp_path / "build-a" / "development_exclusions.csv").open()))
     roster_exclusion = next(row for row in exclusions if row["reason"] == "HASH_BOUND_PUBLISHED_ACTIVE_ROSTER_EXCLUSION")
-    assert roster_exclusion["evidence_sha256"]
+    assert set(roster_exclusion) == {
+        "entity_type", "entity_id", "race_id", "reason", "history_date"
+    }
     assert "SCRATCHEDDOG" not in (tmp_path / "build-a" / "development_exclusions.csv").read_text()
 
 
@@ -575,13 +612,13 @@ def test_expected_output_mutation_is_rejected(tmp_path: Path, mutation: str) -> 
     bind_expected_output(fixture, summary)
     contract = json.loads(fixture["contract"].read_text())
     if mutation == "count":
-        contract["expected_output"]["counts"]["included_runners"] += 1
+        contract["expected_output"]["authoritative_counts"]["included_runners"] += 1
         match = "count mismatch"
     elif mutation == "file_hash":
-        contract["expected_output"]["artifact_files"]["development_runners.csv"] = "0" * 64
+        contract["expected_output"]["domains"]["trainer"]["artifact_files"]["development_runners.csv"] = "0" * 64
         match = "artifact hash mismatch"
     else:
-        contract["expected_output"]["artifact_manifest_sha256"] = "0" * 64
+        contract["expected_output"]["domains"]["trainer"]["aggregate_sha256"] = "0" * 64
         match = "aggregate hash mismatch"
     write_json(fixture["contract"], contract)
     with pytest.raises(ValueError, match=match):
@@ -632,6 +669,163 @@ def test_scan_mode_rederives_source_and_rejects_banned_path(tmp_path: Path) -> N
     selected, exclusions = MODULE.scan_out_of_time_sources([fixture["evidence"]])
     assert len(selected) == 1
     assert any(row["reason"] == "RECONSTRUCTED_OR_NONCONTEMPORANEOUS_PATH_REJECTED" for row in exclusions)
+
+
+def test_attacker_view_is_allowlisted_and_unlinkable(tmp_path: Path) -> None:
+    fixture = make_fixture(tmp_path)
+    output = tmp_path / "build"
+    build_fixture(fixture, output, enforce=False)
+    manifest = json.loads((output / "trainer_input_manifest.json").read_text())
+    allowed = {row["path"] for row in manifest["allowed_files"]}
+    assert not any("source_inventory" in name or "alignment" in name for name in allowed)
+    assert manifest["forbidden_roots"] == [
+        "sealed_validation", "non_authoritative_diagnostic"
+    ]
+    attacker_text = "".join((output / name).read_text() for name in sorted(allowed))
+    assert "Same Dog" not in attacker_text
+    assert "SAMEDOG" not in attacker_text
+    assert str(fixture["card_one"]) not in attacker_text
+    dev = list(csv.DictReader((output / "development_runners.csv").open()))
+    oot = list(csv.DictReader((output / "out_of_time_runners.csv").open()))
+    assert not ({row["row_id"] for row in dev} & {row["row_id"] for row in oot})
+
+
+def test_hash_rebound_sidecar_wrong_identity_still_fails(tmp_path: Path) -> None:
+    race_id = "Race 1 - BAL - 2026-07-09"
+    card, sidecar = make_card(
+        tmp_path / "upcoming" / f"{race_id}.csv",
+        race_id,
+        [(1, "A")],
+        capture="2026-07-09T10:00:00+10:00",
+        jump="2026-07-09T12:00:00+10:00",
+    )
+    metadata = json.loads(sidecar.read_text())
+    metadata["race_info"]["venue"] = "GEE"
+    write_json(sidecar, metadata)
+    rebound_hash = MODULE.sha256_path(sidecar)
+    assert len(rebound_hash) == 64
+    with pytest.raises(ValueError, match="venue mismatch"):
+        MODULE.validate_sidecar_semantics(
+            race_id,
+            card,
+            sidecar,
+            metadata,
+            expected_jump=MODULE.parse_timestamp("2026-07-09T12:00:00+10:00"),
+            expected_roster=[(1, "A")],
+        )
+
+
+def test_equal_precedence_time_conflict_fails_without_path_tiebreak(tmp_path: Path) -> None:
+    race_id = "Race 1 - BAL - 2026-07-09"
+    card_a, sidecar_a = make_card(
+        tmp_path / "a" / f"{race_id}.csv", race_id, [(1, "A")],
+        capture="2026-07-09T10:00:00+10:00", jump="2026-07-09T12:00:00+10:00",
+    )
+    card_b, sidecar_b = make_card(
+        tmp_path / "b" / f"{race_id}.csv", race_id, [(1, "B")],
+        capture="2026-07-09T10:00:00+10:00", jump="2026-07-09T12:00:00+10:00",
+    )
+    def option(card: Path, sidecar: Path) -> dict[str, object]:
+        metadata = json.loads(sidecar.read_text())
+        return {
+            "precedence": 0, "capture": MODULE.capture_timestamp(metadata),
+            "jump": MODULE.sidecar_jump_timestamp(metadata, race_id),
+            "csv_path": card, "sidecar_path": sidecar, "metadata": metadata,
+            "csv_sha256": MODULE.sha256_path(card),
+            "sidecar_sha256": MODULE.sha256_path(sidecar),
+        }
+    loaded = {"candidate_ids": [race_id], "source_options": {race_id: [
+        option(card_a, sidecar_a), option(card_b, sidecar_b)
+    ]}}
+    with pytest.raises(ValueError, match="ambiguous equal-precedence"):
+        MODULE.select_development_sources(loaded)
+
+
+def test_numeric_zero_is_a_value() -> None:
+    assert MODULE.safe_int(0) == 0
+    assert MODULE.safe_float(0.0) == 0.0
+
+
+def test_distinct_same_day_starts_with_verified_order_are_preserved() -> None:
+    base = {
+        "DATE": "2026-07-01", "TRACK": "BAL", "DIST": "450", "G": "5",
+        "PLC": "2", "BOX": "1", "MGN": "1.5",
+    }
+    accepted, rejected = MODULE.accepted_history(
+        [{**base, "RACE_NUMBER": "1"}, {**base, "RACE_NUMBER": "2"}],
+        date(2026, 7, 9),
+    )
+    assert len(accepted) == 2
+    assert not rejected
+
+
+def test_duplicate_declaration_and_missing_bytes_fail_closed(tmp_path: Path) -> None:
+    path = tmp_path / "source"
+    path.write_text("x", encoding="utf-8")
+    declaration = {"role": "card", **record(path)}
+    with pytest.raises(ValueError, match="duplicate source declaration"):
+        MODULE.source_set_digest([declaration, declaration])
+    with pytest.raises(ValueError, match="byte declaration missing"):
+        MODULE.verify_file_record(
+            path,
+            expected_sha256=MODULE.sha256_path(path),
+            require_expected_bytes=True,
+        )
+
+
+def test_duplicate_live_discovery_and_same_time_conflict_fail(tmp_path: Path) -> None:
+    race_id = "Race 1 - BAL - 2026-07-11"
+    root_a = tmp_path / "a" / "upcoming"
+    root_b = tmp_path / "b" / "upcoming"
+    make_card(
+        root_a / f"{race_id}.csv", race_id, [(1, "A")],
+        capture="2026-07-11T10:00:00+10:00", jump="2026-07-11T12:00:00+10:00",
+    )
+    make_card(
+        root_b / f"{race_id}.csv", race_id, [(1, "B")],
+        capture="2026-07-11T10:00:00+10:00", jump="2026-07-11T12:00:00+10:00",
+    )
+    with pytest.raises(ValueError, match="duplicate live discovery path"):
+        MODULE.scan_out_of_time_sources([root_a, root_a])
+    with pytest.raises(ValueError, match="ambiguous same-time live sources"):
+        MODULE.scan_out_of_time_sources([root_a, root_b])
+
+
+def test_empty_or_missing_trainer_artifact_fails_closed(tmp_path: Path) -> None:
+    fixture = make_fixture(tmp_path)
+    output = tmp_path / "build"
+    build_fixture(fixture, output, enforce=False)
+    (output / "development_features.csv").write_text("", encoding="utf-8")
+    with pytest.raises(ValueError, match="missing or empty trainer artifact"):
+        MODULE.validate_trainer_visible_artifacts(output)
+    with pytest.raises(ValueError, match="missing or empty generated artifact"):
+        MODULE.write_artifact_manifest(output, MODULE.TRAINER_ARTIFACT_NAMES)
+
+
+def test_diagnostic_build_cannot_change_authoritative_files(tmp_path: Path) -> None:
+    fixture = make_fixture(tmp_path)
+    reproducibility = MODULE.load_reproducibility_contract(fixture["contract"])
+    loaded = MODULE.load_development_sources(
+        fixture["eligibility"], fixture["training"], reproducibility
+    )
+    authoritative = tmp_path / "authoritative"
+    MODULE.build_development_packet(loaded, authoritative, tmp_path / "sealed")
+    before = {
+        name: MODULE.sha256_path(authoritative / name)
+        for name in (
+            "development_features.csv", "development_runners.csv",
+            "development_races.csv", "development_manifest.json",
+        )
+    }
+    mutated_shadow = tmp_path / "changed-diagnostic-path" / "shadow.json"
+    payload = json.loads(fixture["shadow"].read_text())
+    payload[0]["prior_start_count"] = 99
+    write_json(mutated_shadow, payload)
+    for record_value in loaded["shadow_source_by_race"].values():
+        record_value.update(record(mutated_shadow))
+    MODULE.build_overlap_reconciliation(loaded, tmp_path / "diagnostic")
+    after = {name: MODULE.sha256_path(authoritative / name) for name in before}
+    assert before == after
 
 
 def test_cli_argument_contract_is_required(monkeypatch: pytest.MonkeyPatch) -> None:

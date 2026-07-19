@@ -36,12 +36,19 @@ FORBIDDEN_ARTIFACT_FIELDS = {
     "source_runner_id", "runner_id",
 }
 
-GENERATED_ARTIFACT_NAMES = {
+TRAINER_ARTIFACT_NAMES = {
     "development_exclusions.csv", "development_features.csv", "development_manifest.json",
-    "development_races.csv", "development_runners.csv", "development_source_inventory.csv",
-    "feature_contract.json", "market_coverage.json", "out_of_time_exclusions.csv",
-    "out_of_time_manifest.json", "out_of_time_races.csv", "out_of_time_runners.csv",
-    "out_of_time_source_inventory.csv", "overlap_reconciliation.csv", "reconciliation_summary.json",
+    "development_races.csv", "development_runners.csv", "feature_contract.json",
+    "market_coverage.json", "out_of_time_manifest.json", "out_of_time_races.csv",
+    "out_of_time_runners.csv", "trainer_input_manifest.json",
+}
+SEALED_VALIDATION_ARTIFACT_NAMES = {
+    "development_source_inventory.csv", "out_of_time_exclusions.csv",
+    "out_of_time_source_inventory.csv", "development_runner_alignment.csv",
+    "out_of_time_runner_alignment.csv",
+}
+DIAGNOSTIC_ARTIFACT_NAMES = {
+    "overlap_reconciliation.csv", "reconciliation_summary.json",
 }
 
 VENUE_ALIASES = {
@@ -86,13 +93,19 @@ def file_record(path: Path) -> dict[str, Any]:
 
 
 def verify_file_record(
-    path: Path, *, expected_sha256: str, expected_bytes: int | str | None = None
+    path: Path,
+    *,
+    expected_sha256: str,
+    expected_bytes: int | str | None = None,
+    require_expected_bytes: bool = False,
 ) -> dict[str, Any]:
     if not path.is_file():
         raise FileNotFoundError(path)
     actual = file_record(path)
     if actual["sha256"] != expected_sha256:
         raise ValueError(f"source hash mismatch: {path}")
+    if require_expected_bytes and expected_bytes in (None, ""):
+        raise ValueError(f"source byte declaration missing: {path}")
     if expected_bytes not in (None, "") and actual["bytes"] != int(expected_bytes):
         raise ValueError(f"source byte mismatch: {path}")
     return actual
@@ -103,7 +116,9 @@ def canonical_digest(value: Any) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def source_set_digest(records: Iterable[Mapping[str, Any]]) -> str:
+def source_set_digest(
+    records: Iterable[Mapping[str, Any]], *, reject_duplicate_declarations: bool = True
+) -> str:
     unique: dict[tuple[str, str], dict[str, Any]] = {}
     for record in records:
         normalized = {
@@ -114,19 +129,45 @@ def source_set_digest(records: Iterable[Mapping[str, Any]]) -> str:
         }
         key = (normalized["role"], normalized["path"])
         previous = unique.get(key)
-        if previous is not None and previous != normalized:
-            raise ValueError(f"conflicting source declaration: {key}")
+        if previous is not None:
+            if previous != normalized:
+                raise ValueError(f"conflicting source declaration: {key}")
+            if reject_duplicate_declarations:
+                raise ValueError(f"duplicate source declaration: {key}")
         unique[key] = normalized
     return canonical_digest([unique[key] for key in sorted(unique)])
 
 
 def load_reproducibility_contract(path: Path) -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
-    if payload.get("schema_version") != "form_only_v1_reproducibility_v1":
+    if payload.get("schema_version") != "form_only_v1_reproducibility_v2":
         raise ValueError(f"unsupported reproducibility contract: {path}")
     if not isinstance(payload.get("trusted_inputs"), dict):
         raise ValueError(f"reproducibility contract has no trusted_inputs: {path}")
-    payload["construction_contract_sha256"] = canonical_digest(payload["trusted_inputs"])
+    if not isinstance(payload.get("expected_output"), dict):
+        raise ValueError(f"reproducibility contract has no typed expected_output: {path}")
+    trusted = payload["trusted_inputs"]
+    if set(trusted) != {"development", "out_of_time_freeze", "diagnostic"}:
+        raise ValueError("reproducibility trust domains are incomplete")
+    development = trusted["development"]
+    authoritative_files = {
+        role: record
+        for role, record in (development.get("files") or {}).items()
+        if role != "tier_a_provenance"
+    }
+    payload["construction_contract_sha256"] = canonical_digest({
+        "development": {
+            "files": authoritative_files,
+            "authoritative_source_record_count": development.get(
+                "authoritative_source_record_count"
+            ),
+            "authoritative_source_set_sha256": development.get(
+                "authoritative_source_set_sha256"
+            ),
+        },
+        "out_of_time_freeze": trusted["out_of_time_freeze"],
+    })
+    payload["diagnostic_contract_sha256"] = canonical_digest(trusted["diagnostic"])
     return payload
 
 
@@ -188,8 +229,10 @@ def canonical_runner_id(race_id: str, box: Any, dog_name: Any) -> str:
     return f"{race_id}|box:{int(float(str(box)))}|dog:{dog_token(dog_name)}"
 
 
-def row_id(race_id: str, box: Any, dog_name: Any, *, scope: str = DEVELOPMENT_SCOPE) -> str:
-    payload = f"FORM_ONLY_V1|{scope}|{canonical_runner_id(race_id, box, dog_name)}".encode("utf-8")
+def row_id(race_id: str, box: Any, dog_name: Any = None, *, scope: str = "") -> str:
+    """Trainer-safe race-scoped row key derived only from race identity and box."""
+    del dog_name, scope
+    payload = f"FORM_ONLY_V1|race_box|{race_id}|box:{int(float(str(box)))}".encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
 
 
@@ -227,7 +270,7 @@ def canonical_grade(value: Any) -> str:
 
 def safe_float(value: Any) -> float | None:
     try:
-        text = str(value or "").strip()
+        text = "" if value is None else str(value).strip()
         return float(text) if text else None
     except (TypeError, ValueError):
         return None
@@ -362,6 +405,7 @@ def accepted_history(
         key = (
             normalized["date"], normalized["venue"], normalized["distance"],
             normalized["grade"], normalized["finish"], normalized["box"], normalized["margin"],
+            normalized["order"],
         )
         if key in seen:
             rejected.append(("NORMALIZED_DUPLICATE_HISTORY", raw))
@@ -464,9 +508,13 @@ def feature_row(
 
 def validate_sidecar(csv_path: Path, sidecar_path: Path) -> dict[str, Any]:
     metadata = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    if not isinstance(metadata, dict):
+        raise ValueError(f"malformed metadata sidecar: {sidecar_path}")
     if metadata.get("metadata_is_leakage_safe") is not True:
         raise ValueError(f"unsafe metadata sidecar: {sidecar_path}")
     completeness = metadata.get("runner_completeness") or {}
+    if not isinstance(completeness, dict):
+        raise ValueError(f"malformed runner completeness: {sidecar_path}")
     if completeness.get("status") != "COMPLETE":
         raise ValueError(f"incomplete runner sidecar: {sidecar_path}")
     if not csv_path.is_file():
@@ -474,6 +522,10 @@ def validate_sidecar(csv_path: Path, sidecar_path: Path) -> dict[str, Any]:
     actual_sha = sha256_path(csv_path)
     if actual_sha != metadata.get("content_sha256"):
         raise ValueError(f"source CSV hash mismatch: {csv_path}")
+    if not isinstance(metadata.get("content_sha256"), str) or not isinstance(
+        metadata.get("content_length"), int
+    ):
+        raise ValueError(f"malformed sidecar content identity: {sidecar_path}")
     if csv_path.stat().st_size != metadata.get("content_length"):
         raise ValueError(f"source CSV byte mismatch: {csv_path}")
     return metadata
@@ -509,7 +561,10 @@ def load_development_sources(
         if Path(expected["path"]).resolve() != path.resolve():
             raise ValueError(f"development input path mismatch for {role}")
         record = verify_file_record(
-            path, expected_sha256=expected["sha256"], expected_bytes=expected.get("bytes")
+            path,
+            expected_sha256=expected["sha256"],
+            expected_bytes=expected.get("bytes"),
+            require_expected_bytes=True,
         )
         top_input_records.append({"role": role, **record})
     top_input_by_role = {record["role"]: record for record in top_input_records}
@@ -554,6 +609,8 @@ def load_development_sources(
     candidate_runners: dict[str, list[dict[str, Any]]] = {}
     source_options: dict[str, list[dict[str, Any]]] = defaultdict(list)
     trusted_source_records: list[dict[str, Any]] = []
+    diagnostic_source_records: list[dict[str, Any]] = []
+    semantic_records: list[dict[str, Any]] = []
     for race_id in candidate_ids:
         if race_id in tier_a_runners:
             candidate_runners[race_id] = sorted(tier_a_runners[race_id], key=lambda row: (row["box"], dog_token(row["dog_name"])))
@@ -566,6 +623,20 @@ def load_development_sources(
             metadata = validate_sidecar(csv_path, sidecar_path)
             csv_record = verify_file_record(csv_path, expected_sha256=item["source_csv_sha256"])
             sidecar_record = verify_file_record(sidecar_path, expected_sha256=item["sidecar_sha256"])
+            canonical_jump = parse_timestamp(item["jump_timestamp"])
+            semantic_records.append(validate_sidecar_semantics(
+                race_id,
+                csv_path,
+                sidecar_path,
+                metadata,
+                expected_jump=canonical_jump,
+                expected_roster=canonical_roster(
+                    candidate_runners[race_id],
+                    box_key="box",
+                    name_key="dog_name",
+                    source=f"tier-a:{race_id}",
+                ),
+            ))
             trusted_source_records.extend([
                 {"role": "development_card", **csv_record},
                 {"role": "development_sidecar", **sidecar_record},
@@ -587,7 +658,7 @@ def load_development_sources(
                 "csv_sha256": csv_record["sha256"],
                 "sidecar_sha256": sidecar_record["sha256"],
                 "capture": capture_timestamp(metadata),
-                "jump": parse_timestamp(item["jump_timestamp"]),
+                "jump": canonical_jump,
                 "metadata": metadata,
                 "label_provenance_class": "OFFICIAL_RACE_PAGE_TIER_A",
                 "label_source_paths": [record["path"] for record in label_records],
@@ -645,6 +716,22 @@ def load_development_sources(
                 name_key="dog_name",
                 source=f"published-active:{race_id}",
             )
+            semantic_records.append(validate_sidecar_semantics(
+                race_id,
+                csv_path,
+                sidecar_path,
+                metadata,
+                expected_jump=parse_timestamp(first["race_timestamp_utc"]),
+                expected_roster=canonical_roster(
+                    published_runner_list,
+                    box_key="box",
+                    name_key="dog_name",
+                    source=f"published-active:{race_id}",
+                ),
+                expected_url=first.get("odds_url"),
+                enforce_jump_equality=False,
+                allow_roster_superset=True,
+            ))
             if race_id not in candidate_runners:
                 candidate_runners[race_id] = published_runner_list
             else:
@@ -662,14 +749,27 @@ def load_development_sources(
             raise ValueError(f"overlap race requires one justified shadow source: {race_id}")
         record = verify_file_record(Path(paths[0]), expected_sha256=digests[0])
         shadow_source_by_race[race_id] = record
-        trusted_source_records.append({"role": "shadow_reconciliation_source", **record})
+        diagnostic_source_records.append({"role": "shadow_reconciliation_source", **record})
 
-    source_digest = source_set_digest(trusted_source_records)
-    if source_digest != development_contract.get("source_set_sha256"):
+    source_digest = source_set_digest(
+        trusted_source_records, reject_duplicate_declarations=False
+    )
+    if source_digest != development_contract.get("authoritative_source_set_sha256"):
         raise ValueError(f"development source-set binding mismatch: {source_digest}")
     source_record_count = len({(row["role"], row["path"]) for row in trusted_source_records})
-    if source_record_count != int(development_contract.get("source_record_count", -1)):
+    if source_record_count != int(development_contract.get("authoritative_source_record_count", -1)):
         raise ValueError(f"development source-set count mismatch: {source_record_count}")
+    diagnostic_contract = (reproducibility.get("trusted_inputs") or {}).get("diagnostic") or {}
+    diagnostic_digest = source_set_digest(
+        diagnostic_source_records, reject_duplicate_declarations=False
+    )
+    if diagnostic_digest != diagnostic_contract.get("source_set_sha256"):
+        raise ValueError(f"diagnostic source-set binding mismatch: {diagnostic_digest}")
+    diagnostic_count = len({
+        (row["role"], row["path"]) for row in diagnostic_source_records
+    })
+    if diagnostic_count != int(diagnostic_contract.get("source_record_count", -1)):
+        raise ValueError("diagnostic source-set count mismatch")
 
     return {
         "candidate_ids": candidate_ids,
@@ -680,9 +780,16 @@ def load_development_sources(
         "top_input_records": top_input_records,
         "trusted_source_records": trusted_source_records,
         "trusted_source_set_sha256": source_digest,
+        "diagnostic_source_records": diagnostic_source_records,
+        "diagnostic_source_set_sha256": diagnostic_digest,
         "shadow_source_by_race": shadow_source_by_race,
         "training_path": training_path,
         "construction_contract_sha256": reproducibility["construction_contract_sha256"],
+        "diagnostic_contract_sha256": reproducibility["diagnostic_contract_sha256"],
+        "semantic_trust_root_sha256": canonical_digest(sorted(
+            semantic_records, key=lambda row: (row["race_id"], row["source_path"])
+        )),
+        "semantic_records": semantic_records,
     }
 
 
@@ -697,8 +804,36 @@ def select_development_sources(loaded: Mapping[str, Any]) -> tuple[dict[str, dic
         if not eligible:
             excluded[race_id] = "CARD_NOT_AVAILABLE_BY_T60"
             continue
-        eligible.sort(key=lambda option: (option["precedence"], str(option["csv_path"])))
-        selected[race_id] = eligible[0]
+        winning_precedence = min(option["precedence"] for option in eligible)
+        precedence_winners = [
+            option for option in eligible if option["precedence"] == winning_precedence
+        ]
+        winning_capture = max(option["capture"] for option in precedence_winners)
+        time_winners = [
+            option for option in precedence_winners if option["capture"] == winning_capture
+        ]
+        identities: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for option in time_winners:
+            identity = canonical_digest({
+                "card_sha256": option["csv_sha256"],
+                "sidecar_sha256": option["sidecar_sha256"],
+                "capture": option["capture"].isoformat(),
+                "jump": option["jump"].isoformat(),
+                "roster": canonical_roster(
+                    (option["metadata"].get("runner_completeness") or {}).get("participants") or [],
+                    box_key="box_number",
+                    name_key="dog_name",
+                    source=f"selection:{race_id}",
+                ),
+            })
+            identities[identity].append(option)
+        if len(identities) != 1:
+            raise ValueError(f"ambiguous equal-precedence development sources: {race_id}")
+        canonical_identity, aliases = next(iter(identities.items()))
+        representative = min(aliases, key=lambda option: str(option["csv_path"].resolve()))
+        representative["canonical_source_identity"] = canonical_identity
+        representative["byte_identical_alias_count"] = len(aliases)
+        selected[race_id] = representative
     return selected, excluded
 
 
@@ -746,8 +881,6 @@ def reconcile_development_roster(
             "race_id": race_id,
             "reason": "HASH_BOUND_PUBLISHED_ACTIVE_ROSTER_EXCLUSION",
             "history_date": "",
-            "evidence_path": evidence["path"],
-            "evidence_sha256": evidence["sha256"],
         }
         for box, token in sorted(sidecar_only)
     ]
@@ -755,8 +888,9 @@ def reconcile_development_roster(
 
 
 def build_development_packet(
-    loaded: Mapping[str, Any], output_dir: Path
+    loaded: Mapping[str, Any], output_dir: Path, sealed_dir: Path | None = None
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    sealed_dir = sealed_dir or output_dir
     selected, excluded = select_development_sources(loaded)
     candidate_runners = loaded["candidate_runners"]
     race_rows: list[dict[str, Any]] = []
@@ -764,6 +898,7 @@ def build_development_packet(
     feature_rows: list[dict[str, Any]] = []
     exclusion_rows: list[dict[str, Any]] = []
     source_rows: list[dict[str, Any]] = []
+    alignment_rows: list[dict[str, Any]] = []
     leakage = Counter()
 
     for race_id in loaded["candidate_ids"]:
@@ -798,20 +933,6 @@ def build_development_packet(
                     "sha256": digest, "bytes": path.stat().st_size, "capture_timestamp": "",
                     "jump_timestamp": option["jump"].isoformat(), "lead_minutes": "",
                 })
-    for race_id, record in sorted(loaded["shadow_source_by_race"].items()):
-        source_rows.append({
-            "race_id": race_id,
-            "selection_status": "RECONCILIATION_ONLY",
-            "source_class": "LEGACY_SHADOW_RECONCILIATION_ONLY",
-            "role": "shadow_reconciliation_source",
-            "path": record["path"],
-            "sha256": record["sha256"],
-            "bytes": record["bytes"],
-            "capture_timestamp": "",
-            "jump_timestamp": "",
-            "lead_minutes": "",
-        })
-
     for race_id in sorted(selected):
         option = selected[race_id]
         race_date = date.fromisoformat(race_id.rsplit(" - ", 1)[-1])
@@ -823,21 +944,16 @@ def build_development_packet(
         exclusion_rows.extend(roster_exclusions)
         field_size = len(runners)
         blocks = parse_form_blocks(option["csv_path"])
-        label_paths = option["label_source_paths"]
-        label_hashes = option["label_source_sha256"]
         race_rows.append({
             "race_id": race_id, "race_date": race_date.isoformat(), "target_venue": venue,
             "race_number": int(re.search(r"Race (\d+)", race_id).group(1)),
             "target_distance_m": distance or "", "target_grade": grade, "field_size": field_size,
             "card_capture_timestamp": option["capture"].isoformat(), "jump_timestamp": option["jump"].isoformat(),
             "card_lead_minutes": fmt_number((option["jump"] - option["capture"]).total_seconds() / 60),
-            "card_source_class": option["source_class"], "card_source_path": str(option["csv_path"].resolve()),
-            "card_source_sha256": option["csv_sha256"], "card_source_bytes": option["csv_path"].stat().st_size,
-            "card_sidecar_path": str(option["sidecar_path"].resolve()), "card_sidecar_sha256": option["sidecar_sha256"],
-            "card_sidecar_bytes": option["sidecar_path"].stat().st_size,
+            "card_source_class": option["source_class"],
+            "canonical_source_identity": option["canonical_source_identity"],
             "label_provenance_class": option["label_provenance_class"],
-            "label_source_paths": "|".join(label_paths), "label_source_sha256": "|".join(label_hashes),
-            "label_urls": "|".join(option["label_urls"]), "label_value_included": 0,
+            "label_value_included": 0,
         })
         for runner in runners:
             token = dog_token(runner["dog_name"])
@@ -845,6 +961,16 @@ def build_development_packet(
                 raise ValueError(f"runner absent from raw card: {race_id} {token}")
             history, rejected = accepted_history(blocks[token], race_date)
             opaque = row_id(race_id, runner["box"], runner["dog_name"], scope=DEVELOPMENT_SCOPE)
+            alignment_rows.append({
+                "split": DEVELOPMENT_SCOPE,
+                "race_id": race_id,
+                "box_number": runner["box"],
+                "row_id": opaque,
+                "dog_name_token": token,
+                "canonical_runner_id": canonical_runner_id(
+                    race_id, runner["box"], runner["dog_name"]
+                ),
+            })
             runner_rows.append({
                 "row_id": opaque, "race_id": race_id, "box_number": runner["box"],
                 "label_provenance_class": option["label_provenance_class"],
@@ -873,11 +999,15 @@ def build_development_packet(
     stable_csv(output_dir / "development_features.csv", list(feature_rows[0]), feature_rows)
     exclusion_fields = [
         "entity_type", "entity_id", "race_id", "reason", "history_date",
-        "evidence_path", "evidence_sha256",
     ]
     stable_csv(output_dir / "development_exclusions.csv", exclusion_fields, exclusion_rows)
-    stable_csv(output_dir / "development_source_inventory.csv", list(source_rows[0]), source_rows)
-    source_inventory_record = file_record(output_dir / "development_source_inventory.csv")
+    stable_csv(sealed_dir / "development_source_inventory.csv", list(source_rows[0]), source_rows)
+    stable_csv(
+        sealed_dir / "development_runner_alignment.csv",
+        list(alignment_rows[0]),
+        alignment_rows,
+    )
+    source_inventory_record = file_record(sealed_dir / "development_source_inventory.csv")
 
     feature_columns = list(feature_rows[0])
     forbidden_columns = sorted(set(feature_columns).intersection(FORBIDDEN_FEATURE_TOKENS))
@@ -906,15 +1036,13 @@ def build_development_packet(
         "source_precedence": ["OFFICIAL_RACE_PAGE_TIER_A", "THEDOGS_PUBLISHED_HISTORY_NOT_TIER_A"],
         "summary": summary,
         "construction_contract_sha256": loaded["construction_contract_sha256"],
-        "bound_inputs": loaded["top_input_records"],
-        "trusted_source_set": {
+        "authoritative_trust_root": {
             "record_count": len({
                 (row["role"], row["path"]) for row in loaded["trusted_source_records"]
             }),
             "aggregate_sha256": loaded["trusted_source_set_sha256"],
-            "inventory_path": "development_source_inventory.csv",
-            "inventory_sha256": source_inventory_record["sha256"],
-            "inventory_bytes": source_inventory_record["bytes"],
+            "semantic_sha256": loaded["semantic_trust_root_sha256"],
+            "sealed_inventory_sha256": source_inventory_record["sha256"],
         },
     })
     return summary, selected
@@ -1080,17 +1208,32 @@ def build_overlap_reconciliation(loaded: Mapping[str, Any], output_dir: Path) ->
     rows.sort(key=lambda row: (row["race_id"], row["box_number"], row["row_id"]))
     stable_csv(output_dir / "overlap_reconciliation.csv", list(rows[0]), rows)
     summary = {
+        "authority": "NON_AUTHORITATIVE_DIAGNOSTIC",
+        "trainer_dependency": False,
         "overlap_race_count": len(overlap_ids), "overlap_runner_count": len(rows),
         "byte_identical_raw_card_race_count": raw_identical_races,
         "history_discrepancy_count": sum(row["history_discrepancy"] for row in rows),
         "recency_discrepancy_count": sum(row["recency_discrepancy"] for row in rows),
         "grade_discrepancy_count": sum(row["grade_discrepancy"] for row in rows),
         "unexplained_mismatch_count": sum(row["unexplained_mismatch"] for row in rows),
+        "unexplained_race_count": len({
+            row["race_id"] for row in rows if row["unexplained_mismatch"]
+        }),
+        "independent_review_baseline": {
+            "unexplained_runner_rows": 504,
+            "overlap_runner_rows": 530,
+            "covered_overlap_races": 73,
+            "total_overlap_races": 73,
+            "note": "baseline used the numeric-zero-as-missing parser; recomputed counts above parse zero as a value",
+        },
         "cause_counts": dict(sorted(causes.items())),
         "bound_shadow_source_count": len(loaded["shadow_source_by_race"]),
         "bound_shadow_source_set_sha256": source_set_digest(
-            {"role": "shadow_reconciliation_source", **record}
-            for record in loaded["shadow_source_by_race"].values()
+            (
+                {"role": "shadow_reconciliation_source", **record}
+                for record in loaded["shadow_source_by_race"].values()
+            ),
+            reject_duplicate_declarations=False,
         ),
         "canonical_rule": "rebuild from byte-identical raw pre-race card; never select a legacy builder value",
     }
@@ -1113,14 +1256,82 @@ def validate_race_identity(race_id: str, sidecar_path: Path, metadata: Mapping[s
     if not match:
         raise ValueError(f"invalid race identity: {race_id}")
     info = metadata.get("race_info") or {}
-    if info.get("date") and date.fromisoformat(str(info["date"])) != parsed[1]:
+    required = {"date", "venue", "race_number", "race_time", "url"}
+    if not required.issubset(info) or any(info.get(key) in (None, "") for key in required):
+        raise ValueError(f"sidecar race identity is incomplete: {race_id}")
+    if date.fromisoformat(str(info["date"])) != parsed[1]:
         raise ValueError(f"sidecar race date mismatch: {race_id}")
-    if info.get("venue") and canonical_venue(info["venue"]) != canonical_venue(match.group(2)):
+    if canonical_venue(info["venue"]) != canonical_venue(match.group(2)):
         raise ValueError(f"sidecar race venue mismatch: {race_id}")
     declared_number = safe_int(info.get("race_number"))
-    if declared_number is not None and declared_number != int(match.group(1)):
+    if declared_number != int(match.group(1)):
         raise ValueError(f"sidecar race number mismatch: {race_id}")
     return parsed[1]
+
+
+def canonical_card_url(value: Any) -> str:
+    url = str(value or "").strip().split("?", 1)[0].rstrip("/")
+    for suffix in ("/odds", "/export-expert-form?sort_by=&sort_dir="):
+        if url.endswith(suffix):
+            url = url[: -len(suffix)]
+    return url.rstrip("/")
+
+
+def validate_sidecar_semantics(
+    race_id: str,
+    csv_path: Path,
+    sidecar_path: Path,
+    metadata: Mapping[str, Any],
+    *,
+    expected_jump: datetime,
+    expected_roster: Iterable[tuple[int, str]],
+    expected_url: str | None = None,
+    enforce_jump_equality: bool = True,
+    allow_roster_superset: bool = False,
+) -> dict[str, Any]:
+    """Bind meaning independently from inventory hashes."""
+    race_date = validate_race_identity(race_id, sidecar_path, metadata)
+    actual_roster = verify_card_sidecar_roster(csv_path, metadata, race_id=race_id)
+    expected_roster = list(expected_roster)
+    actual_counter = Counter(actual_roster)
+    expected_counter = Counter(expected_roster)
+    roster_matches = (
+        not (expected_counter - actual_counter)
+        if allow_roster_superset
+        else actual_counter == expected_counter
+    )
+    if not roster_matches:
+        raise ValueError(f"sidecar roster disagrees with canonical acquisition evidence: {race_id}")
+    jump = sidecar_jump_timestamp(metadata, race_id)
+    if enforce_jump_equality and jump != expected_jump.astimezone(MELBOURNE):
+        raise ValueError(f"sidecar jump timestamp disagrees with canonical evidence: {race_id}")
+    info = metadata["race_info"]
+    urls = {
+        canonical_card_url(info["url"]),
+        canonical_card_url(metadata.get("race_url")),
+        canonical_card_url(metadata.get("metadata_source_url")),
+    }
+    if "" in urls or len(urls) != 1:
+        raise ValueError(f"sidecar source URL identity is inconsistent: {race_id}")
+    if expected_url and canonical_card_url(expected_url) not in urls:
+        raise ValueError(f"sidecar source URL disagrees with canonical evidence: {race_id}")
+    match = re.fullmatch(r"Race (\d+) - .+ - (\d{4}-\d{2}-\d{2})", race_id)
+    url = next(iter(urls))
+    if match is None or f"/{match.group(2)}/{int(match.group(1))}/" not in f"{url}/":
+        raise ValueError(f"sidecar source URL has wrong race identity: {race_id}")
+    return {
+        "race_id": race_id,
+        "race_date": race_date.isoformat(),
+        "venue": canonical_venue(info["venue"]),
+        "race_number": int(info["race_number"]),
+        "capture_timestamp": capture_timestamp(metadata).isoformat(),
+        "jump_timestamp": expected_jump.astimezone(MELBOURNE).isoformat(),
+        "sidecar_jump_timestamp": jump.isoformat(),
+        "source_path": str(csv_path.resolve()),
+        "source_url": url,
+        "roster_sha256": canonical_digest(actual_roster),
+        "canonical_roster_sha256": canonical_digest(expected_roster),
+    }
 
 
 def out_of_time_path_allowed(path: Path) -> bool:
@@ -1147,7 +1358,7 @@ def scan_out_of_time_sources(evidence_roots: Iterable[Path]) -> tuple[dict[str, 
                 race_id, race_date = parsed
                 resolved = str(sidecar_path.resolve())
                 if resolved in seen_paths:
-                    continue
+                    raise ValueError(f"duplicate live discovery path: {resolved}")
                 seen_paths.add(resolved)
                 if not out_of_time_path_allowed(sidecar_path):
                     exclusions.append({
@@ -1164,6 +1375,16 @@ def scan_out_of_time_sources(evidence_roots: Iterable[Path]) -> tuple[dict[str, 
                     verify_card_sidecar_roster(csv_path, metadata, race_id=race_id)
                     capture = capture_timestamp(metadata, require_timezone=True)
                     jump = sidecar_jump_timestamp(metadata, race_id)
+                    validate_sidecar_semantics(
+                        race_id,
+                        csv_path,
+                        sidecar_path,
+                        metadata,
+                        expected_jump=jump,
+                        expected_roster=sidecar_roster(
+                            metadata, source=f"live-discovery:{race_id}"
+                        ),
+                    )
                 except (ValueError, FileNotFoundError, json.JSONDecodeError) as exc:
                     exclusions.append({
                         "race_id": race_id, "race_date": race_date.isoformat(), "source_path": resolved,
@@ -1185,13 +1406,29 @@ def scan_out_of_time_sources(evidence_roots: Iterable[Path]) -> tuple[dict[str, 
                 })
     selected: dict[str, dict[str, Any]] = {}
     for race_id, options in by_race.items():
-        options.sort(key=lambda item: (item["capture"], str(item["sidecar_path"])), reverse=True)
-        selected[race_id] = options[0]
-        for option in options[1:]:
+        freshest = max(option["capture"] for option in options)
+        winners = [option for option in options if option["capture"] == freshest]
+        identities: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+        for option in winners:
+            identities[(option["csv_sha256"], option["sidecar_sha256"])].append(option)
+        if len(identities) != 1:
+            raise ValueError(f"ambiguous same-time live sources: {race_id}")
+        aliases = next(iter(identities.values()))
+        selected[race_id] = min(
+            aliases, key=lambda item: str(item["sidecar_path"].resolve())
+        )
+        for option in options:
+            if option is selected[race_id]:
+                continue
             exclusions.append({
                 "race_id": race_id, "race_date": option["race_date"].isoformat(),
                 "source_path": str(option["sidecar_path"].resolve()), "source_sha256": option["sidecar_sha256"],
-                "source_bytes": option["sidecar_path"].stat().st_size, "reason": "VALID_DUPLICATE_NOT_FRESHEST_BY_T60",
+                "source_bytes": option["sidecar_path"].stat().st_size,
+                "reason": (
+                    "BYTE_IDENTICAL_ALIAS_OF_CANONICAL_SOURCE"
+                    if option in aliases
+                    else "VALID_DUPLICATE_NOT_FRESHEST_BY_T60"
+                ),
             })
     exclusions.sort(key=lambda row: (row["race_id"], row["reason"], row["source_path"]))
     return selected, exclusions
@@ -1218,7 +1455,10 @@ def load_frozen_out_of_time_sources(
     for role, path in freeze_paths.items():
         expected = expected_files[role]
         record = verify_file_record(
-            path, expected_sha256=expected["sha256"], expected_bytes=expected.get("bytes")
+            path,
+            expected_sha256=expected["sha256"],
+            expected_bytes=expected.get("bytes"),
+            require_expected_bytes=True,
         )
         freeze_records.append({"role": f"out_of_time_freeze_{role}", **record})
     if source_set_digest(freeze_records) != freeze_contract.get("aggregate_sha256"):
@@ -1259,12 +1499,16 @@ def load_frozen_out_of_time_sources(
             raise ValueError(f"frozen card/sidecar path mismatch: {race_id}")
         metadata = validate_sidecar(csv_path, sidecar_path)
         csv_record = verify_file_record(
-            csv_path, expected_sha256=csv_row["sha256"], expected_bytes=csv_row.get("bytes")
+            csv_path,
+            expected_sha256=csv_row["sha256"],
+            expected_bytes=csv_row.get("bytes"),
+            require_expected_bytes=True,
         )
         sidecar_record = verify_file_record(
             sidecar_path,
             expected_sha256=sidecar_row["sha256"],
             expected_bytes=sidecar_row.get("bytes"),
+            require_expected_bytes=True,
         )
         race_date = validate_race_identity(race_id, sidecar_path, metadata)
         if not OUT_OF_TIME_START <= race_date <= OUT_OF_TIME_END:
@@ -1282,7 +1526,14 @@ def load_frozen_out_of_time_sources(
             or parse_timestamp(sidecar_row["jump_timestamp"], require_timezone=True) != jump
         ):
             raise ValueError(f"frozen sidecar timestamp declaration mismatch: {race_id}")
-        verify_card_sidecar_roster(csv_path, metadata, race_id=race_id)
+        validate_sidecar_semantics(
+            race_id,
+            csv_path,
+            sidecar_path,
+            metadata,
+            expected_jump=jump,
+            expected_roster=sidecar_roster(metadata, source=f"freeze:{race_id}"),
+        )
         selected[race_id] = {
             "race_id": race_id, "race_date": race_date,
             "csv_path": csv_path, "sidecar_path": sidecar_path, "metadata": metadata,
@@ -1303,7 +1554,9 @@ def build_out_of_time_manifest(
     output_dir: Path,
     reproducibility: Mapping[str, Any],
     freeze_dir: Path | None = None,
+    sealed_dir: Path | None = None,
 ) -> dict[str, Any]:
+    sealed_dir = sealed_dir or output_dir
     freeze_binding: dict[str, Any] | None = None
     if freeze_dir is None:
         selected, exclusions = scan_out_of_time_sources(evidence_roots)
@@ -1316,6 +1569,7 @@ def build_out_of_time_manifest(
     race_rows: list[dict[str, Any]] = []
     runner_rows: list[dict[str, Any]] = []
     source_rows: list[dict[str, Any]] = []
+    alignment_rows: list[dict[str, Any]] = []
     for race_id in sorted(selected):
         option = selected[race_id]
         venue, distance, grade, field_size = target_metadata(option, race_id)
@@ -1337,6 +1591,16 @@ def build_out_of_time_manifest(
                 "race_id": race_id, "box_number": box,
                 "status": "OUTCOME_UNOPENED_OUT_OF_TIME",
             })
+            alignment_rows.append({
+                "split": OUT_OF_TIME_SCOPE,
+                "race_id": race_id,
+                "box_number": box,
+                "row_id": row_id(race_id, box),
+                "dog_name_token": dog_token(participant["dog_name"]),
+                "canonical_runner_id": canonical_runner_id(
+                    race_id, box, participant["dog_name"]
+                ),
+            })
         if len(verified_roster) != len(participants):
             raise ValueError(f"out-of-time roster count mismatch: {race_id}")
         for role, path, digest in (
@@ -1350,9 +1614,14 @@ def build_out_of_time_manifest(
             })
     stable_csv(output_dir / "out_of_time_races.csv", list(race_rows[0]) if race_rows else ["race_id"], race_rows)
     stable_csv(output_dir / "out_of_time_runners.csv", list(runner_rows[0]) if runner_rows else ["row_id"], runner_rows)
-    stable_csv(output_dir / "out_of_time_source_inventory.csv", list(source_rows[0]) if source_rows else ["race_id"], source_rows)
+    stable_csv(sealed_dir / "out_of_time_source_inventory.csv", list(source_rows[0]) if source_rows else ["race_id"], source_rows)
+    stable_csv(
+        sealed_dir / "out_of_time_runner_alignment.csv",
+        list(alignment_rows[0]) if alignment_rows else ["race_id"],
+        alignment_rows,
+    )
     exclusion_fields = ["race_id", "race_date", "source_path", "source_sha256", "source_bytes", "reason"]
-    stable_csv(output_dir / "out_of_time_exclusions.csv", exclusion_fields, exclusions)
+    stable_csv(sealed_dir / "out_of_time_exclusions.csv", exclusion_fields, exclusions)
     summary = {
         "schema_version": "form_only_v1_out_of_time_manifest_v2",
         "status": "OUTCOME_UNOPENED_OUT_OF_TIME", "outcomes_opened": False,
@@ -1375,7 +1644,7 @@ def build_out_of_time_manifest(
             raise ValueError("frozen manifest counts do not match source-derived roster")
         summary["bound_freeze"] = {
             "aggregate_sha256": freeze_binding["freeze_aggregate_sha256"],
-            "files": freeze_binding["freeze_records"],
+            "file_count": len(freeze_binding["freeze_records"]),
         }
     summary["selected_source_set_sha256"] = source_set_digest(
         {
@@ -1417,8 +1686,9 @@ def write_feature_contract(output_dir: Path) -> None:
         },
         "non_feature_keys": ["row_id", "race_id"],
         "identity_policy": (
-            "dog tokens exist only inside the sealed card/sidecar/label alignment boundary; "
-            "emitted row IDs are SHA-256 opaque and domain-separated by split and race"
+            "trainer row IDs derive only from race identity plus box; dog names, tokens, "
+            "digests, alignment maps, source paths, and cross-race join keys exist only "
+            "inside the separately manifested sealed-validation boundary"
         ),
         "deferred": ["speed", "times", "sectionals", "opponent_strength", "high_dimensional_interactions"],
         "forbidden": sorted(FORBIDDEN_FEATURE_TOKENS),
@@ -1451,8 +1721,14 @@ def write_market_coverage(output_dir: Path) -> None:
 
 def validate_trainer_visible_artifacts(output_dir: Path) -> None:
     identity_scopes: dict[str, set[tuple[str, str]]] = defaultdict(set)
-    for name in sorted(GENERATED_ARTIFACT_NAMES):
+    required_nonempty_csv = {
+        "development_features.csv", "development_races.csv", "development_runners.csv",
+        "out_of_time_races.csv", "out_of_time_runners.csv",
+    }
+    for name in sorted(TRAINER_ARTIFACT_NAMES):
         path = output_dir / name
+        if not path.is_file() or path.stat().st_size == 0:
+            raise ValueError(f"missing or empty trainer artifact: {name}")
         text = path.read_text(encoding="utf-8")
         if "|dog:" in text:
             raise ValueError(f"sealed dog alignment key leaked into artifact: {name}")
@@ -1462,13 +1738,17 @@ def validate_trainer_visible_artifacts(output_dir: Path) -> None:
                 forbidden = set(reader.fieldnames or []).intersection(FORBIDDEN_ARTIFACT_FIELDS)
                 if forbidden:
                     raise ValueError(f"identity-bearing fields in {name}: {sorted(forbidden)}")
+                rows_seen = 0
                 split = OUT_OF_TIME_SCOPE if name.startswith("out_of_time_") else DEVELOPMENT_SCOPE
                 for row in reader:
+                    rows_seen += 1
                     race_id = row.get("race_id") or ""
                     for key in ("row_id", "entity_id"):
                         value = row.get(key) or ""
                         if re.fullmatch(r"[0-9a-f]{64}", value):
                             identity_scopes[value].add((split, race_id))
+                if name in required_nonempty_csv and rows_seen == 0:
+                    raise ValueError(f"empty generated trainer CSV: {name}")
         elif path.suffix == ".json":
             payload = json.loads(text)
             stack = [payload]
@@ -1486,45 +1766,71 @@ def validate_trainer_visible_artifacts(output_dir: Path) -> None:
         raise ValueError("opaque runner ID links multiple races or splits")
 
 
-def write_artifact_manifest(output_dir: Path) -> dict[str, Any]:
-    rows = []
-    for name in sorted(GENERATED_ARTIFACT_NAMES):
+def write_trainer_input_manifest(output_dir: Path) -> None:
+    allowed = []
+    for name in sorted(TRAINER_ARTIFACT_NAMES - {"trainer_input_manifest.json"}):
         path = output_dir / name
-        if not path.is_file():
-            raise FileNotFoundError(f"missing generated artifact: {path}")
+        if not path.is_file() or path.stat().st_size == 0:
+            raise ValueError(f"missing or empty generated artifact: {path}")
+        allowed.append({"path": name, "sha256": sha256_path(path), "bytes": path.stat().st_size})
+    stable_json(output_dir / "trainer_input_manifest.json", {
+        "schema_version": "form_only_v1_trainer_input_manifest_v1",
+        "trust_domain": "TRAINER_VISIBLE_AUTHORITATIVE",
+        "allowed_files": allowed,
+        "row_identity": "sha256(FORM_ONLY_V1|race_box|race_id|box_number)",
+        "sealed_validation_bundle": "NOT_TRAINER_READABLE",
+        "non_authoritative_diagnostic_bundle": "NOT_TRAINER_INPUT",
+        "forbidden_roots": ["sealed_validation", "non_authoritative_diagnostic"],
+    })
+
+
+def write_artifact_manifest(
+    output_dir: Path, names: set[str], *, filename: str = "artifact-manifest.sha256"
+) -> dict[str, Any]:
+    rows = []
+    for name in sorted(names):
+        path = output_dir / name
+        if not path.is_file() or path.stat().st_size == 0:
+            raise ValueError(f"missing or empty generated artifact: {path}")
         rows.append({"path": path.name, "sha256": sha256_path(path), "bytes": path.stat().st_size})
     text = "".join(f"{row['sha256']}  {row['path']}\n" for row in rows)
-    (output_dir / "artifact-manifest.sha256").write_text(text, encoding="utf-8")
+    (output_dir / filename).write_text(text, encoding="utf-8")
     return {"files": rows, "aggregate_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()}
 
 
 def verify_expected_output(
-    summary: Mapping[str, Any], artifact_manifest: Mapping[str, Any], expected: Mapping[str, Any]
+    summary: Mapping[str, Any], manifests: Mapping[str, Mapping[str, Any]], expected: Mapping[str, Any]
 ) -> None:
     if not expected:
         raise ValueError("reproducibility contract has no expected_output")
-    actual_counts = {
+    authoritative_counts = {
         "candidate_races": summary["development"]["candidate_race_count"],
         "candidate_runners": summary["development"]["candidate_runner_count"],
         "included_races": summary["development"]["included_race_count"],
         "included_runners": summary["development"]["included_runner_count"],
         "sidecar_only_exclusions": summary["development"]["sidecar_only_runner_exclusion_count"],
+        "out_of_time_races": summary["out_of_time"]["included_race_count"],
+        "out_of_time_runners": summary["out_of_time"]["included_runner_count"],
+    }
+    diagnostic_counts = {
         "overlap_races": summary["reconciliation"]["overlap_race_count"],
         "overlap_runners": summary["reconciliation"]["overlap_runner_count"],
         "history_differences": summary["reconciliation"]["history_discrepancy_count"],
         "recency_differences": summary["reconciliation"]["recency_discrepancy_count"],
         "grade_differences": summary["reconciliation"]["grade_discrepancy_count"],
         "unexplained_differences": summary["reconciliation"]["unexplained_mismatch_count"],
-        "out_of_time_races": summary["out_of_time"]["included_race_count"],
-        "out_of_time_runners": summary["out_of_time"]["included_runner_count"],
     }
-    if actual_counts != expected.get("counts"):
-        raise ValueError(f"expected output count mismatch: {actual_counts}")
-    actual_files = {row["path"]: row["sha256"] for row in artifact_manifest["files"]}
-    if actual_files != expected.get("artifact_files"):
-        raise ValueError("expected output artifact hash mismatch")
-    if artifact_manifest["aggregate_sha256"] != expected.get("artifact_manifest_sha256"):
-        raise ValueError("expected output aggregate hash mismatch")
+    if authoritative_counts != expected.get("authoritative_counts"):
+        raise ValueError(f"expected authoritative count mismatch: {authoritative_counts}")
+    if diagnostic_counts != expected.get("diagnostic_counts"):
+        raise ValueError(f"expected diagnostic count mismatch: {diagnostic_counts}")
+    for domain, manifest in manifests.items():
+        expected_domain = (expected.get("domains") or {}).get(domain) or {}
+        actual_files = {row["path"]: row["sha256"] for row in manifest["files"]}
+        if actual_files != expected_domain.get("artifact_files"):
+            raise ValueError(f"expected {domain} artifact hash mismatch")
+        if manifest["aggregate_sha256"] != expected_domain.get("aggregate_sha256"):
+            raise ValueError(f"expected {domain} aggregate hash mismatch")
 
 
 def build_all(
@@ -1538,25 +1844,61 @@ def build_all(
     enforce_expected_output: bool = True,
 ) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
+    sealed_dir = output_dir / "sealed_validation"
+    diagnostic_dir = output_dir / "non_authoritative_diagnostic"
+    sealed_dir.mkdir(parents=True, exist_ok=True)
+    diagnostic_dir.mkdir(parents=True, exist_ok=True)
     reproducibility = load_reproducibility_contract(reproducibility_contract_path)
     loaded = load_development_sources(eligibility_dir, training_dir, reproducibility)
-    development_summary, _selected = build_development_packet(loaded, output_dir)
-    reconciliation_summary = build_overlap_reconciliation(loaded, output_dir)
+    development_summary, _selected = build_development_packet(loaded, output_dir, sealed_dir)
     out_of_time_summary = build_out_of_time_manifest(
-        evidence_roots, output_dir, reproducibility, out_of_time_freeze_dir
+        evidence_roots,
+        output_dir,
+        reproducibility,
+        out_of_time_freeze_dir,
+        sealed_dir,
     )
     write_feature_contract(output_dir)
     write_market_coverage(output_dir)
+    write_trainer_input_manifest(output_dir)
     validate_trainer_visible_artifacts(output_dir)
-    artifact_manifest = write_artifact_manifest(output_dir)
+    trainer_manifest = write_artifact_manifest(output_dir, TRAINER_ARTIFACT_NAMES)
+    trainer_before_diagnostics = trainer_manifest["aggregate_sha256"]
+    reconciliation_summary = build_overlap_reconciliation(loaded, diagnostic_dir)
+    sealed_manifest = write_artifact_manifest(
+        sealed_dir,
+        SEALED_VALIDATION_ARTIFACT_NAMES,
+        filename="sealed-validation-manifest.sha256",
+    )
+    diagnostic_manifest = write_artifact_manifest(
+        diagnostic_dir,
+        DIAGNOSTIC_ARTIFACT_NAMES,
+        filename="non-authoritative-diagnostic-manifest.sha256",
+    )
+    trainer_after_diagnostics = write_artifact_manifest(
+        output_dir, TRAINER_ARTIFACT_NAMES
+    )["aggregate_sha256"]
+    if trainer_before_diagnostics != trainer_after_diagnostics:
+        raise ValueError("diagnostic construction changed trainer artifacts")
+    manifests = {
+        "trainer": trainer_manifest,
+        "sealed_validation": sealed_manifest,
+        "non_authoritative_diagnostic": diagnostic_manifest,
+    }
     summary = {
         "development": development_summary,
         "reconciliation": reconciliation_summary,
         "out_of_time": out_of_time_summary,
-        "artifact_manifest": artifact_manifest,
+        "artifact_manifest": trainer_manifest,
+        "domain_manifests": manifests,
+        "diagnostic_isolation": {
+            "trainer_aggregate_before": trainer_before_diagnostics,
+            "trainer_aggregate_after": trainer_after_diagnostics,
+            "byte_identical": True,
+        },
     }
     if enforce_expected_output:
-        verify_expected_output(summary, artifact_manifest, reproducibility.get("expected_output") or {})
+        verify_expected_output(summary, manifests, reproducibility.get("expected_output") or {})
     return summary
 
 
