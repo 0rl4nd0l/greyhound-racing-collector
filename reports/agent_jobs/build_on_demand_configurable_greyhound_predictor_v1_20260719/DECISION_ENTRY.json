@@ -1,0 +1,44 @@
+{
+  "blocks": [
+    "merge_or_ready_for_review_claim_while_pr46_descriptor_leak_remains",
+    "live_execution_without_named_race_and_explicit_owner_authorization",
+    "activation_deployment_betting_shadow_append_or_production_persistence"
+  ],
+  "claim_id": "build_on_demand_configurable_greyhound_predictor_v1_20260719",
+  "dataset_version": "master_c1dfd464_pr46_624dde3067edda1bd045573e8bec5c9d749c6836_pr47_0ae5937cde87131c714fb7383c58ce13e3cfbc06_receipt_reuse_021889abd5ac3b05134fb4aafaa42fcf511bf0f5_20260719",
+  "decision": "PASS_WITH_DEPENDENCY_BLOCK",
+  "decision_delta": "The one-command fixture path is complete and independently reviewed, while publication remains draft-only because the exact PR #46 ancestor has a known unused writer descriptor leak.",
+  "decision_id": "on-demand-configurable-predictor-v1-20260719-pass-with-pr46-dependency-block",
+  "does_not_block": [
+    "draft_review_of_the_new_isolated_operator_path",
+    "continued_market_only_implied_baseline",
+    "separate_repair_of_pr46"
+  ],
+  "evidence_hash": "sha256:610c39c526589197e1e83a6ed6be45bb922d4d5126bb79d661ed39c112653f50",
+  "evidence_refs": [
+    "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/VALIDATION.md",
+    "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/INDEPENDENT_REVIEW.md",
+    "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/pr46-integrity.json"
+  ],
+  "hypothesis_id": "on_demand_configurable_prejump_predictor_v1",
+  "invalidation_conditions": [
+    "The command can reclaim an existing lock, append shadow or production state, or emit noncanonical ordinary failures.",
+    "Target, same-day, future, or ambiguous runner history reaches materialized features.",
+    "Frozen model, manifest, config, runner, or replay identity can drift without a hard failure."
+  ],
+  "outcome_status": "ADVANCED",
+  "phase_after": "draft_on_demand_predictor_complete_with_pr46_dependency_block",
+  "phase_before": "separate_receipt_and_artifact_scoring_components",
+  "program_track": "offline_development",
+  "project_id": "greyhound_racing_collector",
+  "reopen_conditions": [
+    "A separate exact-head PR #46 repair is independently proven.",
+    "The owner names a pre-jump race and explicitly authorizes one live research run."
+  ],
+  "run_id": "l4nd0-System-Product-Name:2950661:build_on_demand_configurable_greyhound_predictor_v1_20260719",
+  "scope_fingerprint": "c75761b819279925f1dfeb96c548cc1d93f68d5f0529c1bc60759a44f74dbc94",
+  "source_class": "exact_master_pr46_pr47_and_local_021889ab_dependency_lineage_plus_isolated_fixture_only_validation",
+  "target_transition": "one_reproducible_configurable_on_demand_prejump_research_prediction_command_is_available_as_a_clean_draft_pr",
+  "task_id": "build_on_demand_configurable_greyhound_predictor_v1_20260719",
+  "validated_at": "2026-07-19T14:11:30+10:00"
+}

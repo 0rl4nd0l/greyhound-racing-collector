@@ -1,0 +1,1 @@
+Read-only/package validation included: uv run scripts/predict_race_now.py --help; focused pytest 27; combined relevant pytest 371; Ruff check/format; py_compile; Git diff checks; exact Git ancestry/function hashes; independent read-only review. The live operator command was not executed.

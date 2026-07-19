@@ -1,0 +1,14 @@
+{
+  "canonical_stdout": true,
+  "config_selection": true,
+  "deterministic_replay": true,
+  "exact_named_race_resolution": true,
+  "feature_sealing": true,
+  "immediate_isolated_capture": true,
+  "live_prediction": false,
+  "model_alias_resolution": true,
+  "production_persisted": false,
+  "receipt_reuse": true,
+  "research_only": true,
+  "status": "PASS"
+}

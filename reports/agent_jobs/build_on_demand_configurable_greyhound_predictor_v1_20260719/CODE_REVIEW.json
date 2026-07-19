@@ -1,0 +1,7 @@
+{
+  "dependency_block": "PR46_BLOCKED_DO_NOT_MERGE_append_shadow_record_fd_leak",
+  "findings": [],
+  "reviewed_commit": "76f17dbeec78a43e5493a8049ff84c47a13d3e8f",
+  "status": "PASS_WITH_DEPENDENCY_BLOCK",
+  "summary": "The new command is fail-closed, research-only, no-steal, query-only for source history, and isolated from the known blocked shadow writer. Earlier replay, blocker-bundle, source-containment, descriptor-lifecycle, lock, packaging, and dependency-exception findings were corrected and regression-tested."
+}

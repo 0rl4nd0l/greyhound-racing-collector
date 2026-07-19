@@ -1,0 +1,12 @@
+{
+  "append_shadow_record_current_sha256": "9635e692b7672f73567566e3b15cb79327c8c407ee356c9e45749f5a10c94e2c",
+  "append_shadow_record_pr46_sha256": "9635e692b7672f73567566e3b15cb79327c8c407ee356c9e45749f5a10c94e2c",
+  "known_defect": "staged_fd_leaks_if_os_fchmod_or_os_fdopen_fails_after_os_open",
+  "operator_calls_append_shadow_record": false,
+  "pr46_head": "624dde3067edda1bd045573e8bec5c9d749c6836",
+  "score_from_artifacts_current_sha256": "cb08981fd4da5e845926aadd88bf7bf0f8e77882a327cd2ce9d09e82b56362b3",
+  "score_from_artifacts_pr47_sha256": "cb08981fd4da5e845926aadd88bf7bf0f8e77882a327cd2ce9d09e82b56362b3",
+  "score_race_current_sha256": "15cd696e3dd8accfe7c496dbea37acbf8a64685043d37a76965c05f9ae84b09b",
+  "score_race_pr46_sha256": "15cd696e3dd8accfe7c496dbea37acbf8a64685043d37a76965c05f9ae84b09b",
+  "status": "BLOCKED_DO_NOT_MERGE_UNUSED_WRITER_SCORING_ONLY_PROVEN_EXACT"
+}

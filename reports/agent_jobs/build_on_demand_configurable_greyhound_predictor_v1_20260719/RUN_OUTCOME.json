@@ -1,0 +1,42 @@
+{
+  "blocked_by": [
+    "PR #46 exact head is BLOCKED_DO_NOT_MERGE because append_shadow_record can leak the staged descriptor after os.open when os.fchmod or os.fdopen fails.",
+    "Live network/browser behavior remains unproven because no named race and live authorization were supplied."
+  ],
+  "changed_claims": [
+    "One packaged command now produces an isolated configurable pre-jump research prediction from a verified receipt or immediate isolated capture.",
+    "The command never calls the shadow append path and never treats a stale, unreadable, or dead-owner lock as reclaimable.",
+    "Successful bundles are hash-sealed and residual replay reruns the frozen scorer at the recorded timestamp."
+  ],
+  "decision_delta": "Implemented and independently reviewed the configurable on-demand research predictor with exact race resolution, no-steal concurrency, sealed pre-cutoff history, finite model/config selection, canonical bundles, and deterministic replay. Publication is draft-only and merge-blocked by the separate PR #46 descriptor leak.",
+  "new_evidence": [
+    "Final focused suite: 27 passed.",
+    "Final relevant combined suite: 371 passed.",
+    "Exact uv command help, Ruff, format, compile, and diff checks passed.",
+    "Independent review returned PASS_WITH_DEPENDENCY_BLOCK with no remaining findings.",
+    "No live prediction or production/runtime mutation occurred."
+  ],
+  "new_goal_permitted": false,
+  "produced_artifacts": [
+    "scripts/predict_race_now.py",
+    "src/predictor/on_demand.py",
+    "configs/prediction/manual-default.json",
+    "configs/prediction/market-only.json",
+    "tests/test_predict_race_now.py",
+    "docs/on_demand_race_prediction.md",
+    "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719"
+  ],
+  "resume_only_if": "Merge readiness requires a separately reviewed repair of PR #46's exact staged-descriptor leak; live execution additionally requires the owner to name one pre-jump race and explicitly authorize that run.",
+  "reused_claims": [
+    "PR #45 remains merged at master c1dfd464cf6ecfb2034f96ac1a8d3ea58d4e6afa.",
+    "PR #47 score_from_artifacts remains exact at 0ae5937cde87131c714fb7383c58ce13e3cfbc06.",
+    "Local receipt reuse remains bound to 021889abd5ac3b05134fb4aafaa42fcf511bf0f5.",
+    "market_only_implied remains the production baseline."
+  ],
+  "scope_fingerprint": "c75761b819279925f1dfeb96c548cc1d93f68d5f0529c1bc60759a44f74dbc94",
+  "state_after": "configurable_on_demand_predictor_published_as_draft_with_pr46_dependency_block_and_no_live_run",
+  "state_before": "artifact_scorer_and_receipt_reuse_existed_without_one_configurable_immediate_operator_command",
+  "status": "ADVANCED",
+  "terminal_stop": "PASS_WITH_DEPENDENCY_BLOCK",
+  "used_capabilities": ["READ", "REPORT_WRITE", "DATASET_MATERIALIZE", "CODE_EDIT", "PUBLISH"]
+}

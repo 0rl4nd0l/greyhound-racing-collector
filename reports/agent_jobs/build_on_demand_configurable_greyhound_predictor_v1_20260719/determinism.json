@@ -1,0 +1,9 @@
+{
+  "bundle_manifest_verification": "PASS",
+  "canonical_config": "PASS",
+  "canonical_stdout": "PASS",
+  "market_only_recompute": "PASS",
+  "residual_exact_prediction_compare": "PASS",
+  "residual_frozen_rescore_at_recorded_timestamp": "PASS",
+  "status": "PASS"
+}
