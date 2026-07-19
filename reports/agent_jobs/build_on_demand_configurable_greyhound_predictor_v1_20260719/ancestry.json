@@ -2,6 +2,8 @@
   "implementation_commit": "76f17dbeec78a43e5493a8049ff84c47a13d3e8f",
   "local_receipt_dependency": "021889abd5ac3b05134fb4aafaa42fcf511bf0f5",
   "master": "c1dfd464cf6ecfb2034f96ac1a8d3ea58d4e6afa",
+  "published_draft_pr": 53,
+  "published_head_before_closeout_update": "8936ea4a7366132f31f176278453b483e3fe2a76",
   "pr46": {
     "ancestor": true,
     "head": "624dde3067edda1bd045573e8bec5c9d749c6836",

@@ -10,6 +10,7 @@
   ],
   "decision_delta": "Implemented and independently reviewed the configurable on-demand research predictor with exact race resolution, no-steal concurrency, sealed pre-cutoff history, finite model/config selection, canonical bundles, and deterministic replay. Publication is draft-only and merge-blocked by the separate PR #46 descriptor leak.",
   "new_evidence": [
+    "Draft PR #53 was opened by normal push and remains explicitly blocked from merge.",
     "Final focused suite: 27 passed.",
     "Final relevant combined suite: 371 passed.",
     "Exact uv command help, Ruff, format, compile, and diff checks passed.",
