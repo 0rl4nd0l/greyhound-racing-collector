@@ -1,6 +1,6 @@
 ---
 job_id: odds_capture_latency_publish_v1_20260719
-lane: Evaluation
+lane: Reporting
 supporting_lanes:
   - Provenance
 owner: Codex
