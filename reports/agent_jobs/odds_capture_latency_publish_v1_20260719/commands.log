@@ -6,3 +6,5 @@
 2026-07-19T14:59+10:00 non-force push created origin/codex/odds-capture-latency-v1-20260719
 2026-07-19T14:59+10:00 draft PR 54 created against codex/early-residual-shadow-activation-v1-20260716
 2026-07-19T14:59+10:00 PR 54 verified open, draft, base f776bfd142b1e8acd3befca330eee36f490402ed, creation head 78a6753de536009100a9d2ca268bfca5e1967490, mergeable; one hardening check passed and one was pending
+2026-07-19T15:01+10:00 publication receipt commit 10effbb0 pushed; remote and local heads matched and PR 54 remained open, draft, and based at f776bfd142b1e8acd3befca330eee36f490402ed
+2026-07-19T15:01+10:00 V2 publish claim released; decision odds-capture-latency-draft-pr54-publication-20260719-v1 appended
