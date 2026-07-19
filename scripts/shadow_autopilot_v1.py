@@ -6584,6 +6584,109 @@ def final_verdict_for(
     return "AUTOPILOT_READY"
 
 
+def lightweight_odds_capture_result(
+    *,
+    run_id: str,
+    generated_at: datetime,
+    current_time: str,
+    output_dir: Path,
+    db_path: Path,
+    steps: Sequence[Mapping[str, Any]],
+    protected_before: Mapping[str, str | None],
+    odds_capture_refresh_report: Mapping[str, Any] | None,
+    autonomous_odds_capture_status: Mapping[str, Any],
+    residual_feature_handoff_status: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Close the explicit odds-only child before full reporting work begins."""
+
+    protected_after = protected_hashes()
+    protected_paths_unchanged = dict(protected_before) == protected_after
+    protected_changed_paths = sorted(
+        key
+        for key, before_value in protected_before.items()
+        if protected_after.get(key) != before_value
+    )
+    inserted_rows = int(
+        autonomous_odds_capture_status.get("inserted_live_odds_rows") or 0
+    )
+    allowed_odds_db_change = (
+        bool(protected_changed_paths)
+        and inserted_rows > 0
+        and set(protected_changed_paths).issubset({relpath(db_path)})
+    )
+    protected_paths_unchanged_or_allowed = (
+        protected_paths_unchanged or allowed_odds_db_change
+    )
+    required_outputs = [
+        output_dir / "odds_capture_refresh_report.json",
+        output_dir / "autonomous_live_odds_capture_status.json",
+        output_dir / "residual_feature_handoff_status.json",
+    ]
+    required_outputs_present = all(path.exists() for path in required_outputs)
+    final_verdict = final_verdict_for(
+        steps=steps,
+        protected_paths_unchanged=protected_paths_unchanged_or_allowed,
+        required_outputs_present=required_outputs_present,
+    )
+    report = {
+        "schema_version": "shadow_autopilot_odds_capture_child_v1",
+        "mode": "odds_capture_lightweight",
+        "run_id": run_id,
+        "generated_at": generated_at.isoformat(),
+        "current_time": current_time,
+        "output_dir": relpath(output_dir),
+        "final_verdict": final_verdict,
+        "steps": [dict(step) for step in steps],
+        "odds_capture_refresh_report": dict(odds_capture_refresh_report or {}),
+        "autonomous_live_odds_capture_status": dict(
+            autonomous_odds_capture_status
+        ),
+        "residual_feature_handoff_status": dict(
+            residual_feature_handoff_status
+        ),
+        "protected_hashes_before": dict(protected_before),
+        "protected_hashes_after": protected_after,
+        "protected_paths_unchanged": protected_paths_unchanged,
+        "protected_changed_paths": protected_changed_paths,
+        "allowed_odds_db_change": allowed_odds_db_change,
+        "protected_paths_unchanged_or_allowed": (
+            protected_paths_unchanged_or_allowed
+        ),
+        "required_output_files": [path.name for path in required_outputs],
+        "required_outputs_present": required_outputs_present,
+        "full_reporting_deferred_to_full_daemon": True,
+        "no_write_guarantees": {
+            **NO_WRITE_GUARANTEES,
+            "db_write": inserted_rows > 0,
+            "db_write_scope": (
+                "append_only_live_odds" if inserted_rows > 0 else "none"
+            ),
+        },
+    }
+    write_json(output_dir / "odds_capture_child_report.json", report)
+    write_text(output_dir / "final_status.txt", final_verdict + "\n")
+    write_json(output_dir / "output_manifest.json", output_manifest(output_dir))
+    return {
+        "output_dir": relpath(output_dir),
+        "final_verdict": final_verdict,
+        "mode": "odds_capture_lightweight",
+        "autonomous_live_odds_capture_status": (
+            autonomous_odds_capture_status.get("status")
+        ),
+        "autonomous_live_odds_capture_ready_count": (
+            autonomous_odds_capture_status.get("ready_count")
+        ),
+        "autonomous_live_odds_capture_inserted_rows": inserted_rows,
+        "residual_feature_handoff_status": residual_feature_handoff_status.get(
+            "status"
+        ),
+        "protected_paths_unchanged_or_allowed": (
+            protected_paths_unchanged_or_allowed
+        ),
+        "no_write_guarantees": report["no_write_guarantees"],
+    }
+
+
 def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
     generated_at = datetime.now().astimezone()
     run_id = args.run_id or now_id(generated_at)
@@ -6606,6 +6709,30 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
     skip_primary_refresh = bool(getattr(args, "skip_primary_refresh", False))
     if skip_primary_refresh and not args.skip_shadow_run and not args.input_dir:
         raise RuntimeError("skip_primary_refresh_requires_skip_shadow_run_or_input_dir")
+    if args.odds_capture_lightweight:
+        required_true = {
+            "enable_autonomous_odds_capture": args.enable_autonomous_odds_capture,
+            "skip_primary_refresh": skip_primary_refresh,
+            "skip_shadow_run": args.skip_shadow_run,
+            "skip_odds_snapshot": args.skip_odds_snapshot,
+            "skip_result_join": args.skip_result_join,
+            "skip_aggregate": args.skip_aggregate,
+            "skip_status": args.skip_status,
+            "skip_unified_dataset": args.skip_unified_dataset,
+        }
+        missing = sorted(name for name, enabled in required_true.items() if not enabled)
+        if missing:
+            raise RuntimeError(
+                "odds_capture_lightweight_requires:" + ",".join(missing)
+            )
+        if args.enable_autonomous_result_capture:
+            raise RuntimeError(
+                "odds_capture_lightweight_forbids_autonomous_result_capture"
+            )
+        if args.input_dir is not None or args.skip_refresh:
+            raise RuntimeError(
+                "odds_capture_lightweight_requires_internal_candidate_refresh"
+            )
     if not args.skip_refresh and not skip_primary_refresh:
         refresh_command = [
             *refresh_command_prefix(args.refresh_command_mode),
@@ -6813,6 +6940,19 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
                 ),
                 "supplemental_input_count": handoff["supplemental_input_count"],
             }
+        )
+    if args.odds_capture_lightweight:
+        return lightweight_odds_capture_result(
+            run_id=run_id,
+            generated_at=generated_at,
+            current_time=current_time,
+            output_dir=output_dir,
+            db_path=args.db,
+            steps=steps,
+            protected_before=protected_before,
+            odds_capture_refresh_report=odds_capture_refresh_report,
+            autonomous_odds_capture_status=autonomous_odds_capture_status,
+            residual_feature_handoff_status=handoff,
         )
     daily_input_paths = [
         *input_dirs,
@@ -8423,6 +8563,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--skip-aggregate", action="store_true")
     parser.add_argument("--skip-status", action="store_true")
     parser.add_argument("--skip-unified-dataset", action="store_true")
+    parser.add_argument("--odds-capture-lightweight", action="store_true")
     parser.add_argument("--shadow-run-dir", type=Path)
     parser.add_argument("--enable-autonomous-odds-capture", action="store_true")
     parser.add_argument("--execute-autonomous-odds-capture", action="store_true")

@@ -1,0 +1,42 @@
+{
+  "decision_id": "odds-capture-latency-repo-implementation-20260719-v1",
+  "scope_fingerprint": "5f6b64a02bdc64f18f09b06a39ff56634be0aca138f5d8ca864377aed5391057",
+  "task_id": "odds_capture_latency_v1_20260719",
+  "run_id": "l4nd0-System-Product-Name:3161269:odds_capture_latency_v1_20260719",
+  "project_id": "greyhound_racing_collector",
+  "claim_id": "odds_capture_latency_v1_20260719",
+  "hypothesis_id": "explicit_lightweight_odds_child_and_cycle_scoped_reuse_v1",
+  "program_track": "offline_development",
+  "source_class": "pr48_exact_head_plus_synthetic_and_copied_no_write_fixtures",
+  "dataset_version": "pr48_f776bfd142b1e8acd3befca330eee36f490402ed_20260719",
+  "evidence_hash": "sha256:825ff52e31f72afd1c653e7348e80adc588f19cb517a5728b65fe0b670a47d44",
+  "target_transition": "one reviewed stacked implementation provides a separate lightweight child contract, one history load and browser session per batch, and durable low-priority service controls without changing capture semantics",
+  "phase_before": "live odds-only cycles run the full reporting tail and repeat database and browser setup per captured race",
+  "phase_after": "one reviewed stacked implementation provides a separate lightweight child contract, one history load and browser session per batch, and durable low-priority service controls without changing capture semantics",
+  "decision": "PASS",
+  "outcome_status": "ADVANCED",
+  "decision_delta": "The PR48-stacked repository now has an explicit lightweight odds child, cycle-scoped model/history and browser reuse, per-race fail-closed isolation, preserved early scoring before lock release, and durable best-effort service controls; live latency improvement remains unclaimed until separately authorized runtime proof.",
+  "evidence_refs": [
+    "reports/agent_jobs/odds_capture_latency_v1_20260719/STATE.md",
+    "reports/agent_jobs/odds_capture_latency_v1_20260719/VALIDATION.md",
+    "reports/agent_jobs/odds_capture_latency_v1_20260719/RUNTIME_PROOF.md",
+    "reports/agent_jobs/odds_capture_latency_v1_20260719/CODE_REVIEW.json"
+  ],
+  "blocks": [
+    "claiming observed PC latency or live-cycle I/O improvement before separately authorized deployment and runtime proof"
+  ],
+  "does_not_block": [
+    "reviewing or publishing the stacked repository implementation",
+    "continued operation of the unchanged installed odds and full-daemon units"
+  ],
+  "validated_at": "2026-07-19T14:50:23+10:00",
+  "invalidation_conditions": [
+    "The lightweight child begins running full reporting builders or makes full-mode outputs optional.",
+    "Batching weakens per-race provenance, strict capture checks, failure isolation, or early scoring before lock release.",
+    "The focused suites, compile, CI-critical lint, diff, or service-generation checks stop passing."
+  ],
+  "reopen_conditions": [
+    "A separately authorized runtime lane installs the reviewed unit and observes a natural strict pre-jump capture.",
+    "A review or runtime observation finds a regression in capture completeness, provenance, lock ordering, or full-daemon functionality."
+  ]
+}

@@ -424,12 +424,67 @@ def _auto_scrape_odds_allowed(
         return False, f"feature flag unavailable: {exc}"
 
 
+class SportsbetOddsFetchSession:
+    """Own one lazily initialized browser for a bounded capture batch."""
+
+    def __init__(self, db_path: str):
+        self.db_path = db_path
+        self._integrator: Any | None = None
+        self.setup_count = 0
+        self.restart_count = 0
+
+    def fetch(
+        self,
+        db_path: str,
+        venue: Any,
+        race_number: int | None,
+        race_date: Any = None,
+        *,
+        allow_auto_scrape_odds: bool | None = None,
+    ) -> dict[str, Any]:
+        from sportsbet_odds_integrator import SportsbetOddsIntegrator
+
+        if self._integrator is None:
+            self._integrator = SportsbetOddsIntegrator(
+                self.db_path,
+                allow_auto_scrape_odds=True,
+                setup_database=False,
+            )
+        had_driver = self._integrator.driver is not None
+        try:
+            return fetch_odds_for_target_race(
+                db_path,
+                venue,
+                race_number,
+                race_date,
+                allow_auto_scrape_odds=allow_auto_scrape_odds,
+                integrator=self._integrator,
+            )
+        finally:
+            if not had_driver and self._integrator.driver is not None:
+                self.setup_count += 1
+
+    def reset(self) -> None:
+        if self._integrator is None:
+            return
+        self._integrator.close_driver()
+        self._integrator = None
+        self.restart_count += 1
+
+    def close(self) -> None:
+        if self._integrator is not None:
+            self._integrator.close_driver()
+            self._integrator = None
+
+
 def fetch_odds_for_target_race(
     db_path: str,
     venue: Any,
     race_number: int | None,
     race_date: Any = None,
     allow_auto_scrape_odds: bool | None = None,
+    *,
+    integrator: Any | None = None,
 ) -> dict[str, Any]:
     """Fetch current Sportsbet odds for a target race without writing DB rows."""
 
@@ -456,19 +511,21 @@ def fetch_odds_for_target_race(
     target_date = _iso_date(race_date)
     target_names = _target_names(venue)
 
-    from sportsbet_odds_integrator import SportsbetOddsIntegrator
-
     print(
         "🔄 Auto odds fetch enabled "
         f"because {opt_in_source}; target={venue} R{race_number} {target_date}"
     )
-    integrator = SportsbetOddsIntegrator(
-        db_path,
-        allow_auto_scrape_odds=True,
-        setup_database=False,
-    )
+    owns_integrator = integrator is None
+    if integrator is None:
+        from sportsbet_odds_integrator import SportsbetOddsIntegrator
+
+        integrator = SportsbetOddsIntegrator(
+            db_path,
+            allow_auto_scrape_odds=True,
+            setup_database=False,
+        )
     try:
-        if not integrator.setup_driver():
+        if integrator.driver is None and not integrator.setup_driver():
             summary["warnings"].append("selenium driver unavailable")
             return summary
         driver = integrator.driver
@@ -523,7 +580,8 @@ def fetch_odds_for_target_race(
             summary["warnings"].append("race found but no win odds extracted")
         return summary
     finally:
-        integrator.close_driver()
+        if owns_integrator:
+            integrator.close_driver()
 
 
 def ensure_odds_for_target_race(

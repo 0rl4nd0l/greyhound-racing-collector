@@ -26,7 +26,10 @@ ROOT_STR = str(ROOT)
 sys.path = [path for path in sys.path if path != ROOT_STR]
 sys.path.insert(0, ROOT_STR)
 
-from odds_auto_integrator import fetch_odds_for_target_race  # noqa: E402
+from odds_auto_integrator import (  # noqa: E402
+    SportsbetOddsFetchSession,
+    fetch_odds_for_target_race,
+)
 from sportsbet_odds_integrator import parse_sportsbet_runner_box_from_text  # noqa: E402
 from scripts.daily_race_ingest_shadow_orchestrator import (  # noqa: E402
     is_thedogs_source_url,
@@ -144,9 +147,15 @@ def fetch_odds_for_target_race_with_timeout(
     *,
     allow_auto_scrape_odds: bool,
     timeout_seconds: float,
+    fetch_session: SportsbetOddsFetchSession | None = None,
 ) -> dict[str, Any]:
+    fetch = (
+        fetch_session.fetch
+        if fetch_session is not None
+        else fetch_odds_for_target_race
+    )
     if timeout_seconds <= 0:
-        return fetch_odds_for_target_race(
+        return fetch(
             db_path,
             venue,
             race_number,
@@ -157,7 +166,7 @@ def fetch_odds_for_target_race_with_timeout(
     previous_timer = signal.setitimer(signal.ITIMER_REAL, float(timeout_seconds))
     signal.signal(signal.SIGALRM, _fetch_timeout_handler)
     try:
-        return fetch_odds_for_target_race(
+        return fetch(
             db_path,
             venue,
             race_number,
@@ -2535,6 +2544,7 @@ def execute_capture_plan(
     current_time_provider: Callable[[], datetime] | None = None,
     fetch_timeout_seconds: float = DEFAULT_FETCH_TIMEOUT_SECONDS,
     progress_dir: Path | None = None,
+    fetch_session: SportsbetOddsFetchSession | None = None,
 ) -> dict[str, Any]:
     time_provider = current_time_provider or (lambda: datetime.now().astimezone())
     attempts: list[dict[str, Any]] = []
@@ -2610,8 +2620,11 @@ def execute_capture_plan(
                 item.get("race_date"),
                 allow_auto_scrape_odds=True,
                 timeout_seconds=fetch_timeout_seconds,
+                fetch_session=fetch_session,
             )
         except FetchTimeoutError as exc:
+            if fetch_session is not None:
+                fetch_session.reset()
             attempt["status"] = "BLOCKED_FETCH_TIMEOUT"
             attempt["reasons"] = [f"fetch_timeout:{fetch_timeout_seconds:g}s"]
             attempt["exception_message"] = str(exc)[:500]
@@ -2619,6 +2632,8 @@ def execute_capture_plan(
             flush_attempt_progress(progress_dir, attempts=attempts)
             continue
         except Exception as exc:
+            if fetch_session is not None:
+                fetch_session.reset()
             attempt["status"] = "BLOCKED_FETCH_EXCEPTION"
             attempt["reasons"] = [f"fetch_exception:{type(exc).__name__}"]
             attempt["exception_message"] = str(exc)[:500]
@@ -2754,6 +2769,12 @@ def execute_capture_plan(
         "validation_pass_count": validation_pass_count,
         "inserted_live_odds_rows": inserted_rows,
         "fetch_timeout_seconds": fetch_timeout_seconds,
+        "browser_setup_count": (
+            int(fetch_session.setup_count) if fetch_session is not None else 0
+        ),
+        "browser_restart_count": (
+            int(fetch_session.restart_count) if fetch_session is not None else 0
+        ),
         **next_action,
         "capture_window_coverage": window_coverage,
         "attempts": attempts,
@@ -2799,15 +2820,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         current_time=current_time,
         limit=args.limit,
     )
-    report = execute_capture_plan(
-        plan,
-        db_path=args.db,
-        current_time=current_time,
-        execute=args.execute,
-        allow_auto_scrape_odds=args.allow_auto_scrape_odds,
-        fetch_timeout_seconds=args.fetch_timeout_seconds,
-        progress_dir=output_dir,
+    fetch_session = (
+        SportsbetOddsFetchSession(str(args.db))
+        if args.execute and args.allow_auto_scrape_odds
+        else None
     )
+    try:
+        report = execute_capture_plan(
+            plan,
+            db_path=args.db,
+            current_time=current_time,
+            execute=args.execute,
+            allow_auto_scrape_odds=args.allow_auto_scrape_odds,
+            fetch_timeout_seconds=args.fetch_timeout_seconds,
+            progress_dir=output_dir,
+            fetch_session=fetch_session,
+        )
+    finally:
+        if fetch_session is not None:
+            fetch_session.close()
     report = {**capture_report_identity_fields(output_dir), **report}
 
     write_json(output_dir / "autonomous_live_odds_capture_plan.json", plan)

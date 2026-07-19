@@ -4759,6 +4759,18 @@ def test_skip_primary_refresh_still_runs_odds_capture_refresh(tmp_path, monkeypa
 
     monkeypatch.setattr(autopilot, "ROOT", tmp_path)
     monkeypatch.setattr(autopilot, "protected_hashes", lambda: {})
+    for builder_name in (
+        "build_join_history",
+        "build_aggregate_timeseries",
+        "build_daily_manifest_history",
+    ):
+        monkeypatch.setattr(
+            autopilot,
+            builder_name,
+            lambda *_args, _name=builder_name, **_kwargs: (_ for _ in ()).throw(
+                AssertionError(f"{_name}_called_in_lightweight_mode")
+            ),
+        )
 
     def command_value(command, flag):
         return Path(command[command.index(flag) + 1])
@@ -4813,6 +4825,7 @@ def test_skip_primary_refresh_still_runs_odds_capture_refresh(tmp_path, monkeypa
             "--enable-autonomous-odds-capture",
             "--execute-autonomous-odds-capture",
             "--allow-auto-scrape-odds",
+            "--odds-capture-lightweight",
             "--skip-primary-refresh",
             "--skip-shadow-run",
             "--skip-odds-snapshot",
@@ -4840,22 +4853,19 @@ def test_skip_primary_refresh_still_runs_odds_capture_refresh(tmp_path, monkeypa
         "AUTONOMOUS_LIVE_ODDS_CAPTURE_NO_ELIGIBLE_WINDOWS"
     )
     assert (output_dir / "odds_capture_refresh_report.json").exists()
-    assert (output_dir / "rolling_model_comparison_status.json").exists()
-    assert (output_dir / "high_accuracy_refinement_status.json").exists()
-    rolling_status = json.loads(
-        (output_dir / "rolling_model_comparison_status.json").read_text(
-            encoding="utf-8"
-        )
+    assert (output_dir / "residual_feature_handoff_status.json").exists()
+    child = json.loads(
+        (output_dir / "odds_capture_child_report.json").read_text(encoding="utf-8")
     )
-    high_accuracy_status = json.loads(
-        (output_dir / "high_accuracy_refinement_status.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    assert rolling_status["status"] == "SKIPPED"
-    assert rolling_status["skipped_reason"] == "skip_unified_dataset_requested"
-    assert high_accuracy_status["status"] == "SKIPPED"
-    assert high_accuracy_status["skipped_reason"] == "skip_unified_dataset_requested"
+    assert child["schema_version"] == "shadow_autopilot_odds_capture_child_v1"
+    assert child["mode"] == "odds_capture_lightweight"
+    assert child["protected_paths_unchanged_or_allowed"] is True
+    assert not (output_dir / "shadow_dashboard.json").exists()
+    assert not (output_dir / "rolling_model_comparison_status.json").exists()
+    assert not (output_dir / "high_accuracy_refinement_status.json").exists()
+    assert not (output_dir / "cumulative_join_history.json").exists()
+    assert not (output_dir / "drift_report.json").exists()
+    assert not (output_dir / "DAILY_STATUS.json").exists()
     assert not (
         evidence_root / "rolling_model_comparison_odds_only_refresh_autopilot"
     ).exists()
