@@ -19,6 +19,7 @@ import json
 import math
 import os
 import re
+import stat
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
@@ -865,6 +866,87 @@ def _validate_existing_shadow_record(
     return _shadow_duplicate_identity(rescored), encoded
 
 
+def _shadow_transaction_paths(output: Path) -> tuple[Path, Path]:
+    """Return persistent-lock and replaceable-stage paths for one output."""
+
+    return (
+        output.with_name(f".{output.name}.lock"),
+        output.with_name(f".{output.name}.tmp"),
+    )
+
+
+def _remove_staged_shadow_file(staged: Path) -> None:
+    staged.unlink(missing_ok=True)
+
+
+def _write_staged_shadow_bytes(handle: Any, replacement: bytes) -> None:
+    handle.write(replacement)
+
+
+def _flush_staged_shadow_file(handle: Any) -> None:
+    handle.flush()
+
+
+def _fsync_staged_shadow_file(handle: Any) -> None:
+    os.fsync(handle.fileno())
+
+
+def _publish_staged_shadow_file(staged: Path, output: Path) -> None:
+    os.replace(staged, output)
+
+
+def _fsync_parent_directory(output: Path) -> None:
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    directory_fd = os.open(output.parent, flags)
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+
+
+def _read_shadow_target(output: Path) -> tuple[bool, bytes, int | None]:
+    try:
+        target_stat = output.stat()
+        return True, output.read_bytes(), stat.S_IMODE(target_stat.st_mode)
+    except FileNotFoundError:
+        return False, b"", None
+
+
+def _validate_shadow_history(
+    raw_history: bytes, frozen: FrozenResidualModel
+) -> dict[bytes, bytes]:
+    try:
+        history = raw_history.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ResidualContractError("existing_shadow_invalid_utf8") from exc
+
+    history_by_identity: dict[bytes, bytes] = {}
+    for line_number, line in enumerate(history.splitlines(keepends=True), start=1):
+        if not line.strip():
+            raise ResidualContractError(f"existing_shadow_blank_line:{line_number}")
+        try:
+            existing = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ResidualContractError(
+                f"existing_shadow_invalid_json:{line_number}"
+            ) from exc
+        if _canonical_bytes(existing).decode("utf-8") != line:
+            raise ResidualContractError(
+                f"existing_shadow_not_canonical_json:{line_number}"
+            )
+        existing_identity, existing_encoded = _validate_existing_shadow_record(
+            existing, frozen, line_number
+        )
+        identity_key = _canonical_bytes(existing_identity)
+        prior_encoded = history_by_identity.get(identity_key)
+        if prior_encoded is not None:
+            if prior_encoded == existing_encoded:
+                raise ResidualContractError("duplicate_shadow_history_identity")
+            raise ResidualContractError("conflicting_shadow_duplicate")
+        history_by_identity[identity_key] = existing_encoded
+    return history_by_identity
+
+
 def append_shadow_record(
     path: Path | str,
     record: Mapping[str, Any],
@@ -873,13 +955,24 @@ def append_shadow_record(
     runners: Sequence[Mapping[str, Any]],
     provenance: Mapping[str, Any],
 ) -> str:
-    """Re-score and append one v2 record after validating unique prior history.
+    """Transactionally append one v2 record after validating prior history.
 
     The embedded SHA-256 values detect corruption and inconsistent construction;
     they do not authenticate a row against coordinated host-level rewriting.
     Repeated prior stable identities fail as ``duplicate_shadow_history_identity``
     when their canonical content matches, or ``conflicting_shadow_duplicate`` when
-    it differs.
+    it differs. A persistent sidecar inode serializes the complete transaction;
+    the target is never used as its own lock because atomic publication replaces
+    that inode.
+
+    A fully written, flushed, and fsynced same-directory staged file is atomically
+    replaced onto the target. Successful replacement is the commit point.
+    ``APPENDED`` means the committed bytes became visible. Parent-directory fsync
+    is attempted afterward, but its failure is intentionally not reported as a
+    rejected append and ``APPENDED`` does not claim crash durability when that
+    fsync could not be obtained. ``COMMIT_STATE_UNKNOWN`` is returned only if a
+    publication exception leaves neither the exact original nor intended target
+    bytes observable; callers may safely retry under the same sidecar protocol.
     """
 
     output = Path(path)
@@ -902,49 +995,73 @@ def append_shadow_record(
     ) or expected.get("record_key") != _shadow_record_key(expected):
         raise ResidualContractError("shadow_record_verified_key_mismatch")
     candidate_identity = _shadow_duplicate_identity(expected)
+    lock_path, staged_path = _shadow_transaction_paths(output)
+    lock_fd: int | None = None
+    staged_exists = False
     try:
-        with output.open("a+", encoding="utf-8", newline="\n") as handle:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-            handle.seek(0)
-            history_by_identity: dict[bytes, bytes] = {}
-            for line_number, line in enumerate(handle, start=1):
-                if not line.strip():
-                    raise ResidualContractError(
-                        f"existing_shadow_blank_line:{line_number}"
-                    )
-                try:
-                    existing = json.loads(line)
-                except json.JSONDecodeError as exc:
-                    raise ResidualContractError(
-                        f"existing_shadow_invalid_json:{line_number}"
-                    ) from exc
-                if _canonical_bytes(existing).decode("utf-8") != line:
-                    raise ResidualContractError(
-                        f"existing_shadow_not_canonical_json:{line_number}"
-                    )
-                existing_identity, existing_encoded = _validate_existing_shadow_record(
-                    existing, frozen, line_number
-                )
-                identity_key = _canonical_bytes(existing_identity)
-                prior_encoded = history_by_identity.get(identity_key)
-                if prior_encoded is not None:
-                    if prior_encoded == existing_encoded:
-                        raise ResidualContractError("duplicate_shadow_history_identity")
-                    raise ResidualContractError("conflicting_shadow_duplicate")
-                history_by_identity[identity_key] = existing_encoded
-            candidate_history = history_by_identity.get(
-                _canonical_bytes(candidate_identity)
-            )
-            if candidate_history is not None:
-                if candidate_history == encoded:
-                    return "EXACT_REPLAY"
-                raise ResidualContractError("conflicting_shadow_duplicate")
-            handle.seek(0, os.SEEK_END)
-            handle.write(encoded.decode("utf-8"))
-            handle.flush()
-            os.fsync(handle.fileno())
-    except UnicodeError as exc:
-        raise ResidualContractError("existing_shadow_invalid_utf8") from exc
+        lock_flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0)
+        lock_fd = os.open(lock_path, lock_flags, 0o600)
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+
+        _remove_staged_shadow_file(staged_path)
+        target_existed, original, target_mode = _read_shadow_target(output)
+        history_by_identity = _validate_shadow_history(original, frozen)
+        candidate_history = history_by_identity.get(
+            _canonical_bytes(candidate_identity)
+        )
+        if candidate_history is not None:
+            if candidate_history == encoded:
+                return "EXACT_REPLAY"
+            raise ResidualContractError("conflicting_shadow_duplicate")
+
+        replacement = original + encoded
+        staged_flags = (
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+        )
+        staged_fd = os.open(staged_path, staged_flags, 0o666)
+        staged_exists = True
+        if target_mode is not None:
+            os.fchmod(staged_fd, target_mode)
+        with os.fdopen(staged_fd, "wb", closefd=True) as staged_handle:
+            _write_staged_shadow_bytes(staged_handle, replacement)
+            _flush_staged_shadow_file(staged_handle)
+            _fsync_staged_shadow_file(staged_handle)
+
+        try:
+            _publish_staged_shadow_file(staged_path, output)
+        except Exception as exc:
+            try:
+                current_exists, current, _ = _read_shadow_target(output)
+            except OSError:
+                return "COMMIT_STATE_UNKNOWN"
+            if current_exists and current == replacement:
+                staged_exists = False
+            elif current_exists == target_existed and current == original:
+                raise OSError("shadow publication failed before commit") from exc
+            else:
+                return "COMMIT_STATE_UNKNOWN"
+        else:
+            staged_exists = False
+
+        try:
+            _fsync_parent_directory(output)
+        except Exception:
+            pass
+        return "APPENDED"
     except OSError as exc:
         raise ResidualContractError(f"shadow_output_write_failed:{output}") from exc
-    return "APPENDED"
+    finally:
+        if staged_exists:
+            try:
+                _remove_staged_shadow_file(staged_path)
+            except OSError:
+                pass
+        if lock_fd is not None:
+            try:
+                os.close(lock_fd)
+            except OSError:
+                pass
