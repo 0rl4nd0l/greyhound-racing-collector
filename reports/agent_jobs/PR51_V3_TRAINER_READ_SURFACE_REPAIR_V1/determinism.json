@@ -1,0 +1,1 @@
+{"result":"PASS","command":"diff -qr build-a build-b","exit_code":0,"differences":[],"all_four_domain_aggregates_equal":true}

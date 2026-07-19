@@ -9,9 +9,10 @@ import hashlib
 import json
 import os
 import re
+import stat
 from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from statistics import mean
 from typing import Any, Iterable, Mapping
 from zoneinfo import ZoneInfo
@@ -36,12 +37,30 @@ FORBIDDEN_ARTIFACT_FIELDS = {
     "source_runner_id", "runner_id",
 }
 
-TRAINER_ARTIFACT_NAMES = {
-    "development_exclusions.csv", "development_features.csv", "development_manifest.json",
-    "development_races.csv", "development_runners.csv", "feature_contract.json",
-    "market_coverage.json", "out_of_time_manifest.json", "out_of_time_races.csv",
-    "out_of_time_runners.csv", "trainer_input_manifest.json",
+TRAINER_ARTIFACT_ROLES = {
+    "development_exclusions.csv": "TRAINER_SAFE_ELIGIBILITY_METADATA",
+    "development_features.csv": "MODEL_INPUT_DATA",
+    "development_manifest.json": "TRAINER_SAFE_SPLIT_METADATA",
+    "development_races.csv": "MODEL_INPUT_DATA",
+    "development_runners.csv": "MODEL_INPUT_DATA",
+    "feature_contract.json": "TRAINER_SAFE_FEATURE_METADATA",
+    "market_coverage.json": "TRAINER_SAFE_BOUNDARY_METADATA",
+    "out_of_time_manifest.json": "TRAINER_SAFE_SPLIT_METADATA",
+    "out_of_time_races.csv": "MODEL_INPUT_DATA",
+    "out_of_time_runners.csv": "MODEL_INPUT_DATA",
 }
+TRAINER_ARTIFACT_NAMES = set(TRAINER_ARTIFACT_ROLES)
+CONTROL_PLANE_ARTIFACT_NAMES = {
+    "artifact-manifest.sha256", "trainer_input_manifest.json",
+}
+TRAINER_ROOT_NAME = "trainer"
+CONTROL_PLANE_ROOT_NAME = "control_plane"
+PACKET_DOMAIN_ROOT_NAMES = (
+    TRAINER_ROOT_NAME,
+    CONTROL_PLANE_ROOT_NAME,
+    "sealed_validation",
+    "non_authoritative_diagnostic",
+)
 SEALED_VALIDATION_ARTIFACT_NAMES = {
     "development_source_inventory.csv", "out_of_time_exclusions.csv",
     "out_of_time_source_inventory.csv", "development_runner_alignment.csv",
@@ -140,7 +159,7 @@ def source_set_digest(
 
 def load_reproducibility_contract(path: Path) -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
-    if payload.get("schema_version") != "form_only_v1_reproducibility_v2":
+    if payload.get("schema_version") != "form_only_v1_reproducibility_v3":
         raise ValueError(f"unsupported reproducibility contract: {path}")
     if not isinstance(payload.get("trusted_inputs"), dict):
         raise ValueError(f"reproducibility contract has no trusted_inputs: {path}")
@@ -1766,36 +1785,280 @@ def validate_trainer_visible_artifacts(output_dir: Path) -> None:
         raise ValueError("opaque runner ID links multiple races or splits")
 
 
-def write_trainer_input_manifest(output_dir: Path) -> None:
+def write_trainer_input_manifest(
+    trainer_dir: Path,
+    control_dir: Path,
+    trainer_manifest: Mapping[str, Any],
+) -> None:
     allowed = []
-    for name in sorted(TRAINER_ARTIFACT_NAMES - {"trainer_input_manifest.json"}):
-        path = output_dir / name
+    manifest_rows = {row["path"]: row for row in trainer_manifest["files"]}
+    if set(manifest_rows) != TRAINER_ARTIFACT_NAMES:
+        raise ValueError("trainer artifact manifest does not match the declared read surface")
+    for name in sorted(TRAINER_ARTIFACT_NAMES):
+        path = trainer_dir / name
         if not path.is_file() or path.stat().st_size == 0:
             raise ValueError(f"missing or empty generated artifact: {path}")
-        allowed.append({"path": name, "sha256": sha256_path(path), "bytes": path.stat().st_size})
-    stable_json(output_dir / "trainer_input_manifest.json", {
-        "schema_version": "form_only_v1_trainer_input_manifest_v1",
+        allowed.append({
+            **manifest_rows[name],
+            "type": "regular_file",
+            "role": TRAINER_ARTIFACT_ROLES[name],
+        })
+    signature = control_dir / "artifact-manifest.sha256"
+    stable_json(control_dir / "trainer_input_manifest.json", {
+        "schema_version": "form_only_v1_trainer_input_manifest_v2",
         "trust_domain": "TRAINER_VISIBLE_AUTHORITATIVE",
+        "trainer_root": TRAINER_ROOT_NAME,
         "allowed_files": allowed,
+        "declared_file_count": len(allowed),
+        "artifact_manifest": {
+            "path": signature.name,
+            "type": "regular_file",
+            "role": "CONTROL_INTEGRITY_SIGNATURE",
+            "sha256": sha256_path(signature),
+            "bytes": signature.stat().st_size,
+            "trainer_aggregate_sha256": trainer_manifest["aggregate_sha256"],
+        },
         "row_identity": "sha256(FORM_ONLY_V1|race_box|race_id|box_number)",
         "sealed_validation_bundle": "NOT_TRAINER_READABLE",
         "non_authoritative_diagnostic_bundle": "NOT_TRAINER_INPUT",
-        "forbidden_roots": ["sealed_validation", "non_authoritative_diagnostic"],
+        "forbidden_roots": [
+            CONTROL_PLANE_ROOT_NAME, "sealed_validation", "non_authoritative_diagnostic",
+        ],
     })
 
 
 def write_artifact_manifest(
-    output_dir: Path, names: set[str], *, filename: str = "artifact-manifest.sha256"
+    output_dir: Path,
+    names: set[str],
+    *,
+    filename: str = "artifact-manifest.sha256",
+    manifest_dir: Path | None = None,
 ) -> dict[str, Any]:
+    manifest = artifact_manifest_records(output_dir, names)
+    destination = (manifest_dir or output_dir) / filename
+    destination.write_text(manifest["text"], encoding="utf-8")
+    return {key: value for key, value in manifest.items() if key != "text"}
+
+
+def artifact_manifest_records(output_dir: Path, names: set[str]) -> dict[str, Any]:
     rows = []
     for name in sorted(names):
         path = output_dir / name
         if not path.is_file() or path.stat().st_size == 0:
             raise ValueError(f"missing or empty generated artifact: {path}")
-        rows.append({"path": path.name, "sha256": sha256_path(path), "bytes": path.stat().st_size})
+        rows.append({"path": name, "sha256": sha256_path(path), "bytes": path.stat().st_size})
     text = "".join(f"{row['sha256']}  {row['path']}\n" for row in rows)
-    (output_dir / filename).write_text(text, encoding="utf-8")
-    return {"files": rows, "aggregate_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()}
+    return {
+        "files": rows,
+        "aggregate_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        "text": text,
+    }
+
+
+def _open_directory_no_follow(path: Path, *, label: str) -> int:
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError as exc:
+        raise ValueError(f"missing {label} directory: {path}") from exc
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+        raise ValueError(f"{label} path is a symlink or not a directory: {path}")
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        return os.open(path, flags)
+    except OSError as exc:
+        raise ValueError(f"cannot safely open {label} directory: {path}") from exc
+
+
+def _open_child_directory_no_follow(parent_fd: int, name: str, *, label: str) -> int:
+    try:
+        metadata = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+    except FileNotFoundError as exc:
+        raise ValueError(f"missing {label} directory: {name}") from exc
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+        raise ValueError(f"{label} path is a symlink or not a directory: {name}")
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        return os.open(name, flags, dir_fd=parent_fd)
+    except OSError as exc:
+        raise ValueError(f"cannot safely open {label} directory: {name}") from exc
+
+
+def _read_regular_at(directory_fd: int, name: str, *, label: str) -> bytes:
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        file_fd = os.open(name, flags, dir_fd=directory_fd)
+    except OSError as exc:
+        raise ValueError(f"{label} is not a regular file: {name}") from exc
+    try:
+        metadata = os.fstat(file_fd)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+            raise ValueError(f"{label} is not a regular single-link file: {name}")
+        chunks = []
+        while True:
+            chunk = os.read(file_fd, 1024 * 1024)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        return b"".join(chunks)
+    finally:
+        os.close(file_fd)
+
+
+def _safe_declaration_name(value: Any) -> str:
+    if not isinstance(value, str) or not value or "\\" in value:
+        raise ValueError(f"unsafe trainer declaration path: {value!r}")
+    parsed = PurePosixPath(value)
+    if parsed.is_absolute() or len(parsed.parts) != 1 or parsed.name != value or value.startswith("."):
+        raise ValueError(f"unsafe trainer declaration path: {value!r}")
+    return value
+
+
+def _verified_trainer_read_surface(
+    packet_root: Path,
+) -> tuple[dict[str, bytes], dict[str, bytes]]:
+    packet_fd = _open_directory_no_follow(packet_root, label="packet root")
+    domain_fds: dict[str, int] = {}
+    try:
+        packet_names = set(os.listdir(packet_fd))
+        expected_domains = set(PACKET_DOMAIN_ROOT_NAMES)
+        if packet_names != expected_domains:
+            raise ValueError(
+                "packet root surface mismatch: "
+                f"unexpected={sorted(packet_names - expected_domains)} "
+                f"missing={sorted(expected_domains - packet_names)}"
+            )
+        for name in PACKET_DOMAIN_ROOT_NAMES:
+            domain_fds[name] = _open_child_directory_no_follow(
+                packet_fd, name, label=f"packet domain {name}"
+            )
+        control_fd = domain_fds[CONTROL_PLANE_ROOT_NAME]
+        trainer_fd = domain_fds[TRAINER_ROOT_NAME]
+        try:
+            control_names = set(os.listdir(control_fd))
+            if control_names != CONTROL_PLANE_ARTIFACT_NAMES:
+                raise ValueError(
+                    "control-plane surface mismatch: "
+                    f"unexpected={sorted(control_names - CONTROL_PLANE_ARTIFACT_NAMES)} "
+                    f"missing={sorted(CONTROL_PLANE_ARTIFACT_NAMES - control_names)}"
+                )
+            manifest_bytes = _read_regular_at(
+                control_fd, "trainer_input_manifest.json", label="control-plane manifest"
+            )
+            signature_bytes = _read_regular_at(
+                control_fd, "artifact-manifest.sha256", label="trainer signature"
+            )
+            try:
+                manifest = json.loads(manifest_bytes.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise ValueError("malformed trainer input manifest") from exc
+            if manifest.get("schema_version") != "form_only_v1_trainer_input_manifest_v2":
+                raise ValueError("unexpected trainer input manifest schema")
+            if manifest.get("trainer_root") != TRAINER_ROOT_NAME:
+                raise ValueError("trainer root declaration mismatch")
+            declarations = manifest.get("allowed_files")
+            if not isinstance(declarations, list):
+                raise ValueError("trainer declarations must be a list")
+            declared: dict[str, Mapping[str, Any]] = {}
+            for declaration in declarations:
+                if not isinstance(declaration, dict):
+                    raise ValueError("malformed trainer declaration")
+                name = _safe_declaration_name(declaration.get("path"))
+                if name in declared:
+                    raise ValueError(f"duplicate trainer declaration: {name}")
+                declared[name] = declaration
+            expected_names = set(TRAINER_ARTIFACT_ROLES)
+            if set(declared) != expected_names:
+                raise ValueError(
+                    "declared trainer read surface mismatch: "
+                    f"unexpected={sorted(set(declared) - expected_names)} "
+                    f"missing={sorted(expected_names - set(declared))}"
+                )
+            if manifest.get("declared_file_count") != len(declared):
+                raise ValueError("declared trainer file count mismatch")
+            actual_names = set(os.listdir(trainer_fd))
+            if actual_names != set(declared):
+                raise ValueError(
+                    "trainer read surface mismatch: "
+                    f"unexpected={sorted(actual_names - set(declared))} "
+                    f"missing={sorted(set(declared) - actual_names)}"
+                )
+            payloads: dict[str, bytes] = {}
+            signature_rows = []
+            for name in sorted(declared):
+                declaration = declared[name]
+                if declaration.get("type") != "regular_file":
+                    raise ValueError(f"trainer type declaration mismatch: {name}")
+                if declaration.get("role") != TRAINER_ARTIFACT_ROLES[name]:
+                    raise ValueError(f"trainer role declaration mismatch: {name}")
+                payload = _read_regular_at(trainer_fd, name, label="trainer artifact")
+                expected_bytes = declaration.get("bytes")
+                if type(expected_bytes) is not int or expected_bytes < 1:
+                    raise ValueError(f"invalid trainer byte length declaration: {name}")
+                if len(payload) != expected_bytes:
+                    raise ValueError(f"trainer artifact byte length mismatch: {name}")
+                actual_sha256 = hashlib.sha256(payload).hexdigest()
+                if actual_sha256 != declaration.get("sha256"):
+                    raise ValueError(f"trainer artifact sha256 mismatch: {name}")
+                signature_rows.append(f"{actual_sha256}  {name}\n")
+                payloads[name] = payload
+            expected_signature = "".join(signature_rows).encode("utf-8")
+            if signature_bytes != expected_signature:
+                raise ValueError("trainer artifact signature content mismatch")
+            signature = manifest.get("artifact_manifest")
+            if not isinstance(signature, dict):
+                raise ValueError("missing trainer artifact signature declaration")
+            if signature.get("path") != "artifact-manifest.sha256":
+                raise ValueError("trainer artifact signature path mismatch")
+            if signature.get("type") != "regular_file" or signature.get("role") != "CONTROL_INTEGRITY_SIGNATURE":
+                raise ValueError("trainer artifact signature type or role mismatch")
+            if signature.get("bytes") != len(signature_bytes):
+                raise ValueError("trainer artifact signature byte length mismatch")
+            if signature.get("sha256") != hashlib.sha256(signature_bytes).hexdigest():
+                raise ValueError("trainer artifact signature sha256 mismatch")
+            aggregate = hashlib.sha256(signature_bytes).hexdigest()
+            if signature.get("trainer_aggregate_sha256") != aggregate:
+                raise ValueError("trainer aggregate sha256 mismatch")
+            return payloads, {
+                "trainer_input_manifest.json": manifest_bytes,
+                "artifact-manifest.sha256": signature_bytes,
+            }
+        finally:
+            for directory_fd in reversed(tuple(domain_fds.values())):
+                os.close(directory_fd)
+    finally:
+        os.close(packet_fd)
+
+
+def validate_trainer_read_surface(packet_root: Path) -> None:
+    """Validate the complete trainer surface without exposing trainer bytes."""
+    _verified_trainer_read_surface(packet_root)
+
+
+def load_verified_trainer_inputs(
+    packet_root: Path, reproducibility_contract_path: Path
+) -> dict[str, bytes]:
+    """Load trainer bytes only after the Git-tracked control trust root is verified."""
+    contract = load_reproducibility_contract(reproducibility_contract_path)
+    expected_control = (
+        ((contract.get("expected_output") or {}).get("domains") or {}).get("control_plane")
+        or {}
+    )
+    expected_files = expected_control.get("artifact_files")
+    if not isinstance(expected_files, dict) or set(expected_files) != CONTROL_PLANE_ARTIFACT_NAMES:
+        raise ValueError("reproducibility contract has no exact control-plane trust root")
+    payloads, control_payloads = _verified_trainer_read_surface(packet_root)
+    actual_files = {
+        name: hashlib.sha256(payload).hexdigest()
+        for name, payload in sorted(control_payloads.items())
+    }
+    if actual_files != expected_files:
+        raise ValueError("control-plane artifact hash mismatch")
+    control_text = "".join(
+        f"{actual_files[name]}  {name}\n" for name in sorted(actual_files)
+    )
+    if hashlib.sha256(control_text.encode("utf-8")).hexdigest() != expected_control.get("aggregate_sha256"):
+        raise ValueError("control-plane aggregate hash mismatch")
+    return payloads
 
 
 def verify_expected_output(
@@ -1833,6 +2096,40 @@ def verify_expected_output(
             raise ValueError(f"expected {domain} aggregate hash mismatch")
 
 
+def _prepare_empty_packet_output(output_dir: Path) -> dict[str, Path]:
+    """Create or verify an empty, fixed-domain packet destination."""
+    try:
+        metadata = output_dir.lstat()
+    except FileNotFoundError:
+        output_dir.mkdir(parents=True)
+        metadata = output_dir.lstat()
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+        raise ValueError(f"packet root path is a symlink or not a directory: {output_dir}")
+
+    entries = set(os.listdir(output_dir))
+    unexpected = entries - set(PACKET_DOMAIN_ROOT_NAMES)
+    if unexpected:
+        raise ValueError(f"packet root has unexpected pre-existing entries: {sorted(unexpected)}")
+
+    domains = {name: output_dir / name for name in PACKET_DOMAIN_ROOT_NAMES}
+    for name, path in domains.items():
+        try:
+            metadata = path.lstat()
+        except FileNotFoundError:
+            continue
+        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+            raise ValueError(f"packet domain path is a symlink or not a directory: {name}")
+        domain_entries = os.listdir(path)
+        if domain_entries:
+            raise ValueError(
+                f"packet domain has unexpected pre-existing entries: {name}: "
+                f"{sorted(domain_entries)}"
+            )
+    for path in domains.values():
+        path.mkdir(exist_ok=True)
+    return domains
+
+
 def build_all(
     eligibility_dir: Path,
     training_dir: Path,
@@ -1843,26 +2140,33 @@ def build_all(
     *,
     enforce_expected_output: bool = True,
 ) -> dict[str, Any]:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    sealed_dir = output_dir / "sealed_validation"
-    diagnostic_dir = output_dir / "non_authoritative_diagnostic"
-    sealed_dir.mkdir(parents=True, exist_ok=True)
-    diagnostic_dir.mkdir(parents=True, exist_ok=True)
+    domains = _prepare_empty_packet_output(output_dir)
+    trainer_dir = domains[TRAINER_ROOT_NAME]
+    control_dir = domains[CONTROL_PLANE_ROOT_NAME]
+    sealed_dir = domains["sealed_validation"]
+    diagnostic_dir = domains["non_authoritative_diagnostic"]
     reproducibility = load_reproducibility_contract(reproducibility_contract_path)
     loaded = load_development_sources(eligibility_dir, training_dir, reproducibility)
-    development_summary, _selected = build_development_packet(loaded, output_dir, sealed_dir)
+    development_summary, _selected = build_development_packet(loaded, trainer_dir, sealed_dir)
     out_of_time_summary = build_out_of_time_manifest(
         evidence_roots,
-        output_dir,
+        trainer_dir,
         reproducibility,
         out_of_time_freeze_dir,
         sealed_dir,
     )
-    write_feature_contract(output_dir)
-    write_market_coverage(output_dir)
-    write_trainer_input_manifest(output_dir)
-    validate_trainer_visible_artifacts(output_dir)
-    trainer_manifest = write_artifact_manifest(output_dir, TRAINER_ARTIFACT_NAMES)
+    write_feature_contract(trainer_dir)
+    write_market_coverage(trainer_dir)
+    validate_trainer_visible_artifacts(trainer_dir)
+    trainer_manifest = write_artifact_manifest(
+        trainer_dir, TRAINER_ARTIFACT_NAMES, manifest_dir=control_dir
+    )
+    write_trainer_input_manifest(trainer_dir, control_dir, trainer_manifest)
+    validate_trainer_read_surface(output_dir)
+    control_manifest = artifact_manifest_records(
+        control_dir, CONTROL_PLANE_ARTIFACT_NAMES
+    )
+    control_manifest.pop("text")
     trainer_before_diagnostics = trainer_manifest["aggregate_sha256"]
     reconciliation_summary = build_overlap_reconciliation(loaded, diagnostic_dir)
     sealed_manifest = write_artifact_manifest(
@@ -1875,13 +2179,15 @@ def build_all(
         DIAGNOSTIC_ARTIFACT_NAMES,
         filename="non-authoritative-diagnostic-manifest.sha256",
     )
-    trainer_after_diagnostics = write_artifact_manifest(
-        output_dir, TRAINER_ARTIFACT_NAMES
+    trainer_after_diagnostics = artifact_manifest_records(
+        trainer_dir, TRAINER_ARTIFACT_NAMES
     )["aggregate_sha256"]
     if trainer_before_diagnostics != trainer_after_diagnostics:
         raise ValueError("diagnostic construction changed trainer artifacts")
+    validate_trainer_read_surface(output_dir)
     manifests = {
         "trainer": trainer_manifest,
+        "control_plane": control_manifest,
         "sealed_validation": sealed_manifest,
         "non_authoritative_diagnostic": diagnostic_manifest,
     }

@@ -100,3 +100,14 @@ is authorized only after all listed validations pass. The only GitHub writes
 allowed are one non-force push of one normal descendant commit to
 `codex/form-only-v1-acquisition-20260718` and an accurate PR 51 body update.
 Leave PR 51 draft and unmerged.
+
+## Independent-acceptance read-surface follow-up
+
+The V3 output root exposed 12 readable regular files while its trainer manifest
+declared ten. `artifact-manifest.sha256` and `trainer_input_manifest.json` are
+launcher control metadata, not trainer inputs. The authorized follow-up
+`PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1` isolates those two files under
+`control_plane/`, isolates the exact declared set under `trainer/`, and requires
+the no-follow exact-set loader before any trainer bytes are returned. All other
+V3 gates and acquisition/outcome/market/runtime boundaries remain unchanged and
+must be rerun by the next full independent acceptance.

@@ -1,0 +1,14 @@
+PASS git guard: VALID_TASK_WORKTREE / ALLOW_NEW_SCOPE / fallback clean; task ledger DATA_MISSING
+PASS exact remote PR head: 91f854f5555bd1fd8ef411f2fadc108b41d2e5df
+PASS compile
+PASS Ruff
+PASS focused pytest: 84
+PASS branch coverage: 81 percent
+NOT_COLLECTED broad pytest: requirements.txt lacks flask_compress, exit 4
+PASS clean build A: /tmp/pr51-trainer-final-a.la80Eb
+PASS clean build B: /tmp/pr51-trainer-final-b.jSvrsp
+PASS diff -qr build A build B: no differences
+PASS validate_trainer_read_surface and descriptor-pinned load: 10 payloads
+PASS exact-set and linkability probes
+PASS diagnostic isolation and domain hashes
+PASS git diff --check and complete diff review

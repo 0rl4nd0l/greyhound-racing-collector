@@ -1,0 +1,12 @@
+{
+  "status":"ADVANCED",
+  "scope_fingerprint":"4b7b26c3db1e5b57404f21d7a58a721c8a94b15f7fa42bce173c4a24b2551d2b",
+  "state_before":"exact_head_91f854f_independently_rejected_on_trainer_readable_set_12_versus_declared_10_and_symlink_fail_open",
+  "state_after":"repaired_pr51_v3_exact_trainer_read_surface_ready_for_new_full_independent_acceptance",
+  "decision_delta":{"outcome":"DONE_WITH_RISK","old_head":"91f854f5555bd1fd8ef411f2fadc108b41d2e5df","new_head_resolution":"single direct descendant commit containing this report","trainer_surface":"ACTUAL_10_EQUALS_DECLARED_10","extra_disposition":"two control artifacts isolated under control_plane","linkability":"zero_intersections","broad_suite":"collection blocked by missing flask_compress"},
+  "reused_claims":["All V3 acquisition counts, trainer bytes, semantic gates, ambiguity gates, diagnostic separation and outcome-market boundaries are preserved."],
+  "changed_claims":["The trainer-accessible root is now trainer/ with an exact ten-file surface.","Control manifest and signature now live in control_plane/ and are verified by a descriptor-pinned launcher before trainer bytes are returned.","Packet-root, domain, filename, type, link, declaration, length, hash and traversal checks fail closed before any trainer read handoff."],
+  "new_evidence":["Complete rejected-head 12-versus-10 inventory.","84 focused tests and 81 percent builder branch-inclusive coverage.","Two byte-identical real builds and zero complete-set attacker-view intersections."],
+  "produced_artifacts":["reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/TRAINER_READABLE_INVENTORY.json","reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/EXACT_SET_PROBES.json","reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/LINKABILITY_PROOF.json","reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/TRUST_ROOT_CHAIN.json","reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/VALIDATION.md"],
+  "resume_only_if":[],"new_goal_permitted":false,"used_capabilities":["READ","REPORT_WRITE","DATASET_MATERIALIZE","CODE_EDIT","PUBLISH"],"blocked_by":[]
+}

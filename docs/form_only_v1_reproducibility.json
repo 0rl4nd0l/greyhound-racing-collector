@@ -1,5 +1,5 @@
 {
-  "schema_version": "form_only_v1_reproducibility_v2",
+  "schema_version": "form_only_v1_reproducibility_v3",
   "trusted_inputs": {
     "development": {
       "files": {
@@ -76,7 +76,7 @@
     },
     "domains": {
       "trainer": {
-        "aggregate_sha256": "2a117944c51c5c0f3a41c5b2a6251792075ed52c338538aa449054ad67723c2a",
+        "aggregate_sha256": "97967ab307b1a5608dff9759a2b154aaa6c0db1d3885974024b4b5e04b184e31",
         "artifact_files": {
           "development_exclusions.csv": "fa302743776f34ed05ab0e3c7eb21064e844059f11606f3843088fa2f93157f3",
           "development_features.csv": "3dee15bb5605d4fa299b0ea167419c568424e9576e646cc07a0e5583b3f5e284",
@@ -87,8 +87,14 @@
           "market_coverage.json": "00b27f3f25e807a5656fb1ca846a2adbcd0a70c50693fb29103cb11e04f25c95",
           "out_of_time_manifest.json": "cdc2cf02bf3b590fe5b980ebc54550308e6a2afcfc6d3ce9244c5486f52b4bda",
           "out_of_time_races.csv": "9ad6e0f2a89c2dac04f1c8f4be2dbea2a6ea7751fa3af486c490a71fb961c711",
-          "out_of_time_runners.csv": "dddc64a905fd9164da3f8c6cbc131b0119771bcd915e79f55dec1f71069e9830",
-          "trainer_input_manifest.json": "46d671b98375aa2c1d091901934019fdf5312da24704c7705a8a4353a48294e7"
+          "out_of_time_runners.csv": "dddc64a905fd9164da3f8c6cbc131b0119771bcd915e79f55dec1f71069e9830"
+        }
+      },
+      "control_plane": {
+        "aggregate_sha256": "1712d3d614cd10b76da620882a02babd29feebcb111f1faf92b9b7ec0eed5462",
+        "artifact_files": {
+          "artifact-manifest.sha256": "97967ab307b1a5608dff9759a2b154aaa6c0db1d3885974024b4b5e04b184e31",
+          "trainer_input_manifest.json": "04f02accc6d6e5069c629d5ebe94418515d1abf3f60a0a260343340c1f7946ba"
         }
       },
       "sealed_validation": {

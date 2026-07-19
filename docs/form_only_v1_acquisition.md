@@ -20,12 +20,15 @@ The candidate union is the set union of:
 2. races marked `used_for_training=1` whose rows are in
    `thedogs_training_rows_v1.csv`.
 
-Trainer-visible `row_id` values derive only from `race_id` plus box. Dog names,
-tokens, digests, source-runner IDs, alignment mappings, source paths, and URLs
-exist only in the separately hashed `sealed_validation/` bundle and are absent
-from the trainer allowlist. Reusing a dog name in another race creates no
-trainer-visible join key; development/out-of-time row-ID intersections are
-required to be zero. Hashing a dog token is not treated as anonymization.
+Trainer-visible `row_id` values derive only from `race_id` plus box. The trainer
+is given only the `trainer/` directory, whose ten regular files must exactly
+equal the ten declarations in `control_plane/trainer_input_manifest.json`.
+Dog names, tokens, digests, source-runner IDs, alignment mappings, source paths,
+and URLs exist only in the separately hashed `sealed_validation/` bundle and
+are absent from the trainer allowlist. Reusing a dog name in another race
+creates no trainer-visible join key; development/out-of-time row-ID
+intersections are required to be zero. Hashing a dog token is not treated as
+anonymization.
 
 For races in both sources, the raw form CSVs must be byte-identical. An eligible
 Tier-A raw card has precedence over an eligible published-history raw card. If
@@ -62,17 +65,39 @@ or types, and incomplete or duplicate freeze roles fail closed.
 
 ## Trust domains
 
-The build has three independent manifests:
+The build has four trust domains:
 
-- `TRAINER_VISIBLE_AUTHORITATIVE` contains the canonical feature/race/runner and
-  eligibility files plus `trainer_input_manifest.json`. That manifest is the
-  complete trainer allowlist and forbids both other bundle roots.
+- `trainer/` is `TRAINER_VISIBLE_AUTHORITATIVE`. Its five
+  `MODEL_INPUT_DATA` files and five explicitly role-tagged trainer-safe metadata
+  files are the complete readable set. It contains no manifest, signature,
+  symlink, directory, dotfile, undeclared file, or alternate-path alias.
+- `control_plane/` contains `trainer_input_manifest.json` and
+  `artifact-manifest.sha256`. A launcher validates this domain, the exact
+  trainer directory set, every declaration, file type, byte length, digest,
+  and single-link/no-follow path before returning any bytes to a trainer. These
+  two files are never trainer-readable inputs.
 - `sealed_validation/` contains source inventories and dog/card alignment used
   only to validate semantics and provenance. It is not a trainer input.
 - `non_authoritative_diagnostic/` contains the legacy overlap reconciliation.
   It cannot affect canonical features, eligibility, expected authoritative
   counts, or the trainer manifest; pre/post diagnostic trainer hashes must be
   byte-identical.
+
+The runtime-real read entrypoint is
+`load_verified_trainer_inputs(packet_root, reproducibility_contract)`. It opens
+the packet, control, trainer, and declared files with no-follow semantics;
+requires regular single-link files; compares actual and declared names before
+returning data; rejects path separators, traversal, absolute or dot paths; and
+verifies the control-plane bytes against the tracked reproducibility descriptor.
+Unexpected regular files, a thirteenth file, dotfiles, directories, symlinks,
+hard links, renames, duplicate declarations, missing files, type changes,
+length/hash changes, and packet/root aliases therefore fail closed.
+
+The non-self-referential trust chain is: reviewed Git commit -> tracked
+`form_only_v1_reproducibility_v3` control hashes -> the two control-plane files
+-> the signature's hashes of exactly the ten trainer files. The trainer input
+manifest hashes the signature, the signature hashes only trainer files, and no
+manifest or signature hashes itself.
 
 ## Canonical prior-history semantics
 
@@ -150,9 +175,10 @@ binds four development construction inputs, 3,231 authoritative card, sidecar,
 and label records, 38 separately non-authoritative shadow sources, and the
 three-file OOT freeze at
 `/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-form-only-v1-acquisition-20260718/reports/agent_jobs/form_only_v1_acquisition_foundation_20260718`,
-the expected current counts, and 18 hashes across three domains. The OOT freeze
-aggregate is `30671f48...e7cc`; trainer, sealed-validation, and diagnostic
-aggregates are respectively `2a117944...3c2a`, `4ce9d105...26ed`, and
+the expected current counts, and 19 artifact hashes across four domains. The OOT
+freeze aggregate is `30671f48...e7cc`; trainer, control-plane,
+sealed-validation, and diagnostic aggregates are respectively
+`97967ab3...4e31`, `1712d3d6...5462`, `4ce9d105...26ed`, and
 `e5eaf492...995f`. Reviewers on the evidence host can reproduce without raw or
 large Git commits using:
 
@@ -173,8 +199,8 @@ The independent-review diagnostic baseline was 504/530 unexplained rows across
 73/73 overlap races. Parsing numeric zero as a real value reclassifies 245
 zero-history rows and recomputes the diagnostic to 259/530 unexplained across
 71/73 races. This delta changes no authoritative count or trainer byte. The
-focused adversarial suite contains 56 tests; no "zero unexplained" claim is
-made.
+focused adversarial suite contains 84 tests, including exact-set and filesystem
+alias attacks; no "zero unexplained" claim is made.
 
 ## Market separation
 

@@ -1,0 +1,18 @@
+{
+  "schema_version": "form_only_v1_trust_root_chain_v1",
+  "result": "PASS_NON_SELF_REFERENTIAL",
+  "chain": [
+    "reviewed Git commit contains docs/form_only_v1_reproducibility.json",
+    "descriptor v3 pins both control-plane file hashes and control aggregate",
+    "control_plane/trainer_input_manifest.json pins exact trainer names, roles, types, lengths, hashes, signature bytes, signature hash and trainer aggregate",
+    "control_plane/artifact-manifest.sha256 contains hashes for only the ten trainer files",
+    "load_verified_trainer_inputs verifies the tracked descriptor, complete packet layout, control bytes and trainer bytes before returning the ten payloads"
+  ],
+  "self_hashes": [],
+  "trainer_aggregate_sha256": "97967ab307b1a5608dff9759a2b154aaa6c0db1d3885974024b4b5e04b184e31",
+  "control_plane_aggregate_sha256": "1712d3d614cd10b76da620882a02babd29feebcb111f1faf92b9b7ec0eed5462",
+  "artifact_manifest_sha256": "97967ab307b1a5608dff9759a2b154aaa6c0db1d3885974024b4b5e04b184e31",
+  "trainer_input_manifest_sha256": "04f02accc6d6e5069c629d5ebe94418515d1abf3f60a0a260343340c1f7946ba",
+  "trainer_receives_packet_path": false,
+  "trainer_receives": "verified mapping of ten filename-to-bytes payloads"
+}

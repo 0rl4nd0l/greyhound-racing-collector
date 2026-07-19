@@ -1,0 +1,103 @@
+---
+job_id: PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1
+title: Repair PR 51 V3 trainer-readable surface mismatch
+lane: Provenance
+supporting_lanes:
+  - Data Engineering
+  - Testing
+  - Reporting
+owner: Codex
+approval_required: true
+approval_source: The owner's 2026-07-19 /goal explicitly authorizes a new narrow repair from exact rejected PR 51 head 91f854f5555bd1fd8ef411f2fadc108b41d2e5df, a fresh worktree and card, local validation, one normal descendant commit, a non-force push to the existing draft PR branch, and an accurate PR-body update.
+allow_unapproved_safe_extension: false
+allow_audit_code_changes: true
+timeout_seconds: 43200
+output_dir: reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1
+mutation_mode: safe_extension
+production_data_access: false
+production_data_boundary: Read only the immutable pre-race acquisition evidence and outcome-unopened Jul 11 through Aug 9 freeze already bound by V3. Do not open outcomes, read or write databases, touch runtime or services, fit or evaluate models, create market cohorts, claim edge, mutate PRs 46 through 48, activate, merge, or mark ready.
+github_mutation_allowed: true
+git_history_mutation_allowed: true
+live_service_mutation_allowed: false
+allowed_files:
+  - docs/agent_tasks/pr51_v3_trainer_read_surface_repair_v1_20260719.md
+  - docs/agent_tasks/form_only_v1_acquisition_foundation_20260718.md
+  - docs/agent_tasks/pr51_form_only_v1_contract_repair_v3_20260719.md
+  - docs/form_only_v1_acquisition.md
+  - docs/form_only_v1_reproducibility.json
+  - scripts/build_form_only_v1_packet.py
+  - tests/test_build_form_only_v1_packet.py
+  - reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/README.md
+  - reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/STATE.md
+  - reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/DECISIONS.md
+  - reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/VALIDATION.md
+  - reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/TRAINER_READABLE_INVENTORY.json
+  - reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/EXACT_SET_PROBES.json
+  - reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/LINKABILITY_PROOF.json
+  - reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/TRUST_ROOT_CHAIN.json
+  - reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/CODE_REVIEW.json
+  - reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/RUN_OUTCOME.json
+  - reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/DECISION_ENTRY.json
+  - reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/status.json
+  - reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/validation.json
+  - reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/guard-preflight.json
+  - reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/commands.log
+  - reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/build-a.json
+  - reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/build-b.json
+  - reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/compile.log
+  - reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/ruff.log
+  - reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/focused-pytest.log
+  - reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/full-pytest.log
+  - reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/coverage.json
+  - reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/coverage.txt
+  - reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/diagnostic-isolation.json
+  - reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/determinism.json
+  - reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/hash-counts.json
+  - reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/diff-check.log
+  - reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/diff-check.json
+  - reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/pr-body.md
+closeout_scope: repo_only
+control_contract_version: 2
+project_id: greyhound_racing_collector
+claim_id: PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1
+proof_question: Does one normal descendant of rejected PR 51 head 91f854f make the actual trainer-readable filesystem set exactly equal to the declared trainer read surface, move control metadata outside that domain, and fail closed before any trainer read on every unexpected path, type, link, directory, declaration, length, hash, or escape class while preserving all V3 acquisition gates?
+hypothesis_id: pr51_v3_trainer_read_surface_repair_v1
+program_track: offline_development
+entry_state: exact_head_91f854f_independently_rejected_on_trainer_readable_set_12_versus_declared_10_and_symlink_fail_open
+target_transition: repaired_pr51_v3_exact_trainer_read_surface_ready_for_new_full_independent_acceptance
+exit_predicate: The 12-versus-10 inventory is complete; actual trainer-readable set equals the declared surface without blindly widening it; control manifests and signatures are outside the trainer root with a non-self-referential trust chain; unexpected files, dotfiles, symlinks, directories, renames, duplicate declarations, missing files, type and length or hash changes, and path escapes all fail before any trainer read; an unexpected thirteenth file fails; the complete declared set has zero dog tokens or digests, source paths, alignment keys, cross-race intersections, and development-to-OOT intersections; two clean builds and domain hashes are identical; diagnostic bytes and paths remain isolated; compile Ruff focused tests coverage repository suite diff review docs and PR disclosure are complete; no raw or large data is committed; and PR 51 remains draft open and unmerged after one normal descendant push.
+source_class: exact_remote_pr51_head_91f854f_plus_PR51_FORM_ONLY_V1_CONTRACT_REPAIR_V3_INDEPENDENT_ACCEPTANCE_V1_preserved_probe_and_build_evidence_plus_hash_bound_pre_race_inputs_only
+dataset_version: pr51_head_91f854f_trainer_read_surface_repair_v1_20260719
+evidence_hash: sha256:1eea251225d79bb0901f6b46a26ec3c3cb9d91e348cbac826e45efeb4ef90a80
+capabilities:
+  - READ
+  - REPORT_WRITE
+  - DATASET_MATERIALIZE
+  - CODE_EDIT
+  - PUBLISH
+resume_only_if: Resume only while remote PR 51 head remains exactly 91f854f5555bd1fd8ef411f2fadc108b41d2e5df until publication, the preserved V3 independent-acceptance evidence remains source-identical or is explicitly regenerated from that exact head, Jul 11 through Aug 9 outcomes remain unopened, no active claim owns these exact mutation paths, and work remains acquisition-only. Stop HEAD_CHANGED on remote drift and stop BLOCKED on any unresolved exact-set, path-type, linkability, trust-root, reproducibility, diagnostic-isolation, suite, disclosure, or scope invariant.
+docs_impact: DOCS_UPDATED
+docs_checked:
+  - docs/form_only_v1_acquisition.md
+  - docs/form_only_v1_reproducibility.json
+  - docs/agent_tasks/form_only_v1_acquisition_foundation_20260718.md
+  - docs/agent_tasks/pr51_form_only_v1_contract_repair_v3_20260719.md
+docs_changed:
+  - docs/form_only_v1_acquisition.md
+  - docs/form_only_v1_reproducibility.json
+  - docs/agent_tasks/form_only_v1_acquisition_foundation_20260718.md
+  - docs/agent_tasks/pr51_form_only_v1_contract_repair_v3_20260719.md
+docs_followup: A new full exact-head independent acceptance remains required and must include unfinished V3 checks; model, market, outcome, runtime, activation, merge, and PR 46 through 48 work remain separately unauthorized.
+reason: The repair changes the trainer and control-plane domain layout, discovery contract, fail-closed enforcement, reproducibility hashes, and operator-facing artifact paths, so tracked documentation and descriptors must change with the builder.
+---
+
+# PR51 V3 trainer read-surface repair V1
+
+Repair only the trainer-readable-set mismatch and the directly coupled filesystem
+boundary enforcement reproduced by
+`PR51_FORM_ONLY_V1_CONTRACT_REPAIR_V3_INDEPENDENT_ACCEPTANCE_V1` at exact head
+`91f854f5555bd1fd8ef411f2fadc108b41d2e5df`.
+
+The only GitHub writes allowed are one non-force push of one normal descendant
+commit to `codex/form-only-v1-acquisition-20260718` and an accurate PR 51 body
+update after every local gate passes. Leave PR 51 draft and unmerged.

@@ -92,6 +92,13 @@ Build exactly one canonical odds-free point-in-time feature packet from raw
 pre-race cards and raw prior history. Reconcile prior builder outputs only as
 diagnostic evidence; never choose one builder as truth.
 
+Read-surface follow-up (2026-07-19): the packet root is no longer a trainer
+root. The exact ten-file trainer surface is isolated under `trainer/`; launcher
+metadata and its signature are isolated under `control_plane/`. The tracked V3
+reproducibility descriptor is the root of trust for the control domain. This
+supersedes the original root-level artifact paths without changing the frozen
+source, authoritative counts, outcome boundary, or diagnostic authority.
+
 ## Hard boundaries
 
 - Never open or infer any post-2026-07-09 target outcome.

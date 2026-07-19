@@ -261,7 +261,7 @@ def make_fixture(
     ]
     contract_path = tmp_path / "reproducibility.json"
     write_json(contract_path, {
-        "schema_version": "form_only_v1_reproducibility_v2",
+        "schema_version": "form_only_v1_reproducibility_v3",
         "trusted_inputs": {
             "development": {
                 "files": top_files, "authoritative_source_record_count": 7,
@@ -592,17 +592,19 @@ def test_synthetic_full_build_is_deterministic_and_identity_safe(tmp_path: Path)
     assert second["artifact_manifest"] == third["artifact_manifest"] == first["artifact_manifest"]
     assert first["development"]["sidecar_only_runner_exclusion_count"] == 1
     assert first["out_of_time"]["included_runner_count"] == 1
-    dev_rows = list(csv.DictReader((tmp_path / "build-a" / "development_runners.csv").open()))
-    oot_rows = list(csv.DictReader((tmp_path / "build-a" / "out_of_time_runners.csv").open()))
+    trainer = tmp_path / "build-a" / "trainer"
+    dev_rows = list(csv.DictReader((trainer / "development_runners.csv").open()))
+    oot_rows = list(csv.DictReader((trainer / "out_of_time_runners.csv").open()))
     assert set(dev_rows[0]).isdisjoint(MODULE.FORBIDDEN_ARTIFACT_FIELDS)
     assert set(oot_rows[0]).isdisjoint(MODULE.FORBIDDEN_ARTIFACT_FIELDS)
     assert {row["row_id"] for row in dev_rows}.isdisjoint({row["row_id"] for row in oot_rows})
-    exclusions = list(csv.DictReader((tmp_path / "build-a" / "development_exclusions.csv").open()))
+    trainer = tmp_path / "build-a" / "trainer"
+    exclusions = list(csv.DictReader((trainer / "development_exclusions.csv").open()))
     roster_exclusion = next(row for row in exclusions if row["reason"] == "HASH_BOUND_PUBLISHED_ACTIVE_ROSTER_EXCLUSION")
     assert set(roster_exclusion) == {
         "entity_type", "entity_id", "race_id", "reason", "history_date"
     }
-    assert "SCRATCHEDDOG" not in (tmp_path / "build-a" / "development_exclusions.csv").read_text()
+    assert "SCRATCHEDDOG" not in (trainer / "development_exclusions.csv").read_text()
 
 
 @pytest.mark.parametrize("mutation", ["count", "file_hash", "aggregate_hash"])
@@ -630,19 +632,20 @@ def test_trainer_visible_identity_mutations_are_rejected(tmp_path: Path, mutatio
     fixture = make_fixture(tmp_path)
     output = tmp_path / "build"
     build_fixture(fixture, output, enforce=False)
+    trainer = output / "trainer"
     if mutation == "sealed_key":
-        path = output / "development_runners.csv"
+        path = trainer / "development_runners.csv"
         path.write_text(path.read_text(encoding="utf-8") + "|dog:REUSABLE\n", encoding="utf-8")
         match = "sealed dog alignment key"
     elif mutation == "forbidden_json_key":
-        path = output / "market_coverage.json"
+        path = trainer / "market_coverage.json"
         payload = json.loads(path.read_text(encoding="utf-8"))
         payload["dog_name"] = "REUSABLE"
         write_json(path, payload)
         match = "identity-bearing fields"
     else:
-        dev_path = output / "development_runners.csv"
-        oot_path = output / "out_of_time_runners.csv"
+        dev_path = trainer / "development_runners.csv"
+        oot_path = trainer / "out_of_time_runners.csv"
         with dev_path.open(encoding="utf-8", newline="") as handle:
             dev_id = next(csv.DictReader(handle))["row_id"]
         with oot_path.open(encoding="utf-8", newline="") as handle:
@@ -656,7 +659,7 @@ def test_trainer_visible_identity_mutations_are_rejected(tmp_path: Path, mutatio
             writer.writerows(rows)
         match = "links multiple races or splits"
     with pytest.raises(ValueError, match=match):
-        MODULE.validate_trainer_visible_artifacts(output)
+        MODULE.validate_trainer_visible_artifacts(trainer)
 
 
 def test_scan_mode_rederives_source_and_rejects_banned_path(tmp_path: Path) -> None:
@@ -675,18 +678,20 @@ def test_attacker_view_is_allowlisted_and_unlinkable(tmp_path: Path) -> None:
     fixture = make_fixture(tmp_path)
     output = tmp_path / "build"
     build_fixture(fixture, output, enforce=False)
-    manifest = json.loads((output / "trainer_input_manifest.json").read_text())
+    trainer = output / "trainer"
+    control = output / "control_plane"
+    manifest = json.loads((control / "trainer_input_manifest.json").read_text())
     allowed = {row["path"] for row in manifest["allowed_files"]}
     assert not any("source_inventory" in name or "alignment" in name for name in allowed)
     assert manifest["forbidden_roots"] == [
-        "sealed_validation", "non_authoritative_diagnostic"
+        "control_plane", "sealed_validation", "non_authoritative_diagnostic"
     ]
-    attacker_text = "".join((output / name).read_text() for name in sorted(allowed))
+    attacker_text = "".join((trainer / name).read_text() for name in sorted(allowed))
     assert "Same Dog" not in attacker_text
     assert "SAMEDOG" not in attacker_text
     assert str(fixture["card_one"]) not in attacker_text
-    dev = list(csv.DictReader((output / "development_runners.csv").open()))
-    oot = list(csv.DictReader((output / "out_of_time_runners.csv").open()))
+    dev = list(csv.DictReader((trainer / "development_runners.csv").open()))
+    oot = list(csv.DictReader((trainer / "out_of_time_runners.csv").open()))
     assert not ({row["row_id"] for row in dev} & {row["row_id"] for row in oot})
 
 
@@ -795,11 +800,221 @@ def test_empty_or_missing_trainer_artifact_fails_closed(tmp_path: Path) -> None:
     fixture = make_fixture(tmp_path)
     output = tmp_path / "build"
     build_fixture(fixture, output, enforce=False)
-    (output / "development_features.csv").write_text("", encoding="utf-8")
+    trainer = output / "trainer"
+    (trainer / "development_features.csv").write_text("", encoding="utf-8")
     with pytest.raises(ValueError, match="missing or empty trainer artifact"):
-        MODULE.validate_trainer_visible_artifacts(output)
+        MODULE.validate_trainer_visible_artifacts(trainer)
     with pytest.raises(ValueError, match="missing or empty generated artifact"):
-        MODULE.write_artifact_manifest(output, MODULE.TRAINER_ARTIFACT_NAMES)
+        MODULE.write_artifact_manifest(trainer, MODULE.TRAINER_ARTIFACT_NAMES)
+
+
+def test_actual_trainer_readable_set_equals_declared_surface(tmp_path: Path) -> None:
+    fixture = make_fixture(tmp_path)
+    output = tmp_path / "build"
+    build_fixture(fixture, output, enforce=False)
+    trainer = output / "trainer"
+    control = output / "control_plane"
+    manifest = json.loads((control / "trainer_input_manifest.json").read_text())
+    declared = {row["path"] for row in manifest["allowed_files"]}
+    actual = {path.name for path in trainer.iterdir()}
+    assert actual == declared == set(MODULE.TRAINER_ARTIFACT_ROLES)
+    assert len(actual) == len(MODULE.TRAINER_ARTIFACT_ROLES)
+    assert (control / "trainer_input_manifest.json").is_file()
+    assert (control / "artifact-manifest.sha256").is_file()
+    assert not any(path.is_file() for path in output.iterdir())
+    assert MODULE.validate_trainer_read_surface(output) is None
+
+
+@pytest.mark.parametrize(
+    "mutation,match",
+    [
+        ("unexpected_13th", "read surface mismatch"),
+        ("dotfile", "read surface mismatch"),
+        ("symlink", "not a regular file"),
+        ("hardlink", "not a regular single-link file"),
+        ("directory", "not a regular"),
+        ("renamed", "read surface mismatch"),
+        ("missing", "read surface mismatch"),
+        ("length", "byte length mismatch"),
+        ("hash", "sha256 mismatch"),
+        ("duplicate", "duplicate trainer declaration"),
+        ("escape", "unsafe trainer declaration path"),
+    ],
+)
+def test_trainer_loader_fails_closed_before_returning_data(
+    tmp_path: Path, mutation: str, match: str
+) -> None:
+    fixture = make_fixture(tmp_path)
+    output = tmp_path / "build"
+    summary = build_fixture(fixture, output, enforce=False)
+    bind_expected_output(fixture, summary)
+    trainer = output / "trainer"
+    control_manifest = output / "control_plane" / "trainer_input_manifest.json"
+    manifest = json.loads(control_manifest.read_text())
+    target = trainer / "development_features.csv"
+    if mutation == "unexpected_13th":
+        (trainer / "unexpected-13th.txt").write_text("x", encoding="utf-8")
+    elif mutation == "dotfile":
+        (trainer / ".hidden").write_text("x", encoding="utf-8")
+    elif mutation == "symlink":
+        target.unlink()
+        target.symlink_to(output / "sealed_validation" / "development_source_inventory.csv")
+    elif mutation == "hardlink":
+        target.unlink()
+        target.hardlink_to(output / "sealed_validation" / "development_source_inventory.csv")
+    elif mutation == "directory":
+        target.unlink()
+        target.mkdir()
+    elif mutation == "renamed":
+        target.rename(trainer / "renamed.csv")
+    elif mutation == "missing":
+        target.unlink()
+    elif mutation == "length":
+        target.write_bytes(target.read_bytes() + b"x")
+    elif mutation == "hash":
+        payload = target.read_bytes()
+        target.write_bytes(bytes([payload[0] ^ 1]) + payload[1:])
+    elif mutation == "duplicate":
+        manifest["allowed_files"].append(dict(manifest["allowed_files"][0]))
+        write_json(control_manifest, manifest)
+    elif mutation == "escape":
+        manifest["allowed_files"][0]["path"] = "../sealed_validation/development_source_inventory.csv"
+        write_json(control_manifest, manifest)
+    with pytest.raises(ValueError, match=match):
+        MODULE.load_verified_trainer_inputs(output, fixture["contract"])
+
+
+@pytest.mark.parametrize("mutation,match", [
+    ("duplicate", "duplicate trainer declaration"),
+    ("escape", "unsafe trainer declaration path"),
+])
+def test_internal_manifest_declaration_checks_fail_closed(
+    tmp_path: Path, mutation: str, match: str
+) -> None:
+    fixture = make_fixture(tmp_path)
+    output = tmp_path / "build"
+    build_fixture(fixture, output, enforce=False)
+    control_manifest = output / "control_plane" / "trainer_input_manifest.json"
+    manifest = json.loads(control_manifest.read_text())
+    if mutation == "duplicate":
+        manifest["allowed_files"].append(dict(manifest["allowed_files"][0]))
+    else:
+        manifest["allowed_files"][0]["path"] = "../sealed_validation/development_source_inventory.csv"
+    write_json(control_manifest, manifest)
+    with pytest.raises(ValueError, match=match):
+        MODULE.validate_trainer_read_surface(output)
+
+
+def test_git_tracked_descriptor_pins_control_plane_bytes(tmp_path: Path) -> None:
+    fixture = make_fixture(tmp_path)
+    output = tmp_path / "build"
+    summary = build_fixture(fixture, output, enforce=False)
+    bind_expected_output(fixture, summary)
+    control_manifest = output / "control_plane" / "trainer_input_manifest.json"
+    control_manifest.write_bytes(control_manifest.read_bytes() + b"\n")
+    assert MODULE.validate_trainer_read_surface(output) is None
+    with pytest.raises(ValueError, match="control-plane artifact hash mismatch"):
+        MODULE.load_verified_trainer_inputs(output, fixture["contract"])
+
+
+def test_build_rejects_symlinked_packet_root_before_writing(tmp_path: Path) -> None:
+    fixture = make_fixture(tmp_path)
+    target = tmp_path / "symlink-target"
+    target.mkdir()
+    output = tmp_path / "build"
+    output.symlink_to(target, target_is_directory=True)
+    with pytest.raises(ValueError, match="packet root path is a symlink"):
+        build_fixture(fixture, output, enforce=False)
+    assert not list(target.iterdir())
+
+
+@pytest.mark.parametrize("mutation", ["domain_symlink", "domain_entry", "root_entry"])
+def test_build_rejects_preexisting_output_entries_before_writing(
+    tmp_path: Path, mutation: str
+) -> None:
+    fixture = make_fixture(tmp_path)
+    output = tmp_path / "build"
+    output.mkdir()
+    if mutation == "domain_symlink":
+        target = tmp_path / "diagnostic-target"
+        target.mkdir()
+        (output / "non_authoritative_diagnostic").symlink_to(
+            target, target_is_directory=True
+        )
+        match = "packet domain path is a symlink"
+    elif mutation == "domain_entry":
+        (output / "trainer").mkdir()
+        (output / "trainer" / "unexpected.txt").write_text("do not overwrite", encoding="utf-8")
+        match = "packet domain has unexpected pre-existing entries"
+    else:
+        (output / "unexpected.txt").write_text("do not overwrite", encoding="utf-8")
+        match = "packet root has unexpected pre-existing entries"
+    before = sorted(str(path.relative_to(output)) for path in output.rglob("*"))
+    with pytest.raises(ValueError, match=match):
+        build_fixture(fixture, output, enforce=False)
+    after = sorted(str(path.relative_to(output)) for path in output.rglob("*"))
+    assert after == before
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "packet_symlink", "trainer_symlink", "control_symlink",
+        "sealed_symlink", "diagnostic_symlink",
+    ],
+)
+def test_trainer_loader_rejects_symlinked_trust_paths(tmp_path: Path, mutation: str) -> None:
+    fixture = make_fixture(tmp_path)
+    output = tmp_path / "build"
+    summary = build_fixture(fixture, output, enforce=False)
+    bind_expected_output(fixture, summary)
+    packet = output
+    if mutation == "packet_symlink":
+        packet = tmp_path / "packet-alias"
+        packet.symlink_to(output, target_is_directory=True)
+    elif mutation == "trainer_symlink":
+        trainer = output / "trainer"
+        moved = tmp_path / "trainer-moved"
+        trainer.rename(moved)
+        trainer.symlink_to(moved, target_is_directory=True)
+    elif mutation == "control_symlink":
+        control = output / "control_plane"
+        moved = tmp_path / "control-moved"
+        control.rename(moved)
+        control.symlink_to(moved, target_is_directory=True)
+    else:
+        domain_name = (
+            "sealed_validation" if mutation == "sealed_symlink"
+            else "non_authoritative_diagnostic"
+        )
+        domain = output / domain_name
+        moved = tmp_path / f"{domain_name}-moved"
+        domain.rename(moved)
+        domain.symlink_to(moved, target_is_directory=True)
+    with pytest.raises(ValueError, match="symlink|directory"):
+        MODULE.load_verified_trainer_inputs(packet, fixture["contract"])
+
+
+@pytest.mark.parametrize(
+    "mutation", ["unexpected_file", "dotfile", "symlink", "directory"]
+)
+def test_trainer_loader_rejects_unexpected_packet_root_entries(
+    tmp_path: Path, mutation: str
+) -> None:
+    fixture = make_fixture(tmp_path)
+    output = tmp_path / "build"
+    summary = build_fixture(fixture, output, enforce=False)
+    bind_expected_output(fixture, summary)
+    if mutation == "unexpected_file":
+        (output / "unexpected.txt").write_text("x", encoding="utf-8")
+    elif mutation == "dotfile":
+        (output / ".hidden").write_text("x", encoding="utf-8")
+    elif mutation == "symlink":
+        (output / "trainer-alias").symlink_to(output / "trainer", target_is_directory=True)
+    else:
+        (output / "unexpected-directory").mkdir()
+    with pytest.raises(ValueError, match="packet root surface mismatch"):
+        MODULE.load_verified_trainer_inputs(output, fixture["contract"])
 
 
 def test_diagnostic_build_cannot_change_authoritative_files(tmp_path: Path) -> None:

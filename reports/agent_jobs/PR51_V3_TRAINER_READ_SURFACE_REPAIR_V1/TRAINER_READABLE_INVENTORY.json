@@ -1,0 +1,30 @@
+{
+  "schema_version": "pr51_trainer_readable_inventory_v1",
+  "rejected_head": "91f854f5555bd1fd8ef411f2fadc108b41d2e5df",
+  "preserved_build": "/tmp/pr51-v3-independent-acceptance.47ZnO0/run-a",
+  "old_actual_readable_count": 12,
+  "old_declared_count": 10,
+  "readability_rule": "Each entry was a top-level regular file in the single output root supplied to the trainer-side workflow, readable by the same principal, with no enforced exact-root or default-discovery boundary.",
+  "files": [
+    {"path":"artifact-manifest.sha256","type":"regular_file","bytes":993,"sha256":"2a117944c51c5c0f3a41c5b2a6251792075ed52c338538aa449054ad67723c2a","producer":"write_artifact_manifest","consumer":"launcher integrity validation","classification":"CONTROL_INTEGRITY_SIGNATURE","why_readable":"top-level file in trainer root","disposition":"moved to control_plane/artifact-manifest.sha256; never returned to trainer"},
+    {"path":"development_exclusions.csv","type":"regular_file","bytes":359963,"sha256":"fa302743776f34ed05ab0e3c7eb21064e844059f11606f3843088fa2f93157f3","producer":"build_development_packet","consumer":"trainer eligibility audit","classification":"TRAINER_SAFE_ELIGIBILITY_METADATA","why_readable":"top-level file in trainer root","disposition":"declared in trainer domain"},
+    {"path":"development_features.csv","type":"regular_file","bytes":1315042,"sha256":"3dee15bb5605d4fa299b0ea167419c568424e9576e646cc07a0e5583b3f5e284","producer":"build_development_packet","consumer":"trainer","classification":"MODEL_INPUT_DATA","why_readable":"top-level file in trainer root","disposition":"declared in trainer domain"},
+    {"path":"development_manifest.json","type":"regular_file","bytes":2455,"sha256":"a3d8a8f38526a7e790205331833494aae54cfd7082e32a367df4c74aa4d9cc79","producer":"build_development_packet","consumer":"trainer split validation","classification":"TRAINER_SAFE_SPLIT_METADATA","why_readable":"top-level file in trainer root","disposition":"declared in trainer domain"},
+    {"path":"development_races.csv","type":"regular_file","bytes":228606,"sha256":"fedfaa1d6c7a5f43d344a99d66f0fb51403f8c60d5c75fd2477b250215320f2a","producer":"build_development_packet","consumer":"trainer","classification":"MODEL_INPUT_DATA","why_readable":"top-level file in trainer root","disposition":"declared in trainer domain"},
+    {"path":"development_runners.csv","type":"regular_file","bytes":834579,"sha256":"9d296366765f2f5a983fd89361ee3172222eb0a4131da8680df049ada7df3e36","producer":"build_development_packet","consumer":"trainer","classification":"MODEL_INPUT_DATA","why_readable":"top-level file in trainer root","disposition":"declared in trainer domain"},
+    {"path":"feature_contract.json","type":"regular_file","bytes":2134,"sha256":"683794aaae123951e7e02623b2b729fa7385987827958efcdcf9dd1248a7dac5","producer":"write_feature_contract","consumer":"trainer feature validation","classification":"TRAINER_SAFE_FEATURE_METADATA","why_readable":"top-level file in trainer root","disposition":"declared in trainer domain"},
+    {"path":"market_coverage.json","type":"regular_file","bytes":702,"sha256":"00b27f3f25e807a5656fb1ca846a2adbcd0a70c50693fb29103cb11e04f25c95","producer":"write_market_coverage","consumer":"trainer boundary validation","classification":"TRAINER_SAFE_BOUNDARY_METADATA","why_readable":"top-level file in trainer root","disposition":"declared in trainer domain"},
+    {"path":"out_of_time_manifest.json","type":"regular_file","bytes":929,"sha256":"cdc2cf02bf3b590fe5b980ebc54550308e6a2afcfc6d3ce9244c5486f52b4bda","producer":"build_out_of_time_manifest","consumer":"trainer split validation","classification":"TRAINER_SAFE_SPLIT_METADATA","why_readable":"top-level file in trainer root","disposition":"declared in trainer domain"},
+    {"path":"out_of_time_races.csv","type":"regular_file","bytes":13181,"sha256":"9ad6e0f2a89c2dac04f1c8f4be2dbea2a6ea7751fa3af486c490a71fb961c711","producer":"build_out_of_time_manifest","consumer":"trainer","classification":"MODEL_INPUT_DATA","why_readable":"top-level file in trainer root","disposition":"declared in trainer domain"},
+    {"path":"out_of_time_runners.csv","type":"regular_file","bytes":77540,"sha256":"dddc64a905fd9164da3f8c6cbc131b0119771bcd915e79f55dec1f71069e9830","producer":"build_out_of_time_manifest","consumer":"trainer","classification":"MODEL_INPUT_DATA","why_readable":"top-level file in trainer root","disposition":"declared in trainer domain"},
+    {"path":"trainer_input_manifest.json","type":"regular_file","bytes":2003,"sha256":"46d671b98375aa2c1d091901934019fdf5312da24704c7705a8a4353a48294e7","producer":"write_trainer_input_manifest","consumer":"trusted launcher","classification":"CONTROL_DECLARATION_METADATA","why_readable":"top-level file in trainer root","disposition":"moved to control_plane/trainer_input_manifest.json; hash-bound by tracked descriptor; never returned to trainer"}
+  ],
+  "new_layout": {
+    "trainer_root": "trainer",
+    "actual_count": 10,
+    "declared_count": 10,
+    "actual_equals_declared": true,
+    "control_plane_root": "control_plane",
+    "control_file_count": 2
+  }
+}

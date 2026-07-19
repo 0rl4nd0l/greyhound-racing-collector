@@ -1,0 +1,18 @@
+{
+  "decision_id":"pr51-v3-trainer-read-surface-repair-v1-direct-descendant",
+  "scope_fingerprint":"4b7b26c3db1e5b57404f21d7a58a721c8a94b15f7fa42bce173c4a24b2551d2b",
+  "task_id":"PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1",
+  "run_id":"l4nd0-System-Product-Name:PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1",
+  "project_id":"greyhound_racing_collector","claim_id":"PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1","hypothesis_id":"pr51_v3_trainer_read_surface_repair_v1","program_track":"offline_development",
+  "source_class":"exact_remote_pr51_head_91f854f_plus_preserved_and_regenerated_v3_independent_acceptance_evidence_and_hash_bound_pre_race_inputs_only",
+  "dataset_version":"pr51_head_91f854f_trainer_read_surface_repair_v1_20260719","evidence_hash":"sha256:1eea251225d79bb0901f6b46a26ec3c3cb9d91e348cbac826e45efeb4ef90a80",
+  "target_transition":"repaired_pr51_v3_exact_trainer_read_surface_ready_for_new_full_independent_acceptance",
+  "phase_before":"exact_head_91f854f_independently_rejected_on_trainer_readable_set_12_versus_declared_10_and_symlink_fail_open","phase_after":"repaired_pr51_v3_exact_trainer_read_surface_ready_for_new_full_independent_acceptance",
+  "decision":"PASS","outcome_status":"ADVANCED",
+  "decision_delta":{"outcome":"DONE_WITH_RISK","old_head":"91f854f5555bd1fd8ef411f2fadc108b41d2e5df","new_head_resolution":"single direct descendant containing this entry","trainer_surface":"ACTUAL_10_EQUALS_DECLARED_10","control_plane_files":2,"publication_risk":"broad suite cannot collect because documented dependencies omit flask_compress; fresh full independent acceptance mandatory"},
+  "evidence_refs":["reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/VALIDATION.md","reports/agent_jobs/PR51_V3_TRAINER_READ_SURFACE_REPAIR_V1/EXACT_SET_PROBES.json","docs/form_only_v1_reproducibility.json","https://github.com/0rl4nd0/greyhound-racing-collector/pull/51"],
+  "blocks":[],"does_not_block":["Market 2/402/497/501 remains DATA_MISSING; no outcome, model, edge, runtime, activation, merge, database or PR 46-48 claim is made."],
+  "validated_at":"2026-07-19T15:20:47+10:00",
+  "invalidation_conditions":["Any trust-root input or output digest changes.","Independent exact-head review reproduces a trainer read-surface or unfinished V3 defect.","Published PR head is not the single direct descendant of 91f854f5 containing this report."],
+  "reopen_conditions":["A materially new FORM_ONLY_V1 acquisition-contract defect is demonstrated at the exact published repair head."]
+}

@@ -1,0 +1,15 @@
+{
+  "schema_version": "form_only_v1_hash_counts_v3",
+  "authoritative_counts": {"candidate_races":1267,"candidate_runners":8914,"included_races":917,"included_runners":6456,"sidecar_only_exclusions":67,"out_of_time_races":88,"out_of_time_runners":617},
+  "diagnostic_counts": {"overlap_races":73,"overlap_runners":530,"history_differences":486,"recency_differences":527,"grade_differences":0,"unexplained_differences":259,"unexplained_races":71},
+  "domains": {
+    "trainer":{"declared_artifact_count":10,"actual_artifact_count":10,"aggregate_sha256":"97967ab307b1a5608dff9759a2b154aaa6c0db1d3885974024b4b5e04b184e31"},
+    "control_plane":{"declared_artifact_count":2,"actual_artifact_count":2,"aggregate_sha256":"1712d3d614cd10b76da620882a02babd29feebcb111f1faf92b9b7ec0eed5462"},
+    "sealed_validation":{"declared_artifact_count":5,"aggregate_sha256":"4ce9d1052c93d118b853f7ccdea5afc071e3de78fd38dd56ee5e2e09a90d26ed"},
+    "non_authoritative_diagnostic":{"declared_artifact_count":2,"aggregate_sha256":"e5eaf4920f1bb9611f1684024fdb9a5a2d96721e060f5bba7a62712e2da1995f"}
+  },
+  "descriptor_bound_artifact_count":19,
+  "outcomes_opened":false,
+  "model_fit":false,
+  "market_cohort_created":false
+}
