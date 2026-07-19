@@ -5,7 +5,7 @@ It loads one hash-bound base model, derives the frozen full and half variants,
 and can append deterministic outcome-free shadow records to an explicit JSONL
 path supplied by a future separately authorized caller.
 
-V2 record checksums detect accidental corruption and inconsistent record
+Sealed record checksums detect accidental corruption and inconsistent record
 construction. They are not authentication: a malicious actor with filesystem
 access can replace a complete canonical row and recompute its checksum and
 identifier. External signing and key management are deliberately out of scope.
@@ -21,18 +21,19 @@ import os
 import re
 import stat
 from dataclasses import dataclass, field, replace
+from decimal import Decimal, ROUND_HALF_EVEN
 from datetime import datetime
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Mapping, Sequence
+from typing import Any, Iterable, Mapping, Sequence
 
 import numpy as np
 
 
 MODEL_SCHEMA = "market_form_residual_frozen_model_v1"
 MANIFEST_SCHEMA = "market_form_residual_frozen_manifest_v1"
-SHADOW_RECORD_SCHEMA = "market_form_residual_shadow_record_v2"
-EFFECTIVE_STATE_SCHEMA = "market_form_residual_effective_state_v1"
+SHADOW_RECORD_SCHEMA = "market_form_residual_shadow_record_v3"
+EFFECTIVE_STATE_SCHEMA = "market_form_residual_effective_state_v2"
 DEFAULT_ARTIFACT_DIR = Path("artifacts/frozen_models/market_form_residual_v1")
 FEATURES = (
     "prior_start_count",
@@ -149,6 +150,19 @@ FROZEN_DERIVATION_CONTRACT = MappingProxyType(
         "variants_are_not_separate_models": True,
     }
 )
+NUMERICAL_CANONICALIZATION_CONTRACT = MappingProxyType(
+    {
+        "boundary": "ordered_scalar_scoring_before_record_construction",
+        "calculation": "python_binary64_scalar_v1",
+        "decimal_places": 15,
+        "negative_zero": "normalize_to_positive_zero",
+        "reductions": "math_fsum",
+        "rounding": "decimal_round_half_even",
+        "schema_version": "market_form_residual_numeric_canonicalization_v1",
+        "transcendentals": "math_log_exp_tanh",
+    }
+)
+_RESIDUAL_ADJUSTMENT_QUANTUM = Decimal("0.000000000000001")
 
 
 class ResidualContractError(RuntimeError):
@@ -246,6 +260,36 @@ def _finite_float(value: Any, field: str) -> float:
     return result
 
 
+def _canonicalize_residual_adjustment(value: Any) -> float:
+    """Remove runtime-level numerical noise before probability derivation."""
+
+    finite = _finite_float(value, "residual_adjustment")
+    canonical = float(
+        Decimal(str(finite)).quantize(
+            _RESIDUAL_ADJUSTMENT_QUANTUM,
+            rounding=ROUND_HALF_EVEN,
+        )
+    )
+    return 0.0 if canonical == 0.0 else canonical
+
+
+def _scoring_finite(value: float) -> float:
+    """Fail closed when a finite input overflows during scalar scoring."""
+
+    if not math.isfinite(value):
+        raise ResidualContractError("scoring_arithmetic_invalid")
+    return value
+
+
+def _scoring_fsum(values: Iterable[float]) -> float:
+    """Apply the contracted reduction while normalizing arithmetic failures."""
+
+    try:
+        return _scoring_finite(math.fsum(values))
+    except (OverflowError, ValueError) as exc:
+        raise ResidualContractError("scoring_arithmetic_invalid") from exc
+
+
 def _numeric_vector(value: Any, length: int, field: str) -> np.ndarray:
     if not isinstance(value, list) or len(value) != length:
         raise ResidualContractError(f"invalid_vector_shape:{field}")
@@ -309,6 +353,7 @@ def _effective_state_payload(frozen: FrozenResidualModel) -> dict[str, Any]:
             "manifest": frozen.manifest,
         },
         "score_state": _score_state_payload(frozen),
+        "output_contract": NUMERICAL_CANONICALIZATION_CONTRACT,
     }
 
 
@@ -543,16 +588,22 @@ def _seal_shadow_record(content: Mapping[str, Any]) -> dict[str, Any]:
     return record
 
 
-def _softmax(values: np.ndarray) -> np.ndarray:
-    shifted = values - np.max(values)
-    exponentials = np.exp(shifted)
-    total = float(np.sum(exponentials))
+def _softmax(values: Sequence[float]) -> list[float]:
+    try:
+        finite_values = [_scoring_finite(value) for value in values]
+        shifted = [
+            _scoring_finite(value - max(finite_values)) for value in finite_values
+        ]
+        exponentials = [_scoring_finite(math.exp(value)) for value in shifted]
+    except (OverflowError, ValueError) as exc:
+        raise ResidualContractError("scoring_arithmetic_invalid") from exc
+    total = _scoring_fsum(exponentials)
     if not math.isfinite(total) or total <= 0.0:
         raise ResidualContractError("softmax_invalid")
-    probabilities = exponentials / total
-    if not np.all(np.isfinite(probabilities)) or np.any(probabilities < 0.0):
+    probabilities = [value / total for value in exponentials]
+    if not all(math.isfinite(value) and value >= 0.0 for value in probabilities):
         raise ResidualContractError("probability_invalid")
-    if not math.isclose(float(np.sum(probabilities)), 1.0, rel_tol=0.0, abs_tol=1e-12):
+    if not math.isclose(_scoring_fsum(probabilities), 1.0, rel_tol=0.0, abs_tol=1e-12):
         raise ResidualContractError("probability_not_normalized")
     return probabilities
 
@@ -699,20 +750,61 @@ def score_race(
     if _runner_set_sha256(actual_runner_ids) != expected_hash:
         raise ResidualContractError("actual_runner_set_hash_mismatch")
 
-    raw = np.asarray(raw_features, dtype=float)
-    missing = ~np.isfinite(raw)
-    imputed = np.where(missing, frozen.medians, raw)
-    expanded = np.concatenate([imputed, missing.astype(float)], axis=1)
-    transformed = (expanded - frozen.means) / frozen.scales
+    expanded: list[list[float]] = []
+    for values in raw_features:
+        missing = [not math.isfinite(value) for value in values]
+        imputed = [
+            float(frozen.medians[index]) if missing[index] else value
+            for index, value in enumerate(values)
+        ]
+        expanded.append(imputed + [1.0 if value else 0.0 for value in missing])
+    transformed = [
+        [
+            _scoring_finite(
+                (value - float(frozen.means[index])) / float(frozen.scales[index])
+            )
+            for index, value in enumerate(row)
+        ]
+        for row in expanded
+    ]
     if frozen.within_race_centering:
-        transformed -= np.mean(transformed, axis=0)
-    adjustment = frozen.residual_cap * np.tanh(
-        (transformed @ frozen.beta) / frozen.residual_cap
+        centers = [
+            _scoring_finite(
+                _scoring_fsum(row[index] for row in transformed) / len(transformed)
+            )
+            for index in range(len(transformed[0]))
+        ]
+        transformed = [
+            [_scoring_finite(value - centers[index]) for index, value in enumerate(row)]
+            for row in transformed
+        ]
+    adjustment = [
+        _canonicalize_residual_adjustment(
+            frozen.residual_cap
+            * math.tanh(
+                _scoring_fsum(
+                    value * float(frozen.beta[index]) for index, value in enumerate(row)
+                )
+                / frozen.residual_cap
+            )
+        )
+        for row in transformed
+    ]
+    implied = [1.0 / value for value in odds]
+    implied_total = _scoring_fsum(implied)
+    market = [_scoring_finite(value / implied_total) for value in implied]
+    full = _softmax(
+        [
+            math.log(market[index]) + frozen.full_strength * adjustment[index]
+            for index in range(len(market))
+        ]
     )
-    implied = 1.0 / np.asarray(odds, dtype=float)
-    market = implied / np.sum(implied)
-    full = _softmax(np.log(market) + frozen.full_strength * adjustment)
-    half = _softmax(np.log(market) + frozen.half_strength * adjustment)
+    half = _softmax(
+        [
+            math.log(market[index]) + frozen.half_strength * adjustment[index]
+            for index in range(len(market))
+        ]
+    )
 
     predictions = []
     for index, runner in enumerate(normalized_runners):
@@ -965,7 +1057,7 @@ def append_shadow_record(
     runners: Sequence[Mapping[str, Any]],
     provenance: Mapping[str, Any],
 ) -> str:
-    """Transactionally append one v2 record after validating prior history.
+    """Transactionally append one v3 record after validating prior history.
 
     The embedded SHA-256 values detect corruption and inconsistent construction;
     they do not authenticate a row against coordinated host-level rewriting.

@@ -196,7 +196,7 @@ def test_loaded_score_state_is_deeply_immutable():
         OUTCOME_FIELDS,
     ],
 )
-def test_v2_schema_contract_collections_are_immutable(contract):
+def test_v3_schema_contract_collections_are_immutable(contract):
     with pytest.raises(AttributeError):
         contract.add("forged_field")
 
@@ -313,15 +313,25 @@ def test_loader_rejects_algorithm_contract_tampering(tmp_path, mutate, error):
 
 def test_fixed_fixture_predictions_are_identical_and_normalized():
     frozen, runners, provenance = load_fixture()
+    manifest = json.loads((ARTIFACT_DIR / "manifest.json").read_text())
     first = score_race(frozen, runners, provenance)
     second = score_race(frozen, runners, provenance)
     assert first == second
-    expected = frozen.manifest["fixed_fixture"]["expected"]
     assert [row["full_probability"] for row in first["predictions"]] == [
-        row["probability"] for row in expected["full"]
+        0.4865438888325983,
+        0.04255251747956415,
+        0.2231390938439158,
+        0.0802789211704884,
+        0.03806490424396211,
+        0.12942067442947117,
     ]
     assert [row["half_probability"] for row in first["predictions"]] == [
-        row["probability"] for row in expected["half"]
+        0.4874257548450749,
+        0.0429230211436064,
+        0.2235435358427413,
+        0.07831854008896694,
+        0.03813389729082056,
+        0.1296552507887899,
     ]
     assert sum(
         row["full_probability"] for row in first["predictions"]
@@ -334,6 +344,16 @@ def test_fixed_fixture_predictions_are_identical_and_normalized():
     ) == pytest.approx(1.0)
     assert first["effective_state_sha256"] == frozen.effective_state_sha256
     assert len(first["effective_state_sha256"]) == 64
+    for variant, field in (("full", "full_probability"), ("half", "half_probability")):
+        prior = {
+            row["runner_id"]: row["probability"]
+            for row in manifest["fixed_fixture"]["expected"][variant]
+        }
+        current = {row["runner_id"]: row[field] for row in first["predictions"]}
+        assert max(abs(current[key] - prior[key]) for key in prior) <= 3e-16
+        assert sorted(prior, key=prior.get, reverse=True) == sorted(
+            current, key=current.get, reverse=True
+        )
 
 
 def test_reordered_runner_input_produces_byte_identical_record(tmp_path):
@@ -1625,11 +1645,11 @@ def test_nonregular_sidecar_lock_is_rejected_without_transaction_mutation(
     assert len(os.listdir("/proc/self/fd")) == fd_count_before
 
 
-def test_v2_record_stores_complete_inputs_and_binds_full_content():
+def test_v3_record_stores_complete_inputs_and_binds_full_content():
     frozen, runners, provenance = load_fixture()
     record = score_race(frozen, runners, provenance)
 
-    assert record["schema_version"] == "market_form_residual_shadow_record_v2"
+    assert record["schema_version"] == "market_form_residual_shadow_record_v3"
     assert record["inputs"]["provenance"] == {
         "expected_runner_ids": sorted(provenance["expected_runner_ids"]),
         "jump_timestamp": provenance["jump_timestamp"],
@@ -1697,7 +1717,7 @@ def test_existing_history_rejects_resealed_prediction_input_mismatch(tmp_path):
         )
 
 
-@pytest.mark.parametrize("history_shape", ["v1", "mixed", "insufficient_v2"])
+@pytest.mark.parametrize("history_shape", ["v1", "v2", "mixed", "insufficient_v3"])
 def test_legacy_mixed_and_insufficient_history_require_migration(
     tmp_path, history_shape
 ):
@@ -1706,19 +1726,31 @@ def test_legacy_mixed_and_insufficient_history_require_migration(
     legacy = copy.deepcopy(current)
     legacy["schema_version"] = "market_form_residual_shadow_record_v1"
     reseal_record(legacy)
+    prior = copy.deepcopy(current)
+    prior["schema_version"] = "market_form_residual_shadow_record_v2"
+    reseal_record(prior)
     insufficient = copy.deepcopy(current)
     insufficient.pop("inputs")
     reseal_record(insufficient)
     rows = {
         "v1": [legacy],
-        "mixed": [current, legacy],
-        "insufficient_v2": [insufficient],
+        "v2": [prior],
+        "mixed": [current, prior],
+        "insufficient_v3": [insufficient],
     }[history_shape]
     path = tmp_path / f"{history_shape}.jsonl"
     path.write_bytes(b"".join(canonical_bytes(row) for row in rows))
+    before = path.read_bytes()
+    before_stat = path.stat()
 
     with pytest.raises(ResidualContractError, match="^history_migration_required$"):
         append_record(path, frozen, current, runners, provenance)
+
+    after_stat = path.stat()
+    assert path.read_bytes() == before
+    assert after_stat.st_ino == before_stat.st_ino
+    assert stat.S_IMODE(after_stat.st_mode) == stat.S_IMODE(before_stat.st_mode)
+    assert list(tmp_path.glob(f".{path.name}.*.tmp")) == []
 
 
 @pytest.mark.parametrize(

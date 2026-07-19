@@ -1,0 +1,49 @@
+name: Market-form residual portability
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/market-form-residual-portability.yml"
+      - "artifacts/frozen_models/market_form_residual_v1/**"
+      - "src/predictor/market_form_residual.py"
+      - "tests/test_market_form_residual.py"
+      - "tests/test_market_form_residual_portability.py"
+      - "tests/test_shadow_autopilot_daemon.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  portable-record:
+    name: Python ${{ matrix.python-version }} portable record
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.11.15"
+          - "3.13.12"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache focused dependency wheels
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: residual-${{ runner.os }}-${{ runner.arch }}-py${{ matrix.python-version }}-numpy1.26.4-v1
+
+      - name: Install focused dependencies
+        run: python -m pip install numpy==1.26.4 scipy==1.16.1 pytest requests
+
+      - name: Verify portable record and writer contracts
+        run: >-
+          python -m pytest -q --noconftest -p no:cacheprovider
+          tests/test_market_form_residual_portability.py
+          tests/test_market_form_residual.py
+          tests/test_shadow_autopilot_daemon.py
