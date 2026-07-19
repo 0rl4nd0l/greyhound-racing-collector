@@ -29,9 +29,13 @@ DEFAULT_READ_MIB_PER_SEC = 8
 MAX_READ_MIB_PER_SEC = 16
 DEFAULT_READ_IOPS = 64
 MAX_READ_IOPS = 128
+HOST_PROBE_TIMEOUT_SECONDS = 15
 CONTAINER_ROOT = "/scan"
 CONTAINER_RG = "/opt/bounded/rg"
+CONTAINER_CGROUP_ROOT = "/sys/fs/cgroup"
 SCRIPT_REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
 class ConfigurationError(RuntimeError):
     """Raised when the wrapper cannot prove that an invocation is bounded."""
 
@@ -140,23 +144,45 @@ HARD_LIMIT_BOOTSTRAP = r"""
 expected_device=$1
 expected_bps=$2
 expected_iops=$3
-shift 3
+cgroup_root=$4
+shift 4
 
-io_max=/sys/fs/cgroup/io.max
+io_max=$cgroup_root/io.max
 if [ ! -r "$io_max" ]; then
     echo "bounded-offline: hard limit unavailable: $io_max is not readable" >&2
     exit 78
 fi
 limit_line=$(awk -v device="$expected_device" '$1 == device { print; exit }' "$io_max")
-case "$limit_line" in
-    *"rbps=$expected_bps"*"riops=$expected_iops"*) ;;
-    *)
-        echo "bounded-offline: hard limit mismatch for $expected_device: ${limit_line:-missing}" >&2
-        exit 78
-        ;;
-esac
+actual_rbps=
+actual_riops=
+seen_rbps=0
+seen_riops=0
+for limit_token in $limit_line; do
+    case "$limit_token" in
+        rbps=*)
+            if [ "$seen_rbps" -ne 0 ]; then
+                echo "bounded-offline: duplicate rbps limit for $expected_device" >&2
+                exit 78
+            fi
+            actual_rbps=${limit_token#rbps=}
+            seen_rbps=1
+            ;;
+        riops=*)
+            if [ "$seen_riops" -ne 0 ]; then
+                echo "bounded-offline: duplicate riops limit for $expected_device" >&2
+                exit 78
+            fi
+            actual_riops=${limit_token#riops=}
+            seen_riops=1
+            ;;
+    esac
+done
+if [ "$actual_rbps" != "$expected_bps" ] || [ "$actual_riops" != "$expected_iops" ]; then
+    echo "bounded-offline: hard limit mismatch for $expected_device: ${limit_line:-missing}" >&2
+    exit 78
+fi
 
-io_weight=$(awk '$1 == "default" { print $2; exit }' /sys/fs/cgroup/io.weight)
+io_weight=$(awk '$1 == "default" { print $2; exit }' "$cgroup_root/io.weight")
 case "$io_weight" in
     ''|*[!0-9]*)
         echo "bounded-offline: low I/O weight is not verifiable" >&2
@@ -168,7 +194,7 @@ if [ "$io_weight" -gt 10 ]; then
     exit 78
 fi
 
-cpu_weight=$(cat /sys/fs/cgroup/cpu.weight)
+cpu_weight=$(cat "$cgroup_root/cpu.weight")
 case "$cpu_weight" in
     ''|*[!0-9]*)
         echo "bounded-offline: low CPU weight is not verifiable" >&2
@@ -227,7 +253,9 @@ def _bounded_int(label: str, minimum: int, maximum: int) -> Callable[[str], int]
 
 def _positive_glob(value: str) -> str:
     if not value or value.startswith("!") or "\x00" in value:
-        raise argparse.ArgumentTypeError("include globs must be non-empty positive globs")
+        raise argparse.ArgumentTypeError(
+            "include globs must be non-empty positive globs"
+        )
     return value
 
 
@@ -254,7 +282,9 @@ def _validated_image_id(value: str) -> str:
 def _mount_source(path: Path, label: str) -> str:
     value = str(path)
     if "," in value:
-        raise ConfigurationError(f"{label} must not contain a comma (Docker mount delimiter)")
+        raise ConfigurationError(
+            f"{label} must not contain a comma (Docker mount delimiter)"
+        )
     return value
 
 
@@ -291,17 +321,23 @@ def build_parser() -> argparse.ArgumentParser:
 
     search = commands.add_parser("rg", help="fixed-string search by default")
     search.add_argument("pattern", type=_non_empty_pattern)
-    search.add_argument("--regex", action="store_true", help="interpret the pattern as regex")
+    search.add_argument(
+        "--regex", action="store_true", help="interpret the pattern as regex"
+    )
     search.add_argument("--ignore-case", action="store_true")
     search.add_argument("--glob", action="append", default=[], type=_positive_glob)
 
-    files = commands.add_parser("files", help="list matching files without reading contents")
+    files = commands.add_parser(
+        "files", help="list matching files without reading contents"
+    )
     files.add_argument("--glob", action="append", default=[], type=_positive_glob)
 
     hashes = commands.add_parser("hash", help="SHA-256 files sequentially")
     hashes.add_argument("--glob", action="append", default=[], type=_positive_glob)
 
-    commands.add_parser("tests", help="list test_*.py and *_test.py files without importing")
+    commands.add_parser(
+        "tests", help="list test_*.py and *_test.py files without importing"
+    )
     return parser
 
 
@@ -310,11 +346,15 @@ def resolve_root(raw_root: str, *, repo_root: Path = SCRIPT_REPO_ROOT) -> Path:
     if not candidate.is_absolute():
         raise ConfigurationError("--root must be an absolute path")
     if "," in str(candidate):
-        raise ConfigurationError("--root must not contain a comma (Docker mount delimiter)")
+        raise ConfigurationError(
+            "--root must not contain a comma (Docker mount delimiter)"
+        )
     try:
         root = candidate.resolve(strict=True)
     except OSError as exc:
-        raise ConfigurationError(f"--root does not resolve to an existing directory: {exc}") from exc
+        raise ConfigurationError(
+            f"--root does not resolve to an existing directory: {exc}"
+        ) from exc
     if not root.is_dir():
         raise ConfigurationError("--root must resolve to a directory")
     _mount_source(root, "resolved --root")
@@ -361,7 +401,9 @@ def _include_hidden(args: argparse.Namespace) -> bool:
     )
 
 
-def _rg_file_command(args: argparse.Namespace, positive_globs: Sequence[str]) -> list[str]:
+def _rg_file_command(
+    args: argparse.Namespace, positive_globs: Sequence[str]
+) -> list[str]:
     command = [CONTAINER_RG, "--threads", "1", "--no-ignore"]
     if _include_hidden(args):
         command.append("--hidden")
@@ -404,13 +446,30 @@ def workload_command(args: argparse.Namespace) -> list[str]:
 
 
 def _capture(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        return subprocess.run(
+            command,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=HOST_PROBE_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ConfigurationError(
+            f"host support probe timed out after {HOST_PROBE_TIMEOUT_SECONDS}s: {command[0]}"
+        ) from exc
+    except OSError as exc:
+        raise ConfigurationError(
+            f"host support probe could not run: {command[0]}: {exc}"
+        ) from exc
 
 
 def _require_success(result: subprocess.CompletedProcess[str], label: str) -> str:
     if result.returncode != 0:
         detail = (result.stderr or result.stdout).strip()
-        raise ConfigurationError(f"{label} failed: {detail or f'exit {result.returncode}'}")
+        raise ConfigurationError(
+            f"{label} failed: {detail or f'exit {result.returncode}'}"
+        )
     return result.stdout.strip()
 
 
@@ -421,11 +480,15 @@ def detect_host_support(
 ) -> HostSupport:
     docker_raw = shutil.which("docker")
     if not docker_raw:
-        raise ConfigurationError("Docker is required for cgroup-v2 hard I/O enforcement")
+        raise ConfigurationError(
+            "Docker is required for cgroup-v2 hard I/O enforcement"
+        )
     docker = Path(docker_raw).resolve()
 
     info = _require_success(
-        runner([str(docker), "info", "--format", "{{.CgroupVersion}} {{.CgroupDriver}}"]),
+        runner(
+            [str(docker), "info", "--format", "{{.CgroupVersion}} {{.CgroupDriver}}"]
+        ),
         "Docker cgroup support check",
     ).split()
     if info != ["2", "systemd"]:
@@ -449,7 +512,10 @@ def detect_host_support(
         raise ConfigurationError(f"rg is not an executable file: {rg_binary}")
     linked = runner(["/usr/bin/ldd", str(rg_binary)])
     linked_text = f"{linked.stdout}\n{linked.stderr}".lower()
-    if "statically linked" not in linked_text and "not a dynamic executable" not in linked_text:
+    if (
+        "statically linked" not in linked_text
+        and "not a dynamic executable" not in linked_text
+    ):
         raise ConfigurationError(
             f"rg must be statically linked so only the bounded root is host-mounted: {rg_binary}"
         )
@@ -463,13 +529,17 @@ def detect_host_support(
         source = Path(filesystems[0]["source"])
         mount_target = Path(filesystems[0]["target"]).resolve()
     except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
-        raise ConfigurationError("root backing-device discovery returned invalid data") from exc
+        raise ConfigurationError(
+            "root backing-device discovery returned invalid data"
+        ) from exc
     if root == mount_target:
         raise ConfigurationError(
             f"--root is an entire mount ({mount_target}); name one exact worktree or subtree"
         )
     if not str(source).startswith("/dev/"):
-        raise ConfigurationError(f"root is not backed by a directly limitable block device: {source}")
+        raise ConfigurationError(
+            f"root is not backed by a directly limitable block device: {source}"
+        )
 
     parent_name = _require_success(
         runner(["/usr/bin/lsblk", "-ndo", "PKNAME", str(source)]),
@@ -479,7 +549,9 @@ def detect_host_support(
     try:
         device_stat = device.stat()
     except OSError as exc:
-        raise ConfigurationError(f"physical device is unavailable: {device}: {exc}") from exc
+        raise ConfigurationError(
+            f"physical device is unavailable: {device}: {exc}"
+        ) from exc
     if not stat.S_ISBLK(device_stat.st_mode):
         raise ConfigurationError(f"physical device is not a block device: {device}")
     device_id = f"{os.major(device_stat.st_rdev)}:{os.minor(device_stat.st_rdev)}"
@@ -503,7 +575,10 @@ def docker_command(
     read_bps = args.read_mib_per_sec * 1024 * 1024
     root_source = _mount_source(root, "resolved --root")
     rg_source = _mount_source(host.rg_binary, "resolved rg path")
-    root_mount = f"type=bind,src={root_source},dst={CONTAINER_ROOT},readonly"
+    root_mount = (
+        f"type=bind,src={root_source},dst={CONTAINER_ROOT},readonly,"
+        "bind-recursive=disabled"
+    )
     rg_mount = f"type=bind,src={rg_source},dst={CONTAINER_RG},readonly"
     return [
         str(host.docker),
@@ -543,6 +618,12 @@ def docker_command(
         "--stop-timeout",
         "2",
         host.image,
+        "timeout",
+        "-s",
+        "TERM",
+        "-k",
+        "2",
+        str(args.timeout_seconds),
         "/bin/sh",
         "-eu",
         "-c",
@@ -551,17 +632,41 @@ def docker_command(
         host.device_id,
         str(read_bps),
         str(args.read_iops),
+        CONTAINER_CGROUP_ROOT,
         *workload,
     ]
 
 
-def cleanup_container(container_name: str) -> None:
+def cleanup_container(container_name: str) -> bool:
     docker = shutil.which("docker")
     if not docker:
-        return
+        print(
+            f"bounded-offline: cleanup could not find Docker for {container_name}",
+            file=sys.stderr,
+        )
+        return False
     quiet = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL, "timeout": 10}
-    subprocess.run([docker, "stop", "--time", "2", container_name], check=False, **quiet)
-    subprocess.run([docker, "rm", "--force", container_name], check=False, **quiet)
+    results: list[bool] = []
+    for action in (
+        [docker, "stop", "--time", "2", container_name],
+        [docker, "rm", "--force", container_name],
+    ):
+        try:
+            result = subprocess.run(action, check=False, **quiet)
+        except (OSError, subprocess.SubprocessError) as exc:
+            print(
+                f"bounded-offline: cleanup {action[1]} failed for {container_name}: {exc}",
+                file=sys.stderr,
+            )
+            results.append(False)
+        else:
+            results.append(result.returncode == 0)
+    if not any(results):
+        print(
+            f"bounded-offline: cleanup could not confirm removal of {container_name}",
+            file=sys.stderr,
+        )
+    return any(results)
 
 
 def _settle_process(process: subprocess.Popen[bytes]) -> None:
@@ -576,13 +681,36 @@ def _settle_process(process: subprocess.Popen[bytes]) -> None:
             process.wait(timeout=2)
 
 
+def _cleanup_and_settle(
+    process: subprocess.Popen[bytes],
+    *,
+    container_name: str,
+    cleanup: Callable[[str], bool | None],
+) -> None:
+    try:
+        cleanup(container_name)
+    except Exception as exc:  # cleanup callbacks must never prevent client settlement
+        print(
+            f"bounded-offline: cleanup callback failed for {container_name}: {exc}",
+            file=sys.stderr,
+        )
+    finally:
+        try:
+            _settle_process(process)
+        except (OSError, subprocess.SubprocessError) as exc:
+            print(
+                f"bounded-offline: Docker client did not settle for {container_name}: {exc}",
+                file=sys.stderr,
+            )
+
+
 def execute_docker(
     command: Sequence[str],
     *,
     container_name: str,
     timeout_seconds: int,
     popen_factory: Callable[..., subprocess.Popen[bytes]] = subprocess.Popen,
-    cleanup: Callable[[str], None] = cleanup_container,
+    cleanup: Callable[[str], bool | None] = cleanup_container,
 ) -> int:
     process = popen_factory(list(command))
     try:
@@ -592,13 +720,13 @@ def execute_docker(
             f"bounded-offline: timeout after {timeout_seconds}s; removing {container_name}",
             file=sys.stderr,
         )
-        cleanup(container_name)
-        _settle_process(process)
+        _cleanup_and_settle(process, container_name=container_name, cleanup=cleanup)
         return 124
     except KeyboardInterrupt:
-        print(f"bounded-offline: interrupted; removing {container_name}", file=sys.stderr)
-        cleanup(container_name)
-        _settle_process(process)
+        print(
+            f"bounded-offline: interrupted; removing {container_name}", file=sys.stderr
+        )
+        _cleanup_and_settle(process, container_name=container_name, cleanup=cleanup)
         return 130
 
 
@@ -612,7 +740,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         root = resolve_root(args.root)
         host = detect_host_support(root)
         workload = workload_command(args)
-        container_name = f"greyhound-bounded-offline-{os.getpid()}-{uuid.uuid4().hex[:8]}"
+        container_name = (
+            f"greyhound-bounded-offline-{os.getpid()}-{uuid.uuid4().hex[:8]}"
+        )
         command = docker_command(
             args,
             root=root,

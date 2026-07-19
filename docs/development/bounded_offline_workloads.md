@@ -57,7 +57,10 @@ Defaults are one worker, a 300-second timeout, 8 MiB/s device reads, and 64 read
 IOPS. Operator values are bounded to at most 3600 seconds, 16 MiB/s, and 128
 read IOPS. The transient container also uses idle I/O scheduling, nice level 15,
 low CPU and I/O cgroup weights, one CPU, a read-only root filesystem, no network,
-and a read-only bind mount for the exact requested root.
+and a read-only bind mount for the exact requested root. On the supported Docker
+29 host, that root bind explicitly disables recursive submount inclusion. A
+nested mount is therefore not exposed to the container and cannot escape the
+single backing-device limit proved for `--root`.
 
 The default file selection excludes:
 
@@ -82,14 +85,24 @@ cgroup-v2 hierarchy can enforce `io.max`; the user systemd manager cannot do so
 on this host. Docker must report cgroup v2 with the systemd driver, the local
 `alpine:3.20` image must already exist, and `rg` must be statically linked. The
 wrapper never pulls an image. It resolves the image to an immutable image ID and
-discovers the block device backing the bounded root.
+discovers the block device backing the bounded root. Each Docker, image, linker,
+mount, and block-device support probe has a 15-second timeout; a timeout or host
+execution error is a fail-closed configuration error.
 
 Inside the transient container, a bootstrap guard reads back and verifies the
-expected device `rbps` and `riops`, low I/O and CPU weights, and idle I/O
-priority before executing the requested operation. Missing or mismatched hard
-limits exit 78 without running the scan. Invalid or unsafe configuration exits
-2, timeout exits 124, and interruption exits 130 after stopping and removing the
-transient container.
+expected device `rbps` and `riops` as complete, order-independent `io.max`
+tokens; substring, malformed, missing, or duplicate values are rejected. It
+also verifies low I/O and CPU weights and idle I/O priority before executing the
+requested operation. Missing or mismatched hard limits exit 78 without running
+the scan.
+
+The operation has both a container-side timeout and the host-side Docker-client
+timeout. On host timeout or interruption, cleanup attempts Docker stop and
+forced removal independently, then always settles the Docker client. Invalid or
+unsafe configuration exits 2, timeout exits 124, and interruption exits 130.
+Docker control failures are reported explicitly if cleanup cannot confirm
+removal; they do not turn the workload into an unconstrained fallback or prevent
+the client process from being settled.
 
 If the host no longer supports these checks, do not bypass the wrapper. Use a
 narrow direct lookup only when it is genuinely interactive and source-local;
