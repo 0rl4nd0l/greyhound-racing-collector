@@ -76,28 +76,41 @@ The build has four trust domains:
   trainer directory set, every declaration, file type, byte length, digest,
   and single-link/no-follow path before returning any bytes to a trainer. These
   two files are never trainer-readable inputs.
-- `sealed_validation/` contains source inventories and dog/card alignment used
-  only to validate semantics and provenance. It is not a trainer input.
+- `sealed_validation/` contains five source-inventory and dog/card-alignment
+  payloads plus `sealed-validation-manifest.sha256`, which signs exactly those
+  five payloads. All six files are declared by name, type, role, length, and
+  hash. This domain is not a trainer input.
 - `non_authoritative_diagnostic/` contains the legacy overlap reconciliation.
-  It cannot affect canonical features, eligibility, expected authoritative
-  counts, or the trainer manifest; pre/post diagnostic trainer hashes must be
-  byte-identical.
+  Its two payloads and `non-authoritative-diagnostic-manifest.sha256` form an
+  exact three-file optional surface. It cannot affect canonical features,
+  eligibility, expected authoritative counts, or any authoritative-domain
+  byte; pre/post diagnostic hashes must be byte-identical.
 
-The runtime-real read entrypoint is
-`load_verified_trainer_inputs(packet_root, reproducibility_contract)`. It opens
-the packet, control, trainer, and declared files with no-follow semantics;
-requires regular single-link files; compares actual and declared names before
-returning data; rejects path separators, traversal, absolute or dot paths; and
-verifies the control-plane bytes against the tracked reproducibility descriptor.
-Unexpected regular files, a thirteenth file, dotfiles, directories, symlinks,
-hard links, renames, duplicate declarations, missing files, type changes,
-length/hash changes, and packet/root aliases therefore fail closed.
+The authoritative build is `--phase authoritative`, and the runtime-real read
+entrypoint is `load_verified_trainer_inputs(packet_root,
+reproducibility_contract)`. Neither phase enumerates, opens, hashes, validates,
+or requires a diagnostic source or output. The optional `--phase diagnostic`
+phase starts only after the completed authoritative packet validates, consumes
+that packet read-only, and may fail without invalidating it.
+
+All authoritative loader reads walk each absolute, traversal-free path from
+`/` with component-relative `openat` operations using `O_NOFOLLOW`. Every ancestor,
+packet/domain component, and final file is checked before and after open by
+device, inode, and type; final files must be regular and single-link. No bytes
+are returned until exact-set, length, role, hash, signature, and aggregate
+checks finish. Symlinked ancestors, packet/domain/file links, hard-link aliases,
+component swaps, traversal, default discovery, unexpected files, dotfiles,
+directories, duplicates, missing files, and type/role/length/hash changes fail
+closed. Authoritative loading deliberately does not enumerate the optional
+diagnostic domain; `validate_complete_packet` separately requires the exact
+four-domain root and exact 10/2/6/3 physical inventories.
 
 The non-self-referential trust chain is: reviewed Git commit -> tracked
-`form_only_v1_reproducibility_v3` control hashes -> the two control-plane files
--> the signature's hashes of exactly the ten trainer files. The trainer input
-manifest hashes the signature, the signature hashes only trainer files, and no
-manifest or signature hashes itself.
+`form_only_v1_reproducibility_v4` physical declarations -> exact domain files.
+The control signature hashes exactly ten trainer files; the sealed signature
+hashes exactly five sealed payloads; and the diagnostic signature hashes
+exactly two diagnostic payloads. Each signature is itself bound only by the
+tracked descriptor. No manifest or signature hashes itself.
 
 ## Canonical prior-history semantics
 
@@ -172,35 +185,54 @@ times must be exact URL matches and are interpreted in the source display zone
 
 The tracked [reproducibility descriptor](form_only_v1_reproducibility.json)
 binds four development construction inputs, 3,231 authoritative card, sidecar,
-and label records, 38 separately non-authoritative shadow sources, and the
+and label records, 38 separately non-authoritative shadow source files, and the
 three-file OOT freeze at
 `/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-form-only-v1-acquisition-20260718/reports/agent_jobs/form_only_v1_acquisition_foundation_20260718`,
-the expected current counts, and 19 artifact hashes across four domains. The OOT
+the expected current counts, and 21 artifact hashes across four domains. The OOT
 freeze aggregate is `30671f48...e7cc`; trainer, control-plane,
-sealed-validation, and diagnostic aggregates are respectively
-`97967ab3...4e31`, `1712d3d6...5462`, `4ce9d105...26ed`, and
-`e5eaf492...995f`. Reviewers on the evidence host can reproduce without raw or
-large Git commits using:
+sealed-validation, and diagnostic physical aggregates are respectively
+`97967ab3...4e31`, `1712d3d6...5462`, `3b1284f3...691c`, and
+`bb6306bc...15b2`. The non-self-referential sealed and diagnostic payload
+signature hashes remain `4ce9d105...26ed` and `e5eaf492...995f`.
+Reviewers on the evidence host can build authority first without touching any
+diagnostic source or output, then optionally generate diagnostics:
 
 ```bash
 python3 scripts/build_form_only_v1_packet.py \
+  --phase authoritative \
   --eligibility-dir /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-historical-win-eligibility-20260715/reports/agent_jobs/historical_win_eligibility_reconciliation_20260715 \
   --training-dir /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-training-first-data-evidence-20260713/historical_training_dataset_v1 \
   --out-of-time-freeze-dir /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-form-only-v1-acquisition-20260718/reports/agent_jobs/form_only_v1_acquisition_foundation_20260718 \
-  --reproducibility-contract docs/form_only_v1_reproducibility.json \
+  --reproducibility-contract /ABSOLUTE/WORKTREE/docs/form_only_v1_reproducibility.json \
+  --output-dir /tmp/form-only-v1-review
+
+python3 scripts/build_form_only_v1_packet.py \
+  --phase diagnostic \
+  --reproducibility-contract /ABSOLUTE/WORKTREE/docs/form_only_v1_reproducibility.json \
   --output-dir /tmp/form-only-v1-review
 ```
 
 Any one-bit change in a bound input for its trust domain or any expected
-count/hash causes a non-zero exit. The descriptor intentionally carries no raw cards,
-labels, outcomes, databases, models, or large generated packet files.
+count/hash causes a non-zero exit. The descriptor intentionally carries no raw
+cards, labels, outcomes, databases, models, or large generated packet files.
+
+The final physical inventories are trainer 10, control-plane 2, sealed
+validation 6, and optional diagnostic 3. Authoritative bytes, counts,
+eligibility, gates, and hashes are identical when diagnostics are absent,
+moved, corrupt, or mutated. Diagnostic failure is local to that optional phase.
 
 The independent-review diagnostic baseline was 504/530 unexplained rows across
 73/73 overlap races. Parsing numeric zero as a real value reclassifies 245
 zero-history rows and recomputes the diagnostic to 259/530 unexplained across
 71/73 races. This delta changes no authoritative count or trainer byte. The
-focused adversarial suite contains 84 tests, including exact-set and filesystem
-alias attacks; no "zero unexplained" claim is made.
+focused adversarial suite contains 152 tests, including every-domain exact-set,
+declaration mutation, ancestor-link, and component-swap attacks; no "zero
+unexplained" claim is made. The repository-wide baseline is not green: at the
+rejected head it collected 1,885 tests with 1,753 passed, 61 failed, 50 skipped,
+and 21 errors. Its parent collected 1,857 with 1,725 passed and the same
+failure/skip/error counts; all 28 head-only tests passed. This repair reports a
+fresh rejected-head/repair-head delta rather than describing the broad suite as
+passing.
 
 ## Market separation
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import importlib.util
 import json
+import shutil
 import sys
 from datetime import date
 from pathlib import Path
@@ -261,7 +262,7 @@ def make_fixture(
     ]
     contract_path = tmp_path / "reproducibility.json"
     write_json(contract_path, {
-        "schema_version": "form_only_v1_reproducibility_v3",
+        "schema_version": "form_only_v1_reproducibility_v4",
         "trusted_inputs": {
             "development": {
                 "files": top_files, "authoritative_source_record_count": 7,
@@ -328,6 +329,16 @@ def bind_expected_output(fixture: dict[str, Path], summary: dict[str, object]) -
             domain: {
                 "artifact_files": {row["path"]: row["sha256"] for row in manifest["files"]},
                 "aggregate_sha256": manifest["aggregate_sha256"],
+                "physical_aggregate_sha256": manifest["aggregate_sha256"],
+                "declared_file_count": len(manifest["files"]),
+                "artifacts": [
+                    {
+                        **row,
+                        "type": "regular_file",
+                        "role": MODULE.DOMAIN_ARTIFACT_ROLES[domain][row["path"]],
+                    }
+                    for row in manifest["files"]
+                ],
             }
             for domain, manifest in manifests.items()
         },
@@ -828,17 +839,17 @@ def test_actual_trainer_readable_set_equals_declared_surface(tmp_path: Path) -> 
 @pytest.mark.parametrize(
     "mutation,match",
     [
-        ("unexpected_13th", "read surface mismatch"),
-        ("dotfile", "read surface mismatch"),
+        ("unexpected_13th", "surface mismatch"),
+        ("dotfile", "surface mismatch"),
         ("symlink", "not a regular file"),
         ("hardlink", "not a regular single-link file"),
         ("directory", "not a regular"),
-        ("renamed", "read surface mismatch"),
-        ("missing", "read surface mismatch"),
+        ("renamed", "surface mismatch"),
+        ("missing", "surface mismatch"),
         ("length", "byte length mismatch"),
         ("hash", "sha256 mismatch"),
         ("duplicate", "duplicate trainer declaration"),
-        ("escape", "unsafe trainer declaration path"),
+        ("escape", "unsafe trainer declaration"),
     ],
 )
 def test_trainer_loader_fails_closed_before_returning_data(
@@ -913,7 +924,7 @@ def test_git_tracked_descriptor_pins_control_plane_bytes(tmp_path: Path) -> None
     control_manifest = output / "control_plane" / "trainer_input_manifest.json"
     control_manifest.write_bytes(control_manifest.read_bytes() + b"\n")
     assert MODULE.validate_trainer_read_surface(output) is None
-    with pytest.raises(ValueError, match="control-plane artifact hash mismatch"):
+    with pytest.raises(ValueError, match="control_plane artifact"):
         MODULE.load_verified_trainer_inputs(output, fixture["contract"])
 
 
@@ -923,7 +934,7 @@ def test_build_rejects_symlinked_packet_root_before_writing(tmp_path: Path) -> N
     target.mkdir()
     output = tmp_path / "build"
     output.symlink_to(target, target_is_directory=True)
-    with pytest.raises(ValueError, match="packet root path is a symlink"):
+    with pytest.raises(ValueError, match="packet root.*symlink"):
         build_fixture(fixture, output, enforce=False)
     assert not list(target.iterdir())
 
@@ -941,7 +952,7 @@ def test_build_rejects_preexisting_output_entries_before_writing(
         (output / "non_authoritative_diagnostic").symlink_to(
             target, target_is_directory=True
         )
-        match = "packet domain path is a symlink"
+        match = "unexpected pre-existing entries"
     elif mutation == "domain_entry":
         (output / "trainer").mkdir()
         (output / "trainer" / "unexpected.txt").write_text("do not overwrite", encoding="utf-8")
@@ -991,8 +1002,13 @@ def test_trainer_loader_rejects_symlinked_trust_paths(tmp_path: Path, mutation: 
         moved = tmp_path / f"{domain_name}-moved"
         domain.rename(moved)
         domain.symlink_to(moved, target_is_directory=True)
-    with pytest.raises(ValueError, match="symlink|directory"):
-        MODULE.load_verified_trainer_inputs(packet, fixture["contract"])
+    if mutation == "diagnostic_symlink":
+        assert len(MODULE.load_verified_trainer_inputs(packet, fixture["contract"])) == 10
+        with pytest.raises(ValueError, match="symlink|directory"):
+            MODULE.validate_complete_packet(packet, fixture["contract"])
+    else:
+        with pytest.raises(ValueError, match="symlink|directory"):
+            MODULE.load_verified_trainer_inputs(packet, fixture["contract"])
 
 
 @pytest.mark.parametrize(
@@ -1013,8 +1029,9 @@ def test_trainer_loader_rejects_unexpected_packet_root_entries(
         (output / "trainer-alias").symlink_to(output / "trainer", target_is_directory=True)
     else:
         (output / "unexpected-directory").mkdir()
+    assert len(MODULE.load_verified_trainer_inputs(output, fixture["contract"])) == 10
     with pytest.raises(ValueError, match="packet root surface mismatch"):
-        MODULE.load_verified_trainer_inputs(output, fixture["contract"])
+        MODULE.validate_complete_packet(output, fixture["contract"])
 
 
 def test_diagnostic_build_cannot_change_authoritative_files(tmp_path: Path) -> None:
@@ -1023,6 +1040,7 @@ def test_diagnostic_build_cannot_change_authoritative_files(tmp_path: Path) -> N
     loaded = MODULE.load_development_sources(
         fixture["eligibility"], fixture["training"], reproducibility
     )
+    loaded = MODULE.load_diagnostic_sources(loaded, reproducibility)
     authoritative = tmp_path / "authoritative"
     MODULE.build_development_packet(loaded, authoritative, tmp_path / "sealed")
     before = {
@@ -1047,3 +1065,286 @@ def test_cli_argument_contract_is_required(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(sys, "argv", [str(SCRIPT)])
     with pytest.raises(SystemExit):
         MODULE.parse_args()
+
+
+@pytest.mark.parametrize("mutation", ["absent", "moved", "corrupt", "valid_mutation"])
+def test_authoritative_build_is_operationally_independent_of_diagnostics(
+    tmp_path: Path, mutation: str
+) -> None:
+    fixture = make_fixture(tmp_path)
+    baseline = tmp_path / "authoritative-baseline"
+    MODULE.build_authoritative_packet(
+        fixture["eligibility"], fixture["training"], [fixture["evidence"]], baseline,
+        fixture["freeze"], fixture["contract"], enforce_expected_output=False,
+    )
+    before = {
+        domain: {
+            path.name: MODULE.sha256_path(path)
+            for path in sorted((baseline / domain).iterdir())
+        }
+        for domain in MODULE.AUTHORITATIVE_DOMAIN_ROOT_NAMES
+    }
+
+    if mutation == "absent":
+        fixture["shadow"].unlink()
+    elif mutation == "moved":
+        moved = tmp_path / "moved-diagnostic" / fixture["shadow"].name
+        moved.parent.mkdir()
+        fixture["shadow"].rename(moved)
+    elif mutation == "corrupt":
+        fixture["shadow"].write_text("{not-json\n", encoding="utf-8")
+    else:
+        payload = json.loads(fixture["shadow"].read_text())
+        payload[0]["prior_start_count"] = 999
+        write_json(fixture["shadow"], payload)
+
+    rebuilt = tmp_path / f"authoritative-{mutation}"
+    MODULE.build_authoritative_packet(
+        fixture["eligibility"], fixture["training"], [fixture["evidence"]], rebuilt,
+        fixture["freeze"], fixture["contract"], enforce_expected_output=False,
+    )
+    after = {
+        domain: {
+            path.name: MODULE.sha256_path(path)
+            for path in sorted((rebuilt / domain).iterdir())
+        }
+        for domain in MODULE.AUTHORITATIVE_DOMAIN_ROOT_NAMES
+    }
+    assert after == before
+    assert not (rebuilt / "non_authoritative_diagnostic").exists()
+
+
+def test_optional_diagnostic_phase_consumes_completed_authoritative_packet_read_only(
+    tmp_path: Path,
+) -> None:
+    fixture = make_fixture(tmp_path)
+    bootstrap = build_fixture(fixture, tmp_path / "bootstrap", enforce=False)
+    bind_expected_output(fixture, bootstrap)
+    output = tmp_path / "authoritative"
+    authoritative = MODULE.build_authoritative_packet(
+        fixture["eligibility"], fixture["training"], [fixture["evidence"]], output,
+        fixture["freeze"], fixture["contract"], enforce_expected_output=True,
+    )
+    before = {
+        domain: {
+            path.name: MODULE.sha256_path(path)
+            for path in sorted((output / domain).iterdir())
+        }
+        for domain in MODULE.AUTHORITATIVE_DOMAIN_ROOT_NAMES
+    }
+    assert len(MODULE.load_verified_trainer_inputs(output, fixture["contract"])) == 10
+    diagnostic = MODULE.build_optional_diagnostics(
+        output, fixture["contract"], enforce_expected_output=True
+    )
+    after = {
+        domain: {
+            path.name: MODULE.sha256_path(path)
+            for path in sorted((output / domain).iterdir())
+        }
+        for domain in MODULE.AUTHORITATIVE_DOMAIN_ROOT_NAMES
+    }
+    assert before == after
+    assert diagnostic["authoritative_bytes_identical"] is True
+    assert diagnostic["reconciliation"] == bootstrap["reconciliation"]
+    assert authoritative["artifact_manifest"] == bootstrap["artifact_manifest"]
+    assert MODULE.validate_complete_packet(output, fixture["contract"]) is None
+
+
+def test_diagnostic_failure_fails_only_the_optional_phase(tmp_path: Path) -> None:
+    fixture = make_fixture(tmp_path)
+    bootstrap = build_fixture(fixture, tmp_path / "bootstrap", enforce=False)
+    bind_expected_output(fixture, bootstrap)
+    output = tmp_path / "authoritative"
+    MODULE.build_authoritative_packet(
+        fixture["eligibility"], fixture["training"], [fixture["evidence"]], output,
+        fixture["freeze"], fixture["contract"], enforce_expected_output=True,
+    )
+    expected_trainer = MODULE.load_verified_trainer_inputs(output, fixture["contract"])
+    fixture["shadow"].unlink()
+    with pytest.raises(ValueError, match="shadow diagnostic source"):
+        MODULE.build_optional_diagnostics(output, fixture["contract"])
+    assert MODULE.load_verified_trainer_inputs(output, fixture["contract"]) == expected_trainer
+
+
+def test_authoritative_loader_ignores_absent_moved_corrupt_or_mutated_diagnostic_output(
+    tmp_path: Path,
+) -> None:
+    fixture = make_fixture(tmp_path)
+    bootstrap = build_fixture(fixture, tmp_path / "bootstrap", enforce=False)
+    bind_expected_output(fixture, bootstrap)
+    output = tmp_path / "authoritative"
+    MODULE.build_authoritative_packet(
+        fixture["eligibility"], fixture["training"], [fixture["evidence"]], output,
+        fixture["freeze"], fixture["contract"], enforce_expected_output=True,
+    )
+    expected = MODULE.load_verified_trainer_inputs(output, fixture["contract"])
+    assert not (output / "non_authoritative_diagnostic").exists()
+    MODULE.build_optional_diagnostics(output, fixture["contract"])
+    diagnostic = output / "non_authoritative_diagnostic"
+    moved = tmp_path / "moved-diagnostic-output"
+    diagnostic.rename(moved)
+    assert MODULE.load_verified_trainer_inputs(output, fixture["contract"]) == expected
+    moved.rename(diagnostic)
+    summary = diagnostic / "reconciliation_summary.json"
+    summary.write_text("{corrupt\n", encoding="utf-8")
+    assert MODULE.load_verified_trainer_inputs(output, fixture["contract"]) == expected
+    with pytest.raises(ValueError):
+        MODULE.validate_complete_packet(output, fixture["contract"])
+    summary.write_text("{}\n", encoding="utf-8")
+    assert MODULE.load_verified_trainer_inputs(output, fixture["contract"]) == expected
+
+
+def test_authoritative_phase_does_not_validate_diagnostic_contract_shape(
+    tmp_path: Path,
+) -> None:
+    fixture = make_fixture(tmp_path)
+    bootstrap = build_fixture(fixture, tmp_path / "bootstrap", enforce=False)
+    bind_expected_output(fixture, bootstrap)
+    contract = json.loads(fixture["contract"].read_text())
+    contract["trusted_inputs"]["diagnostic"] = ["malformed", "optional"]
+    contract["expected_output"]["domains"]["non_authoritative_diagnostic"] = [
+        "malformed", "optional"
+    ]
+    write_json(fixture["contract"], contract)
+    output = tmp_path / "authoritative"
+    MODULE.build_authoritative_packet(
+        fixture["eligibility"], fixture["training"], [fixture["evidence"]], output,
+        fixture["freeze"], fixture["contract"], enforce_expected_output=True,
+    )
+    assert len(list((output / "trainer").iterdir())) == 10
+    assert len(MODULE.load_verified_trainer_inputs(output, fixture["contract"])) == 10
+    with pytest.raises(ValueError, match="diagnostic trust domain"):
+        MODULE.build_optional_diagnostics(
+            output, fixture["contract"], enforce_expected_output=False
+        )
+
+
+def test_loader_rejects_ancestor_symlink_before_returning_bytes(tmp_path: Path) -> None:
+    fixture = make_fixture(tmp_path)
+    output = tmp_path / "real-parent" / "build"
+    output.parent.mkdir()
+    summary = build_fixture(fixture, output, enforce=False)
+    bind_expected_output(fixture, summary)
+    alias_parent = tmp_path / "alias-parent"
+    alias_parent.symlink_to(output.parent, target_is_directory=True)
+    with pytest.raises(ValueError, match="symlink|ancestor"):
+        MODULE.load_verified_trainer_inputs(alias_parent / output.name, fixture["contract"])
+
+
+def test_loader_rejects_component_swap_before_returning_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = make_fixture(tmp_path)
+    output = tmp_path / "build"
+    summary = build_fixture(fixture, output, enforce=False)
+    bind_expected_output(fixture, summary)
+    trainer = output / "trainer"
+    replacement = tmp_path / "replacement-trainer"
+    moved = tmp_path / "moved-trainer"
+    shutil.copytree(trainer, replacement)
+    real_open = MODULE.os.open
+    swapped = False
+
+    def swap_before_open(path: object, flags: int, *args: object, **kwargs: object) -> int:
+        nonlocal swapped
+        if path == "trainer" and kwargs.get("dir_fd") is not None and not swapped:
+            swapped = True
+            trainer.rename(moved)
+            replacement.rename(trainer)
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(MODULE.os, "open", swap_before_open)
+    with pytest.raises(ValueError, match="changed during open|path swap"):
+        MODULE.load_verified_trainer_inputs(output, fixture["contract"])
+
+
+@pytest.mark.parametrize("domain", [
+    "trainer", "control_plane", "sealed_validation", "non_authoritative_diagnostic",
+])
+@pytest.mark.parametrize("mutation", [
+    "unexpected", "dotfile", "missing", "symlink", "hardlink", "directory", "hash",
+])
+def test_complete_packet_enforces_exact_declared_physical_sets(
+    tmp_path: Path, domain: str, mutation: str
+) -> None:
+    fixture = make_fixture(tmp_path)
+    output = tmp_path / "build"
+    summary = build_fixture(fixture, output, enforce=False)
+    bind_expected_output(fixture, summary)
+    domain_root = output / domain
+    target = next(path for path in sorted(domain_root.iterdir()) if path.is_file())
+    if mutation == "unexpected":
+        (domain_root / "unexpected.txt").write_text("x", encoding="utf-8")
+    elif mutation == "dotfile":
+        (domain_root / ".hidden").write_text("x", encoding="utf-8")
+    elif mutation == "missing":
+        target.unlink()
+    elif mutation == "symlink":
+        target.unlink()
+        target.symlink_to(fixture["card_one"])
+    elif mutation == "hardlink":
+        target.unlink()
+        target.hardlink_to(fixture["card_one"])
+    elif mutation == "directory":
+        target.unlink()
+        target.mkdir()
+    else:
+        payload = target.read_bytes()
+        target.write_bytes(bytes([payload[0] ^ 1]) + payload[1:])
+    with pytest.raises(ValueError):
+        MODULE.validate_complete_packet(output, fixture["contract"])
+
+
+@pytest.mark.parametrize("domain", [
+    "trainer", "control_plane", "sealed_validation", "non_authoritative_diagnostic",
+])
+@pytest.mark.parametrize(
+    "mutation",
+    ["duplicate", "type", "role", "length", "hash", "hash_map", "aggregate"],
+)
+def test_complete_packet_rejects_declaration_changes_in_every_domain(
+    tmp_path: Path, domain: str, mutation: str
+) -> None:
+    fixture = make_fixture(tmp_path)
+    output = tmp_path / "build"
+    summary = build_fixture(fixture, output, enforce=False)
+    bind_expected_output(fixture, summary)
+    contract = json.loads(fixture["contract"].read_text())
+    domain_contract = contract["expected_output"]["domains"][domain]
+    declarations = domain_contract["artifacts"]
+    if mutation == "duplicate":
+        declarations.append(dict(declarations[0]))
+    elif mutation == "type":
+        declarations[0]["type"] = "directory"
+    elif mutation == "role":
+        declarations[0]["role"] = "WRONG_ROLE"
+    elif mutation == "length":
+        declarations[0]["bytes"] += 1
+    elif mutation == "hash":
+        declarations[0]["sha256"] = "0" * 64
+    elif mutation == "hash_map":
+        domain_contract["artifact_files"][declarations[0]["path"]] = "0" * 64
+    else:
+        domain_contract["aggregate_sha256"] = "0" * 64
+    write_json(fixture["contract"], contract)
+    with pytest.raises(ValueError):
+        MODULE.validate_complete_packet(output, fixture["contract"])
+
+
+@pytest.mark.parametrize("mutation", ["missing", "unexpected"])
+def test_complete_packet_requires_exact_descriptor_domain_set(
+    tmp_path: Path, mutation: str
+) -> None:
+    fixture = make_fixture(tmp_path)
+    output = tmp_path / "build"
+    summary = build_fixture(fixture, output, enforce=False)
+    bind_expected_output(fixture, summary)
+    contract = json.loads(fixture["contract"].read_text())
+    domains = contract["expected_output"]["domains"]
+    if mutation == "missing":
+        domains.pop("non_authoritative_diagnostic")
+    else:
+        domains["unexpected"] = dict(domains["trainer"])
+    write_json(fixture["contract"], contract)
+    with pytest.raises(ValueError, match="domain set"):
+        MODULE.validate_complete_packet(output, fixture["contract"])

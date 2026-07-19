@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import io
 import json
 import os
 import re
@@ -66,8 +67,36 @@ SEALED_VALIDATION_ARTIFACT_NAMES = {
     "out_of_time_source_inventory.csv", "development_runner_alignment.csv",
     "out_of_time_runner_alignment.csv",
 }
+SEALED_VALIDATION_ARTIFACT_ROLES = {
+    "development_runner_alignment.csv": "SEALED_IDENTITY_ALIGNMENT",
+    "development_source_inventory.csv": "SEALED_SOURCE_PROVENANCE",
+    "out_of_time_exclusions.csv": "SEALED_SOURCE_EXCLUSION_PROVENANCE",
+    "out_of_time_runner_alignment.csv": "SEALED_IDENTITY_ALIGNMENT",
+    "out_of_time_source_inventory.csv": "SEALED_SOURCE_PROVENANCE",
+    "sealed-validation-manifest.sha256": "SEALED_DOMAIN_INTEGRITY_SIGNATURE",
+}
 DIAGNOSTIC_ARTIFACT_NAMES = {
     "overlap_reconciliation.csv", "reconciliation_summary.json",
+}
+DIAGNOSTIC_ARTIFACT_ROLES = {
+    "non-authoritative-diagnostic-manifest.sha256": "DIAGNOSTIC_DOMAIN_INTEGRITY_SIGNATURE",
+    "overlap_reconciliation.csv": "NON_AUTHORITATIVE_RECONCILIATION",
+    "reconciliation_summary.json": "NON_AUTHORITATIVE_DIAGNOSTIC_SUMMARY",
+}
+CONTROL_PLANE_ARTIFACT_ROLES = {
+    "artifact-manifest.sha256": "CONTROL_INTEGRITY_SIGNATURE",
+    "trainer_input_manifest.json": "CONTROL_DECLARATION_METADATA",
+}
+AUTHORITATIVE_DOMAIN_ROOT_NAMES = (
+    TRAINER_ROOT_NAME,
+    CONTROL_PLANE_ROOT_NAME,
+    "sealed_validation",
+)
+DOMAIN_ARTIFACT_ROLES = {
+    TRAINER_ROOT_NAME: TRAINER_ARTIFACT_ROLES,
+    CONTROL_PLANE_ROOT_NAME: CONTROL_PLANE_ARTIFACT_ROLES,
+    "sealed_validation": SEALED_VALIDATION_ARTIFACT_ROLES,
+    "non_authoritative_diagnostic": DIAGNOSTIC_ARTIFACT_ROLES,
 }
 
 VENUE_ALIASES = {
@@ -140,9 +169,12 @@ def source_set_digest(
 ) -> str:
     unique: dict[tuple[str, str], dict[str, Any]] = {}
     for record in records:
+        record_path = Path(str(record["path"]))
+        if not record_path.is_absolute() or ".." in record_path.parts:
+            raise ValueError(f"source declaration path must be absolute and traversal-free: {record_path}")
         normalized = {
             "role": str(record["role"]),
-            "path": str(Path(str(record["path"])).resolve()),
+            "path": str(record_path),
             "sha256": str(record["sha256"]),
             "bytes": int(record["bytes"]),
         }
@@ -157,16 +189,28 @@ def source_set_digest(
     return canonical_digest([unique[key] for key in sorted(unique)])
 
 
-def load_reproducibility_contract(path: Path) -> dict[str, Any]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if payload.get("schema_version") != "form_only_v1_reproducibility_v3":
+def load_reproducibility_contract(
+    path: Path, *, include_diagnostic: bool = True
+) -> dict[str, Any]:
+    try:
+        payload = json.loads(
+            _read_regular_path_no_follow(
+                path, label="reproducibility contract"
+            ).decode("utf-8")
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"malformed reproducibility contract: {path}") from exc
+    if payload.get("schema_version") != "form_only_v1_reproducibility_v4":
         raise ValueError(f"unsupported reproducibility contract: {path}")
     if not isinstance(payload.get("trusted_inputs"), dict):
         raise ValueError(f"reproducibility contract has no trusted_inputs: {path}")
     if not isinstance(payload.get("expected_output"), dict):
         raise ValueError(f"reproducibility contract has no typed expected_output: {path}")
     trusted = payload["trusted_inputs"]
-    if set(trusted) != {"development", "out_of_time_freeze", "diagnostic"}:
+    required_trust_domains = {"development", "out_of_time_freeze"}
+    if not required_trust_domains.issubset(trusted):
+        raise ValueError("reproducibility trust domains are incomplete")
+    if include_diagnostic and set(trusted) != required_trust_domains | {"diagnostic"}:
         raise ValueError("reproducibility trust domains are incomplete")
     development = trusted["development"]
     authoritative_files = {
@@ -186,7 +230,11 @@ def load_reproducibility_contract(path: Path) -> dict[str, Any]:
         },
         "out_of_time_freeze": trusted["out_of_time_freeze"],
     })
-    payload["diagnostic_contract_sha256"] = canonical_digest(trusted["diagnostic"])
+    if include_diagnostic:
+        diagnostic = trusted.get("diagnostic")
+        if not isinstance(diagnostic, dict):
+            raise ValueError("reproducibility diagnostic trust domain is malformed")
+        payload["diagnostic_contract_sha256"] = canonical_digest(diagnostic)
     return payload
 
 
@@ -307,7 +355,9 @@ def fmt_number(value: float | None) -> str:
 
 
 def parse_form_blocks(path: Path) -> dict[str, list[dict[str, Any]]]:
-    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    lines = _read_regular_path_no_follow(
+        path, label="pre-race form card"
+    ).decode("utf-8", errors="replace").splitlines()
     if not lines:
         raise ValueError(f"empty form CSV: {path}")
     delimiter = "|" if lines[0].count("|") > lines[0].count(",") else ","
@@ -628,7 +678,6 @@ def load_development_sources(
     candidate_runners: dict[str, list[dict[str, Any]]] = {}
     source_options: dict[str, list[dict[str, Any]]] = defaultdict(list)
     trusted_source_records: list[dict[str, Any]] = []
-    diagnostic_source_records: list[dict[str, Any]] = []
     semantic_records: list[dict[str, Any]] = []
     for race_id in candidate_ids:
         if race_id in tier_a_runners:
@@ -759,17 +808,6 @@ def load_development_sources(
                 if left != right:
                     raise ValueError(f"overlap runner identity mismatch: {race_id}")
 
-    overlap_ids = sorted(set(provenance).intersection(published_rows))
-    shadow_source_by_race: dict[str, dict[str, Any]] = {}
-    for race_id in overlap_ids:
-        paths = provenance[race_id].get("feature_source_paths") or []
-        digests = provenance[race_id].get("feature_source_sha256") or []
-        if len(paths) != 1 or len(digests) != 1:
-            raise ValueError(f"overlap race requires one justified shadow source: {race_id}")
-        record = verify_file_record(Path(paths[0]), expected_sha256=digests[0])
-        shadow_source_by_race[race_id] = record
-        diagnostic_source_records.append({"role": "shadow_reconciliation_source", **record})
-
     source_digest = source_set_digest(
         trusted_source_records, reject_duplicate_declarations=False
     )
@@ -778,7 +816,53 @@ def load_development_sources(
     source_record_count = len({(row["role"], row["path"]) for row in trusted_source_records})
     if source_record_count != int(development_contract.get("authoritative_source_record_count", -1)):
         raise ValueError(f"development source-set count mismatch: {source_record_count}")
-    diagnostic_contract = (reproducibility.get("trusted_inputs") or {}).get("diagnostic") or {}
+    return {
+        "candidate_ids": candidate_ids,
+        "candidate_runners": candidate_runners,
+        "source_options": source_options,
+        "provenance": provenance,
+        "published_rows": published_rows,
+        "top_input_records": top_input_records,
+        "trusted_source_records": trusted_source_records,
+        "trusted_source_set_sha256": source_digest,
+        "training_path": training_path,
+        "construction_contract_sha256": reproducibility["construction_contract_sha256"],
+        "semantic_trust_root_sha256": canonical_digest(sorted(
+            semantic_records, key=lambda row: (row["race_id"], row["source_path"])
+        )),
+        "semantic_records": semantic_records,
+    }
+
+
+def load_diagnostic_sources(
+    authoritative: Mapping[str, Any], reproducibility: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Load and bind shadow sources only for the optional diagnostic phase."""
+    overlap_ids = sorted(
+        set(authoritative["provenance"]).intersection(authoritative["published_rows"])
+    )
+    shadow_source_by_race: dict[str, dict[str, Any]] = {}
+    diagnostic_source_records: list[dict[str, Any]] = []
+    for race_id in overlap_ids:
+        item = authoritative["provenance"][race_id]
+        paths = item.get("feature_source_paths") or []
+        digests = item.get("feature_source_sha256") or []
+        if len(paths) != 1 or len(digests) != 1:
+            raise ValueError(f"overlap race requires one justified shadow source: {race_id}")
+        path = Path(paths[0])
+        source_bytes = _read_regular_path_no_follow(
+            path, label="shadow diagnostic source"
+        )
+        actual_hash = hashlib.sha256(source_bytes).hexdigest()
+        if actual_hash != digests[0]:
+            raise ValueError(f"shadow diagnostic source hash mismatch: {path}")
+        record = {"path": str(path), "sha256": actual_hash, "bytes": len(source_bytes)}
+        shadow_source_by_race[race_id] = record
+        diagnostic_source_records.append({"role": "shadow_reconciliation_source", **record})
+
+    diagnostic_contract = (reproducibility.get("trusted_inputs") or {}).get("diagnostic")
+    if not isinstance(diagnostic_contract, dict):
+        raise ValueError("reproducibility diagnostic trust domain is malformed")
     diagnostic_digest = source_set_digest(
         diagnostic_source_records, reject_duplicate_declarations=False
     )
@@ -789,27 +873,136 @@ def load_development_sources(
     })
     if diagnostic_count != int(diagnostic_contract.get("source_record_count", -1)):
         raise ValueError("diagnostic source-set count mismatch")
-
     return {
-        "candidate_ids": candidate_ids,
-        "candidate_runners": candidate_runners,
-        "source_options": source_options,
-        "provenance": provenance,
-        "published_rows": published_rows,
-        "top_input_records": top_input_records,
-        "trusted_source_records": trusted_source_records,
-        "trusted_source_set_sha256": source_digest,
+        **authoritative,
         "diagnostic_source_records": diagnostic_source_records,
         "diagnostic_source_set_sha256": diagnostic_digest,
         "shadow_source_by_race": shadow_source_by_race,
-        "training_path": training_path,
-        "construction_contract_sha256": reproducibility["construction_contract_sha256"],
-        "diagnostic_contract_sha256": reproducibility["diagnostic_contract_sha256"],
-        "semantic_trust_root_sha256": canonical_digest(sorted(
-            semantic_records, key=lambda row: (row["race_id"], row["source_path"])
-        )),
-        "semantic_records": semantic_records,
+        "diagnostic_contract_sha256": canonical_digest(diagnostic_contract),
     }
+
+
+def _csv_rows_from_bytes(payload: bytes, *, label: str) -> list[dict[str, str]]:
+    try:
+        text = payload.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"malformed UTF-8 in {label}") from exc
+    return [dict(row) for row in csv.DictReader(io.StringIO(text))]
+
+
+def _diagnostic_context_from_authoritative_packet(
+    authoritative_payloads: Mapping[str, Mapping[str, bytes]],
+    reproducibility: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Reconstruct diagnostic inputs from the completed authoritative packet."""
+    sealed = authoritative_payloads["sealed_validation"]
+    source_rows = _csv_rows_from_bytes(
+        sealed["development_source_inventory.csv"],
+        label="sealed development source inventory",
+    )
+    source_classes: dict[str, set[str]] = defaultdict(set)
+    tier_a_cards: dict[str, dict[str, str]] = {}
+    published_cards: dict[str, dict[str, str]] = {}
+    for row in source_rows:
+        race_id = row.get("race_id") or ""
+        source_class = row.get("source_class") or ""
+        source_classes[race_id].add(source_class)
+        if row.get("role") != "raw_pre_race_card":
+            continue
+        target = None
+        label = ""
+        if source_class == "OFFICIAL_RACE_PAGE_TIER_A":
+            target = tier_a_cards
+            label = "tier-A"
+        elif source_class == "THEDOGS_PUBLISHED_HISTORY_NOT_TIER_A":
+            target = published_cards
+            label = "published-history"
+        if target is not None:
+            if race_id in target and target[race_id] != row:
+                raise ValueError(f"ambiguous sealed {label} card declaration: {race_id}")
+            target[race_id] = row
+    overlap_ids = sorted(
+        race_id
+        for race_id, classes in source_classes.items()
+        if {
+            "OFFICIAL_RACE_PAGE_TIER_A",
+            "THEDOGS_PUBLISHED_HISTORY_NOT_TIER_A",
+        }.issubset(classes)
+    )
+
+    development_contract = (
+        (reproducibility.get("trusted_inputs") or {}).get("development") or {}
+    )
+    development_files = development_contract.get("files") or {}
+    training_declaration = development_files.get("training_rows")
+    if not isinstance(training_declaration, dict):
+        raise ValueError("diagnostic phase has no bound training-row declaration")
+    training_path = Path(str(training_declaration.get("path") or ""))
+    training_bytes = _read_regular_path_no_follow(
+        training_path, label="diagnostic training rows"
+    )
+    if len(training_bytes) != int(training_declaration.get("bytes", -1)):
+        raise ValueError("diagnostic training-row byte length mismatch")
+    if hashlib.sha256(training_bytes).hexdigest() != training_declaration.get("sha256"):
+        raise ValueError("diagnostic training-row sha256 mismatch")
+
+    published_rows: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    published_keys: set[tuple[str, int, str]] = set()
+    for row in _csv_rows_from_bytes(training_bytes, label="diagnostic training rows"):
+        race_id = row.get("race_id") or ""
+        if race_id not in overlap_ids:
+            continue
+        box = int(row.get("box_number") or 0)
+        dog_name = row.get("csv_dog_name") or ""
+        key = (race_id, box, dog_token(dog_name))
+        if box <= 0 or not dog_name or key in published_keys:
+            raise ValueError(f"duplicate or malformed diagnostic training row: {key}")
+        published_keys.add(key)
+        published_card = published_cards.get(race_id)
+        tier_a_card = tier_a_cards.get(race_id)
+        if published_card is None or tier_a_card is None:
+            raise ValueError(f"missing sealed overlap card declaration: {race_id}")
+        if (
+            row.get("source_csv_path") != published_card.get("path")
+            or row.get("source_csv_sha256") != published_card.get("sha256")
+            or published_card.get("sha256") != tier_a_card.get("sha256")
+        ):
+            raise ValueError(f"diagnostic overlap card binding mismatch: {race_id}")
+        published_rows[race_id].append(dict(row))
+    if set(published_rows) != set(overlap_ids):
+        raise ValueError("bound training rows are missing diagnostic overlap races")
+
+    provenance_declaration = development_files.get("tier_a_provenance")
+    if not isinstance(provenance_declaration, dict):
+        raise ValueError("diagnostic phase has no bound tier-A provenance declaration")
+    provenance_path = Path(str(provenance_declaration.get("path") or ""))
+    provenance_bytes = _read_regular_path_no_follow(
+        provenance_path, label="diagnostic tier-A provenance"
+    )
+    if len(provenance_bytes) != int(provenance_declaration.get("bytes", -1)):
+        raise ValueError("diagnostic tier-A provenance byte length mismatch")
+    if hashlib.sha256(provenance_bytes).hexdigest() != provenance_declaration.get("sha256"):
+        raise ValueError("diagnostic tier-A provenance sha256 mismatch")
+    try:
+        all_provenance = json.loads(provenance_bytes.decode("utf-8"))["races"]
+    except (UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as exc:
+        raise ValueError("malformed diagnostic tier-A provenance") from exc
+
+    provenance: dict[str, dict[str, Any]] = {}
+    for race_id in overlap_ids:
+        item = all_provenance.get(race_id)
+        card = tier_a_cards[race_id]
+        if not isinstance(item, dict):
+            raise ValueError(f"diagnostic provenance missing overlap race: {race_id}")
+        provenance[race_id] = {
+            **item,
+            "source_csv_path": card["path"],
+            "source_csv_sha256": card["sha256"],
+        }
+    return load_diagnostic_sources(
+        {"provenance": provenance, "published_rows": published_rows},
+        reproducibility,
+    )
 
 
 def select_development_sources(loaded: Mapping[str, Any]) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
@@ -1073,10 +1266,17 @@ def load_shadow_feature_rows(
     rows: dict[tuple[str, str], dict[str, Any]] = {}
     for expected_race_id, record in sorted(sources.items()):
         path = Path(record["path"])
-        verify_file_record(
-            path, expected_sha256=str(record["sha256"]), expected_bytes=record.get("bytes")
+        source_bytes = _read_regular_path_no_follow(
+            path, label="shadow diagnostic source"
         )
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        if len(source_bytes) != int(record.get("bytes", -1)):
+            raise ValueError(f"shadow diagnostic source byte mismatch: {path}")
+        if hashlib.sha256(source_bytes).hexdigest() != str(record["sha256"]):
+            raise ValueError(f"shadow diagnostic source hash mismatch: {path}")
+        try:
+            payload = json.loads(source_bytes.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError(f"malformed shadow diagnostic source: {path}") from exc
         if not isinstance(payload, list):
             raise ValueError(f"unexpected shadow feature payload: {path}")
         matched = 0
@@ -1090,7 +1290,7 @@ def load_shadow_feature_rows(
             if key in rows:
                 kind = "conflicting" if rows[key] != row else "duplicate"
                 raise ValueError(f"{kind} shadow overlap key before insertion: {key}")
-            rows[key] = {**row, "_bound_source_path": str(path.resolve())}
+            rows[key] = {**row, "_bound_source_path": str(path)}
             matched += 1
         if not matched:
             raise ValueError(f"bound shadow source has no rows for {expected_race_id}: {path}")
@@ -1856,41 +2056,83 @@ def artifact_manifest_records(output_dir: Path, names: set[str]) -> dict[str, An
 
 
 def _open_directory_no_follow(path: Path, *, label: str) -> int:
+    """Open an absolute directory by walking every component without following links."""
+    if not path.is_absolute() or ".." in path.parts:
+        raise ValueError(f"{label} path must be absolute and traversal-free: {path}")
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    current_fd = os.open("/", flags)
     try:
-        metadata = path.lstat()
-    except FileNotFoundError as exc:
-        raise ValueError(f"missing {label} directory: {path}") from exc
-    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
-        raise ValueError(f"{label} path is a symlink or not a directory: {path}")
-    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
-    try:
-        return os.open(path, flags)
-    except OSError as exc:
-        raise ValueError(f"cannot safely open {label} directory: {path}") from exc
+        for component in path.parts[1:]:
+            next_fd = _open_child_directory_no_follow(
+                current_fd, component, label=f"{label} ancestor"
+            )
+            os.close(current_fd)
+            current_fd = next_fd
+        return current_fd
+    except Exception:
+        os.close(current_fd)
+        raise
 
 
 def _open_child_directory_no_follow(parent_fd: int, name: str, *, label: str) -> int:
+    if not name or name in {".", ".."} or "/" in name or "\\" in name:
+        raise ValueError(f"unsafe {label} component: {name!r}")
     try:
-        metadata = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+        before = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
     except FileNotFoundError as exc:
         raise ValueError(f"missing {label} directory: {name}") from exc
-    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+    if stat.S_ISLNK(before.st_mode) or not stat.S_ISDIR(before.st_mode):
         raise ValueError(f"{label} path is a symlink or not a directory: {name}")
-    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
     try:
-        return os.open(name, flags, dir_fd=parent_fd)
+        child_fd = os.open(name, flags, dir_fd=parent_fd)
     except OSError as exc:
         raise ValueError(f"cannot safely open {label} directory: {name}") from exc
+    after = os.fstat(child_fd)
+    if (
+        (before.st_dev, before.st_ino, stat.S_IFMT(before.st_mode))
+        != (after.st_dev, after.st_ino, stat.S_IFMT(after.st_mode))
+    ):
+        os.close(child_fd)
+        raise ValueError(f"{label} path changed during open: {name}")
+    return child_fd
 
 
 def _read_regular_at(directory_fd: int, name: str, *, label: str) -> bytes:
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    if not name or name in {".", ".."} or "/" in name or "\\" in name:
+        raise ValueError(f"unsafe {label} component: {name!r}")
+    try:
+        before = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+    except FileNotFoundError as exc:
+        raise ValueError(f"missing {label}: {name}") from exc
+    if stat.S_ISLNK(before.st_mode) or not stat.S_ISREG(before.st_mode):
+        raise ValueError(f"{label} is not a regular file: {name}")
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
     try:
         file_fd = os.open(name, flags, dir_fd=directory_fd)
     except OSError as exc:
         raise ValueError(f"{label} is not a regular file: {name}") from exc
     try:
         metadata = os.fstat(file_fd)
+        if (
+            (before.st_dev, before.st_ino, stat.S_IFMT(before.st_mode))
+            != (metadata.st_dev, metadata.st_ino, stat.S_IFMT(metadata.st_mode))
+        ):
+            raise ValueError(f"{label} path changed during open: {name}")
         if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
             raise ValueError(f"{label} is not a regular single-link file: {name}")
         chunks = []
@@ -1902,6 +2144,146 @@ def _read_regular_at(directory_fd: int, name: str, *, label: str) -> bytes:
         return b"".join(chunks)
     finally:
         os.close(file_fd)
+
+
+def _read_regular_path_no_follow(path: Path, *, label: str) -> bytes:
+    if not path.is_absolute() or ".." in path.parts or path.name in {"", ".", ".."}:
+        raise ValueError(f"{label} path must be absolute and traversal-free: {path}")
+    parent_fd = _open_directory_no_follow(path.parent, label=f"{label} parent")
+    try:
+        return _read_regular_at(parent_fd, path.name, label=label)
+    finally:
+        os.close(parent_fd)
+
+
+def _domain_declarations(
+    expected_output: Mapping[str, Any], domain: str
+) -> dict[str, Mapping[str, Any]]:
+    expected_domain = ((expected_output.get("domains") or {}).get(domain) or {})
+    artifacts = expected_domain.get("artifacts")
+    if not isinstance(artifacts, list):
+        raise ValueError(f"reproducibility contract has no physical declarations for {domain}")
+    roles = DOMAIN_ARTIFACT_ROLES[domain]
+    declared: dict[str, Mapping[str, Any]] = {}
+    for declaration in artifacts:
+        if not isinstance(declaration, dict):
+            raise ValueError(f"malformed {domain} artifact declaration")
+        name = _safe_declaration_name(declaration.get("path"))
+        if name in declared:
+            raise ValueError(f"duplicate {domain} artifact declaration: {name}")
+        if declaration.get("type") != "regular_file":
+            raise ValueError(f"{domain} type declaration mismatch: {name}")
+        if declaration.get("role") != roles.get(name):
+            raise ValueError(f"{domain} role declaration mismatch: {name}")
+        expected_bytes = declaration.get("bytes")
+        if type(expected_bytes) is not int or expected_bytes < 1:
+            raise ValueError(f"invalid {domain} byte length declaration: {name}")
+        expected_hash = declaration.get("sha256")
+        if not isinstance(expected_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_hash):
+            raise ValueError(f"invalid {domain} sha256 declaration: {name}")
+        declared[name] = declaration
+    if set(declared) != set(roles):
+        raise ValueError(
+            f"declared {domain} physical surface mismatch: "
+            f"unexpected={sorted(set(declared) - set(roles))} "
+            f"missing={sorted(set(roles) - set(declared))}"
+        )
+    if expected_domain.get("declared_file_count") != len(declared):
+        raise ValueError(f"declared {domain} file count mismatch")
+    declared_hashes = {
+        name: str(declaration["sha256"])
+        for name, declaration in sorted(declared.items())
+    }
+    if expected_domain.get("artifact_files") != declared_hashes:
+        raise ValueError(f"conflicting {domain} artifact hash declarations")
+    if expected_domain.get("aggregate_sha256") != expected_domain.get(
+        "physical_aggregate_sha256"
+    ):
+        raise ValueError(f"conflicting {domain} aggregate declarations")
+    return declared
+
+
+def _verify_declared_domain(
+    directory_fd: int,
+    domain: str,
+    expected_output: Mapping[str, Any],
+) -> dict[str, bytes]:
+    declarations = _domain_declarations(expected_output, domain)
+    actual_names = set(os.listdir(directory_fd))
+    if actual_names != set(declarations):
+        raise ValueError(
+            f"{domain} physical surface mismatch: "
+            f"unexpected={sorted(actual_names - set(declarations))} "
+            f"missing={sorted(set(declarations) - actual_names)}"
+        )
+    payloads: dict[str, bytes] = {}
+    rows: list[str] = []
+    for name in sorted(declarations):
+        declaration = declarations[name]
+        payload = _read_regular_at(directory_fd, name, label=f"{domain} artifact")
+        if len(payload) != declaration["bytes"]:
+            raise ValueError(f"{domain} artifact byte length mismatch: {name}")
+        actual_hash = hashlib.sha256(payload).hexdigest()
+        if actual_hash != declaration["sha256"]:
+            raise ValueError(f"{domain} artifact sha256 mismatch: {name}")
+        rows.append(f"{actual_hash}  {name}\n")
+        payloads[name] = payload
+    domain_signature = {
+        "sealed_validation": (
+            "sealed-validation-manifest.sha256",
+            SEALED_VALIDATION_ARTIFACT_NAMES,
+        ),
+        "non_authoritative_diagnostic": (
+            "non-authoritative-diagnostic-manifest.sha256",
+            DIAGNOSTIC_ARTIFACT_NAMES,
+        ),
+    }.get(domain)
+    if domain_signature is not None:
+        signature_name, signed_names = domain_signature
+        expected_signature = "".join(
+            f"{hashlib.sha256(payloads[name]).hexdigest()}  {name}\n"
+            for name in sorted(signed_names)
+        ).encode("utf-8")
+        if payloads[signature_name] != expected_signature:
+            raise ValueError(f"{domain} signature content mismatch")
+    physical_aggregate = hashlib.sha256("".join(rows).encode("utf-8")).hexdigest()
+    expected_domain = ((expected_output.get("domains") or {}).get(domain) or {})
+    if physical_aggregate != expected_domain.get("physical_aggregate_sha256"):
+        raise ValueError(f"{domain} physical aggregate sha256 mismatch")
+    return payloads
+
+
+def _verify_declared_packet_domains(
+    packet_root: Path,
+    expected_output: Mapping[str, Any],
+    domain_names: tuple[str, ...],
+    *,
+    enumerate_packet_root: bool,
+) -> dict[str, dict[str, bytes]]:
+    packet_fd = _open_directory_no_follow(packet_root, label="packet root")
+    domain_payloads: dict[str, dict[str, bytes]] = {}
+    try:
+        if enumerate_packet_root:
+            actual_domains = set(os.listdir(packet_fd))
+            if actual_domains != set(domain_names):
+                raise ValueError(
+                    "packet root surface mismatch: "
+                    f"unexpected={sorted(actual_domains - set(domain_names))} "
+                    f"missing={sorted(set(domain_names) - actual_domains)}"
+                )
+        for domain in domain_names:
+            domain_fd = _open_child_directory_no_follow(
+                packet_fd, domain, label=f"packet domain {domain}"
+            )
+            try:
+                domain_payloads[domain] = _verify_declared_domain(
+                    domain_fd, domain, expected_output
+                )
+            finally:
+                os.close(domain_fd)
+    finally:
+        os.close(packet_fd)
+    return domain_payloads
 
 
 def _safe_declaration_name(value: Any) -> str:
@@ -1919,21 +2301,38 @@ def _verified_trainer_read_surface(
     packet_fd = _open_directory_no_follow(packet_root, label="packet root")
     domain_fds: dict[str, int] = {}
     try:
-        packet_names = set(os.listdir(packet_fd))
-        expected_domains = set(PACKET_DOMAIN_ROOT_NAMES)
-        if packet_names != expected_domains:
-            raise ValueError(
-                "packet root surface mismatch: "
-                f"unexpected={sorted(packet_names - expected_domains)} "
-                f"missing={sorted(expected_domains - packet_names)}"
-            )
-        for name in PACKET_DOMAIN_ROOT_NAMES:
+        # The authoritative loader deliberately does not enumerate or open the
+        # optional diagnostic domain. Complete four-domain validation is a
+        # separate phase.
+        for name in AUTHORITATIVE_DOMAIN_ROOT_NAMES:
             domain_fds[name] = _open_child_directory_no_follow(
                 packet_fd, name, label=f"packet domain {name}"
             )
         control_fd = domain_fds[CONTROL_PLANE_ROOT_NAME]
         trainer_fd = domain_fds[TRAINER_ROOT_NAME]
+        sealed_fd = domain_fds["sealed_validation"]
         try:
+            sealed_names = set(os.listdir(sealed_fd))
+            expected_sealed_names = set(SEALED_VALIDATION_ARTIFACT_ROLES)
+            if sealed_names != expected_sealed_names:
+                raise ValueError(
+                    "sealed_validation physical surface mismatch: "
+                    f"unexpected={sorted(sealed_names - expected_sealed_names)} "
+                    f"missing={sorted(expected_sealed_names - sealed_names)}"
+                )
+            sealed_payloads = {
+                name: _read_regular_at(
+                    sealed_fd, name, label="sealed_validation artifact"
+                )
+                for name in sorted(expected_sealed_names)
+            }
+            sealed_signature = sealed_payloads["sealed-validation-manifest.sha256"]
+            expected_sealed_signature = "".join(
+                f"{hashlib.sha256(sealed_payloads[name]).hexdigest()}  {name}\n"
+                for name in sorted(SEALED_VALIDATION_ARTIFACT_NAMES)
+            ).encode("utf-8")
+            if sealed_signature != expected_sealed_signature:
+                raise ValueError("sealed_validation signature content mismatch")
             control_names = set(os.listdir(control_fd))
             if control_names != CONTROL_PLANE_ARTIFACT_NAMES:
                 raise ValueError(
@@ -2038,7 +2437,9 @@ def load_verified_trainer_inputs(
     packet_root: Path, reproducibility_contract_path: Path
 ) -> dict[str, bytes]:
     """Load trainer bytes only after the Git-tracked control trust root is verified."""
-    contract = load_reproducibility_contract(reproducibility_contract_path)
+    contract = load_reproducibility_contract(
+        reproducibility_contract_path, include_diagnostic=False
+    )
     expected_control = (
         ((contract.get("expected_output") or {}).get("domains") or {}).get("control_plane")
         or {}
@@ -2047,6 +2448,17 @@ def load_verified_trainer_inputs(
     if not isinstance(expected_files, dict) or set(expected_files) != CONTROL_PLANE_ARTIFACT_NAMES:
         raise ValueError("reproducibility contract has no exact control-plane trust root")
     payloads, control_payloads = _verified_trainer_read_surface(packet_root)
+    declared_payloads = _verify_declared_packet_domains(
+        packet_root,
+        contract.get("expected_output") or {},
+        AUTHORITATIVE_DOMAIN_ROOT_NAMES,
+        enumerate_packet_root=False,
+    )
+    if (
+        declared_payloads[TRAINER_ROOT_NAME] != payloads
+        or declared_payloads[CONTROL_PLANE_ROOT_NAME] != control_payloads
+    ):
+        raise ValueError("authoritative packet changed during verified load")
     actual_files = {
         name: hashlib.sha256(payload).hexdigest()
         for name, payload in sorted(control_payloads.items())
@@ -2061,8 +2473,31 @@ def load_verified_trainer_inputs(
     return payloads
 
 
+def validate_complete_packet(
+    packet_root: Path, reproducibility_contract_path: Path
+) -> None:
+    """Validate exact declared physical sets in all four packet domains."""
+    contract = load_reproducibility_contract(
+        reproducibility_contract_path, include_diagnostic=True
+    )
+    expected_domains = ((contract.get("expected_output") or {}).get("domains") or {})
+    if set(expected_domains) != set(PACKET_DOMAIN_ROOT_NAMES):
+        raise ValueError("reproducibility contract domain set is not exact")
+    _verify_declared_packet_domains(
+        packet_root,
+        contract.get("expected_output") or {},
+        PACKET_DOMAIN_ROOT_NAMES,
+        enumerate_packet_root=True,
+    )
+    _verified_trainer_read_surface(packet_root)
+
+
 def verify_expected_output(
-    summary: Mapping[str, Any], manifests: Mapping[str, Mapping[str, Any]], expected: Mapping[str, Any]
+    summary: Mapping[str, Any],
+    manifests: Mapping[str, Mapping[str, Any]],
+    expected: Mapping[str, Any],
+    *,
+    include_diagnostic: bool = True,
 ) -> None:
     if not expected:
         raise ValueError("reproducibility contract has no expected_output")
@@ -2075,18 +2510,19 @@ def verify_expected_output(
         "out_of_time_races": summary["out_of_time"]["included_race_count"],
         "out_of_time_runners": summary["out_of_time"]["included_runner_count"],
     }
-    diagnostic_counts = {
-        "overlap_races": summary["reconciliation"]["overlap_race_count"],
-        "overlap_runners": summary["reconciliation"]["overlap_runner_count"],
-        "history_differences": summary["reconciliation"]["history_discrepancy_count"],
-        "recency_differences": summary["reconciliation"]["recency_discrepancy_count"],
-        "grade_differences": summary["reconciliation"]["grade_discrepancy_count"],
-        "unexplained_differences": summary["reconciliation"]["unexplained_mismatch_count"],
-    }
     if authoritative_counts != expected.get("authoritative_counts"):
         raise ValueError(f"expected authoritative count mismatch: {authoritative_counts}")
-    if diagnostic_counts != expected.get("diagnostic_counts"):
-        raise ValueError(f"expected diagnostic count mismatch: {diagnostic_counts}")
+    if include_diagnostic:
+        diagnostic_counts = {
+            "overlap_races": summary["reconciliation"]["overlap_race_count"],
+            "overlap_runners": summary["reconciliation"]["overlap_runner_count"],
+            "history_differences": summary["reconciliation"]["history_discrepancy_count"],
+            "recency_differences": summary["reconciliation"]["recency_discrepancy_count"],
+            "grade_differences": summary["reconciliation"]["grade_discrepancy_count"],
+            "unexplained_differences": summary["reconciliation"]["unexplained_mismatch_count"],
+        }
+        if diagnostic_counts != expected.get("diagnostic_counts"):
+            raise ValueError(f"expected diagnostic count mismatch: {diagnostic_counts}")
     for domain, manifest in manifests.items():
         expected_domain = (expected.get("domains") or {}).get(domain) or {}
         actual_files = {row["path"]: row["sha256"] for row in manifest["files"]}
@@ -2096,41 +2532,90 @@ def verify_expected_output(
             raise ValueError(f"expected {domain} aggregate hash mismatch")
 
 
-def _prepare_empty_packet_output(output_dir: Path) -> dict[str, Path]:
-    """Create or verify an empty, fixed-domain packet destination."""
+def _prepare_empty_packet_output(
+    output_dir: Path,
+    domain_names: tuple[str, ...] = AUTHORITATIVE_DOMAIN_ROOT_NAMES,
+) -> dict[str, Path]:
+    """Create an empty packet using descriptor-relative, no-follow operations."""
+    if not output_dir.is_absolute() or ".." in output_dir.parts:
+        raise ValueError(f"packet root must be absolute and traversal-free: {output_dir}")
     try:
-        metadata = output_dir.lstat()
-    except FileNotFoundError:
-        output_dir.mkdir(parents=True)
-        metadata = output_dir.lstat()
-    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
-        raise ValueError(f"packet root path is a symlink or not a directory: {output_dir}")
-
-    entries = set(os.listdir(output_dir))
-    unexpected = entries - set(PACKET_DOMAIN_ROOT_NAMES)
-    if unexpected:
-        raise ValueError(f"packet root has unexpected pre-existing entries: {sorted(unexpected)}")
-
-    domains = {name: output_dir / name for name in PACKET_DOMAIN_ROOT_NAMES}
-    for name, path in domains.items():
+        packet_fd = _open_directory_no_follow(output_dir, label="packet root")
+    except ValueError:
+        if output_dir.exists() or output_dir.is_symlink():
+            raise
+        parent_fd = _open_directory_no_follow(output_dir.parent, label="packet root parent")
         try:
-            metadata = path.lstat()
-        except FileNotFoundError:
-            continue
-        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
-            raise ValueError(f"packet domain path is a symlink or not a directory: {name}")
-        domain_entries = os.listdir(path)
-        if domain_entries:
-            raise ValueError(
-                f"packet domain has unexpected pre-existing entries: {name}: "
-                f"{sorted(domain_entries)}"
+            try:
+                os.mkdir(output_dir.name, mode=0o700, dir_fd=parent_fd)
+            except OSError as mkdir_exc:
+                raise ValueError(f"cannot safely create packet root: {output_dir}") from mkdir_exc
+            packet_fd = _open_child_directory_no_follow(
+                parent_fd, output_dir.name, label="packet root"
             )
-    for path in domains.values():
-        path.mkdir(exist_ok=True)
-    return domains
+        finally:
+            os.close(parent_fd)
+    try:
+        entries = set(os.listdir(packet_fd))
+        unexpected = entries - set(domain_names)
+        if unexpected:
+            raise ValueError(
+                f"packet root has unexpected pre-existing entries: {sorted(unexpected)}"
+            )
+        for name in domain_names:
+            if name not in entries:
+                try:
+                    os.mkdir(name, mode=0o700, dir_fd=packet_fd)
+                except OSError as exc:
+                    raise ValueError(f"cannot safely create packet domain: {name}") from exc
+            domain_fd = _open_child_directory_no_follow(
+                packet_fd, name, label=f"packet domain {name}"
+            )
+            try:
+                domain_entries = os.listdir(domain_fd)
+                if domain_entries:
+                    raise ValueError(
+                        f"packet domain has unexpected pre-existing entries: {name}: "
+                        f"{sorted(domain_entries)}"
+                    )
+            finally:
+                os.close(domain_fd)
+    finally:
+        os.close(packet_fd)
+    return {name: output_dir / name for name in domain_names}
 
 
-def build_all(
+def _prepare_empty_diagnostic_output(packet_root: Path) -> Path:
+    packet_fd = _open_directory_no_follow(packet_root, label="packet root")
+    name = "non_authoritative_diagnostic"
+    try:
+        entries = set(os.listdir(packet_fd))
+        unexpected = entries - set(PACKET_DOMAIN_ROOT_NAMES)
+        missing_authoritative = set(AUTHORITATIVE_DOMAIN_ROOT_NAMES) - entries
+        if unexpected or missing_authoritative:
+            raise ValueError(
+                "packet root surface mismatch before diagnostic phase: "
+                f"unexpected={sorted(unexpected)} missing={sorted(missing_authoritative)}"
+            )
+        if name not in entries:
+            os.mkdir(name, mode=0o700, dir_fd=packet_fd)
+        diagnostic_fd = _open_child_directory_no_follow(
+            packet_fd, name, label="diagnostic output domain"
+        )
+        try:
+            existing = os.listdir(diagnostic_fd)
+            if existing:
+                raise ValueError(
+                    f"diagnostic domain has unexpected pre-existing entries: {sorted(existing)}"
+                )
+        finally:
+            os.close(diagnostic_fd)
+    finally:
+        os.close(packet_fd)
+    return packet_root / name
+
+
+def _build_authoritative_packet(
     eligibility_dir: Path,
     training_dir: Path,
     evidence_roots: list[Path],
@@ -2138,14 +2623,15 @@ def build_all(
     out_of_time_freeze_dir: Path | None,
     reproducibility_contract_path: Path,
     *,
-    enforce_expected_output: bool = True,
-) -> dict[str, Any]:
+    enforce_expected_output: bool,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    reproducibility = load_reproducibility_contract(
+        reproducibility_contract_path, include_diagnostic=False
+    )
     domains = _prepare_empty_packet_output(output_dir)
     trainer_dir = domains[TRAINER_ROOT_NAME]
     control_dir = domains[CONTROL_PLANE_ROOT_NAME]
     sealed_dir = domains["sealed_validation"]
-    diagnostic_dir = domains["non_authoritative_diagnostic"]
-    reproducibility = load_reproducibility_contract(reproducibility_contract_path)
     loaded = load_development_sources(eligibility_dir, training_dir, reproducibility)
     development_summary, _selected = build_development_packet(loaded, trainer_dir, sealed_dir)
     out_of_time_summary = build_out_of_time_manifest(
@@ -2162,23 +2648,103 @@ def build_all(
         trainer_dir, TRAINER_ARTIFACT_NAMES, manifest_dir=control_dir
     )
     write_trainer_input_manifest(trainer_dir, control_dir, trainer_manifest)
+    sealed_payload_manifest = write_artifact_manifest(
+        sealed_dir,
+        SEALED_VALIDATION_ARTIFACT_NAMES,
+        filename="sealed-validation-manifest.sha256",
+    )
+    sealed_manifest = artifact_manifest_records(
+        sealed_dir, set(SEALED_VALIDATION_ARTIFACT_ROLES)
+    )
+    sealed_manifest.pop("text")
+    sealed_manifest["payload_aggregate_sha256"] = sealed_payload_manifest[
+        "aggregate_sha256"
+    ]
     validate_trainer_read_surface(output_dir)
     control_manifest = artifact_manifest_records(
         control_dir, CONTROL_PLANE_ARTIFACT_NAMES
     )
     control_manifest.pop("text")
-    trainer_before_diagnostics = trainer_manifest["aggregate_sha256"]
-    reconciliation_summary = build_overlap_reconciliation(loaded, diagnostic_dir)
-    sealed_manifest = write_artifact_manifest(
-        sealed_dir,
-        SEALED_VALIDATION_ARTIFACT_NAMES,
-        filename="sealed-validation-manifest.sha256",
+    manifests = {
+        "trainer": trainer_manifest,
+        "control_plane": control_manifest,
+        "sealed_validation": sealed_manifest,
+    }
+    summary = {
+        "phase": "AUTHORITATIVE",
+        "development": development_summary,
+        "out_of_time": out_of_time_summary,
+        "artifact_manifest": trainer_manifest,
+        "domain_manifests": manifests,
+    }
+    if enforce_expected_output:
+        verify_expected_output(
+            summary, manifests, reproducibility.get("expected_output") or {},
+            include_diagnostic=False,
+        )
+    return summary, loaded, reproducibility
+
+
+def build_authoritative_packet(
+    eligibility_dir: Path,
+    training_dir: Path,
+    evidence_roots: list[Path],
+    output_dir: Path,
+    out_of_time_freeze_dir: Path | None,
+    reproducibility_contract_path: Path,
+    *,
+    enforce_expected_output: bool = True,
+) -> dict[str, Any]:
+    """Build the authoritative packet without touching diagnostic inputs or outputs."""
+    summary, _loaded, _reproducibility = _build_authoritative_packet(
+        eligibility_dir,
+        training_dir,
+        evidence_roots,
+        output_dir,
+        out_of_time_freeze_dir,
+        reproducibility_contract_path,
+        enforce_expected_output=enforce_expected_output,
     )
-    diagnostic_manifest = write_artifact_manifest(
+    return summary
+
+
+def build_all(
+    eligibility_dir: Path,
+    training_dir: Path,
+    evidence_roots: list[Path],
+    output_dir: Path,
+    out_of_time_freeze_dir: Path | None,
+    reproducibility_contract_path: Path,
+    *,
+    enforce_expected_output: bool = True,
+) -> dict[str, Any]:
+    authoritative, loaded, reproducibility = _build_authoritative_packet(
+        eligibility_dir,
+        training_dir,
+        evidence_roots,
+        output_dir,
+        out_of_time_freeze_dir,
+        reproducibility_contract_path,
+        enforce_expected_output=enforce_expected_output,
+    )
+    trainer_dir = output_dir / TRAINER_ROOT_NAME
+    diagnostic_dir = _prepare_empty_diagnostic_output(output_dir)
+    diagnostic_loaded = load_diagnostic_sources(loaded, reproducibility)
+    trainer_manifest = authoritative["artifact_manifest"]
+    trainer_before_diagnostics = trainer_manifest["aggregate_sha256"]
+    reconciliation_summary = build_overlap_reconciliation(diagnostic_loaded, diagnostic_dir)
+    diagnostic_payload_manifest = write_artifact_manifest(
         diagnostic_dir,
         DIAGNOSTIC_ARTIFACT_NAMES,
         filename="non-authoritative-diagnostic-manifest.sha256",
     )
+    diagnostic_manifest = artifact_manifest_records(
+        diagnostic_dir, set(DIAGNOSTIC_ARTIFACT_ROLES)
+    )
+    diagnostic_manifest.pop("text")
+    diagnostic_manifest["payload_aggregate_sha256"] = diagnostic_payload_manifest[
+        "aggregate_sha256"
+    ]
     trainer_after_diagnostics = artifact_manifest_records(
         trainer_dir, TRAINER_ARTIFACT_NAMES
     )["aggregate_sha256"]
@@ -2186,16 +2752,13 @@ def build_all(
         raise ValueError("diagnostic construction changed trainer artifacts")
     validate_trainer_read_surface(output_dir)
     manifests = {
-        "trainer": trainer_manifest,
-        "control_plane": control_manifest,
-        "sealed_validation": sealed_manifest,
+        **authoritative["domain_manifests"],
         "non_authoritative_diagnostic": diagnostic_manifest,
     }
     summary = {
-        "development": development_summary,
+        **authoritative,
+        "phase": "AUTHORITATIVE_PLUS_OPTIONAL_DIAGNOSTIC",
         "reconciliation": reconciliation_summary,
-        "out_of_time": out_of_time_summary,
-        "artifact_manifest": trainer_manifest,
         "domain_manifests": manifests,
         "diagnostic_isolation": {
             "trainer_aggregate_before": trainer_before_diagnostics,
@@ -2204,27 +2767,169 @@ def build_all(
         },
     }
     if enforce_expected_output:
-        verify_expected_output(summary, manifests, reproducibility.get("expected_output") or {})
+        verify_expected_output(
+            summary, manifests, reproducibility.get("expected_output") or {},
+            include_diagnostic=True,
+        )
     return summary
+
+
+def build_optional_diagnostics(
+    packet_root: Path,
+    reproducibility_contract_path: Path,
+    *,
+    enforce_expected_output: bool = True,
+) -> dict[str, Any]:
+    """Build optional diagnostics from a verified authoritative packet read-only."""
+    reproducibility = load_reproducibility_contract(
+        reproducibility_contract_path, include_diagnostic=True
+    )
+    expected_output = reproducibility.get("expected_output") or {}
+    authoritative_before = _verify_declared_packet_domains(
+        packet_root,
+        expected_output,
+        AUTHORITATIVE_DOMAIN_ROOT_NAMES,
+        enumerate_packet_root=False,
+    )
+    loaded = _diagnostic_context_from_authoritative_packet(
+        authoritative_before, reproducibility
+    )
+    diagnostic_dir = _prepare_empty_diagnostic_output(packet_root)
+    reconciliation = build_overlap_reconciliation(loaded, diagnostic_dir)
+    diagnostic_payload_manifest = write_artifact_manifest(
+        diagnostic_dir,
+        DIAGNOSTIC_ARTIFACT_NAMES,
+        filename="non-authoritative-diagnostic-manifest.sha256",
+    )
+    diagnostic_manifest = artifact_manifest_records(
+        diagnostic_dir, set(DIAGNOSTIC_ARTIFACT_ROLES)
+    )
+    diagnostic_manifest.pop("text")
+    diagnostic_manifest["payload_aggregate_sha256"] = diagnostic_payload_manifest[
+        "aggregate_sha256"
+    ]
+    authoritative_after = _verify_declared_packet_domains(
+        packet_root,
+        expected_output,
+        AUTHORITATIVE_DOMAIN_ROOT_NAMES,
+        enumerate_packet_root=False,
+    )
+    before_hashes = {
+        domain: {
+            name: hashlib.sha256(payload).hexdigest()
+            for name, payload in sorted(files.items())
+        }
+        for domain, files in authoritative_before.items()
+    }
+    after_hashes = {
+        domain: {
+            name: hashlib.sha256(payload).hexdigest()
+            for name, payload in sorted(files.items())
+        }
+        for domain, files in authoritative_after.items()
+    }
+    if before_hashes != after_hashes:
+        raise ValueError("diagnostic construction changed authoritative packet bytes")
+    if enforce_expected_output:
+        actual_counts = {
+            "overlap_races": reconciliation["overlap_race_count"],
+            "overlap_runners": reconciliation["overlap_runner_count"],
+            "history_differences": reconciliation["history_discrepancy_count"],
+            "recency_differences": reconciliation["recency_discrepancy_count"],
+            "grade_differences": reconciliation["grade_discrepancy_count"],
+            "unexplained_differences": reconciliation["unexplained_mismatch_count"],
+        }
+        if actual_counts != expected_output.get("diagnostic_counts"):
+            raise ValueError(f"expected diagnostic count mismatch: {actual_counts}")
+        expected_domain = (
+            (expected_output.get("domains") or {}).get(
+                "non_authoritative_diagnostic"
+            )
+            or {}
+        )
+        actual_files = {
+            row["path"]: row["sha256"] for row in diagnostic_manifest["files"]
+        }
+        if actual_files != expected_domain.get("artifact_files"):
+            raise ValueError("expected non_authoritative_diagnostic artifact hash mismatch")
+        if diagnostic_manifest["aggregate_sha256"] != expected_domain.get(
+            "aggregate_sha256"
+        ):
+            raise ValueError("expected non_authoritative_diagnostic aggregate hash mismatch")
+    _verify_declared_packet_domains(
+        packet_root,
+        expected_output,
+        ("non_authoritative_diagnostic",),
+        enumerate_packet_root=False,
+    )
+    validate_complete_packet(packet_root, reproducibility_contract_path)
+    return {
+        "phase": "NON_AUTHORITATIVE_DIAGNOSTIC",
+        "authority": "NON_AUTHORITATIVE_DIAGNOSTIC",
+        "reconciliation": reconciliation,
+        "domain_manifest": diagnostic_manifest,
+        "authoritative_hashes_before": before_hashes,
+        "authoritative_hashes_after": after_hashes,
+        "authoritative_bytes_identical": True,
+    }
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--eligibility-dir", type=Path, required=True)
-    parser.add_argument("--training-dir", type=Path, required=True)
+    parser.add_argument(
+        "--phase",
+        choices=("authoritative", "diagnostic", "all"),
+        default="authoritative",
+    )
+    parser.add_argument("--eligibility-dir", type=Path)
+    parser.add_argument("--training-dir", type=Path)
     parser.add_argument("--evidence-root", type=Path, action="append", default=[])
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--out-of-time-freeze-dir", type=Path, required=True)
+    parser.add_argument("--out-of-time-freeze-dir", type=Path)
     parser.add_argument("--reproducibility-contract", type=Path, required=True)
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.phase in {"authoritative", "all"}:
+        missing = [
+            name
+            for name in (
+                "eligibility_dir",
+                "training_dir",
+                "out_of_time_freeze_dir",
+            )
+            if getattr(args, name) is None
+        ]
+        if missing:
+            parser.error(
+                "authoritative construction requires "
+                + ", ".join(f"--{name.replace('_', '-')}" for name in missing)
+            )
+    return args
 
 
 def main() -> int:
     args = parse_args()
-    summary = build_all(
-        args.eligibility_dir, args.training_dir, args.evidence_root, args.output_dir,
-        args.out_of_time_freeze_dir, args.reproducibility_contract,
-    )
+    if args.phase == "authoritative":
+        summary = build_authoritative_packet(
+            args.eligibility_dir,
+            args.training_dir,
+            args.evidence_root,
+            args.output_dir,
+            args.out_of_time_freeze_dir,
+            args.reproducibility_contract,
+        )
+    elif args.phase == "diagnostic":
+        summary = build_optional_diagnostics(
+            args.output_dir, args.reproducibility_contract
+        )
+    else:
+        summary = build_all(
+            args.eligibility_dir,
+            args.training_dir,
+            args.evidence_root,
+            args.output_dir,
+            args.out_of_time_freeze_dir,
+            args.reproducibility_contract,
+        )
     print(json.dumps(summary, indent=2, sort_keys=True))
     return 0
 
