@@ -1,0 +1,6 @@
+python3 -m compileall -q scripts/build_form_only_v1_packet.py tests/test_build_form_only_v1_packet.py
+uvx ruff check scripts/build_form_only_v1_packet.py tests/test_build_form_only_v1_packet.py
+uv run --no-project --python 3.11 --with pytest pytest -q --noconftest tests/test_build_form_only_v1_packet.py
+uv run --no-project --python 3.13 --with pytest pytest -q --noconftest tests/test_build_form_only_v1_packet.py
+descriptor-scoped local-temp adversarial probes and deterministic real-input A/B builds
+repository broad suite: uv run --no-project --python 3.11 --with-requirements requirements/requirements.lock --with pytest --with pytest-cov --with pytest-flask --with pytest-timeout pytest -q --timeout=300

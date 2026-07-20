@@ -1,0 +1,31 @@
+{
+  "schema_version": "pr51_exact_set_probes_v1",
+  "result": "PASS",
+  "read_gate": "load_verified_trainer_inputs",
+  "ordering": "all checks complete before the function returns any trainer bytes",
+  "baseline": {"actual_count":10,"declared_count":10,"equal":true,"loaded_count":10},
+  "rejections": [
+    {"case":"unexpected_13th_file","rejected":true,"message_class":"trainer read surface mismatch"},
+    {"case":"trainer_dotfile","rejected":true,"message_class":"trainer read surface mismatch"},
+    {"case":"trainer_symlink","rejected":true,"message_class":"not a regular file"},
+    {"case":"trainer_hardlink","rejected":true,"message_class":"not a regular single-link file"},
+    {"case":"trainer_directory","rejected":true,"message_class":"not a regular single-link file"},
+    {"case":"renamed_file","rejected":true,"message_class":"trainer read surface mismatch"},
+    {"case":"missing_file","rejected":true,"message_class":"trainer read surface mismatch"},
+    {"case":"length_change","rejected":true,"message_class":"trainer artifact byte length mismatch"},
+    {"case":"same_length_hash_change","rejected":true,"message_class":"trainer artifact sha256 mismatch"},
+    {"case":"duplicate_declaration","rejected":true,"message_class":"duplicate trainer declaration"},
+    {"case":"path_escape","rejected":true,"message_class":"unsafe trainer declaration path"},
+    {"case":"packet_root_regular_file","rejected":true,"message_class":"packet root surface mismatch"},
+    {"case":"packet_root_dotfile","rejected":true,"message_class":"packet root surface mismatch"},
+    {"case":"packet_root_symlink_alias","rejected":true,"message_class":"packet root surface mismatch"},
+    {"case":"packet_root_directory","rejected":true,"message_class":"packet root surface mismatch"},
+    {"case":"packet_root_is_symlink","rejected":true,"message_class":"packet root path is a symlink"},
+    {"case":"trainer_domain_is_symlink","rejected":true,"message_class":"packet domain trainer path is a symlink"},
+    {"case":"control_domain_is_symlink","rejected":true,"message_class":"packet domain control_plane path is a symlink"},
+    {"case":"sealed_domain_is_symlink","rejected":true,"message_class":"packet domain sealed_validation path is a symlink"},
+    {"case":"diagnostic_domain_is_symlink","rejected":true,"message_class":"packet domain non_authoritative_diagnostic path is a symlink"},
+    {"case":"unexpected_preexisting_builder_entry","rejected_before_write":true,"message_class":"unexpected pre-existing entries"}
+  ],
+  "default_discovery_proof": "The trusted launcher receives the packet root, validates an exact four-domain top-level set with no-follow directory descriptors, validates an exact two-file control set, and returns only the exact ten trainer payloads. The trainer receives the returned mapping, not a packet path. Dot paths, separators, absolute paths, traversal, aliases, links, and undeclared names cannot enter that mapping."
+}

@@ -1,0 +1,6 @@
+NOT_COLLECTED: exit 4
+Command: uv run --no-project --with-requirements requirements.txt --with pytest --with pytest-cov pytest --junitxml=/tmp/pr51-trainer-surface-full.xml
+ImportError while loading tests/conftest.py at line 478.
+app.py:47 imports flask_compress.Compress.
+ModuleNotFoundError: No module named 'flask_compress'
+The documented requirements environment installed 116 packages, but requirements.txt does not include this collection dependency. No broad-suite green claim is made.

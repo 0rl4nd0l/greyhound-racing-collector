@@ -1,0 +1,6 @@
+{
+  "trainer": {"actual": 10, "declared": 10, "types": "regular_single_link"},
+  "control_plane": {"actual": 2, "declared": 2, "types": "regular_single_link"},
+  "sealed_validation": {"actual": 6, "declared": 6, "types": "regular_single_link"},
+  "non_authoritative_diagnostic": {"actual": 3, "declared": 3, "types": "regular_single_link"}
+}

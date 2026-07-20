@@ -1,0 +1,283 @@
+# FORM_ONLY_V1 acquisition contract
+
+## Status and boundary
+
+`FORM_ONLY_V1` is an acquisition and feature-lineage contract. It does not fit,
+calibrate, rank, evaluate, blend, promote, or activate a model. Model and market
+dispositions are deliberately quarantined from this trusted path; this packet
+makes no predictive-performance or edge claim.
+
+The development population ends on 2026-07-09. The separate 2026-07-11 through
+2026-08-09 packet is `OUTCOME_UNOPENED_OUT_OF_TIME`; it is not called
+prospective. No result source is consulted for that packet.
+
+## Frozen sources and precedence
+
+The candidate union is the set union of:
+
+1. frozen Tier-A official-race-page races in
+   `historical_win_tier_a_race_provenance_v1.json`; and
+2. races marked `used_for_training=1` whose rows are in
+   `thedogs_training_rows_v1.csv`.
+
+Trainer-visible `row_id` values derive only from `race_id` plus box. The trainer
+is given only the `trainer/` directory, whose ten regular files must exactly
+equal the ten declarations in `control_plane/trainer_input_manifest.json`.
+Dog names, tokens, digests, source-runner IDs, alignment mappings, source paths,
+and URLs exist only in the separately hashed `sealed_validation/` bundle and
+are absent from the trainer allowlist. Reusing a dog name in another race
+creates no trainer-visible join key; development/out-of-time row-ID
+intersections are required to be zero. Hashing a dog token is not treated as
+anonymization.
+
+For races in both sources, the raw form CSVs must be byte-identical. An eligible
+Tier-A raw card has precedence over an eligible published-history raw card. If
+only the published-history card meets the availability rule, that card is used.
+Within the winning precedence, the freshest eligible capture wins. Equal-time
+winners fail closed unless card and sidecar bytes prove one identical canonical
+source identity; pathnames never decide conflicting source content.
+Label provenance remains separate:
+
+- `OFFICIAL_RACE_PAGE_TIER_A` is retained only when the frozen Tier-A
+  provenance declares it.
+- `THEDOGS_PUBLISHED_HISTORY_NOT_TIER_A` is never promoted to Tier A.
+- no label value is copied into either input packet.
+
+Every selected card roster must exactly equal its COMPLETE sidecar's canonical
+box/name multiset. A label roster may omit a sidecar participant only when the
+hash-bound published-history input independently binds the listed and active
+counts plus scratch/reserve state; every such participant receives an explicit
+opaque exclusion row and evidence digest. Missing, extra, swapped, duplicate,
+or colliding identities otherwise fail closed.
+
+Each raw pre-race card is opened once per construction context and retained as
+immutable bytes. Its byte length, SHA-256, target roster, prior-history blocks,
+features, and sealed source-inventory identity all derive from that same byte
+value. The combined build carries the retained development bytes into optional
+diagnostics; a separately invoked diagnostic phase opens each sealed-declared
+overlap card once, verifies that buffer against the declared length and SHA-256,
+and parses only that buffer. A same-length pathname mutation after validation
+therefore cannot influence emitted artifacts under the earlier digest.
+
+Card availability is exact: `capture_timestamp <= jump_timestamp - 60 minutes`.
+Tier-A jump time comes from its frozen race provenance. Published-history jump
+time comes from frozen `race_timestamp_utc`, which is authoritative over the
+older sidecar display time. Naive card capture timestamps are interpreted in
+`Australia/Melbourne`.
+
+Every sidecar is also validated semantically, independently from its supplied
+hash: filename/race ID, date, venue, race number, canonical source URL, jump and
+capture evidence, card path, and canonical roster must agree with the bound
+card/acquisition evidence. Rebinding inventory hashes cannot make a wrong-race
+sidecar valid. Missing byte lengths, duplicate declarations, malformed schema
+or types, and incomplete or duplicate freeze roles fail closed.
+
+## Trust domains
+
+The build has four trust domains:
+
+- `trainer/` is `TRAINER_VISIBLE_AUTHORITATIVE`. Its five
+  `MODEL_INPUT_DATA` files and five explicitly role-tagged trainer-safe metadata
+  files are the complete readable set. It contains no manifest, signature,
+  symlink, directory, dotfile, undeclared file, or alternate-path alias.
+- `control_plane/` contains `trainer_input_manifest.json` and
+  `artifact-manifest.sha256`. A launcher validates this domain, the exact
+  trainer directory set, every declaration, file type, byte length, digest,
+  and single-link/no-follow path before returning any bytes to a trainer. These
+  two files are never trainer-readable inputs.
+- `sealed_validation/` contains five source-inventory and dog/card-alignment
+  payloads plus `sealed-validation-manifest.sha256`, which signs exactly those
+  five payloads. All six files are declared by name, type, role, length, and
+  hash. This domain is not a trainer input.
+- `non_authoritative_diagnostic/` contains the legacy overlap reconciliation.
+  Its two payloads and `non-authoritative-diagnostic-manifest.sha256` form an
+  exact three-file optional surface. It cannot affect canonical features,
+  eligibility, expected authoritative counts, or any authoritative-domain
+  byte; pre/post diagnostic hashes must be byte-identical.
+
+The authoritative build is `--phase authoritative`, and the runtime-real read
+entrypoint is `load_verified_trainer_inputs(packet_root,
+reproducibility_contract)`. Neither phase enumerates, opens, hashes, validates,
+or requires a diagnostic source or output. The optional `--phase diagnostic`
+phase starts only after the completed authoritative packet validates, consumes
+that packet read-only, and may fail without invalidating it.
+
+Write continuity is descriptor-scoped as well as read-scoped. Each build owns
+the packet-root descriptor and validated trainer, control-plane, sealed, and
+optional diagnostic directory descriptors through the last payload write,
+manifest/signature write, descriptor-relative readback, and close verification.
+Staged files are created with exclusive no-follow flags in the bound directory,
+fully written and fsynced before descriptor-relative replacement. Every tracked
+entry is checked for regular single-link type, device/inode identity, byte
+length, and SHA-256; the exact domain surface is checked before writes and at
+close. Any exception, including staged-write interrupts, post-publish
+verification errors, close-time substitution, and partial scope construction,
+rolls back entries created by the scope and closes all owned descriptors.
+
+The diagnostic scope binds all four domains before its first diagnostic byte and
+rejects any device/inode alias between diagnostic and authoritative domains.
+Diagnostic writes use only the diagnostic descriptor. Authoritative domains are
+snapshotted through their bound descriptors before and after diagnostics and
+must remain byte-identical; diagnostic failure or absence is local.
+
+All authoritative loader reads walk each absolute, traversal-free path from
+`/` with component-relative `openat` operations using `O_NOFOLLOW`. Every ancestor,
+packet/domain component, and final file is checked before and after open by
+device, inode, and type; final files must be regular and single-link. No bytes
+are returned until exact-set, length, role, hash, signature, and aggregate
+checks finish. Symlinked ancestors, packet/domain/file links, hard-link aliases,
+component swaps, traversal, default discovery, unexpected files, dotfiles,
+directories, duplicates, missing files, and type/role/length/hash changes fail
+closed. Authoritative loading deliberately does not enumerate the optional
+diagnostic domain; `validate_complete_packet` separately requires the exact
+four-domain root and exact 10/2/6/3 physical inventories.
+
+The non-self-referential trust chain is: reviewed Git commit -> tracked
+`form_only_v1_reproducibility_v4` physical declarations -> exact domain files.
+The control signature hashes exactly ten trainer files; the sealed signature
+hashes exactly five sealed payloads; and the diagnostic signature hashes
+exactly two diagnostic payloads. Each signature is itself bound only by the
+tracked descriptor. No manifest or signature hashes itself.
+
+## Canonical prior-history semantics
+
+Features are rebuilt from the selected raw pre-race card, never selected from a
+legacy builder output or from a mutable database.
+
+- Each non-empty `Dog Name` row starts that runner's history block; blank-name
+  continuation rows remain in that block.
+- Rows are accepted only when `history_date < target_date`.
+- Rows are normalized before deduplication using canonical date, venue,
+  distance, grade, finish, box, margin, and verified start identity. Distinct
+  same-day starts with otherwise identical results remain distinct.
+- Accepted rows are sorted newest first and capped at 20. Multiple distinct
+  same-day rows require one unique verified timestamp or race-ordinal key;
+  input order is never used and unprovable ordering fails closed. Recent windows use the
+  newest 3 or 5; `career_*` means all available accepted rows within that
+  explicit 20-start evidence cap, not an assertion of complete lifetime starts.
+- Recency is integer calendar days from target date to the newest accepted row.
+- Finish is numeric `PLC`; win is finish 1 and place is finish 1-3. Margin uses
+  numeric `MGN` only. Missing numeric values are excluded from their aggregate.
+- Same-distance means exact integer metres. Same-venue uses the embedded,
+  versioned venue-alias table. Same-grade uses the embedded grade aliases below.
+- Missing history, recency, finish, margin, and each same-context slice have
+  explicit flags. Missing values are blank, never silently zero-filled.
+
+Grade normalization removes `Tier 3 -` and `Bottom Up -` prefixes, maps ordinal
+and numeric grades to `GRADE_n`, maps `M`/`Maiden`, `FFA`/`Free For All`,
+`INV`/`Invitation`, restricted-win variants, mixed-grade variants, and common
+short codes explicitly. Unmapped non-empty grades are preserved as a stable
+uppercase alphanumeric token; missing grades map to `__MISSING__`.
+
+## V1 feature scope
+
+CORE is limited to starts, recency, recent/capped-career finish-win-place-margin,
+same venue/distance/grade history, and missingness.
+
+CONTEXT is limited to box, target venue, distance, grade, and field size. A later
+fit must derive categorical vocabularies from training folds only, pool values
+seen fewer than 10 times to `__RARE__`, and map unseen values to `__UNKNOWN__`.
+This acquisition step does not create a vocabulary.
+
+DEFERRED includes speed, times, sectionals, opponent strength, prize money,
+weather, dog identity, trainer identity, and high-dimensional interactions.
+
+The builder ignores `SP`, `OPEN`, `LOW`, `HIGH`, odds, target result fields,
+post-jump corrections, and target/post-target history. Their presence in a raw
+legacy export does not authorize parsing or transport into the packet.
+
+## Out-of-time source rule
+
+Only leakage-safe, complete pre-race card sidecars and their hash-matching CSVs
+are considered. Paths marked as result, replay, reconstruction, repair,
+backfill, or official-result material are rejected before content is read. For
+each race, the freshest valid card at or before T-60 is selected. No label or
+outcome source is opened.
+
+Equal freshest capture times fail closed when their bytes differ. Byte-identical
+aliases collapse to one canonical source identity; discovering the same live
+path twice is an error rather than a silent skip.
+
+Frozen mode binds only three construction inputs: the OOT source inventory,
+exclusion inventory, and OOT manifest. The builder verifies their bytes and
+digests, then rederives each selected path, filename/race identity, sidecar
+identity, timezone-aware capture and jump timestamps, Jul 11-Aug 9 membership,
+T-60 eligibility, and card/sidecar roster. Manifest counts are checked against
+the rederived population; neither 88/617 nor an older artifact hash is hardcoded
+in source. Capture declarations must carry an explicit offset. Canonical race
+times must be exact URL matches and are interpreted in the source display zone
+`Australia/Melbourne`, which is emitted in the rebuilt manifest.
+
+## Durable reproduction
+
+The tracked [reproducibility descriptor](form_only_v1_reproducibility.json)
+binds four development construction inputs, 3,231 authoritative card, sidecar,
+and label records, 38 separately non-authoritative shadow source files, and the
+three-file OOT freeze at
+`/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-form-only-v1-acquisition-20260718/reports/agent_jobs/form_only_v1_acquisition_foundation_20260718`,
+the expected current counts, and 21 artifact hashes across four domains. The OOT
+freeze aggregate is `30671f48...e7cc`; trainer, control-plane,
+sealed-validation, and diagnostic physical aggregates are respectively
+`97967ab3...4e31`, `1712d3d6...5462`, `3b1284f3...691c`, and
+`bb6306bc...15b2`. The non-self-referential sealed and diagnostic payload
+signature hashes remain `4ce9d105...26ed` and `e5eaf492...995f`.
+The source-byte repair changes the rejected-head builder SHA-256 from
+`0136e4759d792a76530fc28930135c211ab79831c2e52877440741a6352dd52b` to
+`11b56970de0e53975a444d0ad066f7ea566ffc717757b074d5eb0d5f8865f086`.
+The tracked reproducibility descriptor stayed byte-identical at
+`8fa8966e6cad819baccda0d07314ae0db51693b1a60f769edd7a019cdeea89ad`; real
+input builds prove the delta is implementation identity only, with all four
+physical aggregates unchanged.
+Reviewers on the evidence host can build authority first without touching any
+diagnostic source or output, then optionally generate diagnostics:
+
+```bash
+python3 scripts/build_form_only_v1_packet.py \
+  --phase authoritative \
+  --eligibility-dir /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-historical-win-eligibility-20260715/reports/agent_jobs/historical_win_eligibility_reconciliation_20260715 \
+  --training-dir /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-training-first-data-evidence-20260713/historical_training_dataset_v1 \
+  --out-of-time-freeze-dir /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-form-only-v1-acquisition-20260718/reports/agent_jobs/form_only_v1_acquisition_foundation_20260718 \
+  --reproducibility-contract /ABSOLUTE/WORKTREE/docs/form_only_v1_reproducibility.json \
+  --output-dir /tmp/form-only-v1-review
+
+python3 scripts/build_form_only_v1_packet.py \
+  --phase diagnostic \
+  --reproducibility-contract /ABSOLUTE/WORKTREE/docs/form_only_v1_reproducibility.json \
+  --output-dir /tmp/form-only-v1-review
+```
+
+Any one-bit change in a bound input for its trust domain or any expected
+count/hash causes a non-zero exit. The descriptor intentionally carries no raw
+cards, labels, outcomes, databases, models, or large generated packet files.
+
+The final physical inventories are trainer 10, control-plane 2, sealed
+validation 6, and optional diagnostic 3. Authoritative bytes, counts,
+eligibility, gates, and hashes are identical when diagnostics are absent,
+moved, corrupt, or mutated. Diagnostic failure is local to that optional phase.
+
+The independent-review diagnostic baseline was 504/530 unexplained rows across
+73/73 overlap races. Parsing numeric zero as a real value reclassifies 245
+zero-history rows and recomputes the diagnostic to 259/530 unexplained across
+71/73 races. This delta changes no authoritative count or trainer byte. The
+tracked FORM_ONLY_V1 suite contains 177 tests, including every-domain exact-set,
+descriptor continuity, staged/partial cleanup, close-window substitution,
+declaration mutation, ancestor-link, and component-swap attacks; no "zero
+unexplained" claim is made. The repository-wide baseline is not green: at the
+rejected head it collected 1,885 tests with 1,753 passed, 61 failed, 50 skipped,
+and 21 errors. Its parent collected 1,857 with 1,725 passed and the same
+failure/skip/error counts; all 28 head-only tests passed. This repair reports a
+fresh rejected-head/repair-head delta rather than describing the broad suite as
+passing. The fresh repair-tree run collected 1,974 tests: 1,842 passed, 61
+failed, 50 skipped, and 21 errors. Against the exact 99be6c baseline (1,953 /
+1,820 / 62 / 50 / 21), that is +21 tests, +22 passes, and one fewer failure with
+no error or skip transition; the added tests are continuity tests, and the
+remaining broad failures are baseline/environmental debt.
+
+## Market separation
+
+Market timing is not an input eligibility rule. T-60 market pairing remains
+separate `DATA_MISSING`. The owner-supplied T-60/T-30/T-10/T-2 counts are
+preserved as carry-forward expectations for a later evaluation, but this lane
+does not claim they are independently frozen: no immutable market cohort
+manifest with matching pairing semantics was available. Market timing and
+labels require separate authorization and never gate this odds-free packet.

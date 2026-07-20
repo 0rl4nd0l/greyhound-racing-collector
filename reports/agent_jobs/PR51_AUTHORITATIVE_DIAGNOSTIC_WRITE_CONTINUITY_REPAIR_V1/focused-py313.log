@@ -1,0 +1,3 @@
+uv run --no-project --python 3.13 --with pytest pytest -q --noconftest tests/test_build_form_only_v1_packet.py
+177 passed
+targeted continuity/isolation selection: 93 passed, 84 deselected

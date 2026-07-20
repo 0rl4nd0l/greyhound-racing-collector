@@ -1,0 +1,17 @@
+{
+  "schema_version": "pr51_complete_trainer_surface_linkability_v1",
+  "build_root": "/tmp/pr51-trainer-final-a.la80Eb",
+  "declared_readable_count": 10,
+  "scanned_readable_count": 10,
+  "complete_set": true,
+  "dog_token_exact_intersections": [],
+  "dog_digest_exact_intersections": [],
+  "source_path_exact_intersections": [],
+  "source_path_substring_intersections": [],
+  "sealed_alignment_key_hits": [],
+  "alignment_keys_tested": ["dog_name_token","canonical_runner_id","source_runner_id","|dog:"],
+  "cross_race_identity_intersections": {},
+  "development_out_of_time_identity_intersections": [],
+  "result": "PASS_ZERO_INTERSECTIONS",
+  "note": "Race-plus-box row_id remains intentionally within its one race and split; it contains no dog/source identity and produced no cross-race or development-to-OOT intersection."
+}

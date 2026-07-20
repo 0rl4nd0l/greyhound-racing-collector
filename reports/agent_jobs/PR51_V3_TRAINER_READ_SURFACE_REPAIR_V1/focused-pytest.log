@@ -1,0 +1,2 @@
+PASS: uv run --no-project --with pytest pytest -q --noconftest tests/test_build_form_only_v1_packet.py
+84 passed in 0.75s

@@ -1,0 +1,10 @@
+{
+  "scope": "descriptor_scoped_authoritative_and_diagnostic_writes",
+  "terminal_probes": 15,
+  "focused_terminal_probes": 6,
+  "descriptor_fd_leaks": 0,
+  "partial_packet_acceptance": false,
+  "packet_close_and_parent_close_completion_failures": "rollback_and_close_pass",
+  "same_inode_content_mutation": "rejected",
+  "late_unexpected_surface": "rejected"
+}
