@@ -1,0 +1,19 @@
+{
+  "alternative_models_created": 0,
+  "candidate_selection_rerun": false,
+  "canonical_model_bytes_identical": true,
+  "fixed_fixture_full_predictions_identical": true,
+  "fixed_fixture_half_predictions_identical": true,
+  "fixture_race_id": "Race 1 - AP_K - 2026-06-11",
+  "folds_reopened": false,
+  "manifest_sha256": "8537cbc3d843d106a1fe48793ef01197454ef092c0244025fd65685636a42080",
+  "optimization_identical": true,
+  "parameters_identical": true,
+  "persisted_model_sha256": "624bba020d24f93fac4d895a851195aed5d31cff2f35645d9253be1175cc694d",
+  "preprocessing_identical": true,
+  "primary_persisted_model_count": 1,
+  "replayed_canonical_model_sha256": "624bba020d24f93fac4d895a851195aed5d31cff2f35645d9253be1175cc694d",
+  "schema_version": "market_form_residual_deterministic_proof_v1",
+  "status": "PASS",
+  "temporary_same_fit_replay_count": 2
+}

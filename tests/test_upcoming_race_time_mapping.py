@@ -6,7 +6,10 @@ from bs4 import BeautifulSoup
 
 from upcoming_race_browser import UpcomingRaceBrowser
 from utils.race_lifecycle import JUMPED_PENDING_RESULTS, UPCOMING_NOT_JUMPED, classify_race_file
-from utils.csv_metadata import normalize_target_grade
+from utils.csv_metadata import (
+    normalize_exact_target_grade,
+    normalize_target_grade,
+)
 
 
 class FakeResponse:
@@ -291,6 +294,306 @@ def test_target_grade_normalizes_official_shorthand_classes():
     assert normalize_target_grade("Other") == "Other"
     assert normalize_target_grade("Other 515m") == "Other"
     assert normalize_target_grade("Other Dog") is None
+
+
+def test_exact_meeting_card_grade_hint_is_bound_to_canonical_race_identity():
+    browser = UpcomingRaceBrowser()
+    race_url = (
+        "https://www.thedogs.com.au/racing/mandurah/2026-07-17/10/"
+        "auto-owls-bentley?trial=false"
+    )
+    hint = {
+        "url": race_url,
+        "date": "2026-07-17",
+        "venue": "MANDURAH",
+        "race_number": "10",
+        "grade": "Grade 5",
+        "target_grade_context_schema": "thedogs_meeting_card_exact_race_v1",
+        "target_grade_equivalence_key": "GRADE:5",
+        "target_grade_exact_value": "Grade 5",
+        "target_grade_race_date": "2026-07-17",
+        "target_grade_race_number": 10,
+        "target_grade_race_url": (
+            "https://www.thedogs.com.au/racing/mandurah/2026-07-17/10/"
+            "auto-owls-bentley"
+        ),
+        "target_grade_source_url": (
+            "https://www.thedogs.com.au/racing/2026-07-17"
+        ),
+        "target_grade_venue": "MAND",
+    }
+
+    metadata = browser._extract_safe_target_grade_from_hint(hint, race_url)
+
+    assert metadata == {
+        "grade": "Grade 5",
+        "target_grade": "Grade 5",
+        "target_grade_source": "thedogs_meeting_card_exact_race",
+        "target_grade_context_schema": "thedogs_meeting_card_exact_race_v1",
+        "target_grade_equivalence_key": "GRADE:5",
+        "target_grade_exact_value": "Grade 5",
+        "target_grade_race_date": "2026-07-17",
+        "target_grade_race_number": 10,
+        "target_grade_race_url": (
+            "https://www.thedogs.com.au/racing/mandurah/2026-07-17/10/"
+            "auto-owls-bentley"
+        ),
+        "target_grade_source_url": (
+            "https://www.thedogs.com.au/racing/2026-07-17"
+        ),
+        "target_grade_venue": "MAND",
+        "metadata_source_url": "https://www.thedogs.com.au/racing/2026-07-17",
+    }
+    assert metadata["target_grade_source"] == "thedogs_meeting_card_exact_race"
+
+
+def test_exact_meeting_card_grade_parser_rejects_known_token_garbage():
+    assert normalize_exact_target_grade("Grade 5") == "Grade 5"
+    assert normalize_exact_target_grade("Grade: Maiden") == "Maiden"
+    assert normalize_exact_target_grade("Grade 5 520m") == "Grade 5"
+    assert normalize_exact_target_grade("Mixed 4/5") == "Mixed 4/5"
+    assert normalize_exact_target_grade("Mixed 2/3/4") == "Mixed 2/3/4"
+    assert normalize_exact_target_grade("3rd/4th Grade") == "Mixed 3/4"
+    assert normalize_exact_target_grade("1st/2nd/3rd Grade") is None
+    assert normalize_exact_target_grade("Restricted Win Heat") == "Restricted Win"
+    assert normalize_exact_target_grade("Restricted Win Final") == "Restricted Win"
+    assert normalize_exact_target_grade("Grade 5 garbage") is None
+    assert normalize_exact_target_grade("Mystery Grade 5") is None
+    assert normalize_exact_target_grade("not Maiden at all") is None
+    assert normalize_exact_target_grade("Restricted nonsense") is None
+
+
+def test_meeting_card_grade_hint_rejects_unknown_or_mismatched_identity():
+    browser = UpcomingRaceBrowser()
+    race_url = (
+        "https://www.thedogs.com.au/racing/mandurah/2026-07-17/10/"
+        "auto-owls-bentley?trial=false"
+    )
+    base = {
+        "url": race_url,
+        "date": "2026-07-17",
+        "venue": "MAND",
+        "race_number": "10",
+        "grade": "Grade 5",
+        "target_grade_context_schema": "thedogs_meeting_card_exact_race_v1",
+        "target_grade_equivalence_key": "GRADE:5",
+        "target_grade_exact_value": "Grade 5",
+        "target_grade_race_url": (
+            "https://www.thedogs.com.au/racing/mandurah/2026-07-17/10/"
+            "auto-owls-bentley"
+        ),
+        "target_grade_source_url": (
+            "https://www.thedogs.com.au/racing/2026-07-17"
+        ),
+    }
+    invalid_hints = [
+        {**base, "url": race_url.replace("/10/", "/9/")},
+        {**base, "date": "2026-07-18"},
+        {**base, "venue": "CANN"},
+        {**base, "race_number": "9"},
+        {**base, "grade": "Sponsor Trophy"},
+        {**base, "grade": "Grade 5 garbage"},
+        {**base, "grade": "not Maiden at all"},
+        {**base, "target_grade_exact_value": "Maiden"},
+        {**base, "target_grade_context_schema": "cached_csv_grade_v1"},
+        {**base, "target_grade_source_url": race_url},
+        {**base, "url": race_url.replace("auto-owls-bentley", "results")},
+        {**base, "url": race_url.replace("https://", "https://attacker@")},
+        {**base, "url": race_url.replace("www.", "form.")},
+        {**base, "url": race_url.replace("2026-07-17", "2026-7-17")},
+    ]
+
+    assert all(
+        browser._extract_safe_target_grade_from_hint(hint, race_url) == {}
+        for hint in invalid_hints
+    )
+
+
+def test_meeting_card_grade_fills_page_gap_but_conflict_fails_closed():
+    browser = UpcomingRaceBrowser()
+    race_url = "https://www.thedogs.com.au/racing/mandurah/2026-07-17/10/test"
+    page_distance = {
+        "distance": "520m",
+        "target_distance": "520m",
+        "target_distance_source": "canonical_pre_race_page",
+        "metadata_source_url": race_url,
+    }
+    hint_grade = {
+        "grade": "Grade 5",
+        "target_grade": "Grade 5",
+        "target_grade_source": "thedogs_meeting_card_exact_race",
+        "target_grade_context_schema": "thedogs_meeting_card_exact_race_v1",
+        "target_grade_equivalence_key": "GRADE:5",
+        "target_grade_exact_value": "Grade 5",
+        "target_grade_race_date": "2026-07-17",
+        "target_grade_race_number": 10,
+        "target_grade_race_url": race_url,
+        "target_grade_source_url": "https://www.thedogs.com.au/racing/2026-07-17",
+        "target_grade_venue": "MAND",
+        "metadata_source_url": race_url,
+    }
+
+    merged = browser._merge_safe_target_metadata(
+        page_distance,
+        hint_grade,
+        race_url,
+    )
+
+    assert merged["target_distance"] == "520m"
+    assert merged["target_grade"] == "Grade 5"
+    assert merged["target_grade_source"] == "thedogs_meeting_card_exact_race"
+    assert merged["metadata_is_leakage_safe"] is True
+
+    conflict = browser._merge_safe_target_metadata(
+        {**page_distance, "grade": "Maiden", "target_grade": "Maiden", "target_grade_source": "canonical_pre_race_page"},
+        hint_grade,
+        race_url,
+    )
+
+    assert conflict.get("target_grade") is None
+    assert conflict["target_grade_source"] == "default_missing_target"
+    assert conflict["metadata_is_leakage_safe"] is False
+
+
+def test_live_meeting_card_grade_requires_one_exact_race_scope():
+    browser = UpcomingRaceBrowser()
+    soup = BeautifulSoup(
+        """
+        <div class="race-card">
+          <a href="/racing/mandurah/2026-07-17/10/owls-bentley">R10</a>
+          <span class="grade">Grade 5</span>
+        </div>
+        """,
+        "html.parser",
+    )
+    link = soup.find("a")
+
+    race = browser.extract_race_info_from_link(
+        link,
+        link["href"],
+        "2026-07-17",
+    )
+
+    assert race["target_grade"] == "Grade 5"
+    assert race["target_grade_context_schema"] == (
+        "thedogs_meeting_card_exact_race_v1"
+    )
+    assert race["target_grade_source_url"] == (
+        "https://www.thedogs.com.au/racing/2026-07-17"
+    )
+
+
+def test_live_meeting_card_does_not_borrow_grade_from_multi_race_parent():
+    browser = UpcomingRaceBrowser()
+    soup = BeautifulSoup(
+        """
+        <div class="meeting">
+          <a href="/racing/mandurah/2026-07-17/10/owls-bentley">R10</a>
+          <span>Grade 5</span>
+          <a href="/racing/mandurah/2026-07-17/11/other-race">R11</a>
+          <span>Maiden</span>
+        </div>
+        """,
+        "html.parser",
+    )
+
+    for link in soup.find_all("a"):
+        race = browser.extract_race_info_from_link(
+            link,
+            link["href"],
+            "2026-07-17",
+        )
+        assert "target_grade_context_schema" not in race
+
+
+def test_live_meeting_card_rejects_noncanonical_second_race_anchor():
+    browser = UpcomingRaceBrowser()
+    unsafe_anchors = (
+        "/racing/mandurah/2026-07-17/11/other?winner=1",
+        "//www.thedogs.com.au/racing/mandurah/2026-07-17/11/other?winner=1",
+        "HTTPS://www.thedogs.com.au/racing/mandurah/2026-07-17/11/other?winner=1",
+        "racing/mandurah/2026-07-17/11/other?winner=1",
+    )
+    for unsafe_anchor in unsafe_anchors:
+        soup = BeautifulSoup(
+            f"""
+            <div class="meeting">
+              <a href="/racing/mandurah/2026-07-17/10/owls-bentley">R10</a>
+              <span>Grade 5</span>
+              <a href="{unsafe_anchor}">R11</a>
+            </div>
+            """,
+            "html.parser",
+        )
+        link = soup.find("a")
+
+        race = browser.extract_race_info_from_link(
+            link,
+            link["href"],
+            "2026-07-17",
+        )
+
+        assert "target_grade_context_schema" not in race
+
+
+def test_cached_csv_grade_is_not_provenance_until_exact_live_card_overlays_it(
+    monkeypatch,
+):
+    browser = UpcomingRaceBrowser()
+    browser.enhance_limit = 0
+    race_url = "https://www.thedogs.com.au/racing/mandurah/2026-07-17/10/test"
+    cached = {
+        "date": "2026-07-17",
+        "venue": "MAND",
+        "race_number": "10",
+        "grade": "Grade 4",
+        "url": race_url,
+    }
+    live = {
+        **cached,
+        "grade": "Maiden",
+        "target_grade": "Maiden",
+        "target_grade_context_schema": "thedogs_meeting_card_exact_race_v1",
+        "target_grade_equivalence_key": "MAIDEN",
+        "target_grade_exact_value": "Maiden",
+        "target_grade_race_url": race_url,
+        "target_grade_source_url": "https://www.thedogs.com.au/racing/2026-07-17",
+    }
+    monkeypatch.setattr(browser, "_get_cached_races_for_date", lambda date: [dict(cached)])
+    monkeypatch.setattr(browser, "_scrape_live_races_for_date", lambda date: [dict(live)])
+
+    races = browser.get_races_for_date(datetime(2026, 7, 17))
+
+    assert len(races) == 1
+    assert races[0]["grade"] == "Maiden"
+    assert races[0]["target_grade_context_schema"] == (
+        "thedogs_meeting_card_exact_race_v1"
+    )
+
+    cached_only_hint = {**cached, "grade": "Maiden"}
+    assert browser._extract_safe_target_grade_from_hint(cached_only_hint, race_url) == {}
+
+
+def test_equivalent_grade_forms_do_not_create_false_conflict():
+    browser = UpcomingRaceBrowser()
+    race_url = "https://www.thedogs.com.au/racing/mandurah/2026-07-17/10/test"
+    merged = browser._merge_safe_target_metadata(
+        {
+            "target_distance": "520m",
+            "target_distance_source": "canonical_pre_race_page",
+            "target_grade": "4th Grade",
+            "target_grade_source": "canonical_pre_race_page",
+        },
+        {
+            "target_grade": "Grade 4",
+            "target_grade_source": "thedogs_meeting_card_exact_race",
+            "target_grade_equivalence_key": "GRADE:4",
+        },
+        race_url,
+    )
+
+    assert merged["target_grade"] == "4th Grade"
+    assert merged["target_grade_source"] == "canonical_pre_race_page"
 
 
 def test_current_race_header_accepts_non_graded_class():

@@ -48,6 +48,29 @@ def _schema(features):
     }
 
 
+def test_output_manifest_binds_declared_implementation_file_hashes(
+    tmp_path, monkeypatch
+):
+    implementation_files = shadow_eval.IMPLEMENTATION_FILES
+    for index, relative in enumerate(implementation_files, start=1):
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"implementation-{index}\n", encoding="utf-8")
+    output_dir = tmp_path / "artifacts/shadow_score_live"
+    output_dir.mkdir(parents=True)
+    (output_dir / "shadow_feature_rows.json").write_text("[]\n", encoding="utf-8")
+
+    monkeypatch.setattr(shadow_eval, "ROOT", tmp_path)
+    monkeypatch.setattr(shadow_eval, "git_output", lambda _: "test-ref")
+
+    manifest = shadow_eval.output_file_manifest(output_dir)
+
+    assert manifest["implementation_files"] == implementation_files
+    assert manifest["implementation_file_hashes"] == {
+        relative: _sha256(tmp_path / relative) for relative in implementation_files
+    }
+
+
 def test_pytest_database_environment_does_not_target_repo_root_db():
     protected = Path("greyhound_racing_data.db").resolve()
     for key in (
