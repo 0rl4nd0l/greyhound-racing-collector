@@ -33,6 +33,7 @@ if ROOT_TEXT not in sys.path:
 from src.predictor.market_form_residual import (  # noqa: E402
     DEFAULT_ARTIFACT_DIR,
     FEATURES,
+    SHADOW_RECORD_SCHEMA,
     FrozenResidualModel,
     ResidualContractError,
     _runner_set_sha256,
@@ -46,14 +47,50 @@ MELBOURNE = ZoneInfo("Australia/Melbourne")
 ALLOWED_BOX_SOURCES = {"explicit_dom", "runner_text"}
 OUTCOME_KEYS = {
     "actual_win",
+    "actual_winner",
+    "db_finish_position",
+    "db_result_position",
+    "db_scraped_finish_position",
+    "dividend",
+    "finish",
     "finish_position",
+    "finishing_position",
+    "future_position",
+    "future_result",
+    "future_time",
+    "individual_time",
+    "is_placer",
+    "is_winner",
+    "margin",
+    "mgn",
+    "official_finish_position",
+    "official_position",
     "official_result",
+    "official_result_status",
+    "official_winner",
     "outcome",
+    "payout",
+    "place",
     "placing",
+    "plc",
+    "position",
+    "race_time_result",
     "result",
+    "result_position",
+    "result_status",
+    "results",
+    "results_status",
+    "scraped_finish_position",
+    "scraped_raw_result",
+    "starting_price",
+    "target_finish_position",
+    "time",
+    "win_time",
     "winner",
+    "winner_margin",
     "winner_name",
     "winner_odds",
+    "winning_time",
 }
 POST_RACE_URL_TOKENS = {
     "result",
@@ -135,6 +172,48 @@ def _read_input(path: Path, label: str) -> tuple[bytes, str]:
     if not raw:
         raise ManualPredictionError(f"{label}_empty")
     return raw, _sha256_bytes(raw)
+
+
+def _existing_replay_score_timestamp(
+    path: Path, identity: Mapping[str, str]
+) -> datetime | None:
+    """Return one prior score time as a hint for writer-validated exact replay."""
+
+    try:
+        raw = path.read_bytes()
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise ManualPredictionError("shadow_output_unreadable") from exc
+    if not raw:
+        return None
+    try:
+        lines = raw.decode("utf-8").splitlines()
+    except UnicodeDecodeError as exc:
+        raise ManualPredictionError("shadow_output_invalid_utf8") from exc
+    matches = []
+    for line_number, line in enumerate(lines, start=1):
+        if not line.strip():
+            raise ManualPredictionError(f"shadow_output_blank_line:{line_number}")
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ManualPredictionError(
+                f"shadow_output_invalid_json:{line_number}"
+            ) from exc
+        if not isinstance(row, Mapping):
+            raise ManualPredictionError(f"shadow_output_row_not_object:{line_number}")
+        if row.get("schema_version") == SHADOW_RECORD_SCHEMA and all(
+            row.get(key) == value for key, value in identity.items()
+        ):
+            matches.append(row)
+    if len(matches) > 1:
+        raise ManualPredictionError("shadow_output_replay_identity_ambiguous")
+    if not matches:
+        return None
+    return _parse_timestamp(
+        matches[0].get("score_timestamp"), "shadow_replay_score_timestamp"
+    )
 
 
 def _json_value(raw: bytes, label: str) -> Any:
@@ -1340,32 +1419,6 @@ def score_from_artifacts(
         attempt, context["runners"], context
     )
     jump = context["jump_timestamp"]
-    score_time = score_timestamp or datetime.now().astimezone()
-    if score_time.tzinfo is None or score_time.utcoffset() is None:
-        raise ManualPredictionError("score_timestamp_timezone_missing")
-    feature_timeline = (
-        context["metadata_timestamp"],
-        feature_time,
-        feature_generated_time,
-        score_time,
-        jump,
-    )
-    odds_timeline = (
-        context["metadata_timestamp"],
-        fetch_time,
-        append_time,
-        score_time,
-        jump,
-    )
-    if any(
-        left > right
-        for timeline in (feature_timeline, odds_timeline)
-        for left, right in zip(timeline, timeline[1:])
-    ):
-        raise ManualPredictionError("source_timestamp_order_invalid")
-    if not score_time < jump:
-        raise ManualPredictionError("manual_score_not_prejump")
-
     selected_attempt_sha = _sha256_bytes(_canonical_bytes(attempt))
     feature_source_sha = _sha256_bytes(
         _canonical_bytes(
@@ -1410,10 +1463,48 @@ def score_from_artifacts(
         )
     frozen = frozen_model or load_frozen_model(model_path, manifest_path)
     expected_ids = sorted(runner_ids)
+    runner_set_sha = _runner_set_sha256(expected_ids)
+    score_time = score_timestamp
+    if score_time is None and shadow_output_path is not None:
+        score_time = _existing_replay_score_timestamp(
+            shadow_output_path,
+            {
+                "race_id": race_id,
+                "runner_set_sha256": runner_set_sha,
+                "model_sha256": frozen.model_sha256,
+                "manifest_sha256": frozen.manifest_sha256,
+                "effective_state_sha256": frozen.effective_state_sha256,
+            },
+        )
+    score_time = score_time or datetime.now().astimezone()
+    if score_time.tzinfo is None or score_time.utcoffset() is None:
+        raise ManualPredictionError("score_timestamp_timezone_missing")
+    feature_timeline = (
+        context["metadata_timestamp"],
+        feature_time,
+        feature_generated_time,
+        score_time,
+        jump,
+    )
+    odds_timeline = (
+        context["metadata_timestamp"],
+        fetch_time,
+        append_time,
+        score_time,
+        jump,
+    )
+    if any(
+        left > right
+        for timeline in (feature_timeline, odds_timeline)
+        for left, right in zip(timeline, timeline[1:])
+    ):
+        raise ManualPredictionError("source_timestamp_order_invalid")
+    if not score_time < jump:
+        raise ManualPredictionError("manual_score_not_prejump")
     provenance = {
         "race_id": race_id,
         "expected_runner_ids": expected_ids,
-        "runner_set_sha256": _runner_set_sha256(expected_ids),
+        "runner_set_sha256": runner_set_sha,
         "jump_timestamp": jump.isoformat(),
         "score_timestamp": score_time.isoformat(),
     }
@@ -1525,7 +1616,9 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help=(
             "Explicit append-only .jsonl path for the canonical outcome-free "
-            "frozen shadow record. The parent directory must already exist."
+            "frozen shadow record. The parent directory must already exist; "
+            "an identical prior stable identity is writer-validated and returned "
+            "as EXACT_REPLAY."
         ),
     )
     return parser
@@ -1598,7 +1691,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             capture_path=capture,
             model_path=artifact_dir / "model.json",
             manifest_path=artifact_dir / "manifest.json",
-            score_timestamp=score_time if args.race else None,
+            score_timestamp=(
+                None
+                if args.append_shadow_output is not None
+                else score_time
+                if args.race
+                else None
+            ),
             shadow_output_path=args.append_shadow_output,
         )
     except (ManualPredictionError, ResidualContractError) as exc:

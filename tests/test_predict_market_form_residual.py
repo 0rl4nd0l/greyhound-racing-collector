@@ -499,6 +499,52 @@ def test_rejects_nested_or_extra_feature_bundle(tmp_path):
         _score_paths(paths)
 
 
+@pytest.mark.parametrize(
+    "outcome_key",
+    [
+        "is_winner",
+        "is_placer",
+        "official_finish_position",
+        "db_finish_position",
+        "scraped_finish_position",
+        "target_finish_position",
+        "result_position",
+        "official_position",
+        "actual_winner",
+        "official_winner",
+        "result_status",
+        "results_status",
+        "official_result_status",
+    ],
+)
+def test_rejects_supported_outcome_fields_in_feature_rows(tmp_path, outcome_key):
+    paths = _write_fixture(tmp_path)
+    _reseal(paths, lambda rows, _: rows[0].__setitem__(outcome_key, 1))
+
+    with pytest.raises(
+        ManualPredictionError, match="feature_rows_invalid_or_contains_outcome"
+    ):
+        _score_paths(paths)
+
+
+@pytest.mark.parametrize(
+    ("artifact_key", "error"),
+    [
+        ("sidecar", "sidecar_contains_outcome_field"),
+        ("capture", "capture_contains_outcome_field"),
+    ],
+)
+def test_rejects_is_winner_across_input_artifacts(tmp_path, artifact_key, error):
+    paths = _write_fixture(tmp_path)
+    artifact = _json(paths[artifact_key])
+    assert isinstance(artifact, dict)
+    artifact["is_winner"] = 1
+    _write_json(paths[artifact_key], artifact)
+
+    with pytest.raises(ManualPredictionError, match=error):
+        _score_paths(paths)
+
+
 def test_rejects_outcome_field_in_feature_manifest(tmp_path):
     paths = _write_fixture(tmp_path)
     _reseal(paths, lambda _, manifest: manifest.__setitem__("winner", "Alpha Fast"))
@@ -917,22 +963,23 @@ def test_cli_explicit_shadow_output_persists_v3_record(tmp_path):
     paths = _write_fixture(tmp_path / "fixture")
     race_id = _retime_for_cli(paths)
     shadow_output = tmp_path / "market_form_residual_shadow_predictions_v3.jsonl"
+    command = [
+        sys.executable,
+        str(ROOT / "scripts/predict_market_form_residual.py"),
+        "--race-id",
+        race_id,
+        "--form-csv",
+        str(paths["form_csv"]),
+        "--feature-rows",
+        str(paths["feature_rows"]),
+        "--capture",
+        str(paths["capture"]),
+        "--append-shadow-output",
+        str(shadow_output),
+    ]
 
     completed = subprocess.run(
-        [
-            sys.executable,
-            str(ROOT / "scripts/predict_market_form_residual.py"),
-            "--race-id",
-            race_id,
-            "--form-csv",
-            str(paths["form_csv"]),
-            "--feature-rows",
-            str(paths["feature_rows"]),
-            "--capture",
-            str(paths["capture"]),
-            "--append-shadow-output",
-            str(shadow_output),
-        ],
+        command,
         cwd=tmp_path,
         check=False,
         capture_output=True,
@@ -946,12 +993,74 @@ def test_cli_explicit_shadow_output_persists_v3_record(tmp_path):
     assert output["persistence_status"] == "APPENDED"
     assert output["shadow_output_path"] == str(shadow_output.resolve())
 
+    replayed = subprocess.run(
+        command,
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+    )
+    assert replayed.returncode == 0, replayed.stderr.decode("utf-8")
+    assert replayed.stderr == b""
+    replayed_output = json.loads(replayed.stdout)
+    assert replayed.stdout == _canonical_bytes(replayed_output)
+    assert replayed_output["persistence_status"] == "EXACT_REPLAY"
+    assert replayed_output["record_key"] == output["record_key"]
+    assert replayed_output["score_timestamp"] == output["score_timestamp"]
+
     records = [json.loads(line) for line in shadow_output.read_bytes().splitlines()]
     assert len(records) == 1
     assert records[0]["schema_version"] == "market_form_residual_shadow_record_v3"
     assert records[0]["race_id"] == race_id
     assert records[0]["outcomes_present"] is False
     assert records[0]["activation"] is False
+
+
+def test_cli_explicit_shadow_output_rejects_changed_input_as_conflict(tmp_path):
+    paths = _write_fixture(tmp_path / "fixture")
+    race_id = _retime_for_cli(paths)
+    shadow_output = tmp_path / "market_form_residual_shadow_predictions_v3.jsonl"
+    command = [
+        sys.executable,
+        str(ROOT / "scripts/predict_market_form_residual.py"),
+        "--race-id",
+        race_id,
+        "--form-csv",
+        str(paths["form_csv"]),
+        "--feature-rows",
+        str(paths["feature_rows"]),
+        "--capture",
+        str(paths["capture"]),
+        "--append-shadow-output",
+        str(shadow_output),
+    ]
+
+    first = subprocess.run(
+        command,
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+    )
+    assert first.returncode == 0, first.stderr.decode("utf-8")
+    original = shadow_output.read_bytes()
+
+    capture = _json(paths["capture"])
+    assert isinstance(capture, dict)
+    capture["attempts"][0]["validation"]["accepted_rows"][0]["odds_decimal"] = 2.6
+    _write_json(paths["capture"], capture)
+
+    conflicting = subprocess.run(
+        command,
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+    )
+    assert conflicting.returncode == 2
+    assert conflicting.stdout == b""
+    assert json.loads(conflicting.stderr) == {
+        "status": "BLOCKED_MANUAL_PREDICTION",
+        "reason": "conflicting_shadow_duplicate",
+    }
+    assert shadow_output.read_bytes() == original
 
 
 def test_race_first_cli_discovers_exact_packet_with_one_query_and_writes_nothing(
