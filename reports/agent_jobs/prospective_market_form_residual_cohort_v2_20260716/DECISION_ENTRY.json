@@ -1,0 +1,44 @@
+{
+  "blocks": [
+    "merge_activation_deployment_promotion_or_runtime_mutation_by_this_task",
+    "deployment_without_adapting_and_proving_the_new_writer_call_contract"
+  ],
+  "claim_id": "prospective_market_form_residual_cohort_v2_20260716",
+  "dataset_version": "pr46_106fbc09_post_pr45_c1dfd464_effective_state_mutation_probe_20260716",
+  "decision": "PASS",
+  "decision_delta": "The source-proven mutable-state identity defect is closed by immutable score state, artifact-anchored effective-state verification, and writer-side canonical rescoring and identity reconstruction, with frozen artifact bytes unchanged and no merge or activation by this task.",
+  "decision_id": "frozen-market-form-residual-effective-state-repair-20260717-v1",
+  "does_not_block": [
+    "independent_merge_review_of_the_exact_pushed_pr46_repair_head",
+    "continued_market_only_production_baseline"
+  ],
+  "evidence_hash": "sha256:80e2ba4c2606062adcc40091e3cd22f9e3d1924582a86e40c538a4f16b1b4dba",
+  "evidence_refs": [
+    "reports/agent_jobs/greyhound_pr45_pr46_integration_20260716/PR46_REVIEW.md",
+    "src/predictor/market_form_residual.py",
+    "tests/test_market_form_residual.py",
+    "reports/agent_jobs/prospective_market_form_residual_cohort_v2_20260716/VALIDATION.md",
+    "reports/agent_jobs/prospective_market_form_residual_cohort_v2_20260716/CODE_REVIEW.md"
+  ],
+  "hypothesis_id": "frozen_market_form_residual_effective_state_integrity_repair_v1",
+  "invalidation_conditions": [
+    "Either frozen artifact SHA-256 changes or fixed-fixture predictions drift.",
+    "Any mutation, forgery, canonical-history, deterministic-scoring, append-idempotency, resource-lock or post-PR45 integration regression fails.",
+    "A deployment proceeds without adapting and proving the new writer call contract."
+  ],
+  "outcome_status": "ADVANCED",
+  "phase_after": "pr46_effective_state_repair_ready_for_independent_merge_review",
+  "phase_before": "pr45_merged_pr46_blocked_on_source_proven_effective_state_identity_mutation",
+  "program_track": "offline_development",
+  "project_id": "greyhound_racing_collector",
+  "reopen_conditions": [
+    "New source-proven evidence demonstrates a remaining effective-state or append-identity mutation path.",
+    "A separately authorized deployment task begins after independent merge review and merge of the exact repair head."
+  ],
+  "run_id": "l4nd0-System-Product-Name:75469:prospective_market_form_residual_cohort_v2_20260716",
+  "scope_fingerprint": "d302c845b81bca3c9a3a8290cfdc0f57cbd8bacf2066f05a47c1d5b605d50b95",
+  "source_class": "frozen_tier_a_strict_prejump_sportsbet_win_point_in_time_form_and_official_result_evidence_through_20260709",
+  "target_transition": "pr46_effective_state_repair_ready_for_independent_merge_review",
+  "task_id": "prospective_market_form_residual_cohort_v2_20260716",
+  "validated_at": "2026-07-17T06:21:47+10:00"
+}

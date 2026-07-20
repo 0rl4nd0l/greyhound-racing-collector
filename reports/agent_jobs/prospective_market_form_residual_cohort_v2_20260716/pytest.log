@@ -1,0 +1,13 @@
+Focused repair suite:
+.....................................                                    [100%]
+37 passed in 0.35s
+
+Resource and collector-lock regression suite:
+........................................................................ [ 54%]
+.............................................................            [100%]
+133 passed in 2.86s
+
+Clean post-PR45 integration simulation at c1dfd464cf6ecfb2034f96ac1a8d3ea58d4e6afa:
+focused: 37 passed in 0.33s
+resource and collector-lock: 133 passed in 3.37s
+integration merge aborted; worktree clean; MERGE_HEAD absent
