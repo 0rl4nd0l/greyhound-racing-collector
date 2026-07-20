@@ -1006,7 +1006,39 @@ def _distance_metres(value: Any) -> float:
     return parsed
 
 
-def _jump_timestamp(sidecar: Mapping[str, Any]) -> datetime:
+def _agreed_race_date(shadow: Mapping[str, Any], race_info: Mapping[str, Any]) -> date:
+    if "race_date" not in shadow or "date" not in race_info:
+        raise ManualPredictionError("target_race_date_missing")
+    shadow_date = _parse_date(shadow["race_date"], "target_race_date")
+    race_info_date = _parse_date(race_info["date"], "target_race_date")
+    if shadow_date != race_info_date:
+        raise ManualPredictionError("target_race_date_mismatch")
+    return shadow_date
+
+
+def _agreed_race_number(shadow: Mapping[str, Any], race_info: Mapping[str, Any]) -> int:
+    if "race_number" not in shadow or "race_number" not in race_info:
+        raise ManualPredictionError("target_race_number_missing")
+    shadow_number = _integer(shadow["race_number"], "target_race_number", minimum=1)
+    race_info_number = _integer(
+        race_info["race_number"], "target_race_number", minimum=1
+    )
+    if shadow_number != race_info_number:
+        raise ManualPredictionError("target_race_number_mismatch")
+    return shadow_number
+
+
+def _agreed_distance(shadow: Mapping[str, Any], race_info: Mapping[str, Any]) -> float:
+    if "distance" not in shadow or "distance" not in race_info:
+        raise ManualPredictionError("target_distance_missing")
+    shadow_distance = _distance_metres(shadow["distance"])
+    race_info_distance = _distance_metres(race_info["distance"])
+    if shadow_distance != race_info_distance:
+        raise ManualPredictionError("target_distance_mismatch")
+    return shadow_distance
+
+
+def _jump_timestamp(sidecar: Mapping[str, Any], race_date: date) -> datetime:
     shadow = sidecar.get("prejump_shadow_metadata")
     race_info = sidecar.get("race_info")
     if not isinstance(shadow, Mapping):
@@ -1015,9 +1047,6 @@ def _jump_timestamp(sidecar: Mapping[str, Any]) -> datetime:
     explicit = shadow.get("jump_datetime") or sidecar.get("jump_datetime")
     if explicit:
         return _parse_timestamp(explicit, "jump_timestamp")
-    race_date = _parse_date(
-        shadow.get("race_date") or race_info.get("date"), "target_race_date"
-    )
     raw_time = str(shadow.get("jump_time") or race_info.get("race_time") or "").strip()
     for fmt in ("%I:%M %p", "%I:%M%p", "%H:%M"):
         try:
@@ -1129,14 +1158,8 @@ def _sidecar_context(sidecar: Mapping[str, Any]) -> dict[str, Any]:
     runner_set = {(box, str(row["identity"])) for box, row in runners.items()}
     if complete_set != runner_set or len(complete_rows) != len(complete_set):
         raise ManualPredictionError("sidecar_runner_completeness_mismatch")
-    target_date = _parse_date(
-        shadow.get("race_date") or race_info.get("date"), "target_race_date"
-    )
-    race_number = _integer(
-        shadow.get("race_number") or race_info.get("race_number"),
-        "target_race_number",
-        minimum=1,
-    )
+    target_date = _agreed_race_date(shadow, race_info)
+    race_number = _agreed_race_number(shadow, race_info)
     venue_values = []
     if "venue" in shadow:
         venue_values.append(shadow.get("venue"))
@@ -1153,9 +1176,7 @@ def _sidecar_context(sidecar: Mapping[str, Any]) -> dict[str, Any]:
     if len(set(normalized_venues)) != 1:
         raise ManualPredictionError("target_venue_alias_mismatch")
     venue = normalized_venues[0]
-    target_distance = _distance_metres(
-        shadow.get("distance") or race_info.get("distance")
-    )
+    target_distance = _agreed_distance(shadow, race_info)
     target_grade_values = []
     if "grade" in shadow:
         target_grade_values.append(shadow.get("grade"))
@@ -1220,7 +1241,7 @@ def _sidecar_context(sidecar: Mapping[str, Any]) -> dict[str, Any]:
         or not re.fullmatch(r"[0-9a-f]{64}", grade_source_sha256)
     ):
         raise ManualPredictionError("target_grade_proof_mismatch")
-    jump = _jump_timestamp(sidecar)
+    jump = _jump_timestamp(sidecar, target_date)
     if jump.astimezone(MELBOURNE).date() != target_date:
         raise ManualPredictionError("jump_date_target_date_mismatch")
     return {

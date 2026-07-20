@@ -522,6 +522,219 @@ def test_rejects_date_with_trailing_content(tmp_path):
         _score_paths(paths)
 
 
+@pytest.mark.parametrize(
+    ("scope", "field"),
+    [
+        ("prejump_shadow_metadata", "race_date"),
+        ("race_info", "date"),
+    ],
+)
+def test_rejects_conflicting_duplicate_race_dates_in_both_directions(
+    tmp_path, scope, field
+):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar[scope][field] = "2026-07-17"
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="target_race_date_mismatch"):
+        _score_paths(paths)
+
+
+@pytest.mark.parametrize(
+    ("scope", "field", "value"),
+    [
+        (scope, field, value)
+        for scope, field in (
+            ("prejump_shadow_metadata", "race_date"),
+            ("race_info", "date"),
+        )
+        for value in ("", False, "2026-02-30")
+    ],
+)
+def test_rejects_invalid_one_sided_duplicate_race_dates(tmp_path, scope, field, value):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar[scope][field] = value
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="target_race_date_invalid"):
+        _score_paths(paths)
+
+
+@pytest.mark.parametrize(
+    ("scope", "field"),
+    [
+        ("prejump_shadow_metadata", "race_date"),
+        ("race_info", "date"),
+    ],
+)
+def test_rejects_missing_duplicate_race_date(tmp_path, scope, field):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    del sidecar[scope][field]
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="target_race_date_missing"):
+        _score_paths(paths)
+
+
+@pytest.mark.parametrize(
+    "scope",
+    ["prejump_shadow_metadata", "race_info"],
+)
+def test_rejects_conflicting_duplicate_race_numbers_in_both_directions(tmp_path, scope):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar[scope]["race_number"] = 3
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="target_race_number_mismatch"):
+        _score_paths(paths)
+
+
+@pytest.mark.parametrize(
+    ("scope", "value"),
+    [
+        (scope, value)
+        for scope in ("prejump_shadow_metadata", "race_info")
+        for value in (0, -1, "", False, "two", 2.5)
+    ],
+)
+def test_rejects_invalid_one_sided_duplicate_race_numbers(tmp_path, scope, value):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar[scope]["race_number"] = value
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="target_race_number_invalid"):
+        _score_paths(paths)
+
+
+@pytest.mark.parametrize(
+    "scope",
+    ["prejump_shadow_metadata", "race_info"],
+)
+def test_rejects_missing_duplicate_race_number(tmp_path, scope):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    del sidecar[scope]["race_number"]
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="target_race_number_missing"):
+        _score_paths(paths)
+
+
+def test_accepts_equivalent_normalized_duplicate_identity_values(tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["prejump_shadow_metadata"]["race_date"] = " 2026-07-16 "
+    sidecar["prejump_shadow_metadata"]["race_number"] = "02"
+    sidecar["prejump_shadow_metadata"]["distance"] = 515
+    sidecar["race_info"]["distance"] = "515.0 m"
+    _write_json(paths["sidecar"], sidecar)
+
+    output = _score_paths(paths)
+
+    assert output["race_id"] == RACE_ID
+    assert [row["box"] for row in output["canonical_runner_order"]] == [1, 2, 4]
+    assert output["source_contract"]["manual_scoring_read_only"] is True
+    assert output["source_contract"]["persistence_interface_crossed"] is False
+
+
+def test_rejects_conflicting_duplicate_distance(tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["race_info"]["distance"] = "520m"
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="target_distance_mismatch"):
+        _score_paths(paths)
+
+
+def test_duplicate_identity_rejection_stops_before_score_and_writes_nothing(
+    tmp_path, monkeypatch
+):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["race_info"]["date"] = "2026-07-17"
+    _write_json(paths["sidecar"], sidecar)
+    before = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in sorted(tmp_path.rglob("*"))
+        if path.is_file()
+    }
+
+    def unexpected_score(*_args, **_kwargs):
+        pytest.fail("score_race must not run after identity rejection")
+
+    monkeypatch.setattr(manual, "score_race", unexpected_score)
+    with pytest.raises(ManualPredictionError, match="target_race_date_mismatch"):
+        _score_paths(paths)
+
+    after = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in sorted(tmp_path.rglob("*"))
+        if path.is_file()
+    }
+    assert after == before
+
+
+def test_cli_duplicate_identity_rejection_has_no_stdout_or_file_side_effect(
+    tmp_path,
+):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["race_info"]["race_number"] = 3
+    _write_json(paths["sidecar"], sidecar)
+    before = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in sorted(tmp_path.rglob("*"))
+        if path.is_file()
+    }
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/predict_market_form_residual.py"),
+            "--race-id",
+            RACE_ID,
+            "--form-csv",
+            str(paths["form_csv"]),
+            "--feature-rows",
+            str(paths["feature_rows"]),
+            "--capture",
+            str(paths["capture"]),
+        ],
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+    )
+
+    assert completed.returncode == 2
+    assert completed.stdout == b""
+    assert json.loads(completed.stderr) == {
+        "status": "BLOCKED_MANUAL_PREDICTION",
+        "reason": "target_race_number_mismatch",
+    }
+    after = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in sorted(tmp_path.rglob("*"))
+        if path.is_file()
+    }
+    assert after == before
+
+
 def test_rejects_box_outside_greyhound_range_even_when_sources_agree(tmp_path):
     paths = _write_fixture(tmp_path)
     sidecar = _json(paths["sidecar"])
@@ -2106,7 +2319,7 @@ def test_rejects_falsey_non_string_primary_grade_instead_of_falling_back(tmp_pat
     sidecar = _json(paths["sidecar"])
     assert isinstance(sidecar, dict)
     sidecar["prejump_shadow_metadata"]["grade"] = False
-    sidecar["race_info"] = {"grade": "Grade 5"}
+    sidecar["race_info"]["grade"] = "Grade 5"
     _write_json(paths["sidecar"], sidecar)
 
     with pytest.raises(ManualPredictionError, match="target_grade_invalid"):
@@ -2117,7 +2330,7 @@ def test_rejects_conflicting_sidecar_grade_aliases(tmp_path):
     paths = _write_fixture(tmp_path)
     sidecar = _json(paths["sidecar"])
     assert isinstance(sidecar, dict)
-    sidecar["race_info"] = {"grade": "Grade 4"}
+    sidecar["race_info"]["grade"] = "Grade 4"
     _write_json(paths["sidecar"], sidecar)
 
     with pytest.raises(ManualPredictionError, match="target_grade_alias_mismatch"):
@@ -2206,7 +2419,7 @@ def test_rejects_falsey_non_string_primary_venue_instead_of_falling_back(tmp_pat
     sidecar = _json(paths["sidecar"])
     assert isinstance(sidecar, dict)
     sidecar["prejump_shadow_metadata"]["venue"] = False
-    sidecar["race_info"] = {"venue": "SAN"}
+    sidecar["race_info"]["venue"] = "SAN"
     _write_json(paths["sidecar"], sidecar)
 
     with pytest.raises(ManualPredictionError, match="target_venue_invalid"):
@@ -2217,7 +2430,7 @@ def test_rejects_conflicting_sidecar_venue_aliases(tmp_path):
     paths = _write_fixture(tmp_path)
     sidecar = _json(paths["sidecar"])
     assert isinstance(sidecar, dict)
-    sidecar["race_info"] = {"venue": "HEA"}
+    sidecar["race_info"]["venue"] = "HEA"
     _write_json(paths["sidecar"], sidecar)
 
     with pytest.raises(ManualPredictionError, match="target_venue_alias_mismatch"):
