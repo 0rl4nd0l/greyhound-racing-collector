@@ -1,0 +1,9 @@
+{
+  "canonical_stdout_line_count": 1,
+  "fixed_capture_windows_minutes": [60, 30, 10, 2],
+  "normalized_full_sum_test": 1.0,
+  "normalized_half_sum_test": 1.0,
+  "plan_repeated_equal": true,
+  "prediction_persisted": false,
+  "status": "PASS"
+}

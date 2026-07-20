@@ -17,6 +17,7 @@ import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
+from urllib.parse import urljoin, urlsplit
 
 import requests
 try:
@@ -35,10 +36,14 @@ from utils.csv_metadata import (
     build_csv_download_provenance_payload,
     build_safe_weather_track_metadata_payload,
     build_safe_target_metadata_payload,
+    canonical_thedogs_meeting_card_url,
+    canonical_thedogs_race_identity,
     existing_prejump_sidecar_contract_status,
     normalize_verified_thedogs_export_content,
     normalize_target_distance,
+    normalize_exact_target_grade,
     normalize_target_grade,
+    target_grade_equivalence_key,
     normalize_track_condition_text,
     normalize_weather_track_text,
 )
@@ -54,7 +59,7 @@ except Exception:
 
 
 class UpcomingRaceBrowser:
-    def __init__(self):
+    def __init__(self, *, create_upcoming_dir=True):
         self.base_url = "https://www.thedogs.com.au"
         # Honor configured UPCOMING_RACES_DIR if provided; default to ./upcoming_races
         self.upcoming_dir = os.getenv("UPCOMING_RACES_DIR", "./upcoming_races")
@@ -65,7 +70,8 @@ class UpcomingRaceBrowser:
             self.enhance_limit = 5
 
         # Create directories
-        os.makedirs(self.upcoming_dir, exist_ok=True)
+        if create_upcoming_dir:
+            os.makedirs(self.upcoming_dir, exist_ok=True)
 
         # Setup session
         self.session = get_shared_session()
@@ -480,18 +486,38 @@ class UpcomingRaceBrowser:
                 )
 
                 # Only add live races that aren't already in cached races
-                existing_race_keys = set()
+                existing_races_by_key = {}
                 for race in races:
                     race_key = f"{race.get('venue', '')}_{race.get('race_number', '')}_{race.get('date', '')}"
-                    existing_race_keys.add(race_key)
+                    existing_races_by_key[race_key] = race
 
                 added_live_count = 0
                 for live_race in live_races:
                     race_key = f"{live_race.get('venue', '')}_{live_race.get('race_number', '')}_{live_race.get('date', '')}"
-                    if race_key not in existing_race_keys:
+                    if race_key not in existing_races_by_key:
                         races.append(live_race)
-                        existing_race_keys.add(race_key)
+                        existing_races_by_key[race_key] = live_race
                         added_live_count += 1
+                    elif (
+                        live_race.get("target_grade_context_schema")
+                        == "thedogs_meeting_card_exact_race_v1"
+                    ):
+                        cached_race = existing_races_by_key[race_key]
+                        for key in (
+                            "grade",
+                            "target_grade",
+                            "target_grade_context_schema",
+                            "target_grade_equivalence_key",
+                            "target_grade_exact_value",
+                            "target_grade_race_date",
+                            "target_grade_race_number",
+                            "target_grade_race_url",
+                            "target_grade_source_url",
+                            "target_grade_venue",
+                        ):
+                            value = live_race.get(key)
+                            if value not in (None, ""):
+                                cached_race[key] = value
 
                 print(
                     f"   ➕ Added {added_live_count} additional live races to cached races"
@@ -994,7 +1020,14 @@ class UpcomingRaceBrowser:
                         grade = grade_match.group(1)
                         break
 
-            race_url = href if href.startswith("http") else f"{self.base_url}{href}"
+            race_url = urljoin(f"{self.base_url}/", str(href or "").strip())
+            grade_context = self._extract_exact_meeting_card_grade(
+                link_element,
+                race_url,
+                meeting_card_url=f"{self.base_url}/racing/{date_str}",
+            )
+            if grade_context:
+                grade = grade_context["target_grade"]
 
             # Create description with available information
             description_parts = []
@@ -1011,7 +1044,7 @@ class UpcomingRaceBrowser:
                 " • ".join(description_parts) if description_parts else link_text[:100]
             )
 
-            return {
+            race = {
                 "date": race_date,
                 "venue": venue_code,
                 "venue_name": venue_name,
@@ -1024,6 +1057,8 @@ class UpcomingRaceBrowser:
                 "title": f"Race {race_number} - {venue_name} - {race_date}",
                 "description": description,
             }
+            race.update(grade_context)
+            return race
 
         except Exception as e:
             return None
@@ -1042,6 +1077,297 @@ class UpcomingRaceBrowser:
             return int(race_number) if str(race_number).isdigit() else None
         except Exception:
             return None
+
+    def _canonical_thedogs_race_identity(self, race_url):
+        """Return a strict identity tuple for one canonical TheDogs race URL."""
+
+        identity = canonical_thedogs_race_identity(race_url)
+        if identity is None:
+            return None
+        venue_slug = identity["venue_slug"]
+        venue_code = self.venue_map.get(venue_slug.lower())
+        if not venue_code and _normalize_venue is not None:
+            for candidate in (venue_slug, venue_slug.replace("-", " ")):
+                try:
+                    normalized = _normalize_venue(candidate)
+                except Exception:
+                    continue
+                if normalized and normalized != "UNKNOWN":
+                    venue_code = normalized
+                    break
+        venue_code = venue_code or venue_slug.upper()
+        return (
+            identity["canonical_url"],
+            identity["race_date"],
+            identity["race_number"],
+            venue_code,
+        )
+
+    def _extract_exact_meeting_card_grade(
+        self,
+        link_element,
+        race_url,
+        *,
+        meeting_card_url,
+    ):
+        """Extract one whole-value grade from a single exact live race-card scope."""
+
+        identity = canonical_thedogs_race_identity(race_url)
+        if identity is None:
+            return {}
+        source_url = canonical_thedogs_meeting_card_url(
+            meeting_card_url,
+            race_date=identity["race_date"],
+        )
+        if source_url is None:
+            return {}
+
+        scope = link_element
+        for _ in range(6):
+            if scope is None:
+                break
+            anchors = []
+            if getattr(scope, "name", None) == "a" and scope.get("href"):
+                anchors.append(scope)
+            anchors.extend(scope.find_all("a", href=True))
+            race_like_urls = []
+            for anchor in anchors:
+                anchor_url = urljoin(
+                    f"{self.base_url}/",
+                    str(anchor.get("href") or "").strip(),
+                )
+                try:
+                    parts = [
+                        part
+                        for part in urlsplit(anchor_url).path.split("/")
+                        if part
+                    ]
+                except Exception:
+                    parts = []
+                if (
+                    len(parts) >= 4
+                    and parts[0].lower() == "racing"
+                    and re.fullmatch(r"\d{4}-\d{1,2}-\d{1,2}", parts[2])
+                    and parts[3].isdigit()
+                ):
+                    race_like_urls.append(anchor_url)
+            parsed_race_links = [
+                canonical_thedogs_race_identity(anchor_url)
+                for anchor_url in race_like_urls
+            ]
+            if race_like_urls and any(item is None for item in parsed_race_links):
+                return {}
+            linked_identities = {
+                parsed["canonical_url"]
+                for parsed in parsed_race_links
+                if parsed is not None
+            }
+            if linked_identities == {identity["canonical_url"]}:
+                candidates = []
+                for text_node in scope.find_all(string=True):
+                    if any(
+                        getattr(parent, "name", None) == "a"
+                        for parent in getattr(text_node, "parents", ())
+                    ):
+                        continue
+                    raw = str(text_node).strip()
+                    normalized = normalize_exact_target_grade(raw)
+                    key = target_grade_equivalence_key(raw)
+                    if normalized and key:
+                        candidates.append((normalized, key, raw))
+                distinct_keys = {key for _, key, _ in candidates}
+                if len(distinct_keys) > 1:
+                    return {}
+                if len(distinct_keys) == 1:
+                    normalized, key, raw = candidates[0]
+                    return {
+                        "grade": normalized,
+                        "target_grade": normalized,
+                        "target_grade_context_schema": (
+                            "thedogs_meeting_card_exact_race_v1"
+                        ),
+                        "target_grade_equivalence_key": key,
+                        "target_grade_exact_value": raw,
+                        "target_grade_race_date": identity["race_date"],
+                        "target_grade_race_number": identity["race_number"],
+                        "target_grade_race_url": identity["canonical_url"],
+                        "target_grade_source_url": source_url,
+                        "target_grade_venue": self._canonical_hint_venue(
+                            identity["venue_slug"]
+                        ),
+                    }
+            scope = getattr(scope, "parent", None)
+        return {}
+
+    def _canonical_hint_venue(self, value):
+        raw = str(value or "").strip()
+        if not raw:
+            return None
+        mapped = self.venue_map.get(raw.lower())
+        if mapped:
+            return mapped
+        if _normalize_venue is not None:
+            for candidate in (raw, raw.replace("-", " "), raw.replace("_", " ")):
+                try:
+                    normalized = _normalize_venue(candidate)
+                except Exception:
+                    continue
+                if normalized and normalized != "UNKNOWN":
+                    return normalized
+        return raw.upper()
+
+    def _extract_safe_target_grade_from_hint(self, race_info_hint, race_url):
+        """Admit only a recognized grade bound to the exact meeting-card race."""
+
+        if not isinstance(race_info_hint, dict):
+            return {}
+        expected = self._canonical_thedogs_race_identity(race_url)
+        hinted = self._canonical_thedogs_race_identity(
+            race_info_hint.get("url") or race_info_hint.get("race_url")
+        )
+        source_url = canonical_thedogs_meeting_card_url(
+            race_info_hint.get("target_grade_source_url"),
+            race_date=expected[1] if expected else "",
+        )
+        if (
+            expected is None
+            or hinted is None
+            or hinted[0] != expected[0]
+            or race_info_hint.get("target_grade_context_schema")
+            != "thedogs_meeting_card_exact_race_v1"
+            or race_info_hint.get("target_grade_race_url") != expected[0]
+            or source_url is None
+        ):
+            return {}
+        _, expected_date, expected_race_number, expected_venue = expected
+        hinted_date = str(
+            race_info_hint.get("date") or race_info_hint.get("race_date") or ""
+        ).strip()
+        hinted_race_number = str(race_info_hint.get("race_number") or "").strip()
+        hinted_venue = self._canonical_hint_venue(
+            race_info_hint.get("venue") or race_info_hint.get("venue_name")
+        )
+        if (
+            hinted_date != expected_date
+            or not hinted_race_number.isdigit()
+            or int(hinted_race_number) != expected_race_number
+            or hinted_venue != expected_venue
+        ):
+            return {}
+
+        exact_value = race_info_hint.get("target_grade_exact_value")
+        grade_values = [
+            value
+            for value in (
+                race_info_hint.get("target_grade"),
+                race_info_hint.get("grade"),
+            )
+            if value not in (None, "")
+        ]
+        normalized_grades = [normalize_exact_target_grade(value) for value in grade_values]
+        exact_grade = normalize_exact_target_grade(exact_value)
+        exact_key = target_grade_equivalence_key(exact_value)
+        declared_key = race_info_hint.get("target_grade_equivalence_key")
+        if not normalized_grades or any(value is None for value in normalized_grades):
+            return {}
+        if (
+            exact_grade is None
+            or exact_key is None
+            or declared_key != exact_key
+            or any(value != exact_grade for value in normalized_grades)
+        ):
+            return {}
+        grade = normalized_grades[0]
+        return {
+            "grade": grade,
+            "target_grade": grade,
+            "target_grade_source": "thedogs_meeting_card_exact_race",
+            "target_grade_context_schema": "thedogs_meeting_card_exact_race_v1",
+            "target_grade_equivalence_key": exact_key,
+            "target_grade_exact_value": exact_value,
+            "target_grade_race_date": expected_date,
+            "target_grade_race_number": expected_race_number,
+            "target_grade_race_url": expected[0],
+            "target_grade_source_url": source_url,
+            "target_grade_venue": expected_venue,
+            "metadata_source_url": source_url,
+        }
+
+    def _merge_safe_target_metadata(self, page_metadata, hint_metadata, race_url):
+        """Fill a page grade gap from an exact hint and fail closed on conflict."""
+
+        merged = dict(page_metadata or {})
+        page_grade_raw = merged.get("target_grade") or merged.get("grade")
+        page_grade = normalize_target_grade(page_grade_raw)
+        page_grade_key = target_grade_equivalence_key(page_grade_raw)
+        hint_grade_raw = (hint_metadata or {}).get("target_grade") or (
+            hint_metadata or {}
+        ).get("grade")
+        hint_grade = (
+            normalize_exact_target_grade(hint_grade_raw)
+            if (hint_metadata or {}).get("target_grade_source")
+            == "thedogs_meeting_card_exact_race"
+            else normalize_target_grade(hint_grade_raw)
+        )
+        hint_grade_key = (hint_metadata or {}).get(
+            "target_grade_equivalence_key"
+        ) or target_grade_equivalence_key(hint_grade_raw)
+        grades_conflict = bool(
+            page_grade
+            and hint_grade
+            and (
+                page_grade_key != hint_grade_key
+                if page_grade_key and hint_grade_key
+                else page_grade != hint_grade
+            )
+        )
+        provenance_keys = (
+            "target_grade_context_schema",
+            "target_grade_equivalence_key",
+            "target_grade_exact_value",
+            "target_grade_race_date",
+            "target_grade_race_number",
+            "target_grade_race_url",
+            "target_grade_source_url",
+            "target_grade_venue",
+        )
+        if grades_conflict:
+            merged.pop("grade", None)
+            merged["target_grade"] = None
+            merged["target_grade_source"] = "default_missing_target"
+            for key in provenance_keys:
+                merged.pop(key, None)
+        elif not page_grade and hint_grade:
+            merged.update(
+                {
+                    "grade": hint_grade,
+                    "target_grade": hint_grade,
+                    "target_grade_source": (hint_metadata or {}).get(
+                        "target_grade_source"
+                    ),
+                }
+            )
+            for key in provenance_keys:
+                value = (hint_metadata or {}).get(key)
+                if value not in (None, ""):
+                    merged[key] = value
+
+        safe = build_safe_target_metadata_payload(
+            merged,
+            source_url=race_url,
+            source="canonical_pre_race_page",
+            allow_generic_fields=False,
+        )
+        merged.update(safe)
+        if safe.get("target_distance"):
+            merged["distance"] = safe["target_distance"]
+        else:
+            merged.pop("distance", None)
+        if safe.get("target_grade"):
+            merged["grade"] = safe["target_grade"]
+        else:
+            merged.pop("grade", None)
+        return merged
 
     def _format_clock_time(self, value):
         """Normalize a clock string to the existing metadata display format."""
@@ -1357,7 +1683,7 @@ class UpcomingRaceBrowser:
                 return True
             return False
 
-        def _extract_labeled(label_patterns):
+        def _extract_labeled(label_patterns, *, normalizer):
             try:
                 for element in soup.find_all(True):
                     if _is_unsafe_metadata_context(element):
@@ -1374,14 +1700,14 @@ class UpcomingRaceBrowser:
                                 re.I,
                             )
                             if direct:
-                                value = normalize_track_condition_text(direct.group(1))
+                                value = normalizer(direct.group(1))
                                 if value:
                                     return value
                         if re.fullmatch(rf"\s*{label_pattern}\s*", text, re.I):
                             for candidate in _candidate_texts(element):
                                 if candidate == text:
                                     continue
-                                value = normalize_track_condition_text(candidate)
+                                value = normalizer(candidate)
                                 if value:
                                     return value
             except Exception:
@@ -1389,9 +1715,13 @@ class UpcomingRaceBrowser:
             return None
 
         track_condition = _extract_labeled(
-            (r"Track\s+Condition", r"Track")
+            (r"Track\s+Condition", r"Track"),
+            normalizer=normalize_track_condition_text,
         )
-        weather = _extract_labeled((r"Weather\s+Condition", r"Weather"))
+        weather = _extract_labeled(
+            (r"Weather\s+Condition", r"Weather"),
+            normalizer=normalize_weather_track_text,
+        )
         if track_condition:
             found["track_condition"] = track_condition
         if weather:
@@ -1576,7 +1906,7 @@ class UpcomingRaceBrowser:
                 except Exception:
                     pass
 
-    def download_race_csv(self, race_url):
+    def download_race_csv(self, race_url, *, race_info_hint=None):
         """Download CSV form guide for a specific race"""
         try:
             print(f"🔄 Downloading CSV for: {race_url}")
@@ -1612,8 +1942,18 @@ class UpcomingRaceBrowser:
 
             if not race_info:
                 return {"success": False, "error": "Could not extract race information"}
+            page_target_metadata = self._extract_safe_target_metadata_from_page(
+                soup, race_url
+            )
+            hinted_target_grade = self._extract_safe_target_grade_from_hint(
+                race_info_hint, race_url
+            )
             race_info.update(
-                self._extract_safe_target_metadata_from_page(soup, race_url)
+                self._merge_safe_target_metadata(
+                    page_target_metadata,
+                    hinted_target_grade,
+                    race_url,
+                )
             )
             race_info.update(
                 self._extract_safe_weather_track_metadata_from_page(soup, race_url)

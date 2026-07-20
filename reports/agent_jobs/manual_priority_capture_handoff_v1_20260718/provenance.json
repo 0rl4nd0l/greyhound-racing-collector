@@ -1,0 +1,16 @@
+{
+  "consistency_claim": "HASH_SEALED_DB_BOUND_AT_USE_TIME",
+  "historical_authentication": false,
+  "implementation_base": "5c2356431a96659a7cd68edd5b94b50a5877de84",
+  "implementation_commit": "2c41b1df3c216b8cb75a788725853cde456cc4a9",
+  "origin_master": "c1dfd464cf6ecfb2034f96ac1a8d3ea58d4e6afa",
+  "pr45_ancestor": "aa35fa70fc49199acde09f5561b521ddb00d45aa",
+  "pr46_exact_head": "2c595d27ac748d3df8e4031d5491c76606c5be89",
+  "pr47_exact_head": "0ae5937cde87131c714fb7383c58ce13e3cfbc06",
+  "pr48_read_only_head": "f776bfd142b1e8acd3befca330eee36f490402ed",
+  "receipt_db_rows_sha256": "562b4ceb8c23710e1d2339d91bc6178eb422494fa59cff97c7a51db7c5e20fad",
+  "receipt_race_id": "Race 4 - GUNNEDAH - 2026-07-18",
+  "receipt_run_id": "20260718T171200+1000_daemon_autopilot",
+  "status": "PASS"
+}
+

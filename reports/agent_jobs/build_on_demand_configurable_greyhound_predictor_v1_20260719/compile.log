@@ -1,0 +1,1 @@
+python3 -m py_compile scripts/predict_race_now.py src/predictor/on_demand.py tests/test_predict_race_now.py: PASS.

@@ -1,0 +1,1 @@
+git diff --check and git diff --cached --check: PASS. Final V2 check-diff is recorded in diff-check.json.

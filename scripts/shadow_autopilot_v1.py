@@ -699,6 +699,157 @@ def current_step_time_iso() -> str:
     return datetime.now().astimezone().isoformat()
 
 
+def _form_race_id(csv_path: Path) -> str | None:
+    sidecar = load_json(csv_path.with_name(csv_path.name + ".metadata.json")) or {}
+    shadow = sidecar.get("prejump_shadow_metadata")
+    if not isinstance(shadow, Mapping):
+        shadow = {}
+    race_info = sidecar.get("race_info")
+    if not isinstance(race_info, Mapping):
+        race_info = {}
+    race_date = (
+        shadow.get("race_date")
+        or race_info.get("date")
+        or sidecar.get("race_date")
+    )
+    race_number = (
+        shadow.get("race_number")
+        or race_info.get("race_number")
+        or sidecar.get("race_number")
+    )
+    venue = shadow.get("venue") or race_info.get("venue") or sidecar.get("venue")
+    try:
+        race_number = int(race_number)
+    except (TypeError, ValueError):
+        return None
+    venue = str(venue or "").strip().upper()
+    race_date = str(race_date or "").strip()
+    if not venue or not race_date:
+        return None
+    return f"Race {race_number} - {venue} - {race_date}"
+
+
+def _input_csv_paths(input_paths: Sequence[Path]) -> list[Path]:
+    rows: set[Path] = set()
+    for raw_path in input_paths:
+        path = Path(raw_path)
+        if path.is_file() and path.suffix.lower() == ".csv":
+            rows.add(path.resolve())
+            continue
+        if not path.is_dir():
+            continue
+        for candidate in path.rglob("*.csv"):
+            if candidate.is_file() and not {"raw_exports", "quarantine"}.intersection(
+                candidate.parts
+            ):
+                rows.add(candidate.resolve())
+    return sorted(rows, key=lambda item: item.as_posix())
+
+
+def _path_is_in_inputs(path: Path, input_paths: Sequence[Path]) -> bool:
+    resolved = path.resolve()
+    for raw_root in input_paths:
+        root = Path(raw_root).resolve()
+        if root.is_file() and resolved == root:
+            return True
+        try:
+            resolved.relative_to(root)
+        except ValueError:
+            continue
+        return True
+    return False
+
+
+def residual_feature_handoff(
+    *,
+    primary_input_paths: Sequence[Path],
+    capture_input_paths: Sequence[Path],
+    capture_report: Mapping[str, Any] | None,
+    capture_plan: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Select exact successful-capture forms missing from the primary batch."""
+
+    attempts = (
+        capture_report.get("attempts")
+        if isinstance(capture_report, Mapping)
+        else []
+    )
+    successful_race_ids = sorted(
+        {
+            str(row.get("race_id"))
+            for row in attempts or []
+            if isinstance(row, Mapping)
+            and row.get("status") == "APPENDED"
+            and row.get("race_id") not in (None, "")
+        }
+    )
+    primary_race_ids = {
+        race_id
+        for path in _input_csv_paths(primary_input_paths)
+        if (race_id := _form_race_id(path)) is not None
+    }
+    plan_rows = (
+        capture_plan.get("races") if isinstance(capture_plan, Mapping) else []
+    )
+    paths_by_race: dict[str, set[Path]] = {}
+    for row in plan_rows or []:
+        if not isinstance(row, Mapping):
+            continue
+        race_id = str(row.get("race_id") or "").strip()
+        csv_value = row.get("csv_path")
+        if not race_id or csv_value in (None, ""):
+            continue
+        paths_by_race.setdefault(race_id, set()).add(Path(str(csv_value)).resolve())
+
+    supplemental: list[Path] = []
+    already_primary: list[str] = []
+    blocked: list[dict[str, Any]] = []
+    for race_id in successful_race_ids:
+        if race_id in primary_race_ids:
+            already_primary.append(race_id)
+            continue
+        candidates = sorted(paths_by_race.get(race_id, set()), key=lambda item: item.as_posix())
+        if len(candidates) != 1:
+            blocked.append(
+                {
+                    "race_id": race_id,
+                    "reason": "capture_plan_form_path_missing_or_ambiguous",
+                    "candidate_count": len(candidates),
+                }
+            )
+            continue
+        form_path = candidates[0]
+        if (
+            not form_path.is_file()
+            or not _path_is_in_inputs(form_path, capture_input_paths)
+            or _form_race_id(form_path) != race_id
+        ):
+            blocked.append(
+                {
+                    "race_id": race_id,
+                    "reason": "capture_plan_form_path_untrusted_or_identity_mismatch",
+                    "path": str(form_path),
+                }
+            )
+            continue
+        supplemental.append(form_path)
+
+    admitted_supplemental = [] if blocked else supplemental
+    return {
+        "schema_version": "residual_feature_handoff_v1",
+        "status": "PASS" if not blocked else "BLOCKED",
+        "successful_capture_race_ids": successful_race_ids,
+        "already_primary_race_ids": already_primary,
+        "candidate_supplemental_input_files": [str(path) for path in supplemental],
+        "supplemental_input_files": [
+            str(path) for path in admitted_supplemental
+        ],
+        "supplemental_input_count": len(admitted_supplemental),
+        "blocked": blocked,
+        "returncode": 0 if not blocked else 1,
+    }
+
+
 def unified_evidence_dataset_command(
     *,
     shadow_run_dir: Path,
@@ -6410,6 +6561,8 @@ def final_verdict_for(
     }
     if any(step.get("name") == "refresh_odds_capture_candidates" for step in steps):
         required_step_names.add("refresh_odds_capture_candidates")
+    if any(step.get("name") == "residual_feature_handoff" for step in steps):
+        required_step_names.add("residual_feature_handoff")
     if any(step.get("name") == "timing_aligned_prediction_rerun" for step in steps):
         required_step_names.update(
             {
@@ -6626,8 +6779,53 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
         autonomous_odds_capture_status,
     )
 
+    handoff = residual_feature_handoff(
+        primary_input_paths=input_dirs,
+        capture_input_paths=odds_capture_input_dirs,
+        capture_report=autonomous_odds_capture_report,
+        capture_plan=load_json(
+            autonomous_odds_capture_dir / "autonomous_live_odds_capture_plan.json"
+        ),
+    ) if args.enable_autonomous_odds_capture else {
+        "schema_version": "residual_feature_handoff_v1",
+        "status": "SKIPPED",
+        "successful_capture_race_ids": [],
+        "already_primary_race_ids": [],
+        "candidate_supplemental_input_files": [],
+        "supplemental_input_files": [],
+        "supplemental_input_count": 0,
+        "blocked": [],
+        "returncode": 0,
+    }
+    write_json(output_dir / "residual_feature_handoff_status.json", handoff)
+    if args.enable_autonomous_odds_capture:
+        steps.append(
+            {
+                "name": "residual_feature_handoff",
+                "command": [],
+                "cwd": str(ROOT),
+                "started_at": current_step_time_iso(),
+                "finished_at": current_step_time_iso(),
+                "returncode": handoff["returncode"],
+                "status": handoff["status"],
+                "status_path": relpath(
+                    output_dir / "residual_feature_handoff_status.json"
+                ),
+                "supplemental_input_count": handoff["supplemental_input_count"],
+            }
+        )
+    daily_input_paths = [
+        *input_dirs,
+        *(Path(value) for value in handoff["supplemental_input_files"]),
+    ]
+
     daily_dir = evidence_root / f"daily_race_ingest_shadow_{run_id}_autopilot"
     if not args.skip_shadow_run:
+        daily_current_time = (
+            current_step_time_iso()
+            if args.enable_autonomous_odds_capture
+            else current_time
+        )
         daily_command = [
             sys.executable,
             str(ROOT / "scripts/daily_race_ingest_shadow_orchestrator.py"),
@@ -6638,7 +6836,7 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             "--output-parent",
             str(evidence_root),
             "--current-time",
-            current_time,
+            daily_current_time,
             "--db",
             str(args.db),
             "--score-command-mode",
@@ -6646,7 +6844,7 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             "--shadow-model",
             str(shadow_model),
         ]
-        for input_dir in input_dirs:
+        for input_dir in daily_input_paths:
             daily_command.extend(["--input-dir", str(input_dir)])
         steps.append(
             step_command(

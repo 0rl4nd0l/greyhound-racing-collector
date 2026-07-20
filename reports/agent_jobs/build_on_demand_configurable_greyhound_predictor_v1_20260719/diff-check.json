@@ -1,0 +1,129 @@
+{
+  "changed_files": [
+    {
+      "path": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/DECISION_ENTRY.json",
+      "status": "M"
+    },
+    {
+      "path": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/VALIDATION.md",
+      "status": "M"
+    },
+    {
+      "path": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/diff-check.json",
+      "status": "M"
+    },
+    {
+      "path": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/status.json",
+      "status": "M"
+    },
+    {
+      "path": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/validation.json",
+      "status": "M"
+    }
+  ],
+  "disallowed_files": [],
+  "issues": [],
+  "ok": true,
+  "report_path": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/diff-check.json",
+  "validation": {
+    "issues": [],
+    "metadata": {
+      "allow_unapproved_safe_extension": false,
+      "allowed_files": [
+        "docs/agent_tasks/build_on_demand_configurable_greyhound_predictor_v1_20260719.md",
+        "docs/agent_tasks/pr46_atomic_shadow_append_repair_20260719.md",
+        "src/predictor/market_form_residual.py",
+        "tests/test_market_form_residual.py",
+        "scripts/predict_race_now.py",
+        "src/predictor/on_demand.py",
+        "configs/prediction/manual-default.json",
+        "configs/prediction/market-only.json",
+        "configs/prediction/schemas/market_only_v1.schema.json",
+        "configs/prediction/schemas/market_form_residual_v1.schema.json",
+        "tests/test_predict_race_now.py",
+        "docs/on_demand_race_prediction.md",
+        "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/README.md",
+        "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/STATE.md",
+        "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/DECISIONS.md",
+        "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/VALIDATION.md",
+        "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/CODE_REVIEW.json",
+        "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/INDEPENDENT_REVIEW.md",
+        "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/RUNTIME_PROOF.md",
+        "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/RUN_OUTCOME.json",
+        "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/DECISION_ENTRY.json",
+        "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/status.json",
+        "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/validation.json",
+        "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/guard-preflight.json",
+        "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/ancestry.json",
+        "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/pr46-integrity.json",
+        "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/fixture-e2e.json",
+        "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/tamper-probes.json",
+        "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/determinism.json",
+        "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/diff-check.json",
+        "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/pr-body.md",
+        "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/focused-pytest.log",
+        "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/full-pytest.log",
+        "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/ruff.log",
+        "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/compile.log",
+        "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/diff-check.log",
+        "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719/commands.log"
+      ],
+      "approval_required": true,
+      "approval_source": "The owner's 2026-07-19 /goal explicitly authorizes a clean V2 worktree, exact dependency adoption, implementation, tests, normal push, and one draft PR for BUILD_ON_DEMAND_CONFIGURABLE_GREYHOUND_PREDICTOR_V1. It explicitly forbids live prediction without a separately named race and authorization, production persistence, service or timer changes, and mutation of PRs 46-48, 51, or 52.",
+      "capabilities": [
+        "READ",
+        "REPORT_WRITE",
+        "DATASET_MATERIALIZE",
+        "CODE_EDIT",
+        "PUBLISH"
+      ],
+      "claim_id": "build_on_demand_configurable_greyhound_predictor_v1_20260719",
+      "closeout_scope": "repo_only",
+      "computed_scope_fingerprint": "c75761b819279925f1dfeb96c548cc1d93f68d5f0529c1bc60759a44f74dbc94",
+      "control_contract_version": 2,
+      "dataset_version": "master_c1dfd464_pr46_624dde3067edda1bd045573e8bec5c9d749c6836_pr47_0ae5937cde87131c714fb7383c58ce13e3cfbc06_receipt_reuse_021889abd5ac3b05134fb4aafaa42fcf511bf0f5_20260719",
+      "docs_changed": [
+        "docs/on_demand_race_prediction.md"
+      ],
+      "docs_checked": [
+        "AGENTS.md",
+        "docs/manual_priority_race_prediction.md",
+        "scripts/run_priority_race_prediction.py",
+        "scripts/predict_market_form_residual.py"
+      ],
+      "docs_followup": "none",
+      "docs_impact": "DOCS_UPDATE_REQUIRED",
+      "entry_state": "master_c1dfd464_contains_pr45_pr46_624dde30_and_pr47_0ae5937c_are_green_draft_dependencies_pr48_is_stale_pr51_is_rejected_and_local_021889ab_proves_safe_completed_receipt_reuse",
+      "evidence_hash": "sha256:bf6f9ef760b41f2d4bac29dc343b17ff5a3959cf29c1743815f3ae2fa673b59b",
+      "exit_predicate": "A new predict_race_now.py command and new supporting files import reviewed components without modifying their behavior; exact PR 46 head 624dde30 and PR 47 head 0ae5937c ancestry plus local receipt-reuse dependency 021889ab are recorded; auto receipt reuse and isolated immediate capture fail closed; target and future history are excluded before feature materialization; market-only and frozen market_form_residual_v1 adapters validate canonical model-specific configs; latest-research records exact artifact and manifest hashes; output is canonical JSON plus a reproducible isolated bundle; fixture E2E, concurrency, stale or ambiguous receipt, unavailable market, post-jump, exclusion, mismatch, alias, tamper, and write-attempt tests pass; Ruff, compile, V2 guards, and independent review pass; one normal-push draft PR is opened; no live prediction, production database write, daemon, service, timer, registry, existing PR, betting, outcome, model coefficient, or production persistence mutation occurs.",
+      "git_history_mutation_allowed": true,
+      "github_mutation_allowed": true,
+      "hypothesis_id": "on_demand_configurable_prejump_predictor_v1",
+      "job_id": "build_on_demand_configurable_greyhound_predictor_v1_20260719",
+      "lane": "Query Orchestration",
+      "live_service_mutation_allowed": false,
+      "mutation_mode": "safe_extension",
+      "output_dir": "reports/agent_jobs/build_on_demand_configurable_greyhound_predictor_v1_20260719",
+      "owner": "Codex",
+      "owner_db_append_only_approval": false,
+      "production_data_access": false,
+      "production_data_boundary": "Implementation and validation use isolated fixtures and query-only historical inputs. The command may be capable of reading production schedule, receipt, form, sidecar, and SQLite data when an owner later names and authorizes a live race, but this run may not execute that path. It may never read outcomes for the target, append production database rows, persist a production prediction, alter a lock, or mutate runtime artifacts.",
+      "program_track": "offline_development",
+      "project_id": "greyhound_racing_collector",
+      "proof_question": "Can one command resolve one exact upcoming pre-jump race, reuse a hash-bound fresh receipt or capture validated WIN and PLACE odds immediately into an isolated bundle, seal only pre-cutoff query-only history, validate an exact model-compatible canonical configuration, and deterministically emit a research-only prediction without production persistence or runtime interference?",
+      "reason": "The new operator command, model and config selection contract, isolated bundle format, replay workflow, and non-interference behavior require dedicated operator documentation.",
+      "resume_only_if": "Resume only while origin/master remains c1dfd464cf6ecfb2034f96ac1a8d3ea58d4e6afa, PR 46 remains exactly 624dde3067edda1bd045573e8bec5c9d749c6836, PR 47 remains exactly 0ae5937cde87131c714fb7383c58ce13e3cfbc06, local dependency 021889abd5ac3b05134fb4aafaa42fcf511bf0f5 remains available, no active claim overlaps the exact allowed paths, and all changes stay in this allowlist. Stop on ambiguous ancestry or race identity, missing dependency, target-exclusion weakness, frozen artifact drift, failed validation, production mutation, or overlap.",
+      "source_class": "exact_master_pr46_pr47_and_local_021889ab_dependency_lineage_plus_isolated_fixture_only_validation",
+      "supporting_lanes": [
+        "Provenance",
+        "Runtime safety",
+        "Testing"
+      ],
+      "target_transition": "one_reproducible_configurable_on_demand_prejump_research_prediction_command_is_available_as_a_clean_draft_pr",
+      "timeout_seconds": 43200,
+      "title": "Build a configurable on-demand pre-jump research predictor"
+    },
+    "ok": true,
+    "warnings": []
+  }
+}

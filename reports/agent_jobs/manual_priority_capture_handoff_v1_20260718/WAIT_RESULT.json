@@ -1,0 +1,10 @@
+{
+  "attempt_count": 0,
+  "daemon_interrupted": false,
+  "final_command_status": "BLOCKED_TASK_CONTRACT",
+  "lock_acquired": false,
+  "result": "PARTIAL",
+  "status": "BLOCKED",
+  "target_outcome_accessed": false
+}
+

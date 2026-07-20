@@ -1,0 +1,12 @@
+{
+  "canonical_db_write_authorized": false,
+  "exact_group_row_count": 16,
+  "exact_group_row_hash": "562b4ceb8c23710e1d2339d91bc6178eb422494fa59cff97c7a51db7c5e20fad",
+  "live_probe_inserted_rows": 0,
+  "query_only_pragma": true,
+  "receipt_reuse_inserted_rows_test": 0,
+  "sqlite_uri_mode": "ro",
+  "status": "PASS",
+  "win_and_place_required": true
+}
+

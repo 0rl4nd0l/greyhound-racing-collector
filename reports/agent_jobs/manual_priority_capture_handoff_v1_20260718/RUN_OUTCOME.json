@@ -1,0 +1,67 @@
+{
+  "blocked_by": [
+    "The card permits only the exact receipt artifacts and matching live_odds rows, while fresh feature sealing reads historical finish_position and placing columns."
+  ],
+  "changed_claims": [
+    "The standalone command can now consume one unique producer-finalized exact autonomous receipt without acquiring or releasing the writer lock.",
+    "Receipt-only execution can be forced so the command cannot fall through to refresh, scrape, or append.",
+    "A live prediction cannot be claimed under this card because its historical feature query is outside the production-data contract."
+  ],
+  "decision_delta": "Implemented and independently reviewed the finalized autonomous-capture handoff with strict race, window, runner, provenance, append-only, lossless value, read-once hash, query-only SQLite, idempotency, and lock-nonuse gates. A real pre-jump receipt passed read-only binding, but the live score stopped before feature access as BLOCKED_TASK_CONTRACT.",
+  "new_evidence": [
+    "Final command-focused suite: 54 passed.",
+    "Final relevant regression suite: 521 passed and 1 skipped.",
+    "A real pre-jump Gunnedah receipt bound to 16 exact WIN/PLACE rows with lossless row hash 562b4ceb8c23710e1d2339d91bc6178eb422494fa59cff97c7a51db7c5e20fad.",
+    "Two independent reviewers confirmed that the live feature builder reads historical result columns outside this card's explicit production boundary.",
+    "Fresh origin and PR verification preserved exact master, PR46, PR47, and read-only PR48 heads."
+  ],
+  "new_goal_permitted": false,
+  "produced_artifacts": [
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/README.md",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/STATE.md",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/DECISIONS.md",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/VALIDATION.md",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/ARCHITECTURE_REVIEW.md",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/DUPLICATE_SEARCH.md",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/BOARD.md",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/BOARD_DECISION.json",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/CODE_REVIEW.json",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/ADVERSARIAL_REVIEW.md",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/RUNTIME_PROOF.md",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/RUN_OUTCOME.json",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/DECISION_ENTRY.json",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/status.json",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/validation.json",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/diff-check.json",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/git-guard.json",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/live-verification.json",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/integrity.json",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/determinism.json",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/provenance.json",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/append-only.json",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/runtime-boundary.json",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/optional-manual-proof.json",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/WAIT_RESULT.json",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/WAIT_RESULT.json.log",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/focused-pytest.log",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/full-pytest.log",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/ruff.log",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/compile.log",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/determinism.log",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/diff-check.log"
+  ],
+  "resume_only_if": "Use a separate owner-approved V2 card that explicitly authorizes the necessary query-only historical feature read with target-race exclusion, or an independently authorized presealed outcome-free feature packet, and only while a new exact receipt remains pre-jump; do not reuse this claim.",
+  "reused_claims": [
+    "PR #45 resource-isolation ancestry remains mandatory.",
+    "Exact reviewed PR #46 and PR #47 heads remain adopted once each.",
+    "PR #48 code, worktree, service, and timer remain read-only legacy runtime.",
+    "Frozen model artifacts and thresholds remain unchanged and inactive."
+  ],
+  "scope_fingerprint": "f58cf8be6700d752dc8962a76c99954dfb980383dcac580514b4225651d1ba04",
+  "state_after": "finalized_capture_handoff_implemented_and_read_only_receipt_bound_live_score_blocked_by_task_contract",
+  "state_before": "manual_priority_command_waited_on_writer_lock_even_after_exact_autonomous_append",
+  "status": "ADVANCED",
+  "terminal_stop": "BLOCKED_TASK_CONTRACT",
+  "used_capabilities": ["READ", "REPORT_WRITE", "DATASET_MATERIALIZE", "CODE_EDIT", "PUBLISH"]
+}
+

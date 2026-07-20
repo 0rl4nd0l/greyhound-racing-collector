@@ -1,0 +1,44 @@
+{
+  "blocks": [
+    "live_manual_prediction_under_this_task_card",
+    "activation_deployment_promotion_betting_merge_or_cohort_cutoff"
+  ],
+  "claim_id": "manual_priority_capture_handoff_v1_20260718",
+  "dataset_version": "master_c1dfd464_baseline_5c235643_pr45_aa35fa70_pr46_2c595d27_pr47_0ae5937c_pr48_f776bfd1_issue50_20260718",
+  "decision": "PASS",
+  "decision_delta": "Implemented and independently reviewed the finalized autonomous-capture handoff with strict race, window, runner, provenance, append-only, lossless value, read-once hash, query-only SQLite, idempotency, and lock-nonuse gates. A real pre-jump receipt passed read-only binding, but the live score stopped before feature access as BLOCKED_TASK_CONTRACT.",
+  "decision_id": "manual-priority-capture-handoff-v1-20260718-pass-with-task-contract-blocker",
+  "does_not_block": [
+    "review_of_the_local_implementation_commit",
+    "continued_existing_read_only_runtime",
+    "a_separately_authorized_outcome_safe_live_proof"
+  ],
+  "evidence_hash": "sha256:b32dc0c5a8d90d1297e203e95e1f75bab45a5c196709093efd72576890b36cdf",
+  "evidence_refs": [
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/STATE.md",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/VALIDATION.md",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/RUNTIME_PROOF.md",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/CODE_REVIEW.json",
+    "reports/agent_jobs/manual_priority_capture_handoff_v1_20260718/optional-manual-proof.json"
+  ],
+  "hypothesis_id": "verified_autonomous_capture_manual_priority_handoff_v1",
+  "invalidation_conditions": [
+    "The command can reuse a receipt without the exact producer final marker.",
+    "Race, window, runner, source, report, or database values can drift without a fail-closed block.",
+    "The reuse path acquires or releases the writer lock, scrapes, appends, persists a prediction, or reads a target outcome."
+  ],
+  "outcome_status": "ADVANCED",
+  "phase_after": "finalized_capture_handoff_implemented_and_read_only_receipt_bound_live_score_blocked_by_task_contract",
+  "phase_before": "manual_priority_command_waited_on_writer_lock_even_after_exact_autonomous_append",
+  "program_track": "prospective_readiness",
+  "project_id": "greyhound_racing_collector",
+  "reopen_conditions": [
+    "A separate owner-approved V2 card explicitly authorizes query-only historical feature access with target exclusion or an independently authorized presealed outcome-free packet, and a new exact race remains pre-jump."
+  ],
+  "run_id": "l4nd0-System-Product-Name:2183430:manual_priority_capture_handoff_v1_20260718",
+  "scope_fingerprint": "f58cf8be6700d752dc8962a76c99954dfb980383dcac580514b4225651d1ba04",
+  "source_class": "issue_50_plus_manual_ballarat_t30_lock_runtime_evidence_plus_current_origin_and_exact_reviewed_pr_heads",
+  "target_transition": "manual_priority_command_can_reuse_one_exact_verified_autonomous_capture_without_writer_lock_contention",
+  "task_id": "manual_priority_capture_handoff_v1_20260718",
+  "validated_at": "2026-07-18T18:10:19+10:00"
+}

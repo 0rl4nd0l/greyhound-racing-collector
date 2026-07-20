@@ -1,0 +1,3 @@
+PASS
+python3 -m py_compile scripts/run_priority_race_prediction.py tests/test_run_priority_race_prediction.py
+

@@ -1,0 +1,16 @@
+{
+  "attempt_count": 0,
+  "candidate_capture_mode": "autonomous_prejump_t60m",
+  "candidate_db_row_count": 16,
+  "candidate_race_id": "Race 4 - GUNNEDAH - 2026-07-18",
+  "candidate_receipt_status": "PASS_QUERY_ONLY_AT_PREJUMP_PROBE_TIME",
+  "feature_seal_started": false,
+  "inserted_live_odds_rows": 0,
+  "lock_acquired": false,
+  "outcomes_accessed": false,
+  "persisted_prediction": false,
+  "reason": "Fresh feature sealing would read historical finish_position and placing columns outside this card's production-data boundary.",
+  "score_started": false,
+  "status": "BLOCKED_TASK_CONTRACT"
+}
+

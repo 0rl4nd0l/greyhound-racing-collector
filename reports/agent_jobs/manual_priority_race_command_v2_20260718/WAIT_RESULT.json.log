@@ -1,0 +1,3 @@
+2026-07-18T15:57:00+10:00 bounded live command started behind the active daemon lock
+2026-07-18T16:03:43+10:00 lock acquired naturally; target-only refresh and capture attempted
+2026-07-18T16:04:00+10:00 command stopped BLOCKED_RUNNER_IDENTITY; zero rows appended; lock released

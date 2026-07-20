@@ -1,0 +1,10 @@
+{
+  "installed_service_changed": false,
+  "installed_timer_changed": false,
+  "pr48_head": "f776bfd142b1e8acd3befca330eee36f490402ed",
+  "pr48_mergeable": false,
+  "pr48_worktree_changed": false,
+  "recommended_later_disposition": "Use a separate owner-approved exact-head runtime lane to decide whether PR48 should be retired or superseded only after a successful live priority-command proof.",
+  "runtime_worktree": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-early-residual-shadow-activation-v1-20260716",
+  "status": "READ_ONLY_LEGACY_UNCHANGED"
+}

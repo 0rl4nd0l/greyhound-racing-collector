@@ -1,0 +1,19 @@
+{
+  "implementation_commit": "76f17dbeec78a43e5493a8049ff84c47a13d3e8f",
+  "local_receipt_dependency": "021889abd5ac3b05134fb4aafaa42fcf511bf0f5",
+  "master": "c1dfd464cf6ecfb2034f96ac1a8d3ea58d4e6afa",
+  "published_draft_pr": 53,
+  "published_head_before_closeout_update": "8936ea4a7366132f31f176278453b483e3fe2a76",
+  "pr46": {
+    "ancestor": true,
+    "head": "624dde3067edda1bd045573e8bec5c9d749c6836",
+    "status": "BLOCKED_DO_NOT_MERGE"
+  },
+  "pr47": {
+    "ancestor_via_021889ab": true,
+    "head": "0ae5937cde87131c714fb7383c58ce13e3cfbc06"
+  },
+  "pr48": {"head": "f776bfd142b1e8acd3befca330eee36f490402ed", "used": false},
+  "pr51": {"current_head": "91f854f5555bd1fd8ef411f2fadc108b41d2e5df", "used": false},
+  "pr52": {"current_head": "1af0a24064821864d609adb59744cfb43f69a4b4", "used": false}
+}

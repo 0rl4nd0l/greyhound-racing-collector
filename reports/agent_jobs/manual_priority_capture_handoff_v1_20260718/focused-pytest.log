@@ -1,0 +1,4 @@
+PASS
+tests/test_run_priority_race_prediction.py: 54 passed
+relevant eight-file collector/scorer suite: 521 passed, 1 skipped
+

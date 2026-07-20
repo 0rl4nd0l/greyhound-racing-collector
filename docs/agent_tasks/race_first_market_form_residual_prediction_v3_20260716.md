@@ -1,0 +1,109 @@
+---
+job_id: race_first_market_form_residual_prediction_v3_20260716
+lane: Provenance
+supporting_lanes:
+  - Evaluation
+  - Testing
+owner: Codex
+allowed_files:
+  - docs/agent_tasks/race_first_market_form_residual_prediction_v3_20260716.md
+  - docs/manual_live_market_form_residual_prediction.md
+  - scripts/predict_market_form_residual.py
+  - tests/test_predict_market_form_residual.py
+  - reports/agent_jobs/race_first_market_form_residual_prediction_v3_20260716/STATE.md
+  - reports/agent_jobs/race_first_market_form_residual_prediction_v3_20260716/DECISIONS.md
+  - reports/agent_jobs/race_first_market_form_residual_prediction_v3_20260716/VALIDATION.md
+  - reports/agent_jobs/race_first_market_form_residual_prediction_v3_20260716/CODE_REVIEW.md
+  - reports/agent_jobs/race_first_market_form_residual_prediction_v3_20260716/PR_REVIEW.md
+  - reports/agent_jobs/race_first_market_form_residual_prediction_v3_20260716/RUN_OUTCOME.json
+  - reports/agent_jobs/race_first_market_form_residual_prediction_v3_20260716/DECISION_ENTRY.json
+  - reports/agent_jobs/race_first_market_form_residual_prediction_v3_20260716/status.json
+  - reports/agent_jobs/race_first_market_form_residual_prediction_v3_20260716/validation.json
+  - reports/agent_jobs/race_first_market_form_residual_prediction_v3_20260716/pytest.log
+  - reports/agent_jobs/race_first_market_form_residual_prediction_v3_20260716/lint.log
+  - reports/agent_jobs/race_first_market_form_residual_prediction_v3_20260716/compile.log
+  - reports/agent_jobs/race_first_market_form_residual_prediction_v3_20260716/determinism.log
+  - reports/agent_jobs/race_first_market_form_residual_prediction_v3_20260716/diff-check.json
+approval_required: true
+approval_source: The owner's 2026-07-17 instruction, "okay. lets fix the frozen prediction method", authorizes the narrow source-proven venue and grade input-contract repair on the existing draft PR 47 lineage while retaining every prior non-activation boundary.
+allow_unapproved_safe_extension: false
+timeout_seconds: 10800
+output_dir: reports/agent_jobs/race_first_market_form_residual_prediction_v3_20260716
+mutation_mode: safe_extension
+production_data_access: false
+closeout_scope: repo_only
+control_contract_version: 2
+project_id: greyhound_racing_collector
+claim_id: race_first_market_form_residual_prediction_v3_20260716
+proof_question: Can one offline race-first command resolve the current sealed system packet, accept the repository's exact canonical hyphenated venue identity plus the finite non-conflicting aliases and exact labels already admitted by the feature generator and preprocessing contract, and continue to reject malformed venues, undeclared, ambiguous or genuinely different grades, stale or unsafe indexes, ambiguous races and every existing provenance, completeness, timing and outcome violation?
+hypothesis_id: frozen_residual_known_input_and_current_index_contract_repair_v6
+program_track: offline_development
+entry_state: race_first_frozen_prediction_ready_but_default_lookup_misses_current_system_packets_and_source_proven_hyphenated_venue_restricted_and_ordinal_grade_packets_fail_before_scoring
+target_transition: frozen_residual_one_command_current_packet_and_known_input_contract_repaired_ready_not_activated
+exit_predicate: Sealed outcome-free regressions reproduce checkout-local race_feature_packet_not_found, target_venue_invalid for a canonical hyphenated venue, and feature_row_target_grade_mismatch for exact aliases already declared by the feature generator before the fix; the repaired offline race-first path resolves only current outcome-free packet directories declared by a fresh fail-closed system status index, applies an immutable exact finite table derived from the existing generator maps plus its bounded canonical and source-observed preprocessing vocabulary without substring or regex inference, keeps exact ordinal-composite and mixed labels distinct unless the generator declares an alias, emits identical deterministic normalized full and half predictions, rejects malformed venue tokens, non-string, undeclared, ambiguous or genuinely different grades, stale, unsafe or escaping indexes, preserves every existing hash, runner, scratch, URL, timing, ambiguity and no-outcome gate, and performs no model, database, network, runtime, deployment, promotion, betting, merge or activation mutation.
+source_class: strict_prejump_sportsbet_capture_plus_verified_thedogs_form_and_hash_bound_shadow_feature_packet_no_outcomes
+dataset_version: frozen_residual_input_contract_regressions_20260717_no_outcomes
+evidence_hash: sha256:ae061ccaf9938b0d17a8d757a75f6ccf33c135f22c0dc3274df6f18fa68b3ebb
+capabilities:
+  - READ
+  - REPORT_WRITE
+  - CODE_EDIT
+  - PUBLISH
+resume_only_if: A new exact pre-jump packet proves another materially different scorer-contract defect, or a separate exact owner-approved task authorizes runtime activation. Runtime or service/unit/timer changes, direct production or copied database access, deployment, model promotion, betting, prospective outcome inspection and PR merge remain forbidden. Later activation must retain merged PR 45 resource-isolation ancestry, the repaired PR 46 effective-state ancestry, and this task's reviewed head.
+docs_impact: DOCS_UPDATED
+docs_checked:
+  - AGENTS.md
+  - https://github.com/0rl4nd0l/greyhound-racing-collector/issues/49
+  - docs/agent_tasks/prospective_market_form_residual_cohort_v2_20260716.md
+  - docs/agent_tasks/manual_live_market_form_residual_prediction_v2_20260716.md
+  - scripts/predict_market_form_residual.py
+docs_changed:
+  - docs/manual_live_market_form_residual_prediction.md
+docs_followup: Live activation and runtime proof remain separately gated.
+reason: Exact outcome-free pre-jump packets satisfy the released V3 decision's reopen condition. Ladbrokes Q1 Lakeside is rejected because the CLI permits only underscore venue tokens even though the repository's canonical venue contract preserves hyphens; Healesville R5 is rejected because the sidecar's Restricted label and feature packet's Restricted Win label are a source-proven equivalence; a later Lakeside packet proves the upstream generator's exact 5th Grade to Grade 5 equivalence; bounded review proves other exact aliases already declared by the same feature-generator maps are rejected; and the documented one-query command searches only an old checkout-local root instead of the current outcome-free system packet index. This card repairs only those CLI lookup and comparison boundaries plus its deterministic offline invocation, without altering the frozen fit, artifacts, features, strengths, normalization, seeds, thresholds, generator, runtime or activation state.
+---
+
+# Race-first market-form residual prediction v3
+
+This original race-first card is amended in place for the source-proven V6
+input-contract repair authorized on 2026-07-17. The already-released V3 handoff
+remains complete. This continuation changes only the manual scorer's read-only
+current-packet lookup, deterministic offline invocation, repository-canonical
+venue tokens and the feature generator's exact finite grade contract.
+
+Accept canonical venue strings made from uppercase letters, digits,
+underscores and internal hyphens without rewriting the identity bound into the
+sidecar, feature packet, capture or race ID. Apply one deterministic grade
+canonicalization contract at comparison boundaries by reproducing the finite
+non-conflicting aliases declared by the feature generator's `GRADE_MAP` and
+`GRADE_VOCAB_MAP`, their canonical values, and only the exact bounded labels
+already admitted or emitted by the same preprocessing path and observed in
+sealed packets. The latter set includes the exact ordinal-composite labels,
+`Best 8`, `Masters`, `Other`, and `Group 1` through `Group 3`; ordinal-composite
+labels remain distinct from `Mixed` labels. This also includes `Restricted` /
+`Restricted Win`, ordinal and numeric forms such as `5th Grade` / `Grade 5`,
+and the generator's exact mixed, invitation, shorthand and tier aliases. Bare
+`M` remains rejected because the two generator maps disagree on its meaning.
+Do not infer additional aliases with substring extraction or open-ended
+numeric regexes. Empty, non-string, undeclared, ambiguous and genuinely
+different grade values must continue to fail closed.
+
+The no-argument evidence resolver may read only the checkout-local evidence
+root and packet directories named by finalized outcome-free early-residual
+status indexes under the repository's existing retained system evidence root.
+Indexes older than 36 hours, future-dated indexes, activation-capable or
+outcome-bearing indexes, malformed paths and paths escaping that retained root
+must not become discovery authority. Explicit `--evidence-root` behavior stays
+available and unchanged.
+
+Regression tests must exercise the full sealed-packet explicit and race-first
+paths, including the Sportsbet URL validator and default indexed system lookup,
+and prove that deterministic full and half probabilities are unchanged for the
+existing fixture. Preserve every
+hash, provenance, path containment, runner completeness, scratch, timestamp,
+URL, ambiguity and no-outcome guard.
+
+Do not fit or alter the model or artifacts; change features, preprocessing,
+strengths, normalization, thresholds or seeds; inspect outcomes; access a
+database or network from this task; touch services, units, timers or runtime
+state; deploy, activate, promote, bet or merge.

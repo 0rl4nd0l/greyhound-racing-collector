@@ -1,0 +1,16 @@
+{
+  "blocker_bundle_persistence": "PASS",
+  "config_model_mismatch": "PASS",
+  "dependency_exception_canonicalization": "PASS",
+  "descriptor_failure_cleanup": "PASS",
+  "frozen_artifact_drift": "PASS",
+  "malformed_runner_history_date": "PASS",
+  "no_steal_existing_lock": "PASS",
+  "output_symlink": "PASS",
+  "post_jump_capture": "PASS",
+  "receipt_ambiguity": "PASS",
+  "receipt_staleness": "PASS",
+  "replay_byte_tamper": "PASS",
+  "source_database_byte_identity": "PASS",
+  "unsafe_refreshed_source": "PASS"
+}

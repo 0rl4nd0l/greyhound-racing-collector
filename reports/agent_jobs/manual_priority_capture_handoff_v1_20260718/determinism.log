@@ -1,0 +1,5 @@
+PASS
+Repeated fixed-time receipt execution produced canonical-equal JSON in focused tests.
+Both normalized full and half probability sums remain 1.0 in the reviewed scorer tests.
+No live prediction was claimed or persisted.
+

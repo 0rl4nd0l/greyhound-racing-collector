@@ -253,6 +253,7 @@ def select_prejump_races(
     max_minutes: float = 160.0,
     limit: int = 0,
     exclude_race_ids: set[str] | None = None,
+    include_race_ids: set[str] | None = None,
 ) -> tuple[list[Mapping[str, Any]], list[dict[str, Any]]]:
     records = [
         race_window_record(
@@ -264,8 +265,13 @@ def select_prejump_races(
         for race in races
     ]
     excluded = expand_excluded_race_ids(exclude_race_ids or set())
+    included = expand_excluded_race_ids(include_race_ids or set())
     for race, record in zip(races, records):
         race_ids = set(record.get("race_id_aliases") or stable_race_id_variants(race))
+        if included and not race_ids.intersection(included):
+            record["selected"] = False
+            record["excluded_reason"] = "not_exact_included_race"
+            record["bucket"] = "not_exact_included_race"
         if record.get("selected") is True and race_ids & excluded:
             record["selected"] = False
             record["excluded_reason"] = "excluded_race_id"
@@ -603,6 +609,11 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
         values=list(args.exclude_race_id or []),
         file_path=args.exclude_race_ids_file,
     )
+    included_race_ids = {
+        str(value).strip()
+        for value in getattr(args, "include_race_id", []) or []
+        if str(value).strip()
+    }
     selected, records = select_prejump_races(
         races,
         now=now,
@@ -610,12 +621,16 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
         max_minutes=float(args.max_minutes),
         limit=int(args.limit),
         exclude_race_ids=excluded_race_ids,
+        include_race_ids=included_race_ids,
     )
 
     downloads: list[dict[str, Any]] = []
     if not args.dry_run:
         for race in selected:
-            result = browser.download_race_csv(str(race["url"]))
+            result = browser.download_race_csv(
+                str(race["url"]),
+                race_info_hint=race,
+            )
             downloads.append(
                 {
                     "race_url": race.get("url"),
@@ -641,6 +656,7 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
         "total_races_found": len(races),
         "selected_count": len(selected),
         "excluded_race_ids": sorted(excluded_race_ids),
+        "included_race_ids": sorted(included_race_ids),
         "excluded_count": sum(1 for record in records if record.get("excluded_reason")),
         "bucket_counts": dict(bucket_counts),
         "next_preferred_window": refresh_timing_summary(
@@ -679,6 +695,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-minutes", type=float, default=20.0)
     parser.add_argument("--max-minutes", type=float, default=160.0)
     parser.add_argument("--limit", type=int, default=16)
+    parser.add_argument(
+        "--include-race-id",
+        action="append",
+        default=[],
+        help="Select only this exact stable race ID. May repeat.",
+    )
     parser.add_argument(
         "--exclude-race-id",
         action="append",

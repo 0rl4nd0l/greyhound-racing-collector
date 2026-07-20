@@ -1,0 +1,11 @@
+{
+  "active_claim_overlap": false,
+  "canonical_head": "c1dfd464cf6ecfb2034f96ac1a8d3ea58d4e6afa",
+  "claim_id": "build_on_demand_configurable_greyhound_predictor_v1_20260719",
+  "initial_guard": "VALID_TASK_WORKTREE",
+  "pr51_active_claim": "disjoint",
+  "semantic_decision": "ALLOW_NEW_SCOPE",
+  "substantive_work_permitted": true,
+  "task_card_validation": "PASS",
+  "worktree": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-on-demand-configurable-predictor-v1-20260719"
+}

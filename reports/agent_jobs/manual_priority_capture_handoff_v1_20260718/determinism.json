@@ -1,0 +1,12 @@
+{
+  "canonical_stdout_test": "PASS",
+  "fixed_capture_windows_minutes": [60, 30, 10, 2],
+  "lossless_odds_token_test": "PASS",
+  "normalized_full_sum_test": 1.0,
+  "normalized_half_sum_test": 1.0,
+  "prediction_persisted": false,
+  "repeated_receipt_invocation_equal": true,
+  "status": "PASS",
+  "live_prediction_claimed": false
+}
+

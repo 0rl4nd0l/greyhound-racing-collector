@@ -1,0 +1,8 @@
+{
+  "origin_master": "c1dfd464cf6ecfb2034f96ac1a8d3ea58d4e6afa",
+  "pr45": {"head": "aa35fa70fc49199acde09f5561b521ddb00d45aa", "is_ancestor": true},
+  "pr46": {"head": "2c595d27ac748d3df8e4031d5491c76606c5be89", "is_ancestor": true, "merge_parent_count": 1},
+  "pr47": {"head": "0ae5937cde87131c714fb7383c58ce13e3cfbc06", "is_ancestor": true, "merge_parent_count": 1},
+  "pr48": {"head": "f776bfd142b1e8acd3befca330eee36f490402ed", "adopted": false, "read_only": true},
+  "status": "PASS"
+}

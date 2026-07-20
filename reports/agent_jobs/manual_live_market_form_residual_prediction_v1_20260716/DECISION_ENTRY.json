@@ -1,0 +1,41 @@
+{
+  "blocks": [
+    "publishing_or_using_the_form_only_manual_prediction_adapter",
+    "runtime_activation_deployment_promotion_betting_or_merge"
+  ],
+  "claim_id": "manual_live_market_form_residual_prediction_v1_20260716",
+  "dataset_version": "manual_prediction_cli_inputs_v1_no_outcomes",
+  "decision": "PASS",
+  "decision_delta": "The unsafe form-only adapter was stopped before publication, and the exact outcome-free system feature packet needed for a parity-safe adapter was identified and hash-bound.",
+  "decision_id": "manual-residual-feature-source-contract-revision-20260716-v1",
+  "does_not_block": [
+    "continued_market_only_production_baseline",
+    "draft_PR_46_review",
+    "a_fresh_exact_feature_packet_adapter_task"
+  ],
+  "evidence_hash": "sha256:73c6889318ee375ce512267866527b79c839f5a6e9435aa2166814b83219bd64",
+  "evidence_refs": [
+    "reports/agent_jobs/manual_live_market_form_residual_prediction_v1_20260716/STATE.md",
+    "reports/agent_jobs/manual_live_market_form_residual_prediction_v1_20260716/CODE_REVIEW.md",
+    "reports/agent_jobs/manual_live_market_form_residual_prediction_v1_20260716/VALIDATION.md"
+  ],
+  "hypothesis_id": "manual_live_frozen_residual_prediction_cli_v1",
+  "invalidation_conditions": [
+    "Exact parity is proven for form-only reconstruction against the frozen Tier-A source population.",
+    "A revised adapter fails to hash-bind the exact feature packet and manifests."
+  ],
+  "outcome_status": "ADVANCED",
+  "phase_after": "exact_prejump_system_feature_packet_identified_manual_cli_not_yet_ready",
+  "phase_before": "frozen_market_form_residual_model_and_shadow_scorer_ready_awaiting_separate_activation",
+  "program_track": "offline_development",
+  "project_id": "greyhound_racing_collector",
+  "reopen_conditions": [
+    "A fresh card authorizes exact sealed system feature rows and manifests as the input source without production DB or runtime access."
+  ],
+  "run_id": "l4nd0-System-Product-Name:2368186:manual_live_market_form_residual_prediction_v1_20260716",
+  "scope_fingerprint": "a8864fca5e383e100cf3e20cd8422bea1c498b4acb05638e700238bf9d97bfe7",
+  "source_class": "explicit_verified_thedogs_form_sidecar_and_strict_prejump_sportsbet_capture_artifacts",
+  "target_transition": "manual_prejump_frozen_residual_prediction_cli_ready_not_activated",
+  "task_id": "manual_live_market_form_residual_prediction_v1_20260716",
+  "validated_at": "2026-07-16T19:36:40+10:00"
+}
