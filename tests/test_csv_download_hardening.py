@@ -10,7 +10,11 @@ import pytest
 
 from utils.csv_metadata import (
     THEDOGS_EXPERT_FORM_COLUMNS,
+    build_prejump_shadow_metadata_payload,
+    build_safe_target_metadata_payload,
     existing_prejump_sidecar_contract_status,
+    load_safe_sidecar_target_metadata,
+    verify_canonical_sidecar_payload,
 )
 
 
@@ -46,6 +50,112 @@ def test_normalize_race_url_strips_expert_form_and_fragments():
     )
     assert base2.endswith("/racing/angle-park/2025-09-02/1")
     assert expert2.endswith("/racing/angle-park/2025-09-02/1/expert-form")
+
+
+def test_meeting_card_grade_source_label_without_proof_is_never_safe(tmp_path):
+    race_url = "https://www.thedogs.com.au/racing/mandurah/2026-07-17/10/test"
+    forged = {
+        "date": "2026-07-17",
+        "venue": "MAND",
+        "race_number": 10,
+        "target_distance": "520m",
+        "target_distance_source": "canonical_pre_race_page",
+        "target_grade": "Maiden",
+        "target_grade_source": "thedogs_meeting_card_exact_race",
+    }
+
+    built = build_safe_target_metadata_payload(
+        forged,
+        source_url=race_url,
+        allow_generic_fields=False,
+    )
+
+    assert built["target_grade"] is None
+    assert built["target_grade_source"] == "default_missing_target"
+    assert built["metadata_is_leakage_safe"] is False
+
+    payload = {
+        **forged,
+        "metadata_is_leakage_safe": True,
+        "race_url": race_url,
+        "race_time_mapping_status": "exact_url_match",
+        "race_time_source": "canonical_race_url",
+    }
+    verified = verify_canonical_sidecar_payload(
+        payload,
+        csv_path=tmp_path / "Race 10 - MAND - 2026-07-17.csv",
+    )
+
+    assert verified["target_metadata_status"] == "unsafe"
+    assert "noncanonical_target_grade_source" in verified[
+        "target_metadata_failure_reason"
+    ]
+
+    csv_path = tmp_path / "Race 10 - MAND - 2026-07-17.csv"
+    Path(f"{csv_path}.metadata.json").write_text(
+        json.dumps(payload),
+        encoding="utf-8",
+    )
+    loaded = load_safe_sidecar_target_metadata(csv_path)
+    assert loaded["target_grade"] is None
+    assert "unsafe_sidecar_target_grade:thedogs_meeting_card_exact_race" in loaded[
+        "rejected_metadata_sources"
+    ]
+
+
+def test_meeting_card_grade_proof_rejects_mismatched_sidecar_venue(tmp_path):
+    race_url = "https://www.thedogs.com.au/racing/mandurah/2026-07-17/10/test"
+    forged = {
+        "date": "2026-07-17",
+        "venue": "CANN",
+        "race_number": 10,
+        "target_distance": "520m",
+        "target_distance_source": "canonical_pre_race_page",
+        "target_grade": "Maiden",
+        "target_grade_source": "thedogs_meeting_card_exact_race",
+        "target_grade_context_schema": "thedogs_meeting_card_exact_race_v1",
+        "target_grade_equivalence_key": "MAIDEN",
+        "target_grade_exact_value": "Maiden",
+        "target_grade_race_date": "2026-07-17",
+        "target_grade_race_number": 10,
+        "target_grade_race_url": race_url,
+        "target_grade_source_url": "https://www.thedogs.com.au/racing/2026-07-17",
+        "target_grade_source_sha256": "a" * 64,
+        "target_grade_venue": "MAND",
+    }
+
+    built = build_safe_target_metadata_payload(
+        forged,
+        source_url=race_url,
+        allow_generic_fields=False,
+    )
+    assert built["target_grade"] is None
+    assert built["metadata_is_leakage_safe"] is False
+
+    payload = {
+        **forged,
+        "metadata_is_leakage_safe": True,
+        "race_url": race_url,
+        "race_time_mapping_status": "exact_url_match",
+        "race_time_source": "canonical_race_url",
+    }
+    verified = verify_canonical_sidecar_payload(
+        payload,
+        csv_path=tmp_path / "Race 10 - MAND - 2026-07-17.csv",
+    )
+    assert verified["target_metadata_status"] == "unsafe"
+
+    shadow = build_prejump_shadow_metadata_payload(payload)
+    assert shadow["status"] == "FAIL"
+    assert "target_grade_missing_or_unsafe" in shadow["fail_reasons"]
+
+    csv_path = tmp_path / "Race 10 - MAND - 2026-07-17.csv"
+    Path(f"{csv_path}.metadata.json").write_text(
+        json.dumps(payload),
+        encoding="utf-8",
+    )
+    loaded = load_safe_sidecar_target_metadata(csv_path)
+    assert loaded["target_grade"] is None
 
 
 def test_download_rejects_html_masquerading_as_csv(monkeypatch, _isolate_upcoming_dir):
@@ -244,9 +354,6 @@ def test_download_refreshes_existing_csv_with_stale_sidecar_contract(
         lambda soup, url: {
             "target_distance": "400m",
             "target_distance_source": "canonical_pre_race_page",
-            "target_grade": "Maiden",
-            "target_grade_source": "canonical_pre_race_page",
-            "metadata_is_leakage_safe": True,
             "metadata_source_url": race_url,
         },
     )
@@ -271,7 +378,26 @@ def test_download_refreshes_existing_csv_with_stale_sidecar_contract(
         types.SimpleNamespace(get=lambda url, timeout=30: _Resp()),
     )
 
-    result = br.download_race_csv(race_url)
+    result = br.download_race_csv(
+        race_url,
+        race_info_hint={
+            "url": race_url,
+            "date": "2030-06-09",
+            "venue": "TEST",
+            "race_number": "1",
+            "grade": "Maiden",
+            "target_grade_context_schema": "thedogs_meeting_card_exact_race_v1",
+            "target_grade_equivalence_key": "MAIDEN",
+            "target_grade_exact_value": "Maiden",
+            "target_grade_race_url": (
+                "https://www.thedogs.com.au/racing/test/2030-06-09/1/test"
+            ),
+            "target_grade_source_url": (
+                "https://www.thedogs.com.au/racing/2030-06-09"
+            ),
+            "target_grade_source_sha256": "b" * 64,
+        },
+    )
 
     assert result["success"] is True, result
     assert result.get("already_exists") is not True
@@ -282,6 +408,19 @@ def test_download_refreshes_existing_csv_with_stale_sidecar_contract(
     assert existing_path.exists()
     sidecar = json.loads(existing_sidecar.read_text(encoding="utf-8"))
     assert sidecar["metadata_captured_at"]
+    assert sidecar["target_grade"] == "Maiden"
+    assert sidecar["target_grade_source"] == "thedogs_meeting_card_exact_race"
+    assert sidecar["target_grade_context_schema"] == (
+        "thedogs_meeting_card_exact_race_v1"
+    )
+    assert sidecar["target_grade_exact_value"] == "Maiden"
+    assert sidecar["target_grade_source_url"] == (
+        "https://www.thedogs.com.au/racing/2030-06-09"
+    )
+    assert sidecar["target_grade_source_sha256"] == "b" * 64
+    assert sidecar["target_grade_race_url"] == (
+        "https://www.thedogs.com.au/racing/test/2030-06-09/1/test"
+    )
     assert sidecar["prejump_shadow_metadata"]["status"] == "PASS"
     assert sidecar["prejump_shadow_metadata"]["metadata_captured_at"]
     assert sidecar["prejump_shadow_metadata"]["runner_box_name_list"] == [

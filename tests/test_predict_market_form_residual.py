@@ -14,8 +14,6 @@ import pytest
 import scripts.predict_market_form_residual as manual
 from scripts.predict_market_form_residual import (
     ManualPredictionError,
-    _canonical_target_grade,
-    _trusted_sportsbet_url,
     _trusted_thedogs_url,
     build_parser,
     score_from_artifacts,
@@ -29,6 +27,8 @@ RACE_ID = "Race 2 - SAN - 2026-07-16"
 MELBOURNE = ZoneInfo("Australia/Melbourne")
 SCORE_TIME = datetime(2026, 7, 16, 18, 52, tzinfo=MELBOURNE)
 SOURCE_URL = "https://www.thedogs.com.au/racing/sandown/2026-07-16/2/test"
+MEETING_CARD_URL = "https://www.thedogs.com.au/racing/2026-07-16"
+MEETING_CARD_SHA256 = "a" * 64
 
 RUNNERS = (
     (1, "Alpha Fast", "ALPHAFAST", 2.5),
@@ -193,6 +193,34 @@ def _write_fixture(tmp_path: Path) -> dict[str, Path]:
             "content_sha256": _sha256(form_raw),
             "metadata_is_leakage_safe": True,
             "race_url": SOURCE_URL,
+            "target_grade_source": "thedogs_meeting_card_exact_race",
+            "target_grade_context_schema": "thedogs_meeting_card_exact_race_v1",
+            "target_grade_equivalence_key": "GRADE:5",
+            "target_grade_exact_value": "Grade 5",
+            "target_grade_race_date": "2026-07-16",
+            "target_grade_race_number": 2,
+            "target_grade_race_url": SOURCE_URL,
+            "target_grade_source_url": MEETING_CARD_URL,
+            "target_grade_source_sha256": MEETING_CARD_SHA256,
+            "target_grade_venue": "SAN",
+            "race_info": {
+                "date": "2026-07-16",
+                "venue": "SAN",
+                "race_number": 2,
+                "distance": "515m",
+                "grade": "Grade 5",
+                "url": SOURCE_URL,
+                "target_grade_source": "thedogs_meeting_card_exact_race",
+                "target_grade_context_schema": "thedogs_meeting_card_exact_race_v1",
+                "target_grade_equivalence_key": "GRADE:5",
+                "target_grade_exact_value": "Grade 5",
+                "target_grade_race_date": "2026-07-16",
+                "target_grade_race_number": 2,
+                "target_grade_race_url": SOURCE_URL,
+                "target_grade_source_url": MEETING_CARD_URL,
+                "target_grade_source_sha256": MEETING_CARD_SHA256,
+                "target_grade_venue": "SAN",
+            },
             "canonical_runner_alignment": {"status": "aligned"},
             "runner_completeness": {
                 "status": "COMPLETE",
@@ -275,9 +303,6 @@ def _write_fixture(tmp_path: Path) -> dict[str, Path]:
                             "https://www.sportsbet.com.au/greyhound-racing/"
                             "australia-nz/sandown-park/race-2-123"
                         ),
-                        "source_race_number": 2,
-                        "source_race_date": "2026-07-16",
-                        "source_venue": "SAN",
                         "accepted_rows": accepted_rows,
                         "accepted_row_count": 3,
                         "rejected_rows": [],
@@ -296,6 +321,16 @@ def _write_fixture(tmp_path: Path) -> dict[str, Path]:
         },
     )
     return paths
+
+
+def _set_exact_sidecar_grade(sidecar: dict, grade: str) -> None:
+    proof_key = manual.target_grade_equivalence_key(grade)
+    assert proof_key is not None
+    sidecar["prejump_shadow_metadata"]["grade"] = grade
+    sidecar["race_info"]["grade"] = grade
+    for proof_scope in (sidecar, sidecar["race_info"]):
+        proof_scope["target_grade_exact_value"] = grade
+        proof_scope["target_grade_equivalence_key"] = proof_key
 
 
 def _reseal(paths: dict[str, Path], mutate) -> None:
@@ -327,46 +362,76 @@ def _score(tmp_path: Path):
     return _score_paths(_write_fixture(tmp_path))
 
 
+def _assert_score_rejected_without_side_effects(
+    paths: dict[str, Path], monkeypatch, reason: str
+) -> None:
+    root = paths["form_csv"].parent
+    before = {
+        path.relative_to(root): path.read_bytes()
+        for path in sorted(root.rglob("*"))
+        if path.is_file()
+    }
+    score_calls = 0
+
+    def counted_score(*_args, **_kwargs):
+        nonlocal score_calls
+        score_calls += 1
+
+    monkeypatch.setattr(manual, "score_race", counted_score)
+    with pytest.raises(ManualPredictionError, match=reason):
+        _score_paths(paths)
+
+    after = {
+        path.relative_to(root): path.read_bytes()
+        for path in sorted(root.rglob("*"))
+        if path.is_file()
+    }
+    assert score_calls == 0
+    assert after == before
+    assert not any(
+        path.suffix.lower() in {".db", ".sqlite", ".sqlite3"}
+        for path in root.rglob("*")
+        if path.is_file()
+    )
+
+
 def test_scores_exact_packet_deterministically(tmp_path):
     paths = _write_fixture(tmp_path)
     first = _score_paths(paths)
     second = _score_paths(paths)
 
     assert first == second
-    assert first["schema_version"] == "manual_market_form_residual_prediction_v2"
+    assert first["schema_version"] == "manual_market_form_residual_prediction_v3"
     assert first["status"] == "MANUAL_PREJUMP_FROZEN_RESIDUAL_PREDICTION"
     assert first["source_contract"] == {
         "feature_source": "exact_hash_bound_system_shadow_feature_rows",
         "feature_reconstruction_performed": False,
         "database_access": False,
         "network_access": False,
+        "manual_scoring_read_only": True,
+        "persistence_interface_crossed": False,
+        "persistence_status": "NOT_REQUESTED_READ_ONLY",
+        "writer_status_contract": [
+            "APPENDED",
+            "EXACT_REPLAY",
+            "COMMIT_STATE_UNKNOWN",
+        ],
+        "history_migration_performed": False,
     }
+    assert first["record_schema_version"] == "market_form_residual_shadow_record_v3"
+    assert first["effective_state_schema_version"] == (
+        "market_form_residual_effective_state_v2"
+    )
+    assert first["target_grade_proof_key"] == "GRADE:5"
+    assert first["target_grade_source_sha256"] == MEETING_CARD_SHA256
+    assert [row["box"] for row in first["canonical_runner_order"]] == [1, 2, 4]
+    assert first["numerical_canonicalization_contract"]
     assert first["activation"] is False
     assert first["persisted"] is False
     assert first["outcomes_present"] is False
     assert len(first["predictions"]) == 3
     for key in ("market", "half", "full"):
         assert first["probability_sums"][key] == pytest.approx(1.0)
-
-
-def test_explicit_shadow_output_appends_once_and_replays_idempotently(tmp_path):
-    paths = _write_fixture(tmp_path / "fixture")
-    shadow_output = tmp_path / "market_form_residual_shadow_predictions_v3.jsonl"
-
-    first = _score_paths(paths, shadow_output_path=shadow_output)
-    original = shadow_output.read_bytes()
-    second = _score_paths(paths, shadow_output_path=shadow_output)
-
-    assert first["persisted"] is True
-    assert first["persistence_status"] == "APPENDED"
-    assert second["persisted"] is True
-    assert second["persistence_status"] == "EXACT_REPLAY"
-    assert shadow_output.read_bytes() == original
-    records = [json.loads(line) for line in original.splitlines()]
-    assert len(records) == 1
-    assert records[0]["race_id"] == RACE_ID
-    assert records[0]["outcomes_present"] is False
-    assert records[0]["activation"] is False
 
 
 def test_scores_when_strict_odds_capture_precedes_feature_generation(tmp_path):
@@ -381,6 +446,42 @@ def test_scores_when_strict_odds_capture_precedes_feature_generation(tmp_path):
 
     assert output["odds_append_timestamp"] == "2026-07-16T18:43:00+10:00"
     assert output["feature_manifest_generated_at"] == "2026-07-16T18:46:00+10:00"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("target_grade_equivalence_key", "MAIDEN"),
+        ("target_grade_race_date", "2026-07-17"),
+        ("target_grade_race_number", 3),
+        (
+            "target_grade_race_url",
+            "https://www.thedogs.com.au/racing/sandown/2026-07-16/3/borrowed",
+        ),
+        ("target_grade_source_sha256", "not-a-sha256"),
+        ("target_grade_venue", "CANN"),
+    ],
+)
+def test_rejects_mismatched_exact_grade_proof(tmp_path, field, value):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar[field] = value
+    sidecar["race_info"][field] = value
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="target_grade_proof_mismatch"):
+        _score_paths(paths)
+
+
+def test_rejects_pr51_form_only_v1_evidence_domain(tmp_path):
+    paths = _write_fixture(tmp_path / "PR51_FORM_ONLY_V1")
+
+    with pytest.raises(
+        ManualPredictionError,
+        match="pr51_form_only_v1_evidence_forbidden",
+    ):
+        _score_paths(paths)
 
 
 def test_uses_exact_top_level_golden_features(tmp_path, monkeypatch):
@@ -454,6 +555,389 @@ def test_rejects_date_with_trailing_content(tmp_path):
         _score_paths(paths)
 
 
+@pytest.mark.parametrize(
+    ("scope", "field"),
+    [
+        ("prejump_shadow_metadata", "race_date"),
+        ("race_info", "date"),
+    ],
+)
+def test_rejects_conflicting_duplicate_race_dates_in_both_directions(
+    tmp_path, scope, field
+):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar[scope][field] = "2026-07-17"
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="target_race_date_mismatch"):
+        _score_paths(paths)
+
+
+@pytest.mark.parametrize(
+    ("scope", "field", "value"),
+    [
+        (scope, field, value)
+        for scope, field in (
+            ("prejump_shadow_metadata", "race_date"),
+            ("race_info", "date"),
+        )
+        for value in ("", False, "2026-02-30")
+    ],
+)
+def test_rejects_invalid_one_sided_duplicate_race_dates(tmp_path, scope, field, value):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar[scope][field] = value
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="target_race_date_invalid"):
+        _score_paths(paths)
+
+
+@pytest.mark.parametrize(
+    ("scope", "field"),
+    [
+        ("prejump_shadow_metadata", "race_date"),
+        ("race_info", "date"),
+    ],
+)
+def test_rejects_missing_duplicate_race_date(tmp_path, scope, field):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    del sidecar[scope][field]
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="target_race_date_missing"):
+        _score_paths(paths)
+
+
+@pytest.mark.parametrize(
+    "scope",
+    ["prejump_shadow_metadata", "race_info"],
+)
+def test_rejects_conflicting_duplicate_race_numbers_in_both_directions(tmp_path, scope):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar[scope]["race_number"] = 3
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="target_race_number_mismatch"):
+        _score_paths(paths)
+
+
+@pytest.mark.parametrize(
+    ("scope", "value"),
+    [
+        (scope, value)
+        for scope in ("prejump_shadow_metadata", "race_info")
+        for value in (0, -1, "", False, "two", 2.5)
+    ],
+)
+def test_rejects_invalid_one_sided_duplicate_race_numbers(tmp_path, scope, value):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar[scope]["race_number"] = value
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="target_race_number_invalid"):
+        _score_paths(paths)
+
+
+@pytest.mark.parametrize(
+    "scope",
+    ["prejump_shadow_metadata", "race_info"],
+)
+def test_rejects_missing_duplicate_race_number(tmp_path, scope):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    del sidecar[scope]["race_number"]
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="target_race_number_missing"):
+        _score_paths(paths)
+
+
+def test_accepts_equivalent_normalized_duplicate_identity_values(tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["prejump_shadow_metadata"]["race_date"] = " 2026-07-16 "
+    sidecar["prejump_shadow_metadata"]["race_number"] = "02"
+    sidecar["prejump_shadow_metadata"]["distance"] = 515
+    sidecar["race_info"]["distance"] = "515.0 m"
+    _write_json(paths["sidecar"], sidecar)
+
+    output = _score_paths(paths)
+
+    assert output["race_id"] == RACE_ID
+    assert [row["box"] for row in output["canonical_runner_order"]] == [1, 2, 4]
+    assert output["source_contract"]["manual_scoring_read_only"] is True
+    assert output["source_contract"]["persistence_interface_crossed"] is False
+
+
+def test_rejects_conflicting_duplicate_distance(tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["race_info"]["distance"] = "520m"
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="target_distance_mismatch"):
+        _score_paths(paths)
+
+
+def test_duplicate_identity_rejection_stops_before_score_and_writes_nothing(
+    tmp_path, monkeypatch
+):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["race_info"]["date"] = "2026-07-17"
+    _write_json(paths["sidecar"], sidecar)
+    before = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in sorted(tmp_path.rglob("*"))
+        if path.is_file()
+    }
+
+    def unexpected_score(*_args, **_kwargs):
+        pytest.fail("score_race must not run after identity rejection")
+
+    monkeypatch.setattr(manual, "score_race", unexpected_score)
+    with pytest.raises(ManualPredictionError, match="target_race_date_mismatch"):
+        _score_paths(paths)
+
+    after = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in sorted(tmp_path.rglob("*"))
+        if path.is_file()
+    }
+    assert after == before
+
+
+@pytest.mark.parametrize(
+    ("scope", "field"),
+    [
+        ("race_info", "url"),
+        ("race_info", "target_grade_race_url"),
+        ("prejump_shadow_metadata", "source_url"),
+    ],
+)
+@pytest.mark.parametrize("value", [None, False, "", "not-a-url"])
+def test_rejects_supplied_invalid_duplicate_provenance_without_scoring(
+    tmp_path, monkeypatch, scope, field, value
+):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar[scope][field] = value
+    _write_json(paths["sidecar"], sidecar)
+    score_calls = 0
+
+    def counted_score(*_args, **_kwargs):
+        nonlocal score_calls
+        score_calls += 1
+
+    monkeypatch.setattr(manual, "score_race", counted_score)
+    with pytest.raises(ManualPredictionError):
+        _score_paths(paths)
+    assert score_calls == 0
+
+
+@pytest.mark.parametrize("scope", ["prejump_shadow_metadata", "sidecar"])
+def test_rejects_conflicting_duplicate_jump_timestamps_without_scoring(
+    tmp_path, monkeypatch, scope
+):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    target = (
+        sidecar["prejump_shadow_metadata"]
+        if scope == "prejump_shadow_metadata"
+        else sidecar
+    )
+    target["jump_datetime"] = "2026-07-16T18:59:00+10:00"
+    if scope == "prejump_shadow_metadata":
+        sidecar["jump_datetime"] = "2026-07-16T18:58:00+10:00"
+    _write_json(paths["sidecar"], sidecar)
+
+    _assert_score_rejected_without_side_effects(
+        paths, monkeypatch, "jump_timestamp_mismatch"
+    )
+
+
+def test_accepts_canonical_equivalent_duplicate_jump_timestamps(tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["jump_datetime"] = "2026-07-16T08:58:00Z"
+    sidecar["prejump_shadow_metadata"]["jump_time"] = "6:58 PM"
+    sidecar["race_info"]["race_time"] = "18:58"
+    _write_json(paths["sidecar"], sidecar)
+
+    output = _score_paths(paths)
+
+    assert output["race_id"] == RACE_ID
+
+
+def test_accepts_matching_time_only_jump_aliases_with_seconds(tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    del sidecar["prejump_shadow_metadata"]["jump_datetime"]
+    sidecar["prejump_shadow_metadata"]["jump_time"] = "18:58:30"
+    sidecar["race_info"]["race_time"] = "18:58:30"
+    _write_json(paths["sidecar"], sidecar)
+
+    output = _score_paths(paths)
+
+    assert output["jump_timestamp"] == "2026-07-16T18:58:30+10:00"
+
+
+@pytest.mark.parametrize(
+    ("shadow_time", "race_time"),
+    [
+        ("6:58 PM", "6:51 PM"),
+        ("6:51 PM", "6:58 PM"),
+        ("18:58:30", "18:58:31"),
+    ],
+)
+def test_rejects_conflicting_time_only_jump_aliases_in_both_directions(
+    tmp_path, monkeypatch, shadow_time, race_time
+):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    del sidecar["prejump_shadow_metadata"]["jump_datetime"]
+    sidecar["prejump_shadow_metadata"]["jump_time"] = shadow_time
+    sidecar["race_info"]["race_time"] = race_time
+    _write_json(paths["sidecar"], sidecar)
+
+    _assert_score_rejected_without_side_effects(
+        paths, monkeypatch, "jump_timestamp_mismatch"
+    )
+
+
+def test_rejects_full_datetime_and_time_only_jump_conflict_without_side_effects(
+    tmp_path, monkeypatch
+):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["race_info"]["race_time"] = "6:51 PM"
+    _write_json(paths["sidecar"], sidecar)
+
+    _assert_score_rejected_without_side_effects(
+        paths, monkeypatch, "jump_timestamp_mismatch"
+    )
+
+
+def test_accepts_absent_optional_jump_aliases(tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar.pop("jump_datetime", None)
+    sidecar["prejump_shadow_metadata"].pop("jump_time", None)
+    sidecar["race_info"].pop("race_time", None)
+    _write_json(paths["sidecar"], sidecar)
+
+    output = _score_paths(paths)
+
+    assert output["jump_timestamp"] == "2026-07-16T08:58:00+00:00"
+
+
+@pytest.mark.parametrize(
+    ("scope", "field", "reason"),
+    [
+        ("prejump_shadow_metadata", "jump_datetime", "jump_timestamp_invalid"),
+        ("sidecar", "jump_datetime", "jump_timestamp_invalid"),
+        ("prejump_shadow_metadata", "jump_time", "jump_time_invalid"),
+        ("race_info", "race_time", "jump_time_invalid"),
+    ],
+)
+@pytest.mark.parametrize("value", [None, False, "", "not-a-time", 123])
+def test_rejects_each_supplied_invalid_jump_alias_without_side_effects(
+    tmp_path, monkeypatch, scope, field, reason, value
+):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    target = sidecar if scope == "sidecar" else sidecar[scope]
+    target[field] = value
+    _write_json(paths["sidecar"], sidecar)
+
+    _assert_score_rejected_without_side_effects(paths, monkeypatch, reason)
+
+
+@pytest.mark.parametrize("scope", ["prejump_shadow_metadata", "sidecar"])
+def test_rejects_supplied_timezone_less_jump_datetime_without_side_effects(
+    tmp_path, monkeypatch, scope
+):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    target = sidecar if scope == "sidecar" else sidecar[scope]
+    target["jump_datetime"] = "2026-07-16T18:58:00"
+    _write_json(paths["sidecar"], sidecar)
+
+    _assert_score_rejected_without_side_effects(
+        paths, monkeypatch, "jump_timestamp_timezone_missing"
+    )
+
+
+def test_cli_duplicate_identity_rejection_has_no_stdout_or_file_side_effect(
+    tmp_path,
+):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["race_info"]["race_number"] = 3
+    _write_json(paths["sidecar"], sidecar)
+    before = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in sorted(tmp_path.rglob("*"))
+        if path.is_file()
+    }
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/predict_market_form_residual.py"),
+            "--race-id",
+            RACE_ID,
+            "--form-csv",
+            str(paths["form_csv"]),
+            "--feature-rows",
+            str(paths["feature_rows"]),
+            "--capture",
+            str(paths["capture"]),
+        ],
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+    )
+
+    assert completed.returncode == 2
+    assert completed.stdout == b""
+    assert json.loads(completed.stderr) == {
+        "status": "BLOCKED_MANUAL_PREDICTION",
+        "reason": "target_race_number_mismatch",
+    }
+    after = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in sorted(tmp_path.rglob("*"))
+        if path.is_file()
+    }
+    assert after == before
+
+
 def test_rejects_box_outside_greyhound_range_even_when_sources_agree(tmp_path):
     paths = _write_fixture(tmp_path)
     sidecar = _json(paths["sidecar"])
@@ -496,52 +980,6 @@ def test_rejects_nested_or_extra_feature_bundle(tmp_path):
     _reseal(paths, lambda rows, _: rows[0].__setitem__("features", {"extra": 1}))
 
     with pytest.raises(ManualPredictionError, match="feature.*top_level.*exact"):
-        _score_paths(paths)
-
-
-@pytest.mark.parametrize(
-    "outcome_key",
-    [
-        "is_winner",
-        "is_placer",
-        "official_finish_position",
-        "db_finish_position",
-        "scraped_finish_position",
-        "target_finish_position",
-        "result_position",
-        "official_position",
-        "actual_winner",
-        "official_winner",
-        "result_status",
-        "results_status",
-        "official_result_status",
-    ],
-)
-def test_rejects_supported_outcome_fields_in_feature_rows(tmp_path, outcome_key):
-    paths = _write_fixture(tmp_path)
-    _reseal(paths, lambda rows, _: rows[0].__setitem__(outcome_key, 1))
-
-    with pytest.raises(
-        ManualPredictionError, match="feature_rows_invalid_or_contains_outcome"
-    ):
-        _score_paths(paths)
-
-
-@pytest.mark.parametrize(
-    ("artifact_key", "error"),
-    [
-        ("sidecar", "sidecar_contains_outcome_field"),
-        ("capture", "capture_contains_outcome_field"),
-    ],
-)
-def test_rejects_is_winner_across_input_artifacts(tmp_path, artifact_key, error):
-    paths = _write_fixture(tmp_path)
-    artifact = _json(paths[artifact_key])
-    assert isinstance(artifact, dict)
-    artifact["is_winner"] = 1
-    _write_json(paths[artifact_key], artifact)
-
-    with pytest.raises(ManualPredictionError, match=error):
         _score_paths(paths)
 
 
@@ -629,78 +1067,13 @@ def test_rejects_post_race_thedogs_urls(url):
     assert _trusted_thedogs_url(url) is False
 
 
-@pytest.mark.parametrize(
-    "url",
-    [
-        "https://thedogs.com.au/racing/sandown/2026-07-16/2/test",
-        "https://evil.thedogs.com.au/racing/sandown/2026-07-16/2/test",
-        "https://user@www.thedogs.com.au/racing/sandown/2026-07-16/2/test",
-    ],
-)
-def test_rejects_non_exact_thedogs_authority(url):
-    assert _trusted_thedogs_url(url) is False
-
-
-def test_sportsbet_binding_accepts_hyphen_venue_and_rejects_authority_tricks():
-    race_id = "Race 2 - SANDOWN-PARK - 2026-07-16"
-    valid = (
-        "https://www.sportsbet.com.au/greyhound-racing/australia-nz/"
-        "sandown-park/race-2-123"
-    )
-    assert _trusted_sportsbet_url(valid, race_id, "SANDOWN-PARK") is True
-    assert (
-        _trusted_sportsbet_url(
-            valid.replace("www.sportsbet.com.au", "evil.sportsbet.com.au"),
-            race_id,
-            "SANDOWN-PARK",
-        )
-        is False
-    )
-    assert (
-        _trusted_sportsbet_url(
-            valid.replace("www.sportsbet.com.au", "user@www.sportsbet.com.au"),
-            race_id,
-            "SANDOWN-PARK",
-        )
-        is False
-    )
-
-
-def test_grade_aliases_are_finite_and_do_not_parse_sponsor_substrings():
-    assert _canonical_target_grade("5th Grade") == "GRADE5"
-    assert _canonical_target_grade("Grade 5") == "GRADE5"
-    assert _canonical_target_grade("6th") == "GRADE6"
-    assert _canonical_target_grade("Grade 6") == "GRADE6"
-    assert _canonical_target_grade("Sponsor Grade 5 Trophy") is None
-
-
-def test_scores_strict_ordinal_grade_alias(tmp_path):
-    paths = _write_fixture(tmp_path)
-    sidecar = _json(paths["sidecar"])
-    sidecar["prejump_shadow_metadata"]["grade"] = "5th Grade"
-    _write_json(paths["sidecar"], sidecar)
-
-    assert _score_paths(paths)["race_id"] == RACE_ID
-
-
-def test_rejects_sponsor_grade_substring(tmp_path):
-    paths = _write_fixture(tmp_path)
-    sidecar = _json(paths["sidecar"])
-    sidecar["prejump_shadow_metadata"]["grade"] = "Sponsor Grade 5 Trophy"
-    _write_json(paths["sidecar"], sidecar)
-
-    with pytest.raises(
-        ManualPredictionError, match="target_grade_not_exact_supported_alias"
-    ):
-        _score_paths(paths)
-
-
 def test_rejects_result_url_in_bound_sidecar(tmp_path):
     paths = _write_fixture(tmp_path)
     sidecar = _json(paths["sidecar"])
     assert isinstance(sidecar, dict)
     sidecar["prejump_shadow_metadata"]["source_url"] = SOURCE_URL + "/result"
     sidecar["race_url"] = SOURCE_URL + "/result"
+    sidecar["race_info"]["url"] = SOURCE_URL + "/result"
     _write_json(paths["sidecar"], sidecar)
 
     with pytest.raises(ManualPredictionError, match="sidecar_source_url_not_trusted"):
@@ -720,7 +1093,7 @@ def test_rejects_contradictory_sidecar_source_url_alias(tmp_path):
         _score_paths(paths)
 
 
-def test_rejects_wrong_feature_generator_head(tmp_path):
+def test_rejects_generator_packet_without_implementation_hashes(tmp_path):
     paths = _write_fixture(tmp_path)
     manifest = _json(paths["implementation_manifest"])
     assert isinstance(manifest, dict)
@@ -729,11 +1102,14 @@ def test_rejects_wrong_feature_generator_head(tmp_path):
     manifest.pop("implementation_file_hashes")
     _write_json(paths["implementation_manifest"], manifest)
 
-    with pytest.raises(ManualPredictionError, match="feature_generator_head_mismatch"):
+    with pytest.raises(
+        ManualPredictionError,
+        match="feature_generator_implementation_hashes_missing",
+    ):
         _score_paths(paths)
 
 
-def test_rejects_packet_impersonating_legacy_generator_identity(tmp_path):
+def test_legacy_generator_identity_cannot_replace_implementation_hashes(tmp_path):
     paths = _write_fixture(tmp_path)
     manifest = _json(paths["implementation_manifest"])
     assert isinstance(manifest, dict)
@@ -743,7 +1119,8 @@ def test_rejects_packet_impersonating_legacy_generator_identity(tmp_path):
     _write_json(paths["implementation_manifest"], manifest)
 
     with pytest.raises(
-        ManualPredictionError, match="feature_generator_legacy_packet_hash_mismatch"
+        ManualPredictionError,
+        match="feature_generator_implementation_hashes_missing",
     ):
         _score_paths(paths)
 
@@ -867,6 +1244,7 @@ def test_runner_reordering_is_semantically_equivalent(tmp_path):
     assert first["predictions"] == second["predictions"]
     assert first["probability_sums"] == second["probability_sums"]
     assert first["runner_set_sha256"] == second["runner_set_sha256"]
+    assert first["canonical_runner_order"] == second["canonical_runner_order"]
 
 
 def test_cli_has_no_model_or_manifest_override():
@@ -886,17 +1264,28 @@ def _retime_for_cli(paths: dict[str, Path]) -> str:
     fetch = now - timedelta(minutes=3)
     append = now - timedelta(minutes=2)
     jump = now + timedelta(hours=1)
-    race_id = f"Race 2 - SAN - {jump.date().isoformat()}"
+    race_date = jump.date().isoformat()
+    race_id = f"Race 2 - SAN - {race_date}"
+    source_url = f"https://www.thedogs.com.au/racing/sandown/{race_date}/2/test"
+    meeting_card_url = f"https://www.thedogs.com.au/racing/{race_date}"
 
     sidecar = _json(paths["sidecar"])
     assert isinstance(sidecar, dict)
     shadow = sidecar["prejump_shadow_metadata"]
-    shadow["race_date"] = jump.date().isoformat()
+    shadow["race_date"] = race_date
     shadow["jump_datetime"] = jump.isoformat()
     shadow["metadata_captured_at"] = metadata.isoformat()
-    retimed_source_url = SOURCE_URL.replace("2026-07-16", jump.date().isoformat())
-    shadow["source_url"] = retimed_source_url
-    sidecar["race_url"] = retimed_source_url
+    shadow["source_url"] = source_url
+    sidecar["race_url"] = source_url
+    sidecar["target_grade_race_date"] = race_date
+    sidecar["target_grade_race_url"] = source_url
+    sidecar["target_grade_source_url"] = meeting_card_url
+    race_info = sidecar["race_info"]
+    race_info["date"] = race_date
+    race_info["url"] = source_url
+    race_info["target_grade_race_date"] = race_date
+    race_info["target_grade_race_url"] = source_url
+    race_info["target_grade_source_url"] = meeting_card_url
     _write_json(paths["sidecar"], sidecar)
 
     capture = _json(paths["capture"])
@@ -905,7 +1294,6 @@ def _retime_for_cli(paths: dict[str, Path]) -> str:
     attempt["race_id"] = race_id
     attempt["fetch_time"] = fetch.isoformat()
     attempt["append_time"] = append.isoformat()
-    attempt["validation"]["source_race_date"] = jump.date().isoformat()
     _write_json(paths["capture"], capture)
 
     def retime(rows, manifest):
@@ -913,11 +1301,217 @@ def _retime_for_cli(paths: dict[str, Path]) -> str:
         manifest["generated_at"] = generated.isoformat()
         for row in rows:
             row["race_id"] = race_id
-            row["race_date"] = jump.date().isoformat()
-            row["target_metadata_source_url"] = retimed_source_url
+            row["race_date"] = race_date
+            row["target_metadata_source_url"] = source_url
 
     _reseal(paths, retime)
     return race_id
+
+
+def _retarget_fixture_contract(
+    paths: dict[str, Path],
+    *,
+    venue: str,
+    venue_slug: str,
+    sidecar_grade: str,
+    feature_grade: str,
+) -> str:
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    shadow = sidecar["prejump_shadow_metadata"]
+    race_number = int(shadow["race_number"])
+    race_date = str(shadow["race_date"])
+    race_id = f"Race {race_number} - {venue} - {race_date}"
+    thedogs_url = (
+        f"https://www.thedogs.com.au/racing/{venue_slug}/{race_date}/{race_number}/test"
+    )
+    shadow["venue"] = venue
+    shadow["grade"] = sidecar_grade
+    shadow["source_url"] = thedogs_url
+    sidecar["race_url"] = thedogs_url
+    proof_key = manual.target_grade_equivalence_key(sidecar_grade)
+    assert proof_key is not None
+    proof_values = {
+        "target_grade_exact_value": sidecar_grade,
+        "target_grade_equivalence_key": proof_key,
+        "target_grade_race_date": race_date,
+        "target_grade_race_number": race_number,
+        "target_grade_race_url": thedogs_url,
+        "target_grade_source_url": (f"https://www.thedogs.com.au/racing/{race_date}"),
+        "target_grade_venue": venue,
+    }
+    sidecar.update(proof_values)
+    race_info = sidecar["race_info"]
+    race_info.update(
+        {
+            "date": race_date,
+            "venue": venue,
+            "race_number": race_number,
+            "grade": sidecar_grade,
+            "url": thedogs_url,
+            **proof_values,
+        }
+    )
+    old_form_csv = paths["form_csv"]
+    old_sidecar = paths["sidecar"]
+    form_csv = old_form_csv.with_name(f"{race_id}.csv")
+    sidecar_path = form_csv.with_name(form_csv.name + ".metadata.json")
+    if form_csv != old_form_csv:
+        old_form_csv.rename(form_csv)
+        old_sidecar.rename(sidecar_path)
+        paths["form_csv"] = form_csv
+        paths["sidecar"] = sidecar_path
+    sidecar["filename"] = form_csv.name
+    _write_json(paths["sidecar"], sidecar)
+
+    capture = _json(paths["capture"])
+    assert isinstance(capture, dict)
+    attempt = capture["attempts"][0]
+    attempt["race_id"] = race_id
+    attempt["validation"]["source_url"] = (
+        "https://www.sportsbet.com.au/greyhound-racing/"
+        f"australia-nz/{venue_slug}/race-{race_number}-123"
+    )
+    _write_json(paths["capture"], capture)
+
+    def retarget(rows, manifest):
+        manifest["input_files"] = [str(form_csv.resolve())]
+        for row in rows:
+            row["race_id"] = race_id
+            row["race_date"] = race_date
+            row["race_number"] = race_number
+            row["venue"] = venue
+            row["target_metadata_source_url"] = thedogs_url
+            row["target_grade_safe"] = feature_grade
+            row["source_csv"] = str(form_csv.resolve())
+
+    _reseal(paths, retarget)
+    return race_id
+
+
+def _early_residual_index_payload(
+    run_id: str, races: list[dict[str, object]]
+) -> dict[str, object]:
+    race_count = len(races)
+    return {
+        "activation": False,
+        "appended_count": race_count,
+        "blocked_count": 0,
+        "exact_replay_count": 0,
+        "lock_release_preceded_stage_completion": False,
+        "outcomes_read": False,
+        "race_count": race_count,
+        "races": [
+            {"race_id": race.get("race_id"), "status": "APPENDED"} for race in races
+        ],
+        "schema_version": "early_residual_shadow_prediction_status_v1",
+        "status": "PASS",
+        "plan": {
+            "activation": False,
+            "blockers": [],
+            "outcomes_read": False,
+            "production_db_access": "sqlite_mode_ro_feature_history_only",
+            "race_count": race_count,
+            "races": races,
+            "run_id": run_id,
+            "schema_version": "early_residual_shadow_prediction_plan_v1",
+            "status": "READY",
+        },
+    }
+
+
+def _write_missing_grade_quarantine_diagnostic(
+    live_root: Path,
+    *,
+    score_timestamp: datetime,
+    include_outcome_key: bool = False,
+    status_state: str = "SKIPPED_NO_NEW_CAPTURE",
+    report_time_offset: timedelta = timedelta(0),
+    normalization_failure_reason: str = (
+        "target_metadata_not_verified:missing_target_grade"
+    ),
+) -> dict[str, Path]:
+    status_time = score_timestamp - timedelta(minutes=1)
+    run_id = f"{status_time.strftime('%Y%m%dT%H%M%S%z')}_odds_capture"
+    status_dir = live_root / f"shadow_autopilot_daemonization_v1_{run_id}"
+    output_dir = live_root / f"shadow_autopilot_v1_{run_id}_autopilot"
+    status_dir.mkdir(parents=True)
+    output_dir.mkdir(parents=True)
+    status = _early_residual_index_payload(run_id, [])
+    status["status"] = status_state
+    status["plan"]["status"] = status_state
+    status["plan"]["blockers"] = (
+        ["residual_feature_handoff_not_pass"] if status_state == "BLOCKED" else []
+    )
+    status["plan"]["autopilot_output_dir"] = str(output_dir)
+    _write_json(status_dir / "early_residual_shadow_status.json", status)
+
+    race_url = (
+        "https://www.thedogs.com.au/racing/mandurah/2026-07-17/10/"
+        "auto-owls-bentley?trial=false"
+    )
+    report = {
+        "status": "METADATA_COVERAGE_INCOMPLETE",
+        "generated_at": (status_time + report_time_offset).isoformat(),
+        "selected_count": 1,
+        "selected_races": [
+            {
+                "date": "2026-07-17",
+                "race_id": "Race 10 - MAND - 2026-07-17",
+                "race_id_aliases": [
+                    "Race 10 - MAND - 2026-07-17",
+                    "Race 10 - MANDURAH - 2026-07-17",
+                ],
+                "race_number": "10",
+                "race_url": race_url,
+                "venue": "MAND",
+            }
+        ],
+        "downloads": [
+            {
+                "race_url": race_url,
+                "success": False,
+                "result": {
+                    "success": False,
+                    "normalization": {
+                        "normalization_status": "rejected",
+                        "normalization_failure_reason": normalization_failure_reason,
+                    },
+                },
+            }
+        ],
+        "quarantine_count": 1,
+        "no_snapshot_persist": True,
+        "no_odds_capture": True,
+        "no_result_ingest": True,
+        "no_label_write": True,
+        "no_retrain_or_promotion": True,
+    }
+    if include_outcome_key:
+        report["winner"] = "must-not-be-read"
+    report_path = output_dir / "odds_capture_refresh_report.json"
+    status_path = status_dir / "early_residual_shadow_status.json"
+    _write_json(report_path, report)
+    return {"status": status_path, "report": report_path}
+
+
+def _embedded_index_prediction(race_id: str) -> dict[str, object]:
+    return {
+        "activation": False,
+        "outcomes_present": False,
+        "persisted": True,
+        "persistence_status": "APPENDED",
+        "race_id": race_id,
+        "schema_version": "manual_market_form_residual_prediction_v2",
+        "source_contract": {
+            "database_access": False,
+            "feature_reconstruction_performed": False,
+            "feature_source": "exact_hash_bound_system_shadow_feature_rows",
+            "network_access": False,
+        },
+        "status": "MANUAL_PREJUMP_FROZEN_RESIDUAL_PREDICTION",
+        "variants": {"full_strength": 1.0, "half_strength": 0.5},
+    }
 
 
 def test_cli_prints_canonical_json_and_writes_nothing(tmp_path):
@@ -959,110 +1553,6 @@ def test_cli_prints_canonical_json_and_writes_nothing(tmp_path):
     assert after == before
 
 
-def test_cli_explicit_shadow_output_persists_v3_record(tmp_path):
-    paths = _write_fixture(tmp_path / "fixture")
-    race_id = _retime_for_cli(paths)
-    shadow_output = tmp_path / "market_form_residual_shadow_predictions_v3.jsonl"
-    command = [
-        sys.executable,
-        str(ROOT / "scripts/predict_market_form_residual.py"),
-        "--race-id",
-        race_id,
-        "--form-csv",
-        str(paths["form_csv"]),
-        "--feature-rows",
-        str(paths["feature_rows"]),
-        "--capture",
-        str(paths["capture"]),
-        "--append-shadow-output",
-        str(shadow_output),
-    ]
-
-    completed = subprocess.run(
-        command,
-        cwd=tmp_path,
-        check=False,
-        capture_output=True,
-    )
-
-    assert completed.returncode == 0, completed.stderr.decode("utf-8")
-    assert completed.stderr == b""
-    output = json.loads(completed.stdout)
-    assert completed.stdout == _canonical_bytes(output)
-    assert output["persisted"] is True
-    assert output["persistence_status"] == "APPENDED"
-    assert output["shadow_output_path"] == str(shadow_output.resolve())
-
-    replayed = subprocess.run(
-        command,
-        cwd=tmp_path,
-        check=False,
-        capture_output=True,
-    )
-    assert replayed.returncode == 0, replayed.stderr.decode("utf-8")
-    assert replayed.stderr == b""
-    replayed_output = json.loads(replayed.stdout)
-    assert replayed.stdout == _canonical_bytes(replayed_output)
-    assert replayed_output["persistence_status"] == "EXACT_REPLAY"
-    assert replayed_output["record_key"] == output["record_key"]
-    assert replayed_output["score_timestamp"] == output["score_timestamp"]
-
-    records = [json.loads(line) for line in shadow_output.read_bytes().splitlines()]
-    assert len(records) == 1
-    assert records[0]["schema_version"] == "market_form_residual_shadow_record_v3"
-    assert records[0]["race_id"] == race_id
-    assert records[0]["outcomes_present"] is False
-    assert records[0]["activation"] is False
-
-
-def test_cli_explicit_shadow_output_rejects_changed_input_as_conflict(tmp_path):
-    paths = _write_fixture(tmp_path / "fixture")
-    race_id = _retime_for_cli(paths)
-    shadow_output = tmp_path / "market_form_residual_shadow_predictions_v3.jsonl"
-    command = [
-        sys.executable,
-        str(ROOT / "scripts/predict_market_form_residual.py"),
-        "--race-id",
-        race_id,
-        "--form-csv",
-        str(paths["form_csv"]),
-        "--feature-rows",
-        str(paths["feature_rows"]),
-        "--capture",
-        str(paths["capture"]),
-        "--append-shadow-output",
-        str(shadow_output),
-    ]
-
-    first = subprocess.run(
-        command,
-        cwd=tmp_path,
-        check=False,
-        capture_output=True,
-    )
-    assert first.returncode == 0, first.stderr.decode("utf-8")
-    original = shadow_output.read_bytes()
-
-    capture = _json(paths["capture"])
-    assert isinstance(capture, dict)
-    capture["attempts"][0]["validation"]["accepted_rows"][0]["odds_decimal"] = 2.6
-    _write_json(paths["capture"], capture)
-
-    conflicting = subprocess.run(
-        command,
-        cwd=tmp_path,
-        check=False,
-        capture_output=True,
-    )
-    assert conflicting.returncode == 2
-    assert conflicting.stdout == b""
-    assert json.loads(conflicting.stderr) == {
-        "status": "BLOCKED_MANUAL_PREDICTION",
-        "reason": "conflicting_shadow_duplicate",
-    }
-    assert shadow_output.read_bytes() == original
-
-
 def test_race_first_cli_discovers_exact_packet_with_one_query_and_writes_nothing(
     tmp_path,
 ):
@@ -1099,6 +1589,1106 @@ def test_race_first_cli_discovers_exact_packet_with_one_query_and_writes_nothing
         if path.is_file()
     }
     assert after == before
+
+
+def test_race_first_uses_current_indexed_system_evidence_root_by_default(
+    tmp_path, monkeypatch, capfd
+):
+    live_root = tmp_path / "retained_evidence"
+    paths = _write_fixture(live_root / "sealed_packet")
+    race_id = _retime_for_cli(paths)
+    now = datetime.now(tz=MELBOURNE)
+    run_id = f"{now.strftime('%Y%m%dT%H%M%S%z')}_odds_capture"
+    status_dir = live_root / (f"shadow_autopilot_daemonization_v1_{run_id}")
+    status_dir.mkdir(parents=True)
+    _write_json(
+        status_dir / "early_residual_shadow_status.json",
+        _early_residual_index_payload(
+            run_id,
+            [
+                {
+                    "race_id": race_id,
+                    "form_csv_path": str(paths["form_csv"]),
+                    "sidecar_path": str(paths["sidecar"]),
+                    "feature_output_dir": str(paths["feature_rows"].parent),
+                    "capture_path": str(paths["capture"]),
+                }
+            ],
+        ),
+    )
+    local_root = tmp_path / "checkout_evidence"
+    local_root.mkdir()
+    monkeypatch.setattr(manual, "DEFAULT_EVIDENCE_ROOT", local_root)
+    monkeypatch.setattr(manual, "DEFAULT_RETAINED_EVIDENCE_ROOTS", (live_root,))
+    before = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in sorted(tmp_path.rglob("*"))
+        if path.is_file()
+    }
+
+    returncode = manual.main(["--race", "sundown r2"])
+
+    captured = capfd.readouterr()
+    assert returncode == 0, captured.err
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["race_id"] == race_id
+    after = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in sorted(tmp_path.rglob("*"))
+        if path.is_file()
+    }
+    assert after == before
+
+
+def test_current_system_evidence_index_rejects_path_escape(tmp_path):
+    live_root = tmp_path / "retained_evidence"
+    now = datetime.now(tz=MELBOURNE)
+    run_id = f"{now.strftime('%Y%m%dT%H%M%S%z')}_odds_capture"
+    status_dir = live_root / (f"shadow_autopilot_daemonization_v1_{run_id}")
+    status_dir.mkdir(parents=True)
+    escaped = tmp_path / "outside"
+    _write_json(
+        status_dir / "early_residual_shadow_status.json",
+        _early_residual_index_payload(
+            run_id,
+            [
+                {
+                    "race_id": RACE_ID,
+                    "form_csv_path": str(escaped / "race.csv"),
+                    "sidecar_path": str(escaped / "race.csv.metadata.json"),
+                    "feature_output_dir": str(escaped / "features"),
+                    "capture_path": str(escaped / "capture.json"),
+                }
+            ],
+        ),
+    )
+
+    with pytest.raises(
+        ManualPredictionError, match="early_residual_status_index_path_escape"
+    ):
+        manual._indexed_evidence_roots(live_root, score_timestamp=now)
+
+
+def test_current_system_evidence_index_rejects_symlinked_external_index(tmp_path):
+    live_root = tmp_path / "retained_evidence"
+    live_root.mkdir()
+    packet = _write_fixture(live_root / "sealed_packet")
+    now = datetime.now(tz=MELBOURNE)
+    run_id = f"{now.strftime('%Y%m%dT%H%M%S%z')}_odds_capture"
+    external_status_dir = tmp_path / "external_status"
+    external_status_dir.mkdir()
+    _write_json(
+        external_status_dir / "early_residual_shadow_status.json",
+        _early_residual_index_payload(
+            run_id,
+            [
+                {
+                    "race_id": RACE_ID,
+                    "form_csv_path": str(packet["form_csv"]),
+                    "sidecar_path": str(packet["sidecar"]),
+                    "feature_output_dir": str(packet["feature_rows"].parent),
+                    "capture_path": str(packet["capture"]),
+                }
+            ],
+        ),
+    )
+    (live_root / f"shadow_autopilot_daemonization_v1_{run_id}").symlink_to(
+        external_status_dir,
+        target_is_directory=True,
+    )
+
+    with pytest.raises(
+        ManualPredictionError, match="early_residual_status_index_path_escape"
+    ):
+        manual._indexed_evidence_roots(live_root, score_timestamp=now)
+
+
+@pytest.mark.parametrize(
+    ("status_schema", "plan_schema", "plan_run_id"),
+    [
+        ("wrong", "early_residual_shadow_prediction_plan_v1", "CURRENT"),
+        ("early_residual_shadow_prediction_status_v1", "wrong", "CURRENT"),
+        (
+            "early_residual_shadow_prediction_status_v1",
+            "early_residual_shadow_prediction_plan_v1",
+            "20200101T000000+1000_odds_capture",
+        ),
+    ],
+)
+def test_current_system_evidence_index_requires_exact_schema_and_run_binding(
+    status_schema, plan_schema, plan_run_id, tmp_path
+):
+    live_root = tmp_path / "retained_evidence"
+    now = datetime.now(tz=MELBOURNE)
+    run_id = f"{now.strftime('%Y%m%dT%H%M%S%z')}_odds_capture"
+    status_dir = live_root / f"shadow_autopilot_daemonization_v1_{run_id}"
+    status_dir.mkdir(parents=True)
+    payload = _early_residual_index_payload(run_id, [])
+    payload["schema_version"] = status_schema
+    payload["plan"]["schema_version"] = plan_schema
+    payload["plan"]["run_id"] = run_id if plan_run_id == "CURRENT" else plan_run_id
+    _write_json(
+        status_dir / "early_residual_shadow_status.json",
+        payload,
+    )
+
+    with pytest.raises(
+        ManualPredictionError,
+        match="early_residual_status_index_(schema|run_id)_mismatch",
+    ):
+        manual._indexed_evidence_roots(live_root, score_timestamp=now)
+
+
+@pytest.mark.parametrize(
+    "unsafe_case",
+    [
+        "plural_outcomes",
+        "plural_results",
+        "prefixed_outcomes",
+        "prefixed_results",
+        "camel_outcomes",
+        "winner_details",
+        "unsafe_outcomes_marker",
+        "actual_win_by_box",
+        "winning_dog",
+        "first_place_dog",
+        "positions",
+        "plan_blockers",
+        "read_write_db",
+        "early_lock_release",
+    ],
+)
+def test_current_system_evidence_index_rejects_unsafe_or_nonfinal_status(
+    unsafe_case, tmp_path
+):
+    live_root = tmp_path / "retained_evidence"
+    now = datetime.now(tz=MELBOURNE)
+    run_id = f"{now.strftime('%Y%m%dT%H%M%S%z')}_odds_capture"
+    status_dir = live_root / f"shadow_autopilot_daemonization_v1_{run_id}"
+    status_dir.mkdir(parents=True)
+    payload = _early_residual_index_payload(run_id, [])
+    if unsafe_case == "plural_outcomes":
+        payload["outcomes"] = []
+    elif unsafe_case == "plural_results":
+        payload["results"] = []
+    elif unsafe_case == "prefixed_outcomes":
+        payload["race_outcomes"] = []
+    elif unsafe_case == "prefixed_results":
+        payload["official_results"] = []
+    elif unsafe_case == "camel_outcomes":
+        payload["raceOutcomes"] = []
+    elif unsafe_case == "winner_details":
+        payload["winner_details"] = {}
+    elif unsafe_case == "unsafe_outcomes_marker":
+        payload["outcomes_present"] = True
+    elif unsafe_case == "actual_win_by_box":
+        payload["actualWinByBox"] = {}
+    elif unsafe_case == "winning_dog":
+        payload["winningDog"] = "synthetic"
+    elif unsafe_case == "first_place_dog":
+        payload["firstPlaceDog"] = "synthetic"
+    elif unsafe_case == "positions":
+        payload["positions"] = []
+    elif unsafe_case == "plan_blockers":
+        payload["plan"]["blockers"] = ["synthetic_blocker"]
+    elif unsafe_case == "read_write_db":
+        payload["plan"]["production_db_access"] = "sqlite_mode_rw"
+    elif unsafe_case == "early_lock_release":
+        payload["lock_release_preceded_stage_completion"] = True
+    _write_json(status_dir / "early_residual_shadow_status.json", payload)
+
+    with pytest.raises(
+        ManualPredictionError,
+        match="early_residual_status_index_(contains_outcome|unknown_field|unsafe)",
+    ):
+        manual._indexed_evidence_roots(live_root, score_timestamp=now)
+
+
+@pytest.mark.parametrize(
+    "unknown_location",
+    ["top", "plan", "plan_race", "status_race", "prediction"],
+)
+def test_current_system_evidence_index_rejects_unknown_nested_fields(
+    unknown_location, tmp_path
+):
+    live_root = tmp_path / "retained_evidence"
+    now = datetime.now(tz=MELBOURNE)
+    run_id = f"{now.strftime('%Y%m%dT%H%M%S%z')}_odds_capture"
+    status_dir = live_root / f"shadow_autopilot_daemonization_v1_{run_id}"
+    status_dir.mkdir(parents=True)
+    race = {
+        "race_id": RACE_ID,
+        "form_csv_path": str(live_root / "race.csv"),
+        "sidecar_path": str(live_root / "race.csv.metadata.json"),
+        "feature_output_dir": str(live_root / "features"),
+        "capture_path": str(live_root / "capture.json"),
+    }
+    payload = _early_residual_index_payload(run_id, [race])
+    if unknown_location == "top":
+        target = payload
+    elif unknown_location == "plan":
+        target = payload["plan"]
+    elif unknown_location == "plan_race":
+        target = payload["plan"]["races"][0]
+    elif unknown_location == "status_race":
+        target = payload["races"][0]
+    else:
+        payload["races"][0]["prediction"] = {}
+        target = payload["races"][0]["prediction"]
+    target["winningDog"] = "synthetic"
+    _write_json(status_dir / "early_residual_shadow_status.json", payload)
+
+    with pytest.raises(
+        ManualPredictionError, match="early_residual_status_index_unknown_field"
+    ):
+        manual._indexed_evidence_roots(live_root, score_timestamp=now)
+
+
+@pytest.mark.parametrize(
+    "unsafe_nested_prediction",
+    [
+        "activation",
+        "database_access",
+        "network_access",
+        "feature_reconstruction",
+        "race_id",
+        "strength",
+    ],
+)
+def test_current_system_evidence_index_rejects_unsafe_nested_prediction(
+    unsafe_nested_prediction, tmp_path
+):
+    live_root = tmp_path / "retained_evidence"
+    now = datetime.now(tz=MELBOURNE)
+    run_id = f"{now.strftime('%Y%m%dT%H%M%S%z')}_odds_capture"
+    status_dir = live_root / f"shadow_autopilot_daemonization_v1_{run_id}"
+    status_dir.mkdir(parents=True)
+    race = {
+        "race_id": RACE_ID,
+        "form_csv_path": str(live_root / "race.csv"),
+        "sidecar_path": str(live_root / "race.csv.metadata.json"),
+        "feature_output_dir": str(live_root / "features"),
+        "capture_path": str(live_root / "capture.json"),
+    }
+    payload = _early_residual_index_payload(run_id, [race])
+    prediction = _embedded_index_prediction(RACE_ID)
+    payload["races"][0]["prediction"] = prediction
+    if unsafe_nested_prediction == "activation":
+        prediction["activation"] = True
+    elif unsafe_nested_prediction == "database_access":
+        prediction["source_contract"]["database_access"] = True
+    elif unsafe_nested_prediction == "network_access":
+        prediction["source_contract"]["network_access"] = True
+    elif unsafe_nested_prediction == "feature_reconstruction":
+        prediction["source_contract"]["feature_reconstruction_performed"] = True
+    elif unsafe_nested_prediction == "race_id":
+        prediction["race_id"] = "Race 3 - SAN - 2026-07-16"
+    else:
+        prediction["variants"]["full_strength"] = 2.0
+    _write_json(status_dir / "early_residual_shadow_status.json", payload)
+
+    with pytest.raises(
+        ManualPredictionError, match="early_residual_status_index_unsafe"
+    ):
+        manual._indexed_evidence_roots(live_root, score_timestamp=now)
+
+
+@pytest.mark.parametrize("non_authority", ["plan_blocked", "missing_status", "skipped"])
+def test_current_system_evidence_index_skips_non_authoritative_status(
+    non_authority, tmp_path
+):
+    live_root = tmp_path / "retained_evidence"
+    now = datetime.now(tz=MELBOURNE)
+    run_id = f"{now.strftime('%Y%m%dT%H%M%S%z')}_odds_capture"
+    status_dir = live_root / f"shadow_autopilot_daemonization_v1_{run_id}"
+    status_dir.mkdir(parents=True)
+    payload = _early_residual_index_payload(run_id, [])
+    if non_authority == "plan_blocked":
+        payload["plan"]["status"] = "BLOCKED"
+    elif non_authority == "missing_status":
+        payload.pop("status")
+    else:
+        payload["status"] = "SKIPPED_NO_NEW_CAPTURE"
+        payload["plan"]["status"] = "SKIPPED_NO_NEW_CAPTURE"
+    _write_json(status_dir / "early_residual_shadow_status.json", payload)
+
+    assert manual._indexed_evidence_roots(live_root, score_timestamp=now) == []
+
+
+def test_current_system_evidence_index_rejects_outcome_key_on_skipped_status(tmp_path):
+    live_root = tmp_path / "retained_evidence"
+    now = datetime.now(tz=MELBOURNE)
+    run_id = f"{now.strftime('%Y%m%dT%H%M%S%z')}_odds_capture"
+    status_dir = live_root / f"shadow_autopilot_daemonization_v1_{run_id}"
+    status_dir.mkdir(parents=True)
+    payload = _early_residual_index_payload(run_id, [])
+    payload["status"] = "SKIPPED_NO_NEW_CAPTURE"
+    payload["plan"]["status"] = "SKIPPED_NO_NEW_CAPTURE"
+    payload["race_outcomes"] = []
+    _write_json(status_dir / "early_residual_shadow_status.json", payload)
+
+    with pytest.raises(
+        ManualPredictionError, match="early_residual_status_index_contains_outcome"
+    ):
+        manual._indexed_evidence_roots(live_root, score_timestamp=now)
+
+
+def test_race_first_reports_exact_missing_grade_quarantine_without_packet(tmp_path):
+    live_root = tmp_path / "retained_evidence"
+    packet_root = tmp_path / "packet_search"
+    packet_root.mkdir()
+    score_timestamp = datetime(2026, 7, 17, 23, 20, tzinfo=MELBOURNE)
+    _write_missing_grade_quarantine_diagnostic(
+        live_root,
+        score_timestamp=score_timestamp,
+    )
+
+    with pytest.raises(
+        ManualPredictionError,
+        match=r"^race_feature_packet_quarantined:missing_target_grade$",
+    ):
+        manual.discover_race_artifacts_with_diagnostics(
+            race_query="mandurah r10",
+            evidence_roots=[packet_root],
+            diagnostic_roots=[live_root],
+            score_timestamp=score_timestamp,
+        )
+
+    assert (
+        manual._indexed_evidence_roots(
+            live_root,
+            score_timestamp=score_timestamp,
+        )
+        == []
+    )
+
+
+def test_race_first_accepts_exact_blocked_refresh_authority_state(tmp_path):
+    live_root = tmp_path / "retained_evidence"
+    packet_root = tmp_path / "packet_search"
+    packet_root.mkdir()
+    score_timestamp = datetime(2026, 7, 17, 23, 20, tzinfo=MELBOURNE)
+    _write_missing_grade_quarantine_diagnostic(
+        live_root,
+        score_timestamp=score_timestamp,
+        status_state="BLOCKED",
+    )
+
+    with pytest.raises(
+        ManualPredictionError,
+        match=r"^race_feature_packet_quarantined:missing_target_grade$",
+    ):
+        manual.discover_race_artifacts_with_diagnostics(
+            race_query="mandurah r10",
+            evidence_roots=[packet_root],
+            diagnostic_roots=[live_root],
+            score_timestamp=score_timestamp,
+        )
+
+
+def test_race_first_rejects_report_copied_from_another_run(tmp_path):
+    live_root = tmp_path / "retained_evidence"
+    packet_root = tmp_path / "packet_search"
+    packet_root.mkdir()
+    score_timestamp = datetime(2026, 7, 17, 23, 20, tzinfo=MELBOURNE)
+    _write_missing_grade_quarantine_diagnostic(
+        live_root,
+        score_timestamp=score_timestamp,
+        report_time_offset=timedelta(seconds=-1),
+    )
+
+    with pytest.raises(
+        ManualPredictionError,
+        match="refresh_quarantine_report_run_time_mismatch",
+    ):
+        manual.discover_race_artifacts_with_diagnostics(
+            race_query="mandurah r10",
+            evidence_roots=[packet_root],
+            diagnostic_roots=[live_root],
+            score_timestamp=score_timestamp,
+        )
+
+
+def test_race_first_rejects_internally_inconsistent_report_identity(tmp_path):
+    live_root = tmp_path / "retained_evidence"
+    packet_root = tmp_path / "packet_search"
+    packet_root.mkdir()
+    score_timestamp = datetime(2026, 7, 17, 23, 20, tzinfo=MELBOURNE)
+    paths = _write_missing_grade_quarantine_diagnostic(
+        live_root,
+        score_timestamp=score_timestamp,
+    )
+    report = json.loads(paths["report"].read_text(encoding="utf-8"))
+    report["selected_races"][0]["venue"] = "CANN"
+    _write_json(paths["report"], report)
+
+    with pytest.raises(
+        ManualPredictionError,
+        match="refresh_quarantine_race_identity_mismatch",
+    ):
+        manual.discover_race_artifacts_with_diagnostics(
+            race_query="mandurah r10",
+            evidence_roots=[packet_root],
+            diagnostic_roots=[live_root],
+            score_timestamp=score_timestamp,
+        )
+
+
+@pytest.mark.parametrize(
+    "unsafe_url",
+    [
+        "https://attacker@www.thedogs.com.au/racing/mandurah/2026-07-17/10/test",
+        "https://form.thedogs.com.au/racing/mandurah/2026-07-17/10/test",
+        "https://www.thedogs.com.au/racing/mandurah/2026-7-17/10/test",
+        "https://www.thedogs.com.au/racing/mandurah/2026-07-17/10/results",
+        "https://www.thedogs.com.au/racing/mandurah/2026-07-17/10/test?winner=1",
+    ],
+)
+def test_refresh_quarantine_url_parser_rejects_noncanonical_urls(unsafe_url):
+    assert manual._normalized_thedogs_race_url(unsafe_url) is None
+
+
+def test_race_first_cli_prints_exact_missing_grade_quarantine_reason(
+    tmp_path,
+    monkeypatch,
+    capfd,
+):
+    live_root = tmp_path / "retained_evidence"
+    packet_root = tmp_path / "packet_search"
+    packet_root.mkdir()
+    score_timestamp = datetime(2026, 7, 17, 23, 20, tzinfo=MELBOURNE)
+    _write_missing_grade_quarantine_diagnostic(
+        live_root,
+        score_timestamp=score_timestamp,
+    )
+
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return score_timestamp if tz is None else score_timestamp.astimezone(tz)
+
+    monkeypatch.setattr(manual, "datetime", FixedDateTime)
+    monkeypatch.setattr(manual, "DEFAULT_EVIDENCE_ROOT", packet_root)
+    monkeypatch.setattr(manual, "DEFAULT_RETAINED_EVIDENCE_ROOTS", (live_root,))
+
+    returncode = manual.main(["--race", "mandurah r10"])
+
+    captured = capfd.readouterr()
+    assert returncode == 2
+    assert captured.out == ""
+    assert json.loads(captured.err) == {
+        "reason": "race_feature_packet_quarantined:missing_target_grade",
+        "status": "BLOCKED_MANUAL_PREDICTION",
+    }
+
+
+def test_race_first_quarantine_diagnostic_rejects_outcome_bearing_report(tmp_path):
+    live_root = tmp_path / "retained_evidence"
+    packet_root = tmp_path / "packet_search"
+    packet_root.mkdir()
+    score_timestamp = datetime(2026, 7, 17, 23, 20, tzinfo=MELBOURNE)
+    _write_missing_grade_quarantine_diagnostic(
+        live_root,
+        score_timestamp=score_timestamp,
+        include_outcome_key=True,
+    )
+
+    with pytest.raises(
+        ManualPredictionError,
+        match="refresh_quarantine_report_contains_outcome",
+    ):
+        manual.discover_race_artifacts_with_diagnostics(
+            race_query="mandurah r10",
+            evidence_roots=[packet_root],
+            diagnostic_roots=[live_root],
+            score_timestamp=score_timestamp,
+        )
+
+
+def test_race_first_does_not_surface_unrecognized_quarantine_reason(tmp_path):
+    live_root = tmp_path / "retained_evidence"
+    packet_root = tmp_path / "packet_search"
+    packet_root.mkdir()
+    score_timestamp = datetime(2026, 7, 17, 23, 20, tzinfo=MELBOURNE)
+    _write_missing_grade_quarantine_diagnostic(
+        live_root,
+        score_timestamp=score_timestamp,
+        normalization_failure_reason="raw_exception:do-not-expose",
+    )
+
+    with pytest.raises(ManualPredictionError, match="race_feature_packet_not_found"):
+        manual.discover_race_artifacts_with_diagnostics(
+            race_query="mandurah r10",
+            evidence_roots=[packet_root],
+            diagnostic_roots=[live_root],
+            score_timestamp=score_timestamp,
+        )
+
+
+def test_current_system_evidence_index_skips_empty_index_before_usable_index(tmp_path):
+    live_root = tmp_path / "retained_evidence"
+    paths = _write_fixture(live_root / "sealed_packet")
+    now = datetime.now(tz=MELBOURNE).replace(microsecond=0)
+    skipped_time = now - timedelta(minutes=1)
+    skipped_run_id = f"{skipped_time.strftime('%Y%m%dT%H%M%S%z')}_odds_capture"
+    skipped_dir = live_root / (f"shadow_autopilot_daemonization_v1_{skipped_run_id}")
+    skipped_dir.mkdir(parents=True)
+    skipped = _early_residual_index_payload(skipped_run_id, [])
+    skipped["status"] = "SKIPPED_NO_NEW_CAPTURE"
+    skipped["plan"]["status"] = "SKIPPED_NO_NEW_CAPTURE"
+    _write_json(skipped_dir / "early_residual_shadow_status.json", skipped)
+
+    run_id = f"{now.strftime('%Y%m%dT%H%M%S%z')}_odds_capture"
+    ready_dir = live_root / f"shadow_autopilot_daemonization_v1_{run_id}"
+    ready_dir.mkdir(parents=True)
+    ready = _early_residual_index_payload(
+        run_id,
+        [
+            {
+                "race_id": RACE_ID,
+                "form_csv_path": str(paths["form_csv"]),
+                "sidecar_path": str(paths["sidecar"]),
+                "feature_output_dir": str(paths["feature_rows"].parent),
+                "capture_path": str(paths["capture"]),
+            }
+        ],
+    )
+    _write_json(ready_dir / "early_residual_shadow_status.json", ready)
+
+    roots = manual._indexed_evidence_roots(live_root, score_timestamp=now)
+
+    assert set(roots) == {
+        paths["form_csv"].parent.resolve(),
+        paths["feature_rows"].parent.resolve(),
+        paths["capture"].parent.resolve(),
+    }
+
+
+def test_current_system_evidence_index_accepts_finalized_blocked_status_with_packet(
+    tmp_path,
+):
+    live_root = tmp_path / "retained_evidence"
+    paths = _write_fixture(live_root / "sealed_packet")
+    now = datetime.now(tz=MELBOURNE)
+    run_id = f"{now.strftime('%Y%m%dT%H%M%S%z')}_odds_capture"
+    status_dir = live_root / f"shadow_autopilot_daemonization_v1_{run_id}"
+    status_dir.mkdir(parents=True)
+    missing = live_root / "blocked_packet"
+    races = [
+        {
+            "race_id": RACE_ID,
+            "form_csv_path": str(paths["form_csv"]),
+            "sidecar_path": str(paths["sidecar"]),
+            "feature_output_dir": str(paths["feature_rows"].parent),
+            "capture_path": str(paths["capture"]),
+        },
+        {
+            "race_id": "Race 3 - SAN - 2026-07-16",
+            "form_csv_path": str(missing / "race.csv"),
+            "sidecar_path": str(missing / "race.csv.metadata.json"),
+            "feature_output_dir": str(missing / "features"),
+            "capture_path": str(missing / "capture.json"),
+        },
+    ]
+    payload = _early_residual_index_payload(run_id, races)
+    payload["status"] = "BLOCKED"
+    payload["appended_count"] = 1
+    payload["blocked_count"] = 1
+    payload["races"] = [
+        {"race_id": races[0]["race_id"], "status": "APPENDED"},
+        {"race_id": races[1]["race_id"], "status": "BLOCKED"},
+    ]
+    _write_json(status_dir / "early_residual_shadow_status.json", payload)
+
+    roots = manual._indexed_evidence_roots(live_root, score_timestamp=now)
+
+    assert set(roots) == {
+        paths["form_csv"].parent.resolve(),
+        paths["feature_rows"].parent.resolve(),
+        paths["capture"].parent.resolve(),
+    }
+
+
+@pytest.mark.parametrize("identity_case", ["mismatch", "duplicate"])
+def test_current_system_evidence_index_binds_unique_status_race_ids(
+    identity_case, tmp_path
+):
+    live_root = tmp_path / "retained_evidence"
+    now = datetime.now(tz=MELBOURNE)
+    run_id = f"{now.strftime('%Y%m%dT%H%M%S%z')}_odds_capture"
+    status_dir = live_root / f"shadow_autopilot_daemonization_v1_{run_id}"
+    status_dir.mkdir(parents=True)
+    races = [
+        {
+            "race_id": RACE_ID,
+            "form_csv_path": str(live_root / "one.csv"),
+            "sidecar_path": str(live_root / "one.csv.metadata.json"),
+            "feature_output_dir": str(live_root / "one_features"),
+            "capture_path": str(live_root / "one_capture.json"),
+        },
+        {
+            "race_id": "Race 3 - SAN - 2026-07-16",
+            "form_csv_path": str(live_root / "two.csv"),
+            "sidecar_path": str(live_root / "two.csv.metadata.json"),
+            "feature_output_dir": str(live_root / "two_features"),
+            "capture_path": str(live_root / "two_capture.json"),
+        },
+    ]
+    payload = _early_residual_index_payload(run_id, races)
+    if identity_case == "mismatch":
+        payload["races"][1]["race_id"] = "Race 4 - SAN - 2026-07-16"
+    else:
+        payload["races"][1]["race_id"] = RACE_ID
+    _write_json(status_dir / "early_residual_shadow_status.json", payload)
+
+    with pytest.raises(
+        ManualPredictionError, match="early_residual_status_index_races_invalid"
+    ):
+        manual._indexed_evidence_roots(live_root, score_timestamp=now)
+
+
+def test_stale_system_evidence_index_is_not_discovery_authority(tmp_path):
+    live_root = tmp_path / "retained_evidence"
+    now = datetime.now(tz=MELBOURNE)
+    stale = now - timedelta(hours=37)
+    status_dir = live_root / (
+        "shadow_autopilot_daemonization_v1_"
+        f"{stale.strftime('%Y%m%dT%H%M%S%z')}_odds_capture"
+    )
+    status_dir.mkdir(parents=True)
+    _write_json(
+        status_dir / "early_residual_shadow_status.json",
+        {"winner": "synthetic-outcome-that-must-not-be-read"},
+    )
+
+    assert manual._indexed_evidence_roots(live_root, score_timestamp=now) == []
+
+
+def test_race_first_cli_accepts_canonical_hyphenated_venue(tmp_path):
+    paths = _write_fixture(tmp_path)
+    baseline_race_id = _retime_for_cli(paths)
+    baseline = _score_paths(
+        paths,
+        race_id=baseline_race_id,
+        score_timestamp=datetime.now(MELBOURNE),
+    )
+    race_id = _retarget_fixture_contract(
+        paths,
+        venue="LADBROKES-Q1-LAKESIDE",
+        venue_slug="ladbrokes-q1-lakeside",
+        sidecar_grade="Grade 5",
+        feature_grade="Grade 5",
+    )
+    before = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in sorted(tmp_path.rglob("*"))
+        if path.is_file()
+    }
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/predict_market_form_residual.py"),
+            "--race",
+            "q1 lakeside r2",
+            "--evidence-root",
+            str(tmp_path),
+        ],
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr.decode("utf-8")
+    assert completed.stderr == b""
+    payload = json.loads(completed.stdout)
+    assert payload["race_id"] == race_id
+    assert payload["predictions"] == baseline["predictions"]
+    assert paths["form_csv"].name == f"{race_id}.csv"
+    assert paths["sidecar"].name == f"{race_id}.csv.metadata.json"
+    assert completed.stdout == _canonical_bytes(payload)
+    for key in ("market", "half", "full"):
+        assert payload["probability_sums"][key] == pytest.approx(1.0)
+    after = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in sorted(tmp_path.rglob("*"))
+        if path.is_file()
+    }
+    assert after == before
+
+
+def test_explicit_scorer_accepts_restricted_grade_alias_without_prediction_change(
+    tmp_path,
+):
+    paths = _write_fixture(tmp_path)
+    baseline = _score_paths(paths)
+    race_id = _retarget_fixture_contract(
+        paths,
+        venue="SAN",
+        venue_slug="sandown",
+        sidecar_grade="Restricted",
+        feature_grade="Restricted Win",
+    )
+
+    aliased = _score_paths(paths, race_id=race_id)
+
+    assert aliased["predictions"] == baseline["predictions"]
+    assert aliased["probability_sums"] == baseline["probability_sums"]
+
+
+@pytest.mark.parametrize(
+    ("sidecar_grade", "feature_grade"),
+    [
+        ("RW", "R/W"),
+        ("FFA", "Free For All"),
+        ("INVITATIONAL", "Invitation"),
+        ("Restricted Win Final", "Restricted Win"),
+        ("Tier 3 - Grade 5", "Grade 5"),
+        ("5th Grade", "Grade 5"),
+    ],
+)
+def test_accepts_finite_generator_grade_alias_equivalence(
+    sidecar_grade, feature_grade, tmp_path
+):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    _set_exact_sidecar_grade(sidecar, sidecar_grade)
+    _write_json(paths["sidecar"], sidecar)
+
+    def set_feature_grade(rows, _manifest):
+        for row in rows:
+            row["target_grade_safe"] = feature_grade
+
+    _reseal(paths, set_feature_grade)
+
+    payload = _score_paths(paths)
+    for key in ("market", "half", "full"):
+        assert payload["probability_sums"][key] == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize(
+    "grade",
+    [
+        "Mystery Grade",
+        "Restricted nonsense",
+        "Mystery Grade 5",
+        "Grade 5 garbage",
+        "not Maiden at all",
+        "PM 390m",
+        "Other 515m",
+        "1th Grade",
+        "Grade 999",
+        "G999",
+        "P999",
+        "Group 999",
+        "99-100 Win",
+        "M999",
+        "NG999-999",
+        "NG14",
+        "M",
+        "1st/8th Grade",
+        "8th/1st Grade",
+        "8th/8th Grade",
+        "1st/1st Grade",
+        "2nd/7th Grade",
+    ],
+)
+def test_rejects_unknown_sidecar_grade(grade, tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["prejump_shadow_metadata"]["grade"] = grade
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="target_grade_invalid"):
+        _score_paths(paths)
+
+
+def test_rejects_unknown_feature_grade(tmp_path):
+    paths = _write_fixture(tmp_path)
+
+    def add_unknown_grade(rows, _manifest):
+        for row in rows:
+            row["target_grade_safe"] = "Grade 5 garbage"
+
+    _reseal(paths, add_unknown_grade)
+
+    with pytest.raises(ManualPredictionError, match="feature_row_target_grade_invalid"):
+        _score_paths(paths)
+
+
+@pytest.mark.parametrize(
+    "grade",
+    [
+        "5",
+        "FFA",
+        "NP",
+        "INVITATIONAL",
+        "Restricted Win Heat",
+        "Restricted Win Final",
+        "Tier 3 - Grade 5",
+        "Mixed 4/5",
+        "Mixed 5/6",
+        "BT8",
+        "J/M",
+        "I",
+        "TG1-4W",
+        "TG1-6W",
+        "TG5+W",
+        "MI4/5MA",
+        "5/M",
+    ],
+)
+def test_accepts_exact_generator_grade_contract(grade):
+    assert manual._canonical_target_grade(grade) is not None
+
+
+@pytest.mark.parametrize(
+    "grade",
+    [
+        "3rd/4th Grade",
+        "4th Grade",
+        "4th/5th Grade",
+        "5th Grade",
+        "5th/6th Grade",
+        "6th Grade",
+        "Best 8",
+        "Free For All",
+        "Grade 4",
+        "Grade 5",
+        "Grade 6",
+        "Grade 7",
+        "Invitation",
+        "M1/M2/M3",
+        "M3",
+        "M5",
+        "Maiden",
+        "Masters",
+        "Mixed",
+        "N/P",
+        "NG1-4",
+        "Open",
+        "Other",
+        "P5",
+        "R/W",
+        "Restricted",
+    ],
+)
+def test_accepts_current_system_grade_vocabulary(grade):
+    assert manual._canonical_target_grade(grade) is not None
+
+
+@pytest.mark.parametrize("grade", ["Restricted/Win", "Restricted-Win"])
+def test_rejects_undeclared_restricted_aliases(grade):
+    assert manual._canonical_target_grade(grade) is None
+
+
+@pytest.mark.parametrize(
+    "grade",
+    [
+        "M",
+        "1st/8th Grade",
+        "8th/1st Grade",
+        "8th/8th Grade",
+        "1st/1st Grade",
+        "2nd/7th Grade",
+    ],
+)
+def test_rejects_ambiguous_or_undeclared_ordinal_grade_aliases(grade):
+    assert manual._canonical_target_grade(grade) is None
+
+
+def test_finite_grade_alias_contract_is_immutable():
+    with pytest.raises(TypeError):
+        manual.GRADE_ALIASES["GRADE 999"] = "GRADE 5"
+
+
+@pytest.mark.parametrize("grade", [["Grade 5"], {"grade": "Grade 5"}, 5])
+def test_rejects_non_string_sidecar_grade(grade, tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["prejump_shadow_metadata"]["grade"] = grade
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="target_grade_invalid"):
+        _score_paths(paths)
+
+
+def test_rejects_falsey_non_string_primary_grade_instead_of_falling_back(tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["prejump_shadow_metadata"]["grade"] = False
+    sidecar["race_info"]["grade"] = "Grade 5"
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="target_grade_invalid"):
+        _score_paths(paths)
+
+
+def test_rejects_conflicting_sidecar_grade_aliases(tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["race_info"]["grade"] = "Grade 4"
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="target_grade_alias_mismatch"):
+        _score_paths(paths)
+
+
+@pytest.mark.parametrize("grade", [["Grade 5"], {"grade": "Grade 5"}, 5])
+def test_rejects_non_string_feature_grade(grade, tmp_path):
+    paths = _write_fixture(tmp_path)
+
+    def set_feature_grade(rows, _manifest):
+        for row in rows:
+            row["target_grade_safe"] = grade
+
+    _reseal(paths, set_feature_grade)
+
+    with pytest.raises(ManualPredictionError, match="feature_row_target_grade_invalid"):
+        _score_paths(paths)
+
+
+@pytest.mark.parametrize(
+    ("sidecar_grade", "feature_grade"),
+    [
+        ("Group 1", "Group 2"),
+        ("Grade 4", "Grade 5"),
+        ("Mixed 4/5", "Mixed 5/6"),
+        ("4th/5th Grade", "Mixed 4/5"),
+    ],
+)
+def test_rejects_distinct_known_grade_contracts(sidecar_grade, feature_grade, tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    _set_exact_sidecar_grade(sidecar, sidecar_grade)
+    _write_json(paths["sidecar"], sidecar)
+
+    def set_feature_grade(rows, _manifest):
+        for row in rows:
+            row["target_grade_safe"] = feature_grade
+
+    _reseal(paths, set_feature_grade)
+
+    with pytest.raises(
+        ManualPredictionError, match="feature_row_target_grade_mismatch"
+    ):
+        _score_paths(paths)
+
+
+def test_rejects_genuinely_different_known_grades(tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    _set_exact_sidecar_grade(sidecar, "Restricted")
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(
+        ManualPredictionError, match="feature_row_target_grade_mismatch"
+    ):
+        _score_paths(paths)
+
+
+@pytest.mark.parametrize(
+    "venue",
+    [
+        "-SAN",
+        "SAN-",
+        "SAN--PARK",
+        "SAN/PARK",
+        "SAN PARK",
+        "SAN\nPARK",
+    ],
+)
+def test_rejects_malformed_canonical_venue(venue, tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["prejump_shadow_metadata"]["venue"] = venue
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="target_venue_invalid"):
+        _score_paths(paths)
+
+
+def test_rejects_falsey_non_string_primary_venue_instead_of_falling_back(tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["prejump_shadow_metadata"]["venue"] = False
+    sidecar["race_info"]["venue"] = "SAN"
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="target_venue_invalid"):
+        _score_paths(paths)
+
+
+def test_rejects_conflicting_sidecar_venue_aliases(tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["race_info"]["venue"] = "HEA"
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="target_venue_alias_mismatch"):
+        _score_paths(paths)
+
+
+@pytest.mark.parametrize(
+    ("url", "race_id", "expected"),
+    [
+        (
+            "https://www.sportsbet.com.au/greyhound-racing/australia-nz/"
+            "ladbrokes-q1-lakeside/race-7-123",
+            "Race 7 - LADBROKES-Q1-LAKESIDE - 2026-07-17",
+            True,
+        ),
+        (
+            "https://www.sportsbet.com.au/greyhound-racing/australia-nz/"
+            "ladbrokes-q1-lakeside/race-8-123",
+            "Race 7 - LADBROKES-Q1-LAKESIDE - 2026-07-17",
+            False,
+        ),
+        (
+            "https://www.sportsbet.com.au/greyhound-racing/australia-nz/"
+            "ladbrokes-q1-lakeside/race-7-123",
+            "Race 7 - LADBROKES--Q1 - 2026-07-17",
+            False,
+        ),
+        (
+            "https://www.sportsbet.com.au/greyhound-racing/australia-nz/"
+            "ladbrokes-q1-lakeside/race-7-123",
+            "Race 7 - -LADBROKES - 2026-07-17",
+            False,
+        ),
+        (
+            "https://www.sportsbet.com.au/greyhound-racing/australia-nz/"
+            "ladbrokes-q1-lakeside/race-7-123",
+            "Race 7 - LADBROKES- - 2026-07-17",
+            False,
+        ),
+        (
+            "https://www.sportsbet.com.au/greyhound-racing/australia-nz/"
+            "ladbrokes-q1-lakeside/results/race-7-123",
+            "Race 7 - LADBROKES-Q1-LAKESIDE - 2026-07-17",
+            False,
+        ),
+        (
+            "https://www.sportsbet.com.au/greyhound-racing/australia-nz/"
+            "ladbrokes-q1-lakeside/dividends/race-7-123",
+            "Race 7 - LADBROKES-Q1-LAKESIDE - 2026-07-17",
+            False,
+        ),
+    ],
+)
+def test_sportsbet_url_validator_binds_hyphenated_venue_race_id(url, race_id, expected):
+    assert manual._trusted_sportsbet_url(url, race_id) is expected
 
 
 def test_race_first_discovery_fails_closed_on_equal_latest_capture_reports(tmp_path):

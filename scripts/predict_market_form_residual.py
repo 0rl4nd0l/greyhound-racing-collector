@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.11,<3.14"
+# dependencies = ["numpy==1.26.4"]
+# ///
 """Score one race from exact sealed system features and strict pre-jump odds.
 
 The command reads already-materialized artifacts and prints canonical JSON to
-stdout. An explicit ``--append-shadow-output`` path may also persist the same
-outcome-free frozen record to one append-only JSONL. It has no database,
-network, feature-generation, service, activation, deployment, promotion, EV,
-or betting path.
+stdout. It has no database, network, feature-generation, output-file, service,
+activation, deployment, promotion, EV, or betting path.
 """
 
 from __future__ import annotations
@@ -17,8 +19,9 @@ import json
 import math
 import re
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Mapping, Sequence
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
@@ -32,66 +35,69 @@ if ROOT_TEXT not in sys.path:
 
 from src.predictor.market_form_residual import (  # noqa: E402
     DEFAULT_ARTIFACT_DIR,
+    EFFECTIVE_STATE_SCHEMA,
     FEATURES,
-    SHADOW_RECORD_SCHEMA,
-    FrozenResidualModel,
+    NUMERICAL_CANONICALIZATION_CONTRACT,
     ResidualContractError,
+    SHADOW_RECORD_SCHEMA,
     _runner_set_sha256,
-    append_shadow_record,
     load_frozen_model,
     score_race,
+)
+from config.venue_mapping import normalize_venue  # noqa: E402
+from utils.csv_metadata import (  # noqa: E402
+    THEDOGS_MEETING_CARD_GRADE_SOURCE,
+    canonical_thedogs_meeting_card_url,
+    canonical_thedogs_race_identity,
+    canonical_thedogs_venue_identity,
+    normalize_exact_target_grade,
+    target_grade_equivalence_key,
 )
 
 
 MELBOURNE = ZoneInfo("Australia/Melbourne")
 ALLOWED_BOX_SOURCES = {"explicit_dom", "runner_text"}
-OUTCOME_KEYS = {
-    "actual_win",
-    "actual_winner",
-    "db_finish_position",
-    "db_result_position",
-    "db_scraped_finish_position",
-    "dividend",
-    "finish",
-    "finish_position",
-    "finishing_position",
-    "future_position",
-    "future_result",
-    "future_time",
-    "individual_time",
-    "is_placer",
-    "is_winner",
-    "margin",
-    "mgn",
-    "official_finish_position",
-    "official_position",
-    "official_result",
-    "official_result_status",
-    "official_winner",
-    "outcome",
-    "payout",
-    "place",
-    "placing",
-    "plc",
-    "position",
-    "race_time_result",
-    "result",
-    "result_position",
-    "result_status",
-    "results",
-    "results_status",
-    "scraped_finish_position",
-    "scraped_raw_result",
-    "starting_price",
-    "target_finish_position",
-    "time",
-    "win_time",
-    "winner",
-    "winner_margin",
-    "winner_name",
-    "winner_odds",
-    "winning_time",
-}
+OUTCOME_KEYS = frozenset(
+    {
+        "actual_win",
+        "finish_position",
+        "official_result",
+        "outcome",
+        "placing",
+        "result",
+        "winner",
+        "winner_name",
+        "winner_odds",
+    }
+)
+INDEX_OUTCOME_KEYS = OUTCOME_KEYS | frozenset(
+    {
+        "actual_wins",
+        "finish_positions",
+        "official_results",
+        "outcomes",
+        "placings",
+        "results",
+        "winners",
+        "winner_names",
+        "winner_odds_values",
+    }
+)
+INDEX_OUTCOME_TOKENS = frozenset(
+    {
+        "finish",
+        "finishes",
+        "outcome",
+        "outcomes",
+        "placing",
+        "placings",
+        "result",
+        "results",
+        "winner",
+        "winners",
+    }
+)
+INDEX_FALSE_OUTCOME_MARKERS = frozenset({"outcomes_present", "outcomes_read"})
 POST_RACE_URL_TOKENS = {
     "result",
     "results",
@@ -103,18 +109,6 @@ POST_RACE_URL_TOKENS = {
 SIDECAR_SCHEMA = "form_guide_download_provenance_v1"
 FEATURE_MANIFEST_SCHEMA = "shadow_live_scoring_manifest_v1"
 IMPLEMENTATION_MANIFEST_SCHEMA = "shadow_implementation_file_manifest_v1"
-FEATURE_GENERATOR_BRANCH = "codex/greyhound-resource-isolation-20260716"
-FEATURE_GENERATOR_HEAD = "aa35fa70fc49"
-LEGACY_FEATURE_ROWS_SHA256 = (
-    "0ebecaf980665545aa8c19d1a4b1ef976bd069049d42f7f6ebde0f3b29a36b62"
-)
-LEGACY_IMPLEMENTATION_MANIFEST_SHA256 = (
-    "9822a77a4d69a72c8b7b2e7d234538b6207b99530b3b717fb9cb31f64929a651"
-)
-LEGACY_FEATURE_GENERATOR_FILES = [
-    "scripts/run_shadow_non_tgr_rf_evaluation.py",
-    "tests/test_run_shadow_non_tgr_rf_evaluation.py",
-]
 FEATURE_GENERATOR_FILES = [
     "scripts/run_shadow_non_tgr_rf_evaluation.py",
     "scripts/run_feature_recovery_execution_v1.py",
@@ -133,14 +127,270 @@ CAPTURE_REPORT_SCHEMAS = {
 }
 CAPTURE_ATTEMPT_SCHEMA = "autonomous_live_odds_capture_attempt_v1"
 CAPTURE_VALIDATION_SCHEMA = "autonomous_live_odds_capture_validation_v1"
-OUTPUT_SCHEMA = "manual_market_form_residual_prediction_v2"
+OUTPUT_SCHEMA = "manual_market_form_residual_prediction_v3"
+INDEX_PREDICTION_SCHEMA = "manual_market_form_residual_prediction_v2"
 DEFAULT_EVIDENCE_ROOT = ROOT / "artifacts/full_evidence_orchestration_20260525"
-VENUE_URL_ALIASES = {
-    "MAND": {"mand", "mandurah"},
-    "SAN": {"san", "sandown", "sandown-park"},
-    "SHEP": {"shep", "shepparton"},
-    "WPK": {"wpk", "wentworth-park"},
-}
+DEFAULT_RETAINED_EVIDENCE_ROOTS = (
+    ROOT.parent
+    / "greyhound-autonomous-accuracy-odds-v1-20260610"
+    / "artifacts/full_evidence_orchestration_20260525",
+)
+DEFAULT_INDEX_MAX_AGE = timedelta(hours=36)
+EARLY_RESIDUAL_STATUS_GLOB = (
+    "shadow_autopilot_daemonization_v1_*/early_residual_shadow_status.json"
+)
+REFRESH_REPORT_FILENAME = "odds_capture_refresh_report.json"
+MAX_REFRESH_REPORT_RUN_LAG = timedelta(minutes=5)
+DIAGNOSTIC_VENUE_CODE_OVERRIDES = MappingProxyType(
+    {
+        "ALBION": "ALBION",
+        "ALBIONPARK": "ALBION",
+        "ANGLEPARK": "APK",
+        "AP": "ALBION",
+        "APK": "APK",
+        "GOSF": "GOSF",
+        "GOSFORD": "GOSF",
+        "MOUNT": "MOUNT",
+        "MOUNTGAMBIER": "MOUNT",
+        "MTG": "MOUNT",
+        "TARE": "TAREE",
+        "TAREE": "TAREE",
+    }
+)
+REFRESH_QUARANTINE_REASONS = MappingProxyType(
+    {
+        "target_metadata_not_verified:missing_target_grade": "missing_target_grade",
+    }
+)
+EARLY_RESIDUAL_STATUS_SCHEMA = "early_residual_shadow_prediction_status_v1"
+EARLY_RESIDUAL_PLAN_SCHEMA = "early_residual_shadow_prediction_plan_v1"
+EARLY_RESIDUAL_STATUS_KEYS = frozenset(
+    {
+        "activation",
+        "appended_count",
+        "blocked_count",
+        "exact_replay_count",
+        "lock_release_preceded_stage_completion",
+        "outcomes_read",
+        "plan",
+        "race_count",
+        "races",
+        "schema_version",
+        "status",
+    }
+)
+EARLY_RESIDUAL_PLAN_KEYS = frozenset(
+    {
+        "activation",
+        "autopilot_output_dir",
+        "blockers",
+        "outcomes_read",
+        "production_db_access",
+        "race_count",
+        "races",
+        "run_id",
+        "schema_version",
+        "shadow_output_path",
+        "status",
+    }
+)
+EARLY_RESIDUAL_PLAN_RACE_KEYS = frozenset(
+    {
+        "capture_path",
+        "feature_command",
+        "feature_model_path",
+        "feature_output_dir",
+        "form_csv_path",
+        "race_id",
+        "score_command",
+        "sidecar_path",
+    }
+)
+EARLY_RESIDUAL_STATUS_RACE_KEYS = frozenset(
+    {"blocker", "feature_step", "prediction", "race_id", "score_step", "status"}
+)
+EARLY_RESIDUAL_STEP_KEYS = frozenset(
+    {
+        "command",
+        "cwd",
+        "duration_seconds",
+        "finished_at",
+        "name",
+        "returncode",
+        "started_at",
+        "status",
+        "stderr_path",
+        "stdout_path",
+        "timed_out",
+        "timeout_deadline_at",
+        "timeout_seconds",
+    }
+)
+EARLY_RESIDUAL_PREDICTION_KEYS = frozenset(
+    {
+        "activation",
+        "feature_freeze_timestamp",
+        "feature_manifest_generated_at",
+        "input_hashes",
+        "jump_timestamp",
+        "manifest_sha256",
+        "metadata_capture_timestamp",
+        "model_sha256",
+        "odds_append_timestamp",
+        "odds_capture_timestamp",
+        "outcomes_present",
+        "persisted",
+        "persistence_status",
+        "predictions",
+        "probability_sums",
+        "race_id",
+        "record_key",
+        "runner_set_sha256",
+        "schema_version",
+        "score_timestamp",
+        "shadow_output_path",
+        "source_contract",
+        "status",
+        "variants",
+    }
+)
+EARLY_RESIDUAL_INPUT_HASH_KEYS = frozenset(
+    {
+        "capture_artifact_sha256",
+        "feature_manifest_sha256",
+        "feature_rows_sha256",
+        "feature_source_sha256",
+        "form_csv_sha256",
+        "implementation_manifest_sha256",
+        "odds_source_sha256",
+        "selected_attempt_sha256",
+        "sidecar_sha256",
+    }
+)
+EARLY_RESIDUAL_RUNNER_PREDICTION_KEYS = frozenset(
+    {
+        "box",
+        "dog",
+        "full_minus_market",
+        "full_probability",
+        "half_probability",
+        "market_probability",
+        "rank",
+        "win_odds",
+    }
+)
+EARLY_RESIDUAL_PROBABILITY_SUM_KEYS = frozenset({"full", "half", "market"})
+EARLY_RESIDUAL_SOURCE_CONTRACT_KEYS = frozenset(
+    {
+        "database_access",
+        "feature_reconstruction_performed",
+        "feature_source",
+        "network_access",
+    }
+)
+EARLY_RESIDUAL_VARIANT_KEYS = frozenset({"full_strength", "half_strength"})
+VENUE_CODE_PATTERN = r"[A-Z0-9_]+(?:-[A-Z0-9_]+)*"
+FORBIDDEN_EVIDENCE_PATH_MARKERS = frozenset({"form_only_v1", "pr51"})
+# Finite union of the exact GRADE_MAP and GRADE_VOCAB_MAP contracts, their
+# canonical values, and source-observed exact labels covered by the scorer
+# tests. Bare ``M`` is intentionally absent because the source contracts
+# disagree on whether it means Maiden or Mixed.
+GRADE_ALIASES = MappingProxyType(
+    {
+        "1": "GRADE 1",
+        "1ST GRADE": "GRADE 1",
+        "2": "GRADE 2",
+        "2/3": "MIXED 2/3",
+        "2/3/4": "MIXED 2/3/4",
+        "2ND GRADE": "GRADE 2",
+        "3": "GRADE 3",
+        "3/4": "MIXED 3/4",
+        "3/4/5": "MIXED 3/4/5",
+        "3RD GRADE": "GRADE 3",
+        "3RD/4TH GRADE": "3RD/4TH GRADE",
+        "4": "GRADE 4",
+        "4/5": "MIXED 4/5",
+        "4TH GRADE": "GRADE 4",
+        "4TH/5TH GRADE": "4TH/5TH GRADE",
+        "5": "GRADE 5",
+        "5/6": "MIXED 5/6",
+        "5/M": "5/M",
+        "5TH GRADE": "GRADE 5",
+        "5TH/6TH GRADE": "5TH/6TH GRADE",
+        "6": "GRADE 6",
+        "6TH GRADE": "GRADE 6",
+        "7": "GRADE 7",
+        "7TH GRADE": "GRADE 7",
+        "8": "GRADE 8",
+        "BEST 8": "BEST 8",
+        "BT8": "BT8",
+        "FFA": "FREE FOR ALL",
+        "FREE FOR ALL": "FREE FOR ALL",
+        "GRADE 1": "GRADE 1",
+        "GRADE 2": "GRADE 2",
+        "GRADE 3": "GRADE 3",
+        "GRADE 4": "GRADE 4",
+        "GRADE 5": "GRADE 5",
+        "GRADE 6": "GRADE 6",
+        "GRADE 7": "GRADE 7",
+        "GRADE 8": "GRADE 8",
+        "GROUP 1": "GROUP 1",
+        "GROUP 2": "GROUP 2",
+        "GROUP 3": "GROUP 3",
+        "I": "I",
+        "INV": "INVITATION",
+        "INVITATION": "INVITATION",
+        "INVITATIONAL": "INVITATION",
+        "J/M": "J/M",
+        "M1/M2/M3": "M1/M2/M3",
+        "M2/M3": "M2/M3",
+        "M3": "M3",
+        "M4/M5": "M4/M5",
+        "M5": "M5",
+        "M6": "M6",
+        "MAIDEN": "MAIDEN",
+        "MASTERS": "MASTERS",
+        "MDN": "MAIDEN",
+        "MI4/5MA": "MI4/5MA",
+        "MIXED": "MIXED",
+        "MIXED 2/3": "MIXED 2/3",
+        "MIXED 2/3/4": "MIXED 2/3/4",
+        "MIXED 3/4": "MIXED 3/4",
+        "MIXED 3/4/5": "MIXED 3/4/5",
+        "MIXED 4/5": "MIXED 4/5",
+        "MIXED 5/6": "MIXED 5/6",
+        "MIXED 6/7": "MIXED 6/7",
+        "MX": "MIXED",
+        "N/P": "N/P",
+        "NG": "NON GRADED",
+        "NG1-4": "NG1-4",
+        "NON GRADED": "NON GRADED",
+        "NOV": "NOVICE",
+        "NOVICE": "NOVICE",
+        "NP": "N/P",
+        "OPEN": "OPEN",
+        "OTHER": "OTHER",
+        "P5": "P5",
+        "PM": "PM",
+        "R/W": "R/W",
+        "RESTRICTED": "RESTRICTED WIN",
+        "RESTRICTED WIN": "RESTRICTED WIN",
+        "RESTRICTED WIN FINAL": "RESTRICTED WIN",
+        "RESTRICTED WIN HEAT": "RESTRICTED WIN",
+        "RW": "R/W",
+        "S/E": "SPECIAL EVENT",
+        "SE": "SPECIAL EVENT",
+        "SPECIAL EVENT": "SPECIAL EVENT",
+        "TG1-4W": "TG1-4W",
+        "TG1-6W": "TG1-6W",
+        "TG5+W": "TG5+W",
+        "TIER 3 - GRADE 5": "GRADE 5",
+        "TIER 3 - GRADE 6": "GRADE 6",
+        "TIER 3 - GRADE 7": "GRADE 7",
+        "TIER 3 - MAIDEN": "MAIDEN",
+        "TIER 3 - RESTRICTED WIN": "RESTRICTED WIN",
+    }
+)
 
 
 class ManualPredictionError(RuntimeError):
@@ -174,48 +424,6 @@ def _read_input(path: Path, label: str) -> tuple[bytes, str]:
     return raw, _sha256_bytes(raw)
 
 
-def _existing_replay_score_timestamp(
-    path: Path, identity: Mapping[str, str]
-) -> datetime | None:
-    """Return one prior score time as a hint for writer-validated exact replay."""
-
-    try:
-        raw = path.read_bytes()
-    except FileNotFoundError:
-        return None
-    except OSError as exc:
-        raise ManualPredictionError("shadow_output_unreadable") from exc
-    if not raw:
-        return None
-    try:
-        lines = raw.decode("utf-8").splitlines()
-    except UnicodeDecodeError as exc:
-        raise ManualPredictionError("shadow_output_invalid_utf8") from exc
-    matches = []
-    for line_number, line in enumerate(lines, start=1):
-        if not line.strip():
-            raise ManualPredictionError(f"shadow_output_blank_line:{line_number}")
-        try:
-            row = json.loads(line)
-        except json.JSONDecodeError as exc:
-            raise ManualPredictionError(
-                f"shadow_output_invalid_json:{line_number}"
-            ) from exc
-        if not isinstance(row, Mapping):
-            raise ManualPredictionError(f"shadow_output_row_not_object:{line_number}")
-        if row.get("schema_version") == SHADOW_RECORD_SCHEMA and all(
-            row.get(key) == value for key, value in identity.items()
-        ):
-            matches.append(row)
-    if len(matches) > 1:
-        raise ManualPredictionError("shadow_output_replay_identity_ambiguous")
-    if not matches:
-        return None
-    return _parse_timestamp(
-        matches[0].get("score_timestamp"), "shadow_replay_score_timestamp"
-    )
-
-
 def _json_value(raw: bytes, label: str) -> Any:
     try:
         return json.loads(raw.decode("utf-8"))
@@ -234,15 +442,181 @@ def _runner_token(value: Any) -> str:
     return re.sub(r"[^A-Z0-9]", "", str(value or "").upper())
 
 
-def _contains_outcome_key(value: Any) -> bool:
+def _canonical_target_grade(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    return GRADE_ALIASES.get(value.strip().upper())
+
+
+def _contains_outcome_key(
+    value: Any,
+    forbidden_keys: frozenset[str] = OUTCOME_KEYS,
+) -> bool:
     if isinstance(value, Mapping):
         return any(
-            str(key).strip().lower() in OUTCOME_KEYS or _contains_outcome_key(item)
+            str(key).strip().lower() in forbidden_keys
+            or _contains_outcome_key(item, forbidden_keys)
             for key, item in value.items()
         )
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
-        return any(_contains_outcome_key(item) for item in value)
+        return any(_contains_outcome_key(item, forbidden_keys) for item in value)
     return False
+
+
+def _normalized_index_key(value: Any) -> str:
+    raw_key = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", str(value).strip())
+    return re.sub(r"[^a-z0-9]+", "_", raw_key.lower()).strip("_")
+
+
+def _index_key_is_outcome(value: Any) -> bool:
+    key = _normalized_index_key(value)
+    tokens = frozenset(token for token in key.split("_") if token)
+    return key in INDEX_OUTCOME_KEYS or bool(tokens & INDEX_OUTCOME_TOKENS)
+
+
+def _contains_index_outcome_key(value: Any) -> bool:
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            normalized_key = _normalized_index_key(key)
+            if normalized_key in INDEX_FALSE_OUTCOME_MARKERS and item is False:
+                continue
+            if _index_key_is_outcome(key) or _contains_index_outcome_key(item):
+                return True
+        return False
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        return any(_contains_index_outcome_key(item) for item in value)
+    return False
+
+
+def _require_index_keys(
+    value: Any,
+    allowed_keys: frozenset[str],
+) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ManualPredictionError("early_residual_status_index_shape_invalid")
+    if set(value) - allowed_keys:
+        raise ManualPredictionError("early_residual_status_index_unknown_field")
+    return value
+
+
+def _require_index_scalar_values(
+    value: Mapping[str, Any],
+    *,
+    excluded_keys: frozenset[str] = frozenset(),
+) -> None:
+    if any(
+        isinstance(item, (Mapping, list))
+        for key, item in value.items()
+        if key not in excluded_keys
+    ):
+        raise ManualPredictionError("early_residual_status_index_shape_invalid")
+
+
+def _require_index_string_list(value: Any) -> None:
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ManualPredictionError("early_residual_status_index_shape_invalid")
+
+
+def _validate_index_step(value: Any) -> None:
+    if value is None:
+        return
+    step = _require_index_keys(value, EARLY_RESIDUAL_STEP_KEYS)
+    if "command" in step:
+        _require_index_string_list(step["command"])
+    _require_index_scalar_values(step, excluded_keys=frozenset({"command"}))
+
+
+def _validate_index_prediction(value: Any, *, expected_race_id: Any) -> None:
+    if value is None:
+        return
+    prediction = _require_index_keys(value, EARLY_RESIDUAL_PREDICTION_KEYS)
+    nested_mappings = {
+        "input_hashes": EARLY_RESIDUAL_INPUT_HASH_KEYS,
+        "probability_sums": EARLY_RESIDUAL_PROBABILITY_SUM_KEYS,
+        "source_contract": EARLY_RESIDUAL_SOURCE_CONTRACT_KEYS,
+        "variants": EARLY_RESIDUAL_VARIANT_KEYS,
+    }
+    for key, allowed_keys in nested_mappings.items():
+        if key not in prediction:
+            continue
+        nested = _require_index_keys(prediction[key], allowed_keys)
+        _require_index_scalar_values(nested)
+    if "predictions" in prediction:
+        rows = prediction["predictions"]
+        if not isinstance(rows, list):
+            raise ManualPredictionError("early_residual_status_index_shape_invalid")
+        for row in rows:
+            runner = _require_index_keys(row, EARLY_RESIDUAL_RUNNER_PREDICTION_KEYS)
+            _require_index_scalar_values(runner)
+    _require_index_scalar_values(
+        prediction,
+        excluded_keys=frozenset({*nested_mappings, "predictions"}),
+    )
+    source_contract = prediction.get("source_contract")
+    variants = prediction.get("variants")
+    if (
+        prediction.get("activation") is not False
+        or prediction.get("outcomes_present") is not False
+        or prediction.get("persisted") is not True
+        or prediction.get("persistence_status") not in {"APPENDED", "EXACT_REPLAY"}
+        or prediction.get("schema_version") != INDEX_PREDICTION_SCHEMA
+        or prediction.get("status") != "MANUAL_PREJUMP_FROZEN_RESIDUAL_PREDICTION"
+        or not isinstance(expected_race_id, str)
+        or prediction.get("race_id") != expected_race_id
+        or not isinstance(source_contract, Mapping)
+        or source_contract.get("database_access") is not False
+        or source_contract.get("network_access") is not False
+        or source_contract.get("feature_reconstruction_performed") is not False
+        or source_contract.get("feature_source")
+        != "exact_hash_bound_system_shadow_feature_rows"
+        or not isinstance(variants, Mapping)
+        or type(variants.get("full_strength")) not in {int, float}
+        or type(variants.get("half_strength")) not in {int, float}
+        or float(variants["full_strength"]) != 1.0
+        or float(variants["half_strength"]) != 0.5
+    ):
+        raise ManualPredictionError("early_residual_status_index_unsafe")
+
+
+def _validate_index_authority_shape(status: Mapping[str, Any]) -> None:
+    _require_index_keys(status, EARLY_RESIDUAL_STATUS_KEYS)
+    plan = _require_index_keys(status.get("plan"), EARLY_RESIDUAL_PLAN_KEYS)
+    if "blockers" in plan:
+        _require_index_string_list(plan["blockers"])
+    plan_races = plan.get("races")
+    if not isinstance(plan_races, list):
+        raise ManualPredictionError("early_residual_status_index_shape_invalid")
+    for value in plan_races:
+        race = _require_index_keys(value, EARLY_RESIDUAL_PLAN_RACE_KEYS)
+        for key in ("feature_command", "score_command"):
+            if key in race:
+                _require_index_string_list(race[key])
+        _require_index_scalar_values(
+            race,
+            excluded_keys=frozenset({"feature_command", "score_command"}),
+        )
+    status_races = status.get("races")
+    if not isinstance(status_races, list):
+        raise ManualPredictionError("early_residual_status_index_shape_invalid")
+    for value in status_races:
+        race = _require_index_keys(value, EARLY_RESIDUAL_STATUS_RACE_KEYS)
+        _validate_index_step(race.get("feature_step"))
+        _validate_index_step(race.get("score_step"))
+        _validate_index_prediction(
+            race.get("prediction"), expected_race_id=race.get("race_id")
+        )
+        _require_index_scalar_values(
+            race,
+            excluded_keys=frozenset({"feature_step", "score_step", "prediction"}),
+        )
+    _require_index_scalar_values(
+        plan,
+        excluded_keys=frozenset({"blockers", "races"}),
+    )
+    _require_index_scalar_values(
+        status,
+        excluded_keys=frozenset({"plan", "races"}),
+    )
 
 
 def _parse_timestamp(value: Any, label: str) -> datetime:
@@ -331,6 +705,210 @@ def _path_in_roots(path: Path, roots: Sequence[Path]) -> bool:
     return False
 
 
+def _path_in_forbidden_pr51_domain(path: Path) -> bool:
+    """Keep PR 51 FORM_ONLY_V1 acquisition and sealed domains isolated."""
+
+    return any(
+        any(marker in part.lower() for marker in FORBIDDEN_EVIDENCE_PATH_MARKERS)
+        for part in path.resolve().parts
+    )
+
+
+def _require_non_pr51_artifact_paths(paths: Sequence[Path]) -> None:
+    if any(_path_in_forbidden_pr51_domain(path) for path in paths):
+        raise ManualPredictionError("pr51_form_only_v1_evidence_forbidden")
+
+
+def _indexed_evidence_roots(
+    evidence_root: Path,
+    *,
+    score_timestamp: datetime,
+) -> list[Path]:
+    """Resolve current sealed packet directories from outcome-free status indexes."""
+
+    if score_timestamp.tzinfo is None or score_timestamp.utcoffset() is None:
+        raise ManualPredictionError("score_timestamp_timezone_missing")
+    root = evidence_root.resolve()
+    if not root.is_dir():
+        return []
+    score_time = score_timestamp.astimezone(MELBOURNE)
+    oldest_allowed = score_time - DEFAULT_INDEX_MAX_AGE
+    indexed_roots: set[Path] = set()
+    for status_path in sorted(root.glob(EARLY_RESIDUAL_STATUS_GLOB)):
+        timestamp_match = re.fullmatch(
+            r"shadow_autopilot_daemonization_v1_"
+            r"(\d{8}T\d{6}[+-]\d{4})_odds_capture",
+            status_path.parent.name,
+        )
+        if timestamp_match is None:
+            continue
+        try:
+            status_time = datetime.strptime(
+                timestamp_match.group(1), "%Y%m%dT%H%M%S%z"
+            ).astimezone(MELBOURNE)
+        except ValueError:
+            continue
+        if status_time < oldest_allowed or status_time > score_time:
+            continue
+        try:
+            status_relative = status_path.relative_to(root)
+        except ValueError:
+            raise ManualPredictionError(
+                "early_residual_status_index_path_escape"
+            ) from None
+        status_cursor = root
+        for part in status_relative.parts:
+            status_cursor = status_cursor / part
+            if status_cursor.is_symlink():
+                raise ManualPredictionError("early_residual_status_index_path_escape")
+        try:
+            resolved_status_path = status_path.resolve(strict=True)
+        except OSError:
+            raise ManualPredictionError(
+                "early_residual_status_index_unreadable"
+            ) from None
+        if not _path_in_roots(resolved_status_path, [root]):
+            raise ManualPredictionError("early_residual_status_index_path_escape")
+        status_raw, _ = _read_input(resolved_status_path, "early_residual_status_index")
+        status = _json_object(status_raw, "early_residual_status_index")
+        if _contains_index_outcome_key(status):
+            raise ManualPredictionError("early_residual_status_index_contains_outcome")
+        plan = status.get("plan")
+        if (
+            not isinstance(plan, Mapping)
+            or status.get("status") not in {"PASS", "BLOCKED"}
+            or plan.get("status") != "READY"
+        ):
+            continue
+        _validate_index_authority_shape(status)
+        if (
+            status.get("activation") is not False
+            or status.get("outcomes_read") is not False
+            or status.get("lock_release_preceded_stage_completion") is not False
+            or plan.get("activation") is not False
+            or plan.get("outcomes_read") is not False
+            or plan.get("blockers") != []
+            or plan.get("production_db_access") != "sqlite_mode_ro_feature_history_only"
+        ):
+            raise ManualPredictionError("early_residual_status_index_unsafe")
+        if (
+            status.get("schema_version") != EARLY_RESIDUAL_STATUS_SCHEMA
+            or plan.get("schema_version") != EARLY_RESIDUAL_PLAN_SCHEMA
+        ):
+            raise ManualPredictionError("early_residual_status_index_schema_mismatch")
+        expected_run_id = f"{timestamp_match.group(1)}_odds_capture"
+        if plan.get("run_id") != expected_run_id:
+            raise ManualPredictionError("early_residual_status_index_run_id_mismatch")
+        races = plan.get("races")
+        if not isinstance(races, list):
+            raise ManualPredictionError("early_residual_status_index_races_invalid")
+        if (
+            type(status.get("race_count")) is not int
+            or type(plan.get("race_count")) is not int
+            or status.get("race_count") != len(races)
+            or plan.get("race_count") != len(races)
+        ):
+            raise ManualPredictionError("early_residual_status_index_races_invalid")
+        status_races = status.get("races")
+        if not isinstance(status_races, list) or len(status_races) != len(races):
+            raise ManualPredictionError("early_residual_status_index_races_invalid")
+        if not all(
+            isinstance(race, Mapping) and isinstance(race.get("race_id"), str)
+            for race in races
+        ) or not all(
+            isinstance(race, Mapping)
+            and isinstance(race.get("race_id"), str)
+            and race.get("status") in {"APPENDED", "BLOCKED", "EXACT_REPLAY"}
+            for race in status_races
+        ):
+            raise ManualPredictionError("early_residual_status_index_races_invalid")
+        plan_race_ids = [str(race["race_id"]).strip() for race in races]
+        status_race_ids = [str(race["race_id"]).strip() for race in status_races]
+        if (
+            any(not race_id for race_id in plan_race_ids)
+            or status_race_ids != plan_race_ids
+            or len(set(plan_race_ids)) != len(plan_race_ids)
+        ):
+            raise ManualPredictionError("early_residual_status_index_races_invalid")
+        observed_counts = {
+            "APPENDED": sum(race["status"] == "APPENDED" for race in status_races),
+            "BLOCKED": sum(race["status"] == "BLOCKED" for race in status_races),
+            "EXACT_REPLAY": sum(
+                race["status"] == "EXACT_REPLAY" for race in status_races
+            ),
+        }
+        declared_counts = (
+            status.get("appended_count"),
+            status.get("blocked_count"),
+            status.get("exact_replay_count"),
+        )
+        if (
+            any(type(value) is not int or value < 0 for value in declared_counts)
+            or status.get("appended_count") != observed_counts["APPENDED"]
+            or status.get("blocked_count") != observed_counts["BLOCKED"]
+            or status.get("exact_replay_count") != observed_counts["EXACT_REPLAY"]
+            or (status.get("status") == "PASS" and observed_counts["BLOCKED"] != 0)
+            or (status.get("status") == "BLOCKED" and observed_counts["BLOCKED"] == 0)
+        ):
+            raise ManualPredictionError("early_residual_status_index_unsafe")
+        for race in races:
+            if not isinstance(race, Mapping):
+                raise ManualPredictionError("early_residual_status_index_race_invalid")
+            try:
+                form_csv_path = Path(race["form_csv_path"]).resolve()
+                sidecar_path = Path(race["sidecar_path"]).resolve()
+                feature_output_dir = Path(race["feature_output_dir"]).resolve()
+                capture_path = Path(race["capture_path"]).resolve()
+            except (KeyError, TypeError):
+                raise ManualPredictionError(
+                    "early_residual_status_index_paths_invalid"
+                ) from None
+            indexed_paths = (
+                form_csv_path,
+                sidecar_path,
+                feature_output_dir,
+                capture_path,
+            )
+            if not all(_path_in_roots(path, [root]) for path in indexed_paths):
+                raise ManualPredictionError("early_residual_status_index_path_escape")
+            if sidecar_path != form_csv_path.with_name(
+                form_csv_path.name + ".metadata.json"
+            ):
+                raise ManualPredictionError(
+                    "early_residual_status_index_sidecar_mismatch"
+                )
+            feature_files = (
+                feature_output_dir / "shadow_feature_rows.json",
+                feature_output_dir / "shadow_manifest.json",
+                feature_output_dir / "implementation_file_manifest.json",
+            )
+            if not (
+                form_csv_path.is_file()
+                and sidecar_path.is_file()
+                and capture_path.is_file()
+                and all(path.is_file() for path in feature_files)
+            ):
+                continue
+            indexed_roots.update(
+                {form_csv_path.parent, feature_output_dir, capture_path.parent}
+            )
+    return sorted(indexed_roots)
+
+
+def _default_race_first_evidence_roots(score_timestamp: datetime) -> list[Path]:
+    roots: set[Path] = set()
+    if DEFAULT_EVIDENCE_ROOT.is_dir():
+        roots.add(DEFAULT_EVIDENCE_ROOT.resolve())
+    for retained_root in DEFAULT_RETAINED_EVIDENCE_ROOTS:
+        roots.update(
+            _indexed_evidence_roots(
+                retained_root,
+                score_timestamp=score_timestamp,
+            )
+        )
+    return sorted(roots)
+
+
 def _integer(value: Any, label: str, *, minimum: int = 0) -> int:
     if isinstance(value, bool):
         raise ManualPredictionError(f"{label}_invalid")
@@ -385,88 +963,37 @@ def _trusted_thedogs_url(value: Any) -> bool:
     if parsed is None:
         return False
     hostname = (parsed.hostname or "").lower()
-    try:
-        port = parsed.port
-    except ValueError:
-        return False
     return bool(
         parsed.scheme == "https"
-        and hostname == "www.thedogs.com.au"
-        and parsed.username is None
-        and parsed.password is None
-        and port in (None, 443)
-        and re.fullmatch(
-            r"/racing/[a-z0-9]+(?:-[a-z0-9]+)*/\d{4}-\d{2}-\d{2}/\d{1,2}/[a-z0-9]+(?:-[a-z0-9]+)*/?",
-            parsed.path.lower(),
-        )
+        and (hostname == "thedogs.com.au" or hostname.endswith(".thedogs.com.au"))
+        and parsed.path.lower().startswith("/racing/")
         and not (tokens & POST_RACE_URL_TOKENS)
     )
 
 
-def _venue_url_aliases(venue: str) -> set[str]:
-    normalized = str(venue or "").strip().lower().replace("_", "-")
-    aliases = {normalized}
-    aliases.update(VENUE_URL_ALIASES.get(str(venue or "").strip().upper(), set()))
-    return aliases
-
-
-def _trusted_sportsbet_url(value: Any, race_id: str, expected_venue: str) -> bool:
+def _trusted_sportsbet_url(value: Any, race_id: str) -> bool:
     parsed, tokens = _url_tokens(value)
     if parsed is None:
         return False
     hostname = (parsed.hostname or "").lower()
-    try:
-        port = parsed.port
-    except ValueError:
-        return False
-    if (
-        parsed.scheme != "https"
-        or hostname != "www.sportsbet.com.au"
-        or parsed.username is not None
-        or parsed.password is not None
-        or port not in (None, 443)
+    if parsed.scheme != "https" or not (
+        hostname == "sportsbet.com.au" or hostname.endswith(".sportsbet.com.au")
     ):
         return False
     if tokens & POST_RACE_URL_TOKENS:
         return False
     path_match = re.fullmatch(
-        r"/(?:betting/)?greyhound-racing/australia-nz/([a-z0-9]+(?:-[a-z0-9]+)*)/race-(\d+)(?:-\d+)?/?",
-        parsed.path.lower(),
+        r"/greyhound-racing/.+/race-(\d+)-\d+/?", parsed.path.lower()
     )
     race_match = re.fullmatch(
-        r"Race (\d+) - [A-Z0-9_]+(?:-[A-Z0-9_]+)* - \d{4}-\d{2}-\d{2}", race_id
+        rf"Race (\d+) - {VENUE_CODE_PATTERN} - \d{{4}}-\d{{2}}-\d{{2}}",
+        race_id,
     )
     return bool(
         path_match
         and race_match
-        and path_match.group(1) in _venue_url_aliases(expected_venue)
-        and int(path_match.group(2)) == int(race_match.group(1))
+        and int(path_match.group(1)) == int(race_match.group(1))
     )
-
-
-def _canonical_target_grade(value: Any) -> str | None:
-    text = re.sub(r"\s+", " ", str(value or "").strip())
-    grade_match = re.fullmatch(r"Grade\s+([1-7])", text, flags=re.IGNORECASE)
-    if grade_match is None:
-        grade_match = re.fullmatch(
-            r"([1-7])(?:st|nd|rd|th)(?:\s+Grade)?",
-            text,
-            flags=re.IGNORECASE,
-        )
-    if grade_match:
-        return f"GRADE{grade_match.group(1)}"
-    exact = {
-        "MAIDEN": "MAIDEN",
-        "NOVICE": "NOVICE",
-        "OPEN": "OPEN",
-        "MIXED": "MIXED",
-        "RESTRICTED": "RESTRICTED",
-        "FREE FOR ALL": "FFA",
-        "FFA": "FFA",
-        "NO GRADE": "NO_GRADE",
-        "NON GRADED": "NO_GRADE",
-    }
-    return exact.get(text.upper())
 
 
 def _distance_metres(value: Any) -> float:
@@ -479,26 +1006,127 @@ def _distance_metres(value: Any) -> float:
     return parsed
 
 
-def _jump_timestamp(sidecar: Mapping[str, Any]) -> datetime:
+def _agreed_race_date(shadow: Mapping[str, Any], race_info: Mapping[str, Any]) -> date:
+    if "race_date" not in shadow or "date" not in race_info:
+        raise ManualPredictionError("target_race_date_missing")
+    shadow_date = _parse_date(shadow["race_date"], "target_race_date")
+    race_info_date = _parse_date(race_info["date"], "target_race_date")
+    if shadow_date != race_info_date:
+        raise ManualPredictionError("target_race_date_mismatch")
+    return shadow_date
+
+
+def _agreed_race_number(shadow: Mapping[str, Any], race_info: Mapping[str, Any]) -> int:
+    if "race_number" not in shadow or "race_number" not in race_info:
+        raise ManualPredictionError("target_race_number_missing")
+    shadow_number = _integer(shadow["race_number"], "target_race_number", minimum=1)
+    race_info_number = _integer(
+        race_info["race_number"], "target_race_number", minimum=1
+    )
+    if shadow_number != race_info_number:
+        raise ManualPredictionError("target_race_number_mismatch")
+    return shadow_number
+
+
+def _agreed_distance(shadow: Mapping[str, Any], race_info: Mapping[str, Any]) -> float:
+    if "distance" not in shadow or "distance" not in race_info:
+        raise ManualPredictionError("target_distance_missing")
+    shadow_distance = _distance_metres(shadow["distance"])
+    race_info_distance = _distance_metres(race_info["distance"])
+    if shadow_distance != race_info_distance:
+        raise ManualPredictionError("target_distance_mismatch")
+    return shadow_distance
+
+
+def _jump_timestamp(sidecar: Mapping[str, Any], race_date: date) -> datetime:
     shadow = sidecar.get("prejump_shadow_metadata")
     race_info = sidecar.get("race_info")
     if not isinstance(shadow, Mapping):
         raise ManualPredictionError("prejump_shadow_metadata_missing")
     race_info = race_info if isinstance(race_info, Mapping) else {}
-    explicit = shadow.get("jump_datetime") or sidecar.get("jump_datetime")
-    if explicit:
-        return _parse_timestamp(explicit, "jump_timestamp")
-    race_date = _parse_date(
-        shadow.get("race_date") or race_info.get("date"), "target_race_date"
-    )
-    raw_time = str(shadow.get("jump_time") or race_info.get("race_time") or "").strip()
-    for fmt in ("%I:%M %p", "%I:%M%p", "%H:%M"):
-        try:
-            parsed_time = datetime.strptime(raw_time.upper(), fmt).time()
-            return datetime.combine(race_date, parsed_time, tzinfo=MELBOURNE)
-        except ValueError:
+    supplied_datetime_timestamps = []
+    for mapping in (shadow, sidecar):
+        if "jump_datetime" in mapping:
+            value = mapping["jump_datetime"]
+            if (
+                value is None
+                or isinstance(value, bool)
+                or not isinstance(value, str)
+                or not value.strip()
+            ):
+                raise ManualPredictionError("jump_timestamp_invalid")
+            supplied_datetime_timestamps.append(
+                _parse_timestamp(value, "jump_timestamp").timestamp()
+            )
+
+    supplied_time_timestamps = []
+    for mapping, key in ((shadow, "jump_time"), (race_info, "race_time")):
+        if key not in mapping:
             continue
-    raise ManualPredictionError("jump_time_invalid")
+        value = mapping[key]
+        if (
+            value is None
+            or isinstance(value, bool)
+            or not isinstance(value, str)
+            or not value.strip()
+        ):
+            raise ManualPredictionError("jump_time_invalid")
+        for fmt in ("%I:%M %p", "%I:%M%p", "%H:%M", "%H:%M:%S"):
+            try:
+                parsed_time = datetime.strptime(value.strip().upper(), fmt).time()
+                supplied_time_timestamps.append(
+                    datetime.combine(
+                        race_date, parsed_time, tzinfo=MELBOURNE
+                    ).timestamp()
+                )
+                break
+            except ValueError:
+                continue
+        else:
+            raise ManualPredictionError("jump_time_invalid")
+
+    supplied = supplied_datetime_timestamps + supplied_time_timestamps
+    if not supplied:
+        raise ManualPredictionError("jump_time_invalid")
+    if any(value != supplied[0] for value in supplied[1:]):
+        raise ManualPredictionError("jump_timestamp_mismatch")
+    timezone = ZoneInfo("UTC") if supplied_datetime_timestamps else MELBOURNE
+    return datetime.fromtimestamp(supplied[0], tz=timezone)
+
+
+def _agreed_sidecar_value(sidecar: Mapping[str, Any], key: str) -> Any:
+    race_info = sidecar.get("race_info")
+    race_info = race_info if isinstance(race_info, Mapping) else {}
+    values = []
+    for mapping in (sidecar, race_info):
+        if key not in mapping:
+            continue
+        value = mapping[key]
+        if (
+            value is None
+            or isinstance(value, bool)
+            or (isinstance(value, str) and not value.strip())
+        ):
+            raise ManualPredictionError(f"sidecar_{key}_invalid")
+        if (key.endswith("url") or key.endswith("source_url")) and not isinstance(
+            value, str
+        ):
+            raise ManualPredictionError(f"sidecar_{key}_invalid")
+        values.append(value)
+    if not values:
+        raise ManualPredictionError(f"sidecar_{key}_missing")
+    if key.endswith("url") or key.endswith("source_url"):
+        canonical = [
+            canonical_thedogs_race_identity(value)["canonical_url"]
+            if canonical_thedogs_race_identity(value)
+            else str(value).strip()
+            for value in values
+        ]
+        if any(value != canonical[0] for value in canonical[1:]):
+            raise ManualPredictionError(f"sidecar_{key}_mismatch")
+    elif any(value != values[0] for value in values[1:]):
+        raise ManualPredictionError(f"sidecar_{key}_mismatch")
+    return values[0]
 
 
 def _sidecar_context(sidecar: Mapping[str, Any]) -> dict[str, Any]:
@@ -518,20 +1146,38 @@ def _sidecar_context(sidecar: Mapping[str, Any]) -> dict[str, Any]:
         raise ManualPredictionError("sidecar_metadata_not_leakage_safe")
     race_info = sidecar.get("race_info")
     race_info = race_info if isinstance(race_info, Mapping) else {}
-    source_urls = [
-        str(value).strip()
-        for value in (
-            shadow.get("source_url"),
-            sidecar.get("race_url"),
-            race_info.get("url"),
-        )
-        if str(value or "").strip()
+    source_urls = []
+    for mapping, key in (
+        (shadow, "source_url"),
+        (sidecar, "race_url"),
+        (race_info, "url"),
+    ):
+        if key not in mapping:
+            continue
+        value = mapping[key]
+        if (
+            value is None
+            or isinstance(value, bool)
+            or not isinstance(value, str)
+            or not value.strip()
+        ):
+            raise ManualPredictionError("sidecar_source_url_alias_invalid")
+        source_urls.append(value.strip())
+    if any(not _trusted_thedogs_url(value) for value in source_urls):
+        if len(set(source_urls)) == 1:
+            raise ManualPredictionError("sidecar_source_url_not_trusted_thedogs")
+        raise ManualPredictionError("sidecar_source_url_alias_mismatch")
+    source_identities = [
+        canonical_thedogs_race_identity(value) for value in source_urls
     ]
-    if not source_urls or len(set(source_urls)) != 1:
+    if not source_urls or any(identity is None for identity in source_identities):
+        raise ManualPredictionError("sidecar_source_url_alias_mismatch")
+    if len({identity["canonical_url"] for identity in source_identities}) != 1:
         raise ManualPredictionError("sidecar_source_url_alias_mismatch")
     source_url = source_urls[0]
-    if not _trusted_thedogs_url(source_url):
-        raise ManualPredictionError("sidecar_source_url_not_trusted_thedogs")
+    source_identity = source_identities[0]
+    if source_identity is None:
+        raise ManualPredictionError("sidecar_source_url_not_canonical_thedogs_race")
     alignment = shadow.get("canonical_final_runner_alignment")
     if not isinstance(alignment, Mapping):
         alignment = sidecar.get("canonical_runner_alignment")
@@ -584,35 +1230,90 @@ def _sidecar_context(sidecar: Mapping[str, Any]) -> dict[str, Any]:
     runner_set = {(box, str(row["identity"])) for box, row in runners.items()}
     if complete_set != runner_set or len(complete_rows) != len(complete_set):
         raise ManualPredictionError("sidecar_runner_completeness_mismatch")
-    target_date = _parse_date(
-        shadow.get("race_date") or race_info.get("date"), "target_race_date"
+    target_date = _agreed_race_date(shadow, race_info)
+    race_number = _agreed_race_number(shadow, race_info)
+    venue_values = []
+    if "venue" in shadow:
+        venue_values.append(shadow.get("venue"))
+    if "venue" in race_info:
+        venue_values.append(race_info.get("venue"))
+    if not venue_values or any(not isinstance(value, str) for value in venue_values):
+        raise ManualPredictionError("target_venue_invalid")
+    normalized_venues = [value.strip().upper() for value in venue_values]
+    if any(
+        not venue or not re.fullmatch(VENUE_CODE_PATTERN, venue)
+        for venue in normalized_venues
+    ):
+        raise ManualPredictionError("target_venue_invalid")
+    if len(set(normalized_venues)) != 1:
+        raise ManualPredictionError("target_venue_alias_mismatch")
+    venue = normalized_venues[0]
+    target_distance = _agreed_distance(shadow, race_info)
+    target_grade_values = []
+    if "grade" in shadow:
+        target_grade_values.append(shadow.get("grade"))
+    if "grade" in race_info:
+        target_grade_values.append(race_info.get("grade"))
+    if not target_grade_values or any(
+        value is None or value == "" for value in target_grade_values
+    ):
+        raise ManualPredictionError("target_grade_missing")
+    target_grade_canonicals = [
+        _canonical_target_grade(value) for value in target_grade_values
+    ]
+    if any(value is None for value in target_grade_canonicals):
+        raise ManualPredictionError("target_grade_invalid")
+    if len(set(target_grade_canonicals)) != 1:
+        raise ManualPredictionError("target_grade_alias_mismatch")
+    target_grade_value = target_grade_values[0]
+    target_grade_canonical = target_grade_canonicals[0]
+    grade_source = _agreed_sidecar_value(sidecar, "target_grade_source")
+    grade_schema = _agreed_sidecar_value(sidecar, "target_grade_context_schema")
+    grade_exact_value = _agreed_sidecar_value(sidecar, "target_grade_exact_value")
+    grade_proof_key = _agreed_sidecar_value(sidecar, "target_grade_equivalence_key")
+    grade_race_url = _agreed_sidecar_value(sidecar, "target_grade_race_url")
+    grade_source_url = _agreed_sidecar_value(sidecar, "target_grade_source_url")
+    grade_source_sha256 = (
+        str(_agreed_sidecar_value(sidecar, "target_grade_source_sha256"))
+        .strip()
+        .lower()
     )
-    race_number = _integer(
-        shadow.get("race_number") or race_info.get("race_number"),
-        "target_race_number",
+    grade_race_date = str(
+        _agreed_sidecar_value(sidecar, "target_grade_race_date")
+    ).strip()
+    grade_race_number = _integer(
+        _agreed_sidecar_value(sidecar, "target_grade_race_number"),
+        "target_grade_race_number",
         minimum=1,
     )
-    venue = str(shadow.get("venue") or race_info.get("venue") or "").strip().upper()
-    if not venue or not re.fullmatch(r"[A-Z0-9_]+(?:-[A-Z0-9_]+)*", venue):
-        raise ManualPredictionError("target_venue_invalid")
-    target_distance = _distance_metres(
-        shadow.get("distance") or race_info.get("distance")
-    )
-    target_grade = str(shadow.get("grade") or race_info.get("grade") or "").strip()
-    canonical_grade = _canonical_target_grade(target_grade)
-    if canonical_grade is None:
-        raise ManualPredictionError("target_grade_not_exact_supported_alias")
-    path_parts = [part for part in urlparse(source_url).path.split("/") if part]
+    grade_venue = _agreed_sidecar_value(sidecar, "target_grade_venue")
+    grade_identity = canonical_thedogs_race_identity(grade_race_url)
+    normalized_exact_grade = normalize_exact_target_grade(grade_exact_value)
     if (
-        len(path_parts) != 5
-        or path_parts[0].lower() != "racing"
-        or path_parts[1].lower() not in _venue_url_aliases(venue)
-        or path_parts[2] != target_date.isoformat()
-        or not path_parts[3].isdigit()
-        or int(path_parts[3]) != race_number
+        grade_source != THEDOGS_MEETING_CARD_GRADE_SOURCE
+        or grade_schema != "thedogs_meeting_card_exact_race_v1"
+        or grade_identity is None
+        or grade_identity["canonical_url"] != source_identity["canonical_url"]
+        or target_date.isoformat() != source_identity["race_date"]
+        or race_number != source_identity["race_number"]
+        or canonical_thedogs_venue_identity(venue)
+        != canonical_thedogs_venue_identity(source_identity["venue_slug"])
+        or grade_race_date != source_identity["race_date"]
+        or grade_race_number != source_identity["race_number"]
+        or canonical_thedogs_venue_identity(grade_venue)
+        != canonical_thedogs_venue_identity(source_identity["venue_slug"])
+        or normalized_exact_grade is None
+        or target_grade_equivalence_key(grade_exact_value) != grade_proof_key
+        or target_grade_equivalence_key(target_grade_value) != grade_proof_key
+        or canonical_thedogs_meeting_card_url(
+            grade_source_url,
+            race_date=source_identity["race_date"],
+        )
+        is None
+        or not re.fullmatch(r"[0-9a-f]{64}", grade_source_sha256)
     ):
-        raise ManualPredictionError("sidecar_source_url_race_binding_mismatch")
-    jump = _jump_timestamp(sidecar)
+        raise ManualPredictionError("target_grade_proof_mismatch")
+    jump = _jump_timestamp(sidecar, target_date)
     if jump.astimezone(MELBOURNE).date() != target_date:
         raise ManualPredictionError("jump_date_target_date_mismatch")
     return {
@@ -626,7 +1327,11 @@ def _sidecar_context(sidecar: Mapping[str, Any]) -> dict[str, Any]:
         "target_race_number": race_number,
         "target_distance": target_distance,
         "target_venue": venue,
-        "target_grade": canonical_grade,
+        "target_grade": target_grade_value,
+        "target_grade_canonical": target_grade_canonical,
+        "target_grade_proof_key": grade_proof_key,
+        "target_grade_source_sha256": grade_source_sha256,
+        "target_grade_source_url": str(grade_source_url),
         "source_url": str(source_url),
         "expected_race_id": f"Race {race_number} - {venue} - {target_date.isoformat()}",
     }
@@ -713,9 +1418,7 @@ def _select_capture_attempt(raw: bytes, *, jsonl: bool, race_id: str) -> dict[st
 
 
 def _active_capture_rows(
-    attempt: Mapping[str, Any],
-    sidecar_runners: Mapping[int, Mapping[str, Any]],
-    context: Mapping[str, Any],
+    attempt: Mapping[str, Any], sidecar_runners: Mapping[int, Mapping[str, Any]]
 ) -> tuple[list[dict[str, Any]], datetime, datetime]:
     validation = attempt.get("validation")
     if not isinstance(validation, Mapping):
@@ -743,16 +1446,8 @@ def _active_capture_rows(
             f"capture_validation_fields_missing:{sorted(missing)}"
         )
     race_id = str(attempt.get("race_id") or "")
-    if not _trusted_sportsbet_url(
-        validation.get("source_url"), race_id, str(context["target_venue"])
-    ):
+    if not _trusted_sportsbet_url(validation.get("source_url"), race_id):
         raise ManualPredictionError("capture_source_url_not_trusted_sportsbet")
-    if (
-        validation.get("source_race_number") != context["target_race_number"]
-        or validation.get("source_race_date") != context["target_race_date"].isoformat()
-        or validation.get("source_venue") != context["target_venue"]
-    ):
-        raise ManualPredictionError("capture_source_race_binding_mismatch")
     if validation.get("reasons") != []:
         raise ManualPredictionError("capture_validation_reasons_not_empty")
     if validation.get("failure_root_cause") not in (None, ""):
@@ -872,32 +1567,10 @@ def _manifest_entry(
 
 def _validate_feature_generator_identity(
     implementation_manifest: Mapping[str, Any],
-    *,
-    implementation_manifest_sha: str,
-    feature_rows_sha: str,
 ) -> None:
-    legacy_branch = (
-        implementation_manifest.get("git_branch") == FEATURE_GENERATOR_BRANCH
-    )
-    legacy_head = implementation_manifest.get("git_head") == FEATURE_GENERATOR_HEAD
-    legacy_packet = (
-        implementation_manifest_sha == LEGACY_IMPLEMENTATION_MANIFEST_SHA256
-        and feature_rows_sha == LEGACY_FEATURE_ROWS_SHA256
-    )
-    if legacy_branch and legacy_head and legacy_packet:
-        if implementation_manifest.get("implementation_files") != (
-            LEGACY_FEATURE_GENERATOR_FILES
-        ):
-            raise ManualPredictionError("feature_generator_identity_missing")
-        return
-
     declared_hashes = implementation_manifest.get("implementation_file_hashes")
     if not isinstance(declared_hashes, Mapping):
-        if legacy_branch and legacy_head:
-            raise ManualPredictionError("feature_generator_legacy_packet_hash_mismatch")
-        if not legacy_branch:
-            raise ManualPredictionError("feature_generator_branch_mismatch")
-        raise ManualPredictionError("feature_generator_head_mismatch")
+        raise ManualPredictionError("feature_generator_implementation_hashes_missing")
     implementation_files = implementation_manifest.get("implementation_files")
     if implementation_files != FEATURE_GENERATOR_FILES:
         raise ManualPredictionError("feature_generator_identity_missing")
@@ -953,11 +1626,7 @@ def _feature_packet(
         raise ManualPredictionError("implementation_manifest_contains_outcome_field")
     if Path(str(implementation_manifest.get("output_dir") or "")).resolve() != parent:
         raise ManualPredictionError("feature_generator_output_dir_mismatch")
-    _validate_feature_generator_identity(
-        implementation_manifest,
-        implementation_manifest_sha=implementation_manifest_sha,
-        feature_rows_sha=feature_rows_sha,
-    )
+    _validate_feature_generator_identity(implementation_manifest)
     for path, raw, sha, label in (
         (feature_rows_path, feature_rows_raw, feature_rows_sha, "feature_rows"),
         (
@@ -1073,10 +1742,10 @@ def _feature_packet(
             distance, float(context["target_distance"]), rel_tol=0.0, abs_tol=1e-9
         ):
             raise ManualPredictionError("feature_row_target_distance_mismatch")
-        if (
-            _canonical_target_grade(row.get("target_grade_safe"))
-            != context["target_grade"]
-        ):
+        feature_grade_canonical = _canonical_target_grade(row.get("target_grade_safe"))
+        if feature_grade_canonical is None:
+            raise ManualPredictionError("feature_row_target_grade_invalid")
+        if feature_grade_canonical != context["target_grade_canonical"]:
             raise ManualPredictionError("feature_row_target_grade_mismatch")
         if row.get("same_distance_same_grade_history_cutoff") != (
             "strictly_before_target_race"
@@ -1121,6 +1790,8 @@ def discover_race_artifacts(
     roots = sorted({Path(root).resolve() for root in evidence_roots})
     if not roots or any(not root.is_dir() for root in roots):
         raise ManualPredictionError("evidence_root_missing_or_not_directory")
+    if any(_path_in_forbidden_pr51_domain(root) for root in roots):
+        raise ManualPredictionError("pr51_form_only_v1_evidence_forbidden")
     race_number, venue_query = _race_query_parts(race_query)
 
     feature_candidates: list[dict[str, Any]] = []
@@ -1128,6 +1799,8 @@ def discover_race_artifacts(
     for root in roots:
         for feature_rows_path in sorted(root.rglob("shadow_feature_rows.json")):
             feature_rows_path = feature_rows_path.resolve()
+            if _path_in_forbidden_pr51_domain(feature_rows_path):
+                continue
             if feature_rows_path in seen_feature_packets:
                 continue
             seen_feature_packets.add(feature_rows_path)
@@ -1216,6 +1889,11 @@ def discover_race_artifacts(
                 sidecar_path = form_csv_path.with_name(
                     form_csv_path.name + ".metadata.json"
                 )
+                if any(
+                    _path_in_forbidden_pr51_domain(path)
+                    for path in (form_csv_path, sidecar_path)
+                ):
+                    continue
                 if (
                     not form_csv_path.is_file()
                     or not sidecar_path.is_file()
@@ -1295,6 +1973,8 @@ def discover_race_artifacts(
             root.rglob("autonomous_live_odds_capture_report.json")
         ):
             capture_path = capture_path.resolve()
+            if _path_in_forbidden_pr51_domain(capture_path):
+                continue
             if capture_path in seen_capture_reports:
                 continue
             seen_capture_reports.add(capture_path)
@@ -1351,6 +2031,483 @@ def discover_race_artifacts(
     }
 
 
+def _normalized_thedogs_race_url(value: Any) -> str | None:
+    identity = canonical_thedogs_race_identity(value)
+    return str(identity["canonical_url"]) if identity is not None else None
+
+
+def _thedogs_race_url_parts(value: Any) -> tuple[str, date, int] | None:
+    identity = canonical_thedogs_race_identity(value)
+    if identity is None:
+        return None
+    return (
+        str(identity["venue_slug"]),
+        date.fromisoformat(str(identity["race_date"])),
+        int(identity["race_number"]),
+    )
+
+
+def _diagnostic_venue_identity_matches(selected_venue: str, venue_slug: str) -> bool:
+    """Require the report venue and URL slug to belong to one declared identity."""
+
+    def configured(value: str) -> str:
+        raw = str(value or "").strip()
+        token = _runner_token(raw)
+        if token in DIAGNOSTIC_VENUE_CODE_OVERRIDES:
+            return DIAGNOSTIC_VENUE_CODE_OVERRIDES[token]
+        candidates = (
+            raw,
+            raw.replace("-", " "),
+            raw.replace("-", "_"),
+            raw.replace("_", " "),
+            raw.replace("_", "-"),
+        )
+        for candidate in candidates:
+            normalized = normalize_venue(candidate)
+            if normalized != candidate.upper():
+                normalized_token = _runner_token(normalized)
+                return DIAGNOSTIC_VENUE_CODE_OVERRIDES.get(
+                    normalized_token, normalized_token
+                )
+        return DIAGNOSTIC_VENUE_CODE_OVERRIDES.get(token, token)
+
+    return configured(selected_venue) == configured(venue_slug)
+
+
+def _refresh_report_contains_outcome_key(
+    value: Any,
+    *,
+    path: tuple[str, ...] = (),
+) -> bool:
+    """Reject outcome fields while allowing the downloader's operation result wrapper."""
+
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            normalized_key = _normalized_index_key(key)
+            if normalized_key == "no_result_ingest" and item is True:
+                continue
+            if normalized_key in INDEX_FALSE_OUTCOME_MARKERS and item is False:
+                continue
+            if normalized_key == "result" and path == ("downloads", "*"):
+                if _refresh_report_contains_outcome_key(
+                    item,
+                    path=(*path, normalized_key),
+                ):
+                    return True
+                continue
+            if _index_key_is_outcome(key):
+                return True
+            if _refresh_report_contains_outcome_key(
+                item,
+                path=(*path, normalized_key),
+            ):
+                return True
+        return False
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        return any(
+            _refresh_report_contains_outcome_key(item, path=(*path, "*"))
+            for item in value
+        )
+    return False
+
+
+def _resolve_diagnostic_path(
+    root: Path,
+    raw_path: Any,
+    *,
+    label: str,
+    directory: bool,
+) -> Path:
+    path = Path(str(raw_path or ""))
+    if not path.is_absolute() or ".." in path.parts:
+        raise ManualPredictionError(f"{label}_path_invalid")
+    try:
+        relative = path.relative_to(root)
+    except ValueError:
+        raise ManualPredictionError(f"{label}_path_escape") from None
+    cursor = root
+    for part in relative.parts:
+        cursor = cursor / part
+        if cursor.is_symlink():
+            raise ManualPredictionError(f"{label}_path_escape")
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError:
+        raise ManualPredictionError(f"{label}_unreadable") from None
+    if not _path_in_roots(resolved, [root]):
+        raise ManualPredictionError(f"{label}_path_escape")
+    if directory and not resolved.is_dir():
+        raise ManualPredictionError(f"{label}_unreadable")
+    if not directory and not resolved.is_file():
+        raise ManualPredictionError(f"{label}_unreadable")
+    return resolved
+
+
+def _quarantined_race_reason(
+    *,
+    race_query: str,
+    diagnostic_roots: Sequence[Path],
+    score_timestamp: datetime,
+) -> str | None:
+    """Return one closed outcome-free refresh quarantine reason for an exact race."""
+
+    if score_timestamp.tzinfo is None or score_timestamp.utcoffset() is None:
+        raise ManualPredictionError("score_timestamp_timezone_missing")
+    race_number, venue_query = _race_query_parts(race_query)
+    score_time = score_timestamp.astimezone(MELBOURNE)
+    oldest_allowed = score_time - DEFAULT_INDEX_MAX_AGE
+    candidates: list[dict[str, Any]] = []
+
+    for raw_root in sorted({Path(root).resolve() for root in diagnostic_roots}):
+        if not raw_root.is_dir():
+            continue
+        root = raw_root.resolve()
+        for status_path in sorted(root.glob(EARLY_RESIDUAL_STATUS_GLOB)):
+            timestamp_match = re.fullmatch(
+                r"shadow_autopilot_daemonization_v1_"
+                r"(\d{8}T\d{6}[+-]\d{4})_odds_capture",
+                status_path.parent.name,
+            )
+            if timestamp_match is None:
+                continue
+            try:
+                status_time = datetime.strptime(
+                    timestamp_match.group(1), "%Y%m%dT%H%M%S%z"
+                ).astimezone(MELBOURNE)
+            except ValueError:
+                continue
+            if status_time < oldest_allowed or status_time > score_time:
+                continue
+            status_path = _resolve_diagnostic_path(
+                root,
+                status_path,
+                label="refresh_quarantine_status_index",
+                directory=False,
+            )
+            status_raw, _ = _read_input(
+                status_path,
+                "refresh_quarantine_status_index",
+            )
+            status = _json_object(status_raw, "refresh_quarantine_status_index")
+            if _contains_index_outcome_key(status):
+                raise ManualPredictionError(
+                    "refresh_quarantine_status_index_contains_outcome"
+                )
+            plan = status.get("plan")
+            if not isinstance(plan, Mapping):
+                continue
+            status_state = status.get("status")
+            plan_state = plan.get("status")
+            if (status_state, plan_state) == (
+                "SKIPPED_NO_NEW_CAPTURE",
+                "SKIPPED_NO_NEW_CAPTURE",
+            ):
+                if plan.get("blockers") != []:
+                    continue
+                expected_blockers: list[str] = []
+            elif (status_state, plan_state) == ("BLOCKED", "BLOCKED"):
+                if plan.get("blockers") != ["residual_feature_handoff_not_pass"]:
+                    continue
+                expected_blockers = ["residual_feature_handoff_not_pass"]
+            else:
+                continue
+            _validate_index_authority_shape(status)
+            expected_run_id = f"{timestamp_match.group(1)}_odds_capture"
+            if (
+                status.get("schema_version") != EARLY_RESIDUAL_STATUS_SCHEMA
+                or plan.get("schema_version") != EARLY_RESIDUAL_PLAN_SCHEMA
+                or plan.get("run_id") != expected_run_id
+            ):
+                raise ManualPredictionError(
+                    "refresh_quarantine_status_index_identity_mismatch"
+                )
+            if (
+                status.get("activation") is not False
+                or status.get("outcomes_read") is not False
+                or status.get("lock_release_preceded_stage_completion") is not False
+                or plan.get("activation") is not False
+                or plan.get("outcomes_read") is not False
+                or plan.get("blockers") != expected_blockers
+                or plan.get("production_db_access")
+                != "sqlite_mode_ro_feature_history_only"
+                or status.get("race_count") != 0
+                or plan.get("race_count") != 0
+                or status.get("races") != []
+                or plan.get("races") != []
+                or status.get("appended_count") != 0
+                or status.get("blocked_count") != 0
+                or status.get("exact_replay_count") != 0
+            ):
+                raise ManualPredictionError("refresh_quarantine_status_index_unsafe")
+
+            expected_output_name = f"shadow_autopilot_v1_{expected_run_id}_autopilot"
+            output_dir = _resolve_diagnostic_path(
+                root,
+                plan.get("autopilot_output_dir"),
+                label="refresh_quarantine_output_dir",
+                directory=True,
+            )
+            if output_dir.name != expected_output_name:
+                raise ManualPredictionError(
+                    "refresh_quarantine_output_dir_identity_mismatch"
+                )
+            shadow_output_path = plan.get("shadow_output_path")
+            if shadow_output_path and not _path_in_roots(
+                Path(str(shadow_output_path)).resolve(),
+                [root],
+            ):
+                raise ManualPredictionError(
+                    "refresh_quarantine_status_index_path_escape"
+                )
+
+            report_path = _resolve_diagnostic_path(
+                root,
+                output_dir / REFRESH_REPORT_FILENAME,
+                label="refresh_quarantine_report",
+                directory=False,
+            )
+            report_raw, _ = _read_input(report_path, "refresh_quarantine_report")
+            report = _json_object(report_raw, "refresh_quarantine_report")
+            if _refresh_report_contains_outcome_key(report):
+                raise ManualPredictionError(
+                    "refresh_quarantine_report_contains_outcome"
+                )
+            report_time = _parse_timestamp(
+                report.get("generated_at"),
+                "refresh_quarantine_report_generated_at",
+            ).astimezone(MELBOURNE)
+            if report_time < oldest_allowed or report_time > score_time:
+                continue
+            if not (
+                status_time <= report_time <= status_time + MAX_REFRESH_REPORT_RUN_LAG
+            ):
+                raise ManualPredictionError(
+                    "refresh_quarantine_report_run_time_mismatch"
+                )
+            selected_races = report.get("selected_races")
+            downloads = report.get("downloads")
+            if (
+                report.get("no_snapshot_persist") is not True
+                or report.get("no_odds_capture") is not True
+                or report.get("no_result_ingest") is not True
+                or report.get("no_label_write") is not True
+                or report.get("no_retrain_or_promotion") is not True
+                or type(report.get("selected_count")) is not int
+                or not isinstance(selected_races, list)
+                or report.get("selected_count") != len(selected_races)
+                or not isinstance(downloads, list)
+                or type(report.get("quarantine_count")) is not int
+            ):
+                raise ManualPredictionError("refresh_quarantine_report_unsafe")
+            if (
+                report.get("status") != "METADATA_COVERAGE_INCOMPLETE"
+                or report.get("quarantine_count") < 1
+            ):
+                continue
+
+            for selected in selected_races:
+                if not isinstance(selected, Mapping):
+                    raise ManualPredictionError(
+                        "refresh_quarantine_report_shape_invalid"
+                    )
+                source_url = selected.get("race_url")
+                normalized_url = _normalized_thedogs_race_url(source_url)
+                url_parts = _thedogs_race_url_parts(source_url)
+                if normalized_url is None or url_parts is None:
+                    raise ManualPredictionError("refresh_quarantine_race_url_invalid")
+                venue_slug, candidate_date, candidate_number = url_parts
+                try:
+                    selected_number = _integer(
+                        selected.get("race_number"),
+                        "refresh_quarantine_race_number",
+                        minimum=1,
+                    )
+                    selected_date = _parse_date(
+                        selected.get("date"),
+                        "refresh_quarantine_race_date",
+                    )
+                except ManualPredictionError as exc:
+                    raise ManualPredictionError(
+                        "refresh_quarantine_report_shape_invalid"
+                    ) from exc
+                if (
+                    selected_number != candidate_number
+                    or selected_date != candidate_date
+                    or candidate_number != race_number
+                ):
+                    continue
+
+                canonical_venue = str(selected.get("venue") or "").strip().upper()
+                raw_aliases = selected.get("race_id_aliases")
+                try:
+                    primary_number, primary_venue, primary_date = _race_id_parts(
+                        str(selected.get("race_id") or "")
+                    )
+                except ManualPredictionError as exc:
+                    raise ManualPredictionError(
+                        "refresh_quarantine_race_identity_mismatch"
+                    ) from exc
+                if (
+                    not canonical_venue
+                    or not _diagnostic_venue_identity_matches(
+                        canonical_venue, venue_slug
+                    )
+                    or primary_number != candidate_number
+                    or primary_date != candidate_date
+                    or _runner_token(primary_venue) != _runner_token(canonical_venue)
+                    or not isinstance(raw_aliases, list)
+                    or not all(isinstance(value, str) for value in raw_aliases)
+                    or len(set(raw_aliases)) != len(raw_aliases)
+                    or selected.get("race_id") not in raw_aliases
+                ):
+                    raise ManualPredictionError(
+                        "refresh_quarantine_race_identity_mismatch"
+                    )
+                aliases = []
+                for raw_race_id in raw_aliases:
+                    try:
+                        alias_number, alias_venue, alias_date = _race_id_parts(
+                            raw_race_id
+                        )
+                    except ManualPredictionError as exc:
+                        raise ManualPredictionError(
+                            "refresh_quarantine_race_identity_mismatch"
+                        ) from exc
+                    if (
+                        alias_number != candidate_number
+                        or alias_date != candidate_date
+                        or not _diagnostic_venue_identity_matches(
+                            canonical_venue, alias_venue
+                        )
+                    ):
+                        raise ManualPredictionError(
+                            "refresh_quarantine_race_identity_mismatch"
+                        )
+                    aliases.append(alias_venue)
+                if _runner_token(venue_slug) not in {
+                    _runner_token(alias) for alias in aliases
+                }:
+                    raise ManualPredictionError(
+                        "refresh_quarantine_race_identity_mismatch"
+                    )
+                venue_match_rank = _venue_query_match_rank(
+                    venue_query,
+                    canonical_venue=canonical_venue,
+                    full_aliases=aliases,
+                )
+                if venue_match_rank is None:
+                    continue
+
+                matching_downloads = [
+                    download
+                    for download in downloads
+                    if isinstance(download, Mapping)
+                    and _normalized_thedogs_race_url(download.get("race_url"))
+                    == normalized_url
+                ]
+                if len(matching_downloads) != 1:
+                    raise ManualPredictionError("refresh_quarantine_download_ambiguous")
+                download = matching_downloads[0]
+                result = download.get("result")
+                normalization = (
+                    result.get("normalization")
+                    if isinstance(result, Mapping)
+                    and isinstance(result.get("normalization"), Mapping)
+                    else None
+                )
+                if (
+                    download.get("success") is not False
+                    or not isinstance(result, Mapping)
+                    or result.get("success") is not False
+                    or not isinstance(normalization, Mapping)
+                    or normalization.get("normalization_status") != "rejected"
+                ):
+                    continue
+                reason = REFRESH_QUARANTINE_REASONS.get(
+                    normalization.get("normalization_failure_reason")
+                )
+                if reason is None:
+                    continue
+                candidates.append(
+                    {
+                        "race_date": candidate_date,
+                        "report_time": report_time,
+                        "reason": reason,
+                        "venue": canonical_venue,
+                        "venue_match_rank": venue_match_rank,
+                    }
+                )
+
+    if not candidates:
+        return None
+    best_venue_rank = min(candidate["venue_match_rank"] for candidate in candidates)
+    candidates = [
+        candidate
+        for candidate in candidates
+        if candidate["venue_match_rank"] == best_venue_rank
+    ]
+    if len({candidate["venue"] for candidate in candidates}) != 1:
+        raise ManualPredictionError("race_quarantine_report_ambiguous")
+    current_date = score_time.date()
+    available_dates = sorted(
+        {
+            candidate["race_date"]
+            for candidate in candidates
+            if candidate["race_date"] >= current_date
+        }
+    )
+    target_date = (
+        available_dates[0]
+        if available_dates
+        else max(candidate["race_date"] for candidate in candidates)
+    )
+    candidates = [
+        candidate for candidate in candidates if candidate["race_date"] == target_date
+    ]
+    latest_report_time = max(candidate["report_time"] for candidate in candidates)
+    candidates = [
+        candidate
+        for candidate in candidates
+        if candidate["report_time"] == latest_report_time
+    ]
+    if len(candidates) != 1:
+        raise ManualPredictionError("race_quarantine_report_ambiguous")
+    return str(candidates[0]["reason"])
+
+
+def discover_race_artifacts_with_diagnostics(
+    *,
+    race_query: str,
+    evidence_roots: Sequence[Path],
+    diagnostic_roots: Sequence[Path],
+    score_timestamp: datetime,
+) -> dict[str, Any]:
+    """Discover a scoreable packet or expose one closed upstream quarantine reason."""
+
+    try:
+        return discover_race_artifacts(
+            race_query=race_query,
+            evidence_roots=evidence_roots,
+            score_timestamp=score_timestamp,
+        )
+    except ManualPredictionError as exc:
+        if str(exc) not in {
+            "race_feature_packet_not_found",
+            "evidence_root_missing_or_not_directory",
+        }:
+            raise
+        reason = _quarantined_race_reason(
+            race_query=race_query,
+            diagnostic_roots=diagnostic_roots,
+            score_timestamp=score_timestamp,
+        )
+        if reason is not None:
+            raise ManualPredictionError(
+                f"race_feature_packet_quarantined:{reason}"
+            ) from None
+        raise
+
+
 def score_from_artifacts(
     *,
     race_id: str,
@@ -1363,13 +2520,21 @@ def score_from_artifacts(
     model_path: Path,
     manifest_path: Path,
     score_timestamp: datetime | None = None,
-    shadow_output_path: Path | None = None,
-    frozen_model: FrozenResidualModel | None = None,
 ) -> dict[str, Any]:
     """Validate immutable sealed inputs and return one outcome-free ranking."""
 
     if not race_id or any(token in race_id for token in ("/", "\\", "..")):
         raise ManualPredictionError("race_id_invalid")
+    _require_non_pr51_artifact_paths(
+        (
+            form_csv_path,
+            sidecar_path,
+            feature_rows_path,
+            feature_manifest_path,
+            implementation_manifest_path,
+            capture_path,
+        )
+    )
     expected_sidecar = form_csv_path.with_name(form_csv_path.name + ".metadata.json")
     if sidecar_path.resolve() != expected_sidecar.resolve():
         raise ManualPredictionError("sidecar_not_adjacent_to_form_csv")
@@ -1416,9 +2581,35 @@ def score_from_artifacts(
         capture_raw, jsonl=capture_path.suffix.lower() == ".jsonl", race_id=race_id
     )
     capture_rows, fetch_time, append_time = _active_capture_rows(
-        attempt, context["runners"], context
+        attempt, context["runners"]
     )
     jump = context["jump_timestamp"]
+    score_time = score_timestamp or datetime.now().astimezone()
+    if score_time.tzinfo is None or score_time.utcoffset() is None:
+        raise ManualPredictionError("score_timestamp_timezone_missing")
+    feature_timeline = (
+        context["metadata_timestamp"],
+        feature_time,
+        feature_generated_time,
+        score_time,
+        jump,
+    )
+    odds_timeline = (
+        context["metadata_timestamp"],
+        fetch_time,
+        append_time,
+        score_time,
+        jump,
+    )
+    if any(
+        left > right
+        for timeline in (feature_timeline, odds_timeline)
+        for left, right in zip(timeline, timeline[1:])
+    ):
+        raise ManualPredictionError("source_timestamp_order_invalid")
+    if not score_time < jump:
+        raise ManualPredictionError("manual_score_not_prejump")
+
     selected_attempt_sha = _sha256_bytes(_canonical_bytes(attempt))
     feature_source_sha = _sha256_bytes(
         _canonical_bytes(
@@ -1461,68 +2652,21 @@ def score_from_artifacts(
                 "odds_capture_timestamp": fetch_time.isoformat(),
             }
         )
-    frozen = frozen_model or load_frozen_model(model_path, manifest_path)
+    frozen = load_frozen_model(model_path, manifest_path)
     expected_ids = sorted(runner_ids)
-    runner_set_sha = _runner_set_sha256(expected_ids)
-    score_time = score_timestamp
-    if score_time is None and shadow_output_path is not None:
-        score_time = _existing_replay_score_timestamp(
-            shadow_output_path,
-            {
-                "race_id": race_id,
-                "runner_set_sha256": runner_set_sha,
-                "model_sha256": frozen.model_sha256,
-                "manifest_sha256": frozen.manifest_sha256,
-                "effective_state_sha256": frozen.effective_state_sha256,
-            },
-        )
-    score_time = score_time or datetime.now().astimezone()
-    if score_time.tzinfo is None or score_time.utcoffset() is None:
-        raise ManualPredictionError("score_timestamp_timezone_missing")
-    feature_timeline = (
-        context["metadata_timestamp"],
-        feature_time,
-        feature_generated_time,
-        score_time,
-        jump,
-    )
-    odds_timeline = (
-        context["metadata_timestamp"],
-        fetch_time,
-        append_time,
-        score_time,
-        jump,
-    )
-    if any(
-        left > right
-        for timeline in (feature_timeline, odds_timeline)
-        for left, right in zip(timeline, timeline[1:])
-    ):
-        raise ManualPredictionError("source_timestamp_order_invalid")
-    if not score_time < jump:
-        raise ManualPredictionError("manual_score_not_prejump")
     provenance = {
         "race_id": race_id,
         "expected_runner_ids": expected_ids,
-        "runner_set_sha256": runner_set_sha,
+        "runner_set_sha256": _runner_set_sha256(expected_ids),
         "jump_timestamp": jump.isoformat(),
         "score_timestamp": score_time.isoformat(),
     }
     record = score_race(frozen, runners, provenance)
+    if record.get("schema_version") != SHADOW_RECORD_SCHEMA:
+        raise ManualPredictionError("scorer_record_schema_mismatch")
     ranking = sorted(
         record["predictions"],
         key=lambda row: (-float(row["full_probability"]), int(row["box_number"])),
-    )
-    persistence_status = (
-        append_shadow_record(
-            shadow_output_path,
-            record,
-            frozen=frozen,
-            runners=runners,
-            provenance=provenance,
-        )
-        if shadow_output_path is not None
-        else None
     )
     output = {
         "schema_version": OUTPUT_SCHEMA,
@@ -1539,12 +2683,47 @@ def score_from_artifacts(
         "manifest_sha256": record["manifest_sha256"],
         "runner_set_sha256": record["runner_set_sha256"],
         "record_key": record["record_key"],
+        "record_schema_version": record["schema_version"],
+        "record_checksum_sha256": record["record_checksum_sha256"],
+        "effective_state_schema_version": EFFECTIVE_STATE_SCHEMA,
+        "effective_state_sha256": record["effective_state_sha256"],
+        "numerical_canonicalization_contract": dict(
+            NUMERICAL_CANONICALIZATION_CONTRACT
+        ),
+        "canonical_runner_order": [
+            {
+                "box": int(row["box_number"]),
+                "dog": row["dog_name"],
+                "runner_id": row["runner_id"],
+            }
+            for row in runners
+        ],
+        "target_grade": context["target_grade"],
+        "target_grade_proof_key": context["target_grade_proof_key"],
+        "target_grade_source_url": context["target_grade_source_url"],
+        "target_grade_source_sha256": context["target_grade_source_sha256"],
         "variants": {"full_strength": 1.0, "half_strength": 0.5},
         "source_contract": {
             "feature_source": "exact_hash_bound_system_shadow_feature_rows",
             "feature_reconstruction_performed": False,
             "database_access": False,
             "network_access": False,
+            "manual_scoring_read_only": True,
+            "persistence_interface_crossed": False,
+            "persistence_status": "NOT_REQUESTED_READ_ONLY",
+            "writer_status_contract": [
+                "APPENDED",
+                "EXACT_REPLAY",
+                "COMMIT_STATE_UNKNOWN",
+            ],
+            "history_migration_performed": False,
+        },
+        "verified_artifacts": {
+            "model_sha256": record["model_sha256"],
+            "manifest_sha256": record["manifest_sha256"],
+            "feature_source_sha256": feature_source_sha,
+            "odds_source_sha256": odds_source_sha,
+            "meeting_card_source_sha256": context["target_grade_source_sha256"],
         },
         "input_hashes": {
             "form_csv_sha256": form_sha,
@@ -1556,6 +2735,7 @@ def score_from_artifacts(
             "selected_attempt_sha256": selected_attempt_sha,
             "feature_source_sha256": feature_source_sha,
             "odds_source_sha256": odds_source_sha,
+            "meeting_card_source_sha256": context["target_grade_source_sha256"],
         },
         "predictions": [
             {
@@ -1572,17 +2752,11 @@ def score_from_artifacts(
             for rank, row in enumerate(ranking, start=1)
         ],
         "probability_sums": {
-            key: sum(float(row[f"{key}_probability"]) for row in ranking)
+            key: math.fsum(float(row[f"{key}_probability"]) for row in ranking)
             for key in ("market", "half", "full")
         },
         "activation": False,
-        "persisted": persistence_status is not None,
-        "persistence_status": persistence_status,
-        "shadow_output_path": (
-            str(shadow_output_path.resolve())
-            if shadow_output_path is not None
-            else None
-        ),
+        "persisted": False,
         "outcomes_present": False,
     }
     _canonical_bytes(output)
@@ -1602,7 +2776,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help=(
             "Outcome-free evidence root to search in race-first mode. May be repeated; "
-            "defaults to the repository evidence root."
+            "defaults to the repository root plus current sealed system packet indexes."
         ),
     )
     parser.add_argument("--form-csv", type=Path)
@@ -1611,16 +2785,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--feature-manifest", type=Path)
     parser.add_argument("--implementation-manifest", type=Path)
     parser.add_argument("--capture", type=Path)
-    parser.add_argument(
-        "--append-shadow-output",
-        type=Path,
-        help=(
-            "Explicit append-only .jsonl path for the canonical outcome-free "
-            "frozen shadow record. The parent directory must already exist; "
-            "an identical prior stable identity is writer-validated and returned "
-            "as EXACT_REPLAY."
-        ),
-    )
     return parser
 
 
@@ -1645,9 +2809,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                 raise ManualPredictionError(
                     "race_first_mode_cannot_mix_explicit_artifact_arguments"
                 )
-            discovered = discover_race_artifacts(
+            evidence_roots = args.evidence_root or _default_race_first_evidence_roots(
+                score_time
+            )
+            diagnostic_roots = args.evidence_root or [
+                DEFAULT_EVIDENCE_ROOT,
+                *DEFAULT_RETAINED_EVIDENCE_ROOTS,
+            ]
+            discovered = discover_race_artifacts_with_diagnostics(
                 race_query=args.race,
-                evidence_roots=args.evidence_root or [DEFAULT_EVIDENCE_ROOT],
+                evidence_roots=evidence_roots,
+                diagnostic_roots=diagnostic_roots,
                 score_timestamp=score_time,
             )
             race_id = str(discovered["race_id"])
@@ -1691,14 +2863,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             capture_path=capture,
             model_path=artifact_dir / "model.json",
             manifest_path=artifact_dir / "manifest.json",
-            score_timestamp=(
-                None
-                if args.append_shadow_output is not None
-                else score_time
-                if args.race
-                else None
-            ),
-            shadow_output_path=args.append_shadow_output,
+            score_timestamp=score_time if args.race else None,
         )
     except (ManualPredictionError, ResidualContractError) as exc:
         sys.stderr.buffer.write(

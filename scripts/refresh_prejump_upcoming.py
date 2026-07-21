@@ -615,7 +615,10 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
     downloads: list[dict[str, Any]] = []
     if not args.dry_run:
         for race in selected:
-            result = browser.download_race_csv(str(race["url"]))
+            result = browser.download_race_csv(
+                str(race["url"]),
+                race_info_hint=race,
+            )
             downloads.append(
                 {
                     "race_url": race.get("url"),
