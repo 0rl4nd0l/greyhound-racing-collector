@@ -362,6 +362,39 @@ def _score(tmp_path: Path):
     return _score_paths(_write_fixture(tmp_path))
 
 
+def _assert_score_rejected_without_side_effects(
+    paths: dict[str, Path], monkeypatch, reason: str
+) -> None:
+    root = paths["form_csv"].parent
+    before = {
+        path.relative_to(root): path.read_bytes()
+        for path in sorted(root.rglob("*"))
+        if path.is_file()
+    }
+    score_calls = 0
+
+    def counted_score(*_args, **_kwargs):
+        nonlocal score_calls
+        score_calls += 1
+
+    monkeypatch.setattr(manual, "score_race", counted_score)
+    with pytest.raises(ManualPredictionError, match=reason):
+        _score_paths(paths)
+
+    after = {
+        path.relative_to(root): path.read_bytes()
+        for path in sorted(root.rglob("*"))
+        if path.is_file()
+    }
+    assert score_calls == 0
+    assert after == before
+    assert not any(
+        path.suffix.lower() in {".db", ".sqlite", ".sqlite3"}
+        for path in root.rglob("*")
+        if path.is_file()
+    )
+
+
 def test_scores_exact_packet_deterministically(tmp_path):
     paths = _write_fixture(tmp_path)
     first = _score_paths(paths)
@@ -734,16 +767,10 @@ def test_rejects_conflicting_duplicate_jump_timestamps_without_scoring(
     if scope == "prejump_shadow_metadata":
         sidecar["jump_datetime"] = "2026-07-16T18:58:00+10:00"
     _write_json(paths["sidecar"], sidecar)
-    score_calls = 0
 
-    def counted_score(*_args, **_kwargs):
-        nonlocal score_calls
-        score_calls += 1
-
-    monkeypatch.setattr(manual, "score_race", counted_score)
-    with pytest.raises(ManualPredictionError, match="jump_timestamp_mismatch"):
-        _score_paths(paths)
-    assert score_calls == 0
+    _assert_score_rejected_without_side_effects(
+        paths, monkeypatch, "jump_timestamp_mismatch"
+    )
 
 
 def test_accepts_canonical_equivalent_duplicate_jump_timestamps(tmp_path):
@@ -751,11 +778,100 @@ def test_accepts_canonical_equivalent_duplicate_jump_timestamps(tmp_path):
     sidecar = _json(paths["sidecar"])
     assert isinstance(sidecar, dict)
     sidecar["jump_datetime"] = "2026-07-16T08:58:00Z"
+    sidecar["prejump_shadow_metadata"]["jump_time"] = "6:58 PM"
+    sidecar["race_info"]["race_time"] = "18:58"
     _write_json(paths["sidecar"], sidecar)
 
     output = _score_paths(paths)
 
     assert output["race_id"] == RACE_ID
+
+
+@pytest.mark.parametrize(
+    ("shadow_time", "race_time"),
+    [("6:58 PM", "6:51 PM"), ("6:51 PM", "6:58 PM")],
+)
+def test_rejects_conflicting_time_only_jump_aliases_in_both_directions(
+    tmp_path, monkeypatch, shadow_time, race_time
+):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    del sidecar["prejump_shadow_metadata"]["jump_datetime"]
+    sidecar["prejump_shadow_metadata"]["jump_time"] = shadow_time
+    sidecar["race_info"]["race_time"] = race_time
+    _write_json(paths["sidecar"], sidecar)
+
+    _assert_score_rejected_without_side_effects(
+        paths, monkeypatch, "jump_timestamp_mismatch"
+    )
+
+
+def test_rejects_full_datetime_and_time_only_jump_conflict_without_side_effects(
+    tmp_path, monkeypatch
+):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["race_info"]["race_time"] = "6:51 PM"
+    _write_json(paths["sidecar"], sidecar)
+
+    _assert_score_rejected_without_side_effects(
+        paths, monkeypatch, "jump_timestamp_mismatch"
+    )
+
+
+def test_accepts_absent_optional_jump_aliases(tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar.pop("jump_datetime", None)
+    sidecar["prejump_shadow_metadata"].pop("jump_time", None)
+    sidecar["race_info"].pop("race_time", None)
+    _write_json(paths["sidecar"], sidecar)
+
+    output = _score_paths(paths)
+
+    assert output["jump_timestamp"] == "2026-07-16T08:58:00+00:00"
+
+
+@pytest.mark.parametrize(
+    ("scope", "field", "reason"),
+    [
+        ("prejump_shadow_metadata", "jump_datetime", "jump_timestamp_invalid"),
+        ("sidecar", "jump_datetime", "jump_timestamp_invalid"),
+        ("prejump_shadow_metadata", "jump_time", "jump_time_invalid"),
+        ("race_info", "race_time", "jump_time_invalid"),
+    ],
+)
+@pytest.mark.parametrize("value", [None, False, "", "not-a-time", 123])
+def test_rejects_each_supplied_invalid_jump_alias_without_side_effects(
+    tmp_path, monkeypatch, scope, field, reason, value
+):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    target = sidecar if scope == "sidecar" else sidecar[scope]
+    target[field] = value
+    _write_json(paths["sidecar"], sidecar)
+
+    _assert_score_rejected_without_side_effects(paths, monkeypatch, reason)
+
+
+@pytest.mark.parametrize("scope", ["prejump_shadow_metadata", "sidecar"])
+def test_rejects_supplied_timezone_less_jump_datetime_without_side_effects(
+    tmp_path, monkeypatch, scope
+):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    target = sidecar if scope == "sidecar" else sidecar[scope]
+    target["jump_datetime"] = "2026-07-16T18:58:00"
+    _write_json(paths["sidecar"], sidecar)
+
+    _assert_score_rejected_without_side_effects(
+        paths, monkeypatch, "jump_timestamp_timezone_missing"
+    )
 
 
 def test_cli_duplicate_identity_rejection_has_no_stdout_or_file_side_effect(

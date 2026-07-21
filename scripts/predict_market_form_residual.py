@@ -1044,7 +1044,7 @@ def _jump_timestamp(sidecar: Mapping[str, Any], race_date: date) -> datetime:
     if not isinstance(shadow, Mapping):
         raise ManualPredictionError("prejump_shadow_metadata_missing")
     race_info = race_info if isinstance(race_info, Mapping) else {}
-    supplied = []
+    supplied_datetime_timestamps = []
     for mapping in (shadow, sidecar):
         if "jump_datetime" in mapping:
             value = mapping["jump_datetime"]
@@ -1055,19 +1055,43 @@ def _jump_timestamp(sidecar: Mapping[str, Any], race_date: date) -> datetime:
                 or not value.strip()
             ):
                 raise ManualPredictionError("jump_timestamp_invalid")
-            supplied.append(_parse_timestamp(value, "jump_timestamp").timestamp())
-    if supplied:
-        if any(value != supplied[0] for value in supplied[1:]):
-            raise ManualPredictionError("jump_timestamp_mismatch")
-        return datetime.fromtimestamp(supplied[0], tz=ZoneInfo("UTC"))
-    raw_time = str(shadow.get("jump_time") or race_info.get("race_time") or "").strip()
-    for fmt in ("%I:%M %p", "%I:%M%p", "%H:%M"):
-        try:
-            parsed_time = datetime.strptime(raw_time.upper(), fmt).time()
-            return datetime.combine(race_date, parsed_time, tzinfo=MELBOURNE)
-        except ValueError:
+            supplied_datetime_timestamps.append(
+                _parse_timestamp(value, "jump_timestamp").timestamp()
+            )
+
+    supplied_time_timestamps = []
+    for mapping, key in ((shadow, "jump_time"), (race_info, "race_time")):
+        if key not in mapping:
             continue
-    raise ManualPredictionError("jump_time_invalid")
+        value = mapping[key]
+        if (
+            value is None
+            or isinstance(value, bool)
+            or not isinstance(value, str)
+            or not value.strip()
+        ):
+            raise ManualPredictionError("jump_time_invalid")
+        for fmt in ("%I:%M %p", "%I:%M%p", "%H:%M"):
+            try:
+                parsed_time = datetime.strptime(value.strip().upper(), fmt).time()
+                supplied_time_timestamps.append(
+                    datetime.combine(
+                        race_date, parsed_time, tzinfo=MELBOURNE
+                    ).timestamp()
+                )
+                break
+            except ValueError:
+                continue
+        else:
+            raise ManualPredictionError("jump_time_invalid")
+
+    supplied = supplied_datetime_timestamps + supplied_time_timestamps
+    if not supplied:
+        raise ManualPredictionError("jump_time_invalid")
+    if any(value != supplied[0] for value in supplied[1:]):
+        raise ManualPredictionError("jump_timestamp_mismatch")
+    timezone = ZoneInfo("UTC") if supplied_datetime_timestamps else MELBOURNE
+    return datetime.fromtimestamp(supplied[0], tz=timezone)
 
 
 def _agreed_sidecar_value(sidecar: Mapping[str, Any], key: str) -> Any:
