@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from scripts import autonomous_live_odds_capture as autonomous_capture
 from scripts import strict_win_odds_fixture_capture as fixture
 
 
@@ -117,6 +118,50 @@ def _current_time() -> datetime:
     return datetime.fromisoformat("2026-07-09T12:20:00+10:00")
 
 
+def _build_capture_plan(tmp_path: Path) -> dict:
+    input_dir = tmp_path / "upcoming"
+    input_dir.mkdir()
+    csv_path = input_dir / "Race 1 - TEST - 2026-07-09.csv"
+    csv_path.write_text("Dog Name,BOX\n1. Alpha,\n2. Bravo,\n", encoding="utf-8")
+    autonomous_capture.write_json(
+        autonomous_capture.sidecar_path_for(csv_path),
+        {
+            "metadata_is_leakage_safe": True,
+            "prejump_shadow_metadata": {
+                "status": "PASS",
+                "metadata_is_leakage_safe": True,
+                "race_date": "2026-07-09",
+                "venue": "TEST",
+                "race_number": "1",
+                "jump_time": "2026-07-09T12:30:00+10:00",
+                "source_url": "https://www.thedogs.com.au/racing/test/2026-07-09/1/example",
+                "runner_box_name_list": [
+                    {"box_number": 1, "dog_name": "Alpha"},
+                    {"box_number": 2, "dog_name": "Bravo"},
+                ],
+                "canonical_final_runner_alignment": {
+                    "status": "aligned",
+                    "canonical_runner_set_status": "available",
+                },
+            },
+        },
+    )
+    return autonomous_capture.build_capture_plan(
+        [input_dir], current_time=_current_time()
+    )
+
+
+def _races_plan(tmp_path: Path) -> dict:
+    legacy_plan = _plan(tmp_path)
+    race = legacy_plan["items"][0]
+    race["race_id"] = race.pop("canonical_race_identity")
+    return {
+        "schema_version": "autonomous_live_odds_capture_plan_v1",
+        "ready_count": 1,
+        "races": [race],
+    }
+
+
 def _reseal_manifest(output_dir: Path, manifest: dict) -> None:
     manifest_base = dict(manifest)
     manifest_base.pop("manifest_sha256", None)
@@ -182,6 +227,202 @@ def test_build_fixture_packet_seals_raw_fixture_projection_and_manifest(
     ]
 
 
+def test_build_fixture_packet_consumes_build_capture_plan_output_directly(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(fixture, "ROOT", tmp_path)
+    plan = _build_capture_plan(tmp_path)
+
+    report = fixture.build_fixture_packet(
+        plan=plan,
+        fetch_payload=_fetch_result(
+            alias_race_id="Race 9 - OTHER - 2026-07-09",
+            race_id="OTHER_2026-07-09_9",
+        ),
+        output_dir=_output_dir(tmp_path),
+        current_time=_current_time(),
+    )
+
+    assert plan["schema_version"] == "autonomous_live_odds_capture_plan_v1"
+    assert plan["ready_count"] == 1
+    assert plan["races"][0]["race_id"] == RACE_ID
+    assert report["status"] == fixture.FINAL_BLOCKED_VALIDATION_FAILED
+    assert report["ready_plan_item_count"] == 1
+    assert report["fixture_results"] == [
+        {
+            "race_id": RACE_ID,
+            "status": "BLOCKED",
+            "reasons": ["raw_fetch_result_missing_for_ready_race"],
+            "fixture_path": None,
+            "projection_path": None,
+        }
+    ]
+
+
+@pytest.mark.parametrize("ready_count", [0, 2])
+def test_ready_plan_items_rejects_producer_ready_count_mismatch(tmp_path, ready_count):
+    plan = _build_capture_plan(tmp_path)
+    plan["ready_count"] = ready_count
+
+    with pytest.raises(ValueError, match="plan_ready_count_mismatch"):
+        fixture.ready_plan_items(plan)
+
+
+@pytest.mark.parametrize(
+    ("race_id", "error"),
+    [
+        (None, "ready_plan_item_identity_missing"),
+        ("   ", "ready_plan_item_identity_missing"),
+        (123, "ready_plan_item_identity_malformed"),
+    ],
+)
+def test_ready_plan_items_rejects_missing_or_malformed_producer_race_id(
+    tmp_path, race_id, error
+):
+    plan = _build_capture_plan(tmp_path)
+    plan["races"][0]["race_id"] = race_id
+
+    with pytest.raises(ValueError, match=error):
+        fixture.ready_plan_items(plan)
+
+
+def test_ready_plan_items_rejects_conflicting_row_identities(tmp_path):
+    plan = _build_capture_plan(tmp_path)
+    plan["races"][0]["canonical_race_identity"] = "Race 2 - TEST - 2026-07-09"
+
+    with pytest.raises(ValueError, match="ready_plan_item_identity_conflict"):
+        fixture.ready_plan_items(plan)
+
+
+def test_ready_plan_items_rejects_duplicate_producer_races(tmp_path):
+    plan = _build_capture_plan(tmp_path)
+    plan["races"].append(json.loads(json.dumps(plan["races"][0])))
+    plan["ready_count"] = 2
+
+    with pytest.raises(ValueError, match="duplicate_ready_plan_race_identities"):
+        fixture.ready_plan_items(plan)
+
+
+def test_ready_plan_items_retains_equivalent_legacy_items_support(tmp_path):
+    plan = _build_capture_plan(tmp_path)
+    legacy_item = json.loads(json.dumps(plan["races"][0]))
+    legacy_item["canonical_race_identity"] = legacy_item.pop("race_id")
+    plan["items"] = [legacy_item]
+    plan["ready_to_capture_race_count"] = 1
+
+    expected_item = dict(plan["races"][0])
+    expected_item["canonical_race_identity"] = expected_item.pop("race_id")
+    assert fixture.ready_plan_items(plan) == [expected_item]
+
+
+def test_ready_plan_items_rejects_conflicting_mixed_schema_rows(tmp_path):
+    plan = _build_capture_plan(tmp_path)
+    legacy_item = json.loads(json.dumps(plan["races"][0]))
+    legacy_item["canonical_race_identity"] = "Race 2 - TEST - 2026-07-09"
+    legacy_item.pop("race_id")
+    plan["items"] = [legacy_item]
+    plan["ready_to_capture_race_count"] = 1
+
+    with pytest.raises(ValueError, match="plan_mixed_schema_conflict"):
+        fixture.ready_plan_items(plan)
+
+
+def test_ready_plan_items_rejects_conflicting_non_ready_mixed_schema_rows(tmp_path):
+    plan = _build_capture_plan(tmp_path)
+    blocked = json.loads(json.dumps(plan["races"][0]))
+    blocked["status"] = "BLOCKED"
+    blocked["race_id"] = "Race 2 - TEST - 2026-07-09"
+    plan["races"].append(blocked)
+    plan["status_counts"] = {"READY_TO_CAPTURE": 1, "BLOCKED": 1}
+
+    plan["items"] = json.loads(json.dumps(plan["races"]))
+    for item in plan["items"]:
+        item["canonical_race_identity"] = item.pop("race_id")
+    plan["ready_to_capture_race_count"] = 1
+
+    assert fixture.ready_plan_items(plan) == [plan["items"][0]]
+
+    plan["items"][1]["status"] = "NO_DUE_WINDOW"
+    with pytest.raises(ValueError, match="plan_mixed_schema_conflict"):
+        fixture.ready_plan_items(plan)
+
+
+def test_build_fixture_packet_accepts_zero_ready_producer_plan(tmp_path, monkeypatch):
+    monkeypatch.setattr(fixture, "ROOT", tmp_path)
+    plan = _races_plan(tmp_path)
+    plan["races"][0]["status"] = "BLOCKED"
+    plan["ready_count"] = 0
+
+    report = fixture.build_fixture_packet(
+        plan=plan,
+        fetch_payload=_fetch_result(
+            alias_race_id="Race 9 - OTHER - 2026-07-09",
+            race_id="OTHER_2026-07-09_9",
+        ),
+        output_dir=_output_dir(tmp_path),
+        current_time=_current_time(),
+    )
+
+    assert report["status"] == fixture.FINAL_NO_READY_RACES
+    assert report["ready_plan_item_count"] == 0
+    assert report["fixture_results"] == []
+
+
+def test_producer_schema_fixture_creation_and_replay_succeeds(tmp_path, monkeypatch):
+    monkeypatch.setattr(fixture, "ROOT", tmp_path)
+    output_dir = _output_dir(tmp_path)
+
+    report = fixture.build_fixture_packet(
+        plan=_races_plan(tmp_path),
+        fetch_payload=_fetch_result(),
+        output_dir=output_dir,
+        current_time=_current_time(),
+    )
+
+    assert report["status"] == fixture.FINAL_SEALED_NO_DB_APPEND
+    assert report["validation_pass_count"] == 1
+    assert fixture.validate_packet(output_dir)["status"] == "PASS"
+
+
+def test_ready_plan_items_rejects_unknown_status_instead_of_discarding_row(tmp_path):
+    plan = _build_capture_plan(tmp_path)
+    plan["races"][0]["status"] = "UNKNOWN"
+    plan["ready_count"] = 0
+    plan["status_counts"] = {"UNKNOWN": 1}
+
+    with pytest.raises(ValueError, match="plan_item_status_invalid"):
+        fixture.ready_plan_items(plan)
+
+
+def test_ready_plan_items_rejects_unaccounted_producer_record(tmp_path):
+    plan = _build_capture_plan(tmp_path)
+    blocked = json.loads(json.dumps(plan["races"][0]))
+    blocked["status"] = "BLOCKED"
+    blocked["race_id"] = "Race 2 - TEST - 2026-07-09"
+    plan["races"].append(blocked)
+
+    with pytest.raises(ValueError, match="plan_status_counts_mismatch"):
+        fixture.ready_plan_items(plan)
+
+
+def test_ready_plan_items_rejects_candidate_count_mismatch(tmp_path):
+    plan = _build_capture_plan(tmp_path)
+    plan["candidate_race_count"] = 2
+
+    with pytest.raises(ValueError, match="plan_candidate_race_count_mismatch"):
+        fixture.ready_plan_items(plan)
+
+
+def test_ready_plan_items_rejects_ready_count_without_races_container():
+    plan = {
+        "schema_version": "autonomous_live_odds_capture_plan_v1",
+        "ready_count": 1,
+    }
+
+    with pytest.raises(ValueError, match="plan_races_missing"):
+        fixture.ready_plan_items(plan)
+
+
 def test_build_fixture_packet_refuses_existing_output_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(fixture, "ROOT", tmp_path)
     output_dir = _output_dir(tmp_path)
@@ -235,23 +476,23 @@ def test_repeated_builds_emit_identical_sealed_contract_bytes(tmp_path, monkeypa
     raw_fixture = json.loads(raw_path.read_text(encoding="utf-8"))
     assert (
         raw_fixture["fixture_id"]
-        == "0b9146eeef22c370023233e4d5ac2adf2e466c21d5d71297bddd6e29d74385fa"
+        == "9e392df510e626d2593d259e2514c4a481ca456bfd060da29e010611edd71242"
     )
     assert (
         raw_entry["sha256"]
-        == "350820406e8be234f6c7e95773f5a68b938f909f09ec666d64347c9c22b5cd09"
+        == "5e7f315f7a697e1a56ac54cea7b30a30d77ab2cfebf2b5dcb3a63ec5989acd2e"
     )
     assert (
         projection_entry["sha256"]
-        == "748a1de2f605f43a4d7f5a374e3b450bcb3f868f6a3a77ae0734b4a5420290e5"
+        == "fbbaf655e975bec3f3946b8d42a8534b70855685ebd602c7d222138a9426e1c1"
     )
     assert (
         manifest["manifest_sha256"]
-        == "e15a0b9e07884c74db5655222e6cf5b8f5343f98c46891bdee857f508578f097"
+        == "c53b49568755ab473d5983f6b740359f2c4106541643d29e551329c64f1d3f1a"
     )
     assert (
         fixture.sha256_file(first_output / "strict_win_fixture_manifest.json")
-        == "a5fb322d9ae9d2b6e0b06e1a623b1af9041c193250a20ea330053399f5432a8a"
+        == "b29c0ffbaf69d9177583a11fa9121e144ee298e78fd6e49a0e0f982b557e2733"
     )
 
 
@@ -1192,7 +1433,7 @@ def test_capture_rejects_duplicate_and_malformed_candidate_records(
 def test_capture_rejects_competing_candidates_for_one_plan_item(tmp_path, monkeypatch):
     monkeypatch.setattr(fixture, "ROOT", tmp_path)
     plan = _plan(tmp_path)
-    plan["items"][0]["race_id"] = "SECONDARY-ID"
+    plan["items"][0]["race_id_aliases"] = ["SECONDARY-ID"]
     primary = _fetch_result()
     secondary = _fetch_result(alias_race_id="OTHER", race_id="SECONDARY-ID")
 

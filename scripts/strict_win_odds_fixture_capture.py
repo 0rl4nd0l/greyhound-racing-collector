@@ -46,6 +46,7 @@ PRESEAL_VALIDATION_SCHEMA = "strict_win_odds_fixture_packet_validation_preseal_v
 PACKET_VALIDATOR_SCHEMA = "strict_win_odds_fixture_packet_validator_v2"
 CAPTURE_MODE = "strict_win_fixture_v2"
 COLLECTOR_PATH = "scripts/strict_win_odds_fixture_capture.py"
+PLAN_ITEM_STATUSES = frozenset({"READY_TO_CAPTURE", "BLOCKED", "NO_DUE_WINDOW"})
 FINAL_PLAN_ONLY_DONE = "STRICT_WIN_FUTURE_COLLECTION_PLAN_ONLY_DONE"
 FINAL_SEALED_NO_DB_APPEND = "STRICT_WIN_FIXTURE_PACKET_SEALED_NO_DB_APPEND"
 FINAL_BLOCKED_VALIDATION_FAILED = "STRICT_WIN_FIXTURE_PACKET_BLOCKED_VALIDATION_FAILED"
@@ -1182,10 +1183,14 @@ def matching_fetch_result(
     fetch_index: Mapping[str, Sequence[Mapping[str, Any]]],
 ) -> Mapping[str, Any] | None:
     matches: list[Mapping[str, Any]] = []
-    for key in (
+    plan_keys = [
         plan_item.get("canonical_race_identity"),
         plan_item.get("race_id"),
-    ):
+    ]
+    aliases = plan_item.get("race_id_aliases")
+    if isinstance(aliases, list):
+        plan_keys.extend(aliases)
+    for key in plan_keys:
         text = str(key or "").strip()
         if text and text in fetch_index:
             for record in fetch_index[text]:
@@ -1199,31 +1204,176 @@ def matching_fetch_result(
     return matches[0] if matches else None
 
 
-def ready_plan_items(plan: Mapping[str, Any]) -> list[Mapping[str, Any]]:
-    items = plan.get("items") or []
+def ready_plan_item_identity(item: Mapping[str, Any], *, key: str, index: int) -> str:
+    value = item.get(key)
+    if value is None or (isinstance(value, str) and not value.strip()):
+        raise ValueError(f"ready_plan_item_identity_missing:{index}:{key}")
+    if not isinstance(value, str):
+        raise ValueError(f"ready_plan_item_identity_malformed:{index}:{key}")
+    return value.strip()
+
+
+def normalized_ready_plan_container(
+    plan: Mapping[str, Any],
+    *,
+    container_key: str,
+    identity_key: str,
+    count_key: str,
+) -> tuple[list[Mapping[str, Any]], list[Mapping[str, Any]]]:
+    items = plan.get(container_key)
     if not isinstance(items, list):
-        raise ValueError("plan_items_must_be_list")
+        raise ValueError(f"plan_{container_key}_must_be_list")
+    if "candidate_race_count" in plan:
+        candidate_count = plan.get("candidate_race_count")
+        if (
+            isinstance(candidate_count, bool)
+            or not isinstance(candidate_count, int)
+            or candidate_count < 0
+        ):
+            raise ValueError("plan_candidate_race_count_malformed")
+        if candidate_count != len(items):
+            raise ValueError(
+                f"plan_candidate_race_count_mismatch:{candidate_count}:{len(items)}"
+            )
+    normalized_items: list[Mapping[str, Any]] = []
     ready: list[Mapping[str, Any]] = []
     identities: list[str] = []
+    statuses: list[str] = []
     for index, item in enumerate(items):
         if not isinstance(item, Mapping):
             raise ValueError(f"plan_item_malformed:{index}")
-        if item.get("status") != "READY_TO_CAPTURE":
+        status = item.get("status")
+        if not isinstance(status, str) or status not in PLAN_ITEM_STATUSES:
+            raise ValueError(f"plan_item_status_invalid:{index}")
+        statuses.append(status)
+        alternate_key = (
+            "canonical_race_identity" if identity_key == "race_id" else "race_id"
+        )
+        normalized = dict(item)
+        normalized.pop("canonical_race_identity", None)
+        normalized.pop("race_id", None)
+        if identity_key in item:
+            identity_value = item.get(identity_key)
+            normalized["canonical_race_identity"] = (
+                identity_value.strip()
+                if isinstance(identity_value, str)
+                else identity_value
+            )
+        if alternate_key in item:
+            alternate_value = item.get(alternate_key)
+            alternate_value = (
+                alternate_value.strip()
+                if isinstance(alternate_value, str)
+                else alternate_value
+            )
+            if identity_key not in item:
+                normalized["canonical_race_identity"] = alternate_value
+            elif alternate_value != normalized["canonical_race_identity"]:
+                normalized["race_id"] = alternate_value
+        if status != "READY_TO_CAPTURE":
+            normalized_items.append(normalized)
             continue
-        identity = str(item.get("canonical_race_identity") or "").strip()
-        if not identity:
-            raise ValueError(f"ready_plan_item_identity_missing:{index}")
+        identity = ready_plan_item_identity(item, key=identity_key, index=index)
+        if alternate_key in item:
+            alternate_identity = ready_plan_item_identity(
+                item, key=alternate_key, index=index
+            )
+            if alternate_identity != identity:
+                raise ValueError(f"ready_plan_item_identity_conflict:{index}")
         identities.append(identity)
         expected_runners = item.get("expected_runners")
         if not isinstance(expected_runners, list) or any(
             not isinstance(runner, Mapping) for runner in expected_runners
         ):
             raise ValueError(f"ready_plan_item_expected_runners_malformed:{index}")
-        ready.append(item)
+        normalized["canonical_race_identity"] = identity
+        normalized.pop("race_id", None)
+        if "race_id_aliases" in item:
+            aliases = item.get("race_id_aliases")
+            if not isinstance(aliases, list) or any(
+                not isinstance(alias, str) or not alias.strip() for alias in aliases
+            ):
+                raise ValueError(f"ready_plan_item_aliases_malformed:{index}")
+            normalized_aliases = [alias.strip() for alias in aliases]
+            if duplicate_values(normalized_aliases):
+                raise ValueError(f"ready_plan_item_aliases_duplicate:{index}")
+            normalized["race_id_aliases"] = normalized_aliases
+        normalized_items.append(normalized)
+        ready.append(normalized)
     duplicates = duplicate_values(identities)
     if duplicates:
         raise ValueError("duplicate_ready_plan_race_identities:" + ",".join(duplicates))
-    return ready
+    if container_key == "races" and "status_counts" in plan:
+        declared_status_counts = plan.get("status_counts")
+        if not isinstance(declared_status_counts, Mapping) or any(
+            not isinstance(key, str)
+            or isinstance(value, bool)
+            or not isinstance(value, int)
+            or value < 0
+            for key, value in (
+                declared_status_counts.items()
+                if isinstance(declared_status_counts, Mapping)
+                else []
+            )
+        ):
+            raise ValueError("plan_status_counts_malformed")
+        actual_status_counts = dict(sorted(Counter(statuses).items()))
+        if dict(sorted(declared_status_counts.items())) != actual_status_counts:
+            raise ValueError("plan_status_counts_mismatch")
+    if count_key in plan:
+        declared_count = plan.get(count_key)
+        if (
+            isinstance(declared_count, bool)
+            or not isinstance(declared_count, int)
+            or declared_count < 0
+        ):
+            raise ValueError(f"plan_{count_key}_malformed")
+        if declared_count != len(ready):
+            raise ValueError(f"plan_{count_key}_mismatch:{declared_count}:{len(ready)}")
+    return normalized_items, ready
+
+
+def ready_plan_items(plan: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    """Return READY rows with one canonical internal race identity.
+
+    ``races``/``race_id`` is the live autonomous producer contract. The
+    original report-only ``items``/``canonical_race_identity`` form remains
+    supported so packets created before that producer integration still
+    replay under the closed PR #57 contract. When both forms are present,
+    their normalized rows must be byte-equivalent so neither can be silently
+    preferred or discarded.
+    """
+    producer_container = None
+    producer_ready = None
+    legacy_container = None
+    legacy_ready = None
+    if "ready_count" in plan and "races" not in plan:
+        raise ValueError("plan_races_missing")
+    if "ready_to_capture_race_count" in plan and "items" not in plan:
+        raise ValueError("plan_items_missing")
+    if "races" in plan:
+        producer_container, producer_ready = normalized_ready_plan_container(
+            plan,
+            container_key="races",
+            identity_key="race_id",
+            count_key="ready_count",
+        )
+    if "items" in plan:
+        legacy_container, legacy_ready = normalized_ready_plan_container(
+            plan,
+            container_key="items",
+            identity_key="canonical_race_identity",
+            count_key="ready_to_capture_race_count",
+        )
+    if producer_ready is not None and legacy_ready is not None:
+        if canonical_bytes(producer_container) != canonical_bytes(legacy_container):
+            raise ValueError("plan_mixed_schema_conflict")
+        return producer_ready
+    if producer_ready is not None:
+        return producer_ready
+    if legacy_ready is not None:
+        return legacy_ready
+    return []
 
 
 def manifest_file_entry(
