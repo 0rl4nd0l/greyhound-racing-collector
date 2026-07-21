@@ -689,6 +689,75 @@ def test_duplicate_identity_rejection_stops_before_score_and_writes_nothing(
     assert after == before
 
 
+@pytest.mark.parametrize(
+    ("scope", "field"),
+    [
+        ("race_info", "url"),
+        ("race_info", "target_grade_race_url"),
+        ("prejump_shadow_metadata", "source_url"),
+    ],
+)
+@pytest.mark.parametrize("value", [None, False, "", "not-a-url"])
+def test_rejects_supplied_invalid_duplicate_provenance_without_scoring(
+    tmp_path, monkeypatch, scope, field, value
+):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar[scope][field] = value
+    _write_json(paths["sidecar"], sidecar)
+    score_calls = 0
+
+    def counted_score(*_args, **_kwargs):
+        nonlocal score_calls
+        score_calls += 1
+
+    monkeypatch.setattr(manual, "score_race", counted_score)
+    with pytest.raises(ManualPredictionError):
+        _score_paths(paths)
+    assert score_calls == 0
+
+
+@pytest.mark.parametrize("scope", ["prejump_shadow_metadata", "sidecar"])
+def test_rejects_conflicting_duplicate_jump_timestamps_without_scoring(
+    tmp_path, monkeypatch, scope
+):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    target = (
+        sidecar["prejump_shadow_metadata"]
+        if scope == "prejump_shadow_metadata"
+        else sidecar
+    )
+    target["jump_datetime"] = "2026-07-16T18:59:00+10:00"
+    if scope == "prejump_shadow_metadata":
+        sidecar["jump_datetime"] = "2026-07-16T18:58:00+10:00"
+    _write_json(paths["sidecar"], sidecar)
+    score_calls = 0
+
+    def counted_score(*_args, **_kwargs):
+        nonlocal score_calls
+        score_calls += 1
+
+    monkeypatch.setattr(manual, "score_race", counted_score)
+    with pytest.raises(ManualPredictionError, match="jump_timestamp_mismatch"):
+        _score_paths(paths)
+    assert score_calls == 0
+
+
+def test_accepts_canonical_equivalent_duplicate_jump_timestamps(tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["jump_datetime"] = "2026-07-16T08:58:00Z"
+    _write_json(paths["sidecar"], sidecar)
+
+    output = _score_paths(paths)
+
+    assert output["race_id"] == RACE_ID
+
+
 def test_cli_duplicate_identity_rejection_has_no_stdout_or_file_side_effect(
     tmp_path,
 ):

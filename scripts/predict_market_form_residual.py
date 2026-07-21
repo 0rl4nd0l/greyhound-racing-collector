@@ -1081,8 +1081,11 @@ def _agreed_sidecar_value(sidecar: Mapping[str, Any], key: str) -> Any:
         if (
             value is None
             or isinstance(value, bool)
-            or not isinstance(value, str)
-            or not value.strip()
+            or (isinstance(value, str) and not value.strip())
+        ):
+            raise ManualPredictionError(f"sidecar_{key}_invalid")
+        if (key.endswith("url") or key.endswith("source_url")) and not isinstance(
+            value, str
         ):
             raise ManualPredictionError(f"sidecar_{key}_invalid")
         values.append(value)
@@ -1136,6 +1139,10 @@ def _sidecar_context(sidecar: Mapping[str, Any]) -> dict[str, Any]:
         ):
             raise ManualPredictionError("sidecar_source_url_alias_invalid")
         source_urls.append(value.strip())
+    if any(not _trusted_thedogs_url(value) for value in source_urls):
+        if len(set(source_urls)) == 1:
+            raise ManualPredictionError("sidecar_source_url_not_trusted_thedogs")
+        raise ManualPredictionError("sidecar_source_url_alias_mismatch")
     source_identities = [
         canonical_thedogs_race_identity(value) for value in source_urls
     ]
@@ -1143,9 +1150,7 @@ def _sidecar_context(sidecar: Mapping[str, Any]) -> dict[str, Any]:
         raise ManualPredictionError("sidecar_source_url_alias_mismatch")
     if len({identity["canonical_url"] for identity in source_identities}) != 1:
         raise ManualPredictionError("sidecar_source_url_alias_mismatch")
-    source_url = source_identities[0]["canonical_url"]
-    if not _trusted_thedogs_url(source_url):
-        raise ManualPredictionError("sidecar_source_url_not_trusted_thedogs")
+    source_url = source_urls[0]
     source_identity = source_identities[0]
     if source_identity is None:
         raise ManualPredictionError("sidecar_source_url_not_canonical_thedogs_race")
