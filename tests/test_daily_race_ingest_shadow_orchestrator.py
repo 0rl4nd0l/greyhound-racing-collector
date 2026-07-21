@@ -17,6 +17,7 @@ from scripts.daily_race_ingest_shadow_orchestrator import (
     is_thedogs_source_url,
     looks_post_result_source_url,
     parse_jump_datetime,
+    resolve_jump_datetime_aliases,
     prejump_metadata_report_from_classification,
     probability_sum_report_from_predictions,
     score_live_subprocess_env,
@@ -607,6 +608,49 @@ def test_parse_jump_datetime_accepts_sidecar_local_time():
 
     assert error is None
     assert parsed.isoformat() == "2026-06-07T14:07:00+10:00"
+
+
+def test_jump_time_aliases_reject_conflicting_truthy_fallbacks():
+    resolved, error, matrix = resolve_jump_datetime_aliases(
+        payload={
+            "prejump_shadow_metadata": {"jump_time": "6:58 PM"},
+            "race_info": {"race_time": "6:51 PM"},
+            "jump_time": "6:52 PM",
+        },
+        race_date=date(2026, 6, 7),
+        current_time=datetime.fromisoformat("2026-06-07T12:00:00+10:00"),
+    )
+    assert resolved is None
+    assert error == "jump_time_conflict"
+    assert set(matrix) == {
+        "prejump_shadow_metadata.jump_time",
+        "race_info.race_time",
+        "sidecar.jump_time",
+    }
+
+
+@pytest.mark.parametrize("value", [None, True, "", "not-a-time"])
+def test_jump_time_aliases_reject_present_invalid_values(value):
+    resolved, error, _ = resolve_jump_datetime_aliases(
+        payload={"race_info": {"race_time": value}},
+        race_date=date(2026, 6, 7),
+        current_time=datetime.fromisoformat("2026-06-07T12:00:00+10:00"),
+    )
+    assert resolved is None
+    assert error in {"jump_time_invalid", "jump_time_unparseable"}
+
+
+def test_jump_time_aliases_accept_equivalent_timezone_forms():
+    resolved, error, _ = resolve_jump_datetime_aliases(
+        payload={
+            "prejump_shadow_metadata": {"jump_datetime": "2026-06-07T08:00:00Z"},
+            "race_info": {"race_time": "6:00 PM"},
+        },
+        race_date=date(2026, 6, 7),
+        current_time=datetime.fromisoformat("2026-06-07T12:00:00+10:00"),
+    )
+    assert error is None
+    assert resolved.isoformat() == "2026-06-07T18:00:00+10:00"
 
 
 def test_thedogs_source_url_validator_accepts_only_thedogs_hosts():

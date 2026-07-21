@@ -308,6 +308,66 @@ def parse_jump_datetime(
     return None, "jump_time_unparseable"
 
 
+_JUMP_TIME_ALIASES = (
+    "jump_datetime",
+    "jump_time_iso",
+    "race_jump_datetime",
+    "scheduled_jump_datetime",
+    "start_datetime",
+    "jump_time",
+    "race_time",
+)
+
+
+def resolve_jump_datetime_aliases(
+    *,
+    payload: Mapping[str, Any],
+    race_date: date | None,
+    current_time: datetime,
+) -> tuple[datetime | None, str | None, dict[str, dict[str, Any]]]:
+    """Resolve every supplied jump-time representation and require agreement."""
+    sources = {
+        "prejump_shadow_metadata": payload.get("prejump_shadow_metadata"),
+        "race_info": payload.get("race_info"),
+        "sidecar": payload,
+    }
+    candidates: list[tuple[str, datetime]] = []
+    matrix: dict[str, dict[str, Any]] = {}
+    for source_name, source in sources.items():
+        if not isinstance(source, Mapping):
+            continue
+        for key in _JUMP_TIME_ALIASES:
+            if key not in source:
+                continue
+            label = f"{source_name}.{key}"
+            value = source[key]
+            entry: dict[str, Any] = {"present": True, "value": value}
+            if value is None or isinstance(value, bool) or not isinstance(value, (str, int, float)):
+                entry["error"] = "jump_time_invalid"
+                matrix[label] = entry
+                return None, "jump_time_invalid", matrix
+            if isinstance(value, str) and not value.strip():
+                entry["error"] = "jump_time_invalid"
+                matrix[label] = entry
+                return None, "jump_time_invalid", matrix
+            parsed, error = parse_jump_datetime(
+                race_date=race_date, jump_time=value, current_time=current_time
+            )
+            if error or parsed is None:
+                entry["error"] = "jump_time_unparseable"
+                matrix[label] = entry
+                return None, "jump_time_unparseable", matrix
+            entry["normalized"] = parsed.astimezone(current_time.tzinfo).isoformat()
+            matrix[label] = entry
+            candidates.append((label, parsed.astimezone(current_time.tzinfo)))
+    if not candidates:
+        return None, "jump_time_missing", matrix
+    canonical = candidates[0][1]
+    if any(parsed != canonical for _, parsed in candidates[1:]):
+        return None, "jump_time_conflict", matrix
+    return canonical, None, matrix
+
+
 def parse_sidecar_timestamp(value: Any) -> datetime | None:
     if value in (None, ""):
         return None
@@ -566,13 +626,11 @@ def validate_prejump_sidecar_metadata(path: Path) -> dict[str, Any]:
     race_number = parse_int_value(
         shadow_metadata.get("race_number") or race_info.get("race_number") or payload.get("race_number")
     )
-    jump_time = (
-        shadow_metadata.get("jump_time")
-        or race_info.get("race_time")
-        or race_info.get("jump_time")
-        or payload.get("jump_time")
-        or payload.get("jump_datetime")
+    current_time = datetime.now().astimezone()
+    jump_datetime, jump_error, jump_presence = resolve_jump_datetime_aliases(
+        payload=payload, race_date=race_date, current_time=current_time
     )
+    report["jump_time_presence_matrix"] = jump_presence
     source_url = (
         safe_target.get("metadata_source_url")
         or shadow_metadata.get("source_url")
@@ -583,7 +641,17 @@ def validate_prejump_sidecar_metadata(path: Path) -> dict[str, Any]:
     report["race_date"] = race_date.isoformat() if race_date else None
     report["venue"] = str(venue).strip().upper() if venue else None
     report["race_number"] = race_number
-    report["jump_time"] = str(jump_time).strip() if jump_time not in (None, "") else None
+    report["jump_time"] = None
+    if jump_datetime is not None:
+        for source in (shadow_metadata, race_info, payload):
+            for key in _JUMP_TIME_ALIASES:
+                if isinstance(source, Mapping) and key in source:
+                    report["jump_time"] = str(source[key]).strip()
+                    break
+            if report["jump_time"] is not None:
+                break
+    if jump_error:
+        report["fail_reasons"].append(jump_error)
     captured_at, capture_source = sidecar_metadata_capture_timestamp(payload, shadow_metadata)
     report["metadata_captured_at"] = captured_at
     report["metadata_capture_source"] = capture_source
@@ -594,25 +662,14 @@ def validate_prejump_sidecar_metadata(path: Path) -> dict[str, Any]:
     elif capture_dt is None:
         report["fail_reasons"].append("metadata_captured_at_unparseable")
         report["metadata_capture_timing_status"] = "UNPARSEABLE"
-    elif race_date and report["jump_time"]:
-        jump_dt, jump_error = parse_jump_datetime(
-            race_date=race_date,
-            jump_time=report["jump_time"],
-            current_time=datetime.now().astimezone(),
-        )
-        if jump_dt is not None:
-            seconds_before_jump = (jump_dt - capture_dt).total_seconds()
-            report["metadata_capture_seconds_before_jump"] = seconds_before_jump
-            if seconds_before_jump <= 0:
-                report["fail_reasons"].append("metadata_captured_at_not_before_jump")
-                report["metadata_capture_timing_status"] = "AFTER_OR_AT_JUMP"
-            else:
-                report["metadata_capture_timing_status"] = "PRE_JUMP"
-        elif jump_error:
-            report["metadata_capture_timing_status"] = f"UNVERIFIED:{jump_error}"
-            report["fail_reasons"].append(
-                f"metadata_capture_timing_unverified:{jump_error}"
-            )
+    elif race_date and jump_datetime is not None:
+        seconds_before_jump = (jump_datetime - capture_dt).total_seconds()
+        report["metadata_capture_seconds_before_jump"] = seconds_before_jump
+        if seconds_before_jump <= 0:
+            report["fail_reasons"].append("metadata_captured_at_not_before_jump")
+            report["metadata_capture_timing_status"] = "AFTER_OR_AT_JUMP"
+        else:
+            report["metadata_capture_timing_status"] = "PRE_JUMP"
     report["source_url"] = str(source_url).strip() if source_url not in (None, "") else None
     if not race_date:
         report["fail_reasons"].append("race_date_missing")
