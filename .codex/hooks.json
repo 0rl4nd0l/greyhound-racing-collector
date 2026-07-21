@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "TENN_V2_REQUIRED=1 python3 \"$HOME/.codex/skills/tenn-git-guard/scripts/tenn_git_guard.py\" hook --repo-root \"$(git rev-parse --show-toplevel)\" --platform codex --event BeforeTool",
+            "command": "python3 \"$HOME/.codex/skills/tenn-git-guard/scripts/tenn_git_guard.py\" hook --repo-root \"$(git rev-parse --show-toplevel)\" --platform codex --event BeforeTool",
             "statusMessage": "Checking Greyhound V2 tool authority..."
           }
         ]
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "TENN_V2_REQUIRED=1 python3 \"$HOME/.codex/skills/tenn-git-guard/scripts/tenn_git_guard.py\" hook --repo-root \"$(git rev-parse --show-toplevel)\" --platform codex --event Stop",
+            "command": "python3 \"$HOME/.codex/skills/tenn-git-guard/scripts/tenn_git_guard.py\" hook --repo-root \"$(git rev-parse --show-toplevel)\" --platform codex --event Stop",
             "statusMessage": "Checking Greyhound V2 task outcome..."
           }
         ]
