@@ -1071,7 +1071,7 @@ def _jump_timestamp(sidecar: Mapping[str, Any], race_date: date) -> datetime:
             or not value.strip()
         ):
             raise ManualPredictionError("jump_time_invalid")
-        for fmt in ("%I:%M %p", "%I:%M%p", "%H:%M"):
+        for fmt in ("%I:%M %p", "%I:%M%p", "%H:%M", "%H:%M:%S"):
             try:
                 parsed_time = datetime.strptime(value.strip().upper(), fmt).time()
                 supplied_time_timestamps.append(

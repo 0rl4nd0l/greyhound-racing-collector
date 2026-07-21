@@ -787,9 +787,27 @@ def test_accepts_canonical_equivalent_duplicate_jump_timestamps(tmp_path):
     assert output["race_id"] == RACE_ID
 
 
+def test_accepts_matching_time_only_jump_aliases_with_seconds(tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    del sidecar["prejump_shadow_metadata"]["jump_datetime"]
+    sidecar["prejump_shadow_metadata"]["jump_time"] = "18:58:30"
+    sidecar["race_info"]["race_time"] = "18:58:30"
+    _write_json(paths["sidecar"], sidecar)
+
+    output = _score_paths(paths)
+
+    assert output["jump_timestamp"] == "2026-07-16T18:58:30+10:00"
+
+
 @pytest.mark.parametrize(
     ("shadow_time", "race_time"),
-    [("6:58 PM", "6:51 PM"), ("6:51 PM", "6:58 PM")],
+    [
+        ("6:58 PM", "6:51 PM"),
+        ("6:51 PM", "6:58 PM"),
+        ("18:58:30", "18:58:31"),
+    ],
 )
 def test_rejects_conflicting_time_only_jump_aliases_in_both_directions(
     tmp_path, monkeypatch, shadow_time, race_time
