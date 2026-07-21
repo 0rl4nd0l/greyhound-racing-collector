@@ -1044,9 +1044,22 @@ def _jump_timestamp(sidecar: Mapping[str, Any], race_date: date) -> datetime:
     if not isinstance(shadow, Mapping):
         raise ManualPredictionError("prejump_shadow_metadata_missing")
     race_info = race_info if isinstance(race_info, Mapping) else {}
-    explicit = shadow.get("jump_datetime") or sidecar.get("jump_datetime")
-    if explicit:
-        return _parse_timestamp(explicit, "jump_timestamp")
+    supplied = []
+    for mapping in (shadow, sidecar):
+        if "jump_datetime" in mapping:
+            value = mapping["jump_datetime"]
+            if (
+                value is None
+                or isinstance(value, bool)
+                or not isinstance(value, str)
+                or not value.strip()
+            ):
+                raise ManualPredictionError("jump_timestamp_invalid")
+            supplied.append(_parse_timestamp(value, "jump_timestamp").timestamp())
+    if supplied:
+        if any(value != supplied[0] for value in supplied[1:]):
+            raise ManualPredictionError("jump_timestamp_mismatch")
+        return datetime.fromtimestamp(supplied[0], tz=ZoneInfo("UTC"))
     raw_time = str(shadow.get("jump_time") or race_info.get("race_time") or "").strip()
     for fmt in ("%I:%M %p", "%I:%M%p", "%H:%M"):
         try:
@@ -1060,14 +1073,31 @@ def _jump_timestamp(sidecar: Mapping[str, Any], race_date: date) -> datetime:
 def _agreed_sidecar_value(sidecar: Mapping[str, Any], key: str) -> Any:
     race_info = sidecar.get("race_info")
     race_info = race_info if isinstance(race_info, Mapping) else {}
-    values = [
-        mapping.get(key)
-        for mapping in (sidecar, race_info)
-        if mapping.get(key) not in (None, "")
-    ]
+    values = []
+    for mapping in (sidecar, race_info):
+        if key not in mapping:
+            continue
+        value = mapping[key]
+        if (
+            value is None
+            or isinstance(value, bool)
+            or not isinstance(value, str)
+            or not value.strip()
+        ):
+            raise ManualPredictionError(f"sidecar_{key}_invalid")
+        values.append(value)
     if not values:
         raise ManualPredictionError(f"sidecar_{key}_missing")
-    if any(value != values[0] for value in values[1:]):
+    if key.endswith("url") or key.endswith("source_url"):
+        canonical = [
+            canonical_thedogs_race_identity(value)["canonical_url"]
+            if canonical_thedogs_race_identity(value)
+            else str(value).strip()
+            for value in values
+        ]
+        if any(value != canonical[0] for value in canonical[1:]):
+            raise ManualPredictionError(f"sidecar_{key}_mismatch")
+    elif any(value != values[0] for value in values[1:]):
         raise ManualPredictionError(f"sidecar_{key}_mismatch")
     return values[0]
 
@@ -1089,21 +1119,34 @@ def _sidecar_context(sidecar: Mapping[str, Any]) -> dict[str, Any]:
         raise ManualPredictionError("sidecar_metadata_not_leakage_safe")
     race_info = sidecar.get("race_info")
     race_info = race_info if isinstance(race_info, Mapping) else {}
-    source_urls = [
-        str(value).strip()
-        for value in (
-            shadow.get("source_url"),
-            sidecar.get("race_url"),
-            race_info.get("url"),
-        )
-        if str(value or "").strip()
+    source_urls = []
+    for mapping, key in (
+        (shadow, "source_url"),
+        (sidecar, "race_url"),
+        (race_info, "url"),
+    ):
+        if key not in mapping:
+            continue
+        value = mapping[key]
+        if (
+            value is None
+            or isinstance(value, bool)
+            or not isinstance(value, str)
+            or not value.strip()
+        ):
+            raise ManualPredictionError("sidecar_source_url_alias_invalid")
+        source_urls.append(value.strip())
+    source_identities = [
+        canonical_thedogs_race_identity(value) for value in source_urls
     ]
-    if not source_urls or len(set(source_urls)) != 1:
+    if not source_urls or any(identity is None for identity in source_identities):
         raise ManualPredictionError("sidecar_source_url_alias_mismatch")
-    source_url = source_urls[0]
+    if len({identity["canonical_url"] for identity in source_identities}) != 1:
+        raise ManualPredictionError("sidecar_source_url_alias_mismatch")
+    source_url = source_identities[0]["canonical_url"]
     if not _trusted_thedogs_url(source_url):
         raise ManualPredictionError("sidecar_source_url_not_trusted_thedogs")
-    source_identity = canonical_thedogs_race_identity(source_url)
+    source_identity = source_identities[0]
     if source_identity is None:
         raise ManualPredictionError("sidecar_source_url_not_canonical_thedogs_race")
     alignment = shadow.get("canonical_final_runner_alignment")
