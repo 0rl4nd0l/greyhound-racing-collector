@@ -1236,8 +1236,8 @@ def normalized_ready_plan_container(
                 f"plan_candidate_race_count_mismatch:{candidate_count}:{len(items)}"
             )
     normalized_items: list[Mapping[str, Any]] = []
-    ready: list[Mapping[str, Any]] = []
     identities: list[str] = []
+    identity_namespaces: list[set[str]] = []
     statuses: list[str] = []
     for index, item in enumerate(items):
         if not isinstance(item, Mapping):
@@ -1249,30 +1249,6 @@ def normalized_ready_plan_container(
         alternate_key = (
             "canonical_race_identity" if identity_key == "race_id" else "race_id"
         )
-        normalized = dict(item)
-        normalized.pop("canonical_race_identity", None)
-        normalized.pop("race_id", None)
-        if identity_key in item:
-            identity_value = item.get(identity_key)
-            normalized["canonical_race_identity"] = (
-                identity_value.strip()
-                if isinstance(identity_value, str)
-                else identity_value
-            )
-        if alternate_key in item:
-            alternate_value = item.get(alternate_key)
-            alternate_value = (
-                alternate_value.strip()
-                if isinstance(alternate_value, str)
-                else alternate_value
-            )
-            if identity_key not in item:
-                normalized["canonical_race_identity"] = alternate_value
-            elif alternate_value != normalized["canonical_race_identity"]:
-                normalized["race_id"] = alternate_value
-        if status != "READY_TO_CAPTURE":
-            normalized_items.append(normalized)
-            continue
         identity = ready_plan_item_identity(item, key=identity_key, index=index)
         if alternate_key in item:
             alternate_identity = ready_plan_item_identity(
@@ -1280,14 +1256,12 @@ def normalized_ready_plan_container(
             )
             if alternate_identity != identity:
                 raise ValueError(f"ready_plan_item_identity_conflict:{index}")
-        identities.append(identity)
-        expected_runners = item.get("expected_runners")
-        if not isinstance(expected_runners, list) or any(
-            not isinstance(runner, Mapping) for runner in expected_runners
-        ):
-            raise ValueError(f"ready_plan_item_expected_runners_malformed:{index}")
-        normalized["canonical_race_identity"] = identity
+        normalized = dict(item)
+        normalized.pop("canonical_race_identity", None)
         normalized.pop("race_id", None)
+        normalized["canonical_race_identity"] = identity
+        identities.append(identity)
+        normalized_aliases: list[str] = []
         if "race_id_aliases" in item:
             aliases = item.get("race_id_aliases")
             if not isinstance(aliases, list) or any(
@@ -1298,11 +1272,25 @@ def normalized_ready_plan_container(
             if duplicate_values(normalized_aliases):
                 raise ValueError(f"ready_plan_item_aliases_duplicate:{index}")
             normalized["race_id_aliases"] = normalized_aliases
+        identity_namespaces.append({identity, *normalized_aliases})
+        if status == "READY_TO_CAPTURE":
+            expected_runners = item.get("expected_runners")
+            if not isinstance(expected_runners, list) or any(
+                not isinstance(runner, Mapping) for runner in expected_runners
+            ):
+                raise ValueError(f"ready_plan_item_expected_runners_malformed:{index}")
         normalized_items.append(normalized)
-        ready.append(normalized)
     duplicates = duplicate_values(identities)
     if duplicates:
         raise ValueError("duplicate_ready_plan_race_identities:" + ",".join(duplicates))
+    identity_owner: dict[str, int] = {}
+    for index, namespace in enumerate(identity_namespaces):
+        for value in sorted(namespace):
+            owner = identity_owner.setdefault(value, index)
+            if owner != index:
+                raise ValueError(
+                    f"plan_race_identity_collision:{value}:{owner}:{index}"
+                )
     if container_key == "races" and "status_counts" in plan:
         declared_status_counts = plan.get("status_counts")
         if not isinstance(declared_status_counts, Mapping) or any(
@@ -1320,6 +1308,9 @@ def normalized_ready_plan_container(
         actual_status_counts = dict(sorted(Counter(statuses).items()))
         if dict(sorted(declared_status_counts.items())) != actual_status_counts:
             raise ValueError("plan_status_counts_mismatch")
+    ready = [
+        item for item in normalized_items if item.get("status") == "READY_TO_CAPTURE"
+    ]
     if count_key in plan:
         declared_count = plan.get(count_key)
         if (
@@ -1341,7 +1332,8 @@ def ready_plan_items(plan: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     supported so packets created before that producer integration still
     replay under the closed PR #57 contract. When both forms are present,
     their normalized rows must be byte-equivalent so neither can be silently
-    preferred or discarded.
+    preferred or discarded. Every row identity and alias namespace is
+    validated before status determines collection eligibility.
     """
     producer_container = None
     producer_ready = None

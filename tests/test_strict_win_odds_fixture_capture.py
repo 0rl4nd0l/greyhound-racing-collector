@@ -162,6 +162,27 @@ def _races_plan(tmp_path: Path) -> dict:
     }
 
 
+def _non_ready_plan(tmp_path: Path, *, status: str, schema: str) -> tuple[dict, dict]:
+    plan = _build_capture_plan(tmp_path)
+    race = plan["races"][0]
+    race["status"] = status
+    plan["ready_count"] = 0
+    plan["status_counts"] = {status: 1}
+    if schema == "canonical":
+        return plan, race
+    item = json.loads(json.dumps(race))
+    item["canonical_race_identity"] = item.pop("race_id")
+    return (
+        {
+            "schema_version": plan["schema_version"],
+            "candidate_race_count": 1,
+            "ready_to_capture_race_count": 0,
+            "items": [item],
+        },
+        item,
+    )
+
+
 def _reseal_manifest(output_dir: Path, manifest: dict) -> None:
     manifest_base = dict(manifest)
     manifest_base.pop("manifest_sha256", None)
@@ -286,6 +307,44 @@ def test_ready_plan_items_rejects_missing_or_malformed_producer_race_id(
         fixture.ready_plan_items(plan)
 
 
+@pytest.mark.parametrize("status", ["BLOCKED", "NO_DUE_WINDOW"])
+@pytest.mark.parametrize("schema", ["canonical", "legacy"])
+@pytest.mark.parametrize(
+    ("mutation", "value", "error"),
+    [
+        ("missing", None, "ready_plan_item_identity_missing"),
+        ("null", None, "ready_plan_item_identity_missing"),
+        ("blank", "   ", "ready_plan_item_identity_missing"),
+        ("non_string", 123, "ready_plan_item_identity_malformed"),
+    ],
+)
+def test_ready_plan_items_rejects_invalid_non_ready_identities(
+    tmp_path, status, schema, mutation, value, error
+):
+    plan, item = _non_ready_plan(tmp_path, status=status, schema=schema)
+    identity_key = "race_id" if schema == "canonical" else "canonical_race_identity"
+    if mutation == "missing":
+        item.pop(identity_key)
+    else:
+        item[identity_key] = value
+
+    with pytest.raises(ValueError, match=error):
+        fixture.ready_plan_items(plan)
+
+
+@pytest.mark.parametrize("status", ["BLOCKED", "NO_DUE_WINDOW"])
+@pytest.mark.parametrize("schema", ["canonical", "legacy"])
+def test_ready_plan_items_rejects_conflicting_non_ready_alternate_identity(
+    tmp_path, status, schema
+):
+    plan, item = _non_ready_plan(tmp_path, status=status, schema=schema)
+    alternate_key = "canonical_race_identity" if schema == "canonical" else "race_id"
+    item[alternate_key] = "Race 2 - TEST - 2026-07-09"
+
+    with pytest.raises(ValueError, match="ready_plan_item_identity_conflict"):
+        fixture.ready_plan_items(plan)
+
+
 def test_ready_plan_items_rejects_conflicting_row_identities(tmp_path):
     plan = _build_capture_plan(tmp_path)
     plan["races"][0]["canonical_race_identity"] = "Race 2 - TEST - 2026-07-09"
@@ -300,6 +359,60 @@ def test_ready_plan_items_rejects_duplicate_producer_races(tmp_path):
     plan["ready_count"] = 2
 
     with pytest.raises(ValueError, match="duplicate_ready_plan_race_identities"):
+        fixture.ready_plan_items(plan)
+
+
+@pytest.mark.parametrize("status", ["BLOCKED", "NO_DUE_WINDOW"])
+@pytest.mark.parametrize("schema", ["canonical", "legacy"])
+def test_ready_plan_items_rejects_duplicate_non_ready_primary_identities(
+    tmp_path, status, schema
+):
+    plan, item = _non_ready_plan(tmp_path, status=status, schema=schema)
+    container_key = "races" if schema == "canonical" else "items"
+    plan[container_key].append(json.loads(json.dumps(item)))
+    plan["candidate_race_count"] = 2
+    if schema == "canonical":
+        plan["status_counts"] = {status: 2}
+
+    with pytest.raises(ValueError, match="duplicate_ready_plan_race_identities"):
+        fixture.ready_plan_items(plan)
+
+
+@pytest.mark.parametrize("status", ["BLOCKED", "NO_DUE_WINDOW"])
+@pytest.mark.parametrize("schema", ["canonical", "legacy"])
+@pytest.mark.parametrize("collision", ["alias_alias", "alias_primary"])
+def test_ready_plan_items_rejects_cross_record_alias_collisions(
+    tmp_path, status, schema, collision
+):
+    plan, item = _non_ready_plan(tmp_path, status=status, schema=schema)
+    container_key = "races" if schema == "canonical" else "items"
+    identity_key = "race_id" if schema == "canonical" else "canonical_race_identity"
+    item["race_id_aliases"] = ["SHARED-ALIAS"]
+    second = json.loads(json.dumps(item))
+    second[identity_key] = (
+        "SHARED-ALIAS" if collision == "alias_primary" else "Race 2 - TEST - 2026-07-09"
+    )
+    if collision == "alias_primary":
+        second["race_id_aliases"] = ["SECOND-ALIAS"]
+    plan[container_key].append(second)
+    plan["candidate_race_count"] = 2
+    if schema == "canonical":
+        plan["status_counts"] = {status: 2}
+
+    with pytest.raises(ValueError, match="plan_race_identity_collision"):
+        fixture.ready_plan_items(plan)
+
+
+@pytest.mark.parametrize("status", ["BLOCKED", "NO_DUE_WINDOW"])
+@pytest.mark.parametrize("schema", ["canonical", "legacy"])
+@pytest.mark.parametrize("aliases", [None, "alias", [""], [123]])
+def test_ready_plan_items_rejects_malformed_non_ready_aliases(
+    tmp_path, status, schema, aliases
+):
+    plan, item = _non_ready_plan(tmp_path, status=status, schema=schema)
+    item["race_id_aliases"] = aliases
+
+    with pytest.raises(ValueError, match="ready_plan_item_aliases_malformed"):
         fixture.ready_plan_items(plan)
 
 
@@ -351,7 +464,15 @@ def test_build_fixture_packet_accepts_zero_ready_producer_plan(tmp_path, monkeyp
     monkeypatch.setattr(fixture, "ROOT", tmp_path)
     plan = _races_plan(tmp_path)
     plan["races"][0]["status"] = "BLOCKED"
+    plan["races"][0]["race_id_aliases"] = [RACE_ID, "RACE-ONE-ALIAS"]
+    second = json.loads(json.dumps(plan["races"][0]))
+    second["status"] = "NO_DUE_WINDOW"
+    second["race_id"] = "Race 2 - TEST - 2026-07-09"
+    second["race_id_aliases"] = ["RACE-TWO-ALIAS"]
+    plan["races"].append(second)
+    plan["candidate_race_count"] = 2
     plan["ready_count"] = 0
+    plan["status_counts"] = {"BLOCKED": 1, "NO_DUE_WINDOW": 1}
 
     report = fixture.build_fixture_packet(
         plan=plan,
@@ -366,6 +487,47 @@ def test_build_fixture_packet_accepts_zero_ready_producer_plan(tmp_path, monkeyp
     assert report["status"] == fixture.FINAL_NO_READY_RACES
     assert report["ready_plan_item_count"] == 0
     assert report["fixture_results"] == []
+
+
+def test_build_fixture_packet_rejects_invalid_non_ready_record_before_output(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(fixture, "ROOT", tmp_path)
+    plan = _races_plan(tmp_path)
+    plan["races"][0]["status"] = "BLOCKED"
+    plan["races"][0]["race_id"] = None
+    plan["candidate_race_count"] = 1
+    plan["ready_count"] = 0
+    plan["status_counts"] = {"BLOCKED": 1}
+    output_dir = _output_dir(tmp_path)
+
+    with pytest.raises(ValueError, match="ready_plan_item_identity_missing"):
+        fixture.build_fixture_packet(
+            plan=plan,
+            fetch_payload=_fetch_result(),
+            output_dir=output_dir,
+            current_time=_current_time(),
+        )
+
+    assert not output_dir.exists()
+
+
+def test_ready_plan_items_accepts_fully_validated_zero_ready_mixed_schema(tmp_path):
+    plan, first = _non_ready_plan(tmp_path, status="BLOCKED", schema="canonical")
+    first["race_id_aliases"] = [RACE_ID, "RACE-ONE-ALIAS"]
+    second = json.loads(json.dumps(first))
+    second["status"] = "NO_DUE_WINDOW"
+    second["race_id"] = "Race 2 - TEST - 2026-07-09"
+    second["race_id_aliases"] = ["RACE-TWO-ALIAS"]
+    plan["races"].append(second)
+    plan["candidate_race_count"] = 2
+    plan["status_counts"] = {"BLOCKED": 1, "NO_DUE_WINDOW": 1}
+    plan["items"] = json.loads(json.dumps(plan["races"]))
+    for item in plan["items"]:
+        item["canonical_race_identity"] = item.pop("race_id")
+    plan["ready_to_capture_race_count"] = 0
+
+    assert fixture.ready_plan_items(plan) == []
 
 
 def test_producer_schema_fixture_creation_and_replay_succeeds(tmp_path, monkeypatch):
@@ -476,23 +638,23 @@ def test_repeated_builds_emit_identical_sealed_contract_bytes(tmp_path, monkeypa
     raw_fixture = json.loads(raw_path.read_text(encoding="utf-8"))
     assert (
         raw_fixture["fixture_id"]
-        == "9e392df510e626d2593d259e2514c4a481ca456bfd060da29e010611edd71242"
+        == "4457a73c0d90e9469ce172ef03804ce1d320c82d5ee061d4d4498d806b9c85d7"
     )
     assert (
         raw_entry["sha256"]
-        == "5e7f315f7a697e1a56ac54cea7b30a30d77ab2cfebf2b5dcb3a63ec5989acd2e"
+        == "8effcc9f8cc9b24ff9cbb2a87b8ffd667942d773740881e26faa860cebab82bc"
     )
     assert (
         projection_entry["sha256"]
-        == "fbbaf655e975bec3f3946b8d42a8534b70855685ebd602c7d222138a9426e1c1"
+        == "2eb2d494e959077397573c12ff9120633795e873df897bec4c462ce539eb5070"
     )
     assert (
         manifest["manifest_sha256"]
-        == "c53b49568755ab473d5983f6b740359f2c4106541643d29e551329c64f1d3f1a"
+        == "2505ab0341470590fc8795bc4c75da89dd0c8e69bbc71603eb62c8c3e6ab363e"
     )
     assert (
         fixture.sha256_file(first_output / "strict_win_fixture_manifest.json")
-        == "b29c0ffbaf69d9177583a11fa9121e144ee298e78fd6e49a0e0f982b557e2733"
+        == "89073f67ebd88df2843644d4a8e3f9ed777dd274f2df925b5c5bddb41758dd20"
     )
 
 
