@@ -1249,6 +1249,66 @@ def test_model_config_mismatch_and_alias_resolution_fail_or_resolve_exactly(
     assert captured.value.code == "MODEL_CONFIG_MISMATCH"
 
 
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+def test_nonfinite_config_is_rejected_before_any_prediction_side_effect(
+    tmp_path: Path, constant: str
+):
+    config = tmp_path / "nonfinite.json"
+    raw = (
+        '{"bundle":{"lock_wait_seconds":'
+        f"{constant}"
+        ',"poll_seconds":1,"receipt_max_age_seconds":900},'
+        '"model":"market_only_v1",'
+        '"schema_version":"on_demand_prediction_config_v1",'
+        '"variant":"market_only_implied"}\n'
+    ).encode()
+    config.write_bytes(raw)
+    assert canonical_bytes(json.loads(raw)) == raw
+
+    command_args = args(
+        tmp_path,
+        model="market-only",
+        config=config,
+        odds_source="capture",
+    )
+    database_before = sha256_file(command_args.db)
+    files_before = sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*"))
+    calls = {
+        "schedule": 0,
+        "refresh": 0,
+        "discover_receipt": 0,
+        "fetch_odds": 0,
+        "acquire_lock": 0,
+        "release_lock": 0,
+        "seal_features": 0,
+        "score_residual": 0,
+        "sleep": 0,
+    }
+    deps = dependencies()
+    for name in calls:
+        original = getattr(deps, name)
+
+        def counted(
+            *call_args: Any, _name=name, _original=original, **call_kwargs: Any
+        ):
+            calls[_name] += 1
+            return _original(*call_args, **call_kwargs)
+
+        setattr(deps, name, counted)
+
+    for _ in range(2):
+        with pytest.raises(PredictionBlocked) as captured:
+            run_prediction(command_args, deps)
+        assert captured.value.code == "CONFIG_INVALID_JSON"
+
+    assert calls == {name: 0 for name in calls}
+    assert sha256_file(command_args.db) == database_before
+    assert (
+        sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*"))
+        == files_before
+    )
+
+
 def test_list_configs_is_finite_validated_and_deterministic(
     capsys: pytest.CaptureFixture[str],
 ):

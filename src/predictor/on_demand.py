@@ -276,11 +276,15 @@ def _validate_simple_schema(
             )
 
 
+def _reject_nonfinite_json_constant(value: str) -> None:
+    raise ValueError(f"non-finite JSON numeric constant: {value}")
+
+
 def load_config(path: Path, model: ModelIdentity) -> tuple[dict[str, Any], str, bytes]:
     try:
         raw = path.read_bytes()
-        value = json.loads(raw)
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        value = json.loads(raw, parse_constant=_reject_nonfinite_json_constant)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise PredictionBlocked("CONFIG_INVALID_JSON", path=str(path)) from exc
     if not isinstance(value, dict) or canonical_bytes(value) != raw:
         raise PredictionBlocked("CONFIG_NOT_CANONICAL", path=str(path))
