@@ -1,0 +1,12 @@
+{
+  "schema_version": "pr53_successor_ancestry_v1",
+  "master": "585052ba7271f3a7e357dd5b69aec7f661591938",
+  "pr53_head": "2deb5aec454fb9314a22f30a30169aa05b2261c5",
+  "pr53_old_base": "c1dfd464cf6ecfb2034f96ac1a8d3ea58d4e6afa",
+  "pr53_merge_base_with_old_base": "c1dfd464cf6ecfb2034f96ac1a8d3ea58d4e6afa",
+  "pr53_merge_base_with_current_master": "624dde3067edda1bd045573e8bec5c9d749c6836",
+  "pr53_eight_file_implementation_commit": "76f17dbeec78a43e5493a8049ff84c47a13d3e8f",
+  "successor_task_commit": "671a24f75f77ab9105d5dd52f1f21def34dd6961",
+  "successor_implementation_commit": "6a417c1730f4b0d75a59b70cf02a7beb1996f960",
+  "cherry_pick_used": false
+}

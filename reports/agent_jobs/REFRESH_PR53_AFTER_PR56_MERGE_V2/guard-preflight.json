@@ -1,0 +1,13 @@
+{
+  "schema_version": "tenn_git_guard_preflight_summary_v1",
+  "status": "PASS_WITH_DATA_MISSING_WARNING",
+  "canonical_head": "585052ba7271f3a7e357dd5b69aec7f661591938",
+  "merge_base": "585052ba7271f3a7e357dd5b69aec7f661591938",
+  "path_classification": "VALID_TASK_WORKTREE",
+  "semantic_control_status": "ALLOW_NEW_SCOPE",
+  "substantive_work_permitted": true,
+  "duplicate_work_matches": [],
+  "task_ledger_status": "DATA_MISSING",
+  "fallback_checked": true,
+  "registry_status": "PASS"
+}

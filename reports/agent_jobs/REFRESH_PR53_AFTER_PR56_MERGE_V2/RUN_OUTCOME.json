@@ -1,0 +1,44 @@
+{
+  "status": "ADVANCED",
+  "scope_fingerprint": "b56c75701067f7132fbf6e9392124f8a818a1aa1b1a9098441db1ff38f6bf285",
+  "state_before": "draft_pr53_on_demand_predictor_was_stale_on_pre_pr56_lineage_with_an_obsolete_pr46_block",
+  "state_after": "one_clean_draft_pr63_transplants_the_minimal_on_demand_predictor_onto_exact_pr56_master_without_runtime_or_production_mutation",
+  "decision_delta": "Published one clean draft successor that preserves PR53's eight-file on-demand predictor contract while consuming master's PR56 identity, grade, jump-time, runner, provenance, record-V3, and effective-state-V2 seams; the optional receipt-only live proof failed closed as DATA_MISSING without capture or database creation.",
+  "reused_claims": [
+    "PR #53's finite two-mode config, canonical bundle, deterministic replay, no-steal lock, and read-only history contracts remain valid.",
+    "Master PR #56 is the sole owner of the race artifact handoff, portable residual scorer, record-V3, effective-state-V2, refresh, browser, and CSV metadata contracts."
+  ],
+  "changed_claims": [
+    "The on-demand predictor now imports and validates master's PR #56 handoff rather than the stale run_priority_race_prediction dependency.",
+    "Direct refresh downloads only the exact resolved race and direct capture requires a current fixed-window plan plus a canonical database-root lock path.",
+    "Outcome-bearing history columns are queried only for race IDs proven strictly before the target date, and legacy relative import writes are contained in transient bundle scratch.",
+    "Draft PR #63 is the only successor publication; stale PR #53 and PRs #47, #48, #52, and #54 remain untouched."
+  ],
+  "new_evidence": [
+    "Focused suite passed 35 tests.",
+    "Relevant current-master regression set passed 560 tests with 1 skip and 4 separately classified master/environment deselections.",
+    "Ruff check, Ruff format, Python 3.11 compile, finite config listing, diff checks, and V2 guard passed.",
+    "Bendigo R5 receipt-only proof returned RECEIPT_INVALID for missing target-grade context, created no database, made no capture attempt, and persisted no production output.",
+    "Draft PR #63 was opened by normal push from exact master ancestry."
+  ],
+  "produced_artifacts": [
+    "scripts/predict_race_now.py",
+    "src/predictor/on_demand.py",
+    "configs/prediction/manual-default.json",
+    "configs/prediction/market-only.json",
+    "configs/prediction/schemas/market_only_v1.schema.json",
+    "configs/prediction/schemas/market_form_residual_v1.schema.json",
+    "tests/test_predict_race_now.py",
+    "docs/on_demand_race_prediction.md",
+    "reports/agent_jobs/REFRESH_PR53_AFTER_PR56_MERGE_V2"
+  ],
+  "resume_only_if": "A separate owner-authorized run names an eligible pre-jump race with a current sealed packet carrying PR #56 target-grade context, or a separate review/merge/deploy task is explicitly authorized; this draft publication itself is complete.",
+  "new_goal_permitted": false,
+  "used_capabilities": [
+    "READ",
+    "REPORT_WRITE",
+    "CODE_EDIT",
+    "PUBLISH"
+  ],
+  "blocked_by": []
+}

@@ -1,0 +1,13 @@
+{
+  "schema_version": "github_pull_request_snapshot_v1",
+  "number": 63,
+  "url": "https://github.com/0rl4nd0l/greyhound-racing-collector/pull/63",
+  "state": "open",
+  "draft": true,
+  "merged": false,
+  "base": "585052ba7271f3a7e357dd5b69aec7f661591938",
+  "implementation_head": "6a417c1730f4b0d75a59b70cf02a7beb1996f960",
+  "mergeable": true,
+  "mergeable_state_at_open": "unstable",
+  "created_at": "2026-07-22T05:07:46Z"
+}

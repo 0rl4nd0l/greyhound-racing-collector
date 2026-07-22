@@ -1,0 +1,5 @@
+560 passed, 1 skipped, 4 deselected in 16.09s
+
+Separated baseline/environment cases:
+- two exact-master weather metadata assertions reproduced at master
+- two optional Flask dashboard fixtures unavailable in the focused environment

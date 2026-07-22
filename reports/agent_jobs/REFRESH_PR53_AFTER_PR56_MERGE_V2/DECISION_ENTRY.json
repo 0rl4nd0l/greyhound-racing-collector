@@ -1,0 +1,46 @@
+{
+  "decision_id": "refresh-pr53-after-pr56-merge-v2-20260722-pass-draft-pr63",
+  "scope_fingerprint": "b56c75701067f7132fbf6e9392124f8a818a1aa1b1a9098441db1ff38f6bf285",
+  "task_id": "REFRESH_PR53_AFTER_PR56_MERGE_V2",
+  "run_id": "l4nd0-System-Product-Name:4136663:REFRESH_PR53_AFTER_PR56_MERGE_V2",
+  "project_id": "greyhound_racing_collector",
+  "claim_id": "REFRESH_PR53_AFTER_PR56_MERGE_V2",
+  "hypothesis_id": "refresh_pr53_on_demand_predictor_after_pr56_v2",
+  "program_track": "offline_development",
+  "source_class": "exact_master_585052ba_plus_stale_pr53_2deb5aec_eight_file_delta_plus_fixture_only_and_optional_read_only_prejump_validation",
+  "dataset_version": "master_585052ba7271f3a7e357dd5b69aec7f661591938_pr53_2deb5aec454fb9314a22f30a30169aa05b2261c5_20260722",
+  "evidence_hash": "sha256:23cfa8c2e09749974011308b5f594678d6f466063deaa454398752e00c96db73",
+  "target_transition": "one_clean_draft_successor_transplants_only_the_required_on_demand_predictor_delta_onto_master_585052ba",
+  "phase_before": "draft_pr53_on_demand_predictor_was_stale_on_pre_pr56_lineage_with_an_obsolete_pr46_block",
+  "phase_after": "one_clean_draft_pr63_transplants_the_minimal_on_demand_predictor_onto_exact_pr56_master_without_runtime_or_production_mutation",
+  "decision": "PASS",
+  "outcome_status": "ADVANCED",
+  "decision_delta": "Published one clean draft successor that preserves PR53's eight-file on-demand predictor contract while consuming master's PR56 identity, grade, jump-time, runner, provenance, record-V3, and effective-state-V2 seams; the optional receipt-only live proof failed closed as DATA_MISSING without capture or database creation.",
+  "evidence_refs": [
+    "reports/agent_jobs/REFRESH_PR53_AFTER_PR56_MERGE_V2/VALIDATION.md",
+    "reports/agent_jobs/REFRESH_PR53_AFTER_PR56_MERGE_V2/CODE_REVIEW.md",
+    "reports/agent_jobs/REFRESH_PR53_AFTER_PR56_MERGE_V2/inventory.json",
+    "reports/agent_jobs/REFRESH_PR53_AFTER_PR56_MERGE_V2/live-proof.json",
+    "https://github.com/0rl4nd0l/greyhound-racing-collector/pull/63"
+  ],
+  "blocks": [
+    "merge_deploy_activation_production_persistence_ev_or_betting_without_separate_authorization",
+    "production_or_market_readiness_claims_from_this_research_only_successor",
+    "live_success_claim_until_a_current_pr56_grade_bound_receipt_passes"
+  ],
+  "does_not_block": [
+    "draft_review_of_pr63",
+    "fixture_based_review_of_both_finite_model_modes",
+    "continued_existing_runtime_under_its_separate_authority"
+  ],
+  "validated_at": "2026-07-22T15:08:00+10:00",
+  "invalidation_conditions": [
+    "PR #63 loses exact master ancestry or changes outside the declared allowlist.",
+    "The command can select an ambiguous identity, accept a PR #56 provenance mismatch, read target outcomes, steal a lock, cross a database writer, or persist outside its isolated bundle.",
+    "Config, model, receipt, runner set, grade, jump time, or replay bytes can change without a fail-closed result."
+  ],
+  "reopen_conditions": [
+    "A separately authorized live proof supplies a current grade-bound sealed receipt for an eligible pre-jump race.",
+    "A separately authorized review, merge, deploy, or activation lane is opened for exact PR #63 head."
+  ]
+}
