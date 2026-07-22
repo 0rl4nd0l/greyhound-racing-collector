@@ -26,6 +26,14 @@ form/sidecar provenance, capture report, record-V3 checksum, and
 effective-state-V2 hash agree. The command then copies only the verified packet
 bytes into its private bundle; it does not rescrape or cross a database writer.
 
+If the discovered packet predates the exact target-grade proof contract or its
+implementation hashes do not match the current source, `auto` records that
+candidate in `source/rejected_receipts.json` and continues to the normal locked
+fresh-acquisition path. This exception is limited to the known pre-current
+packet fields and implementation seal: ambiguous, conflicting, malformed,
+post-jump, or otherwise invalid evidence remains terminal. `receipt` mode is
+always reuse-only and never falls back to collection.
+
 If no reusable receipt exists, the command tries the existing collector lock.
 It never deletes, steals, cancels, or treats a stale lock as permission to
 bypass its owner. While the lock is busy, the bounded config wait can notice a
@@ -38,6 +46,11 @@ waiting when no fixed window is due. The production database is never passed to
 an append path. Before direct capture, the command also requires the lock path
 to be the canonical daemon-lock location under the selected database's
 repository root; a database/lock-root mismatch fails closed.
+
+The exact TheDogs meeting slug remains authoritative during named-race
+selection. Murray Bridge and Murray Bridge Straight therefore remain distinct
+meeting identities even where downstream compatibility data uses `MURR` for
+both; a shared-code query that matches both is ambiguous and fails closed.
 
 Use `receipt` to prohibit direct capture or `capture` to require immediate
 isolated capture. Direct capture is an explicit network operation performed by

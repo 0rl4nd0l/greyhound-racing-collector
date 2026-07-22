@@ -66,6 +66,7 @@ from src.predictor.on_demand import (  # noqa: E402
     verify_bundle,
     write_exact_bytes,
 )
+from utils.csv_metadata import canonical_thedogs_race_identity  # noqa: E402
 
 
 DEFAULT_DB = ROOT / "greyhound_racing_data.db"
@@ -81,6 +82,20 @@ DEFAULT_LOCK = (
 LOCK_RELATIVE_PATH = Path(
     "artifacts/full_evidence_orchestration_20260525/"
     "shadow_autopilot_daemon_runtime/shadow_autopilot.lock"
+)
+PRECURRENT_PACKET_REJECTION_REASONS = frozenset(
+    {
+        "sidecar_target_grade_context_schema_missing",
+        "sidecar_target_grade_exact_value_missing",
+        "sidecar_target_grade_equivalence_key_missing",
+        "sidecar_target_grade_race_url_missing",
+        "sidecar_target_grade_source_url_missing",
+        "sidecar_target_grade_source_sha256_missing",
+        "sidecar_target_grade_race_date_missing",
+        "sidecar_target_grade_race_number_missing",
+        "sidecar_target_grade_venue_missing",
+        "feature_generator_implementation_hash_mismatch",
+    }
 )
 
 
@@ -104,6 +119,26 @@ def _token(value: Any) -> str:
     return re.sub(r"[^A-Z0-9]+", "", str(value or "").upper())
 
 
+def _authoritative_meeting_aliases(race: Mapping[str, Any]) -> set[str] | None:
+    """Keep same-code Murray Bridge meetings distinct by their TheDogs slug."""
+
+    identity = canonical_thedogs_race_identity(race.get("url") or race.get("race_url"))
+    if identity is None or identity["venue_slug"] not in {
+        "murray-bridge",
+        "murray-bridge-straight",
+    }:
+        return None
+    return {
+        value
+        for value in (
+            race.get("venue"),
+            race.get("venue_name"),
+            identity["venue_slug"],
+        )
+        if value
+    }
+
+
 def _race_query_tokens(race: Mapping[str, Any]) -> set[str]:
     venue = race.get("venue") or race.get("venue_name")
     number = race.get("race_number")
@@ -115,12 +150,20 @@ def _race_query_tokens(race: Mapping[str, Any]) -> set[str]:
         f"race {number} {venue}",
         f"{venue} r{number}",
     }
-    values.update(stable_race_id_variants(race))
-    for alias in venue_exclusion_aliases(
+    authoritative_aliases = _authoritative_meeting_aliases(race)
+    aliases = authoritative_aliases or venue_exclusion_aliases(
         venue, source_url=race.get("url") or race.get("race_url")
-    ):
+    )
+    if authoritative_aliases is None:
+        values.update(stable_race_id_variants(race))
+    for alias in aliases:
         values.update(
-            {f"{alias} race {number}", f"race {number} {alias}", f"{alias} r{number}"}
+            {
+                f"{alias} race {number}",
+                f"race {number} {alias}",
+                f"{alias} r{number}",
+                f"Race {number} - {alias} - {race.get('date') or race.get('race_date')}",
+            }
         )
     return {_token(value) for value in values if value}
 
@@ -752,6 +795,40 @@ def _discover(
         raise PredictionBlocked(code, reason=reason) from exc
 
 
+def _discover_for_auto(
+    dependencies: Dependencies,
+    *,
+    evidence_roots: Sequence[Path],
+    db_path: Path,
+    race_id: str,
+    jump: datetime,
+    current_time: datetime,
+    rejected_receipts: list[dict[str, Any]],
+) -> Mapping[str, Any] | None:
+    """Reject only proven pre-current packets before trying fresh acquisition."""
+
+    try:
+        return _discover(
+            dependencies,
+            evidence_roots=evidence_roots,
+            db_path=db_path,
+            race_id=race_id,
+            jump=jump,
+            current_time=current_time,
+        )
+    except PredictionBlocked as exc:
+        reason = str(exc.details.get("reason") or "")
+        if (
+            exc.code != "RECEIPT_INVALID"
+            or reason not in PRECURRENT_PACKET_REJECTION_REASONS
+        ):
+            raise
+        rejection = {"code": exc.code, "reason": reason}
+        if rejection not in rejected_receipts:
+            rejected_receipts.append(rejection)
+        return None
+
+
 def _acquire_or_reuse(
     dependencies: Dependencies,
     *,
@@ -763,8 +840,9 @@ def _acquire_or_reuse(
     current_time: datetime,
     wait_seconds: float,
     poll_seconds: float,
-) -> tuple[Any | None, Mapping[str, Any] | None]:
-    if odds_source in {"auto", "receipt"}:
+) -> tuple[Any | None, Mapping[str, Any] | None, list[dict[str, Any]]]:
+    rejected_receipts: list[dict[str, Any]] = []
+    if odds_source == "receipt":
         receipt = _discover(
             dependencies,
             evidence_roots=evidence_roots,
@@ -774,27 +852,39 @@ def _acquire_or_reuse(
             current_time=current_time,
         )
         if receipt is not None:
-            return None, receipt
-        if odds_source == "receipt":
-            raise PredictionBlocked("RECEIPT_UNAVAILABLE")
+            return None, receipt, rejected_receipts
+        raise PredictionBlocked("RECEIPT_UNAVAILABLE")
+    if odds_source == "auto":
+        receipt = _discover_for_auto(
+            dependencies,
+            evidence_roots=evidence_roots,
+            db_path=db_path,
+            race_id=race_id,
+            jump=jump,
+            current_time=current_time,
+            rejected_receipts=rejected_receipts,
+        )
+        if receipt is not None:
+            return None, receipt, rejected_receipts
     started = dependencies.monotonic()
     while True:
         try:
-            return dependencies.acquire_lock(), None
+            return dependencies.acquire_lock(), None, rejected_receipts
         except dependencies.lock_busy_type as exc:
             elapsed = dependencies.monotonic() - started
             if odds_source == "auto":
                 check_time = current_time + timedelta(seconds=max(0.0, elapsed))
-                receipt = _discover(
+                receipt = _discover_for_auto(
                     dependencies,
                     evidence_roots=evidence_roots,
                     db_path=db_path,
                     race_id=race_id,
                     jump=jump,
                     current_time=check_time,
+                    rejected_receipts=rejected_receipts,
                 )
                 if receipt is not None:
-                    return None, receipt
+                    return None, receipt, rejected_receipts
             remaining = wait_seconds - elapsed
             if remaining <= 0:
                 details = getattr(exc, "payload", None)
@@ -851,7 +941,7 @@ def _run_prediction(
 
     lock_handle: Any | None = None
     try:
-        lock_handle, handoff = _acquire_or_reuse(
+        lock_handle, handoff, rejected_receipts = _acquire_or_reuse(
             dependencies,
             odds_source=args.odds_source,
             evidence_roots=tuple(Path(path) for path in args.capture_evidence_root),
@@ -862,6 +952,14 @@ def _run_prediction(
             wait_seconds=float(config["bundle"]["lock_wait_seconds"]),
             poll_seconds=float(config["bundle"]["poll_seconds"]),
         )
+        if rejected_receipts:
+            _write_canonical(
+                bundle / "source" / "rejected_receipts.json",
+                {
+                    "schema_version": "on_demand_rejected_receipts_v1",
+                    "rejections": rejected_receipts,
+                },
+            )
         if handoff is not None:
             receipt, capture_raw, form_raw, sidecar_raw = receipt_from_handoff(
                 handoff,
@@ -1087,6 +1185,7 @@ def _run_prediction(
         },
         "score_timestamp": score_time.isoformat(),
         "odds_source": receipt["source_kind"],
+        "rejected_receipts": rejected_receipts,
         "runner_set_sha256": receipt["runner_set_sha256"],
         "model": _public_model(model),
         "config": {"sha256": config_sha, "value": config},

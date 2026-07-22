@@ -22,6 +22,7 @@ from scripts.predict_race_now import (
     _release_owned_collector_lock,
     main,
     replay_bundle,
+    resolve_target_race,
     run_prediction,
 )
 from src.predictor.on_demand import (
@@ -457,6 +458,149 @@ def test_default_refresh_downloads_only_exact_target_into_bundle(
     assert not runtime_paths[0].exists()
 
 
+def test_source_backed_refresh_payload_emits_complete_exact_grade_proof(tmp_path: Path):
+    from utils.csv_metadata import build_csv_download_provenance_payload
+
+    race_url = "https://www.thedogs.com.au/racing/mandurah/2030-06-09/1/test"
+    grade_proof = {
+        "target_grade_context_schema": "thedogs_meeting_card_exact_race_v1",
+        "target_grade_equivalence_key": "MAIDEN",
+        "target_grade_exact_value": "Maiden",
+        "target_grade_race_date": "2030-06-09",
+        "target_grade_race_number": 1,
+        "target_grade_race_url": race_url,
+        "target_grade_source_url": ("https://www.thedogs.com.au/racing/2030-06-09"),
+        "target_grade_source_sha256": "a" * 64,
+        "target_grade_venue": "MAND",
+    }
+    participants = [
+        {"box_number": 1, "dog_name": "Alpha"},
+        {"box_number": 2, "dog_name": "Beta"},
+    ]
+    payload = build_csv_download_provenance_payload(
+        filepath=tmp_path / "Race 1 - MAND - 2030-06-09.csv",
+        race_url=race_url,
+        csv_info={"type": "direct_csv", "url": race_url},
+        content="Dog Name|BOX\n1. Alpha|1\n2. Beta|2\n",
+        completeness={
+            "status": "COMPLETE",
+            "runner_count": 2,
+            "participants": participants,
+        },
+        race_info={
+            "date": "2030-06-09",
+            "venue": "MAND",
+            "race_number": 1,
+            "race_time": "1:00 PM",
+            "distance": "400m",
+            "grade": "Maiden",
+            "target_grade": "Maiden",
+            "target_grade_source": "thedogs_meeting_card_exact_race",
+            "url": race_url,
+            **grade_proof,
+        },
+        normalization={
+            "canonical_runner_alignment": {
+                "status": "aligned",
+                "canonical_runner_set_status": "available",
+                "canonical_source_url": race_url,
+            },
+            "runner_completeness_after_canonical_alignment": {
+                "status": "COMPLETE",
+                "runner_count": 2,
+                "participants": participants,
+            },
+        },
+        filename="Race 1 - MAND - 2030-06-09.csv",
+    )
+
+    assert {key: payload[key] for key in grade_proof} == grade_proof
+    assert {key: payload["race_info"][key] for key in grade_proof} == grade_proof
+    assert payload["prejump_shadow_metadata"]["status"] == "PASS"
+
+
+def test_murray_bridge_meetings_use_distinct_authoritative_url_identities():
+    common = {
+        "venue": "MURR",
+        "race_number": 1,
+        "date": "2030-06-09",
+        "race_time": "13:00",
+    }
+    bridge = {
+        **common,
+        "venue_name": "Murray Bridge",
+        "url": ("https://www.thedogs.com.au/racing/murray-bridge/2030-06-09/1/test"),
+    }
+    straight = {
+        **common,
+        "venue_name": "Murray Bridge Straight",
+        "url": (
+            "https://www.thedogs.com.au/racing/murray-bridge-straight/2030-06-09/1/test"
+        ),
+    }
+
+    assert (
+        resolve_target_race(
+            [bridge, straight], race_id=None, race_query="murray bridge r1"
+        )[1]
+        == bridge
+    )
+    assert (
+        resolve_target_race(
+            [bridge, straight], race_id=None, race_query="murray bridge straight r1"
+        )[1]
+        == straight
+    )
+    status, selected, matches = resolve_target_race(
+        [bridge, straight], race_id=None, race_query="murr r1"
+    )
+    assert status == "BLOCKED_RACE_AMBIGUOUS"
+    assert selected is None
+    assert matches == ["Race 1 - MURR - 2030-06-09"]
+
+
+def test_live_feature_seal_hashes_exact_current_implementation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    import scripts.run_feature_recovery_execution_v1 as recovery
+    import scripts.run_shadow_non_tgr_rf_evaluation as feature_builder
+    from scripts.predict_market_form_residual import FEATURE_GENERATOR_FILES
+
+    form = tmp_path / "Race 5 - GUNN - 2026-07-19.csv"
+    form.write_text("Dog Name|BOX\n1. Alpha|1\n2. Beta|2\n", encoding="utf-8")
+    monkeypatch.setattr(recovery, "load_json", lambda path: {"schema": "fixture"})
+    monkeypatch.setattr(
+        feature_builder, "validate_schema_contract", lambda schema: {"status": "PASS"}
+    )
+    monkeypatch.setattr(
+        feature_builder,
+        "build_live_feature_rows",
+        lambda **kwargs: [{"race_id": RACE_ID, "box_number": 1}],
+    )
+    monkeypatch.setattr(
+        feature_builder,
+        "same_distance_same_grade_history_provenance_report",
+        lambda rows: {"status": "PASS", "row_count": len(rows)},
+    )
+    monkeypatch.setattr(
+        feature_builder, "shadow_relpath", lambda path: str(Path(path).resolve())
+    )
+
+    sealed = predict_now.seal_live_features(
+        form_csv=form,
+        db_path=tmp_path / "fixture.db",
+        output_dir=tmp_path / "sealed",
+        current_time=NOW,
+    )
+    implementation = json.loads(sealed["implementation_manifest"].read_bytes())
+
+    assert implementation["implementation_files"] == list(FEATURE_GENERATOR_FILES)
+    assert implementation["implementation_file_hashes"] == {
+        relative: sha256_file(predict_now.ROOT / relative)
+        for relative in FEATURE_GENERATOR_FILES
+    }
+
+
 def test_master_packet_adapter_rejects_pr56_jump_mismatch(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
@@ -766,6 +910,118 @@ def test_stale_and_ambiguous_receipts_fail_closed(
     with pytest.raises(PredictionBlocked) as captured:
         run_prediction(args(tmp_path), dependencies(discover=discover))
     assert captured.value.code == code
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "sidecar_target_grade_context_schema_missing",
+        "sidecar_target_grade_exact_value_missing",
+        "sidecar_target_grade_equivalence_key_missing",
+        "sidecar_target_grade_race_url_missing",
+        "sidecar_target_grade_source_url_missing",
+        "sidecar_target_grade_source_sha256_missing",
+        "sidecar_target_grade_race_date_missing",
+        "sidecar_target_grade_race_number_missing",
+        "sidecar_target_grade_venue_missing",
+        "feature_generator_implementation_hash_mismatch",
+    ],
+)
+def test_auto_rejects_precurrent_packet_then_seals_fresh_source_without_effects(
+    tmp_path: Path, reason: str
+):
+    calls = {"acquire": 0, "release": 0, "refresh": 0, "score": 0}
+
+    def rejected_packet(**kwargs: Any) -> Mapping[str, Any]:
+        del kwargs
+        raise CaptureHandoffError(reason)
+
+    deps = dependencies(discover=rejected_packet)
+    original_refresh = deps.refresh
+    original_score = deps.score_residual
+
+    def counted_refresh(*call_args: Any, **call_kwargs: Any):
+        calls["refresh"] += 1
+        return original_refresh(*call_args, **call_kwargs)
+
+    def counted_score(*call_args: Any, **call_kwargs: Any):
+        calls["score"] += 1
+        return original_score(*call_args, **call_kwargs)
+
+    deps.refresh = counted_refresh
+    deps.score_residual = counted_score
+    deps.acquire_lock = lambda: (
+        calls.__setitem__("acquire", calls["acquire"] + 1) or "lock"
+    )
+    deps.release_lock = lambda handle: calls.__setitem__(
+        "release", calls["release"] + 1
+    )
+    command_args = args(tmp_path)
+    database_before = sha256_file(command_args.db)
+
+    result = run_prediction(command_args, deps)
+
+    assert calls == {"acquire": 1, "release": 1, "refresh": 1, "score": 1}
+    assert result["status"] == "PREDICTION_READY"
+    assert result["odds_source"] == "isolated_immediate_capture"
+    assert result["rejected_receipts"] == [
+        {"code": "RECEIPT_INVALID", "reason": reason}
+    ]
+    assert sha256_file(command_args.db) == database_before
+    assert not list(tmp_path.rglob("*.service"))
+    assert not list(tmp_path.rglob("*prediction_history*"))
+    assert replay_bundle(Path(result["bundle"]), fake_score_residual) == result
+
+
+def test_receipt_only_mode_does_not_fallback_from_precurrent_packet(tmp_path: Path):
+    calls = {"acquire": 0, "score": 0}
+
+    def rejected_packet(**kwargs: Any) -> Mapping[str, Any]:
+        del kwargs
+        raise CaptureHandoffError("sidecar_target_grade_context_schema_missing")
+
+    deps = dependencies(discover=rejected_packet)
+    deps.acquire_lock = lambda: calls.__setitem__("acquire", calls["acquire"] + 1)
+    deps.score_residual = lambda **kwargs: calls.__setitem__(
+        "score", calls["score"] + 1
+    )
+    with pytest.raises(PredictionBlocked) as captured:
+        run_prediction(args(tmp_path, odds_source="receipt"), deps)
+
+    assert captured.value.code == "RECEIPT_INVALID"
+    assert captured.value.details["reason"] == (
+        "sidecar_target_grade_context_schema_missing"
+    )
+    assert calls == {"acquire": 0, "score": 0}
+
+
+@pytest.mark.parametrize(
+    ("reason", "code"),
+    [
+        ("accepted_capture_attempt_ambiguous", "RECEIPT_AMBIGUOUS"),
+        ("target_grade_proof_mismatch", "RECEIPT_INVALID"),
+    ],
+)
+def test_auto_keeps_ambiguous_or_conflicting_receipt_evidence_terminal(
+    tmp_path: Path, reason: str, code: str
+):
+    calls = {"acquire": 0, "score": 0}
+
+    def rejected_packet(**kwargs: Any) -> Mapping[str, Any]:
+        del kwargs
+        raise CaptureHandoffError(reason)
+
+    deps = dependencies(discover=rejected_packet)
+    deps.acquire_lock = lambda: calls.__setitem__("acquire", calls["acquire"] + 1)
+    deps.score_residual = lambda **kwargs: calls.__setitem__(
+        "score", calls["score"] + 1
+    )
+    with pytest.raises(PredictionBlocked) as captured:
+        run_prediction(args(tmp_path), deps)
+
+    assert captured.value.code == code
+    assert captured.value.details["reason"] == reason
+    assert calls == {"acquire": 0, "score": 0}
 
 
 def test_unavailable_market_fails_without_source_write(tmp_path: Path):
