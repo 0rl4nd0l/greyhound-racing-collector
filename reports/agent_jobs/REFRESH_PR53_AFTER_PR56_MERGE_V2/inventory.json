@@ -1,0 +1,34 @@
+{
+  "schema_version": "pr53_successor_inventory_v1",
+  "required": [
+    "scripts/predict_race_now.py",
+    "src/predictor/on_demand.py",
+    "configs/prediction/manual-default.json",
+    "configs/prediction/market-only.json",
+    "configs/prediction/schemas/market_only_v1.schema.json",
+    "configs/prediction/schemas/market_form_residual_v1.schema.json",
+    "tests/test_predict_race_now.py",
+    "docs/on_demand_race_prediction.md"
+  ],
+  "merged_consume_master": [
+    "scripts/predict_market_form_residual.py",
+    "scripts/refresh_prejump_upcoming.py",
+    "upcoming_race_browser.py",
+    "utils/csv_metadata.py",
+    "related PR #56 tests and documentation"
+  ],
+  "obsolete_excluded": [
+    "scripts.run_priority_race_prediction dependency",
+    "PR #46 dependency block",
+    "old report and task history",
+    "stale scorer and writer copies",
+    "services and timers",
+    "daemon and evaluation code",
+    "outcome inputs and production writers"
+  ],
+  "evidence_only": [
+    "PR #53 V2 report bundle",
+    "PR #53 fixture outputs",
+    "PR #53 validation counts"
+  ]
+}

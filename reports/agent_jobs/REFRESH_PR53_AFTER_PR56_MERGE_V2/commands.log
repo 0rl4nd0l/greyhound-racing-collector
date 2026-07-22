@@ -1,0 +1,5 @@
+uv run --no-project scripts/predict_race_now.py --list-configs
+uv run --no-project --with pytest==8.4.1 --with beautifulsoup4==4.13.4 --with numpy==1.26.4 --with requests==2.32.4 --with selenium==4.34.2 --with webdriver-manager==4.0.2 pytest --noconftest -q tests/test_predict_race_now.py
+uvx ruff check scripts/predict_race_now.py src/predictor/on_demand.py tests/test_predict_race_now.py
+uvx ruff format --check scripts/predict_race_now.py src/predictor/on_demand.py tests/test_predict_race_now.py
+uv run --python 3.11 --no-project python -m compileall -q scripts/predict_race_now.py src/predictor/on_demand.py tests/test_predict_race_now.py

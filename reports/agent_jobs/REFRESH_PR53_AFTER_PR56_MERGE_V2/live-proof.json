@@ -1,0 +1,18 @@
+{
+  "schema_version": "on_demand_live_proof_v1",
+  "status": "DATA_MISSING",
+  "attempted_at": "2026-07-22T14:59:04.596748+10:00",
+  "race_query": "bendigo r5",
+  "race_id": "Race 5 - BEN - 2026-07-22",
+  "model": "market_only_v1",
+  "odds_source": "receipt",
+  "raw_status": "RECEIPT_INVALID",
+  "blocker": "sidecar_target_grade_context_schema_missing",
+  "capture_attempted": false,
+  "production_persisted": false,
+  "database_path_created": false,
+  "service_mutated": false,
+  "bundle": "/tmp/greyhound-pr53-successor-live-proof-20260722/prediction_20260722T145904596748+1000_8f670957eed5",
+  "result_sha256": "48b28965960a1c5a5eb8d4e5f054aba1d0ce0d1dc3b5d1d4b5860c863a6f2bd1",
+  "bundle_manifest_sha256": "a17168db607c5fb9edb075d87494ed854da8c90ce5f080c8ace1f7a2fbb6fd77"
+}

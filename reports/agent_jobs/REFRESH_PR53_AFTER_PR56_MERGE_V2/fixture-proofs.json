@@ -1,0 +1,18 @@
+{
+  "schema_version": "on_demand_successor_fixture_proofs_v1",
+  "focused_test_count": 35,
+  "proofs": {
+    "two_model_config_modes": "passed",
+    "deterministic_replay": "passed",
+    "verified_receipt_reuse": "passed",
+    "isolated_capture": "passed",
+    "tamper_and_mismatch_rejection": "passed",
+    "target_and_future_outcome_exclusion": "passed",
+    "concurrency_lock_ownership_and_cleanup": "passed",
+    "zero_source_database_writes": "passed",
+    "pr56_record_v3_and_effective_state_v2": "passed",
+    "pr56_identity_grade_jump_runner_and_provenance": "passed",
+    "transient_import_write_containment": "passed"
+  },
+  "unchanged_pr53_contract_outputs_preserved": true
+}
