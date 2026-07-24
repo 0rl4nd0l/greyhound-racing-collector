@@ -40,24 +40,19 @@ the pre-normalization product identity and changed-file selection anchor.
 | `uv run --no-project --with-requirements requirements/all.in python -m pytest -q --noconftest tests/test_predict_market_form_residual.py tests/test_daily_race_ingest_shadow_orchestrator.py tests/test_strict_win_odds_fixture_capture.py` | 0 | `472 passed`; log SHA-256 `af314386b4e402619f963723aee3738b01707f9e6cbf608928d3723b66d0390d` |
 | `uv run --no-project --with-requirements requirements/all.in python -m pytest -q --noconftest tests/race_collection/test_operations.py -k 'populated_schema_17_migrates_forward_to_latest_without_data_loss or populated_schema_27_partial_day_migration_preserves_prefix_and_defines_suffix or schema_28_refuses_inexact_v27_progress_and_rolls_back'` | 0 | `3 passed, 21 deselected`; log SHA-256 `f65e0e1fce86e00fd00436449a6957f55ef2cc179e58640952a9ed2f4a543adf` |
 
-## Incomplete gates
+## Retained-suite completion and release boundary
 
-The complete retained `tests/race_collection` suite was rerun against the
-normalized candidate with the declared `requirements/all.in` dependency layer
-and deliberately interrupted with exit 130 after `341 passed in 841.34s`. It
-was CPU-active in the deterministic Phase 6 bootstrap after constructing the
-large authenticated SQLite fixture; this is neither a test failure nor a runtime
-activation. Its partial log SHA-256 is
-`906c140b0ca16138cd282ec2a7df4da17f465b8ab601384605f90977a8fb6c15`.
+The complete retained `tests/race_collection` suite was run against the
+normalized candidate with the declared `requirements/all.in` dependency layer:
 
-The Phase 7 operational/runtime-adapter pair was likewise deliberately
-interrupted with exit 130 after `37 passed, 27 subtests passed in 181.86s` while
-constructing a large authenticated forward-evaluation fixture. Its partial log
-SHA-256 is `5415d9c4010d9780b04d7f96e2ba69cf56e237a6ac07f468244a57a167c77971`.
+| Command | Exit | Result / immutable output hash |
+| --- | ---: | --- |
+| `uv run --no-project --with-requirements requirements/all.in python -m pytest -q --noconftest tests/race_collection` | 0 | `457 passed, 36 subtests passed in 4080.62s (1:08:00)`; log SHA-256 `796a9060e5e91a9aa06e3c727292d3951b16074e709ef4ea60f975abb164dc8b` |
 
-Therefore this candidate is **PARTIAL, not ready for a draft PR**. No service,
-database, queue, model, deployment, or live prediction was started. Runtime
-proof remains **DATA_MISSING**.
+All code-validation gates now pass. Draft publication remains pending the final
+fresh read-only review of this exact candidate head. No service, database,
+queue, model, deployment, or live prediction was started. Runtime proof remains
+**DATA_MISSING**.
 
 All log hashes above are recomputable from the correspondingly named files in
 `docs/forecasting_validation_logs/`. The two empty successful logs are retained
