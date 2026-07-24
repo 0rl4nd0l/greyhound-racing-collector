@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import sqlite3
 import subprocess
 import sys
 import threading
 import unittest
-import hashlib
-import json
 from contextlib import redirect_stderr
 from datetime import date, datetime, timedelta, timezone
 from io import StringIO
@@ -33,8 +33,8 @@ from race_collection.evaluation import (
 from race_collection.forecast_service import CanonicalForecastService
 from race_collection.model_bundle import ChampionLoader
 from race_collection.operational import (
-    ApplicationCommand,
     COMMAND_PHASES,
+    ApplicationCommand,
     CloseAndSeal,
     ClosedCommandDispatcher,
     CollectAdaptiveOdds,
@@ -76,7 +76,6 @@ from race_collection.service import (
     compose,
     main,
 )
-
 
 NOW = datetime(2026, 7, 22, tzinfo=timezone.utc)
 PROGRAMME = ArtifactChecksum("sha256:" + "1" * 64)

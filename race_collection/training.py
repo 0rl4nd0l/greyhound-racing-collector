@@ -16,9 +16,9 @@ from .artifacts import ArtifactStore
 from .domain import ArtifactChecksum, OperationId, require_aware
 from .features import DerivationResult, derive_features
 from .model_bundle import (
+    SUPPORTED_FEATURE_CONTRACT,
     BundleComponent,
     CanonicalBundle,
-    SUPPORTED_FEATURE_CONTRACT,
 )
 from .operations import BarrierNotSatisfied, SQLiteOperationsStore, iso_timestamp
 from .ordered_finish import ORDERED_FINISH_CONTRACT, forecast_ordered_finish, ordered_finish_nll

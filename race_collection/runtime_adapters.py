@@ -26,18 +26,18 @@ from .domain import (
 from .evaluation import EvaluationAuthority
 from .forecast_service import CanonicalForecastService, ForecastRequest
 from .forecasting import ForecastingAuthority
-from .inventory import JsonProgrammeAdapter
 from .identity import resolve_dog_identity
+from .inventory import JsonProgrammeAdapter
 from .model_bundle import ChampionLoader
 from .operational import (
     COMMAND_PHASES,
     ApplicationCommand,
+    CloseAndSeal,
     CollectAdaptiveOdds,
     CollectCardsAndForm,
     CollectResults,
     CommitDeferredPrediction,
     DayForecastCohortMember,
-    CloseAndSeal,
     DiscoverProgramme,
     JoinTrainingExamples,
     OperationalAuthority,
@@ -51,7 +51,6 @@ from .operations import SQLiteOperationsStore
 from .sealing import EvidenceSealer, FieldObservation
 from .service import RacingDayCycle, ServiceUnavailable
 from .training import LinearStrengthModel, TrainingCorpusAuthority
-
 
 _ROOT_KEYS = frozenset({"schema_version", "release_id", "cycles"})
 _CYCLE_KEYS = frozenset(

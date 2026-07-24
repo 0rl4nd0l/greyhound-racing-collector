@@ -11,11 +11,11 @@ from race_collection.domain import (
     DogRun,
     OperationId,
     ProgrammeRaceCandidate,
+    Quarantine,
     RaceId,
     RaceState,
     RacingDay,
     RacingDayId,
-    Quarantine,
     RunObservation,
     Supersession,
 )
@@ -25,7 +25,6 @@ from race_collection.operations import (
     SQLiteOperationsStore,
     iso_timestamp,
 )
-
 
 NOW = datetime(2026, 7, 22, 1, 2, 3, tzinfo=timezone.utc)
 

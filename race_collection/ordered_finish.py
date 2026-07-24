@@ -7,7 +7,6 @@ import math
 from dataclasses import dataclass
 from typing import Mapping, Sequence
 
-
 ORDERED_FINISH_CONTRACT = "plackett-luce-ordered-finish-v1"
 MAX_EXACT_RUNNERS = 8
 

@@ -1,57 +1,62 @@
-import math
-import inspect
-import sqlite3
 import copy
+import inspect
 import json
+import math
 import shutil
-from types import SimpleNamespace
+import sqlite3
 from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
+from types import SimpleNamespace
 
 import pytest
+from test_phase5_ordered_finish_training import (
+    build_durable_forward,
+    durable_forward_setup,
+    synthetic_prepared_example,
+)
 
+from race_collection.artifacts import ArtifactStoreError, ChecksumMismatch, LocalArtifactStore
 from race_collection.domain import (
     ArtifactChecksum,
     EvidenceAuthority,
     EvidenceField,
     FieldEvidence,
     FreezeAuthority,
+    OperationId,
     ProgrammeRaceCandidate,
     RaceState,
     RacingDay,
     RacingDayId,
 )
-from race_collection.artifacts import ArtifactStoreError, ChecksumMismatch, LocalArtifactStore
 from race_collection.evaluation import (
-    EvaluationRace,
-    EvaluationRejected,
     EligibleRaceIdentity,
     EvaluationAuthority,
+    EvaluationRace,
+    EvaluationRejected,
     ForecastEvidence,
-    PromotionPolicy,
     PromotionAuthority,
+    PromotionPolicy,
     PromotionRejected,
-    diagnose_drift,
     _evaluate_paired,
     _validate_report,
+    diagnose_drift,
     forecast_checksum,
     forecast_document_checksum,
     promotion_decision,
-)
-from race_collection.operations import ConflictingOperation, SQLiteOperationsStore
-from race_collection.operational import OperationalAuthority
-from race_collection.domain import OperationId
-from race_collection.forecasting import ForecastingAuthority, LegacyBundle, ModelRelease
-from race_collection.ordered_finish import (
-    forecast_ordered_finish,
-    ordered_finish_from_probabilities,
 )
 from race_collection.forecast_service import (
     CanonicalForecastApplication,
     CanonicalForecastService,
     ForecastUnavailable,
 )
+from race_collection.forecasting import ForecastingAuthority, LegacyBundle, ModelRelease
 from race_collection.model_bundle import BundleUnavailable, ChampionLoader, ModelBundleAuthority
+from race_collection.operational import OperationalAuthority
+from race_collection.operations import ConflictingOperation, SQLiteOperationsStore
+from race_collection.ordered_finish import (
+    forecast_ordered_finish,
+    ordered_finish_from_probabilities,
+)
 from race_collection.sealing import FieldObservation, normalize_fields
 from race_collection.training import (
     LinearStrengthModel,
@@ -59,11 +64,6 @@ from race_collection.training import (
     canonical_json,
     checksum,
     train_challenger_bundle,
-)
-from test_phase5_ordered_finish_training import (
-    build_durable_forward,
-    durable_forward_setup,
-    synthetic_prepared_example,
 )
 
 

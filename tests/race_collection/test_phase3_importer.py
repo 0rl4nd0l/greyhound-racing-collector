@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-
 SCRIPT = Path("scripts/import_legacy_v4_bundle.py").resolve()
 
 

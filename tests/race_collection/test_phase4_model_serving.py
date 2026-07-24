@@ -6,8 +6,8 @@ import types
 from dataclasses import replace
 from datetime import datetime, timezone
 
-import pytest
 import numpy as np
+import pytest
 
 from race_collection.artifacts import LocalArtifactStore
 from race_collection.domain import ArtifactChecksum, OperationId, RaceId, RacingDayId
@@ -37,7 +37,6 @@ from race_collection.model_bundle import (
     legacy_incumbent_conversion_status,
 )
 from race_collection.operations import ConflictingOperation, SQLiteOperationsStore
-
 
 NOW = datetime(2026, 7, 23, 1, 2, 3, tzinfo=timezone.utc)
 

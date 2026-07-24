@@ -1,5 +1,5 @@
-import json
 import hashlib
+import json
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -21,7 +21,6 @@ from race_collection.model_bundle import (
     ModelBundleAuthority,
     ServingAssignment,
 )
-from race_collection.ordered_finish import ORDERED_FINISH_CONTRACT
 from race_collection.operational import (
     DayForecastCohortMember,
     OperationalAuthority,
@@ -31,9 +30,9 @@ from race_collection.operational import (
     ReleaseManifest,
 )
 from race_collection.operations import BarrierNotSatisfied, SQLiteOperationsStore
+from race_collection.ordered_finish import ORDERED_FINISH_CONTRACT
 from race_collection.service import compose, main
 from race_collection.training import LinearStrengthModel
-
 
 NOW = datetime.now(timezone.utc).replace(microsecond=0)
 LOCAL_DATE = NOW.astimezone(ZoneInfo("Australia/Melbourne")).date()

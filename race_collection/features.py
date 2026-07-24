@@ -11,6 +11,7 @@ from typing import Any, Mapping
 from .domain import ArtifactChecksum, EvidenceField
 from .model_bundle import SUPPORTED_FEATURE_CONTRACT
 
+
 class FeatureQuarantine(ValueError):
     """Sealed evidence cannot satisfy the exact bundle feature contract."""
 

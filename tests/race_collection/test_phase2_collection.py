@@ -14,11 +14,14 @@ from race_collection.domain import (
     CollectionRaceRecord,
     DogId,
     DomainValidationError,
+    EvidenceAuthority,
+    EvidenceField,
     ExpectedRace,
     FieldEvidence,
+    FreezeAuthority,
     IdentityTier,
-    OddsAttemptStatus,
     OddsAttemptRecord,
+    OddsAttemptStatus,
     OddsObservation,
     OperationId,
     ProgrammeRaceCandidate,
@@ -28,14 +31,15 @@ from race_collection.domain import (
     RacingDayId,
     RunObservation,
 )
+from race_collection.features import derive_features
 from race_collection.identity import DogIdentityDecision, resolve_dog_identity
 from race_collection.operations import (
     CollectionQuarantineBlocksSeal,
+    ConflictingOperation,
     ExpectedInventoryConflict,
     OperationsStoreError,
     RaceAliasOwnerCollision,
     SQLiteOperationsStore,
-    ConflictingOperation,
 )
 from race_collection.sealing import (
     EvidenceSealer,
@@ -43,8 +47,6 @@ from race_collection.sealing import (
     SealingQuarantine,
     normalize_fields,
 )
-from race_collection.features import derive_features
-from race_collection.domain import EvidenceAuthority, EvidenceField, FreezeAuthority
 
 NOW = datetime(2026, 7, 22, 2, tzinfo=timezone.utc)
 

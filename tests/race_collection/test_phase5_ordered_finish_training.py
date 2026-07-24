@@ -1,5 +1,5 @@
-import json
 import itertools
+import json
 import math
 import sqlite3
 from datetime import date, datetime, timedelta, timezone
@@ -19,8 +19,14 @@ from race_collection.domain import (
     RacingDay,
     RacingDayId,
 )
-from race_collection.forecasting import ForecastingAuthority, LegacyBundle, ModelRelease
+from race_collection.features import (
+    DerivationReport,
+    DerivationResult,
+    FeatureContract,
+    FeatureMatrix,
+)
 from race_collection.forecast_service import CanonicalForecastService, ForecastRequest
+from race_collection.forecasting import ForecastingAuthority, LegacyBundle, ModelRelease
 from race_collection.model_bundle import (
     BundleUnavailable,
     ChampionLoader,
@@ -35,12 +41,12 @@ from race_collection.ordered_finish import (
     ordered_finish_nll,
 )
 from race_collection.training import (
+    CorpusRejected,
     LegacyRow,
     LinearStrengthModel,
     PreparedExample,
-    CorpusRejected,
-    TrainingExample,
     TrainingCorpusAuthority,
+    TrainingExample,
     audit_legacy_corpus,
     canonical_json,
     checksum,
@@ -50,13 +56,6 @@ from race_collection.training import (
     validate_evaluation_outcome,
     wagering_strategy_report,
 )
-from race_collection.features import (
-    DerivationReport,
-    DerivationResult,
-    FeatureContract,
-    FeatureMatrix,
-)
-
 
 NOW = datetime(2026, 7, 23, tzinfo=timezone.utc)
 

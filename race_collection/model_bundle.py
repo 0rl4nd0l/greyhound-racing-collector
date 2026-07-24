@@ -14,13 +14,12 @@ from typing import Any, Callable, Mapping
 from .artifacts import ArtifactStore
 from .domain import ArtifactChecksum, OperationId, require_aware
 from .forecasting import PredictionRequest
-from .ordered_finish import ORDERED_FINISH_CONTRACT
 from .operations import (
     OperationsStoreError,
     SQLiteOperationsStore,
     iso_timestamp,
 )
-
+from .ordered_finish import ORDERED_FINISH_CONTRACT
 
 SUPPORTED_FEATURE_CONTRACT = "sealed-race-features-v1"
 SUPPORTED_FORECAST_CONTRACT = "runner-win-probability-v1"

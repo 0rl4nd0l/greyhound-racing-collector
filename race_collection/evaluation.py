@@ -13,8 +13,8 @@ from typing import Any, Mapping, Sequence
 from .artifacts import ArtifactStore, ArtifactStoreError, ChecksumMismatch
 from .domain import ArtifactChecksum, OperationId, require_aware
 from .model_bundle import COMPONENT_KINDS, ServingAssignment
-from .operations import OperationsStoreError, SQLiteOperationsStore, iso_timestamp
 from .operational import OperationalAuthority, OperationalRejected, verify_release_authority
+from .operations import OperationsStoreError, SQLiteOperationsStore, iso_timestamp
 from .ordered_finish import OrderedFinishForecast, ordered_finish_nll
 
 
