@@ -1,0 +1,42 @@
+{
+  "schema_version": "legacy-origin-import-v2",
+  "model_id": "V4_ExtraTrees_ExtraTreesClassifier_Calibrated_20260329_212033",
+  "model_version": "V4_ExtraTrees_ExtraTreesClassifier_Calibrated_20260329_212033",
+  "origin": "legacy-origin",
+  "artifact": {
+    "source": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/model_registry/models/V4_ExtraTrees_ExtraTreesClassifier_Calibrated_20260329_212033_model.joblib",
+    "destination": ".phase3-artifacts/model_registry/models/V4_ExtraTrees_ExtraTreesClassifier_Calibrated_20260329_212033_model.joblib",
+    "size": 87072784,
+    "sha256": "60866c564253f774f96fd6f1c40368bc2aa0c8e477784a85917a41c30cbfd096",
+    "purpose": "selected registry is_best raw estimator"
+  },
+  "metadata": {
+    "present": true,
+    "source": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/model_registry/metadata/V4_ExtraTrees_ExtraTreesClassifier_Calibrated_20260329_212033_metadata.json",
+    "destination": ".phase3-artifacts/model_registry/metadata/V4_ExtraTrees_ExtraTreesClassifier_Calibrated_20260329_212033_metadata.json",
+    "size": 2731,
+    "sha256": "21da78c9ced19005897164d79c284a340df20ea3a5fe2cd236929fe783d4b34f",
+    "purpose": "separate registry feature and training metadata"
+  },
+  "index": {
+    "present": true,
+    "source": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/model_registry/model_index.json",
+    "destination": ".phase3-artifacts/model_registry/model_index.json",
+    "size": 86308,
+    "sha256": "fbd4ec1e66d0dc6b4651893e25b3a53877b7ed51e157163bd492cea26ae496f0",
+    "is_best": true,
+    "purpose": "registry selection index proving is_best"
+  },
+  "scaler": {"present": false},
+  "feature_contract": {"present": false},
+  "training_manifest": {"present": false},
+  "classification": "raw_registry_model",
+  "classification_basis": "Trusted isolated joblib inspection identified sklearn.calibration.CalibratedClassifierCV with predict_proba, not a dict envelope. Registry get_best_model loads this file as the model object and separately supplies 49 feature names from metadata.",
+  "full_v4_envelope_fields": {
+    "calibrated_pipeline": false,
+    "feature_columns": false,
+    "model_metadata": false,
+    "ev_thresholds": false,
+    "feature_signature": false
+  }
+}

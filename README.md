@@ -169,7 +169,7 @@ For issues and questions:
 
 ### Prerequisites
 
-- Python 3.8+
+- Python 3.11+ (the canonical race-collection modules and formatter target Python 3.11)
 - Node.js and npm (for frontend development)
 
 ### Setup

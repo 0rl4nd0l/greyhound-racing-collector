@@ -1,0 +1,402 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "race-collection-runtime-input-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "release_id", "cycles"],
+  "properties": {
+    "schema_version": {"const": "phase7-runtime-input-v1"},
+    "release_id": {"type": "string", "minLength": 1},
+    "cycles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/cycle"}
+    }
+  },
+  "$defs": {
+    "checksum": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "operation": {
+      "type": "string",
+      "pattern": "^op_[0-9a-f]{32}$"
+    },
+    "instant": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "programme": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "checksum"],
+      "properties": {
+        "source": {"type": "string", "minLength": 1},
+        "checksum": {"$ref": "#/$defs/checksum"}
+      }
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation_id",
+        "source",
+        "source_alias",
+        "name",
+        "registration_authority",
+        "registration_id",
+        "decided_at"
+      ],
+      "properties": {
+        "operation_id": {"$ref": "#/$defs/operation"},
+        "source": {"type": "string", "minLength": 1},
+        "source_alias": {"type": "string", "minLength": 1},
+        "name": {"type": "string", "minLength": 1},
+        "registration_authority": {"type": "string", "minLength": 1},
+        "registration_id": {"type": "string", "minLength": 1},
+        "decided_at": {"$ref": "#/$defs/instant"}
+      }
+    },
+    "run_observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation_id",
+        "identity_source_alias",
+        "local_racing_date",
+        "source",
+        "checksum",
+        "observed_at",
+        "starts",
+        "wins",
+        "authoritative"
+      ],
+      "properties": {
+        "operation_id": {"$ref": "#/$defs/operation"},
+        "identity_source_alias": {"type": "string", "minLength": 1},
+        "local_racing_date": {"type": "string", "format": "date"},
+        "source": {"type": "string", "minLength": 1},
+        "checksum": {"$ref": "#/$defs/checksum"},
+        "observed_at": {"$ref": "#/$defs/instant"},
+        "starts": {"type": ["integer", "null"], "minimum": 0},
+        "wins": {"type": ["integer", "null"], "minimum": 0},
+        "authoritative": {"type": "boolean"}
+      }
+    },
+    "field_observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation_id",
+        "field",
+        "authority",
+        "value",
+        "source",
+        "checksum",
+        "observed_at"
+      ],
+      "properties": {
+        "operation_id": {"$ref": "#/$defs/operation"},
+        "field": {
+          "enum": [
+            "runner_set",
+            "runner_identity",
+            "runner_features",
+            "box",
+            "venue",
+            "distance",
+            "grade",
+            "field_size",
+            "scheduled_jump",
+            "actual_jump",
+            "jump_time"
+          ]
+        },
+        "authority": {
+          "enum": [
+            "official_programme",
+            "official_card",
+            "official_jump",
+            "source_card",
+            "embedded_form",
+            "market"
+          ]
+        },
+        "value": true,
+        "source": {"type": "string", "minLength": 1},
+        "checksum": {"$ref": "#/$defs/checksum"},
+        "observed_at": {"$ref": "#/$defs/instant"}
+      }
+    },
+    "odds_attempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation_id",
+        "source",
+        "attempted_at",
+        "status",
+        "artifact_checksum",
+        "runner_mapping_checksum",
+        "error"
+      ],
+      "properties": {
+        "operation_id": {"$ref": "#/$defs/operation"},
+        "source": {"type": "string", "minLength": 1},
+        "attempted_at": {"$ref": "#/$defs/instant"},
+        "status": {"enum": ["succeeded", "failed"]},
+        "artifact_checksum": {
+          "oneOf": [
+            {"$ref": "#/$defs/checksum"},
+            {"type": "null"}
+          ]
+        },
+        "runner_mapping_checksum": {
+          "oneOf": [
+            {"$ref": "#/$defs/checksum"},
+            {"type": "null"}
+          ]
+        },
+        "error": {"type": ["string", "null"]}
+      }
+    },
+    "seal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation_id",
+        "buffer_seconds",
+        "schema_version",
+        "normalization_version",
+        "sealed_at"
+      ],
+      "properties": {
+        "operation_id": {"$ref": "#/$defs/operation"},
+        "buffer_seconds": {"type": "integer", "minimum": 0},
+        "schema_version": {"type": "string", "minLength": 1},
+        "normalization_version": {"type": "string", "minLength": 1},
+        "sealed_at": {"$ref": "#/$defs/instant"}
+      }
+    },
+    "prediction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["begin_operation_id", "operation_id", "prediction_id"],
+      "properties": {
+        "begin_operation_id": {"$ref": "#/$defs/operation"},
+        "operation_id": {"$ref": "#/$defs/operation"},
+        "prediction_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "open_operation_id",
+        "operation_id",
+        "attempt_id",
+        "attempted_at",
+        "deadline",
+        "max_attempts",
+        "source",
+        "source_checksum"
+      ],
+      "properties": {
+        "open_operation_id": {"$ref": "#/$defs/operation"},
+        "operation_id": {"$ref": "#/$defs/operation"},
+        "attempt_id": {"type": "string", "minLength": 1},
+        "attempted_at": {"$ref": "#/$defs/instant"},
+        "deadline": {"$ref": "#/$defs/instant"},
+        "max_attempts": {"type": "integer", "minimum": 1},
+        "source": {"type": "string", "minLength": 1},
+        "source_checksum": {"$ref": "#/$defs/checksum"}
+      }
+    },
+    "training_example": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "join_operation_id",
+        "phase3_example_id",
+        "build_operation_id",
+        "canonical_example_id",
+        "joined_at"
+      ],
+      "properties": {
+        "join_operation_id": {"$ref": "#/$defs/operation"},
+        "phase3_example_id": {"type": "string", "minLength": 1},
+        "build_operation_id": {"$ref": "#/$defs/operation"},
+        "canonical_example_id": {"type": "string", "minLength": 1},
+        "joined_at": {"$ref": "#/$defs/instant"}
+      }
+    },
+    "race": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_race_id",
+        "identities",
+        "run_observations",
+        "observations",
+        "odds_attempts",
+        "seal",
+        "prediction",
+        "result",
+        "training_example"
+      ],
+      "properties": {
+        "source_race_id": {"type": "string", "minLength": 1},
+        "identities": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/identity"}
+        },
+        "run_observations": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/run_observation"}
+        },
+        "observations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/field_observation"}
+        },
+        "odds_attempts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/odds_attempt"}
+        },
+        "seal": {"$ref": "#/$defs/seal"},
+        "prediction": {"$ref": "#/$defs/prediction"},
+        "result": {"$ref": "#/$defs/result"},
+        "training_example": {"$ref": "#/$defs/training_example"}
+      }
+    },
+    "champion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bundle_id", "bundle_checksum"],
+      "properties": {
+        "bundle_id": {"type": "string", "minLength": 1},
+        "bundle_checksum": {"$ref": "#/$defs/checksum"}
+      }
+    },
+    "cohort_member": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "bundle_id",
+        "bundle_checksum",
+        "service_run_id",
+        "forecast_operations"
+      ],
+      "properties": {
+        "role": {"enum": ["champion", "challenger"]},
+        "bundle_id": {"type": "string", "minLength": 1},
+        "bundle_checksum": {"$ref": "#/$defs/checksum"},
+        "service_run_id": {"$ref": "#/$defs/operation"},
+        "forecast_operations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/forecast_operation"}
+        }
+      }
+    },
+    "forecast_operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_race_id", "operation_id"],
+      "properties": {
+        "source_race_id": {"type": "string", "minLength": 1},
+        "operation_id": {"$ref": "#/$defs/operation"}
+      }
+    },
+    "forecast_cohort": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assignment_id", "authorization_operation_id", "members"],
+      "properties": {
+        "assignment_id": {"type": "string", "minLength": 1},
+        "authorization_operation_id": {"$ref": "#/$defs/operation"},
+        "members": {
+          "type": "array",
+          "minItems": 2,
+          "items": {"$ref": "#/$defs/cohort_member"}
+        }
+      }
+    },
+    "training_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "request_id",
+        "request_operation_id",
+        "authorization_operation_id",
+        "binding_operation_id",
+        "service_run_id"
+      ],
+      "properties": {
+        "request_id": {"type": "string", "minLength": 1},
+        "request_operation_id": {"$ref": "#/$defs/operation"},
+        "authorization_operation_id": {"$ref": "#/$defs/operation"},
+        "binding_operation_id": {"$ref": "#/$defs/operation"},
+        "service_run_id": {"$ref": "#/$defs/operation"}
+      }
+    },
+    "cycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "racing_day_id",
+        "local_date",
+        "timezone",
+        "opened_at",
+        "at",
+        "plan_operation_id",
+        "command_operation_ids",
+        "advancement_operation_ids",
+        "programme",
+        "races",
+        "champion",
+        "forecast_cohort",
+        "determinism_input_checksum",
+        "training_request"
+      ],
+      "properties": {
+        "racing_day_id": {
+          "type": "string",
+          "pattern": "^day_[0-9a-f]{32}$"
+        },
+        "local_date": {"type": "string", "format": "date"},
+        "timezone": {"type": "string", "minLength": 1},
+        "opened_at": {"$ref": "#/$defs/instant"},
+        "at": {"$ref": "#/$defs/instant"},
+        "plan_operation_id": {"$ref": "#/$defs/operation"},
+        "command_operation_ids": {
+          "type": "array",
+          "minItems": 9,
+          "maxItems": 9,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/operation"}
+        },
+        "advancement_operation_ids": {
+          "type": "array",
+          "minItems": 9,
+          "maxItems": 9,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/operation"}
+        },
+        "programme": {"$ref": "#/$defs/programme"},
+        "races": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/race"}
+        },
+        "champion": {"$ref": "#/$defs/champion"},
+        "forecast_cohort": {"$ref": "#/$defs/forecast_cohort"},
+        "determinism_input_checksum": {"$ref": "#/$defs/checksum"},
+        "training_request": {"$ref": "#/$defs/training_request"}
+      }
+    }
+  }
+}
