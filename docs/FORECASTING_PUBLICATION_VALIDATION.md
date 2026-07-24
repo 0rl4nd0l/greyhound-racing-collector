@@ -42,13 +42,13 @@ the pre-normalization product identity and changed-file selection anchor.
 
 ## Incomplete gates
 
-The complete retained `tests/race_collection` suite was run with the declared
-`requirements/all.in` dependency layer and deliberately interrupted with exit
-130 after `348 passed in 955.13s`. It had entered
-`test_public_authenticated_499_race_evaluation_cannot_be_sealed`, which creates
-an additional real 499-race SQLite baseline; this is neither a test failure nor
-a runtime activation. Its partial log SHA-256 is
-`b2cb5a949eb3b5574464d01fe43426517b6b5e8c8d7c65415595c33507931fef`.
+The complete retained `tests/race_collection` suite was rerun against the
+normalized candidate with the declared `requirements/all.in` dependency layer
+and deliberately interrupted with exit 130 after `341 passed in 841.34s`. It
+was CPU-active in the deterministic Phase 6 bootstrap after constructing the
+large authenticated SQLite fixture; this is neither a test failure nor a runtime
+activation. Its partial log SHA-256 is
+`906c140b0ca16138cd282ec2a7df4da17f465b8ab601384605f90977a8fb6c15`.
 
 The Phase 7 operational/runtime-adapter pair was likewise deliberately
 interrupted with exit 130 after `37 passed, 27 subtests passed in 181.86s` while
