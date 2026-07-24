@@ -1,0 +1,240 @@
+........................................................................ [ 15%]
+........................................................................ [ 31%]
+........................................................................ [ 47%]
+........................................................................ [ 63%]
+............................................................Traceback (most recent call last):
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/main.py", line 330, in wrap_session
+    session.exitstatus = doit(config, session) or 0
+                         ~~~~^^^^^^^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/main.py", line 384, in _main
+    config.hook.pytest_runtestloop(session=session)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_hooks.py", line 512, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+           ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_callers.py", line 167, in _multicall
+    raise exception
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_callers.py", line 139, in _multicall
+    teardown.throw(exception)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/logging.py", line 816, in pytest_runtestloop
+    return (yield)  # Run all the tests.
+            ^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_callers.py", line 139, in _multicall
+    teardown.throw(exception)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/terminal.py", line 708, in pytest_runtestloop
+    result = yield
+             ^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_callers.py", line 121, in _multicall
+    res = hook_impl.function(*args)
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/main.py", line 408, in pytest_runtestloop
+    item.config.hook.pytest_runtest_protocol(item=item, nextitem=nextitem)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_hooks.py", line 512, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+           ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_callers.py", line 167, in _multicall
+    raise exception
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_callers.py", line 139, in _multicall
+    teardown.throw(exception)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/warnings.py", line 90, in pytest_runtest_protocol
+    return (yield)
+            ^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_callers.py", line 139, in _multicall
+    teardown.throw(exception)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/assertion/__init__.py", line 205, in pytest_runtest_protocol
+    return (yield)
+            ^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_callers.py", line 139, in _multicall
+    teardown.throw(exception)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/unittest.py", line 612, in pytest_runtest_protocol
+    return (yield)
+            ^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_callers.py", line 139, in _multicall
+    teardown.throw(exception)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/faulthandler.py", line 102, in pytest_runtest_protocol
+    return (yield)
+            ^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_callers.py", line 121, in _multicall
+    res = hook_impl.function(*args)
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/runner.py", line 118, in pytest_runtest_protocol
+    runtestprotocol(item, nextitem=nextitem)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/runner.py", line 139, in runtestprotocol
+    reports.append(call_and_report(item, "call", log))
+                   ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/runner.py", line 249, in call_and_report
+    call = CallInfo.from_call(
+        lambda: runtest_hook(item=item, **kwds),
+        when=when,
+        reraise=get_reraise_exceptions(item.config),
+    )
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/runner.py", line 361, in from_call
+    result: TResult | None = func()
+                             ~~~~^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/runner.py", line 250, in <lambda>
+    lambda: runtest_hook(item=item, **kwds),
+            ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_hooks.py", line 512, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+           ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_callers.py", line 167, in _multicall
+    raise exception
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_callers.py", line 139, in _multicall
+    teardown.throw(exception)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/logging.py", line 865, in pytest_runtest_call
+    yield
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_callers.py", line 139, in _multicall
+    teardown.throw(exception)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/capture.py", line 900, in pytest_runtest_call
+    return (yield)
+            ^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_callers.py", line 139, in _multicall
+    teardown.throw(exception)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/skipping.py", line 268, in pytest_runtest_call
+    return (yield)
+            ^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_callers.py", line 121, in _multicall
+    res = hook_impl.function(*args)
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/runner.py", line 184, in pytest_runtest_call
+    item.runtest()
+    ~~~~~~~~~~~~^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/python.py", line 1707, in runtest
+    self.ihook.pytest_pyfunc_call(pyfuncitem=self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_hooks.py", line 512, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+           ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_callers.py", line 167, in _multicall
+    raise exception
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_callers.py", line 139, in _multicall
+    teardown.throw(exception)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_callers.py", line 53, in run_old_style_hookwrapper
+    return result.get_result()
+           ~~~~~~~~~~~~~~~~~^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_result.py", line 103, in get_result
+    raise exc.with_traceback(tb)
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_callers.py", line 38, in run_old_style_hookwrapper
+    res = yield
+          ^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_callers.py", line 121, in _multicall
+    res = hook_impl.function(*args)
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/python.py", line 167, in pytest_pyfunc_call
+    result = testfunction(**testargs)
+  File "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-forecasting-publication-candidate-v1-20260724/tests/race_collection/test_phase6_evaluation_promotion.py", line 261, in test_public_authenticated_499_race_evaluation_cannot_be_sealed
+    store, artifacts = _build_authentic_promotion_template(tmp_path, count=499)
+                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-forecasting-publication-candidate-v1-20260724/tests/race_collection/test_phase6_evaluation_promotion.py", line 1028, in _build_authentic_promotion_template
+    assert evaluation.register_forward_race(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        operation(base + 6),
+        ^^^^^^^^^^^^^^^^^^^^
+        training_example_id=example.example_id,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        registered_at=lifecycle_at,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-forecasting-publication-candidate-v1-20260724/race_collection/evaluation.py", line 562, in register_forward_race
+    with self.store._operation(operation_id, "register_forward_evaluation", payload) as (
+         ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/l4nd0/.local/share/uv/python/cpython-3.13.12-linux-x86_64-gnu/lib/python3.13/contextlib.py", line 148, in __exit__
+    next(self.gen)
+    ~~~~^^^^^^^^^^
+  File "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-forecasting-publication-candidate-v1-20260724/race_collection/operations.py", line 382, in _operation
+    connection.close()
+    ~~~~~~~~~~~~~~~~^^
+KeyboardInterrupt
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pytest/__main__.py", line 9, in <module>
+    raise SystemExit(_console_main())
+                     ~~~~~~~~~~~~~^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/config/__init__.py", line 253, in _console_main
+    code = _main(prog=_get_prog_name(sys.argv))
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/config/__init__.py", line 229, in _main
+    ret: ExitCode | int = config.hook.pytest_cmdline_main(config=config)
+                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_hooks.py", line 512, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+           ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_callers.py", line 167, in _multicall
+    raise exception
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_callers.py", line 121, in _multicall
+    res = hook_impl.function(*args)
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/main.py", line 377, in pytest_cmdline_main
+    return wrap_session(config, _main)
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/main.py", line 344, in wrap_session
+    config.hook.pytest_keyboard_interrupt(excinfo=excinfo)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_hooks.py", line 512, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+           ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_callers.py", line 167, in _multicall
+    raise exception
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/pluggy/_callers.py", line 121, in _multicall
+    res = hook_impl.function(*args)
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/terminal.py", line 1012, in pytest_keyboard_interrupt
+    self._keyboardinterrupt_memo = excinfo.getrepr(funcargs=True)
+                                   ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/_code/code.py", line 774, in getrepr
+    return fmt.repr_excinfo(self)
+           ~~~~~~~~~~~~~~~~^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/_code/code.py", line 1224, in repr_excinfo
+    reprtraceback = self.repr_traceback(excinfo_)
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/_code/code.py", line 1150, in repr_traceback
+    self.repr_traceback_entry(entry, excinfo if last == entry else None)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/_code/code.py", line 1080, in repr_traceback_entry
+    source = self._getentrysource(entry)
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/_code/code.py", line 916, in _getentrysource
+    source = entry.getsource(self.astcache)
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/_code/code.py", line 292, in getsource
+    source = self.frame.code.fullsource
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/_code/code.py", line 105, in fullsource
+    full, _ = findsource(self.raw)
+              ~~~~~~~~~~^^^^^^^^^^
+  File "/var/log/ssd_data/l4nd0_cache/uv/archive-v0/W1LcAxiEYKO1-mzU6V3MU/lib/python3.13/site-packages/_pytest/_code/source.py", line 127, in findsource
+    sourcelines, lineno = inspect.findsource(obj)
+                          ~~~~~~~~~~~~~~~~~~^^^^^
+  File "/home/l4nd0/.local/share/uv/python/cpython-3.13.12-linux-x86_64-gnu/lib/python3.13/inspect.py", line 1074, in findsource
+    module = getmodule(object, file)
+  File "/home/l4nd0/.local/share/uv/python/cpython-3.13.12-linux-x86_64-gnu/lib/python3.13/inspect.py", line 1031, in getmodule
+    os.path.realpath(f)] = module.__name__
+    ~~~~~~~~~~~~~~~~^^^
+  File "<frozen posixpath>", line 451, in realpath
+KeyboardInterrupt
+
+348 passed in 955.13s (0:15:55)
