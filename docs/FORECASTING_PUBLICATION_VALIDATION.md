@@ -19,6 +19,10 @@ It deliberately excludes the recovered experiment's sandbox-control deletions an
 fail-closed operational symlink repair and its regression test. The normalized
 candidate contains only mechanical Black/isort changes to added Python files;
 the inherited canonical `app.py` remains unformatted and was not rewritten.
+All retained validation evidence below applies to normalized candidate
+`e9e49816a33f751b680e3473f44b0c1cbc6f9775` and tree
+`07983c5d7169e9ffe8bf9e0ddf2294678974b2f7`; `e54bc585` is retained as
+the pre-normalization product identity and changed-file selection anchor.
 
 ## Commands and results
 
@@ -31,7 +35,7 @@ the inherited canonical `app.py` remains unformatted and was not rewritten.
 | `git diff --diff-filter=A --name-only origin/master...e54bc585 -- '*.py' \| xargs uv run --no-project --with isort isort --check-only` | 0 | output log SHA-256 `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
 | `uv run --no-project --with ruff ruff check --select E9,F63,F7,F82 race_collection tests/race_collection scripts/import_legacy_v4_bundle.py scripts/verify_legacy_v4_loader.py` | 0 | configured fatal-error selection clean |
 | JSON parse of all `config/race_collection*.schema.json` files | 0 | three schemas valid |
-| `uv run --no-project --with-requirements requirements/all.in python -m pytest -q --noconftest tests/race_collection/test_phase7_operational.py -k operational_path_rejects_symlink_run_escape_and_loop` | 0 | `1 passed, 55 deselected`; log SHA-256 `9ca6255c1dbe9cd442a0ad569a77b371a38178af6a84b506b9182b659d74bceb` |
+| `uv run --no-project --with-requirements requirements/all.in python -m pytest -q --noconftest tests/race_collection/test_phase7_operational.py -k operational_path_rejects_symlink_run_escape_and_loop` | 0 | `1 passed, 55 deselected`; log SHA-256 `a06ca3399c90efeedaa1540b8fe768fde85074b384ca978711828b846e98309a` |
 | `uv run --no-project --with-requirements requirements/all.in python -m pytest -q --noconftest tests/race_collection/test_phase4_model_serving.py -k real_flask_canonical_route_and_every_sealed_evidence_adapter` | 0 | `1 passed, 57 deselected`; log SHA-256 `2d6ae44916e8ad9e662b40dc106561da025320888fb79ba4fb2f8725b37e1bb8` |
 | `uv run --no-project --with-requirements requirements/all.in python -m pytest -q --noconftest tests/test_predict_market_form_residual.py tests/test_daily_race_ingest_shadow_orchestrator.py tests/test_strict_win_odds_fixture_capture.py` | 0 | `472 passed`; log SHA-256 `af314386b4e402619f963723aee3738b01707f9e6cbf608928d3723b66d0390d` |
 | `uv run --no-project --with-requirements requirements/all.in python -m pytest -q --noconftest tests/race_collection/test_operations.py -k 'populated_schema_17_migrates_forward_to_latest_without_data_loss or populated_schema_27_partial_day_migration_preserves_prefix_and_defines_suffix or schema_28_refuses_inexact_v27_progress_and_rolls_back'` | 0 | `3 passed, 21 deselected`; log SHA-256 `f65e0e1fce86e00fd00436449a6957f55ef2cc179e58640952a9ed2f4a543adf` |
