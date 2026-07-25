@@ -591,6 +591,8 @@ class Phase7OperationalTests(unittest.TestCase):
         del missing_due[0]["scheduled_due_at"]
         wrong_policy = [dict(row) for row in legitimate]
         wrong_policy[0]["timing_policy"] = "adaptive-odds-timing-v0"
+        noncanonical_status = [dict(row) for row in legitimate]
+        noncanonical_status[0]["status"] = "not-canonical"
         duplicate = [dict(row) for row in legitimate]
         duplicate.insert(1, dict(duplicate[0]))
         non_monotonic = [dict(row) for row in legitimate]
@@ -605,6 +607,7 @@ class Phase7OperationalTests(unittest.TestCase):
             excessive_late,
             missing_due,
             wrong_policy,
+            noncanonical_status,
             duplicate,
             non_monotonic,
             post_cutoff,
@@ -2207,7 +2210,7 @@ class Phase7OperationalTests(unittest.TestCase):
                 "schema-mismatch",
                 "a" * 40,
                 self.manifest().config_checksum,
-                29,
+                30,
                 "canonical-artifacts-v1",
                 "phase6-promotion-v1",
                 ("runner-win-probability-v1",),
@@ -2746,7 +2749,7 @@ class Phase7OperationalTests(unittest.TestCase):
                 "future-schema",
                 "6cd5dacfe83719cbbc376a265829e84593eafb68",
                 PROGRAMME,
-                29,
+                30,
                 "canonical-artifacts-v1",
                 "phase6-promotion-v1",
                 ("runner-win-probability-v1",),
@@ -3480,7 +3483,7 @@ class Phase7OperationalTests(unittest.TestCase):
     def test_artifact_inventory_fails_closed_for_unknown_future_schema(self) -> None:
         with self.store._connect() as db:
             db.execute(
-                "INSERT INTO schema_migrations VALUES(29,?,?)",
+                "INSERT INTO schema_migrations VALUES(30,?,?)",
                 ("future-contract-unknown", NOW.isoformat()),
             )
             with self.assertRaisesRegex(RecoveryRejected, "does not cover"):

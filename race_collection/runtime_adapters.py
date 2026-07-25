@@ -746,7 +746,8 @@ class ImmutableInputRuntimeAdapter:
     def _odds(self, command: ApplicationCommand, at: datetime) -> None:
         del at
         inputs = self._race_inputs(command)
-        for _, item, row in inputs:
+        prepared: list[tuple[RaceId, tuple[OddsObservation, ...]]] = []
+        for race_id, item, row in inputs:
             scheduled_jump = _datetime(row["scheduled_jump"], "scheduled jump")
             try:
                 discovery_at = _datetime(
@@ -764,44 +765,53 @@ class ImmutableInputRuntimeAdapter:
                 raise ServiceUnavailable(
                     "runtime adaptive odds history violates the versioned bounded timing policy"
                 )
-        for race_id, item, _ in inputs:
+            observations: list[OddsObservation] = []
+            try:
+                for attempt in item["odds_attempts"]:
+                    artifact = (
+                        ArtifactChecksum(attempt["artifact_checksum"])
+                        if attempt["artifact_checksum"] is not None
+                        else None
+                    )
+                    mapping = (
+                        ArtifactChecksum(attempt["runner_mapping_checksum"])
+                        if attempt["runner_mapping_checksum"] is not None
+                        else None
+                    )
+                    if artifact is not None:
+                        self._artifacts.verify(artifact)
+                    if mapping is not None:
+                        self._artifacts.verify(mapping)
+                    observations.append(
+                        OddsObservation(
+                            operation_id=OperationId(attempt["operation_id"]),
+                            race_id=race_id,
+                            source=attempt["source"],
+                            scheduled_due_at=_datetime(
+                                attempt["scheduled_due_at"], "odds scheduled_due_at"
+                            ),
+                            attempted_at=_datetime(attempt["attempted_at"], "odds attempted_at"),
+                            timing_policy=attempt["timing_policy"],
+                            status=OddsAttemptStatus(attempt["status"]),
+                            artifact_checksum=artifact,
+                            runner_mapping_checksum=mapping,
+                            error=attempt["error"],
+                        )
+                    )
+            except (ArtifactStoreError, KeyError, TypeError, ValueError) as error:
+                raise ServiceUnavailable(
+                    "runtime adaptive odds attempt is malformed or unauthenticated"
+                ) from error
+            prepared.append((race_id, tuple(observations)))
+        for race_id, observations in prepared:
             self._store.advance_race(
                 _operation(f"{command.operation_id}:{race_id}:odds"),
                 race_id,
                 RaceState.COLLECTING_ODDS,
-                _datetime(item["odds_attempts"][0]["attempted_at"], "odds time"),
+                observations[0].attempted_at,
             )
-            for attempt in item["odds_attempts"]:
-                artifact = (
-                    ArtifactChecksum(attempt["artifact_checksum"])
-                    if attempt["artifact_checksum"] is not None
-                    else None
-                )
-                mapping = (
-                    ArtifactChecksum(attempt["runner_mapping_checksum"])
-                    if attempt["runner_mapping_checksum"] is not None
-                    else None
-                )
-                if artifact is not None:
-                    self._artifacts.verify(artifact)
-                if mapping is not None:
-                    self._artifacts.verify(mapping)
-                self._repository.record_odds_attempt(
-                    OddsObservation(
-                        operation_id=OperationId(attempt["operation_id"]),
-                        race_id=race_id,
-                        source=attempt["source"],
-                        scheduled_due_at=_datetime(
-                            attempt["scheduled_due_at"], "odds scheduled_due_at"
-                        ),
-                        attempted_at=_datetime(attempt["attempted_at"], "odds attempted_at"),
-                        timing_policy=attempt["timing_policy"],
-                        status=OddsAttemptStatus(attempt["status"]),
-                        artifact_checksum=artifact,
-                        runner_mapping_checksum=mapping,
-                        error=attempt["error"],
-                    )
-                )
+            for observation in observations:
+                self._repository.record_odds_attempt(observation)
 
     def _close_and_seal(self, command: ApplicationCommand, at: datetime) -> None:
         del at
@@ -1019,6 +1029,16 @@ class ImmutableInputRuntimeAdapter:
 
     def _results(self, command: ApplicationCommand, at: datetime) -> None:
         authority = ForecastingAuthority(self._store)
+        prepared: list[
+            tuple[
+                RaceId,
+                Mapping[str, Any],
+                datetime,
+                datetime,
+                ArtifactChecksum,
+                Mapping[str, Any],
+            ]
+        ] = []
         for race_id, race, _ in self._race_inputs(command):
             result = race["result"]
             attempted_at = _datetime(result["attempted_at"], "result attempted_at")
@@ -1054,6 +1074,28 @@ class ImmutableInputRuntimeAdapter:
                 raise ServiceUnavailable(
                     "official result timeline violates the versioned bounded ordering policy"
                 )
+            deadline = _datetime(result["deadline"], "result deadline")
+            order = outcome.get("order")
+            if (
+                type(result["attempt_id"]) is not str
+                or not result["attempt_id"].strip()
+                or type(result["max_attempts"]) is not int
+                or isinstance(result["max_attempts"], bool)
+                or result["max_attempts"] <= 0
+                or not isinstance(order, list)
+                or not order
+                or any(type(box) is not int or box <= 0 for box in order)
+                or len(set(order)) != len(order)
+            ):
+                raise ServiceUnavailable("official result attempt contract is malformed")
+            try:
+                encoded = _canonical(outcome)
+            except (TypeError, ValueError) as error:
+                raise ServiceUnavailable("official result source is not exact JSON") from error
+            if json.loads(encoded) != outcome:
+                raise ServiceUnavailable("official result source is not exact JSON")
+            prepared.append((race_id, result, attempted_at, deadline, checksum, outcome))
+        for race_id, result, attempted_at, deadline, checksum, outcome in prepared:
             authority.open_results(OperationId(result["open_operation_id"]), race_id, attempted_at)
             status = authority.record_result_attempt(
                 OperationId(result["operation_id"]),
@@ -1061,7 +1103,7 @@ class ImmutableInputRuntimeAdapter:
                 result["attempt_id"],
                 at=attempted_at,
                 max_attempts=result["max_attempts"],
-                deadline=_datetime(result["deadline"], "result deadline"),
+                deadline=deadline,
                 artifact_checksum=checksum,
                 outcome=outcome,
             )

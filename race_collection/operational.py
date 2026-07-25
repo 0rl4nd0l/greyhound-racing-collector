@@ -291,11 +291,13 @@ def _adaptive_odds_history_complete(
         due_times = [datetime.fromisoformat(row["scheduled_due_at"]) for row in odds]
         attempt_times = [datetime.fromisoformat(row["attempted_at"]) for row in odds]
         timing_policies = [row["timing_policy"] for row in odds]
+        statuses = [row["status"] for row in odds]
     except (IndexError, KeyError, TypeError, ValueError):
         return False
     if (
         due_times[0] != discovery_at
         or any(policy != ADAPTIVE_ODDS_TIMING_POLICY for policy in timing_policies)
+        or any(status not in {"succeeded", "failed"} for status in statuses)
         or any(at >= cutoff for at in attempt_times)
         or any(
             attempted < due or attempted - due > ADAPTIVE_ODDS_MAX_LATE

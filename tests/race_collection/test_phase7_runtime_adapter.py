@@ -4,14 +4,18 @@ import subprocess
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 import pytest
 
+import race_collection.runtime_adapters as runtime_adapters
 from race_collection.artifacts import LocalArtifactStore
 from race_collection.domain import (
+    ADAPTIVE_ODDS_TIMING_POLICY,
     ArtifactChecksum,
     OperationId,
+    RaceId,
     RacingDay,
     RacingDayId,
 )
@@ -36,9 +40,10 @@ from race_collection.ordered_finish import ORDERED_FINISH_CONTRACT
 from race_collection.runtime_adapters import (
     OFFICIAL_RESULT_MAX_LATENCY,
     OFFICIAL_RESULT_TIMING_POLICY,
+    ImmutableInputRuntimeAdapter,
     _official_result_timeline_valid,
 )
-from race_collection.service import compose, main
+from race_collection.service import ServiceUnavailable, compose, main
 from race_collection.training import LinearStrengthModel
 
 NOW = datetime.now(timezone.utc).replace(microsecond=0)
@@ -92,6 +97,122 @@ def test_official_result_timeline_rejects_missing_reversed_excessive_or_wrong_po
     published, observed, attempted, trusted, policy
 ):
     assert not _official_result_timeline_valid(published, observed, attempted, trusted, policy)
+
+
+def test_odds_cohort_is_fully_validated_before_authority_mutation():
+    mutations = []
+
+    class Store:
+        def advance_race(self, *args):
+            mutations.append(("advance", args))
+
+    class Repository:
+        def record_odds_attempt(self, observation):
+            mutations.append(("record", observation))
+
+    class Artifacts:
+        def verify(self, checksum):
+            return checksum
+
+    due = NOW
+    jump = due + timedelta(seconds=30)
+    payload_checksum = "sha256:" + "1" * 64
+    mapping_checksum = "sha256:" + "2" * 64
+
+    def race(number, status):
+        return (
+            RaceId(f"race_{number:032x}"),
+            {
+                "odds_attempts": [
+                    {
+                        "operation_id": f"op_{number:032x}",
+                        "source": "official-odds",
+                        "scheduled_due_at": due.isoformat(),
+                        "attempted_at": (due + timedelta(seconds=2)).isoformat(),
+                        "timing_policy": ADAPTIVE_ODDS_TIMING_POLICY,
+                        "status": status,
+                        "artifact_checksum": payload_checksum,
+                        "runner_mapping_checksum": mapping_checksum,
+                        "error": None,
+                    }
+                ]
+            },
+            {"scheduled_jump": jump.isoformat()},
+        )
+
+    adapter = object.__new__(ImmutableInputRuntimeAdapter)
+    adapter._store = Store()
+    adapter._repository = Repository()
+    adapter._artifacts = Artifacts()
+    adapter._race_inputs = lambda command: (race(1, "succeeded"), race(2, "not-canonical"))
+
+    with pytest.raises(ServiceUnavailable):
+        adapter._odds(SimpleNamespace(operation_id=operation(100)), NOW)
+    assert mutations == []
+
+
+def test_result_cohort_is_fully_validated_before_authority_mutation(monkeypatch):
+    mutations = []
+
+    class Authority:
+        def open_results(self, *args):
+            mutations.append(("open", args))
+
+        def record_result_attempt(self, *args, **kwargs):
+            mutations.append(("record", args, kwargs))
+            return "collected"
+
+    class Artifacts:
+        def __init__(self, content):
+            self.content = content
+
+        def read(self, checksum):
+            return self.content[str(checksum)]
+
+    def result(number, observed_at):
+        checksum = ArtifactChecksum(f"sha256:{number:064x}")
+        source = f"official-results-{number}"
+        attempted_at = NOW + timedelta(minutes=1)
+        outcome = {
+            "source": source,
+            "published_at": NOW.isoformat(),
+            "provenance": {"observed_at": observed_at.isoformat()},
+            "order": [1, 2],
+        }
+        return (
+            RaceId(f"race_{number:032x}"),
+            {
+                "result": {
+                    "open_operation_id": f"op_{number:032x}",
+                    "operation_id": f"op_{number + 10:032x}",
+                    "attempt_id": f"attempt-{number}",
+                    "attempted_at": attempted_at.isoformat(),
+                    "timing_policy": OFFICIAL_RESULT_TIMING_POLICY,
+                    "deadline": (NOW + timedelta(minutes=10)).isoformat(),
+                    "max_attempts": 3,
+                    "source": source,
+                    "source_checksum": str(checksum),
+                }
+            },
+            {},
+            checksum,
+            canonical(outcome),
+        )
+
+    first = result(1, NOW + timedelta(seconds=30))
+    second = result(2, NOW + timedelta(minutes=2))
+    adapter = object.__new__(ImmutableInputRuntimeAdapter)
+    adapter._store = object()
+    adapter._artifacts = Artifacts({str(first[3]): first[4], str(second[3]): second[4]})
+    adapter._race_inputs = lambda command: (
+        (first[0], first[1], first[2]),
+        (second[0], second[1], second[2]),
+    )
+    monkeypatch.setattr(runtime_adapters, "ForecastingAuthority", lambda store: Authority())
+
+    with pytest.raises(ServiceUnavailable):
+        adapter._results(SimpleNamespace(), NOW + timedelta(minutes=3))
+    assert mutations == []
 
 
 def _component_documents(bundle_id):

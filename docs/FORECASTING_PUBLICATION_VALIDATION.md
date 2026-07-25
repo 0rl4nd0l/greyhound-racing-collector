@@ -56,13 +56,16 @@ Adaptive odds use `adaptive-odds-timing-v1`: every immutable attempt stores
 `scheduled_due_at` separately from `attempted_at`. Attempts may occur from zero
 through five seconds after due, inclusive. Missing, early, duplicate,
 noncanonical, wrong-policy, post-cutoff, or later attempts fail closed.
+The complete Racing-Day odds cohort is parsed, domain-validated, and
+artifact-authenticated before race state or odds authority is mutated.
 Reconciliation advances cadence from due time rather than observed latency.
 
 Official results use `official-result-timing-v1`. The ordered timeline is
 `published <= observed <= attempted <= trusted_command`; the interval from
 publication through attempt may be at most five minutes, inclusive. Missing,
 reversed, future, wrong-policy, and excessive-latency inputs fail closed before
-result authority is mutated.
+result authority is mutated. The complete Racing-Day result cohort is
+source-authenticated and validated before any member enters result collection.
 
 ## Boundary
 
