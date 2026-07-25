@@ -45,7 +45,7 @@ exception class names only; the service entrypoint maps arbitrary exceptions to
 a text-free unavailable exit.
 
 Release manifests are immutable content-addressed documents binding an exact
-commit, typed config checksum, exactly schema 28, artifact contract, policy, supported
+commit, typed config checksum, exactly schema 29, artifact contract, policy, supported
 bundle versions, and a stable absolute service root. Unit generation emits one
 generic service and no independent workflow timer. Generation and validation do
 not install or enable it.
@@ -58,8 +58,10 @@ The checked-in `race_collection.runtime_adapters:checked_in` factory rehydrates
 exact durable cycle identities and invokes the existing Phase 1--6 public
 authorities. It never selects inputs from environment variables, registries, or
 filesystem recency; absent or changed live inputs fail closed. Startup validates
-the complete nine-handler closed dispatcher
-and active immutable release before acquiring a durable lease; an absent or
+the active immutable release's existing Git commit, exact clean tree, resolved
+in-root service source, and nonsymlink executable bytes and mode before importing
+the adapter or acquiring a durable lease. It then validates the complete
+nine-handler closed dispatcher; an absent or
 incomplete adapter exits unavailable without advancing a Racing Day. The same
 entrypoint provides deterministic `--once` and signal-aware `--continuous`
 modes and closes adapter-owned resources on every completion path. It can emit
@@ -84,6 +86,15 @@ ordinary authenticated forecast-service artifacts that a later independent
 Phase 6 evaluation may consume. Ordering evidence includes only an immutable application
 receipt for a real result command rejected before prediction; an alert or
 counter is not barrier evidence.
+
+Adaptive odds timing policy `adaptive-odds-timing-v1` stores the canonical
+scheduled due time separately from actual attempt time. Actual attempts may be
+zero through five seconds late, inclusive. Cadence is derived from due time so
+latency never shifts later scheduling; early, missing, duplicate, wrong-policy,
+post-cutoff, and excessive-late attempts fail closed. Official-result timing
+policy `official-result-timing-v1` requires
+`published <= observed <= attempted <= trusted_command` and bounds publication
+through attempt at five minutes, inclusive.
 
 Observation is explicit durable authority, not a consequence of registration.
 While the main pointer remains intact legacy authority, an audited append-only
@@ -123,7 +134,8 @@ checksum, and record an inventory. Unknown future schemas fail closed.
 The inventory is hostile restore input: it must be canonical JSON containing a
 sorted unique list of exact checksums, and it must equal a fresh inventory
 computed from the restored read-only snapshot before any replica object is
-accepted. Schema 28 includes both determinism input and output artifacts. An
+accepted. Schema 29 includes both determinism input and output artifacts plus
+the versioned scheduled-due and bounded-late odds-attempt authority. An
 isolated restore drill verifies snapshot checksum, `integrity_check`, the exact
 inventory, every artifact, and an application query, and closes the restored
 database on every path.

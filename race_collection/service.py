@@ -7,6 +7,7 @@ import hashlib
 import importlib
 import json
 import signal
+import subprocess
 import sys
 import time
 import uuid
@@ -121,6 +122,85 @@ def _load_factory(binding: str) -> AdapterFactory:
     if not callable(factory):
         raise ServiceUnavailable(f"runtime adapter {binding!r} is not callable")
     return factory
+
+
+def _git_release_output(root: Path, *arguments: str) -> str:
+    try:
+        completed = subprocess.run(
+            ("git", "-C", str(root), *arguments),
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise ServiceUnavailable("declared release Git identity cannot be proven") from error
+    return completed.stdout.strip()
+
+
+def verify_release_source_identity(
+    service_root: Path | str,
+    code_commit: str,
+    *,
+    source_file: Path | None = None,
+) -> None:
+    """Bind resolved source and executable bytes to one clean immutable Git release."""
+    try:
+        root = Path(service_root).resolve(strict=True)
+    except (OSError, RuntimeError) as error:
+        raise ServiceUnavailable("declared release root is unavailable") from error
+    if not root.is_dir():
+        raise ServiceUnavailable("declared release root is unavailable")
+
+    source = (source_file or Path(__file__)).resolve(strict=True)
+    try:
+        source_relative = source.relative_to(root)
+    except ValueError as error:
+        raise ServiceUnavailable(
+            "resolved service source is outside the approved release root"
+        ) from error
+    if source_relative.as_posix() != "race_collection/service.py":
+        raise ServiceUnavailable("resolved service source is outside the approved release module")
+
+    executable = root / "bin" / "race-collection-service"
+    if executable.is_symlink():
+        raise ServiceUnavailable("release executable must not be a retargetable symlink")
+    try:
+        resolved_executable = executable.resolve(strict=True)
+    except (OSError, RuntimeError) as error:
+        raise ServiceUnavailable("release executable is unavailable") from error
+    if resolved_executable != executable or not executable.is_file():
+        raise ServiceUnavailable("release executable is outside the approved release root")
+    if executable.stat().st_mode & 0o111 == 0:
+        raise ServiceUnavailable("release executable is not executable")
+
+    if _git_release_output(root, "rev-parse", "--show-toplevel") != str(root):
+        raise ServiceUnavailable("approved release root is not the exact Git worktree root")
+    try:
+        _git_release_output(root, "cat-file", "-e", f"{code_commit}^{{commit}}")
+    except ServiceUnavailable as error:
+        raise ServiceUnavailable("declared release commit does not exist") from error
+    if _git_release_output(root, "rev-parse", "HEAD") != code_commit:
+        raise ServiceUnavailable("checked-out release does not match the declared commit")
+    if _git_release_output(root, "rev-parse", "HEAD^{tree}") != _git_release_output(
+        root, "rev-parse", f"{code_commit}^{{tree}}"
+    ):
+        raise ServiceUnavailable("checked-out release tree does not match the declared commit")
+
+    for relative, path, label in (
+        (source_relative.as_posix(), source, "service source"),
+        ("bin/race-collection-service", executable, "release executable"),
+    ):
+        expected_blob = _git_release_output(root, "rev-parse", f"{code_commit}:{relative}")
+        actual_blob = _git_release_output(root, "hash-object", str(path))
+        if actual_blob != expected_blob:
+            raise ServiceUnavailable(f"{label} bytes do not match the declared release")
+    executable_entry = _git_release_output(
+        root, "ls-tree", code_commit, "--", "bin/race-collection-service"
+    )
+    if not executable_entry.startswith("100755 blob "):
+        raise ServiceUnavailable("release executable mode does not match the declared release")
+    if _git_release_output(root, "status", "--porcelain", "--untracked-files=all"):
+        raise ServiceUnavailable("declared release worktree is dirty or tampered")
 
 
 def _operation_id(label: str) -> OperationId:
@@ -381,7 +461,6 @@ def compose(
     lease_ttl: timedelta,
 ) -> ServiceComposition:
     configuration, content = load_configuration(config_path)
-    factory = _load_factory(configuration.runtime_adapter)
     database_path = Path(configuration.operations_database)
     artifact_path = Path(configuration.artifact_root)
     if not database_path.is_file() or not artifact_path.is_dir():
@@ -423,9 +502,14 @@ def compose(
         else:
             raise ServiceUnavailable("configuration release lacks active or observation authority")
         try:
-            verify_release_authority(db, artifacts, release_id)
+            release = verify_release_authority(db, artifacts, release_id)
+            verify_release_source_identity(
+                configuration.service_root,
+                release["code_commit"],
+            )
         except (ArtifactStoreError, OperationalRejected, ValueError) as error:
             raise ServiceUnavailable("release authority verification failed") from error
+    factory = _load_factory(configuration.runtime_adapter)
     adapter: RuntimeAdapter | None = None
     try:
         adapter = factory(configuration, store, artifacts)

@@ -143,7 +143,7 @@ def test_migration_empty_repeat_and_populated_pre_phase3(tmp_path):
     store.migrate()
     store.migrate()
     with store._connect() as db:
-        assert db.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 28
+        assert db.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 29
         assert (
             db.execute("SELECT kind FROM operations WHERE operation_id='legacy'").fetchone()[0]
             == "fixture"

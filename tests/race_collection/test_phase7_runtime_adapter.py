@@ -1,7 +1,9 @@
 import hashlib
 import json
+import subprocess
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -31,6 +33,11 @@ from race_collection.operational import (
 )
 from race_collection.operations import BarrierNotSatisfied, SQLiteOperationsStore
 from race_collection.ordered_finish import ORDERED_FINISH_CONTRACT
+from race_collection.runtime_adapters import (
+    OFFICIAL_RESULT_MAX_LATENCY,
+    OFFICIAL_RESULT_TIMING_POLICY,
+    _official_result_timeline_valid,
+)
 from race_collection.service import compose, main
 from race_collection.training import LinearStrengthModel
 
@@ -44,6 +51,47 @@ def canonical(value):
 
 def operation(number):
     return OperationId(f"op_{number:032x}")
+
+
+def test_official_result_timeline_accepts_positive_latency_and_exact_boundary():
+    published = NOW
+    observed = published + timedelta(seconds=30)
+    attempted = observed + timedelta(seconds=30)
+    trusted = published + OFFICIAL_RESULT_MAX_LATENCY
+    assert _official_result_timeline_valid(
+        published, observed, attempted, trusted, OFFICIAL_RESULT_TIMING_POLICY
+    )
+    assert _official_result_timeline_valid(
+        published,
+        observed,
+        published + OFFICIAL_RESULT_MAX_LATENCY,
+        trusted,
+        OFFICIAL_RESULT_TIMING_POLICY,
+    )
+
+
+@pytest.mark.parametrize(
+    ("published", "observed", "attempted", "trusted", "policy"),
+    [
+        (None, NOW, NOW, NOW, OFFICIAL_RESULT_TIMING_POLICY),
+        (NOW, None, NOW, NOW, OFFICIAL_RESULT_TIMING_POLICY),
+        (NOW, NOW, None, NOW, OFFICIAL_RESULT_TIMING_POLICY),
+        (NOW, NOW + timedelta(seconds=1), NOW, NOW, OFFICIAL_RESULT_TIMING_POLICY),
+        (NOW, NOW, NOW + timedelta(seconds=1), NOW, OFFICIAL_RESULT_TIMING_POLICY),
+        (
+            NOW,
+            NOW,
+            NOW + OFFICIAL_RESULT_MAX_LATENCY + timedelta(microseconds=1),
+            NOW + OFFICIAL_RESULT_MAX_LATENCY + timedelta(microseconds=1),
+            OFFICIAL_RESULT_TIMING_POLICY,
+        ),
+        (NOW, NOW, NOW, NOW, "official-result-timing-v0"),
+    ],
+)
+def test_official_result_timeline_rejects_missing_reversed_excessive_or_wrong_policy(
+    published, observed, attempted, trusted, policy
+):
+    assert not _official_result_timeline_valid(published, observed, attempted, trusted, policy)
 
 
 def _component_documents(bundle_id):
@@ -251,6 +299,8 @@ def _runtime_fixture(tmp_path):
     jump = datetime.now(timezone.utc) - timedelta(seconds=2)
     discovery = jump - timedelta(seconds=10)
     result_at = datetime.now(timezone.utc) + timedelta(seconds=1)
+    result_published_at = result_at - timedelta(seconds=1)
+    result_observed_at = result_at - timedelta(milliseconds=500)
     card_bytes = canonical({"source": "official-card", "race": "R-1"})
     card = artifacts.put(card_bytes, media_type="application/json")
     form_a = artifacts.put(
@@ -272,9 +322,9 @@ def _runtime_fixture(tmp_path):
             "provenance": {
                 "source": "official-results",
                 "source_record_id": "R-1-result",
-                "observed_at": result_at.isoformat(),
+                "observed_at": result_observed_at.isoformat(),
             },
-            "published_at": result_at.isoformat(),
+            "published_at": result_published_at.isoformat(),
         }
     )
     result_checksum = ArtifactChecksum("sha256:" + hashlib.sha256(result_content).hexdigest())
@@ -376,7 +426,9 @@ def _runtime_fixture(tmp_path):
                     {
                         "operation_id": str(operation(120)),
                         "source": "market",
+                        "scheduled_due_at": discovery.isoformat(),
                         "attempted_at": discovery.isoformat(),
+                        "timing_policy": "adaptive-odds-timing-v1",
                         "status": "succeeded",
                         "artifact_checksum": str(odds.checksum),
                         "runner_mapping_checksum": str(mapping.checksum),
@@ -400,6 +452,7 @@ def _runtime_fixture(tmp_path):
                     "operation_id": str(operation(125)),
                     "attempt_id": "runtime-result-attempt",
                     "attempted_at": result_at.isoformat(),
+                    "timing_policy": OFFICIAL_RESULT_TIMING_POLICY,
                     "deadline": (jump + timedelta(hours=1)).isoformat(),
                     "max_attempts": 1,
                     "source": "official-results",
@@ -463,9 +516,13 @@ def _runtime_fixture(tmp_path):
         "cycles": [cycle],
     }
     runtime_artifact = artifacts.put(canonical(runtime_document), media_type="application/json")
+    source_root = Path(__file__).resolve().parents[2]
+    source_commit = subprocess.check_output(
+        ["git", "-C", str(source_root), "rev-parse", "HEAD"], text=True
+    ).strip()
     configuration = ReleaseConfiguration(
         "phase7-config-v1",
-        str(tmp_path / "service"),
+        str(source_root),
         str(artifacts.root),
         str(store.path),
         ("official", "official-card", "official-form", "market", "official-results"),
@@ -488,9 +545,9 @@ def _runtime_fixture(tmp_path):
         return ReleaseManifest(
             "phase7-release-v1",
             release_id,
-            "7" * 40,
+            source_commit,
             config_checksum,
-            28,
+            29,
             "canonical-artifacts-v1",
             "phase6-promotion-v1",
             (ORDERED_FINISH_CONTRACT,),

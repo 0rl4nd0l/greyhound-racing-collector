@@ -251,6 +251,7 @@ def test_migrations_are_forward_only_and_repeatable(setup):
             (26,),
             (27,),
             (28,),
+            (29,),
         ]
         recorded = db.execute("SELECT checksum FROM schema_migrations WHERE version=10").fetchone()[
             0
@@ -1297,6 +1298,8 @@ def test_public_phase2_reads_reconstruct_typed_immutable_models(setup):
     row = store.collection_rows(day)[0]
     assert isinstance(attempt, OddsAttemptRecord)
     assert attempt.attempted_at == NOW
+    assert attempt.scheduled_due_at == NOW
+    assert attempt.timing_policy == "adaptive-odds-timing-v1"
     assert attempt.status is OddsAttemptStatus.FAILED
     assert isinstance(row, CollectionRaceRecord)
     assert row.race_id == race.race_id
@@ -1334,6 +1337,8 @@ def test_expected_programme_artifact_corruption_fails_closed(setup, column):
     [
         ("odds_attempts", "status", "unknown"),
         ("odds_attempts", "attempted_at", "not-a-timestamp"),
+        ("odds_attempts", "scheduled_due_at", "not-a-timestamp"),
+        ("odds_attempts", "timing_policy", "adaptive-odds-timing-v0"),
         ("races", "state", "unknown"),
         ("races", "race_id", "not-a-race-id"),
     ],

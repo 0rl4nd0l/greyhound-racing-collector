@@ -14,6 +14,9 @@ from math import isfinite
 from typing import Any, ClassVar, Generic, TypeVar
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+ADAPTIVE_ODDS_TIMING_POLICY = "adaptive-odds-timing-v1"
+ADAPTIVE_ODDS_MAX_LATE = timedelta(seconds=5)
+
 
 class DomainValidationError(ValueError):
     """A value violates a collection-domain invariant."""
@@ -378,6 +381,8 @@ class OddsObservation:
     artifact_checksum: ArtifactChecksum | None = None
     runner_mapping_checksum: ArtifactChecksum | None = None
     error: str | None = None
+    scheduled_due_at: datetime | None = None
+    timing_policy: str = ADAPTIVE_ODDS_TIMING_POLICY
 
     def __post_init__(self) -> None:
         if not isinstance(self.operation_id, OperationId):
@@ -402,7 +407,14 @@ class OddsObservation:
             )
         if self.error is not None and not isinstance(self.error, str):
             raise DomainValidationError("error must be text or None")
+        if self.scheduled_due_at is None:
+            object.__setattr__(self, "scheduled_due_at", self.attempted_at)
+        if not isinstance(self.scheduled_due_at, datetime):
+            raise DomainValidationError("scheduled_due_at must be a datetime")
+        if self.timing_policy != ADAPTIVE_ODDS_TIMING_POLICY:
+            raise DomainValidationError("odds timing policy is unsupported")
         require_aware(self.attempted_at, "attempted_at")
+        require_aware(self.scheduled_due_at, "scheduled_due_at")
         if not self.source.strip():
             raise DomainValidationError("odds source must not be empty")
         if self.status is OddsAttemptStatus.SUCCEEDED:
@@ -428,11 +440,16 @@ class OddsAttemptRecord:
     artifact_checksum: ArtifactChecksum | None
     runner_mapping_checksum: ArtifactChecksum | None
     error: str | None
+    scheduled_due_at: datetime
+    timing_policy: str
 
     def __post_init__(self) -> None:
         require_aware(self.attempted_at, "attempted_at")
+        require_aware(self.scheduled_due_at, "scheduled_due_at")
         if not isinstance(self.status, OddsAttemptStatus):
             raise DomainValidationError("status must be an OddsAttemptStatus")
+        if self.timing_policy != ADAPTIVE_ODDS_TIMING_POLICY:
+            raise DomainValidationError("odds timing policy is unsupported")
 
 
 @dataclass(frozen=True, slots=True)

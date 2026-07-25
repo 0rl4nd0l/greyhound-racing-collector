@@ -13,7 +13,14 @@ from typing import Any, Callable, Mapping, Protocol, Sequence
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .artifacts import ArtifactStore, ArtifactStoreError
-from .domain import ArtifactChecksum, OperationId, next_odds_attempt_at, require_aware
+from .domain import (
+    ADAPTIVE_ODDS_MAX_LATE,
+    ADAPTIVE_ODDS_TIMING_POLICY,
+    ArtifactChecksum,
+    OperationId,
+    next_odds_attempt_at,
+    require_aware,
+)
 from .model_bundle import SUPPORTED_FORECAST_CONTRACTS
 from .operations import (
     BarrierNotSatisfied,
@@ -280,24 +287,35 @@ def _adaptive_odds_history_complete(
     require_aware(discovery_at, "discovery_at")
     if not odds:
         return False
-    times = [datetime.fromisoformat(row["attempted_at"]) for row in odds]
+    try:
+        due_times = [datetime.fromisoformat(row["scheduled_due_at"]) for row in odds]
+        attempt_times = [datetime.fromisoformat(row["attempted_at"]) for row in odds]
+        timing_policies = [row["timing_policy"] for row in odds]
+    except (IndexError, KeyError, TypeError, ValueError):
+        return False
     if (
-        times[0] != discovery_at
-        or any(at >= cutoff for at in times)
-        or any(later <= earlier for earlier, later in zip(times, times[1:]))
+        due_times[0] != discovery_at
+        or any(policy != ADAPTIVE_ODDS_TIMING_POLICY for policy in timing_policies)
+        or any(at >= cutoff for at in attempt_times)
+        or any(
+            attempted < due or attempted - due > ADAPTIVE_ODDS_MAX_LATE
+            for due, attempted in zip(due_times, attempt_times)
+        )
+        or any(later <= earlier for earlier, later in zip(due_times, due_times[1:]))
+        or any(later <= earlier for earlier, later in zip(attempt_times, attempt_times[1:]))
     ):
         return False
     consecutive_failures = 0
     for index, prior in enumerate(odds):
         consecutive_failures = consecutive_failures + 1 if prior["status"] == "failed" else 0
-        prior_at = times[index]
+        prior_at = due_times[index]
         required_at = next_odds_attempt_at(
             now=prior_at,
             scheduled_jump=scheduled_jump,
             last_attempt_at=prior_at,
             consecutive_failures=consecutive_failures,
         )
-        next_at = times[index + 1] if index + 1 < len(times) else None
+        next_at = due_times[index + 1] if index + 1 < len(due_times) else None
         if next_at is not None:
             if required_at is None or required_at >= cutoff or next_at != required_at:
                 return False
@@ -456,7 +474,7 @@ class ReleaseManifest:
         if not re.fullmatch(r"[0-9a-f]{40}", _strict_nonempty(self.code_commit, "code commit")):
             raise ValueError("code_commit must be an exact Git commit")
         _safe_operational_path(self.service_root)
-        if self.database_schema != 28 or not self.supported_bundle_versions:
+        if self.database_schema != 29 or not self.supported_bundle_versions:
             raise ValueError("release schema or bundle contract is unsupported")
 
     def document(self) -> Mapping[str, Any]:
@@ -1312,8 +1330,10 @@ class OperationalAuthority:
                     authority.append({"race_id": race_id, "excluded": dict(quarantine)})
                     continue
                 attempts = db.execute(
-                    "SELECT attempted_at,status,artifact_checksum,runner_mapping_checksum,"
-                    "operation_id FROM odds_attempts WHERE race_id=? ORDER BY attempted_at",
+                    "SELECT scheduled_due_at,attempted_at,timing_policy,status,"
+                    "artifact_checksum,runner_mapping_checksum,operation_id "
+                    "FROM odds_attempts WHERE race_id=? "
+                    "ORDER BY scheduled_due_at,attempted_at",
                     (race_id,),
                 ).fetchall()
                 jump = datetime.fromisoformat(expected["scheduled_jump"])
@@ -1349,7 +1369,7 @@ class OperationalAuthority:
                 if seal is not None:
                     attempts = db.execute(
                         "SELECT * FROM odds_attempts WHERE race_id=? AND status='succeeded' "
-                        "ORDER BY attempted_at",
+                        "ORDER BY scheduled_due_at,attempted_at",
                         (race_id,),
                     ).fetchall()
                     mismatch = _odds_snapshot_mismatches(attempts, seal, self.artifacts)
@@ -3174,7 +3194,8 @@ class OperationalAuthority:
                 except (KeyError, TypeError, ValueError, json.JSONDecodeError):
                     add("runner_box_incomplete", race_id)
                 odds = db.execute(
-                    "SELECT * FROM odds_attempts WHERE race_id=? ORDER BY attempted_at",
+                    "SELECT * FROM odds_attempts WHERE race_id=? "
+                    "ORDER BY scheduled_due_at,attempted_at",
                     (race_id,),
                 ).fetchall()
                 successes = [row for row in odds if row["status"] == "succeeded"]

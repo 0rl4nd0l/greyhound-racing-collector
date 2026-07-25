@@ -22,7 +22,7 @@ def _digest(content: bytes) -> ArtifactChecksum:
 
 
 ARTIFACT_REFERENCE_CONTRACT = "phase7-artifact-references-v1"
-ARTIFACT_REFERENCE_SCHEMA_VERSION = 28
+ARTIFACT_REFERENCE_SCHEMA_VERSION = 29
 
 # Closed schema contract: only content-addressed object references belong here.
 # Operational/result/database hashes are intentionally absent.

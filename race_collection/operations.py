@@ -270,6 +270,7 @@ class SQLiteOperationsStore:
             (26, "0026_phase7_schedule_cutover.sql"),
             (27, "0027_phase7_atomic_result_rejection.sql"),
             (28, "0028_phase7_probation_seal_authority.sql"),
+            (29, "0029_phase7_bounded_timing_authority.sql"),
         )
         return tuple(
             (version, name, migration_root.joinpath(name).read_bytes()) for version, name in names
@@ -1119,7 +1120,9 @@ class SQLiteOperationsStore:
         payload = {
             "race": str(observation.race_id),
             "source": observation.source,
+            "scheduled_due_at": iso_timestamp(observation.scheduled_due_at),
             "attempted_at": iso_timestamp(observation.attempted_at),
+            "timing_policy": observation.timing_policy,
             "status": observation.status.value,
             "artifact": (
                 str(observation.artifact_checksum) if observation.artifact_checksum else None
@@ -1155,13 +1158,15 @@ class SQLiteOperationsStore:
             if terminal_quarantine is not None:
                 raise OperationsStoreError("odds collection has terminal quarantine for race")
             db.execute(
-                "INSERT INTO odds_attempts(race_id, source, attempted_at, status, "
-                "artifact_checksum, runner_mapping_checksum, error, operation_id) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO odds_attempts(race_id, source, scheduled_due_at, attempted_at, "
+                "timing_policy, status, artifact_checksum, runner_mapping_checksum, error, "
+                "operation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     str(observation.race_id),
                     observation.source,
+                    payload["scheduled_due_at"],
                     iso_timestamp(observation.attempted_at),
+                    observation.timing_policy,
                     observation.status.value,
                     payload["artifact"],
                     payload["mapping"],
@@ -1329,14 +1334,17 @@ class SQLiteOperationsStore:
     def odds_attempts(self, race_id: RaceId) -> tuple[OddsAttemptRecord, ...]:
         with self._connect() as db:
             rows = db.execute(
-                "SELECT source, attempted_at, status, artifact_checksum, runner_mapping_checksum, "
-                "error FROM odds_attempts WHERE race_id=? ORDER BY attempted_at, attempt_id",
+                "SELECT source, scheduled_due_at, attempted_at, timing_policy, status, "
+                "artifact_checksum, runner_mapping_checksum, error FROM odds_attempts "
+                "WHERE race_id=? ORDER BY scheduled_due_at, attempted_at, attempt_id",
                 (str(race_id),),
             ).fetchall()
         return tuple(
             OddsAttemptRecord(
                 source=row["source"],
+                scheduled_due_at=datetime.fromisoformat(row["scheduled_due_at"]),
                 attempted_at=datetime.fromisoformat(row["attempted_at"]),
+                timing_policy=row["timing_policy"],
                 status=OddsAttemptStatus(row["status"]),
                 artifact_checksum=(
                     ArtifactChecksum(row["artifact_checksum"])

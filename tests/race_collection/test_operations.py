@@ -108,7 +108,7 @@ def test_empty_and_repeated_migrations_enable_wal_and_foreign_keys(tmp_path):
     store.migrate()
     with sqlite3.connect(store.path) as db:
         assert db.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
-        assert db.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0] == 28
+        assert db.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0] == 29
     with store._connect() as db:
         assert db.execute("PRAGMA foreign_keys").fetchone()[0] == 1
 
@@ -183,25 +183,48 @@ def test_populated_schema_17_migrates_forward_to_latest_without_data_loss(tmp_pa
     store.migrate()
     day = make_day(17)
     store.create_racing_day(op(1700), day)
-    store.record_expected_race(
+    race_id = store.record_expected_race(
         op(1701),
         day,
         ProgrammeRaceCandidate("official", "legacy-race", "Ballarat", 1, NOW),
         ArtifactChecksum("sha256:" + "1" * 64),
         NOW,
     )
+    with store._operation(op(1702), "record_odds_attempt", {"legacy": True}) as (db, _):
+        db.execute(
+            "INSERT INTO odds_attempts(race_id,source,attempted_at,status,error,operation_id) "
+            "VALUES(?,?,?,?,?,?)",
+            (
+                str(race_id),
+                "market",
+                iso_timestamp(NOW + timedelta(seconds=2)),
+                "failed",
+                "legacy timeout",
+                str(op(1702)),
+            ),
+        )
 
     del store._migration_scripts
     store.migrate()
     store.migrate()
 
     with store._connect() as db:
-        assert db.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 28
+        assert db.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 29
         assert (
             db.execute(
                 "SELECT source_race_id FROM expected_races WHERE source_race_id='legacy-race'"
             ).fetchone()[0]
             == "legacy-race"
+        )
+        migrated_attempt = db.execute(
+            "SELECT scheduled_due_at,attempted_at,timing_policy "
+            "FROM odds_attempts WHERE race_id=?",
+            (str(race_id),),
+        ).fetchone()
+        assert tuple(migrated_attempt) == (
+            iso_timestamp(NOW + timedelta(seconds=2)),
+            iso_timestamp(NOW + timedelta(seconds=2)),
+            "adaptive-odds-timing-v1",
         )
         trigger_names = {
             row[0]

@@ -16,6 +16,8 @@ from tempfile import TemporaryDirectory
 from race_collection.artifacts import ArtifactStoreError, LocalArtifactStore
 from race_collection.collection import CollectionRepository
 from race_collection.domain import (
+    ADAPTIVE_ODDS_MAX_LATE,
+    ADAPTIVE_ODDS_TIMING_POLICY,
     ArtifactChecksum,
     OperationId,
     ProgrammeRaceCandidate,
@@ -75,6 +77,7 @@ from race_collection.service import (
     ServiceUnavailable,
     compose,
     main,
+    verify_release_source_identity,
 )
 
 NOW = datetime(2026, 7, 22, tzinfo=timezone.utc)
@@ -346,7 +349,7 @@ class Phase7OperationalTests(unittest.TestCase):
             release_id,
             "6cd5dacfe83719cbbc376a265829e84593eafb68",
             ArtifactChecksum("sha256:" + hashlib.sha256(content).hexdigest()),
-            28,
+            29,
             "canonical-artifacts-v1",
             "phase6-promotion-v1",
             ("runner-win-probability-v1",),
@@ -522,30 +525,37 @@ class Phase7OperationalTests(unittest.TestCase):
         )
         return service, handlers, commands
 
-    def test_adaptive_odds_history_allows_early_cadence_and_rejects_missing_due_attempt(
+    def test_adaptive_odds_history_accepts_bounded_scheduler_latency_and_rejects_bad_attempts(
         self,
     ):
         jump = NOW + timedelta(hours=4)
         cutoff = jump - timedelta(seconds=1)
         legitimate = []
-        attempt_at = NOW
+        due_at = NOW
         failures = 0
-        while attempt_at < cutoff:
+        while due_at < cutoff:
             status = "failed" if len(legitimate) == 2 else "succeeded"
-            legitimate.append({"attempted_at": attempt_at.isoformat(), "status": status})
+            legitimate.append(
+                {
+                    "scheduled_due_at": due_at.isoformat(),
+                    "attempted_at": (due_at + timedelta(seconds=2)).isoformat(),
+                    "timing_policy": ADAPTIVE_ODDS_TIMING_POLICY,
+                    "status": status,
+                }
+            )
             failures = failures + 1 if status == "failed" else 0
             following = next_odds_attempt_at(
-                now=attempt_at,
+                now=due_at,
                 scheduled_jump=jump,
-                last_attempt_at=attempt_at,
+                last_attempt_at=due_at,
                 consecutive_failures=failures,
             )
             if following is None or following >= cutoff:
                 break
-            attempt_at = following
+            due_at = following
         deltas = {
-            datetime.fromisoformat(current["attempted_at"])
-            - datetime.fromisoformat(prior["attempted_at"])
+            datetime.fromisoformat(current["scheduled_due_at"])
+            - datetime.fromisoformat(prior["scheduled_due_at"])
             for prior, current in zip(legitimate, legitimate[1:])
         }
         self.assertTrue(
@@ -563,22 +573,24 @@ class Phase7OperationalTests(unittest.TestCase):
                 legitimate, discovery_at=NOW, scheduled_jump=jump, cutoff=cutoff
             )
         )
-        delayed_first = [dict(row) for row in legitimate]
-        delayed_first[0]["attempted_at"] = (NOW + timedelta(seconds=1)).isoformat()
-        self.assertFalse(
+        boundary = [dict(row) for row in legitimate]
+        boundary[0]["attempted_at"] = (NOW + ADAPTIVE_ODDS_MAX_LATE).isoformat()
+        self.assertTrue(
             _adaptive_odds_history_complete(
-                delayed_first, discovery_at=NOW, scheduled_jump=jump, cutoff=cutoff
+                boundary, discovery_at=NOW, scheduled_jump=jump, cutoff=cutoff
             )
         )
         missing_later = legitimate[:4] + legitimate[5:]
-        premature = [dict(row) for row in legitimate]
-        premature.insert(
-            1,
-            {
-                "attempted_at": (NOW + timedelta(minutes=1)).isoformat(),
-                "status": "succeeded",
-            },
-        )
+        early = [dict(row) for row in legitimate]
+        early[0]["attempted_at"] = (NOW - timedelta(microseconds=1)).isoformat()
+        excessive_late = [dict(row) for row in legitimate]
+        excessive_late[0]["attempted_at"] = (
+            NOW + ADAPTIVE_ODDS_MAX_LATE + timedelta(microseconds=1)
+        ).isoformat()
+        missing_due = [dict(row) for row in legitimate]
+        del missing_due[0]["scheduled_due_at"]
+        wrong_policy = [dict(row) for row in legitimate]
+        wrong_policy[0]["timing_policy"] = "adaptive-odds-timing-v0"
         duplicate = [dict(row) for row in legitimate]
         duplicate.insert(1, dict(duplicate[0]))
         non_monotonic = [dict(row) for row in legitimate]
@@ -589,7 +601,10 @@ class Phase7OperationalTests(unittest.TestCase):
         ]
         for invalid in (
             missing_later,
-            premature,
+            early,
+            excessive_late,
+            missing_due,
+            wrong_policy,
             duplicate,
             non_monotonic,
             post_cutoff,
@@ -603,6 +618,58 @@ class Phase7OperationalTests(unittest.TestCase):
                         cutoff=cutoff,
                     )
                 )
+
+    def test_release_source_identity_rejects_unproven_or_mutated_release(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary) / "release"
+            (root / "bin").mkdir(parents=True)
+            (root / "race_collection").mkdir()
+            executable = root / "bin" / "race-collection-service"
+            source = root / "race_collection" / "service.py"
+            executable.write_text("#!/bin/sh\nexit 0\n")
+            executable.chmod(0o755)
+            source.write_text("SOURCE = 'trusted'\n")
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            subprocess.run(
+                ["git", "-C", str(root), "config", "user.email", "test@example.invalid"],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(root), "config", "user.name", "Test"],
+                check=True,
+            )
+            subprocess.run(["git", "-C", str(root), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-qm", "release"], check=True)
+            commit = subprocess.check_output(
+                ["git", "-C", str(root), "rev-parse", "HEAD"], text=True
+            ).strip()
+
+            verify_release_source_identity(root, commit, source_file=source)
+
+            with self.assertRaisesRegex(ServiceUnavailable, "commit"):
+                verify_release_source_identity(root, "f" * 40, source_file=source)
+
+            source.write_text("SOURCE = 'tampered'\n")
+            with self.assertRaisesRegex(ServiceUnavailable, "bytes|dirty"):
+                verify_release_source_identity(root, commit, source_file=source)
+            source.write_text("SOURCE = 'trusted'\n")
+
+            executable.write_text("#!/bin/sh\nexit 1\n")
+            with self.assertRaisesRegex(ServiceUnavailable, "executable"):
+                verify_release_source_identity(root, commit, source_file=source)
+            executable.write_text("#!/bin/sh\nexit 0\n")
+            executable.chmod(0o755)
+
+            outside = root.parent / "outside-service"
+            outside.write_text("#!/bin/sh\nexit 0\n")
+            outside.chmod(0o755)
+            executable.unlink()
+            executable.symlink_to(outside)
+            with self.assertRaisesRegex(ServiceUnavailable, "symlink"):
+                verify_release_source_identity(root, commit, source_file=source)
+
+            with self.assertRaisesRegex(ServiceUnavailable, "outside"):
+                verify_release_source_identity(root, commit, source_file=outside)
 
     def test_reconciliation_seal_uses_exact_final_pre_freeze_odds_snapshot(
         self,
@@ -2169,7 +2236,7 @@ class Phase7OperationalTests(unittest.TestCase):
                     "unsupported-bundle-contract",
                     "a" * 40,
                     unsupported_checksum,
-                    28,
+                    29,
                     "canonical-artifacts-v1",
                     "phase6-promotion-v1",
                     ("unsupported-forecast-v99",),
@@ -2851,7 +2918,7 @@ class Phase7OperationalTests(unittest.TestCase):
                 "candidate",
                 "6cd5dacfe83719cbbc376a265829e84593eafb68",
                 config_checksum,
-                28,
+                29,
                 "canonical-artifacts-v1",
                 "phase6-promotion-v1",
                 ("runner-win-probability-v1",),
@@ -3376,7 +3443,7 @@ class Phase7OperationalTests(unittest.TestCase):
                 "cross-phase-release",
                 "6cd5dacfe83719cbbc376a265829e84593eafb68",
                 config_checksum,
-                28,
+                29,
                 "canonical-artifacts-v1",
                 "phase6-promotion-v1",
                 ("runner-win-probability-v1",),
@@ -3993,14 +4060,39 @@ class Phase7OperationalTests(unittest.TestCase):
         self,
     ) -> None:
         import race_collection.operational as operational_module
+        import race_collection.service as service_module
 
         original_safe_path = operational_module._safe_operational_path
+        original_release_identity = service_module.verify_release_source_identity
+        original_load_factory = service_module._load_factory
+        events = []
         operational_module._safe_operational_path = lambda value: Path(value)
+        service_module.verify_release_source_identity = lambda *_args, **_kwargs: events.append(
+            "release-identity"
+        )
+
+        def audited_load_factory(binding):
+            events.append("adapter-import")
+            return original_load_factory(binding)
+
+        service_module._load_factory = audited_load_factory
         self.addCleanup(
             setattr,
             operational_module,
             "_safe_operational_path",
             original_safe_path,
+        )
+        self.addCleanup(
+            setattr,
+            service_module,
+            "verify_release_source_identity",
+            original_release_identity,
+        )
+        self.addCleanup(
+            setattr,
+            service_module,
+            "_load_factory",
+            original_load_factory,
         )
         root = Path(self.temporary.name) / "observation-compose"
         store = SQLiteOperationsStore(root / "operations.sqlite3")
@@ -4010,9 +4102,13 @@ class Phase7OperationalTests(unittest.TestCase):
         EvaluationAuthority(store, artifacts).register_policy(
             operation(5350), PromotionPolicy(), NOW - timedelta(days=1)
         )
+        source_root = Path(__file__).resolve().parents[2]
+        source_commit = subprocess.check_output(
+            ["git", "-C", str(source_root), "rev-parse", "HEAD"], text=True
+        ).strip()
         configuration = ReleaseConfiguration(
             "phase7-config-v1",
-            str(root / "service"),
+            str(source_root),
             str(root / "artifacts"),
             str(root / "operations.sqlite3"),
             ("official",),
@@ -4028,9 +4124,9 @@ class Phase7OperationalTests(unittest.TestCase):
             return ReleaseManifest(
                 "phase7-release-v1",
                 release_id,
-                "6cd5dacfe83719cbbc376a265829e84593eafb68",
+                source_commit,
                 checksum,
-                28,
+                29,
                 "canonical-artifacts-v1",
                 "phase6-promotion-v1",
                 ("runner-win-probability-v1",),
@@ -4057,6 +4153,7 @@ class Phase7OperationalTests(unittest.TestCase):
                 token="compose",
                 lease_ttl=timedelta(minutes=5),
             )
+        self.assertEqual(events, [])
         authority.authorize_observation(
             operation(5355),
             candidate_release_id="candidate",
@@ -4092,6 +4189,7 @@ class Phase7OperationalTests(unittest.TestCase):
         finally:
             runtime_adapters.unavailable = original
         self.assertEqual((composition.release_id, composition.mode), ("candidate", "observation"))
+        self.assertEqual(events, ["release-identity", "adapter-import"])
         with store._connect() as db:
             self.assertEqual(
                 tuple(

@@ -46,6 +46,7 @@ from .operational import (
     ReconcileRacingDay,
     ReleaseConfiguration,
     RequestTraining,
+    _adaptive_odds_history_complete,
 )
 from .operations import SQLiteOperationsStore
 from .sealing import EvidenceSealer, FieldObservation
@@ -116,7 +117,9 @@ _ODDS_KEYS = frozenset(
     {
         "operation_id",
         "source",
+        "scheduled_due_at",
         "attempted_at",
+        "timing_policy",
         "status",
         "artifact_checksum",
         "runner_mapping_checksum",
@@ -139,12 +142,16 @@ _RESULT_KEYS = frozenset(
         "operation_id",
         "attempt_id",
         "attempted_at",
+        "timing_policy",
         "deadline",
         "max_attempts",
         "source",
         "source_checksum",
     }
 )
+
+OFFICIAL_RESULT_TIMING_POLICY = "official-result-timing-v1"
+OFFICIAL_RESULT_MAX_LATENCY = timedelta(minutes=5)
 _EXAMPLE_KEYS = frozenset(
     {
         "join_operation_id",
@@ -198,6 +205,27 @@ def _datetime(value: Any, label: str) -> datetime:
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise ServiceUnavailable(f"runtime {label} must be timezone-aware")
     return parsed
+
+
+def _official_result_timeline_valid(
+    published_at: Any,
+    observed_at: Any,
+    attempted_at: Any,
+    trusted_command_at: Any,
+    timing_policy: Any,
+) -> bool:
+    """Validate one versioned ordered official-result acquisition timeline."""
+    moments = (published_at, observed_at, attempted_at, trusted_command_at)
+    if (
+        timing_policy != OFFICIAL_RESULT_TIMING_POLICY
+        or any(type(moment) is not datetime for moment in moments)
+        or any(moment.tzinfo is None or moment.utcoffset() is None for moment in moments)
+    ):
+        return False
+    return (
+        published_at <= observed_at <= attempted_at <= trusted_command_at
+        and attempted_at - published_at <= OFFICIAL_RESULT_MAX_LATENCY
+    )
 
 
 def _identities(values: Any, count: int, label: str) -> tuple[OperationId, ...]:
@@ -623,7 +651,7 @@ class ImmutableInputRuntimeAdapter:
                 command.payload.programme_checksum,
                 min(
                     _datetime(
-                        race["odds_attempts"][0]["attempted_at"],
+                        race["odds_attempts"][0]["scheduled_due_at"],
                         "programme discovery time",
                     )
                     for race in item["races"]
@@ -717,7 +745,26 @@ class ImmutableInputRuntimeAdapter:
 
     def _odds(self, command: ApplicationCommand, at: datetime) -> None:
         del at
-        for race_id, item, _ in self._race_inputs(command):
+        inputs = self._race_inputs(command)
+        for _, item, row in inputs:
+            scheduled_jump = _datetime(row["scheduled_jump"], "scheduled jump")
+            try:
+                discovery_at = _datetime(
+                    item["odds_attempts"][0]["scheduled_due_at"],
+                    "odds discovery due time",
+                )
+            except (IndexError, KeyError, TypeError) as error:
+                raise ServiceUnavailable("runtime adaptive odds history is incomplete") from error
+            if not _adaptive_odds_history_complete(
+                item["odds_attempts"],
+                discovery_at=discovery_at,
+                scheduled_jump=scheduled_jump,
+                cutoff=scheduled_jump,
+            ):
+                raise ServiceUnavailable(
+                    "runtime adaptive odds history violates the versioned bounded timing policy"
+                )
+        for race_id, item, _ in inputs:
             self._store.advance_race(
                 _operation(f"{command.operation_id}:{race_id}:odds"),
                 race_id,
@@ -741,14 +788,18 @@ class ImmutableInputRuntimeAdapter:
                     self._artifacts.verify(mapping)
                 self._repository.record_odds_attempt(
                     OddsObservation(
-                        OperationId(attempt["operation_id"]),
-                        race_id,
-                        attempt["source"],
-                        _datetime(attempt["attempted_at"], "odds attempted_at"),
-                        OddsAttemptStatus(attempt["status"]),
-                        artifact,
-                        mapping,
-                        attempt["error"],
+                        operation_id=OperationId(attempt["operation_id"]),
+                        race_id=race_id,
+                        source=attempt["source"],
+                        scheduled_due_at=_datetime(
+                            attempt["scheduled_due_at"], "odds scheduled_due_at"
+                        ),
+                        attempted_at=_datetime(attempt["attempted_at"], "odds attempted_at"),
+                        timing_policy=attempt["timing_policy"],
+                        status=OddsAttemptStatus(attempt["status"]),
+                        artifact_checksum=artifact,
+                        runner_mapping_checksum=mapping,
+                        error=attempt["error"],
                     )
                 )
 
@@ -993,13 +1044,15 @@ class ImmutableInputRuntimeAdapter:
                 "result observed_at",
             )
             published_at = _datetime(outcome.get("published_at"), "result published_at")
-            if (
-                attempted_at != observed_at
-                or observed_at != published_at
-                or any(moment > at for moment in (observed_at, published_at))
+            if not _official_result_timeline_valid(
+                published_at,
+                observed_at,
+                attempted_at,
+                at,
+                result["timing_policy"],
             ):
                 raise ServiceUnavailable(
-                    "official result timeline is future-dated or internally inconsistent"
+                    "official result timeline violates the versioned bounded ordering policy"
                 )
             authority.open_results(OperationId(result["open_operation_id"]), race_id, attempted_at)
             status = authority.record_result_attempt(

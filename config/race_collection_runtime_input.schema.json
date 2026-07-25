@@ -134,7 +134,9 @@
       "required": [
         "operation_id",
         "source",
+        "scheduled_due_at",
         "attempted_at",
+        "timing_policy",
         "status",
         "artifact_checksum",
         "runner_mapping_checksum",
@@ -143,7 +145,9 @@
       "properties": {
         "operation_id": {"$ref": "#/$defs/operation"},
         "source": {"type": "string", "minLength": 1},
+        "scheduled_due_at": {"$ref": "#/$defs/instant"},
         "attempted_at": {"$ref": "#/$defs/instant"},
+        "timing_policy": {"const": "adaptive-odds-timing-v1"},
         "status": {"enum": ["succeeded", "failed"]},
         "artifact_checksum": {
           "oneOf": [
@@ -196,6 +200,7 @@
         "operation_id",
         "attempt_id",
         "attempted_at",
+        "timing_policy",
         "deadline",
         "max_attempts",
         "source",
@@ -206,6 +211,7 @@
         "operation_id": {"$ref": "#/$defs/operation"},
         "attempt_id": {"type": "string", "minLength": 1},
         "attempted_at": {"$ref": "#/$defs/instant"},
+        "timing_policy": {"const": "official-result-timing-v1"},
         "deadline": {"$ref": "#/$defs/instant"},
         "max_attempts": {"type": "integer", "minimum": 1},
         "source": {"type": "string", "minLength": 1},
