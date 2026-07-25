@@ -1,5 +1,17 @@
 # Forecasting publication validation
 
+## Reconstruction provenance
+
+The forecasting programme was recovered from experiment
+`a9b16fd906838d1a5b0a7215b9401d2f31b28eae` (tree
+`91bd7a8a5cc426c1f87f3a56cae2f3655eadf9cb`) and reconstructed onto canonical
+base `02f59c147a7702a13eee154161a4be950aeb0e60` without the experiment's
+sandbox-control deletions or `.gitignore` change. Product reconstruction
+`e54bc58599d8e536ab918b26991ecbe97c023fe6` and normalized source
+`e9e49816a33f751b680e3473f44b0c1cbc6f9775` remain in this branch's ancestry.
+Later repair commits must remain descendants of that clean export and must not
+replace its canonical controls, migrations, schemas, or post-base master work.
+
 ## Exact-head evidence contract
 
 Historical candidate logs are not release evidence for a later commit. The
