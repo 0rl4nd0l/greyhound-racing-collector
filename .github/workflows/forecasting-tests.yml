@@ -1,0 +1,103 @@
+name: Forecasting acceptance
+
+on:
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  forecasting-suite:
+    name: tests-race-collection
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out exact pull-request head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Run complete forecasting suite
+        id: forecasting
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          evidence_dir="${RUNNER_TEMP}/forecasting-acceptance-${GITHUB_RUN_ID}"
+          mkdir -p "$evidence_dir"
+          uv run --no-project --with-requirements requirements/all.in \
+            python -m pytest -q --noconftest tests/race_collection \
+            2>&1 | tee "$evidence_dir/forecasting-suite.log"
+
+      - name: Bind validation evidence to exact commit and tree
+        if: always()
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          SUITE_OUTCOME: ${{ steps.forecasting.outcome }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import platform
+          import subprocess
+          from pathlib import Path
+
+          evidence_dir = (
+              Path(os.environ["RUNNER_TEMP"])
+              / f"forecasting-acceptance-{os.environ['GITHUB_RUN_ID']}"
+          )
+          log = evidence_dir / "forecasting-suite.log"
+          evidence = {
+              "schema_version": "forecasting-ci-attestation-v1",
+              "command": (
+                  "uv run --no-project --with-requirements requirements/all.in "
+                  "python -m pytest -q --noconftest tests/race_collection"
+              ),
+              "outcome": os.environ["SUITE_OUTCOME"],
+              "event_sha": os.environ["GITHUB_SHA"],
+              "expected_head": os.environ["EXPECTED_HEAD"],
+              "commit": subprocess.check_output(
+                  ["git", "rev-parse", "HEAD"], text=True
+              ).strip(),
+              "tree": subprocess.check_output(
+                  ["git", "rev-parse", "HEAD^{tree}"], text=True
+              ).strip(),
+              "log_sha256": hashlib.sha256(log.read_bytes()).hexdigest(),
+              "python": platform.python_version(),
+              "platform": platform.platform(),
+              "uv": subprocess.check_output(["uv", "--version"], text=True).strip(),
+          }
+          if evidence["commit"] != evidence["expected_head"]:
+              raise SystemExit("checked-out commit does not match expected pull-request head")
+          (evidence_dir / "forecasting-ci-attestation.json").write_text(
+              json.dumps(evidence, sort_keys=True, separators=(",", ":")) + "\n"
+          )
+          PY
+
+      - name: Upload exact-head validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: forecasting-acceptance-${{ github.run_id }}
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/forecasting-acceptance-${{ github.run_id }}/forecasting-suite.log
+            ${{ runner.temp }}/forecasting-acceptance-${{ github.run_id }}/forecasting-ci-attestation.json
+
+      - name: Enforce forecasting acceptance gate
+        if: steps.forecasting.outcome != 'success'
+        run: exit 1

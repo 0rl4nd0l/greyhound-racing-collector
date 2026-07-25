@@ -1,0 +1,13 @@
+Downloading mypy (14.5MiB)
+Downloading faker (2.0MiB)
+Downloading gevent (2.0MiB)
+Downloading virtualenv (5.3MiB)
+Downloading locust (1.4MiB)
+ Downloaded locust
+ Downloaded gevent
+ Downloaded faker
+ Downloaded virtualenv
+ Downloaded mypy
+Installed 189 packages in 672ms
+.                                                                        [100%]
+1 passed, 57 deselected in 21.80s

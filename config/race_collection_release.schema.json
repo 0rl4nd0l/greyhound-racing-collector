@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "race-collection-release-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "release_id", "code_commit", "config_checksum", "database_schema", "artifact_contract", "policy_version", "supported_bundle_versions", "service_root"],
+  "properties": {
+    "schema_version": {"const": "phase7-release-v1"},
+    "release_id": {"type": "string", "minLength": 1},
+    "code_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "config_checksum": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "database_schema": {"const": 29},
+    "artifact_contract": {"type": "string", "minLength": 1},
+    "policy_version": {"type": "string", "minLength": 1},
+    "supported_bundle_versions": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "service_root": {"type": "string", "pattern": "^/"}
+  }
+}

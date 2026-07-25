@@ -4290,6 +4290,64 @@ def download_watch_status():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+_canonical_forecast_service = None
+
+
+def configure_canonical_forecast_service(service):
+    """Explicit application composition; model selection never comes from environment."""
+    global _canonical_forecast_service
+    _canonical_forecast_service = service
+
+
+def _canonical_forecast_response(data):
+    from race_collection.forecast_service import canonical_endpoint
+
+    if _canonical_forecast_service is None:
+        return jsonify({"success": False, "status": "unavailable", "error": "canonical forecast service is not configured"}), 503
+    payload, status = canonical_endpoint(_canonical_forecast_service, data or {})
+    return jsonify(payload), status
+
+
+_SEALED_EVIDENCE_FORECAST_ROUTES = frozenset(
+    {
+        "/predict",
+        "/predict_single",
+        "/api/background/generate-predictions",
+        "/api/batch/predict",
+        "/api/canonical/forecast",
+        "/api/download_and_predict_race",
+        "/api/ml-predict",
+        "/api/perform_prediction",
+        "/api/predict",
+        "/api/predict_all_upcoming_races_enhanced",
+        "/api/predict_file",
+        "/api/predict_single_race",
+        "/api/predict_single_race_enhanced",
+        "/api/predict_upcoming",
+        "/api/predictions/generate",
+        "/api/predictions/upcoming",
+        "/api/tasks/generate_prediction",
+        "/api/test_historical_prediction",
+    }
+)
+
+
+@app.before_request
+def adapt_sealed_evidence_forecast_routes():
+    """Make every supported prediction POST a thin canonical adapter."""
+    if request.method != "POST" or request.path not in _SEALED_EVIDENCE_FORECAST_ROUTES:
+        return None
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or not data.get("evidence_checksum"):
+        return None
+    return _canonical_forecast_response(data)
+
+
+@app.route("/api/canonical/forecast", methods=["POST"])
+def api_canonical_forecast():
+    return _canonical_forecast_response(request.get_json(silent=True) or {})
+
+
 @app.route("/api/predict_file", methods=["POST"])
 def api_predict_file():
     try:

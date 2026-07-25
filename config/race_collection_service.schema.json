@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "race-collection-service-config-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "service_root",
+    "artifact_root",
+    "operations_database",
+    "sources",
+    "schedule_policy",
+    "promotion_policy",
+    "bundle_versions",
+    "runtime_adapter",
+    "runtime_input_checksum"
+  ],
+  "properties": {
+    "schema_version": {"const": "phase7-config-v1"},
+    "service_root": {"type": "string", "pattern": "^/"},
+    "artifact_root": {"type": "string", "pattern": "^/"},
+    "operations_database": {"type": "string", "pattern": "^/"},
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "schedule_policy": {"type": "string", "minLength": 1},
+    "promotion_policy": {"type": "string", "minLength": 1},
+    "bundle_versions": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "runtime_adapter": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_]*$"
+    },
+    "runtime_input_checksum": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  }
+}
