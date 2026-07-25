@@ -35,9 +35,11 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
+          evidence_dir="${RUNNER_TEMP}/forecasting-acceptance-${GITHUB_RUN_ID}"
+          mkdir -p "$evidence_dir"
           uv run --no-project --with-requirements requirements/all.in \
             python -m pytest -q --noconftest tests/race_collection \
-            2>&1 | tee forecasting-suite.log
+            2>&1 | tee "$evidence_dir/forecasting-suite.log"
 
       - name: Bind validation evidence to exact commit and tree
         if: always()
@@ -54,7 +56,11 @@ jobs:
           import subprocess
           from pathlib import Path
 
-          log = Path("forecasting-suite.log")
+          evidence_dir = (
+              Path(os.environ["RUNNER_TEMP"])
+              / f"forecasting-acceptance-{os.environ['GITHUB_RUN_ID']}"
+          )
+          log = evidence_dir / "forecasting-suite.log"
           evidence = {
               "schema_version": "forecasting-ci-attestation-v1",
               "command": (
@@ -77,7 +83,7 @@ jobs:
           }
           if evidence["commit"] != evidence["expected_head"]:
               raise SystemExit("checked-out commit does not match expected pull-request head")
-          Path("forecasting-ci-attestation.json").write_text(
+          (evidence_dir / "forecasting-ci-attestation.json").write_text(
               json.dumps(evidence, sort_keys=True, separators=(",", ":")) + "\n"
           )
           PY
@@ -89,8 +95,8 @@ jobs:
           name: forecasting-acceptance-${{ github.run_id }}
           if-no-files-found: error
           path: |
-            forecasting-suite.log
-            forecasting-ci-attestation.json
+            ${{ runner.temp }}/forecasting-acceptance-${{ github.run_id }}/forecasting-suite.log
+            ${{ runner.temp }}/forecasting-acceptance-${{ github.run_id }}/forecasting-ci-attestation.json
 
       - name: Enforce forecasting acceptance gate
         if: steps.forecasting.outcome != 'success'
