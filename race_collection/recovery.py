@@ -4,13 +4,20 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sqlite3
 from datetime import datetime
 from pathlib import Path
 
 from .artifacts import ArtifactStore, ArtifactStoreError, LocalArtifactStore
 from .domain import ArtifactChecksum, OperationId, require_aware
-from .operations import BarrierNotSatisfied, SQLiteOperationsStore, iso_timestamp
+from .operations import (
+    BarrierNotSatisfied,
+    ConflictingOperation,
+    SQLiteOperationsStore,
+    _payload_hash,
+    iso_timestamp,
+)
 
 
 class RecoveryRejected(RuntimeError):
@@ -132,6 +139,39 @@ class RecoveryAuthority:
             "snapshot": str(snapshot_path.resolve()),
             "at": iso_timestamp(at),
         }
+        with self.store._connect() as existing:
+            operation = existing.execute(
+                "SELECT kind,payload_sha256 FROM operations WHERE operation_id=?",
+                (str(operation_id),),
+            ).fetchone()
+            if operation is not None:
+                backup = existing.execute(
+                    "SELECT backup_id,racing_day_id,database_checksum "
+                    "FROM phase7_backups WHERE operation_id=?",
+                    (str(operation_id),),
+                ).fetchone()
+                if (
+                    operation["kind"] != "phase7_backup"
+                    or operation["payload_sha256"] != _payload_hash(payload)
+                    or backup is None
+                    or backup["backup_id"] != backup_id
+                    or backup["racing_day_id"] != racing_day_id
+                ):
+                    raise ConflictingOperation(
+                        f"operation {operation_id} has different backup intent"
+                    )
+                checksum = ArtifactChecksum(backup["database_checksum"])
+                if (
+                    not snapshot_path.is_file()
+                    or snapshot_path.is_symlink()
+                    or _digest(snapshot_path.read_bytes()) != checksum
+                ):
+                    raise RecoveryRejected(
+                        "exact backup replay snapshot is missing, aliased, or changed"
+                    )
+                return checksum
+        if snapshot_path.exists() or snapshot_path.is_symlink():
+            raise RecoveryRejected("backup snapshot path must be new and non-symlinked")
         # sqlite3.Connection.backup must not run from the writer transaction it
         # is copying. A dedicated read connection produces one consistent DB
         # image; publication of its verified identity is a separate atomic op.
@@ -146,6 +186,18 @@ class RecoveryAuthority:
             ):
                 raise BarrierNotSatisfied("only a complete reconciled Racing Day may be backed up")
             snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                descriptor = os.open(
+                    snapshot_path,
+                    os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0),
+                    0o600,
+                )
+            except OSError as error:
+                raise RecoveryRejected(
+                    "backup snapshot path could not be reserved exclusively"
+                ) from error
+            else:
+                os.close(descriptor)
             target = sqlite3.connect(snapshot_path)
             try:
                 source.backup(target)
@@ -170,12 +222,19 @@ class RecoveryAuthority:
         inventory_artifact = replica.put(inventory, media_type="application/json")
         with self.store._operation(operation_id, "phase7_backup", payload) as (db, replay):
             if replay:
-                return ArtifactChecksum(
+                recorded = ArtifactChecksum(
                     db.execute(
                         "SELECT database_checksum FROM phase7_backups WHERE operation_id=?",
                         (str(operation_id),),
                     ).fetchone()[0]
                 )
+                if (
+                    not snapshot_path.is_file()
+                    or snapshot_path.is_symlink()
+                    or _digest(snapshot_path.read_bytes()) != recorded
+                ):
+                    raise RecoveryRejected("concurrent backup replay changed the reserved snapshot")
+                return recorded
             if (
                 db.execute(
                     "SELECT 1 FROM phase7_reconciliation WHERE racing_day_id=? AND mismatch_count=0",

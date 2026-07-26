@@ -246,9 +246,7 @@
         "observations",
         "odds_attempts",
         "seal",
-        "prediction",
-        "result",
-        "training_example"
+        "prediction"
       ],
       "properties": {
         "source_race_id": {"type": "string", "minLength": 1},
@@ -368,7 +366,39 @@
         "determinism_input_checksum",
         "training_request"
       ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {"mode": {"const": "result-blind-observation-v1"}},
+            "required": ["mode"]
+          },
+          "then": {
+            "properties": {
+              "races": {
+                "items": {
+                  "not": {
+                    "anyOf": [
+                      {"required": ["result"]},
+                      {"required": ["training_example"]}
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "races": {
+                "items": {"required": ["result", "training_example"]}
+              }
+            }
+          }
+        }
+      ],
       "properties": {
+        "mode": {
+          "enum": ["complete-v1", "result-blind-observation-v1"]
+        },
         "racing_day_id": {
           "type": "string",
           "pattern": "^day_[0-9a-f]{32}$"

@@ -12,6 +12,7 @@ from datetime import date, datetime, timedelta, timezone
 from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from race_collection.artifacts import ArtifactStoreError, LocalArtifactStore
 from race_collection.collection import CollectionRepository
@@ -2169,16 +2170,59 @@ class Phase7OperationalTests(unittest.TestCase):
         self.register_config(19)
         checksum = self.authority.register_release(operation(20), self.manifest(), NOW)
         self.assertEqual(self.artifacts.verify(checksum).checksum, checksum)
-        units = self.authority.generate_units(
-            self.manifest(),
-            self.configuration(),
-            config_path="/etc/race-collection/release.json",
-        )
+        with patch(
+            "race_collection.operational.subprocess.run",
+            return_value=subprocess.CompletedProcess(
+                (sys.executable, "-c"),
+                0,
+                stdout=json.dumps(
+                    {"executable": sys.executable, "version": [3, 11]},
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+                stderr="",
+            ),
+        ) as python_probe:
+            units = self.authority.generate_units(
+                self.manifest(),
+                self.configuration(),
+                config_path="/etc/race-collection/release.json",
+                python_executable=sys.executable,
+            )
+        self.assertEqual(python_probe.call_count, 1)
         self.assertEqual(set(units), {"race-collection.service"})
         self.assertNotIn("20260722", units["race-collection.service"])
         self.assertNotIn("timer", units["race-collection.service"])
-        self.assertIn("/bin/race-collection-service", units["race-collection.service"])
+        self.assertIn(
+            f"ExecStart={sys.executable} /opt/race-collection/current/"
+            "bin/race-collection-service",
+            units["race-collection.service"],
+        )
         self.assertIn("--continuous", units["race-collection.service"])
+        self.assertIn("WantedBy=default.target", units["race-collection.service"])
+        self.assertNotIn("multi-user.target", units["race-collection.service"])
+        with (
+            patch(
+                "race_collection.operational.subprocess.run",
+                return_value=subprocess.CompletedProcess(
+                    (sys.executable, "-c"),
+                    0,
+                    stdout=json.dumps(
+                        {"executable": sys.executable, "version": [3, 10]},
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                    stderr="",
+                ),
+            ),
+            self.assertRaises(OperationalRejected),
+        ):
+            self.authority.generate_units(
+                self.manifest(),
+                self.configuration(),
+                config_path="/etc/race-collection/release.json",
+                python_executable=sys.executable,
+            )
         executable = Path(__file__).parents[2] / "bin" / "race-collection-service"
         self.assertTrue(executable.is_file())
         self.assertTrue(executable.stat().st_mode & 0o111)
@@ -3228,6 +3272,31 @@ class Phase7OperationalTests(unittest.TestCase):
                 "sha256:" + __import__("hashlib").sha256(snapshot.read_bytes()).hexdigest()
             ),
         )
+        self.assertEqual(
+            recovery.backup(
+                operation(42),
+                backup_id="backup-1",
+                racing_day_id=day_id,
+                snapshot_path=snapshot,
+                replica=replica,
+                at=NOW,
+            ),
+            checksum,
+        )
+        self.assertEqual(
+            checksum,
+            ArtifactChecksum(
+                "sha256:" + __import__("hashlib").sha256(snapshot.read_bytes()).hexdigest()
+            ),
+        )
+        with self.store._connect() as db:
+            self.assertEqual(
+                db.execute(
+                    "SELECT count(*) FROM phase7_backups WHERE operation_id=?",
+                    (str(operation(42)),),
+                ).fetchone()[0],
+                1,
+            )
         self.assertTrue(
             recovery.restore_drill(
                 operation(43),
