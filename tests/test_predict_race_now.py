@@ -635,6 +635,29 @@ def test_master_packet_adapter_rejects_pr56_jump_mismatch(
         )
 
 
+def test_master_packet_adapter_treats_mismatched_exact_race_as_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    def discover(**kwargs: Any) -> Mapping[str, Any]:
+        if kwargs.get("exact_race_id") == RACE_ID:
+            raise CaptureHandoffError("race_feature_packet_not_found")
+        return {"race_id": "Race 5 - GUNN - 2026-07-18"}
+
+    monkeypatch.setattr(predict_now, "discover_race_artifacts", discover)
+
+    assert (
+        predict_now.discover_capture_handoff(
+            evidence_roots=[tmp_path],
+            db_path=tmp_path / "unused.db",
+            race_id=RACE_ID,
+            jump_datetime=NOW + timedelta(hours=1),
+            capture_window_minutes=60,
+            current_time=NOW,
+        )
+        is None
+    )
+
+
 def test_fixture_e2e_reuses_receipt_seals_features_selects_model_and_bundles(
     tmp_path: Path,
 ):
