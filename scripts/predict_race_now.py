@@ -433,6 +433,7 @@ def discover_capture_handoff(
     try:
         packet = discover_race_artifacts(
             race_query=race_query,
+            exact_race_id=race_id,
             evidence_roots=available_roots,
             score_timestamp=current_time,
         )

@@ -2716,6 +2716,33 @@ def test_race_first_discovery_does_not_treat_generic_url_path_as_venue(tmp_path)
         )
 
 
+def test_race_first_discovery_does_not_fallback_to_mismatched_exact_race(
+    tmp_path,
+):
+    _write_fixture(tmp_path)
+
+    with pytest.raises(ManualPredictionError, match="race_feature_packet_not_found"):
+        manual.discover_race_artifacts(
+            race_query="sandown r2",
+            exact_race_id="Race 2 - SAN - 2026-07-17",
+            evidence_roots=[tmp_path],
+            score_timestamp=SCORE_TIME + timedelta(days=1),
+        )
+
+
+def test_race_first_discovery_resolves_correctly_matched_exact_race(tmp_path):
+    _write_fixture(tmp_path)
+
+    packet = manual.discover_race_artifacts(
+        race_query="sandown r2",
+        exact_race_id=RACE_ID,
+        evidence_roots=[tmp_path],
+        score_timestamp=SCORE_TIME,
+    )
+
+    assert packet["race_id"] == RACE_ID
+
+
 def test_race_first_discovery_resolves_venue_before_race_date(tmp_path):
     warrnambool = _write_fixture(tmp_path / "warrnambool")
     warragul = _write_fixture(tmp_path / "warragul")
