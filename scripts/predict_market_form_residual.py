@@ -1780,6 +1780,7 @@ def _feature_packet(
 def discover_race_artifacts(
     *,
     race_query: str,
+    exact_race_id: str | None = None,
     evidence_roots: Sequence[Path],
     score_timestamp: datetime,
 ) -> dict[str, Any]:
@@ -1793,6 +1794,10 @@ def discover_race_artifacts(
     if any(_path_in_forbidden_pr51_domain(root) for root in roots):
         raise ManualPredictionError("pr51_form_only_v1_evidence_forbidden")
     race_number, venue_query = _race_query_parts(race_query)
+    exact_identity = None
+    if exact_race_id is not None:
+        exact_identity = str(exact_race_id).strip()
+        _race_id_parts(exact_identity)
 
     feature_candidates: list[dict[str, Any]] = []
     seen_feature_packets: set[Path] = set()
@@ -1838,6 +1843,8 @@ def discover_race_artifacts(
                 }
             )
             for race_id in race_ids:
+                if exact_identity is not None and race_id != exact_identity:
+                    continue
                 try:
                     candidate_number, candidate_venue, candidate_date = _race_id_parts(
                         race_id
