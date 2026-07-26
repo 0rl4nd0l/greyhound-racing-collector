@@ -22,6 +22,7 @@ from race_collection.domain import (
 from race_collection.evaluation import EvaluationAuthority, PromotionPolicy
 from race_collection.forecasting import ForecastingAuthority, LegacyBundle, ModelRelease
 from race_collection.model_bundle import (
+    SUPPORTED_FORECAST_CONTRACT,
     BundleComponent,
     CanonicalBundle,
     ModelBundleAuthority,
@@ -403,7 +404,14 @@ def _register_serving_authority(store, artifacts, day_id):
     return bundle, challenger, assignment
 
 
-def _runtime_fixture(tmp_path):
+def _runtime_fixture(
+    tmp_path,
+    *,
+    result_blind=False,
+    unregistered_role=None,
+    release_bundle_versions=None,
+    first_cohort_role=None,
+):
     store = SQLiteOperationsStore(tmp_path / "operations.sqlite3")
     store.migrate()
     artifacts = LocalArtifactStore(tmp_path / "artifacts")
@@ -631,6 +639,27 @@ def _runtime_fixture(tmp_path):
             "service_run_id": str(operation(233)),
         },
     }
+    if result_blind:
+        cycle["mode"] = "result-blind-observation-v1"
+        del cycle["races"][0]["result"]
+        del cycle["races"][0]["training_example"]
+    if unregistered_role is not None:
+        replacement = {
+            "bundle_id": f"unregistered-{unregistered_role}",
+            "bundle_checksum": "sha256:" + "f" * 64,
+        }
+        member = next(
+            item
+            for item in cycle["forecast_cohort"]["members"]
+            if item["role"] == unregistered_role
+        )
+        member.update(replacement)
+        if unregistered_role == "champion":
+            cycle["champion"].update(replacement)
+    if first_cohort_role is not None:
+        cycle["forecast_cohort"]["members"].sort(
+            key=lambda member: member["role"] != first_cohort_role
+        )
     runtime_document = {
         "schema_version": "phase7-runtime-input-v1",
         "release_id": "runtime-candidate",
@@ -641,6 +670,11 @@ def _runtime_fixture(tmp_path):
     source_commit = subprocess.check_output(
         ["git", "-C", str(source_root), "rev-parse", "HEAD"], text=True
     ).strip()
+    bundle_versions = (
+        (ORDERED_FINISH_CONTRACT,)
+        if release_bundle_versions is None
+        else tuple(release_bundle_versions)
+    )
     configuration = ReleaseConfiguration(
         "phase7-config-v1",
         str(source_root),
@@ -649,7 +683,7 @@ def _runtime_fixture(tmp_path):
         ("official", "official-card", "official-form", "market", "official-results"),
         "adaptive-odds-v1",
         "phase6-promotion-v1",
-        (ORDERED_FINISH_CONTRACT,),
+        bundle_versions,
         "race_collection.runtime_adapters:checked_in",
         runtime_artifact.checksum,
     )
@@ -671,7 +705,7 @@ def _runtime_fixture(tmp_path):
             29,
             "canonical-artifacts-v1",
             "phase6-promotion-v1",
-            (ORDERED_FINISH_CONTRACT,),
+            bundle_versions,
             configuration.service_root,
         )
 
@@ -694,6 +728,135 @@ def _runtime_fixture(tmp_path):
     config_path = tmp_path / "release.json"
     config_path.write_bytes(canonical(configuration.document()))
     return store, artifacts, config_path, cycle, result_content
+
+
+def test_result_blind_observation_stops_after_receipt_five_without_result_work(
+    tmp_path, monkeypatch
+):
+    store, _, config_path, cycle, _ = _runtime_fixture(tmp_path, result_blind=True)
+    monkeypatch.setattr(
+        "race_collection.service.verify_release_source_identity",
+        lambda *_args, **_kwargs: None,
+    )
+    trusted_now = datetime.now(timezone.utc)
+
+    def load(path, *, owner, token, lease_ttl):
+        composition = compose(
+            path,
+            owner=owner,
+            token=token,
+            lease_ttl=lease_ttl,
+        )
+        composition.clock = lambda: trusted_now
+        return composition
+
+    arguments = [
+        "--config",
+        str(config_path),
+        "--once",
+        "--owner",
+        "result-blind-observer",
+    ]
+    assert main(arguments, composition_loader=load, token_factory=lambda: "blind-token") == 0
+    assert main(arguments, composition_loader=load, token_factory=lambda: "blind-replay") == 0
+
+    with store._connect() as db:
+        progress = db.execute(
+            "SELECT phase_ordinal,phase_name FROM phase7_scheduler_progress "
+            "WHERE racing_day_id=? ORDER BY phase_ordinal",
+            (cycle["racing_day_id"],),
+        ).fetchall()
+        receipts = db.execute(
+            "SELECT phase_name FROM phase7_application_command_receipts "
+            "WHERE racing_day_id=? ORDER BY committed_at",
+            (cycle["racing_day_id"],),
+        ).fetchall()
+        assert [tuple(row) for row in progress] == [
+            (1, "discover_programme"),
+            (2, "collect_cards_and_form"),
+            (3, "collect_adaptive_odds"),
+            (4, "close_and_seal"),
+            (5, "deferred_prediction"),
+        ]
+        assert [row[0] for row in receipts] == [row[1] for row in progress]
+        assert db.execute("SELECT count(*) FROM result_attempts").fetchone()[0] == 0
+        assert db.execute("SELECT count(*) FROM training_examples").fetchone()[0] == 0
+        assert db.execute("SELECT count(*) FROM canonical_training_examples").fetchone()[0] == 0
+        assert db.execute("SELECT count(*) FROM phase7_reconciliation").fetchone()[0] == 0
+        assert db.execute("SELECT count(*) FROM phase7_day_training_requests").fetchone()[0] == 0
+        assert db.execute("SELECT count(*) FROM phase6_evaluation_evidence").fetchone()[0] == 0
+        assert db.execute("SELECT count(*) FROM phase6_trusted_evaluations").fetchone()[0] == 0
+        assert db.execute("SELECT count(*) FROM phase6_promotion_records").fetchone()[0] == 0
+        assert (
+            db.execute(
+                "SELECT count(*) FROM phase6_runs WHERE run_kind IN ('training','promotion')"
+            ).fetchone()[0]
+            == 0
+        )
+        assert (
+            db.execute(
+                "SELECT count(*) FROM phase7_day_command_plan WHERE racing_day_id=?",
+                (cycle["racing_day_id"],),
+            ).fetchone()[0]
+            == 9
+        )
+    assert "result" not in cycle["races"][0]
+    assert "training_example" not in cycle["races"][0]
+
+
+@pytest.mark.parametrize("role", ["champion", "challenger"])
+def test_adapter_rejects_unregistered_forecast_cohort_before_receipt_one(
+    tmp_path, monkeypatch, role
+):
+    store, _, config_path, _, _ = _runtime_fixture(tmp_path, unregistered_role=role)
+    monkeypatch.setattr(
+        "race_collection.service.verify_release_source_identity",
+        lambda *_args, **_kwargs: None,
+    )
+    with pytest.raises(ServiceUnavailable, match="composition failed") as rejected:
+        compose(
+            config_path,
+            owner="registration-preflight",
+            token="registration-preflight",
+            lease_ttl=timedelta(seconds=30),
+        )
+    assert isinstance(rejected.value.__cause__, ServiceUnavailable)
+    assert "registered" in str(rejected.value.__cause__)
+    with store._connect() as db:
+        assert (
+            db.execute("SELECT count(*) FROM phase7_application_command_receipts").fetchone()[0]
+            == 0
+        )
+
+
+@pytest.mark.parametrize("role", ["champion", "challenger"])
+def test_adapter_rejects_registered_cohort_contract_excluded_by_release_before_receipt_one(
+    tmp_path, monkeypatch, role
+):
+    store, _, config_path, _, _ = _runtime_fixture(
+        tmp_path,
+        release_bundle_versions=(SUPPORTED_FORECAST_CONTRACT,),
+        first_cohort_role=role,
+    )
+    monkeypatch.setattr(
+        "race_collection.service.verify_release_source_identity",
+        lambda *_args, **_kwargs: None,
+    )
+    with pytest.raises(ServiceUnavailable, match="composition failed") as rejected:
+        compose(
+            config_path,
+            owner="release-contract-preflight",
+            token="release-contract-preflight",
+            lease_ttl=timedelta(seconds=30),
+        )
+    assert isinstance(rejected.value.__cause__, ServiceUnavailable)
+    assert f"runtime {role}" in str(rejected.value.__cause__)
+    assert "configured release" in str(rejected.value.__cause__)
+    with store._connect() as db:
+        assert (
+            db.execute("SELECT count(*) FROM phase7_application_command_receipts").fetchone()[0]
+            == 0
+        )
 
 
 def test_checked_in_adapter_resumes_real_prefix_through_main_once(tmp_path, monkeypatch):

@@ -6,6 +6,7 @@ import hashlib
 import json
 import re
 import sqlite3
+import subprocess
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -3032,11 +3033,74 @@ class OperationalAuthority:
 
     @staticmethod
     def generate_units(
-        manifest: ReleaseManifest, configuration: ReleaseConfiguration, *, config_path: str
+        manifest: ReleaseManifest,
+        configuration: ReleaseConfiguration,
+        *,
+        config_path: str,
+        python_executable: str,
     ) -> Mapping[str, str]:
-        if not Path(config_path).is_absolute():
+        configuration_path = Path(config_path)
+        if not configuration_path.is_absolute():
             raise ValueError("config path must be absolute")
         _safe_operational_path(config_path)
+        if configuration_path.is_symlink() or not configuration_path.is_file():
+            raise OperationalRejected(
+                "service configuration must be an existing regular non-symlink file"
+            )
+        try:
+            configuration_bytes = configuration_path.read_bytes()
+        except OSError as error:
+            raise OperationalRejected("service configuration is unreadable") from error
+        if configuration_bytes != _canonical(configuration.document()):
+            raise OperationalRejected(
+                "service configuration bytes disagree with the authenticated configuration"
+            )
+        python_path = Path(python_executable)
+        if (
+            not python_path.is_absolute()
+            or not python_path.is_file()
+            or python_path.stat().st_mode & 0o111 == 0
+        ):
+            raise OperationalRejected("Python interpreter is unavailable or not executable")
+        _safe_operational_path(python_executable)
+        if any(
+            any(
+                character.isspace() or character in {"%", "$", "\\", '"', "'"}
+                for character in value
+            )
+            for value in (manifest.service_root, config_path, python_executable)
+        ):
+            raise ValueError("systemd command paths contain unsupported syntax")
+        try:
+            probe = subprocess.run(
+                (
+                    python_executable,
+                    "-c",
+                    "import json,sys; print(json.dumps("
+                    "{'executable':sys.executable,"
+                    "'version':[sys.version_info.major,sys.version_info.minor]},"
+                    "sort_keys=True,separators=(',',':')))",
+                ),
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+            raise OperationalRejected(
+                "Python interpreter identity could not be verified"
+            ) from error
+        try:
+            python_identity = json.loads(probe.stdout)
+        except json.JSONDecodeError as error:
+            raise OperationalRejected("Python interpreter identity is malformed") from error
+        if python_identity != {
+            "executable": python_executable,
+            "version": [3, 11],
+        }:
+            raise OperationalRejected(
+                "Race Collection Service requires the exact supplied Python 3.11 environment"
+            )
         actual = _checksum(configuration.document())
         if (
             actual != manifest.config_checksum
@@ -3054,13 +3118,14 @@ class OperationalAuthority:
                 "[Service]",
                 "Type=simple",
                 f"WorkingDirectory={manifest.service_root}",
-                f"ExecStart={manifest.service_root}/bin/race-collection-service "
+                f"ExecStart={python_executable} "
+                f"{manifest.service_root}/bin/race-collection-service "
                 f"--config {config_path} --continuous",
                 "Restart=on-failure",
                 "NoNewPrivileges=true",
                 "",
                 "[Install]",
-                "WantedBy=multi-user.target",
+                "WantedBy=default.target",
                 "",
             )
         )

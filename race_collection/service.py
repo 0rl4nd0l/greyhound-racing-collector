@@ -40,13 +40,14 @@ class ServiceUnavailable(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class RacingDayCycle:
-    """One immutable nine-command Racing Day plan supplied by a trusted adapter."""
+    """One immutable Racing Day plan with an explicitly bounded execution prefix."""
 
     racing_day_id: str
     commands: tuple[ApplicationCommand, ...]
     plan_operation_id: OperationId
     advancement_operation_ids: tuple[OperationId, ...]
     at: datetime
+    terminal_phase: str = "request_training"
 
     def __post_init__(self) -> None:
         phases = tuple(command.phase for command in self.commands)
@@ -54,6 +55,7 @@ class RacingDayCycle:
             not isinstance(self.racing_day_id, str)
             or not self.racing_day_id.strip()
             or phases != RaceCollectionService.ORDER
+            or self.terminal_phase not in {"deferred_prediction", "request_training"}
             or len(self.advancement_operation_ids) != len(self.commands)
             or any(command.racing_day_id != self.racing_day_id for command in self.commands)
             or len(
@@ -68,6 +70,11 @@ class RacingDayCycle:
             or self.at.utcoffset() is None
         ):
             raise ValueError("runtime cycle is not one exact ordered Racing Day plan")
+
+    @property
+    def terminal_ordinal(self) -> int:
+        """Return the last phase this immutable input is authorized to execute."""
+        return RaceCollectionService.ORDER.index(self.terminal_phase) + 1
 
 
 class RuntimeAdapter(Protocol):
@@ -402,9 +409,17 @@ class ServiceComposition:
             }
         if tuple(sorted(completed)) != tuple(range(1, len(completed) + 1)):
             raise OperationalRejected("completed scheduler progress is not a contiguous prefix")
+        if any(ordinal > cycle.terminal_ordinal for ordinal in completed):
+            raise OperationalRejected(
+                "runtime cycle has durable progress beyond its authorized terminal phase"
+            )
         results = []
         for ordinal, (command, advancement_id) in enumerate(
-            zip(cycle.commands, cycle.advancement_operation_ids, strict=True),
+            zip(
+                cycle.commands[: cycle.terminal_ordinal],
+                cycle.advancement_operation_ids[: cycle.terminal_ordinal],
+                strict=True,
+            ),
             1,
         ):
             prior = completed.get(ordinal)

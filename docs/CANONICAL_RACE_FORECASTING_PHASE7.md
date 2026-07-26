@@ -11,6 +11,11 @@ workflow-owning timers. The service orders programme discovery, card/form and
 adaptive append-only odds collection, closure and sealing, deferred prediction,
 post-prediction results, immutable joins, reconciliation, then training requests.
 It can request training but contains no training, tuning, or promotion command.
+An explicitly versioned `result-blind-observation-v1` runtime input retains the
+immutable nine-command plan but bounds execution at deferred prediction. It
+omits result and training-example inputs and produces only the contiguous
+receipt prefix 1--5; no result, join, reconciliation or training-request
+handler is executed.
 Adapters submit only closed typed commands. A `ClosedCommandDispatcher` is
 assembled once at the composition root with exactly one trusted Phase 1--6
 handler for every phase; missing, duplicate, and unknown bindings fail closed.
@@ -48,7 +53,9 @@ Release manifests are immutable content-addressed documents binding an exact
 commit, typed config checksum, exactly schema 29, artifact contract, policy, supported
 bundle versions, and a stable absolute service root. Unit generation emits one
 generic service and no independent workflow timer. Generation and validation do
-not install or enable it.
+not install or enable it. Generated user-service content requires an explicitly
+verified Python 3.11 executable and uses the valid user target
+`default.target`.
 
 That unit's `ExecStart` is backed by the checked-in
 `bin/race-collection-service` composition root. The canonical
@@ -131,6 +138,9 @@ Phase 7 never promotes.
 Backups use SQLite's transactional backup API only after complete reconciliation,
 replicate the explicit schema-versioned set of referenced immutable artifacts by
 checksum, and record an inventory. Unknown future schemas fail closed.
+An exact replay never rewrites the snapshot: it returns the recorded checksum
+only when the isolated path is still a regular non-symlink file with identical
+bytes.
 The inventory is hostile restore input: it must be canonical JSON containing a
 sorted unique list of exact checksums, and it must equal a fresh inventory
 computed from the restored read-only snapshot before any replica object is
@@ -157,3 +167,7 @@ Command success without every check records a failed drill and proves nothing.
 Tests use temporary directories and synthetic immutable fixtures only. They do
 not establish deployment, live-data collection, training, promotion, service
 installation, or runtime readiness.
+
+The bounded operator interface, separate-database preconditions, result-blind
+input contract, recovery commands and rollback boundaries are specified in
+[Forecasting observation-canary operator contract](FORECASTING_OBSERVATION_CANARY.md).

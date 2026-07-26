@@ -1,0 +1,24 @@
+# State
+
+- state: `REPOSITORY_COMPLETE_DRAFT_PR_ONLY`
+- task_tier: `large`
+- recommended_model: `high_reasoning`
+- actual_model: `gpt-5`
+- worker_model_allowed: `read-only reviewer only`
+- worker_decision_limit: `exact-diff findings and verdict; no mutation`
+- escalation_needed: `false`
+- task_ledger: `DATA_MISSING`; portable guard fallback found no overlapping work
+- duplicate_work_classification: `NONE_FOUND`
+- canonical_base_commit: `17f7b605b9f81c5a08a88fea8835aadf291cbfe7`
+- canonical_base_tree: `fbffb4954618dc80688c3baafa14749bf5cd14f1`
+- reviewed_implementation_commit: `c56783af1a9a40bcb39a2c4a46fc07bd8fd33f50`
+- reviewed_implementation_tree: `9c8e1279a54c673d9704efabb71cea1d73045123`
+- docs_impact: `DOCS_UPDATED`
+- review: `ACCEPT`
+- focused_validation: `PASS`
+- complete_local_suite: `NOT_GREEN`; one non-reproduced transient failure
+- owner_stopped_rerun: `PARTIAL_ONLY`; approximately 72%, no failure observed
+- github_ci_merge_gate: `REQUIRED`
+- merge_readiness: `false`
+- runtime_functionality: `DATA_MISSING`
+- next_safe_action: push the exact branch and open one draft PR; do not merge

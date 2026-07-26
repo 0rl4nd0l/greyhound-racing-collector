@@ -82,10 +82,11 @@ _RACE_KEYS = frozenset(
         "odds_attempts",
         "seal",
         "prediction",
-        "result",
-        "training_example",
     }
 )
+_FULL_RACE_KEYS = _RACE_KEYS | {"result", "training_example"}
+_RESULT_BLIND_MODE = "result-blind-observation-v1"
+_COMPLETE_MODE = "complete-v1"
 _IDENTITY_KEYS = frozenset(
     {
         "operation_id",
@@ -272,7 +273,7 @@ class _ExactRegisteredDeferredPredictor:
 
 
 class ImmutableInputRuntimeAdapter:
-    """Execute one closed nine-phase plan from explicit immutable source inputs."""
+    """Execute one closed plan, including a result-blind observation prefix."""
 
     def __init__(
         self,
@@ -324,6 +325,10 @@ class ImmutableInputRuntimeAdapter:
         self._cycles = tuple(cycle for cycle, _ in parsed)
         self._documents = {cycle.racing_day_id: item for cycle, item in parsed}
         self._verify_release_and_sources(configuration, document)
+        self._verify_registered_forecast_cohorts(
+            document,
+            configuration.bundle_versions,
+        )
         self._verify_external_artifacts(document)
 
     def _verify_release_and_sources(
@@ -377,12 +382,19 @@ class ImmutableInputRuntimeAdapter:
                     observation["source"] for observation in race["observations"]
                 )
                 supplied_sources.update(attempt["source"] for attempt in race["odds_attempts"])
-                supplied_sources.add(race["result"]["source"])
+                if cycle.get("mode", _COMPLETE_MODE) == _COMPLETE_MODE:
+                    supplied_sources.add(race["result"]["source"])
         if not supplied_sources <= configured_sources:
             raise ServiceUnavailable("runtime input uses a source outside the configured release")
 
     def _parse_cycle(self, value: Any) -> tuple[RacingDayCycle, Mapping[str, Any]]:
-        item = _strict_object(value, _CYCLE_KEYS, "cycle")
+        if type(value) is not dict:
+            raise ServiceUnavailable("runtime cycle has unknown or missing keys")
+        mode = value.get("mode", _COMPLETE_MODE)
+        expected_cycle_keys = _CYCLE_KEYS | ({"mode"} if "mode" in value else set())
+        item = _strict_object(value, frozenset(expected_cycle_keys), "cycle")
+        if mode not in {_COMPLETE_MODE, _RESULT_BLIND_MODE}:
+            raise ServiceUnavailable("runtime cycle mode is unsupported")
         programme = _strict_object(item["programme"], _PROGRAMME_KEYS, "programme")
         champion = _strict_object(item["champion"], _CHAMPION_KEYS, "champion")
         cohort = _strict_object(item["forecast_cohort"], _COHORT_KEYS, "day forecast cohort")
@@ -392,7 +404,8 @@ class ImmutableInputRuntimeAdapter:
         source_ids: list[str] = []
         nested_operations: list[OperationId] = []
         for race_value in item["races"]:
-            race = _strict_object(race_value, _RACE_KEYS, "race")
+            race_keys = _RACE_KEYS if mode == _RESULT_BLIND_MODE else _FULL_RACE_KEYS
+            race = _strict_object(race_value, race_keys, "race")
             if type(race["source_race_id"]) is not str or not race["source_race_id"].strip():
                 raise ServiceUnavailable("runtime source race identity is malformed")
             source_ids.append(race["source_race_id"])
@@ -422,19 +435,26 @@ class ImmutableInputRuntimeAdapter:
             for attempt in race["odds_attempts"]:
                 _strict_object(attempt, _ODDS_KEYS, "odds attempt")
                 nested_operations.append(OperationId(attempt["operation_id"]))
-            for name, keys in (
+            nested_contracts = [
                 ("seal", _SEAL_KEYS),
                 ("prediction", _PREDICTION_KEYS),
-                ("result", _RESULT_KEYS),
-                ("training_example", _EXAMPLE_KEYS),
-            ):
+            ]
+            if mode == _COMPLETE_MODE:
+                nested_contracts.extend(
+                    (
+                        ("result", _RESULT_KEYS),
+                        ("training_example", _EXAMPLE_KEYS),
+                    )
+                )
+            for name, keys in nested_contracts:
                 nested = _strict_object(race[name], keys, name)
                 nested_operations.extend(
                     OperationId(value)
                     for key, value in nested.items()
                     if key.endswith("operation_id")
                 )
-            ArtifactChecksum(race["result"]["source_checksum"])
+            if mode == _COMPLETE_MODE:
+                ArtifactChecksum(race["result"]["source_checksum"])
         if len(source_ids) != len(set(source_ids)):
             raise ServiceUnavailable("runtime cycle contains duplicate source race identities")
         if type(cohort["members"]) is not list or len(cohort["members"]) < 2:
@@ -524,10 +544,84 @@ class ImmutableInputRuntimeAdapter:
             OperationId(item["plan_operation_id"]),
             advancement_ids,
             _datetime(item["at"], "cycle time"),
+            "deferred_prediction" if mode == _RESULT_BLIND_MODE else "request_training",
         )
         date.fromisoformat(item["local_date"])
         _datetime(item["opened_at"], "opened_at")
         return cycle, item
+
+    def _verify_registered_forecast_cohorts(
+        self,
+        document: Mapping[str, Any],
+        release_bundle_versions: Sequence[str],
+    ) -> None:
+        """Authenticate champion and challenger registry identities before receipt one."""
+        release_contracts = set(release_bundle_versions)
+        try:
+            with self._store._connect() as db:
+                for cycle in document["cycles"]:
+                    champion = cycle["champion"]
+                    cohort = cycle["forecast_cohort"]
+                    champion_members = [
+                        member for member in cohort["members"] if member["role"] == "champion"
+                    ]
+                    assignment = db.execute(
+                        "SELECT assignment_id,bundle_id,bundle_checksum "
+                        "FROM canonical_day_assignments WHERE racing_day_id=?",
+                        (cycle["racing_day_id"],),
+                    ).fetchone()
+                    if (
+                        len(champion_members) != 1
+                        or champion_members[0]["bundle_id"] != champion["bundle_id"]
+                        or champion_members[0]["bundle_checksum"] != champion["bundle_checksum"]
+                        or assignment is None
+                        or assignment["assignment_id"] != cohort["assignment_id"]
+                        or assignment["bundle_id"] != champion["bundle_id"]
+                        or assignment["bundle_checksum"] != champion["bundle_checksum"]
+                    ):
+                        raise ServiceUnavailable(
+                            "runtime champion is not the exact registered Racing Day assignment"
+                        )
+                    for member in cohort["members"]:
+                        bundle = db.execute(
+                            "SELECT created_at,forecast_contract_version "
+                            "FROM canonical_model_bundles "
+                            "WHERE bundle_id=? AND bundle_checksum=?",
+                            (member["bundle_id"], member["bundle_checksum"]),
+                        ).fetchone()
+                        components = db.execute(
+                            "SELECT artifact_checksum FROM canonical_bundle_components "
+                            "WHERE bundle_id=? ORDER BY component_kind",
+                            (member["bundle_id"],),
+                        ).fetchall()
+                        if (
+                            bundle is None
+                            or len(components) != 9
+                            or bundle["forecast_contract_version"] not in release_contracts
+                            or _datetime(bundle["created_at"], "bundle registration time")
+                            >= _datetime(cycle["at"], "cycle time")
+                        ):
+                            raise ServiceUnavailable(
+                                f"runtime {member['role']} is not exactly registered "
+                                "for the configured release"
+                            )
+                        self._artifacts.verify(ArtifactChecksum(member["bundle_checksum"]))
+                        for component in components:
+                            self._artifacts.verify(ArtifactChecksum(component["artifact_checksum"]))
+                    bundle_identities = [
+                        (member["bundle_id"], member["bundle_checksum"])
+                        for member in cohort["members"]
+                    ]
+                    if len(bundle_identities) != len(set(bundle_identities)):
+                        raise ServiceUnavailable(
+                            "runtime champion and challenger registrations are not unique"
+                        )
+        except ServiceUnavailable:
+            raise
+        except (ArtifactStoreError, KeyError, TypeError, ValueError) as error:
+            raise ServiceUnavailable(
+                "runtime champion or challenger registration is unavailable"
+            ) from error
 
     def _verify_external_artifacts(self, document: Mapping[str, Any]) -> None:
         """Read every pre-result source object before accepting a plan."""
@@ -588,11 +682,23 @@ class ImmutableInputRuntimeAdapter:
                     or day["opened_at"] != item["opened_at"]
                 ):
                     raise ServiceUnavailable("configured Racing Day identity changed")
-                complete = db.execute(
-                    "SELECT count(*) FROM phase7_scheduler_progress WHERE racing_day_id=?",
-                    (cycle.racing_day_id,),
-                ).fetchone()[0]
-                if complete < 9 and cycle.at <= now:
+                completed = [
+                    row[0]
+                    for row in db.execute(
+                        "SELECT phase_ordinal FROM phase7_scheduler_progress "
+                        "WHERE racing_day_id=? ORDER BY phase_ordinal",
+                        (cycle.racing_day_id,),
+                    )
+                ]
+                if completed != list(range(1, len(completed) + 1)):
+                    raise ServiceUnavailable(
+                        "runtime cycle progress is not a contiguous receipt prefix"
+                    )
+                if any(ordinal > cycle.terminal_ordinal for ordinal in completed):
+                    raise ServiceUnavailable(
+                        "runtime cycle has progress beyond its authorized terminal phase"
+                    )
+                if len(completed) < cycle.terminal_ordinal and cycle.at <= now:
                     return cycle
         return None
 
