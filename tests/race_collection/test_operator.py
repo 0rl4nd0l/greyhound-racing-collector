@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import subprocess
 import sys
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -30,6 +31,49 @@ def common(database: Path, legacy: Path) -> list[str]:
 def write_document(path: Path, document: object) -> Path:
     path.write_bytes(canonical(document))
     return path
+
+
+def python_311_executable() -> str:
+    """Resolve and authenticate a real Python 3.11 independently of the test runner."""
+    unavailable = "operator tests require a uv-resolvable exact Python 3.11 executable"
+    try:
+        probe = subprocess.run(
+            (
+                "uv",
+                "run",
+                "--no-project",
+                "--python",
+                "3.11",
+                "python",
+                "-c",
+                "import json,sys; print(json.dumps("
+                "{'executable':sys.executable,"
+                "'version':[sys.version_info.major,sys.version_info.minor]},"
+                "sort_keys=True,separators=(',',':')))",
+            ),
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        identity = json.loads(probe.stdout)
+    except (
+        OSError,
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+        json.JSONDecodeError,
+    ) as error:
+        raise AssertionError(unavailable) from error
+    if type(identity) is not dict:
+        raise AssertionError(unavailable)
+    executable = identity.get("executable")
+    if (
+        type(executable) is not str
+        or not Path(executable).is_absolute()
+        or identity != {"executable": executable, "version": [3, 11]}
+    ):
+        raise AssertionError(unavailable)
+    return executable
 
 
 def test_migrate_rejects_legacy_and_non_operations_databases_and_ends_at_29(tmp_path, capsys):
@@ -292,27 +336,25 @@ def test_registration_and_observation_commands_preserve_exact_immutable_authorit
         ]
     assert "different intent" in capsys.readouterr().err
 
-    assert (
-        main(
-            [
-                "generate-user-service",
-                "--release-document",
-                str(release),
-                "--configuration-document",
-                str(configuration),
-                "--config-path",
-                str(configuration),
-                "--python-executable",
-                sys.executable,
-            ]
-        )
-        == 0
-    )
+    python_executable = python_311_executable()
+    service_arguments = [
+        "generate-user-service",
+        "--release-document",
+        str(release),
+        "--configuration-document",
+        str(configuration),
+        "--config-path",
+        str(configuration),
+    ]
+    if sys.version_info[:2] != (3, 11):
+        assert main([*service_arguments, "--python-executable", sys.executable]) == 2
+        assert "requires the exact supplied Python 3.11" in capsys.readouterr().err
+    assert main([*service_arguments, "--python-executable", python_executable]) == 0
     generated = json.loads(capsys.readouterr().out)
     assert generated["command"] == "generate-user-service"
     assert set(generated["units"]) == {"race-collection.service"}
     unit = generated["units"]["race-collection.service"]
-    assert f"ExecStart={sys.executable} " in unit
+    assert f"ExecStart={python_executable} " in unit
     assert "WantedBy=default.target" in unit
     assert "timer" not in unit
     different_configuration = write_document(
@@ -330,7 +372,7 @@ def test_registration_and_observation_commands_preserve_exact_immutable_authorit
                 "--config-path",
                 str(different_configuration),
                 "--python-executable",
-                sys.executable,
+                python_executable,
             ]
         )
         == 2
