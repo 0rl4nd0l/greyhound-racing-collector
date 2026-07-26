@@ -1,6 +1,6 @@
 # State
 
-- state: `RUNNING`
+- state: `VALIDATING`
 - base_commit: `c989b149acc06c8de727662802c1cb58eb5f0654`
 - base_tree: `c839ee74e82f4406e68a21e29de5e6fe7c2afcd2`
 - task_tier: `large`
@@ -12,4 +12,8 @@
 - runtime_functionality: `DATA_MISSING`
 - ledger_status: `DATA_MISSING`
 - duplicate_work_classification: `DATA_MISSING_FALLBACK_CHECKED`
-- next_safe_action: validate the task card and clean-worktree preflight
+- implementation_commit: `6aa51b97bcfb2ac257867716a9dc935e890314a0`
+- implementation_tree: `1fffed933452f147c41b69147fc3e39ddd7fb59e`
+- review_verdict: `SUCCESS`
+- docs_impact: `DOCS_UPDATED`
+- next_safe_action: push the reviewed branch and open one draft PR

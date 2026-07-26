@@ -11,3 +11,6 @@
   model, database, recovery, service-generation, and interpreter contract.
 - Keep runtime and activation `DATA_MISSING`; repository validation cannot
   authorize or prove either.
+- Docs impact is `DOCS_UPDATED`: the two existing observation-contract
+  paragraphs now describe the enforced authority/mode boundary; no follow-up
+  documentation task is required.
