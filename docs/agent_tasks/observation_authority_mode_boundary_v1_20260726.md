@@ -33,6 +33,7 @@ allowed_files:
   - race_collection/runtime_adapters.py
   - race_collection/service.py
   - tests/race_collection/test_phase7_runtime_adapter.py
+  - tests/race_collection/test_phase7_operational.py
   - reports/agent_jobs/OBSERVATION_AUTHORITY_MODE_BOUNDARY_V1_20260726/README.md
   - reports/agent_jobs/OBSERVATION_AUTHORITY_MODE_BOUNDARY_V1_20260726/STATE.md
   - reports/agent_jobs/OBSERVATION_AUTHORITY_MODE_BOUNDARY_V1_20260726/DECISIONS.md
@@ -54,8 +55,9 @@ prediction, without changing separately authorised complete-cycle behavior.
   internally inconsistent runtime modes.
 - Composition binds durable release authority to the adapter's explicit mode
   and immutable cycle terminal phase.
-- Observation cycles compose and plan only the five phases through deferred
-  prediction.
+- Observation cycles compose only the five executable phases through deferred
+  prediction while retaining the authenticated nine-command durable plan
+  required by schema-29 recovery.
 - Full release authority preserves the valid complete nine-phase cycle.
 - Existing immutable release, bundle, operations-DB, recovery, service, and
   Python 3.11 contracts remain unchanged.

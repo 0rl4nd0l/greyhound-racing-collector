@@ -4331,6 +4331,9 @@ class Phase7OperationalTests(unittest.TestCase):
         )
 
         class Adapter:
+            def bind_release_authority(self, mode):
+                self.mode = mode
+
             @staticmethod
             def registrations():
                 def noop(_command, _at):

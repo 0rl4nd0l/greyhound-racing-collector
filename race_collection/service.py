@@ -48,24 +48,31 @@ class RacingDayCycle:
     advancement_operation_ids: tuple[OperationId, ...]
     at: datetime
     terminal_phase: str = "request_training"
+    plan_commands: tuple[ApplicationCommand, ...] | None = None
 
     def __post_init__(self) -> None:
-        phases = tuple(command.phase for command in self.commands)
+        planned_commands = self.planned_commands
+        planned_phases = tuple(command.phase for command in planned_commands)
+        try:
+            terminal_ordinal = RaceCollectionService.ORDER.index(self.terminal_phase) + 1
+        except ValueError:
+            terminal_ordinal = 0
         if (
             not isinstance(self.racing_day_id, str)
             or not self.racing_day_id.strip()
-            or phases != RaceCollectionService.ORDER
             or self.terminal_phase not in {"deferred_prediction", "request_training"}
+            or planned_phases != RaceCollectionService.ORDER
+            or self.commands != planned_commands[:terminal_ordinal]
             or len(self.advancement_operation_ids) != len(self.commands)
-            or any(command.racing_day_id != self.racing_day_id for command in self.commands)
+            or any(command.racing_day_id != self.racing_day_id for command in planned_commands)
             or len(
                 {
                     self.plan_operation_id,
                     *self.advancement_operation_ids,
-                    *(command.operation_id for command in self.commands),
+                    *(command.operation_id for command in planned_commands),
                 }
             )
-            != 19
+            != 1 + len(self.advancement_operation_ids) + len(planned_commands)
             or self.at.tzinfo is None
             or self.at.utcoffset() is None
         ):
@@ -76,6 +83,11 @@ class RacingDayCycle:
         """Return the last phase this immutable input is authorized to execute."""
         return RaceCollectionService.ORDER.index(self.terminal_phase) + 1
 
+    @property
+    def planned_commands(self) -> tuple[ApplicationCommand, ...]:
+        """Return the complete authenticated plan retained for recovery."""
+        return self.commands if self.plan_commands is None else self.plan_commands
+
 
 class RuntimeAdapter(Protocol):
     """Live capability plugin; it supplies bindings and plans, never a scheduler."""
@@ -85,6 +97,9 @@ class RuntimeAdapter(Protocol):
 
     def next_cycle(self, *, now: datetime) -> RacingDayCycle | None:
         """Return the next plan, rehydrating any durable command IDs for a partial day."""
+
+    def bind_release_authority(self, mode: str) -> None:
+        """Bind every immutable cycle mode and terminal phase to release authority."""
 
     def close(self) -> None:
         """Idempotently release every adapter-owned resource."""
@@ -274,8 +289,14 @@ class ServiceComposition:
         self._closed = True
 
     def _revalidate_release_mode(self) -> None:
-        if self.release_id is None or self.mode is None:
+        if self.release_id is None and self.mode is None:
             return
+        if (
+            not isinstance(self.release_id, str)
+            or not self.release_id.strip()
+            or self.mode not in {"active", "observation"}
+        ):
+            raise OperationalRejected("service release authority mode is incomplete or unsupported")
         with self.store._connect() as db:
             pointer = db.execute(
                 "SELECT release_id,authority,legacy_preserved "
@@ -302,6 +323,21 @@ class ServiceComposition:
             if not valid:
                 raise OperationalRejected("service release mode is no longer authorized")
             verify_release_authority(db, self.artifacts, self.release_id)
+
+    def _assert_cycle_authority(self, cycle: RacingDayCycle) -> None:
+        try:
+            cycle.__post_init__()
+        except ValueError as error:
+            raise OperationalRejected(
+                "runtime cycle authority contract is internally inconsistent"
+            ) from error
+        if self.mode == "observation" and (
+            cycle.terminal_phase != "deferred_prediction"
+            or tuple(command.phase for command in cycle.commands) != RaceCollectionService.ORDER[:5]
+        ):
+            raise OperationalRejected(
+                "observation authority cannot execute beyond deferred prediction"
+            )
 
     def trusted_timestamp(self) -> datetime:
         """Return the public monotonic authority time for all service work."""
@@ -337,6 +373,7 @@ class ServiceComposition:
 
     def run_cycle(self, cycle: RacingDayCycle) -> tuple[object, ...]:
         self._revalidate_release_mode()
+        self._assert_cycle_authority(cycle)
         now = self.trusted_timestamp()
         if cycle.at.astimezone(timezone.utc) > now:
             raise OperationalRejected("runtime cycle schedule time is in the future")
@@ -376,7 +413,7 @@ class ServiceComposition:
             racing_day_id=cycle.racing_day_id,
             lease_token=self.token,
             lease_generation=generation,
-            commands=cycle.commands,
+            commands=cycle.planned_commands,
             at=plan_at,
         )
         service = RaceCollectionService(
@@ -416,8 +453,8 @@ class ServiceComposition:
         results = []
         for ordinal, (command, advancement_id) in enumerate(
             zip(
-                cycle.commands[: cycle.terminal_ordinal],
-                cycle.advancement_operation_ids[: cycle.terminal_ordinal],
+                cycle.commands,
+                cycle.advancement_operation_ids,
                 strict=True,
             ),
             1,
@@ -528,6 +565,10 @@ def compose(
     adapter: RuntimeAdapter | None = None
     try:
         adapter = factory(configuration, store, artifacts)
+        binder = getattr(adapter, "bind_release_authority", None)
+        if not callable(binder):
+            raise ServiceUnavailable("runtime adapter release authority contract is unavailable")
+        binder(mode)
         return ServiceComposition(
             configuration,
             store,

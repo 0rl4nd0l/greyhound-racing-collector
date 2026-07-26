@@ -15,7 +15,9 @@ An explicitly versioned `result-blind-observation-v1` runtime input retains the
 immutable nine-command plan but bounds execution at deferred prediction. It
 omits result and training-example inputs and produces only the contiguous
 receipt prefix 1--5; no result, join, reconciliation or training-request
-handler is executed.
+handler is executable. Observation authority rejects an omitted or complete
+runtime mode and is bound to that explicit mode and terminal phase at
+composition and execution.
 Adapters submit only closed typed commands. A `ClosedCommandDispatcher` is
 assembled once at the composition root with exactly one trusted Phase 1--6
 handler for every phase; missing, duplicate, and unknown bindings fail closed.
