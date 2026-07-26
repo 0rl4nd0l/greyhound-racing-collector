@@ -7,7 +7,7 @@ and the exact cycle prefix ending at deferred prediction.
 
 ## Current state
 
-`VALIDATING`
+`DONE_WITH_RISK`
 
 Fresh remote `master` is
 `c989b149acc06c8de727662802c1cb58eb5f0654`, tree
@@ -16,6 +16,8 @@ untracked evidence remains untouched; work is isolated in this clean sibling.
 The reviewed implementation is commit
 `6aa51b97bcfb2ac257867716a9dc935e890314a0`, tree
 `1fffed933452f147c41b69147fc3e39ddd7fb59e`.
+Draft PR #67 is open at
+`https://github.com/0rl4nd0l/greyhound-racing-collector/pull/67`.
 
 ## Constraints and unsafe actions
 
@@ -84,5 +86,5 @@ directories are unrelated and remain untouched.
 
 ## Remaining risk
 
-Broad CI is pending draft-PR publication. Observation-canary activation remains
+Broad CI is pending on draft PR #67. Observation-canary activation remains
 blocked until the repair is merged and a separate activation preflight passes.
