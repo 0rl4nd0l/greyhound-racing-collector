@@ -72,6 +72,15 @@ odds-capture authority.
 - Focused and current-master regression gates pass; a fresh read-only reviewer
   accepts the exact diff before draft-PR publication.
 
+## Owner publication exception
+
+On 2026-07-26 the owner authorized draft-only publication after one complete
+local suite had one non-reproduced final failure and a failure-free rerun was
+stopped for time at approximately 72%. This exception does not satisfy the
+current-master regression criterion, authorize merge, or establish runtime
+readiness. A complete authoritative GitHub CI pass is required before merge
+consideration.
+
 ## Hard stops
 
 - No live runtime, service-manager, timer, database, model, prediction,
