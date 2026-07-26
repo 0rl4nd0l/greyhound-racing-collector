@@ -12,7 +12,9 @@ execution only through ordinal 5, `deferred_prediction`. The runtime input must
 omit every race's `result` and `training_example` objects. The service must
 produce exactly the contiguous receipt prefix 1--5 and must not read a result
 checksum or execute result collection, joining, reconciliation, training
-requests, evaluation, or promotion.
+requests, evaluation, or promotion. Observation release authority requires
+that explicit mode and rejects parser defaults, complete cycles, or any
+terminal phase beyond deferred prediction.
 
 ## Non-negotiable boundaries
 

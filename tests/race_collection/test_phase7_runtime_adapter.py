@@ -44,7 +44,7 @@ from race_collection.runtime_adapters import (
     ImmutableInputRuntimeAdapter,
     _official_result_timeline_valid,
 )
-from race_collection.service import ServiceUnavailable, compose, main
+from race_collection.service import RacingDayCycle, ServiceUnavailable, compose, main
 from race_collection.training import LinearStrengthModel
 
 NOW = datetime.now(timezone.utc).replace(microsecond=0)
@@ -408,6 +408,8 @@ def _runtime_fixture(
     tmp_path,
     *,
     result_blind=False,
+    runtime_mode=None,
+    release_authority=None,
     unregistered_role=None,
     release_bundle_versions=None,
     first_cohort_role=None,
@@ -640,7 +642,12 @@ def _runtime_fixture(
         },
     }
     if result_blind:
-        cycle["mode"] = "result-blind-observation-v1"
+        if runtime_mode is not None:
+            raise ValueError("result_blind and runtime_mode are mutually exclusive")
+        runtime_mode = "result-blind-observation-v1"
+    if runtime_mode is not None:
+        cycle["mode"] = runtime_mode
+    if runtime_mode == "result-blind-observation-v1":
         del cycle["races"][0]["result"]
         del cycle["races"][0]["training_example"]
     if unregistered_role is not None:
@@ -718,13 +725,31 @@ def _runtime_fixture(
         reason="synthetic baseline",
         at=NOW - timedelta(days=2),
     )
-    authority.authorize_observation(
-        operation(305),
-        candidate_release_id="runtime-candidate",
-        actor="fixture",
-        reason="exercise checked-in adapter",
-        at=NOW - timedelta(days=1),
+    release_authority = release_authority or (
+        "observation" if runtime_mode == "result-blind-observation-v1" else "active"
     )
+    if release_authority == "observation":
+        authority.authorize_observation(
+            operation(305),
+            candidate_release_id="runtime-candidate",
+            actor="fixture",
+            reason="exercise checked-in adapter",
+            at=NOW - timedelta(days=1),
+        )
+    elif release_authority == "active":
+        with store._operation(operation(306), "fixture_activate_release", {}) as (db, _):
+            db.execute(
+                "UPDATE phase7_release_pointer SET release_id=?,"
+                "authority='race_collection_service',changed_at=?,operation_id=? "
+                "WHERE singleton=1",
+                (
+                    "runtime-candidate",
+                    (NOW - timedelta(days=1)).isoformat(),
+                    str(operation(306)),
+                ),
+            )
+    else:
+        raise ValueError("unsupported fixture release authority")
     config_path = tmp_path / "release.json"
     config_path.write_bytes(canonical(configuration.document()))
     return store, artifacts, config_path, cycle, result_content
@@ -802,6 +827,152 @@ def test_result_blind_observation_stops_after_receipt_five_without_result_work(
         )
     assert "result" not in cycle["races"][0]
     assert "training_example" not in cycle["races"][0]
+
+
+@pytest.mark.parametrize("runtime_mode", [None, "complete-v1"])
+def test_observation_authority_rejects_missing_or_complete_runtime_mode(
+    tmp_path, monkeypatch, runtime_mode
+):
+    store, _, config_path, _, _ = _runtime_fixture(
+        tmp_path,
+        runtime_mode=runtime_mode,
+        release_authority="observation",
+    )
+    monkeypatch.setattr(
+        "race_collection.service.verify_release_source_identity",
+        lambda *_args, **_kwargs: None,
+    )
+
+    with pytest.raises(ServiceUnavailable, match="composition failed") as rejected:
+        compose(
+            config_path,
+            owner="observation-mode-boundary",
+            token="observation-mode-boundary",
+            lease_ttl=timedelta(seconds=30),
+        )
+
+    assert isinstance(rejected.value.__cause__, ServiceUnavailable)
+    assert "explicit result-blind" in str(rejected.value.__cause__)
+    with store._connect() as db:
+        assert db.execute("SELECT count(*) FROM phase7_day_command_plan").fetchone()[0] == 0
+        assert db.execute("SELECT count(*) FROM phase7_scheduler_progress").fetchone()[0] == 0
+
+
+def test_observation_authority_rejects_unknown_runtime_mode(tmp_path, monkeypatch):
+    store, _, config_path, _, _ = _runtime_fixture(
+        tmp_path,
+        runtime_mode="unknown-v1",
+        release_authority="observation",
+    )
+    monkeypatch.setattr(
+        "race_collection.service.verify_release_source_identity",
+        lambda *_args, **_kwargs: None,
+    )
+
+    with pytest.raises(ServiceUnavailable, match="composition failed") as rejected:
+        compose(
+            config_path,
+            owner="unknown-mode-boundary",
+            token="unknown-mode-boundary",
+            lease_ttl=timedelta(seconds=30),
+        )
+
+    assert isinstance(rejected.value.__cause__, ServiceUnavailable)
+    assert "unsupported" in str(rejected.value.__cause__)
+    with store._connect() as db:
+        assert db.execute("SELECT count(*) FROM phase7_day_command_plan").fetchone()[0] == 0
+
+
+def test_observation_authority_rejects_terminal_phase_after_deferred_prediction(
+    tmp_path, monkeypatch
+):
+    store, _, config_path, cycle_document, _ = _runtime_fixture(tmp_path, result_blind=True)
+    monkeypatch.setattr(
+        "race_collection.service.verify_release_source_identity",
+        lambda *_args, **_kwargs: None,
+    )
+    composition = compose(
+        config_path,
+        owner="terminal-boundary",
+        token="terminal-boundary",
+        lease_ttl=timedelta(seconds=30),
+    )
+    cycle = composition.adapter.next_cycle(now=datetime.now(timezone.utc))
+    assert cycle is not None
+    assert [command.phase for command in cycle.commands] == list(RaceCollectionService.ORDER[:5])
+    complete_cycle = RacingDayCycle(
+        cycle.racing_day_id,
+        cycle.planned_commands,
+        cycle.plan_operation_id,
+        tuple(OperationId(value) for value in cycle_document["advancement_operation_ids"]),
+        cycle.at,
+    )
+
+    with pytest.raises(OperationalRejected, match="observation authority"):
+        composition.run_cycle(complete_cycle)
+    with pytest.raises(ServiceUnavailable, match="conflicts with prior binding"):
+        composition.adapter.bind_release_authority("active")
+
+    with store._connect() as db:
+        assert db.execute("SELECT count(*) FROM phase7_day_command_plan").fetchone()[0] == 0
+        assert db.execute("SELECT count(*) FROM phase7_scheduler_progress").fetchone()[0] == 0
+    composition.close()
+
+
+def test_full_authority_preserves_explicit_complete_cycle(tmp_path, monkeypatch):
+    _, _, config_path, _, _ = _runtime_fixture(
+        tmp_path,
+        runtime_mode="complete-v1",
+        release_authority="active",
+    )
+    monkeypatch.setattr(
+        "race_collection.service.verify_release_source_identity",
+        lambda *_args, **_kwargs: None,
+    )
+    composition = compose(
+        config_path,
+        owner="complete-cycle",
+        token="complete-cycle",
+        lease_ttl=timedelta(seconds=30),
+    )
+    cycle = composition.adapter.next_cycle(now=datetime.now(timezone.utc))
+
+    assert composition.mode == "active"
+    assert cycle is not None
+    assert cycle.terminal_phase == "request_training"
+    assert [command.phase for command in cycle.commands] == list(RaceCollectionService.ORDER)
+    with pytest.raises(ValueError, match="exact ordered Racing Day plan"):
+        replace(cycle, plan_commands=())
+    composition.close()
+
+
+@pytest.mark.parametrize("conflicting_mode", [None, "unknown"])
+def test_composed_release_identity_with_missing_or_unknown_authority_mode_fails_closed(
+    tmp_path, monkeypatch, conflicting_mode
+):
+    store, _, config_path, _, _ = _runtime_fixture(
+        tmp_path,
+        runtime_mode="complete-v1",
+        release_authority="active",
+    )
+    monkeypatch.setattr(
+        "race_collection.service.verify_release_source_identity",
+        lambda *_args, **_kwargs: None,
+    )
+    composition = compose(
+        config_path,
+        owner="authority-mode-shape",
+        token="authority-mode-shape",
+        lease_ttl=timedelta(seconds=30),
+    )
+    composition.mode = conflicting_mode
+
+    with pytest.raises(OperationalRejected, match="release authority mode"):
+        composition._revalidate_release_mode()
+
+    with store._connect() as db:
+        assert db.execute("SELECT count(*) FROM phase7_day_command_plan").fetchone()[0] == 0
+    composition.close()
 
 
 @pytest.mark.parametrize("role", ["champion", "challenger"])

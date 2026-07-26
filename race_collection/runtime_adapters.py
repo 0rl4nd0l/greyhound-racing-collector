@@ -43,6 +43,7 @@ from .operational import (
     OperationalAuthority,
     OperationalRejected,
     PhaseHandlerRegistration,
+    RaceCollectionService,
     ReconcileRacingDay,
     ReleaseConfiguration,
     RequestTraining,
@@ -286,6 +287,7 @@ class ImmutableInputRuntimeAdapter:
         self._repository = CollectionRepository(store)
         self._authority = OperationalAuthority(store, artifacts)
         self._closed = False
+        self._release_authority_mode: str | None = None
         try:
             content = artifacts.read(configuration.runtime_input_checksum)
             document = json.loads(content)
@@ -312,12 +314,12 @@ class ImmutableInputRuntimeAdapter:
             raise ServiceUnavailable("immutable runtime input contract is malformed") from error
         day_ids = [cycle.racing_day_id for cycle, _ in parsed]
         all_operations = [
-            str(identity)
-            for cycle, _ in parsed
+            identity
+            for _, item in parsed
             for identity in (
-                cycle.plan_operation_id,
-                *cycle.advancement_operation_ids,
-                *(command.operation_id for command in cycle.commands),
+                item["plan_operation_id"],
+                *item["advancement_operation_ids"],
+                *item["command_operation_ids"],
             )
         ]
         if len(day_ids) != len(set(day_ids)) or len(all_operations) != len(set(all_operations)):
@@ -514,18 +516,21 @@ class ImmutableInputRuntimeAdapter:
                 OperationId(training["binding_operation_id"]),
             ),
         )
-        command_ids = _identities(item["command_operation_ids"], 9, "command identities")
-        advancement_ids = _identities(
+        plan_command_ids = _identities(item["command_operation_ids"], 9, "command identities")
+        all_advancement_ids = _identities(
             item["advancement_operation_ids"], 9, "advancement identities"
         )
-        commands = tuple(
+        plan_commands = tuple(
             ApplicationCommand(identity, item["racing_day_id"], payload)
-            for identity, payload in zip(command_ids, payloads, strict=True)
+            for identity, payload in zip(plan_command_ids, payloads, strict=True)
         )
+        terminal_ordinal = 5 if mode == _RESULT_BLIND_MODE else 9
+        commands = plan_commands[:terminal_ordinal]
+        advancement_ids = all_advancement_ids[:terminal_ordinal]
         immutable_ids = (
             OperationId(item["plan_operation_id"]),
-            *command_ids,
-            *advancement_ids,
+            *plan_command_ids,
+            *all_advancement_ids,
             *nested_operations,
             OperationId(training["request_operation_id"]),
             OperationId(training["authorization_operation_id"]),
@@ -545,10 +550,50 @@ class ImmutableInputRuntimeAdapter:
             advancement_ids,
             _datetime(item["at"], "cycle time"),
             "deferred_prediction" if mode == _RESULT_BLIND_MODE else "request_training",
+            plan_commands if mode == _RESULT_BLIND_MODE else None,
         )
         date.fromisoformat(item["local_date"])
         _datetime(item["opened_at"], "opened_at")
         return cycle, item
+
+    def bind_release_authority(self, mode: str) -> None:
+        """Bind durable release authority to every explicit cycle execution boundary."""
+        if mode not in {"active", "observation"}:
+            raise ServiceUnavailable("runtime release authority mode is unsupported")
+        if self._release_authority_mode not in {None, mode}:
+            raise ServiceUnavailable("runtime release authority mode conflicts with prior binding")
+        for cycle in self._cycles:
+            item = self._documents[cycle.racing_day_id]
+            declared_mode = item.get("mode")
+            try:
+                cycle.__post_init__()
+            except ValueError as error:
+                raise ServiceUnavailable(
+                    "runtime cycle mode and terminal phase are internally inconsistent"
+                ) from error
+            expected_mode = (
+                _RESULT_BLIND_MODE
+                if cycle.terminal_phase == "deferred_prediction"
+                else _COMPLETE_MODE
+            )
+            if declared_mode is not None and declared_mode != expected_mode:
+                raise ServiceUnavailable(
+                    "runtime cycle mode and terminal phase are internally inconsistent"
+                )
+            if declared_mode is None and expected_mode != _COMPLETE_MODE:
+                raise ServiceUnavailable(
+                    "runtime cycle mode and terminal phase are internally inconsistent"
+                )
+            if mode == "observation" and (
+                declared_mode != _RESULT_BLIND_MODE
+                or cycle.terminal_phase != "deferred_prediction"
+                or tuple(command.phase for command in cycle.commands)
+                != RaceCollectionService.ORDER[:5]
+            ):
+                raise ServiceUnavailable(
+                    "observation authority requires explicit result-blind runtime mode"
+                )
+        self._release_authority_mode = mode
 
     def _verify_registered_forecast_cohorts(
         self,
@@ -667,6 +712,8 @@ class ImmutableInputRuntimeAdapter:
     def next_cycle(self, *, now: datetime) -> RacingDayCycle | None:
         if self._closed:
             raise ServiceUnavailable("runtime adapter is closed")
+        if self._release_authority_mode not in {"active", "observation"}:
+            raise ServiceUnavailable("runtime adapter release authority is unbound")
         with self._store._connect() as db:
             for cycle in self._cycles:
                 day = db.execute(
