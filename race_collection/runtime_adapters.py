@@ -325,7 +325,10 @@ class ImmutableInputRuntimeAdapter:
         self._cycles = tuple(cycle for cycle, _ in parsed)
         self._documents = {cycle.racing_day_id: item for cycle, item in parsed}
         self._verify_release_and_sources(configuration, document)
-        self._verify_registered_forecast_cohorts(document)
+        self._verify_registered_forecast_cohorts(
+            document,
+            configuration.bundle_versions,
+        )
         self._verify_external_artifacts(document)
 
     def _verify_release_and_sources(
@@ -547,8 +550,13 @@ class ImmutableInputRuntimeAdapter:
         _datetime(item["opened_at"], "opened_at")
         return cycle, item
 
-    def _verify_registered_forecast_cohorts(self, document: Mapping[str, Any]) -> None:
+    def _verify_registered_forecast_cohorts(
+        self,
+        document: Mapping[str, Any],
+        release_bundle_versions: Sequence[str],
+    ) -> None:
         """Authenticate champion and challenger registry identities before receipt one."""
+        release_contracts = set(release_bundle_versions)
         try:
             with self._store._connect() as db:
                 for cycle in document["cycles"]:
@@ -576,7 +584,8 @@ class ImmutableInputRuntimeAdapter:
                         )
                     for member in cohort["members"]:
                         bundle = db.execute(
-                            "SELECT created_at FROM canonical_model_bundles "
+                            "SELECT created_at,forecast_contract_version "
+                            "FROM canonical_model_bundles "
                             "WHERE bundle_id=? AND bundle_checksum=?",
                             (member["bundle_id"], member["bundle_checksum"]),
                         ).fetchone()
@@ -588,11 +597,13 @@ class ImmutableInputRuntimeAdapter:
                         if (
                             bundle is None
                             or len(components) != 9
+                            or bundle["forecast_contract_version"] not in release_contracts
                             or _datetime(bundle["created_at"], "bundle registration time")
                             >= _datetime(cycle["at"], "cycle time")
                         ):
                             raise ServiceUnavailable(
-                                f"runtime {member['role']} is not exactly registered"
+                                f"runtime {member['role']} is not exactly registered "
+                                "for the configured release"
                             )
                         self._artifacts.verify(ArtifactChecksum(member["bundle_checksum"]))
                         for component in components:

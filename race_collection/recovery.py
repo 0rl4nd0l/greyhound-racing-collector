@@ -137,6 +137,7 @@ class RecoveryAuthority:
             "backup": backup_id,
             "day": racing_day_id,
             "snapshot": str(snapshot_path.resolve()),
+            "replica": str(replica.root.resolve()),
             "at": iso_timestamp(at),
         }
         with self.store._connect() as existing:
@@ -273,22 +274,17 @@ class RecoveryAuthority:
             "drill": drill_id,
             "backup": backup_id,
             "snapshot": str(snapshot_path.resolve()),
+            "replica": str(replica.root.resolve()),
             "at": iso_timestamp(at),
         }
         with self.store._operation(operation_id, "phase7_restore_drill", payload) as (db, replay):
-            if replay:
-                return bool(
-                    db.execute(
-                        "SELECT successful FROM phase7_restore_drills WHERE operation_id=?",
-                        (str(operation_id),),
-                    ).fetchone()[0]
-                )
             backup = db.execute(
                 "SELECT * FROM phase7_backups WHERE backup_id=?", (backup_id,)
             ).fetchone()
             database_ok = (
                 backup is not None
-                and snapshot_path.exists()
+                and snapshot_path.is_file()
+                and not snapshot_path.is_symlink()
                 and str(_digest(snapshot_path.read_bytes())) == backup["database_checksum"]
                 and backup["artifact_reference_contract"] == ARTIFACT_REFERENCE_CONTRACT
             )
@@ -344,6 +340,25 @@ class RecoveryAuthority:
                     if recovered is not None:
                         recovered.close()
             successful = database_ok and artifacts_ok and readable
+            if replay:
+                recorded = db.execute(
+                    "SELECT database_verified,artifacts_verified,"
+                    "application_readable,successful "
+                    "FROM phase7_restore_drills WHERE operation_id=?",
+                    (str(operation_id),),
+                ).fetchone()
+                if recorded is None:
+                    raise RecoveryRejected("restore replay lacks its durable drill")
+                recorded_flags = tuple(recorded)
+                if recorded_flags[-1] and recorded_flags != (1, 1, 1, 1):
+                    raise RecoveryRejected("restore replay has inconsistent durable proof")
+                if not recorded_flags[-1]:
+                    return False
+                if not successful:
+                    raise RecoveryRejected(
+                        "restore replay no longer proves current isolated recovery"
+                    )
+                return True
             db.execute(
                 "INSERT INTO phase7_restore_drills VALUES(?,?,?,?,?,?,?,?)",
                 (

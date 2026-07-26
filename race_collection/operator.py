@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sqlite3
 import sys
@@ -85,15 +86,25 @@ def _database_paths(
     return operations, legacy
 
 
-def _schema_versions(store: SQLiteOperationsStore) -> list[int]:
+def _verify_schema_identity(store: SQLiteOperationsStore) -> None:
     try:
         with store._connect() as db:
-            return [
-                row[0]
-                for row in db.execute("SELECT version FROM schema_migrations ORDER BY version")
+            recorded = [
+                tuple(row)
+                for row in db.execute(
+                    "SELECT version,checksum FROM schema_migrations ORDER BY version"
+                )
             ]
-    except sqlite3.Error as error:
+        expected = [
+            (version, hashlib.sha256(content).hexdigest())
+            for version, _, content in store._migration_scripts()
+        ]
+    except (OSError, sqlite3.Error) as error:
         raise OperatorRejected("operations database schema authority is unavailable") from error
+    if recorded != expected or [version for version, _ in recorded] != list(range(1, 30)):
+        raise OperatorRejected(
+            "operations database must have the exact checked-in schema 1-29 identity"
+        )
 
 
 def _store(args: argparse.Namespace, *, allow_new: bool = False) -> SQLiteOperationsStore:
@@ -103,8 +114,8 @@ def _store(args: argparse.Namespace, *, allow_new: bool = False) -> SQLiteOperat
         allow_new_operations=allow_new,
     )
     store = SQLiteOperationsStore(operations)
-    if not allow_new and _schema_versions(store) != list(range(1, 30)):
-        raise OperatorRejected("operations database must be exactly migrated through schema 29")
+    if not allow_new:
+        _verify_schema_identity(store)
     return store
 
 
@@ -230,11 +241,10 @@ def _operation(value: str) -> OperationId:
 
 def _authority(
     args: argparse.Namespace,
-    at: datetime,
 ) -> tuple[SQLiteOperationsStore, LocalArtifactStore, OperationalAuthority]:
     store = _store(args)
     artifacts = _artifacts(args)
-    return store, artifacts, OperationalAuthority(store, artifacts, clock=lambda: at)
+    return store, artifacts, OperationalAuthority(store, artifacts)
 
 
 def _add_databases(parser: argparse.ArgumentParser) -> None:
@@ -343,7 +353,14 @@ def _recovery_paths(
     )
     if args.snapshot.is_symlink():
         raise OperatorRejected("isolated snapshot must not be a symlink")
-    if snapshot in {store.path.resolve(), args.legacy_db.resolve()}:
+    database_paths = (store.path.resolve(), args.legacy_db.resolve(strict=True))
+    try:
+        database_alias = snapshot_must_exist and any(
+            snapshot.samefile(database) for database in database_paths
+        )
+    except OSError as error:
+        raise OperatorRejected("database and snapshot identities cannot be compared") from error
+    if snapshot in set(database_paths) or database_alias:
         raise OperatorRejected("isolated snapshot must not alias either database")
     if not snapshot_must_exist and not snapshot.parent.is_dir():
         raise OperatorRejected("isolated snapshot parent must already exist")
@@ -365,8 +382,7 @@ def _dispatch(args: argparse.Namespace) -> tuple[Mapping[str, Any], int]:
     if args.command == "migrate":
         store = _store(args, allow_new=True)
         store.migrate()
-        if _schema_versions(store) != list(range(1, 30)):
-            raise OperatorRejected("migration did not produce the exact schema 1-29 chain")
+        _verify_schema_identity(store)
         return {"command": "migrate", "schema_version": 29, "status": "ok"}, 0
 
     if args.command == "generate-user-service":
@@ -382,7 +398,7 @@ def _dispatch(args: argparse.Namespace) -> tuple[Mapping[str, Any], int]:
 
     at = _timestamp(args.at)
     operation_id = _operation(args.operation_id)
-    store, artifacts, authority = _authority(args, at)
+    store, artifacts, authority = _authority(args)
     base = {
         "command": args.command,
         "operation_id": str(operation_id),

@@ -71,6 +71,29 @@ def test_migrate_rejects_legacy_and_non_operations_databases_and_ends_at_29(tmp_
         assert db.execute(
             "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
         ).fetchall() == [("race_metadata",)]
+    with sqlite3.connect(operations) as db:
+        db.execute(
+            "UPDATE schema_migrations SET checksum=? WHERE version=29",
+            ("0" * 64,),
+        )
+    assert (
+        main(
+            [
+                "register-policy",
+                *common(operations, legacy),
+                "--artifacts-root",
+                str(tmp_path / "artifacts"),
+                "--document",
+                str(tmp_path / "missing-policy.json"),
+                "--operation-id",
+                operation(99),
+                "--at",
+                NOW.isoformat(),
+            ]
+        )
+        == 2
+    )
+    assert "exact checked-in schema" in capsys.readouterr().err
 
 
 def test_registration_and_observation_commands_preserve_exact_immutable_authority(tmp_path, capsys):
@@ -278,7 +301,7 @@ def test_registration_and_observation_commands_preserve_exact_immutable_authorit
                 "--configuration-document",
                 str(configuration),
                 "--config-path",
-                "/absolute/authority/configuration.json",
+                str(configuration),
                 "--python-executable",
                 sys.executable,
             ]
@@ -292,6 +315,27 @@ def test_registration_and_observation_commands_preserve_exact_immutable_authorit
     assert f"ExecStart={sys.executable} " in unit
     assert "WantedBy=default.target" in unit
     assert "timer" not in unit
+    different_configuration = write_document(
+        tmp_path / "different-configuration.json",
+        {"not": "the authenticated configuration"},
+    )
+    assert (
+        main(
+            [
+                "generate-user-service",
+                "--release-document",
+                str(release),
+                "--configuration-document",
+                str(configuration),
+                "--config-path",
+                str(different_configuration),
+                "--python-executable",
+                sys.executable,
+            ]
+        )
+        == 2
+    )
+    assert "configuration bytes disagree" in capsys.readouterr().err
 
 
 def test_transition_and_recovery_commands_preserve_explicit_cli_identities(
@@ -309,6 +353,7 @@ def test_transition_and_recovery_commands_preserve_explicit_cli_identities(
 
     def activate(self, operation_id, **arguments):
         calls["activate"] = (self.store.path, str(operation_id), arguments)
+        calls["activate_clock"] = self._OperationalAuthority__clock()
         return True
 
     def rollback(self, operation_id, **arguments):
@@ -338,6 +383,7 @@ def test_transition_and_recovery_commands_preserve_explicit_cli_identities(
     monkeypatch.setattr("race_collection.operator.RecoveryAuthority.backup", backup)
     monkeypatch.setattr("race_collection.operator.RecoveryAuthority.restore_drill", restore)
 
+    trusted_window_start = datetime.now(timezone.utc)
     assert (
         main(
             [
@@ -359,6 +405,7 @@ def test_transition_and_recovery_commands_preserve_explicit_cli_identities(
         )
         == 0
     )
+    trusted_window_end = datetime.now(timezone.utc)
     assert (
         main(
             [
@@ -407,6 +454,26 @@ def test_transition_and_recovery_commands_preserve_explicit_cli_identities(
     )
     snapshot.write_bytes(b"isolated snapshot fixture")
     replica.mkdir()
+    for offset, database in enumerate((operations, legacy), 30):
+        alias = isolated / f"database-alias-{offset}.sqlite3"
+        alias.hardlink_to(database)
+        alias_recovery = list(recovery)
+        alias_recovery[alias_recovery.index("--snapshot") + 1] = str(alias)
+        assert (
+            main(
+                [
+                    "validate-restore",
+                    *alias_recovery,
+                    "--drill-id",
+                    f"alias-drill-{offset}",
+                    "--operation-id",
+                    operation(offset),
+                    "--at",
+                    NOW.isoformat(),
+                ]
+            )
+            == 2
+        )
     assert (
         main(
             [
@@ -434,6 +501,8 @@ def test_transition_and_recovery_commands_preserve_explicit_cli_identities(
             "at": NOW,
         },
     )
+    assert trusted_window_start <= calls["activate_clock"] <= trusted_window_end
+    assert calls["activate_clock"] != NOW
     assert calls["rollback"] == (
         operations,
         operation(21),

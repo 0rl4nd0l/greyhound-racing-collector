@@ -48,7 +48,8 @@ A fresh preflight must prove all of the following from current state:
    supplied operations path is not the same file, symlink target, or hard link,
    and its parent already exists.
 4. The operations store is either new or already contains the exact schema
-   chain 1--29. It is never inferred from filename or recency.
+   chain 1--29 with the checked-in migration checksums. It is never inferred
+   from filename or recency.
 5. Canonical policy, configuration, candidate release and preserved legacy
    release documents are byte-canonical JSON and mutually consistent. The
    configuration names the exact operations database, artifact root, runtime
@@ -156,7 +157,9 @@ Generate—but do not install—the user-service content:
 ```
 
 The command prints canonical JSON containing one `race-collection.service`
-unit. It performs no systemd write and emits no timer.
+unit. The `--config-path` file must exist as a regular non-symlink file with
+bytes exactly equal to the authenticated configuration document. The command
+performs no systemd write and emits no timer.
 
 Create a backup and validate only an isolated restore:
 
@@ -187,6 +190,14 @@ Create a backup and validate only an isolated restore:
 An exact backup replay returns the recorded checksum only when the isolated
 snapshot bytes still match. Restore validation never copies the snapshot over
 either the operations database or the legacy database.
+
+The existing recovery authority permits backup only for a Racing Day with
+complete zero-mismatch reconciliation. A result-blind day stops at receipt 5
+and intentionally cannot satisfy that prerequisite. These backup and restore
+commands are therefore usable only when the separate operations store already
+contains another fully reconciled day. Otherwise recovery proof is
+`DATA_MISSING`: do not run the command against the result-blind day and do not
+weaken or bypass the reconciliation gate.
 
 ## Rollback boundaries
 
@@ -221,6 +232,33 @@ boundary gates pass. It atomically consumes observation authority and changes
 the operations-store pointer; it does not touch the legacy database or stop the
 legacy service. `rollback` reverses only that pointer to the initialized legacy
 release. Neither command installs, starts, stops or restarts a service.
+
+The exact future syntax is shown only to define the interface. It is inert in
+this repository-readiness change and requires separate cutover authorization.
+The authority uses its trusted current clock for the prospective boundary;
+caller-supplied `--at` cannot backdate that decision.
+
+```bash
+/absolute/release/bin/race-collection-operator activate \
+  --operations-db /absolute/operations/race_collection_operations.sqlite3 \
+  --legacy-db /absolute/legacy/greyhound_racing_data.db \
+  --artifacts-root /absolute/operations/artifacts \
+  --release-id candidate-release \
+  --boundary-day-id day_00000000000000000000000000000000 \
+  --actor authorized-operator \
+  --reason "separately authorized prospective cutover" \
+  --operation-id op_00000000000000000000000000000010 \
+  --at 2026-07-26T00:00:09+00:00
+
+/absolute/release/bin/race-collection-operator rollback \
+  --operations-db /absolute/operations/race_collection_operations.sqlite3 \
+  --legacy-db /absolute/legacy/greyhound_racing_data.db \
+  --artifacts-root /absolute/operations/artifacts \
+  --actor authorized-operator \
+  --reason "separately authorized exact legacy-pointer rollback" \
+  --operation-id op_00000000000000000000000000000011 \
+  --at 2026-07-26T00:00:10+00:00
+```
 
 Stop and retain evidence if any result-blind cycle has a non-contiguous prefix,
 an ordinal above 5, a result read, a result/join/training/evaluation/promotion

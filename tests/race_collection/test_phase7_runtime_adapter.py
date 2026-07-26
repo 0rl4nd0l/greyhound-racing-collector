@@ -22,6 +22,7 @@ from race_collection.domain import (
 from race_collection.evaluation import EvaluationAuthority, PromotionPolicy
 from race_collection.forecasting import ForecastingAuthority, LegacyBundle, ModelRelease
 from race_collection.model_bundle import (
+    SUPPORTED_FORECAST_CONTRACT,
     BundleComponent,
     CanonicalBundle,
     ModelBundleAuthority,
@@ -403,7 +404,14 @@ def _register_serving_authority(store, artifacts, day_id):
     return bundle, challenger, assignment
 
 
-def _runtime_fixture(tmp_path, *, result_blind=False, unregistered_role=None):
+def _runtime_fixture(
+    tmp_path,
+    *,
+    result_blind=False,
+    unregistered_role=None,
+    release_bundle_versions=None,
+    first_cohort_role=None,
+):
     store = SQLiteOperationsStore(tmp_path / "operations.sqlite3")
     store.migrate()
     artifacts = LocalArtifactStore(tmp_path / "artifacts")
@@ -648,6 +656,10 @@ def _runtime_fixture(tmp_path, *, result_blind=False, unregistered_role=None):
         member.update(replacement)
         if unregistered_role == "champion":
             cycle["champion"].update(replacement)
+    if first_cohort_role is not None:
+        cycle["forecast_cohort"]["members"].sort(
+            key=lambda member: member["role"] != first_cohort_role
+        )
     runtime_document = {
         "schema_version": "phase7-runtime-input-v1",
         "release_id": "runtime-candidate",
@@ -658,6 +670,11 @@ def _runtime_fixture(tmp_path, *, result_blind=False, unregistered_role=None):
     source_commit = subprocess.check_output(
         ["git", "-C", str(source_root), "rev-parse", "HEAD"], text=True
     ).strip()
+    bundle_versions = (
+        (ORDERED_FINISH_CONTRACT,)
+        if release_bundle_versions is None
+        else tuple(release_bundle_versions)
+    )
     configuration = ReleaseConfiguration(
         "phase7-config-v1",
         str(source_root),
@@ -666,7 +683,7 @@ def _runtime_fixture(tmp_path, *, result_blind=False, unregistered_role=None):
         ("official", "official-card", "official-form", "market", "official-results"),
         "adaptive-odds-v1",
         "phase6-promotion-v1",
-        (ORDERED_FINISH_CONTRACT,),
+        bundle_versions,
         "race_collection.runtime_adapters:checked_in",
         runtime_artifact.checksum,
     )
@@ -688,7 +705,7 @@ def _runtime_fixture(tmp_path, *, result_blind=False, unregistered_role=None):
             29,
             "canonical-artifacts-v1",
             "phase6-promotion-v1",
-            (ORDERED_FINISH_CONTRACT,),
+            bundle_versions,
             configuration.service_root,
         )
 
@@ -805,6 +822,36 @@ def test_adapter_rejects_unregistered_forecast_cohort_before_receipt_one(
         )
     assert isinstance(rejected.value.__cause__, ServiceUnavailable)
     assert "registered" in str(rejected.value.__cause__)
+    with store._connect() as db:
+        assert (
+            db.execute("SELECT count(*) FROM phase7_application_command_receipts").fetchone()[0]
+            == 0
+        )
+
+
+@pytest.mark.parametrize("role", ["champion", "challenger"])
+def test_adapter_rejects_registered_cohort_contract_excluded_by_release_before_receipt_one(
+    tmp_path, monkeypatch, role
+):
+    store, _, config_path, _, _ = _runtime_fixture(
+        tmp_path,
+        release_bundle_versions=(SUPPORTED_FORECAST_CONTRACT,),
+        first_cohort_role=role,
+    )
+    monkeypatch.setattr(
+        "race_collection.service.verify_release_source_identity",
+        lambda *_args, **_kwargs: None,
+    )
+    with pytest.raises(ServiceUnavailable, match="composition failed") as rejected:
+        compose(
+            config_path,
+            owner="release-contract-preflight",
+            token="release-contract-preflight",
+            lease_ttl=timedelta(seconds=30),
+        )
+    assert isinstance(rejected.value.__cause__, ServiceUnavailable)
+    assert f"runtime {role}" in str(rejected.value.__cause__)
+    assert "configured release" in str(rejected.value.__cause__)
     with store._connect() as db:
         assert (
             db.execute("SELECT count(*) FROM phase7_application_command_receipts").fetchone()[0]

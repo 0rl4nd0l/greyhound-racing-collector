@@ -3039,9 +3039,22 @@ class OperationalAuthority:
         config_path: str,
         python_executable: str,
     ) -> Mapping[str, str]:
-        if not Path(config_path).is_absolute():
+        configuration_path = Path(config_path)
+        if not configuration_path.is_absolute():
             raise ValueError("config path must be absolute")
         _safe_operational_path(config_path)
+        if configuration_path.is_symlink() or not configuration_path.is_file():
+            raise OperationalRejected(
+                "service configuration must be an existing regular non-symlink file"
+            )
+        try:
+            configuration_bytes = configuration_path.read_bytes()
+        except OSError as error:
+            raise OperationalRejected("service configuration is unreadable") from error
+        if configuration_bytes != _canonical(configuration.document()):
+            raise OperationalRejected(
+                "service configuration bytes disagree with the authenticated configuration"
+            )
         python_path = Path(python_executable)
         if (
             not python_path.is_absolute()
