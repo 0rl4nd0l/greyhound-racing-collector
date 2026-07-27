@@ -25,6 +25,18 @@ forward-sealed promotion evidence. No production corpus was available or
 copied, so tests use small realistic synthetic records and demonstrate
 capability, not production-corpus readiness.
 
+`race_collection.source_admission` is the pure no-write gate for that later
+bootstrap decision. It accepts only an explicitly supplied, SHA-256-bound
+historical package; replays its source bytes through the production
+`sealed-race-features-v1` schema and complete optional-feature imputation
+policy; and verifies sorted source-native race/runner identities, official
+results, feature matrices, immutable example artifacts, and timezone-aware
+pre-result ordering. Its canonical admitted manifest classifies genuine input
+as `legacy-historical-bootstrap-v1`, sets `forward_sealed: false`, and keeps it
+ineligible as forward promotion evidence. Reordered race inputs produce the
+same bytes. Synthetic packages return `VALIDATION_ONLY`; they cannot establish
+production readiness or authorize training.
+
 `race_collection.ordered_finish` is the versioned
 `plackett-luce-ordered-finish-v1` contract. It converts bundle-produced finite
 latent runner strengths into one numerically stable sequential distribution.
