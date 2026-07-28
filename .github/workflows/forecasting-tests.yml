@@ -10,41 +10,133 @@ permissions:
   contents: read
 
 jobs:
-  forecasting-suite:
+  classify:
+    name: forecasting-change-classifier
+    runs-on: ubuntu-latest
+    outputs:
+      tier: ${{ steps.classify.outputs.tier }}
+      reason: ${{ steps.classify.outputs.reason }}
+
+    steps:
+      - name: Check out exact pull-request head with history
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Validate classifier contract
+        run: python3 tests/ci/test_forecasting_change_classifier.py
+
+      - name: Classify changed paths
+        id: classify
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            python3 scripts/ci/classify_forecasting_changes.py \
+              --base "$BASE_SHA" \
+              --head "$HEAD_SHA" \
+              --github-output "$GITHUB_OUTPUT"
+          else
+            python3 scripts/ci/classify_forecasting_changes.py \
+              --force-full \
+              --github-output "$GITHUB_OUTPUT"
+          fi
+
+      - name: Summarize classification
+        env:
+          CLASSIFICATION_REASON: ${{ steps.classify.outputs.reason }}
+          FORECASTING_TIER: ${{ steps.classify.outputs.tier }}
+        run: |
+          {
+            echo "### Forecasting change classification"
+            echo
+            echo "- Tier: \`$FORECASTING_TIER\`"
+            echo "- Reason: \`$CLASSIFICATION_REASON\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  forecasting-gate:
     name: tests-race-collection
+    needs: classify
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 120
 
     steps:
+      - name: Enforce trustworthy classification
+        if: >-
+          needs.classify.result != 'success' ||
+          !contains(fromJSON('["full_forecasting","manual_prediction","non_forecasting"]'),
+          needs.classify.outputs.tier)
+        env:
+          CLASSIFIER_RESULT: ${{ needs.classify.result }}
+          FORECASTING_TIER: ${{ needs.classify.outputs.tier }}
+        run: |
+          echo "Change classification did not produce a trusted tier."
+          echo "classifier_result=$CLASSIFIER_RESULT tier=$FORECASTING_TIER"
+          exit 1
+
+      - name: No forecasting contracts changed
+        if: needs.classify.outputs.tier == 'non_forecasting'
+        run: |
+          echo "No forecasting-relevant paths changed; full and focused suites skipped."
+
       - name: Check out exact pull-request head
+        if: >-
+          needs.classify.outputs.tier == 'full_forecasting' ||
+          needs.classify.outputs.tier == 'manual_prediction'
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Python 3.13
+        if: >-
+          needs.classify.outputs.tier == 'full_forecasting' ||
+          needs.classify.outputs.tier == 'manual_prediction'
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
       - name: Set up uv
+        if: >-
+          needs.classify.outputs.tier == 'full_forecasting' ||
+          needs.classify.outputs.tier == 'manual_prediction'
         uses: astral-sh/setup-uv@v6
 
-      - name: Run complete forecasting suite
+      - name: Run selected forecasting suite
+        if: >-
+          needs.classify.outputs.tier == 'full_forecasting' ||
+          needs.classify.outputs.tier == 'manual_prediction'
         id: forecasting
         continue-on-error: true
+        env:
+          FORECASTING_TIER: ${{ needs.classify.outputs.tier }}
         shell: bash
         run: |
           set -o pipefail
           evidence_dir="${RUNNER_TEMP}/forecasting-acceptance-${GITHUB_RUN_ID}"
           mkdir -p "$evidence_dir"
-          uv run --no-project --with-requirements requirements/all.in \
-            python -m pytest -q --noconftest tests/race_collection \
-            2>&1 | tee "$evidence_dir/forecasting-suite.log"
+          if [[ "$FORECASTING_TIER" == "full_forecasting" ]]; then
+            uv run --no-project --with-requirements requirements/all.in \
+              python -m pytest -q --noconftest tests/race_collection
+          else
+            uv run --no-project --with-requirements requirements/all.in \
+              python -m pytest -q --noconftest \
+              tests/test_predict_race_now.py \
+              tests/test_predict_market_form_residual.py
+          fi 2>&1 | tee "$evidence_dir/forecasting-suite.log"
 
       - name: Bind validation evidence to exact commit and tree
-        if: always()
+        if: >-
+          always() &&
+          (needs.classify.outputs.tier == 'full_forecasting' ||
+          needs.classify.outputs.tier == 'manual_prediction')
         env:
           EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          FORECASTING_TIER: ${{ needs.classify.outputs.tier }}
           SUITE_OUTCOME: ${{ steps.forecasting.outcome }}
         shell: bash
         run: |
@@ -61,12 +153,22 @@ jobs:
               / f"forecasting-acceptance-{os.environ['GITHUB_RUN_ID']}"
           )
           log = evidence_dir / "forecasting-suite.log"
-          evidence = {
-              "schema_version": "forecasting-ci-attestation-v1",
-              "command": (
+          commands = {
+              "full_forecasting": (
                   "uv run --no-project --with-requirements requirements/all.in "
                   "python -m pytest -q --noconftest tests/race_collection"
               ),
+              "manual_prediction": (
+                  "uv run --no-project --with-requirements requirements/all.in "
+                  "python -m pytest -q --noconftest "
+                  "tests/test_predict_race_now.py "
+                  "tests/test_predict_market_form_residual.py"
+              ),
+          }
+          evidence = {
+              "schema_version": "forecasting-ci-attestation-v1",
+              "tier": os.environ["FORECASTING_TIER"],
+              "command": commands[os.environ["FORECASTING_TIER"]],
               "outcome": os.environ["SUITE_OUTCOME"],
               "event_sha": os.environ["GITHUB_SHA"],
               "expected_head": os.environ["EXPECTED_HEAD"],
@@ -89,7 +191,10 @@ jobs:
           PY
 
       - name: Upload exact-head validation evidence
-        if: always()
+        if: >-
+          always() &&
+          (needs.classify.outputs.tier == 'full_forecasting' ||
+          needs.classify.outputs.tier == 'manual_prediction')
         uses: actions/upload-artifact@v4
         with:
           name: forecasting-acceptance-${{ github.run_id }}
@@ -99,5 +204,8 @@ jobs:
             ${{ runner.temp }}/forecasting-acceptance-${{ github.run_id }}/forecasting-ci-attestation.json
 
       - name: Enforce forecasting acceptance gate
-        if: steps.forecasting.outcome != 'success'
+        if: >-
+          (needs.classify.outputs.tier == 'full_forecasting' ||
+          needs.classify.outputs.tier == 'manual_prediction') &&
+          steps.forecasting.outcome != 'success'
         run: exit 1
