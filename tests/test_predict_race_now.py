@@ -305,6 +305,14 @@ def args(tmp_path: Path, **overrides: Any) -> argparse.Namespace:
     return argparse.Namespace(**values)
 
 
+def config_with_lock_wait(tmp_path: Path, value: Any) -> Path:
+    config = json.loads(Path("configs/prediction/manual-default.json").read_bytes())
+    config["bundle"]["lock_wait_seconds"] = value
+    path = tmp_path / "prediction-config.json"
+    path.write_bytes(canonical_bytes(config))
+    return path
+
+
 def test_master_packet_adapter_reuses_pr56_validated_handoff(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
@@ -833,23 +841,186 @@ def test_busy_collector_may_complete_receipt_during_bounded_wait(tmp_path: Path)
     assert calls["discover"] == 3
 
 
-def test_busy_without_receipt_returns_smallest_blocker(tmp_path: Path):
-    clock = {"value": 0.0}
+def test_zero_lock_wait_returns_immediate_busy_with_wait_evidence(tmp_path: Path):
+    sleeps: list[float] = []
+    calls = {"discover": 0}
+
+    def discover(**kwargs: Any) -> Mapping[str, Any] | None:
+        calls["discover"] += 1
+        return handoff() if calls["discover"] > 1 else None
+
+    with pytest.raises(PredictionBlocked, match="BUSY") as captured:
+        run_prediction(
+            args(
+                tmp_path,
+                config=config_with_lock_wait(tmp_path, 0),
+            ),
+            dependencies(
+                discover=discover,
+                acquire=lambda: (_ for _ in ()).throw(Busy()),
+                monotonic=lambda: 50.0,
+                sleep=sleeps.append,
+            ),
+        )
+
+    assert captured.value.code == "BUSY"
+    assert captured.value.details["lock_details"] == {"owner": "collector"}
+    assert captured.value.details["lock_wait_elapsed_seconds"] == 0.0
+    assert captured.value.details["lock_wait_limit_seconds"] == 0.0
+    assert calls["discover"] == 1
+    assert sleeps == []
+
+
+def test_lock_released_within_deadline_proceeds_once(tmp_path: Path):
+    clock = {"value": 20.0}
+    calls = {"acquire": 0, "release": 0, "fetch": 0, "score": 0}
+
+    def acquire() -> str:
+        calls["acquire"] += 1
+        if calls["acquire"] == 1:
+            raise Busy()
+        return "lock"
 
     def sleep(seconds: float) -> None:
         clock["value"] += seconds
 
+    deps = dependencies(
+        discover=lambda **kwargs: None,
+        acquire=acquire,
+        release=lambda handle: calls.__setitem__("release", calls["release"] + 1),
+        monotonic=lambda: clock["value"],
+        sleep=sleep,
+    )
+    original_fetch = deps.fetch_odds
+    original_score = deps.score_residual
+
+    def fetch(*call_args: Any, **call_kwargs: Any) -> Mapping[str, Any]:
+        calls["fetch"] += 1
+        return original_fetch(*call_args, **call_kwargs)
+
+    def score(**call_kwargs: Any) -> Mapping[str, Any]:
+        calls["score"] += 1
+        return original_score(**call_kwargs)
+
+    deps.fetch_odds = fetch
+    deps.score_residual = score
+
+    result = run_prediction(
+        args(
+            tmp_path,
+            odds_source="capture",
+            config=config_with_lock_wait(tmp_path, 5),
+        ),
+        deps,
+    )
+
+    assert result["status"] == "PREDICTION_READY"
+    assert calls == {"acquire": 2, "release": 1, "fetch": 1, "score": 1}
+
+
+def test_busy_lock_held_to_deadline_returns_wait_evidence(tmp_path: Path):
+    clock = {"value": 0.0}
+    calls = {"acquire": 0}
+
+    def sleep(seconds: float) -> None:
+        clock["value"] += seconds
+
+    def acquire() -> None:
+        calls["acquire"] += 1
+        raise Busy()
+
     with pytest.raises(PredictionBlocked, match="BUSY") as captured:
         run_prediction(
-            args(tmp_path),
+            args(
+                tmp_path,
+                odds_source="capture",
+                config=config_with_lock_wait(tmp_path, 2),
+            ),
             dependencies(
                 discover=lambda **kwargs: None,
-                acquire=lambda: (_ for _ in ()).throw(Busy()),
+                acquire=acquire,
                 monotonic=lambda: clock["value"],
                 sleep=sleep,
             ),
         )
     assert captured.value.code == "BUSY"
+    assert captured.value.details["lock_wait_elapsed_seconds"] == 2.0
+    assert captured.value.details["lock_wait_limit_seconds"] == 2.0
+    assert calls["acquire"] == 2
+
+
+def test_monotonic_deadline_prevents_acquire_at_deadline(tmp_path: Path):
+    clock = {"value": 100.0}
+    calls = {"acquire": 0, "now": 0}
+
+    def acquire() -> str:
+        calls["acquire"] += 1
+        if calls["acquire"] <= 2:
+            raise Busy()
+        return "lock"
+
+    def sleep(seconds: float) -> None:
+        clock["value"] += seconds
+
+    def wall_now() -> datetime:
+        calls["now"] += 1
+        return NOW
+
+    with pytest.raises(PredictionBlocked, match="BUSY") as captured:
+        run_prediction(
+            args(
+                tmp_path,
+                odds_source="capture",
+                config=config_with_lock_wait(tmp_path, 2),
+            ),
+            dependencies(
+                discover=lambda **kwargs: None,
+                acquire=acquire,
+                now=wall_now,
+                monotonic=lambda: clock["value"],
+                sleep=sleep,
+            ),
+        )
+
+    assert captured.value.details["lock_wait_elapsed_seconds"] == 2.0
+    assert calls == {"acquire": 2, "now": 0}
+
+
+def test_race_becoming_post_jump_while_waiting_stops_before_reacquire(
+    tmp_path: Path,
+):
+    clock = {"value": 0.0}
+    calls = {"acquire": 0}
+
+    def acquire() -> None:
+        calls["acquire"] += 1
+        raise Busy()
+
+    def sleep(seconds: float) -> None:
+        clock["value"] += seconds
+
+    deps = dependencies(
+        discover=lambda **kwargs: None,
+        acquire=acquire,
+        monotonic=lambda: clock["value"],
+        sleep=sleep,
+    )
+    deps.schedule = lambda days: [race("12:01")]
+
+    with pytest.raises(PredictionBlocked, match="POST_JUMP") as captured:
+        run_prediction(
+            args(
+                tmp_path,
+                odds_source="capture",
+                config=config_with_lock_wait(tmp_path, 10),
+                current_time=(NOW + timedelta(seconds=58)).isoformat(),
+            ),
+            deps,
+        )
+
+    assert captured.value.code == "POST_JUMP"
+    assert captured.value.details["lock_wait_elapsed_seconds"] == 2.0
+    assert calls["acquire"] == 2
 
 
 def test_default_lock_path_never_reclaims_existing_unreadable_lock(tmp_path: Path):
@@ -863,6 +1034,54 @@ def test_default_lock_path_never_reclaims_existing_unreadable_lock(tmp_path: Pat
         )
     assert captured.value.payload["reason"] == "existing_lock_present_no_steal"
     assert lock_path.read_bytes() == original
+
+
+def test_bounded_wait_does_not_mutate_or_interfere_with_lock_owner(tmp_path: Path):
+    lock_path = tmp_path / "collector.lock"
+    original = canonical_bytes({"pid": 1234, "run_id": "scheduled_collector"})
+    lock_path.write_bytes(original)
+    lock_path.chmod(0o640)
+    before = lock_path.stat(follow_symlinks=False)
+    clock = {"value": 0.0}
+
+    def acquire() -> Any:
+        return _acquire_collector_lock_no_steal(
+            lock_path,
+            run_id="on_demand_test",
+            output_dir=tmp_path / "bundle",
+        )
+
+    def sleep(seconds: float) -> None:
+        clock["value"] += seconds
+
+    deps = dependencies(
+        discover=lambda **kwargs: None,
+        acquire=acquire,
+        monotonic=lambda: clock["value"],
+        sleep=sleep,
+    )
+    deps.lock_busy_type = CollectorLockBusy
+
+    with pytest.raises(PredictionBlocked, match="BUSY"):
+        predict_now._acquire_or_reuse(
+            deps,
+            odds_source="capture",
+            evidence_roots=(tmp_path / "evidence",),
+            db_path=tmp_path / "source.db",
+            race_id=RACE_ID,
+            jump=NOW + timedelta(hours=1),
+            current_time=NOW,
+            wait_seconds=2,
+            poll_seconds=1,
+        )
+
+    after = lock_path.stat(follow_symlinks=False)
+    assert lock_path.read_bytes() == original
+    assert (after.st_dev, after.st_ino, after.st_mode) == (
+        before.st_dev,
+        before.st_ino,
+        before.st_mode,
+    )
 
 
 def test_default_dependencies_reject_db_lock_root_mismatch(tmp_path: Path):
@@ -1330,6 +1549,44 @@ def test_nonfinite_config_is_rejected_before_any_prediction_side_effect(
         sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*"))
         == files_before
     )
+
+
+@pytest.mark.parametrize(
+    ("value", "code"),
+    [
+        (-1, "CONFIG_SCHEMA_MISMATCH"),
+        (61, "CONFIG_SCHEMA_MISMATCH"),
+        (True, "CONFIG_SCHEMA_MISMATCH"),
+        ("1", "CONFIG_SCHEMA_MISMATCH"),
+        (float("nan"), "CONFIG_INVALID_JSON"),
+        (float("inf"), "CONFIG_INVALID_JSON"),
+        (float("-inf"), "CONFIG_INVALID_JSON"),
+    ],
+)
+def test_invalid_lock_wait_values_are_rejected(tmp_path: Path, value: Any, code: str):
+    calls = {"schedule": 0}
+    deps = dependencies()
+    deps.schedule = lambda days: calls.__setitem__("schedule", calls["schedule"] + 1)
+
+    with pytest.raises(PredictionBlocked) as captured:
+        run_prediction(
+            args(tmp_path, config=config_with_lock_wait(tmp_path, value)),
+            deps,
+        )
+
+    assert captured.value.code == code
+    assert calls["schedule"] == 0
+
+
+def test_checked_in_lock_wait_default_and_max_are_bounded():
+    for name in ("manual-default.json", "market-only.json"):
+        config = json.loads((Path("configs/prediction") / name).read_bytes())
+        assert config["bundle"]["lock_wait_seconds"] == 30
+
+    for name in ("market_form_residual_v1.schema.json", "market_only_v1.schema.json"):
+        schema = json.loads((Path("configs/prediction/schemas") / name).read_bytes())
+        wait_schema = schema["properties"]["bundle"]["properties"]["lock_wait_seconds"]
+        assert wait_schema == {"maximum": 60, "minimum": 0, "type": "number"}
 
 
 def test_list_configs_is_finite_validated_and_deterministic(
