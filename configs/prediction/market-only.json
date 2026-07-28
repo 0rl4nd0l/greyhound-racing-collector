@@ -1,1 +1,1 @@
-{"bundle":{"lock_wait_seconds":10,"poll_seconds":1,"receipt_max_age_seconds":900},"model":"market_only_v1","schema_version":"on_demand_prediction_config_v1","variant":"market_only_implied"}
+{"bundle":{"lock_wait_seconds":30,"poll_seconds":1,"receipt_max_age_seconds":900},"model":"market_only_v1","schema_version":"on_demand_prediction_config_v1","variant":"market_only_implied"}

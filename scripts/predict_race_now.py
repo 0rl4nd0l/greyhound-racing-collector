@@ -868,29 +868,67 @@ def _acquire_or_reuse(
         if receipt is not None:
             return None, receipt, rejected_receipts
     started = dependencies.monotonic()
+    deadline = started + wait_seconds
+    last_busy: BaseException | None = None
     while True:
+        observed = dependencies.monotonic()
+        elapsed = max(0.0, observed - started)
+        observed_time = current_time + timedelta(seconds=elapsed)
+        if observed_time >= jump:
+            raise PredictionBlocked(
+                "POST_JUMP",
+                race_id=race_id,
+                jump_timestamp=jump.isoformat(),
+                lock_wait_elapsed_seconds=elapsed,
+                lock_wait_limit_seconds=wait_seconds,
+                lock_details=getattr(last_busy, "payload", None),
+            )
+        if last_busy is not None and observed >= deadline:
+            raise PredictionBlocked(
+                "BUSY",
+                lock_details=getattr(last_busy, "payload", None),
+                lock_wait_elapsed_seconds=elapsed,
+                lock_wait_limit_seconds=wait_seconds,
+            ) from last_busy
         try:
             return dependencies.acquire_lock(), None, rejected_receipts
         except dependencies.lock_busy_type as exc:
-            elapsed = dependencies.monotonic() - started
+            last_busy = exc
+            observed = dependencies.monotonic()
+            elapsed = max(0.0, observed - started)
+            observed_time = current_time + timedelta(seconds=elapsed)
+            if observed_time >= jump:
+                raise PredictionBlocked(
+                    "POST_JUMP",
+                    race_id=race_id,
+                    jump_timestamp=jump.isoformat(),
+                    lock_wait_elapsed_seconds=elapsed,
+                    lock_wait_limit_seconds=wait_seconds,
+                    lock_details=getattr(exc, "payload", None),
+                ) from exc
+            remaining = deadline - observed
+            if remaining <= 0:
+                details = getattr(exc, "payload", None)
+                raise PredictionBlocked(
+                    "BUSY",
+                    lock_details=details,
+                    lock_wait_elapsed_seconds=elapsed,
+                    lock_wait_limit_seconds=wait_seconds,
+                ) from exc
             if odds_source == "auto":
-                check_time = current_time + timedelta(seconds=max(0.0, elapsed))
                 receipt = _discover_for_auto(
                     dependencies,
                     evidence_roots=evidence_roots,
                     db_path=db_path,
                     race_id=race_id,
                     jump=jump,
-                    current_time=check_time,
+                    current_time=observed_time,
                     rejected_receipts=rejected_receipts,
                 )
                 if receipt is not None:
                     return None, receipt, rejected_receipts
-            remaining = wait_seconds - elapsed
-            if remaining <= 0:
-                details = getattr(exc, "payload", None)
-                raise PredictionBlocked("BUSY", lock_details=details) from exc
-            dependencies.sleep(min(max(poll_seconds, 0.01), remaining))
+            until_jump = (jump - observed_time).total_seconds()
+            dependencies.sleep(min(max(poll_seconds, 0.01), remaining, until_jump))
 
 
 def _run_prediction(

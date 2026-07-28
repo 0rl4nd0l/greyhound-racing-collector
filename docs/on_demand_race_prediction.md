@@ -36,16 +36,22 @@ always reuse-only and never falls back to collection.
 
 If no reusable receipt exists, the command tries the existing collector lock.
 It never deletes, steals, cancels, or treats a stale lock as permission to
-bypass its owner. While the lock is busy, the bounded config wait can notice a
-receipt completed by the collector. If the wait expires, the command returns
-`BUSY`. With the lock legitimately acquired, it refreshes only the exact race,
-requires master's fixed-window plan to be eligible, fetches and validates
-current Sportsbet WIN and PLACE markets, and writes the accepted capture only
-into the private run bundle. It returns `CAPTURE_WINDOW_UNAVAILABLE` instead of
-waiting when no fixed window is due. The production database is never passed to
-an append path. Before direct capture, the command also requires the lock path
-to be the canonical daemon-lock location under the selected database's
-repository root; a database/lock-root mismatch fails closed.
+bypass its owner. While the lock is busy, the bounded config wait polls the
+same no-steal acquisition path and can also notice a receipt completed by the
+collector. Checked-in configs wait at most 30 seconds by default, poll once per
+second, and enforce a 60-second schema maximum; an explicit
+`lock_wait_seconds: 0` returns immediate `BUSY`. The monotonic wait stops before
+another acquisition at its deadline and stops immediately if the race reaches
+its pre-jump boundary. If the wait expires, `BUSY` includes the elapsed and
+configured limit. With the lock legitimately acquired, the command refreshes
+only the exact race, requires master's fixed-window plan to be eligible,
+fetches and validates current Sportsbet WIN and PLACE markets, and writes the
+accepted capture only into the private run bundle. It returns
+`CAPTURE_WINDOW_UNAVAILABLE` instead of waiting when no fixed window is due.
+The production database is never passed to an append path. Before direct
+capture, the command also requires the lock path to be the canonical
+daemon-lock location under the selected database's repository root; a
+database/lock-root mismatch fails closed.
 
 The exact TheDogs meeting slug remains authoritative during named-race
 selection. Murray Bridge and Murray Bridge Straight therefore remain distinct
