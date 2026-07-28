@@ -37,6 +37,21 @@ ineligible as forward promotion evidence. Reordered race inputs produce the
 same bytes. Synthetic packages return `VALIDATION_ONLY`; they cannot establish
 production readiness or authorize training.
 
+## Prospective forward-sealed collection
+
+`race_collection.forward_sealed_corpus` provides the prospective path for
+creating new authentic evidence instead of reconstructing historical inputs.
+It consumes the existing collector and `EvidenceSealer` artifacts, derives the
+production `sealed-race-features-v1` matrix before jump, and later joins only an
+official result with a source-declared publication timestamp. Raw source and
+result bytes remain separate from normalized records.
+
+A complete `forward-sealed-corpus-v1` package is training-admissible through
+`race_collection.source_admission`, while promotion and production readiness
+remain false. TheDogs observations without an authentic publication timestamp
+are retained in an explicit blocked state and cannot create a training example
+or closed package. See `docs/FORWARD_SEALED_CORPUS_CAPTURE.md`.
+
 `race_collection.ordered_finish` is the versioned
 `plackett-luce-ordered-finish-v1` contract. It converts bundle-produced finite
 latent runner strengths into one numerically stable sequential distribution.
