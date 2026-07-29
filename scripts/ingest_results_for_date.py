@@ -96,13 +96,18 @@ class _SeleniumByFallback:
     CSS_SELECTOR = "css selector"
 
 
-class _StatelessPublicHttpClient:
+class _PersistentPublicHttpClient:
+    def __init__(self):
+        self.session = requests.Session()
+        self.session.trust_env = False
+        self.session.cookies.clear()
+
     def get(self, url: str, **kwargs):
         kwargs.pop("cookies", None)
-        with requests.Session() as session:
-            session.trust_env = False
-            session.cookies.clear()
-            return session.get(url, cookies={}, **kwargs)
+        return self.session.get(url, cookies={}, **kwargs)
+
+    def close(self):
+        self.session.close()
 
 
 VENUE_TO_THEDOGS_SLUG = {
@@ -938,12 +943,34 @@ class TheDogsResultFetcher:
         self.by = by or _SeleniumByFallback
         self.http_session = http_session
         self._meeting_url_cache: Dict[tuple, List[str]] = {}
+        self._warmed_race_dates: set[str] = set()
+
+    def _warm_date_index(self, candidate: RaceCandidate) -> None:
+        if self.http_session is None or candidate.race_date in self._warmed_race_dates:
+            return
+
+        response = None
+        try:
+            response = self.http_session.get(
+                f"{THEDOGS_BASE}/racing/{candidate.race_date}",
+                headers=THEDOGS_PUBLIC_HEADERS,
+                timeout=20,
+                allow_redirects=True,
+            )
+            self._warmed_race_dates.add(candidate.race_date)
+        except Exception:
+            return
+        finally:
+            close = getattr(response, "close", None)
+            if callable(close):
+                close()
 
     def _result_urls(self, candidate: RaceCandidate) -> List[str]:
         slug = candidate.thedogs_slug
         if not slug:
             return []
 
+        self._warm_date_index(candidate)
         urls: List[str] = []
         urls.extend(thedogs_result_urls_from_race_url(candidate.canonical_thedogs_url or ""))
         urls.extend(self._discover_meeting_race_urls(candidate))
@@ -2595,11 +2622,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"Browser fallback unavailable: {browser_error}", file=sys.stderr)
     ingested: List[dict] = []
     failed: List[dict] = []
+    public_http = _PersistentPublicHttpClient()
     try:
         thedogs = TheDogsResultFetcher(
             driver,
             by=By,
-            http_session=_StatelessPublicHttpClient(),
+            http_session=public_http,
         )
         sportsbet = SportsbetResultFetcher(driver, args.date, by=By) if driver else None
 
@@ -2658,6 +2686,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         finally:
             conn.close()
     finally:
+        public_http.close()
         if driver is not None:
             driver.quit()
 
