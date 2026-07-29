@@ -253,6 +253,7 @@ def select_prejump_races(
     max_minutes: float = 160.0,
     limit: int = 0,
     exclude_race_ids: set[str] | None = None,
+    priority_race_id: str | None = None,
 ) -> tuple[list[Mapping[str, Any]], list[dict[str, Any]]]:
     records = [
         race_window_record(
@@ -277,6 +278,11 @@ def select_prejump_races(
             if record["selected"] and race.get("url")
         ),
         key=lambda pair: (
+            0
+            if priority_race_id
+            and priority_race_id
+            in set(pair[1].get("race_id_aliases") or [pair[1].get("race_id")])
+            else 1,
             float(pair[1].get("minutes_to_jump"))
             if isinstance(pair[1].get("minutes_to_jump"), (int, float))
             else float("inf"),
@@ -610,6 +616,7 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
         max_minutes=float(args.max_minutes),
         limit=int(args.limit),
         exclude_race_ids=excluded_race_ids,
+        priority_race_id=getattr(args, "priority_race_id", None),
     )
 
     downloads: list[dict[str, Any]] = []
@@ -645,6 +652,14 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
         "selected_count": len(selected),
         "excluded_race_ids": sorted(excluded_race_ids),
         "excluded_count": sum(1 for record in records if record.get("excluded_reason")),
+        "priority_race_id": getattr(args, "priority_race_id", None),
+        "priority_race_selected": any(
+            getattr(args, "priority_race_id", None)
+            in set(record.get("race_id_aliases") or [record.get("race_id")])
+            for record in selected_records
+        )
+        if getattr(args, "priority_race_id", None)
+        else None,
         "bucket_counts": dict(bucket_counts),
         "next_preferred_window": refresh_timing_summary(
             records,
@@ -682,6 +697,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-minutes", type=float, default=20.0)
     parser.add_argument("--max-minutes", type=float, default=160.0)
     parser.add_argument("--limit", type=int, default=16)
+    parser.add_argument("--priority-race-id")
     parser.add_argument(
         "--exclude-race-id",
         action="append",

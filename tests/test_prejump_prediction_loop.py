@@ -450,6 +450,34 @@ def test_refresh_selection_prioritizes_nearest_due_races_before_limit():
     ]
 
 
+def test_refresh_selection_keeps_exact_manual_request_inside_limit():
+    now = datetime(2026, 5, 29, 13, 0, tzinfo=ZoneInfo("Australia/Melbourne"))
+    races = [
+        {
+            "url": f"https://example.test/r{race_number}",
+            "date": "2026-05-29",
+            "race_time": race_time,
+            "race_number": race_number,
+            "venue": "TEST",
+        }
+        for race_number, race_time in ((1, "1:05 PM"), (2, "1:30 PM"))
+    ]
+
+    selected, records = select_prejump_races(
+        races,
+        now=now,
+        min_minutes=0,
+        max_minutes=60,
+        limit=1,
+        priority_race_id="Race 2 - TEST - 2026-05-29",
+    )
+
+    assert [race["race_number"] for race in selected] == [2]
+    assert next(
+        record for record in records if record["race_number"] == 2
+    )["selection_order"] == 1
+
+
 def test_refresh_timing_summary_reports_next_future_window():
     now = datetime(2026, 5, 29, 13, 0, tzinfo=ZoneInfo("Australia/Melbourne"))
     races = [

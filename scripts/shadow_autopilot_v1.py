@@ -19,6 +19,7 @@ import importlib.util
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -32,6 +33,13 @@ ROOT_STR = str(ROOT)
 sys.path = [path for path in sys.path if path != ROOT_STR]
 sys.path.insert(0, ROOT_STR)
 
+from race_collection.manual_prediction_collector_request import (  # noqa: E402
+    PROTOCOL_DIRECTORY,
+    CollectorRequest,
+    ManualPredictionCollectorProtocol,
+    ProtocolRejected,
+    canonical_bytes,
+)
 from scripts.shadow_feature_audit_packet import feature_activation_gate_input_paths  # noqa: E402
 
 
@@ -610,6 +618,9 @@ def autonomous_live_odds_capture_command(
     limit: int | None,
     execute: bool,
     allow_auto_scrape_odds: bool,
+    manual_request_root: Path | None = None,
+    manual_request_id: str | None = None,
+    collector_run_id: str | None = None,
     command_prefix: Sequence[str] | None = None,
 ) -> list[str]:
     command = list(command_prefix or odds_capture_command_prefix())
@@ -634,6 +645,19 @@ def autonomous_live_odds_capture_command(
         command.append("--execute")
     if allow_auto_scrape_odds:
         command.append("--allow-auto-scrape-odds")
+    if manual_request_id is not None:
+        if manual_request_root is None or collector_run_id is None:
+            raise ValueError("manual_request_collector_authority_missing")
+        command.extend(
+            [
+                "--manual-request-root",
+                str(manual_request_root),
+                "--manual-request-id",
+                manual_request_id,
+                "--collector-run-id",
+                collector_run_id,
+            ]
+        )
     return command
 
 
@@ -6431,6 +6455,141 @@ def final_verdict_for(
     return "AUTOPILOT_READY"
 
 
+def scheduled_collector_authority(
+    evidence_root: Path,
+) -> dict[str, Any] | None:
+    """Prove this process is the direct child of the current shared-lock owner."""
+
+    lock_path = (
+        evidence_root
+        / "shadow_autopilot_daemon_runtime"
+        / "shadow_autopilot.lock"
+    )
+    if lock_path.is_symlink():
+        return None
+    payload = load_json(lock_path)
+    if (
+        not isinstance(payload, Mapping)
+        or payload.get("pid") != os.getppid()
+        or payload.get("hostname") != socket.gethostname()
+        or not payload.get("run_id")
+    ):
+        return None
+    return dict(payload)
+
+
+def prepare_manual_collector_request(
+    *,
+    evidence_root: Path,
+    collector_run_id: str,
+    current_time: datetime,
+    active_capture: bool,
+) -> tuple[ManualPredictionCollectorProtocol, CollectorRequest | None]:
+    protocol = ManualPredictionCollectorProtocol(
+        evidence_root / PROTOCOL_DIRECTORY
+    )
+    context = protocol.prepare_collector_request(
+        now=current_time,
+        collector_run_id=collector_run_id,
+        active_capture=active_capture,
+    )
+    return protocol, context
+
+
+def finalize_manual_collector_request(
+    *,
+    protocol: ManualPredictionCollectorProtocol,
+    context: CollectorRequest,
+    capture_report: Mapping[str, Any] | None,
+    evidence_root: Path,
+    db_path: Path,
+    current_time: datetime,
+) -> dict[str, Any]:
+    existing = protocol.read_response(context.request["request_id"])
+    if existing is not None:
+        return existing
+    attempts = [
+        row
+        for row in (capture_report or {}).get("attempts") or []
+        if isinstance(row, Mapping)
+        and row.get("race_id") == context.request["race"]["race_id"]
+    ]
+    if len(attempts) != 1:
+        status = "IDENTITY_MISMATCH" if len(attempts) > 1 else "CAPTURE_FAILED"
+        return protocol.publish_terminal(
+            context,
+            status=status,
+            now=current_time,
+            reason="collector_exact_attempt_missing_or_ambiguous",
+        )
+    attempt = attempts[0]
+    attempt_status = str(attempt.get("status") or "")
+    if attempt_status not in {"APPENDED", "SKIPPED_ALREADY_CAPTURED"}:
+        reasons = [str(value) for value in attempt.get("reasons") or []]
+        status = (
+            "CAPTURE_WINDOW_CLOSED"
+            if any(
+                "window" in reason
+                or "post_jump" in reason
+                or "time_gate" in reason
+                for reason in reasons
+            )
+            else "IDENTITY_MISMATCH"
+            if any("runner" in reason or "identity" in reason for reason in reasons)
+            else "CAPTURE_FAILED"
+        )
+        return protocol.publish_terminal(
+            context,
+            status=status,
+            now=current_time,
+            reason=f"collector_attempt_terminal:{attempt_status or 'UNKNOWN'}",
+        )
+    try:
+        from scripts.predict_race_now import discover_capture_handoff
+        from src.predictor.on_demand import receipt_from_handoff
+
+        jump = datetime.fromisoformat(
+            str(context.request["race"]["jump_timestamp"])
+        )
+        handoff = discover_capture_handoff(
+            evidence_roots=(evidence_root,),
+            db_path=db_path,
+            race_id=str(context.request["race"]["race_id"]),
+            jump_datetime=jump,
+            capture_window_minutes=int(
+                attempt.get("capture_window_minutes") or 0
+            ),
+            current_time=current_time,
+        )
+        if handoff is None:
+            raise ValueError("sealed_exact_receipt_unavailable")
+        created = datetime.fromisoformat(str(context.request["created_at"]))
+        expires = datetime.fromisoformat(str(context.request["expires_at"]))
+        normalized, _, _, _ = receipt_from_handoff(
+            handoff,
+            current_time=current_time,
+            max_age_seconds=max(1, int((expires - created).total_seconds())),
+        )
+        return protocol.publish_receipt_ready(
+            context,
+            now=current_time,
+            handoff=handoff,
+            normalized_receipt=normalized,
+        )
+    except ProtocolRejected:
+        existing = protocol.read_response(context.request["request_id"])
+        if existing is not None:
+            return existing
+        raise
+    except Exception as exc:
+        return protocol.publish_terminal(
+            context,
+            status="CAPTURE_FAILED",
+            now=current_time,
+            reason=f"sealed_receipt_failed:{type(exc).__name__}",
+        )
+
+
 def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
     generated_at = datetime.now().astimezone()
     run_id = args.run_id or now_id(generated_at)
@@ -6446,12 +6605,59 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
     protected_before = protected_hashes()
     steps: list[dict[str, Any]] = []
     refresh_dir = output_dir / "refreshed_upcoming"
+    manual_protocol: ManualPredictionCollectorProtocol | None = None
+    manual_request: CollectorRequest | None = None
+    manual_request_status: dict[str, Any] = {
+        "status": "NOT_CLAIMED",
+        "reason": "scheduled_collector_authority_unavailable",
+    }
+    collector_authority = scheduled_collector_authority(evidence_root)
+    if (
+        args.enable_autonomous_odds_capture
+        and args.execute_autonomous_odds_capture
+        and args.allow_auto_scrape_odds
+        and collector_authority is not None
+    ):
+        collector_run_id = str(collector_authority["run_id"])
+        try:
+            manual_protocol, manual_request = prepare_manual_collector_request(
+                evidence_root=evidence_root,
+                collector_run_id=collector_run_id,
+                current_time=generated_at,
+                active_capture=False,
+            )
+            manual_request_status = {
+                "status": "CLAIMED" if manual_request is not None else "NO_REQUEST",
+                "request_id": (
+                    manual_request.request["request_id"]
+                    if manual_request is not None
+                    else None
+                ),
+                "collector_run_id": collector_run_id,
+            }
+        except ProtocolRejected as exc:
+            manual_request_status = {
+                "status": "REJECTED",
+                "reason": exc.code,
+                "collector_run_id": collector_run_id,
+            }
+    manual_race_id = (
+        str(manual_request.request["race"]["race_id"])
+        if manual_request is not None
+        else None
+    )
+    effective_shadow_run = not args.skip_shadow_run or manual_request is not None
     shadow_model = args.shadow_model or latest_shadow_model(evidence_root)
-    if shadow_model is None and not args.skip_shadow_run:
+    if shadow_model is None and effective_shadow_run:
         raise RuntimeError("shadow_model_required_for_no_training_autopilot")
 
     skip_primary_refresh = bool(getattr(args, "skip_primary_refresh", False))
-    if skip_primary_refresh and not args.skip_shadow_run and not args.input_dir:
+    if (
+        skip_primary_refresh
+        and effective_shadow_run
+        and not args.input_dir
+        and manual_request is None
+    ):
         raise RuntimeError("skip_primary_refresh_requires_skip_shadow_run_or_input_dir")
     if not args.skip_refresh and not skip_primary_refresh:
         refresh_command = [
@@ -6476,6 +6682,8 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             refresh_command.append("--dry-run")
         if args.require_safe_refresh_metadata:
             refresh_command.append("--require-safe-metadata")
+        if manual_race_id is not None:
+            refresh_command.extend(["--priority-race-id", manual_race_id])
         steps.append(
             step_command(
                 name="refresh_prejump_races",
@@ -6546,6 +6754,10 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             odds_capture_refresh_command.append("--dry-run")
         if args.require_safe_refresh_metadata:
             odds_capture_refresh_command.append("--require-safe-metadata")
+        if manual_race_id is not None:
+            odds_capture_refresh_command.extend(
+                ["--priority-race-id", manual_race_id]
+            )
         steps.append(
             step_command(
                 name="refresh_odds_capture_candidates",
@@ -6572,6 +6784,19 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             limit=autonomous_odds_capture_limit,
             execute=args.execute_autonomous_odds_capture,
             allow_auto_scrape_odds=args.allow_auto_scrape_odds,
+            manual_request_root=(
+                manual_protocol.root if manual_protocol is not None else None
+            ),
+            manual_request_id=(
+                str(manual_request.request["request_id"])
+                if manual_request is not None
+                else None
+            ),
+            collector_run_id=(
+                str(manual_request.claim["collector_run_id"])
+                if manual_request is not None
+                else None
+            ),
         )
         autonomous_odds_step = step_command(
             name="autonomous_live_odds_capture",
@@ -6626,8 +6851,10 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
         autonomous_odds_capture_status,
     )
 
+    if manual_request is not None:
+        input_dirs = list(odds_capture_input_dirs)
     daily_dir = evidence_root / f"daily_race_ingest_shadow_{run_id}_autopilot"
-    if not args.skip_shadow_run:
+    if effective_shadow_run:
         daily_command = [
             sys.executable,
             str(ROOT / "scripts/daily_race_ingest_shadow_orchestrator.py"),
@@ -6685,6 +6912,37 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
         )
     else:
         daily_dir = args.shadow_run_dir or latest_artifact(evidence_root, "daily_race_ingest_shadow_", "shadow_manifest.json") or latest_artifact(evidence_root, "forward_shadow_run_", "shadow_manifest.json")
+
+    if manual_protocol is not None and manual_request is not None:
+        try:
+            manual_response = finalize_manual_collector_request(
+                protocol=manual_protocol,
+                context=manual_request,
+                capture_report=autonomous_odds_capture_report,
+                evidence_root=evidence_root,
+                db_path=args.db,
+                current_time=datetime.now().astimezone(),
+            )
+            manual_request_status = {
+                "status": str(manual_response["status"]),
+                "request_id": str(manual_request.request["request_id"]),
+                "collector_run_id": str(
+                    manual_request.claim["collector_run_id"]
+                ),
+                "response_sha256": hashlib.sha256(
+                    canonical_bytes(manual_response)
+                ).hexdigest(),
+            }
+        except ProtocolRejected as exc:
+            manual_request_status = {
+                "status": "REJECTED",
+                "request_id": str(manual_request.request["request_id"]),
+                "reason": exc.code,
+            }
+    write_json(
+        output_dir / "manual_prediction_collector_request_status.json",
+        manual_request_status,
+    )
 
     autonomous_result_capture_dir = (
         evidence_root / f"autonomous_official_result_capture_{run_id}_autopilot"
@@ -8007,6 +8265,7 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
         "autonomous_live_odds_capture_inserted_rows": autonomous_odds_capture_status.get(
             "inserted_live_odds_rows"
         ),
+        "manual_prediction_collector_request": manual_request_status,
         "prediction_sample_odds_coverage_status": daily_status.get(
             "prediction_sample_odds_coverage_status"
         ),

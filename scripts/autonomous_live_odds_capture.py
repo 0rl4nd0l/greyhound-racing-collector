@@ -26,6 +26,10 @@ ROOT_STR = str(ROOT)
 sys.path = [path for path in sys.path if path != ROOT_STR]
 sys.path.insert(0, ROOT_STR)
 
+from race_collection.manual_prediction_collector_request import (  # noqa: E402
+    ManualPredictionCollectorProtocol,
+    ProtocolRejected,
+)
 from odds_auto_integrator import fetch_odds_for_target_race  # noqa: E402
 from sportsbet_odds_integrator import parse_sportsbet_runner_box_from_text  # noqa: E402
 from scripts.daily_race_ingest_shadow_orchestrator import (  # noqa: E402
@@ -2764,6 +2768,85 @@ def execute_capture_plan(
     }
 
 
+def apply_manual_request_to_plan(
+    plan: Mapping[str, Any],
+    *,
+    protocol: ManualPredictionCollectorProtocol,
+    request_id: str,
+    collector_run_id: str,
+    current_time: datetime,
+    execute: bool,
+    allow_auto_scrape_odds: bool,
+) -> tuple[dict[str, Any], str]:
+    """Prioritize one claimed request before the collector enters active capture."""
+
+    context = protocol.claimed_request(request_id)
+    try:
+        prioritized = protocol.prioritize_capture_plan(
+            context,
+            plan,
+            now=current_time,
+        )
+    except ProtocolRejected as exc:
+        existing_response = protocol.read_response(request_id)
+        if existing_response is not None:
+            status = str(existing_response["status"])
+            return {
+                **dict(plan),
+                "manual_request_id": request_id,
+                "manual_request_prioritized": False,
+                "manual_request_status": status,
+            }, status
+        status = (
+            exc.code
+            if exc.code
+            in {"RACE_NOT_FOUND", "IDENTITY_MISMATCH", "CAPTURE_WINDOW_CLOSED"}
+            else "CAPTURE_FAILED"
+        )
+        protocol.publish_terminal(
+            context,
+            status=status,
+            now=current_time,
+            reason=f"collector_plan_rejected:{exc.code}",
+        )
+        return {
+            **dict(plan),
+            "manual_request_id": request_id,
+            "manual_request_prioritized": False,
+            "manual_request_status": status,
+        }, status
+    if not execute or not allow_auto_scrape_odds:
+        protocol.publish_terminal(
+            context,
+            status="CAPTURE_FAILED",
+            now=current_time,
+            reason="collector_capture_not_authorized",
+        )
+        return {
+            **prioritized,
+            "manual_request_status": "CAPTURE_FAILED",
+        }, "CAPTURE_FAILED"
+    try:
+        protocol.begin_attempt(
+            context,
+            now=current_time,
+            collector_run_id=collector_run_id,
+        )
+    except ProtocolRejected:
+        existing_response = protocol.read_response(request_id)
+        if existing_response is None:
+            raise
+        status = str(existing_response["status"])
+        return {
+            **prioritized,
+            "manual_request_status": status,
+        }, status
+    return {
+        **prioritized,
+        "manual_request_status": "ATTEMPT_STARTED",
+    }, "ATTEMPT_STARTED"
+
+
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input-dir", action="append", type=Path, required=True)
@@ -2779,6 +2862,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=float,
         default=DEFAULT_FETCH_TIMEOUT_SECONDS,
     )
+    parser.add_argument("--manual-request-root", type=Path)
+    parser.add_argument("--manual-request-id")
+    parser.add_argument("--collector-run-id")
     return parser.parse_args(argv)
 
 
@@ -2799,6 +2885,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         current_time=current_time,
         limit=args.limit,
     )
+    manual_request_status = None
+    if args.manual_request_id:
+        if args.manual_request_root is None or not args.collector_run_id:
+            raise ValueError("manual_request_collector_authority_missing")
+        plan, manual_request_status = apply_manual_request_to_plan(
+            plan,
+            protocol=ManualPredictionCollectorProtocol(args.manual_request_root),
+            request_id=args.manual_request_id,
+            collector_run_id=args.collector_run_id,
+            current_time=current_time,
+            execute=args.execute,
+            allow_auto_scrape_odds=args.allow_auto_scrape_odds,
+        )
     report = execute_capture_plan(
         plan,
         db_path=args.db,
@@ -2808,7 +2907,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         fetch_timeout_seconds=args.fetch_timeout_seconds,
         progress_dir=output_dir,
     )
-    report = {**capture_report_identity_fields(output_dir), **report}
+    report = {
+        **capture_report_identity_fields(output_dir),
+        **report,
+        "manual_request_id": args.manual_request_id,
+        "manual_request_status": manual_request_status,
+    }
 
     write_json(output_dir / "autonomous_live_odds_capture_plan.json", plan)
     write_jsonl(output_dir / "autonomous_live_odds_capture_attempts.jsonl", report["attempts"])

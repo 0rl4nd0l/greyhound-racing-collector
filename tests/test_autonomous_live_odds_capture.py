@@ -1,9 +1,15 @@
 import json
 import sqlite3
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
+import pytest
+
+from race_collection.manual_prediction_collector_request import (
+    ManualPredictionCollectorProtocol,
+    ProtocolRejected,
+)
 from scripts import autonomous_live_odds_capture as capture
 
 
@@ -120,6 +126,102 @@ def _plan(input_dir: Path) -> dict:
         [input_dir],
         current_time=datetime.fromisoformat("2026-06-10T14:40:00+10:00"),
     )
+
+
+def _claimed_manual_request(
+    tmp_path: Path,
+    *,
+    race_id: str = "Race 1 - WPK - 2026-06-10",
+    url: str = (
+        "https://www.thedogs.com.au/racing/wentworth-park/"
+        "2026-06-10/1/example"
+    ),
+) -> tuple[ManualPredictionCollectorProtocol, str]:
+    protocol = ManualPredictionCollectorProtocol(tmp_path / "manual-requests")
+    now = datetime.fromisoformat("2026-06-10T14:40:00+10:00")
+    request = protocol.publish_request(
+        race={
+            "race_id": race_id,
+            "url": url,
+            "venue": "WPK",
+            "race_number": 1,
+            "race_date": "2026-06-10",
+            "jump_timestamp": "2026-06-10T15:00:00+10:00",
+        },
+        expected_runners=[
+            {"box_number": 1, "dog_name": "Alpha", "identity": "ALPHA"},
+            {"box_number": 2, "dog_name": "Bravo", "identity": "BRAVO"},
+        ],
+        created_at=now - timedelta(minutes=1),
+        expires_at=now + timedelta(minutes=10),
+    )
+    request_id = str(request["request_id"])
+    protocol.claim_request(
+        request_id,
+        now=now,
+        collector_run_id="scheduled-run-1",
+    )
+    return protocol, request_id
+
+
+def test_manual_request_prioritizes_exact_plan_and_begins_one_attempt(tmp_path):
+    input_dir = tmp_path / "upcoming"
+    _write_capture_input(input_dir)
+    protocol, request_id = _claimed_manual_request(tmp_path)
+    now = datetime.fromisoformat("2026-06-10T14:40:00+10:00")
+
+    prioritized, status = capture.apply_manual_request_to_plan(
+        _plan(input_dir),
+        protocol=protocol,
+        request_id=request_id,
+        collector_run_id="scheduled-run-1",
+        current_time=now,
+        execute=True,
+        allow_auto_scrape_odds=True,
+    )
+
+    assert status == "ATTEMPT_STARTED"
+    assert prioritized["manual_request_prioritized"] is True
+    assert prioritized["races"][0]["race_id"] == "Race 1 - WPK - 2026-06-10"
+    assert protocol.attempt_path(request_id).is_file()
+    with pytest.raises(ProtocolRejected, match="DUPLICATE_ATTEMPT"):
+        capture.apply_manual_request_to_plan(
+            _plan(input_dir),
+            protocol=protocol,
+            request_id=request_id,
+            collector_run_id="scheduled-run-1",
+            current_time=now,
+            execute=True,
+            allow_auto_scrape_odds=True,
+        )
+
+
+def test_manual_request_identity_mismatch_emits_one_terminal_response(tmp_path):
+    input_dir = tmp_path / "upcoming"
+    _write_capture_input(input_dir)
+    protocol, request_id = _claimed_manual_request(
+        tmp_path,
+        url=(
+            "https://www.thedogs.com.au/racing/wentworth-park/"
+            "2026-06-10/1/different"
+        ),
+    )
+    now = datetime.fromisoformat("2026-06-10T14:40:00+10:00")
+
+    prioritized, status = capture.apply_manual_request_to_plan(
+        _plan(input_dir),
+        protocol=protocol,
+        request_id=request_id,
+        collector_run_id="scheduled-run-1",
+        current_time=now,
+        execute=True,
+        allow_auto_scrape_odds=True,
+    )
+
+    assert status == "IDENTITY_MISMATCH"
+    assert prioritized["manual_request_prioritized"] is False
+    assert protocol.read_response(request_id)["status"] == "IDENTITY_MISMATCH"
+    assert not protocol.attempt_path(request_id).exists()
 
 
 def _insert_live_odds_rows(

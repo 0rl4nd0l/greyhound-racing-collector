@@ -1,7 +1,12 @@
 import json
-from datetime import datetime
+import os
+import socket
+from datetime import datetime, timedelta
 from pathlib import Path
 
+from race_collection.manual_prediction_collector_request import (
+    ManualPredictionCollectorProtocol,
+)
 from scripts import shadow_autopilot_v1 as autopilot
 
 
@@ -491,6 +496,134 @@ def test_autonomous_live_odds_capture_command_requires_explicit_execute_flags():
 
     assert "--execute" in approved
     assert "--allow-auto-scrape-odds" in approved
+
+
+def test_manual_request_command_is_bound_to_claimed_collector_run():
+    command = autopilot.autonomous_live_odds_capture_command(
+        input_dirs=[Path("upcoming_a")],
+        evidence_root=Path("artifacts/full_evidence_orchestration_20260525"),
+        capture_dir=Path(
+            "artifacts/full_evidence_orchestration_20260525/"
+            "autonomous_live_odds_capture_x"
+        ),
+        db_path=Path("greyhound_racing_data.db"),
+        current_time="2026-06-10T14:00:00+10:00",
+        limit=1,
+        execute=True,
+        allow_auto_scrape_odds=True,
+        manual_request_root=Path("manual_requests"),
+        manual_request_id="a" * 32,
+        collector_run_id="scheduled-run-1",
+    )
+
+    assert command[-6:] == [
+        "--manual-request-root",
+        "manual_requests",
+        "--manual-request-id",
+        "a" * 32,
+        "--collector-run-id",
+        "scheduled-run-1",
+    ]
+
+
+def test_scheduled_collector_authority_requires_direct_shared_lock_owner(
+    tmp_path, monkeypatch
+):
+    runtime = tmp_path / "shadow_autopilot_daemon_runtime"
+    runtime.mkdir()
+    lock_path = runtime / "shadow_autopilot.lock"
+    autopilot.write_json(
+        lock_path,
+        {
+            "pid": os.getppid(),
+            "hostname": socket.gethostname(),
+            "run_id": "scheduled-run-1",
+        },
+    )
+
+    assert autopilot.scheduled_collector_authority(tmp_path)["run_id"] == (
+        "scheduled-run-1"
+    )
+    monkeypatch.setattr(autopilot.os, "getppid", lambda: 999999)
+    assert autopilot.scheduled_collector_authority(tmp_path) is None
+
+
+def test_manual_request_is_deferred_during_active_capture_boundary(tmp_path):
+    now = datetime.fromisoformat("2026-06-10T14:00:00+10:00")
+    protocol = ManualPredictionCollectorProtocol(
+        tmp_path / autopilot.PROTOCOL_DIRECTORY
+    )
+    request = protocol.publish_request(
+        race={
+            "race_id": "Race 1 - WPK - 2026-06-10",
+            "url": (
+                "https://www.thedogs.com.au/racing/wentworth-park/"
+                "2026-06-10/1/example"
+            ),
+            "venue": "WPK",
+            "race_number": 1,
+            "race_date": "2026-06-10",
+            "jump_timestamp": "2026-06-10T15:00:00+10:00",
+        },
+        expected_runners=[],
+        created_at=now,
+        expires_at=now + timedelta(minutes=10),
+    )
+
+    _, context = autopilot.prepare_manual_collector_request(
+        evidence_root=tmp_path,
+        collector_run_id="scheduled-run-1",
+        current_time=now,
+        active_capture=True,
+    )
+
+    assert context is None
+    assert not protocol.claim_path(str(request["request_id"])).exists()
+
+
+def test_manual_request_missing_exact_attempt_emits_terminal_response(tmp_path):
+    now = datetime.fromisoformat("2026-06-10T14:00:00+10:00")
+    protocol = ManualPredictionCollectorProtocol(
+        tmp_path / autopilot.PROTOCOL_DIRECTORY
+    )
+    request = protocol.publish_request(
+        race={
+            "race_id": "Race 1 - WPK - 2026-06-10",
+            "url": (
+                "https://www.thedogs.com.au/racing/wentworth-park/"
+                "2026-06-10/1/example"
+            ),
+            "venue": "WPK",
+            "race_number": 1,
+            "race_date": "2026-06-10",
+            "jump_timestamp": "2026-06-10T15:00:00+10:00",
+        },
+        expected_runners=[],
+        created_at=now,
+        expires_at=now + timedelta(minutes=10),
+    )
+    context = protocol.claim_request(
+        str(request["request_id"]),
+        now=now,
+        collector_run_id="scheduled-run-1",
+    )
+    protocol.begin_attempt(
+        context,
+        now=now,
+        collector_run_id="scheduled-run-1",
+    )
+
+    response = autopilot.finalize_manual_collector_request(
+        protocol=protocol,
+        context=context,
+        capture_report={"attempts": []},
+        evidence_root=tmp_path,
+        db_path=tmp_path / "unused.db",
+        current_time=now + timedelta(seconds=1),
+    )
+
+    assert response["status"] == "CAPTURE_FAILED"
+    assert protocol.read_response(str(request["request_id"])) == response
 
 
 def test_autonomous_live_odds_capture_status_surfaces_inserted_rows():
