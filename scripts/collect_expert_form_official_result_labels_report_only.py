@@ -286,42 +286,46 @@ def fetch_official_result(
     *,
     use_browser_fallback: bool,
 ) -> tuple[ingest.SourceResult, str | None]:
-    fetcher = ingest.TheDogsResultFetcher(
-        None,
-        http_session=ingest._StatelessPublicHttpClient(),  # noqa: SLF001
-    )
-    if not use_browser_fallback:
-        urls = fetcher._result_urls(candidate)  # noqa: SLF001
-        http_result = fetcher._fetch_via_http(candidate, urls)  # noqa: SLF001
-        if http_result:
-            return http_result, None
-        return (
-            ingest.SourceResult(
-                source="thedogs_official",
-                status="error",
-                source_url=urls[0] if urls else None,
-                positions_by_box={},
-                raw_order=[],
-                error="no_thedogs_result_response",
-                attempted_urls=[],
-            ),
-            None,
-        )
-
-    driver, By, browser_error = ingest.optional_browser_driver(headless=True)
+    public_http = ingest._PersistentPublicHttpClient()  # noqa: SLF001
     try:
         fetcher = ingest.TheDogsResultFetcher(
-            driver,
-            by=By,
-            http_session=ingest._StatelessPublicHttpClient(),  # noqa: SLF001
+            None,
+            http_session=public_http,
         )
-        return fetcher.fetch(candidate), browser_error
+        if not use_browser_fallback:
+            urls = fetcher._result_urls(candidate)  # noqa: SLF001
+            http_result = fetcher._fetch_via_http(candidate, urls)  # noqa: SLF001
+            if http_result:
+                return http_result, None
+            return (
+                ingest.SourceResult(
+                    source="thedogs_official",
+                    status="error",
+                    source_url=urls[0] if urls else None,
+                    positions_by_box={},
+                    raw_order=[],
+                    error="no_thedogs_result_response",
+                    attempted_urls=[],
+                ),
+                None,
+            )
+
+        driver, By, browser_error = ingest.optional_browser_driver(headless=True)
+        try:
+            fetcher = ingest.TheDogsResultFetcher(
+                driver,
+                by=By,
+                http_session=public_http,
+            )
+            return fetcher.fetch(candidate), browser_error
+        finally:
+            if driver is not None:
+                try:
+                    driver.quit()
+                except Exception:
+                    pass
     finally:
-        if driver is not None:
-            try:
-                driver.quit()
-            except Exception:
-                pass
+        public_http.close()
 
 
 def artifact_rows_for_result(

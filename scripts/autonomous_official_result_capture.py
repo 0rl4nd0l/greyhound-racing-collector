@@ -1313,15 +1313,16 @@ def run_shadow_run_official_dry_run(
         active_row=None,
     )
     if candidates:
+        if not db_path.exists():
+            raise FileNotFoundError(f"db_path_not_found:{db_path}")
         driver, By, browser_error = ingest.optional_browser_driver(headless=True)
+        public_http = ingest._PersistentPublicHttpClient()
         thedogs = ingest.TheDogsResultFetcher(
             driver,
             by=By,
-            http_session=ingest._StatelessPublicHttpClient(),
+            http_session=public_http,
         )
         sportsbet = ingest.SportsbetResultFetcher(driver, target_date, by=By) if driver else None
-        if not db_path.exists():
-            raise FileNotFoundError(f"db_path_not_found:{db_path}")
         conn = sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True)
         try:
             for index, candidate in enumerate(candidates, start=1):
@@ -1412,6 +1413,7 @@ def run_shadow_run_official_dry_run(
                 )
         finally:
             conn.close()
+            public_http.close()
             if driver is not None:
                 try:
                     driver.quit()

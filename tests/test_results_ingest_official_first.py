@@ -870,8 +870,9 @@ def test_thedogs_fetch_discovers_public_result_route_before_selenium(tmp_path):
         http_session=session,
     ).fetch(candidate)
 
-    assert session.urls[0] == "https://www.thedogs.com.au/racing/warragul/2026-05-21?trial=false"
-    assert session.urls[1] == (
+    assert session.urls[0] == "https://www.thedogs.com.au/racing/2026-05-21"
+    assert session.urls[1] == "https://www.thedogs.com.au/racing/warragul/2026-05-21?trial=false"
+    assert session.urls[2] == (
         "https://www.thedogs.com.au/racing/warragul/2026-05-21/4/"
         "barn-function-area?trial=false"
     )
@@ -926,7 +927,8 @@ def test_thedogs_fetch_tries_public_result_url_after_forbidden_meeting_discovery
         http_session=session,
     ).fetch(candidate)
 
-    assert session.urls[:2] == [
+    assert session.urls[:3] == [
+        "https://www.thedogs.com.au/racing/2026-05-21",
         "https://www.thedogs.com.au/racing/warragul/2026-05-21?trial=false",
         "https://www.thedogs.com.au/racing/warragul/2026-05-21/4/results?trial=false",
     ]
@@ -1046,16 +1048,76 @@ def test_thedogs_http_404_is_reported_without_selenium_fallback(tmp_path):
     assert diagnostic["attempted_urls"] == result.attempted_urls
 
 
-def test_thedogs_public_http_client_is_stateless(monkeypatch):
+def test_thedogs_fetch_warms_date_index_once_per_date(tmp_path):
     module = _load_ingest_module()
-    observed = {}
+    candidate = _candidate(module, tmp_path)
+
+    class Response:
+        def __init__(self, url, text, status_code=200):
+            self.url = url
+            self.text = text
+            self.status_code = status_code
+
+        def close(self):
+            return None
+
+    class Session:
+        def __init__(self):
+            self.urls = []
+
+        def get(self, url, **_kwargs):
+            self.urls.append(url)
+            if url.endswith("/racing/warragul/2026-05-21?trial=false"):
+                return Response(
+                    url,
+                    """
+                    <a href="/racing/warragul/2026-05-21/4/barn-function-area?trial=false">R4</a>
+                    """,
+                )
+            if url == "https://www.thedogs.com.au/racing/2026-05-21":
+                return Response(url, "<html><body>Race date index</body></html>")
+            return Response(
+                url,
+                """
+                <html><body>
+                Results
+                1st
+                6. Foxtrot Runner
+                2nd
+                8. Hotel Runner
+                </body></html>
+                """,
+            )
+
+    class Driver:
+        def get(self, _url):
+            raise AssertionError("Selenium should not be used when public HTML succeeds")
+
+    session = Session()
+    fetcher = module.TheDogsResultFetcher(
+        Driver(),
+        wait_seconds=0,
+        http_session=session,
+    )
+
+    first = fetcher.fetch(candidate)
+    second = fetcher.fetch(candidate)
+
+    assert first.status == "resulted"
+    assert second.status == "resulted"
+    assert session.urls.count("https://www.thedogs.com.au/racing/2026-05-21") == 1
+
+
+def test_thedogs_public_http_client_reuses_clean_session(monkeypatch):
+    module = _load_ingest_module()
+    observed = {"sessions": 0, "requests": [], "closed": False}
 
     class Cookies:
         def __init__(self):
-            self.cleared = False
+            self.clear_count = 0
 
         def clear(self):
-            self.cleared = True
+            self.clear_count += 1
 
     class Response:
         status_code = 200
@@ -1064,35 +1126,55 @@ def test_thedogs_public_http_client_is_stateless(monkeypatch):
 
     class Session:
         def __init__(self):
+            observed["sessions"] += 1
             self.trust_env = True
             self.cookies = Cookies()
 
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_args):
-            return None
-
         def get(self, url, **kwargs):
-            observed["url"] = url
-            observed["trust_env"] = self.trust_env
-            observed["cookies_cleared"] = self.cookies.cleared
-            observed["request_cookies"] = kwargs.get("cookies")
+            observed["requests"].append(
+                {
+                    "url": url,
+                    "trust_env": self.trust_env,
+                    "cookie_clear_count": self.cookies.clear_count,
+                    "request_cookies": kwargs.get("cookies"),
+                }
+            )
             return Response()
+
+        def close(self):
+            observed["closed"] = True
 
     monkeypatch.setattr(module.requests, "Session", Session)
 
-    response = module._StatelessPublicHttpClient().get(
+    client = module._PersistentPublicHttpClient()
+    first = client.get(
         "https://www.thedogs.com.au/racing/warragul/2026-05-21?trial=false",
         cookies={"session": "should-not-be-sent"},
     )
+    second = client.get(
+        "https://www.thedogs.com.au/racing/warragul/2026-05-21/4/results",
+    )
+    client.close()
 
-    assert response.status_code == 200
+    assert first.status_code == 200
+    assert second.status_code == 200
     assert observed == {
-        "url": "https://www.thedogs.com.au/racing/warragul/2026-05-21?trial=false",
-        "trust_env": False,
-        "cookies_cleared": True,
-        "request_cookies": {},
+        "sessions": 1,
+        "requests": [
+            {
+                "url": "https://www.thedogs.com.au/racing/warragul/2026-05-21?trial=false",
+                "trust_env": False,
+                "cookie_clear_count": 1,
+                "request_cookies": {},
+            },
+            {
+                "url": "https://www.thedogs.com.au/racing/warragul/2026-05-21/4/results",
+                "trust_env": False,
+                "cookie_clear_count": 1,
+                "request_cookies": {},
+            },
+        ],
+        "closed": True,
     }
 
 
@@ -1468,7 +1550,10 @@ def test_result_ingest_main_dry_run_can_use_official_http_without_selenium(
                 """,
             )
 
-    monkeypatch.setattr(module, "_StatelessPublicHttpClient", Session)
+        def close(self):
+            return None
+
+    monkeypatch.setattr(module, "_PersistentPublicHttpClient", Session)
     report_path = tmp_path / "dry_run_report.json"
 
     rc = module.main(
