@@ -20,6 +20,7 @@ import json
 import os
 import shutil
 import socket
+import stat
 import subprocess
 import sys
 import time
@@ -6457,17 +6458,30 @@ def final_verdict_for(
 
 def scheduled_collector_authority(
     evidence_root: Path,
+    *,
+    lock_path: Path | None = None,
 ) -> dict[str, Any] | None:
     """Prove this process is the direct child of the current shared-lock owner."""
 
-    lock_path = (
-        evidence_root
-        / "shadow_autopilot_daemon_runtime"
-        / "shadow_autopilot.lock"
+    lock_path = lock_path or (
+        evidence_root / "shadow_autopilot_daemon_runtime" / "shadow_autopilot.lock"
     )
-    if lock_path.is_symlink():
+    descriptor = -1
+    try:
+        descriptor = os.open(
+            lock_path,
+            os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK,
+        )
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            return None
+        with os.fdopen(descriptor, encoding="utf-8") as lock_file:
+            descriptor = -1
+            payload = json.load(lock_file)
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
         return None
-    payload = load_json(lock_path)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
     if (
         not isinstance(payload, Mapping)
         or payload.get("pid") != os.getppid()
@@ -6611,7 +6625,10 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
         "status": "NOT_CLAIMED",
         "reason": "scheduled_collector_authority_unavailable",
     }
-    collector_authority = scheduled_collector_authority(evidence_root)
+    collector_authority = scheduled_collector_authority(
+        evidence_root,
+        lock_path=args.collector_lock_path,
+    )
     if (
         args.enable_autonomous_odds_capture
         and args.execute_autonomous_odds_capture
@@ -8436,6 +8453,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-id")
     parser.add_argument("--evidence-root", type=Path, default=DEFAULT_EVIDENCE_ROOT)
+    parser.add_argument("--collector-lock-path", type=Path)
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--current-time")
     parser.add_argument("--db", type=Path, default=ROOT / "greyhound_racing_data.db")

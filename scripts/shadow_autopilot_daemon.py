@@ -1578,6 +1578,7 @@ def odds_capture_only_autopilot_command(
     *,
     run_id: str,
     evidence_root: Path,
+    lock_path: Path,
     current_time: str,
     db_path: Path,
     days_ahead: int,
@@ -1596,6 +1597,8 @@ def odds_capture_only_autopilot_command(
         run_id,
         "--evidence-root",
         str(evidence_root),
+        "--collector-lock-path",
+        str(lock_path),
         "--current-time",
         current_time,
         "--db",
@@ -3320,6 +3323,7 @@ def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
     current_dt = parse_datetime_value(current_time, default_tz=generated_at.tzinfo) or generated_at
     run_id = args.run_id or f"{now_id(generated_at)}_odds_capture"
     evidence_root = args.evidence_root
+    lock_path = (args.lock_path or DEFAULT_LOCK_PATH).resolve()
     output_dir = args.output_dir or (
         evidence_root / f"shadow_autopilot_daemonization_v1_{run_id}"
     )
@@ -3339,7 +3343,7 @@ def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
             **odds_capture_only_operator_fields("ODDS_CAPTURE_ONLY_WAITING_FOR_WINDOW"),
             "output_dir": relpath(output_dir),
             "autopilot_output_dir": None,
-            "lock_path": relpath(args.lock_path or DEFAULT_LOCK_PATH),
+            "lock_path": relpath(lock_path),
             "lock": None,
             "lock_release": None,
             "steps": [],
@@ -3403,7 +3407,6 @@ def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
                 },
             )
         return report
-    lock_path = args.lock_path or DEFAULT_LOCK_PATH
     lock_payload: dict[str, Any] | None = None
     release: dict[str, Any] | None = None
     steps: list[dict[str, Any]] = []
@@ -3443,6 +3446,7 @@ def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
         command = odds_capture_only_autopilot_command(
             run_id=f"{run_id}_autopilot",
             evidence_root=evidence_root,
+            lock_path=lock_path,
             current_time=current_time,
             db_path=args.db,
             days_ahead=args.days_ahead,
@@ -8975,7 +8979,7 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
     output_dir = unique_dir(output_dir)
     output_dir.mkdir(parents=True, exist_ok=False)
     current_time = args.current_time or generated_at.isoformat()
-    lock_path = args.lock_path or DEFAULT_LOCK_PATH
+    lock_path = (args.lock_path or DEFAULT_LOCK_PATH).resolve()
     state_path = args.state_path or DEFAULT_STATE_PATH
     odds_state_path = args.odds_capture_state_path or DEFAULT_ODDS_CAPTURE_ONLY_STATE_PATH
     write_json(
@@ -9125,6 +9129,8 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
             autopilot_run_id,
             "--evidence-root",
             str(evidence_root),
+            "--collector-lock-path",
+            str(lock_path),
             "--current-time",
             current_time,
             "--db",

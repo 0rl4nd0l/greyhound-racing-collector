@@ -243,10 +243,17 @@ def test_run_once_exception_writes_terminal_daemon_report(tmp_path, monkeypatch)
 
     def failing_run_command(**kwargs):
         assert kwargs["name"] == "autopilot_cycle"
+        command = kwargs["command"]
+        assert command[command.index("--collector-lock-path") + 1] == str(
+            launch_dir / "shared-runtime" / "shadow_autopilot.lock"
+        )
         raise RuntimeError("synthetic daemon failure")
 
     monkeypatch.setattr(daemon, "run_command", failing_run_command)
 
+    launch_dir = tmp_path / "launch"
+    launch_dir.mkdir()
+    monkeypatch.chdir(launch_dir)
     args = daemon.parse_args(
         [
             "run-once",
@@ -261,7 +268,7 @@ def test_run_once_exception_writes_terminal_daemon_report(tmp_path, monkeypatch)
             "--shadow-model",
             str(shadow_model),
             "--lock-path",
-            str(tmp_path / "shared-runtime" / "shadow_autopilot.lock"),
+            "shared-runtime/shadow_autopilot.lock",
         ]
     )
 
@@ -274,7 +281,7 @@ def test_run_once_exception_writes_terminal_daemon_report(tmp_path, monkeypatch)
     assert report["exception_message"] == "synthetic daemon failure"
     assert written["runtime_action"] == "CHECK_DAEMON_EXCEPTION"
     assert generated["pause_path"] == (
-        tmp_path / "shared-runtime" / "pause-heavy-scheduling"
+        launch_dir / "shared-runtime" / "pause-heavy-scheduling"
     )
     assert (output_dir / "final_status.txt").read_text(encoding="utf-8") == (
         "PARTIAL_DAEMONIZATION\n"
@@ -1170,6 +1177,7 @@ def test_odds_capture_only_autopilot_command_is_narrow_and_append_only():
     command = daemon.odds_capture_only_autopilot_command(
         run_id="odds_only_autopilot",
         evidence_root=Path("/evidence"),
+        lock_path=Path("/runtime/shared.lock"),
         current_time="2026-06-12T09:48:00+10:00",
         db_path=Path("/data/greyhound_racing_data.db"),
         days_ahead=1,
@@ -1192,11 +1200,15 @@ def test_odds_capture_only_autopilot_command_is_narrow_and_append_only():
     assert "--skip-status" in command
     assert "--skip-unified-dataset" in command
     assert "--require-safe-refresh-metadata" in command
+    assert command[command.index("--collector-lock-path") + 1] == (
+        "/runtime/shared.lock"
+    )
     assert "--enable-autonomous-result-capture" not in command
 
     permissive_command = daemon.odds_capture_only_autopilot_command(
         run_id="odds_only_autopilot",
         evidence_root=Path("/evidence"),
+        lock_path=Path("/runtime/shared.lock"),
         current_time="2026-06-12T09:48:00+10:00",
         db_path=Path("/data/greyhound_racing_data.db"),
         days_ahead=1,
@@ -2179,11 +2191,14 @@ def test_run_odds_capture_once_uses_lock_and_writes_compact_report(tmp_path, mon
     output_dir = evidence_root / "shadow_autopilot_daemonization_v1_odds_only"
     db_path = tmp_path / "greyhound_racing_data.db"
     db_path.write_text("db", encoding="utf-8")
-    lock_path = tmp_path / "runtime" / "shadow.lock"
+    launch_dir = tmp_path / "launch"
+    launch_dir.mkdir()
+    lock_path = launch_dir / "runtime" / "shadow.lock"
     state_path = tmp_path / "runtime" / "odds_capture_state.json"
     autopilot_dir = evidence_root / "shadow_autopilot_v1_odds_only_autopilot"
 
     monkeypatch.setattr(daemon, "ROOT", tmp_path)
+    monkeypatch.chdir(launch_dir)
 
     def fake_run_command(*, name, command, output_dir, timeout_seconds, cwd=daemon.ROOT):
         assert name == "odds_capture_autopilot_cycle"
@@ -2194,6 +2209,7 @@ def test_run_odds_capture_once_uses_lock_and_writes_compact_report(tmp_path, mon
         assert "--enable-autonomous-odds-capture" in command
         assert "--allow-auto-scrape-odds" in command
         assert "--require-safe-refresh-metadata" in command
+        assert command[command.index("--collector-lock-path") + 1] == str(lock_path)
         running_report = json.loads(
             (output_dir / "odds_capture_only_daemon_report.json").read_text(
                 encoding="utf-8"
@@ -2271,7 +2287,7 @@ def test_run_odds_capture_once_uses_lock_and_writes_compact_report(tmp_path, mon
             "--db",
             str(db_path),
             "--lock-path",
-            str(lock_path),
+            "runtime/shadow.lock",
             "--state-path",
             str(state_path),
         ]

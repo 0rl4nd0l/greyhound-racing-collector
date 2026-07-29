@@ -548,6 +548,111 @@ def test_scheduled_collector_authority_requires_direct_shared_lock_owner(
     assert autopilot.scheduled_collector_authority(tmp_path) is None
 
 
+def test_scheduled_collector_authority_uses_explicit_external_lock(tmp_path):
+    evidence_root = tmp_path / "external_evidence"
+    explicit_lock = tmp_path / "daemon_runtime" / "shared.lock"
+    explicit_lock.parent.mkdir()
+    autopilot.write_json(
+        explicit_lock,
+        {
+            "pid": os.getppid(),
+            "hostname": socket.gethostname(),
+            "run_id": "scheduled-run-external",
+        },
+    )
+
+    authority = autopilot.scheduled_collector_authority(
+        evidence_root,
+        lock_path=explicit_lock,
+    )
+
+    assert authority is not None
+    assert authority["run_id"] == "scheduled-run-external"
+
+
+def test_scheduled_collector_authority_parses_from_opened_descriptor(
+    tmp_path, monkeypatch
+):
+    lock_path = tmp_path / "shared.lock"
+    original = {
+        "pid": os.getppid(),
+        "hostname": socket.gethostname(),
+        "run_id": "opened-descriptor-run",
+    }
+    autopilot.write_json(lock_path, original)
+    real_fstat = os.fstat
+
+    def replace_path_after_open(descriptor):
+        metadata = real_fstat(descriptor)
+        lock_path.rename(tmp_path / "opened.lock")
+        autopilot.write_json(
+            lock_path,
+            {
+                **original,
+                "pid": -1,
+                "run_id": "replacement-path-run",
+            },
+        )
+        return metadata
+
+    monkeypatch.setattr(autopilot.os, "fstat", replace_path_after_open)
+
+    authority = autopilot.scheduled_collector_authority(
+        tmp_path,
+        lock_path=lock_path,
+    )
+
+    assert authority is not None
+    assert authority["run_id"] == "opened-descriptor-run"
+
+
+def test_scheduled_collector_authority_rejects_unsafe_explicit_locks(tmp_path):
+    lock_path = tmp_path / "shared.lock"
+    valid = {
+        "pid": os.getppid(),
+        "hostname": socket.gethostname(),
+        "run_id": "scheduled-run-1",
+    }
+
+    assert autopilot.scheduled_collector_authority(
+        tmp_path, lock_path=lock_path
+    ) is None
+
+    lock_path.mkdir()
+    assert autopilot.scheduled_collector_authority(
+        tmp_path, lock_path=lock_path
+    ) is None
+    lock_path.rmdir()
+
+    lock_path.write_text("{malformed", encoding="utf-8")
+    assert autopilot.scheduled_collector_authority(
+        tmp_path, lock_path=lock_path
+    ) is None
+
+    for field in ("pid", "hostname", "run_id"):
+        payload = dict(valid)
+        payload.pop(field)
+        autopilot.write_json(lock_path, payload)
+        assert autopilot.scheduled_collector_authority(
+            tmp_path, lock_path=lock_path
+        ) is None
+
+    for field, value in (("pid", -1), ("hostname", "wrong-host")):
+        payload = {**valid, field: value}
+        autopilot.write_json(lock_path, payload)
+        assert autopilot.scheduled_collector_authority(
+            tmp_path, lock_path=lock_path
+        ) is None
+
+    target = tmp_path / "lock-target"
+    autopilot.write_json(target, valid)
+    lock_path.unlink()
+    lock_path.symlink_to(target)
+    assert autopilot.scheduled_collector_authority(
+        tmp_path, lock_path=lock_path
+    ) is None
+
+
 def test_manual_request_is_deferred_during_active_capture_boundary(tmp_path):
     now = datetime.fromisoformat("2026-06-10T14:00:00+10:00")
     protocol = ManualPredictionCollectorProtocol(
