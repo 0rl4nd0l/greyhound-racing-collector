@@ -2,8 +2,6 @@ name: Forecasting acceptance
 
 on:
   pull_request:
-    branches:
-      - master
   workflow_dispatch:
 
 permissions:
@@ -69,7 +67,7 @@ jobs:
       - name: Enforce trustworthy classification
         if: >-
           needs.classify.result != 'success' ||
-          !contains(fromJSON('["full_forecasting","manual_prediction","non_forecasting"]'),
+          !contains(fromJSON('["full_forecasting","official_results","manual_prediction","non_forecasting"]'),
           needs.classify.outputs.tier)
         env:
           CLASSIFIER_RESULT: ${{ needs.classify.result }}
@@ -87,6 +85,7 @@ jobs:
       - name: Check out exact pull-request head
         if: >-
           needs.classify.outputs.tier == 'full_forecasting' ||
+          needs.classify.outputs.tier == 'official_results' ||
           needs.classify.outputs.tier == 'manual_prediction'
         uses: actions/checkout@v4
         with:
@@ -95,6 +94,7 @@ jobs:
       - name: Set up Python 3.13
         if: >-
           needs.classify.outputs.tier == 'full_forecasting' ||
+          needs.classify.outputs.tier == 'official_results' ||
           needs.classify.outputs.tier == 'manual_prediction'
         uses: actions/setup-python@v5
         with:
@@ -103,12 +103,14 @@ jobs:
       - name: Set up uv
         if: >-
           needs.classify.outputs.tier == 'full_forecasting' ||
+          needs.classify.outputs.tier == 'official_results' ||
           needs.classify.outputs.tier == 'manual_prediction'
         uses: astral-sh/setup-uv@v6
 
       - name: Run selected forecasting suite
         if: >-
           needs.classify.outputs.tier == 'full_forecasting' ||
+          needs.classify.outputs.tier == 'official_results' ||
           needs.classify.outputs.tier == 'manual_prediction'
         id: forecasting
         continue-on-error: true
@@ -122,6 +124,12 @@ jobs:
           if [[ "$FORECASTING_TIER" == "full_forecasting" ]]; then
             uv run --no-project --with-requirements requirements/all.in \
               python -m pytest -q --noconftest tests/race_collection
+          elif [[ "$FORECASTING_TIER" == "official_results" ]]; then
+            uv run --no-project --with-requirements requirements/all.in \
+              python -m pytest -q \
+              tests/test_results_ingest_official_first.py \
+              tests/test_autonomous_official_result_capture.py \
+              tests/test_expert_form_official_result_labels_packet.py
           else
             uv run --no-project --with-requirements requirements/all.in \
               python -m pytest -q --noconftest \
@@ -133,6 +141,7 @@ jobs:
         if: >-
           always() &&
           (needs.classify.outputs.tier == 'full_forecasting' ||
+          needs.classify.outputs.tier == 'official_results' ||
           needs.classify.outputs.tier == 'manual_prediction')
         env:
           EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -157,6 +166,13 @@ jobs:
               "full_forecasting": (
                   "uv run --no-project --with-requirements requirements/all.in "
                   "python -m pytest -q --noconftest tests/race_collection"
+              ),
+              "official_results": (
+                  "uv run --no-project --with-requirements requirements/all.in "
+                  "python -m pytest -q "
+                  "tests/test_results_ingest_official_first.py "
+                  "tests/test_autonomous_official_result_capture.py "
+                  "tests/test_expert_form_official_result_labels_packet.py"
               ),
               "manual_prediction": (
                   "uv run --no-project --with-requirements requirements/all.in "
@@ -194,6 +210,7 @@ jobs:
         if: >-
           always() &&
           (needs.classify.outputs.tier == 'full_forecasting' ||
+          needs.classify.outputs.tier == 'official_results' ||
           needs.classify.outputs.tier == 'manual_prediction')
         uses: actions/upload-artifact@v4
         with:
@@ -206,6 +223,7 @@ jobs:
       - name: Enforce forecasting acceptance gate
         if: >-
           (needs.classify.outputs.tier == 'full_forecasting' ||
+          needs.classify.outputs.tier == 'official_results' ||
           needs.classify.outputs.tier == 'manual_prediction') &&
           steps.forecasting.outcome != 'success'
         run: exit 1

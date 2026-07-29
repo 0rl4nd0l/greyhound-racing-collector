@@ -15,9 +15,16 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_RULES = ROOT / ".github/forecasting-paths.ini"
-TIERS = ("non_forecasting", "manual_prediction", "full_forecasting")
+TIERS = (
+    "non_forecasting",
+    "manual_prediction",
+    "official_results",
+    "full_forecasting",
+)
 TIER_RANK = {tier: rank for rank, tier in enumerate(TIERS)}
 KNOWN_STATUS_PREFIXES = frozenset({"A", "C", "D", "M", "R", "T"})
+DESTRUCTIVE_STATUS_PREFIXES = frozenset({"C", "D", "R", "T"})
+FOCUSED_TIERS = frozenset({"manual_prediction", "official_results"})
 
 
 class ClassificationError(RuntimeError):
@@ -56,7 +63,7 @@ def load_rules(path: Path = DEFAULT_RULES) -> dict[str, tuple[str, ...]]:
     tier_sections = set(parser.sections()) - {"metadata"}
     if tier_sections != set(TIERS):
         raise ClassificationError(
-            "classifier rules must define exactly the three tiers"
+            "classifier rules must define exactly the configured tiers"
         )
     validated: dict[str, tuple[str, ...]] = {}
     for tier in TIERS:
@@ -98,6 +105,8 @@ def classify_changes(
 
     classified_paths: list[dict[str, Any]] = []
     selected = "non_forecasting"
+    selected_tiers: set[str] = set()
+    destructive_change = False
     for change in change_list:
         prefix = change.status[:1]
         if prefix not in KNOWN_STATUS_PREFIXES or not change.paths:
@@ -106,6 +115,9 @@ def classify_changes(
                 "reason": f"unknown_change_status:{change.status or 'empty'}",
                 "paths": classified_paths,
             }
+        destructive_change = (
+            destructive_change or prefix in DESTRUCTIVE_STATUS_PREFIXES
+        )
         for path in change.paths:
             try:
                 tier, matched = _path_tier(path, rules)
@@ -124,14 +136,21 @@ def classify_changes(
                     "defaulted_to_full": not matched,
                 }
             )
+            selected_tiers.add(tier)
             if TIER_RANK[tier] > TIER_RANK[selected]:
                 selected = tier
 
-    reason = (
-        "unknown_path_defaults_to_full"
-        if any(item["defaulted_to_full"] for item in classified_paths)
-        else "broadest_matching_tier"
-    )
+    focused_tiers = selected_tiers & FOCUSED_TIERS
+    if destructive_change:
+        selected = "full_forecasting"
+        reason = "destructive_change_defaults_to_full"
+    elif len(focused_tiers) > 1:
+        selected = "full_forecasting"
+        reason = "mixed_focused_tiers_default_to_full"
+    elif any(item["defaulted_to_full"] for item in classified_paths):
+        reason = "unknown_path_defaults_to_full"
+    else:
+        reason = "broadest_matching_tier"
     return {"tier": selected, "reason": reason, "paths": classified_paths}
 
 
