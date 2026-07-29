@@ -34,6 +34,24 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
                 "manual_prediction",
             ),
             (
+                "official-results-only",
+                [
+                    ("M", "scripts/ingest_results_for_date.py"),
+                    ("M", "scripts/autonomous_official_result_capture.py"),
+                    (
+                        "M",
+                        "scripts/collect_expert_form_official_result_labels_report_only.py",
+                    ),
+                    ("M", "tests/test_results_ingest_official_first.py"),
+                    ("M", "tests/test_autonomous_official_result_capture.py"),
+                    (
+                        "M",
+                        "tests/test_expert_form_official_result_labels_packet.py",
+                    ),
+                ],
+                "official_results",
+            ),
+            (
                 "core-only",
                 [("M", "race_collection/forecasting.py")],
                 "full_forecasting",
@@ -118,6 +136,42 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
             result["paths"][0]["matched_tiers"],
             ["non_forecasting", "manual_prediction"],
         )
+
+    def test_mixed_focused_tiers_default_to_full(self):
+        result = CLASSIFIER.classify_changes(
+            [
+                CLASSIFIER.Change(
+                    status="M", paths=("scripts/predict_race_now.py",)
+                ),
+                CLASSIFIER.Change(
+                    status="M", paths=("scripts/ingest_results_for_date.py",)
+                ),
+            ],
+            self.rules,
+        )
+        self.assertEqual(result["tier"], "full_forecasting")
+        self.assertEqual(result["reason"], "mixed_focused_tiers_default_to_full")
+
+    def test_destructive_official_result_changes_default_to_full(self):
+        for change in (
+            CLASSIFIER.Change(
+                status="D", paths=("scripts/ingest_results_for_date.py",)
+            ),
+            CLASSIFIER.Change(
+                status="R100",
+                paths=(
+                    "scripts/ingest_results_for_date.py",
+                    "scripts/autonomous_official_result_capture.py",
+                ),
+            ),
+        ):
+            with self.subTest(status=change.status):
+                result = CLASSIFIER.classify_changes([change], self.rules)
+                self.assertEqual(result["tier"], "full_forecasting")
+                self.assertEqual(
+                    result["reason"],
+                    "destructive_change_defaults_to_full",
+                )
 
     def test_empty_or_unknown_status_defaults_to_full(self):
         self.assertEqual(
