@@ -28,39 +28,56 @@ bytes into its private bundle; it does not rescrape or cross a database writer.
 
 If the discovered packet predates the exact target-grade proof contract or its
 implementation hashes do not match the current source, `auto` records that
-candidate in `source/rejected_receipts.json` and continues to the normal locked
-fresh-acquisition path. This exception is limited to the known pre-current
-packet fields and implementation seal: ambiguous, conflicting, malformed,
-post-jump, or otherwise invalid evidence remains terminal. `receipt` mode is
-always reuse-only and never falls back to collection.
+candidate and continues to the collector-request path. This exception is
+limited to the known pre-current packet fields and implementation seal:
+ambiguous, conflicting, malformed, post-jump, or otherwise invalid evidence
+remains terminal. `receipt` mode is always reuse-only.
 
-If no reusable receipt exists, the command tries the existing collector lock.
-It never deletes, steals, cancels, or treats a stale lock as permission to
-bypass its owner. While the lock is busy, the bounded config wait polls the
-same no-steal acquisition path and can also notice a receipt completed by the
-collector. Checked-in configs wait at most 30 seconds by default, poll once per
-second, and enforce a 60-second schema maximum; an explicit
-`lock_wait_seconds: 0` returns immediate `BUSY`. The monotonic wait stops before
-another acquisition at its deadline and stops immediately if the race reaches
-its pre-jump boundary. If the wait expires, `BUSY` includes the elapsed and
-configured limit. With the lock legitimately acquired, the command refreshes
-only the exact race, requires master's fixed-window plan to be eligible,
-fetches and validates current Sportsbet WIN and PLACE markets, and writes the
-accepted capture only into the private run bundle. It returns
-`CAPTURE_WINDOW_UNAVAILABLE` instead of waiting when no fixed window is due.
-The production database is never passed to an append path. Before direct
-capture, the command also requires the lock path to be the canonical
-daemon-lock location under the selected database's repository root; a
-database/lock-root mismatch fails closed.
+If no reusable receipt exists and a fixed capture window is due, `auto`
+atomically publishes one research-only, one-attempt request under
+`artifacts/full_evidence_orchestration_20260525/manual_prediction_collector_requests_v1`.
+The immutable request binds its UUID, exact TheDogs race identity and URL,
+venue, race number, date, jump, creation and expiry times, requested output
+schemas and statuses, and the expected runner set when available. Only one
+unexpired unanswered manual request is supported.
+
+The scheduled collector remains the sole browser and capture-lock authority.
+At the start of a collector cycle, after its daemon parent has acquired the
+existing shared lock, it may atomically claim one request. It never checks or
+claims during an active capture. The normal refresh and fixed-window plan put
+the requested exact race first, but the request cannot bypass race, URL, jump,
+runner, time-window, Sportsbet validation, or append-only persistence checks.
+The collector writes one attempt marker before capture and exactly one terminal
+response:
+
+- `RECEIPT_READY`
+- `REQUEST_EXPIRED`
+- `RACE_NOT_FOUND`
+- `CAPTURE_WINDOW_CLOSED`
+- `IDENTITY_MISMATCH`
+- `CAPTURE_FAILED`
+
+`RECEIPT_READY` points to a sealed protocol receipt that binds the request and
+claim hashes, exact race, runner identities and runner-set hash, capture and
+response timestamps, source evidence hashes, record and effective-state hashes,
+and the verified master-packet handoff. The predictor waits on a monotonic
+finite deadline (600 seconds in checked-in configs, with a 900-second schema
+maximum), consumes
+the terminal response atomically once, rediscovers the exact packet, verifies
+it against the sealed response, and then enters the unchanged receipt
+validation and scoring path. Timeout, duplicate claim/attempt/response/consume,
+replay, malformed or unknown records, identity disagreement, expiry, post-jump
+state, and hash drift fail closed.
 
 The exact TheDogs meeting slug remains authoritative during named-race
 selection. Murray Bridge and Murray Bridge Straight therefore remain distinct
 meeting identities even where downstream compatibility data uses `MURR` for
 both; a shared-code query that matches both is ambiguous and fails closed.
 
-Use `receipt` to prohibit direct capture or `capture` to require immediate
-isolated capture. Direct capture is an explicit network operation performed by
-the command; it still respects the shared lock.
+Use `receipt` to prohibit request publication. `capture` is retained only as an
+explicit fail-closed selector and returns `CAPTURE_AUTHORITY_FORBIDDEN`; the
+manual predictor never starts a second capture process or acquires the shared
+collector lock.
 
 ## Feature cutoff
 

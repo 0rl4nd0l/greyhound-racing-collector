@@ -47,6 +47,12 @@ from scripts.predict_market_form_residual import (  # noqa: E402
     discover_race_artifacts,
     score_from_artifacts,
 )
+from race_collection.manual_prediction_collector_request import (  # noqa: E402
+    PROTOCOL_DIRECTORY,
+    RECEIPT_READY,
+    ManualPredictionCollectorProtocol,
+    ProtocolRejected,
+)
 from src.predictor.on_demand import (  # noqa: E402
     Dependencies,
     PredictionBlocked,
@@ -57,7 +63,6 @@ from src.predictor.on_demand import (  # noqa: E402
     create_bundle,
     load_config,
     market_only_prediction,
-    normalize_validation_receipt,
     receipt_from_handoff,
     resolve_model,
     seal_history_database,
@@ -75,6 +80,7 @@ DEFAULT_CAPTURE_EVIDENCE_ROOTS = (
     DEFAULT_EVIDENCE_ROOT,
     *DEFAULT_RETAINED_EVIDENCE_ROOTS,
 )
+DEFAULT_COLLECTOR_REQUEST_ROOT = DEFAULT_EVIDENCE_ROOT / PROTOCOL_DIRECTORY
 DEFAULT_LOCK = (
     ROOT
     / "artifacts/full_evidence_orchestration_20260525/shadow_autopilot_daemon_runtime/shadow_autopilot.lock"
@@ -673,21 +679,6 @@ def _public_model(model: Any) -> dict[str, Any]:
     }
 
 
-def _capture_attempt(
-    *, race_id: str, captured_at: datetime, validation: Mapping[str, Any]
-) -> dict[str, Any]:
-    return {
-        "schema_version": "autonomous_live_odds_capture_attempt_v1",
-        "race_id": race_id,
-        "status": "APPENDED",
-        "reasons": [],
-        "fetch_time": captured_at.isoformat(),
-        "append_time": captured_at.isoformat(),
-        "persistence_scope": "isolated_research_bundle_only",
-        "validation": dict(validation),
-    }
-
-
 def _selected_variant(prediction: Mapping[str, Any], variant: str) -> dict[str, Any]:
     probability_key = {
         "full_strength": "full_probability",
@@ -830,9 +821,64 @@ def _discover_for_auto(
         return None
 
 
+def _request_race(
+    target: Mapping[str, Any],
+    *,
+    race_id: str,
+    jump: datetime,
+) -> dict[str, Any]:
+    try:
+        race_number = int(target.get("race_number"))
+    except (TypeError, ValueError) as exc:
+        raise PredictionBlocked("EXACT_RACE_IDENTITY_UNAVAILABLE") from exc
+    race_date = str(target.get("date") or target.get("race_date") or "").strip()
+    venue = str(target.get("venue") or target.get("venue_name") or "").strip().upper()
+    url = str(target.get("url") or target.get("race_url") or "").strip()
+    if not race_date or not venue or not url:
+        raise PredictionBlocked("EXACT_RACE_IDENTITY_UNAVAILABLE")
+    return {
+        "race_id": race_id,
+        "url": url,
+        "venue": venue,
+        "race_number": race_number,
+        "race_date": race_date[:10],
+        "jump_timestamp": jump.isoformat(),
+    }
+
+
+def _request_expected_runners(
+    target: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    values = target.get("participants") or target.get("runners") or []
+    if not isinstance(values, Sequence) or isinstance(values, (str, bytes)):
+        return []
+    rows: list[dict[str, Any]] = []
+    for value in values:
+        if not isinstance(value, Mapping):
+            return []
+        try:
+            box = int(value.get("box_number") or value.get("box"))
+        except (TypeError, ValueError):
+            return []
+        dog_name = str(value.get("dog_name") or value.get("name") or "").strip()
+        identity = str(value.get("identity") or dog_name).strip().upper()
+        if not dog_name or not identity:
+            return []
+        rows.append(
+            {
+                "box_number": box,
+                "dog_name": dog_name,
+                "identity": identity,
+            }
+        )
+    return rows
+
+
 def _acquire_or_reuse(
     dependencies: Dependencies,
     *,
+    protocol: ManualPredictionCollectorProtocol,
+    target: Mapping[str, Any],
     odds_source: str,
     evidence_roots: Sequence[Path],
     db_path: Path,
@@ -841,7 +887,12 @@ def _acquire_or_reuse(
     current_time: datetime,
     wait_seconds: float,
     poll_seconds: float,
-) -> tuple[Any | None, Mapping[str, Any] | None, list[dict[str, Any]]]:
+) -> tuple[
+    Any | None,
+    Mapping[str, Any] | None,
+    list[dict[str, Any]],
+    datetime,
+]:
     rejected_receipts: list[dict[str, Any]] = []
     if odds_source == "receipt":
         receipt = _discover(
@@ -853,8 +904,13 @@ def _acquire_or_reuse(
             current_time=current_time,
         )
         if receipt is not None:
-            return None, receipt, rejected_receipts
+            return None, receipt, rejected_receipts, current_time
         raise PredictionBlocked("RECEIPT_UNAVAILABLE")
+    if odds_source == "capture":
+        raise PredictionBlocked(
+            "CAPTURE_AUTHORITY_FORBIDDEN",
+            authority="scheduled_collector_only",
+        )
     if odds_source == "auto":
         receipt = _discover_for_auto(
             dependencies,
@@ -866,69 +922,86 @@ def _acquire_or_reuse(
             rejected_receipts=rejected_receipts,
         )
         if receipt is not None:
-            return None, receipt, rejected_receipts
-    started = dependencies.monotonic()
-    deadline = started + wait_seconds
-    last_busy: BaseException | None = None
-    while True:
-        observed = dependencies.monotonic()
-        elapsed = max(0.0, observed - started)
-        observed_time = current_time + timedelta(seconds=elapsed)
-        if observed_time >= jump:
+            return None, receipt, rejected_receipts, current_time
+    if odds_source != "auto":
+        raise PredictionBlocked("ODDS_SOURCE_UNSUPPORTED", odds_source=odds_source)
+
+    from scripts.autonomous_live_odds_capture import due_capture_window
+
+    capture_window, _ = due_capture_window(
+        (jump - current_time).total_seconds() / 60.0
+    )
+    if capture_window is None:
+        raise PredictionBlocked("CAPTURE_WINDOW_UNAVAILABLE")
+    expires_at = min(jump, current_time + timedelta(seconds=wait_seconds))
+    if expires_at <= current_time:
+        raise PredictionBlocked("COLLECTOR_RESPONSE_TIMEOUT", wait_seconds=wait_seconds)
+    try:
+        published = protocol.publish_request(
+            race=_request_race(target, race_id=race_id, jump=jump),
+            expected_runners=_request_expected_runners(target),
+            created_at=current_time,
+            expires_at=expires_at,
+        )
+        started = dependencies.monotonic()
+        response = protocol.wait_for_response(
+            str(published["request_id"]),
+            timeout_seconds=wait_seconds,
+            poll_seconds=poll_seconds,
+            monotonic=dependencies.monotonic,
+            sleep=dependencies.sleep,
+        )
+        elapsed = max(0.0, dependencies.monotonic() - started)
+        observed_time = min(jump, current_time + timedelta(seconds=elapsed))
+        if response is None:
             raise PredictionBlocked(
-                "POST_JUMP",
-                race_id=race_id,
-                jump_timestamp=jump.isoformat(),
-                lock_wait_elapsed_seconds=elapsed,
-                lock_wait_limit_seconds=wait_seconds,
-                lock_details=getattr(last_busy, "payload", None),
+                "COLLECTOR_RESPONSE_TIMEOUT",
+                request_id=published["request_id"],
+                wait_seconds=wait_seconds,
             )
-        if last_busy is not None and observed >= deadline:
+        consumed = protocol.consume_response(
+            str(published["request_id"]),
+            now=observed_time,
+        )
+        if response["status"] != RECEIPT_READY:
             raise PredictionBlocked(
-                "BUSY",
-                lock_details=getattr(last_busy, "payload", None),
-                lock_wait_elapsed_seconds=elapsed,
-                lock_wait_limit_seconds=wait_seconds,
-            ) from last_busy
-        try:
-            return dependencies.acquire_lock(), None, rejected_receipts
-        except dependencies.lock_busy_type as exc:
-            last_busy = exc
-            observed = dependencies.monotonic()
-            elapsed = max(0.0, observed - started)
-            observed_time = current_time + timedelta(seconds=elapsed)
-            if observed_time >= jump:
-                raise PredictionBlocked(
-                    "POST_JUMP",
-                    race_id=race_id,
-                    jump_timestamp=jump.isoformat(),
-                    lock_wait_elapsed_seconds=elapsed,
-                    lock_wait_limit_seconds=wait_seconds,
-                    lock_details=getattr(exc, "payload", None),
-                ) from exc
-            remaining = deadline - observed
-            if remaining <= 0:
-                details = getattr(exc, "payload", None)
-                raise PredictionBlocked(
-                    "BUSY",
-                    lock_details=details,
-                    lock_wait_elapsed_seconds=elapsed,
-                    lock_wait_limit_seconds=wait_seconds,
-                ) from exc
-            if odds_source == "auto":
-                receipt = _discover_for_auto(
-                    dependencies,
-                    evidence_roots=evidence_roots,
-                    db_path=db_path,
-                    race_id=race_id,
-                    jump=jump,
-                    current_time=observed_time,
-                    rejected_receipts=rejected_receipts,
-                )
-                if receipt is not None:
-                    return None, receipt, rejected_receipts
-            until_jump = (jump - observed_time).total_seconds()
-            dependencies.sleep(min(max(poll_seconds, 0.01), remaining, until_jump))
+                str(response["status"]),
+                request_id=published["request_id"],
+                reason=response.get("reason"),
+            )
+        handoff = _discover_for_auto(
+            dependencies,
+            evidence_roots=evidence_roots,
+            db_path=db_path,
+            race_id=race_id,
+            jump=jump,
+            current_time=observed_time,
+            rejected_receipts=rejected_receipts,
+        )
+        if handoff is None:
+            raise PredictionBlocked(
+                "RECEIPT_INVALID",
+                reason="sealed_response_receipt_unavailable",
+            )
+        normalized, _, _, _ = receipt_from_handoff(
+            handoff,
+            current_time=observed_time,
+            max_age_seconds=max(1, int(wait_seconds)),
+        )
+        protocol.verify_ready_handoff(
+            consumed["receipt"],
+            handoff=handoff,
+            normalized_receipt=normalized,
+        )
+    except PredictionBlocked:
+        raise
+    except ProtocolRejected as exc:
+        raise PredictionBlocked(
+            "COLLECTOR_PROTOCOL_INVALID",
+            reason=exc.code,
+            **exc.details,
+        ) from exc
+    return None, handoff, rejected_receipts, observed_time
 
 
 def _run_prediction(
@@ -980,15 +1053,32 @@ def _run_prediction(
 
     lock_handle: Any | None = None
     try:
-        lock_handle, handoff, rejected_receipts = _acquire_or_reuse(
+        (
+            lock_handle,
+            handoff,
+            rejected_receipts,
+            receipt_validation_time,
+        ) = _acquire_or_reuse(
             dependencies,
+            protocol=ManualPredictionCollectorProtocol(
+                Path(
+                    getattr(
+                        args,
+                        "collector_request_root",
+                        DEFAULT_COLLECTOR_REQUEST_ROOT,
+                    )
+                )
+            ),
+            target=target,
             odds_source=args.odds_source,
             evidence_roots=tuple(Path(path) for path in args.capture_evidence_root),
             db_path=Path(args.db),
             race_id=race_id,
             jump=jump,
             current_time=current_time,
-            wait_seconds=float(config["bundle"]["lock_wait_seconds"]),
+            wait_seconds=float(
+                config["bundle"]["collector_response_wait_seconds"]
+            ),
             poll_seconds=float(config["bundle"]["poll_seconds"]),
         )
         if rejected_receipts:
@@ -1002,7 +1092,7 @@ def _run_prediction(
         if handoff is not None:
             receipt, capture_raw, form_raw, sidecar_raw = receipt_from_handoff(
                 handoff,
-                current_time=current_time,
+                current_time=receipt_validation_time,
                 max_age_seconds=int(config["bundle"]["receipt_max_age_seconds"]),
             )
             form_name = str(handoff.get("_form_name") or "form.csv")
@@ -1015,69 +1105,7 @@ def _run_prediction(
             write_exact_bytes(sidecar, sidecar_raw)
             write_exact_bytes(capture_path, capture_raw)
         else:
-            form_csv, sidecar = dependencies.refresh(
-                target, bundle, current_time, int(args.days_ahead)
-            )
-            form_csv, sidecar = _validated_refreshed_sources(bundle, form_csv, sidecar)
-            plan_context = {
-                "race_id": race_id,
-                "form_csv": str(form_csv),
-                "current_time": dependencies.now(),
-                "jump_timestamp": jump,
-            }
-            provisional_names: list[str] = []
-            try:
-                sidecar_value = json.loads(sidecar.read_bytes())
-                participants = (
-                    sidecar_value.get("participants")
-                    or sidecar_value.get("runners")
-                    or []
-                )
-                provisional_names = [
-                    str(row.get("dog_name") or row.get("name") or "")
-                    for row in participants
-                    if isinstance(row, Mapping)
-                ]
-            except (OSError, json.JSONDecodeError):
-                pass
-            sealed_db = bundle / "features" / "sealed_history.db"
-            history = seal_history_database(
-                source=Path(args.db),
-                target=sealed_db,
-                target_race_id=race_id,
-                cutoff=jump,
-                runner_names=provisional_names,
-            )
-            _write_canonical(bundle / "features" / "history_seal.json", history)
-            try:
-                fetched = dependencies.fetch_odds(
-                    plan_context, sealed_db, float(args.fetch_timeout_seconds)
-                )
-            except PredictionBlocked:
-                raise
-            except Exception as exc:
-                raise PredictionBlocked(
-                    "MARKET_UNAVAILABLE", error=type(exc).__name__
-                ) from exc
-            try:
-                captured_at = datetime.fromisoformat(str(fetched["captured_at"]))
-                validation = fetched["validation"]
-            except (KeyError, TypeError, ValueError) as exc:
-                raise PredictionBlocked("MARKET_UNAVAILABLE") from exc
-            if not isinstance(validation, Mapping):
-                raise PredictionBlocked("MARKET_UNAVAILABLE")
-            receipt = normalize_validation_receipt(
-                race_id=race_id,
-                captured_at=captured_at,
-                validation=validation,
-                source_kind="isolated_immediate_capture",
-            )
-            attempt = _capture_attempt(
-                race_id=race_id, captured_at=captured_at, validation=validation
-            )
-            capture_path = bundle / "source" / "capture.json"
-            _write_canonical(capture_path, attempt)
-            _write_canonical(bundle / "source" / "capture_provenance.json", fetched)
+            raise PredictionBlocked("RECEIPT_UNAVAILABLE")
     finally:
         if lock_handle is not None:
             dependencies.release_lock(lock_handle)
@@ -1433,6 +1461,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--lock-path", type=Path, default=DEFAULT_LOCK)
     parser.add_argument("--lock-output-dir", type=Path, default=DEFAULT_OUTPUT_ROOT)
+    parser.add_argument(
+        "--collector-request-root",
+        type=Path,
+        default=DEFAULT_COLLECTOR_REQUEST_ROOT,
+    )
     return parser
 
 
