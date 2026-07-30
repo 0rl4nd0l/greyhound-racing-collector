@@ -6663,7 +6663,7 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
         if manual_request is not None
         else None
     )
-    effective_shadow_run = not args.skip_shadow_run or manual_request is not None
+    effective_shadow_run = not args.skip_shadow_run
     shadow_model = args.shadow_model or latest_shadow_model(evidence_root)
     if shadow_model is None and effective_shadow_run:
         raise RuntimeError("shadow_model_required_for_no_training_autopilot")
