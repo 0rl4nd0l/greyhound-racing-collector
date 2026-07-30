@@ -18,15 +18,18 @@ from race_collection.manual_prediction_collector_request import (
     ProtocolRejected,
 )
 from race_collection.synchronous_manual_capture import (
+    bounded_current_race_index,
     CaptureCancelled,
     CaptureOneDependencies,
     CaptureOneRejected,
     CollectorBusy,
+    current_race_index_path,
     LatencyBudget,
     invoke_capture_one,
+    publish_current_race_index,
     run_capture_one,
 )
-from src.predictor.on_demand import canonical_bytes
+from src.predictor.on_demand import canonical_bytes, sha256_bytes
 
 NOW = datetime.fromisoformat("2026-07-30T16:55:00+10:00")
 JUMP = NOW + timedelta(minutes=20)
@@ -239,6 +242,134 @@ def test_latency_budget_declares_and_computes_enforced_margin():
     assert budget.reuse_margin_seconds == 53
     assert budget.post_lock_margin_seconds == 98
     assert budget.pre_fetch_margin_seconds(45) == 98
+
+
+def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
+    tmp_path: Path,
+):
+    evidence_root = tmp_path / "evidence"
+    state = evidence_root / "shadow_autopilot_daemon_runtime/odds_capture_state.json"
+    source = evidence_root / "shadow_autopilot_v1_fixture/odds_capture_refresh_report.json"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(
+        canonical_bytes(
+            {
+                "generated_at": NOW.isoformat(),
+                "selected_count": 1,
+                "selected_races": [
+                    {
+                        "date": "2026-07-19",
+                        "jump_datetime": "2026-07-19T13:00:00+10:00",
+                        "race_id": "Race 5 - GUNN - 2026-07-19",
+                        "race_id_aliases": ["Race 5 - GUNN - 2026-07-19"],
+                        "race_number": 5,
+                        "race_time": "13:00",
+                        "race_url": (
+                            "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5"
+                        ),
+                        "venue": "GUNN",
+                    }
+                ],
+            }
+        )
+    )
+
+    published = publish_current_race_index(
+        state_path=state,
+        evidence_root=evidence_root,
+        source_refresh_report_path=source,
+        run_id="fixture",
+    )
+    index_path = current_race_index_path(state)
+    original = index_path.read_bytes()
+
+    assert published["status"] == "PUBLISHED"
+    assert json.loads(original)["source_refresh_report_sha256"] == sha256_bytes(
+        source.read_bytes()
+    )
+    assert bounded_current_race_index(
+        current_time=NOW,
+        timeout_seconds=1,
+        index_path=index_path,
+        evidence_root=evidence_root,
+        max_age_seconds=900,
+    )[0]["race_id"] == "Race 5 - GUNN - 2026-07-19"
+
+    source.write_bytes(
+        canonical_bytes(
+            {
+                "generated_at": NOW.isoformat(),
+                "selected_count": 33,
+                "selected_races": [{}] * 33,
+            }
+        )
+    )
+    rejected = publish_current_race_index(
+        state_path=state,
+        evidence_root=evidence_root,
+        source_refresh_report_path=source,
+        run_id="invalid",
+    )
+
+    assert rejected["status"] == "REJECTED"
+    assert index_path.read_bytes() == original
+
+
+def test_current_race_index_rejects_stale_or_changed_source(tmp_path: Path):
+    evidence_root = tmp_path / "evidence"
+    state = evidence_root / "shadow_autopilot_daemon_runtime/odds_capture_state.json"
+    source = evidence_root / "shadow_autopilot_v1_fixture/odds_capture_refresh_report.json"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(
+        canonical_bytes(
+            {
+                "generated_at": (NOW - timedelta(minutes=20)).isoformat(),
+                "selected_count": 1,
+                "selected_races": [
+                    {
+                        "date": "2026-07-19",
+                        "jump_datetime": "2026-07-19T13:00:00+10:00",
+                        "race_id": "Race 5 - GUNN - 2026-07-19",
+                        "race_id_aliases": [],
+                        "race_number": 5,
+                        "race_time": "13:00",
+                        "race_url": (
+                            "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5"
+                        ),
+                        "venue": "GUNN",
+                    }
+                ],
+            }
+        )
+    )
+    publish_current_race_index(
+        state_path=state,
+        evidence_root=evidence_root,
+        source_refresh_report_path=source,
+        run_id="fixture",
+    )
+    index_path = current_race_index_path(state)
+
+    with pytest.raises(CaptureOneRejected) as stale:
+        bounded_current_race_index(
+            current_time=NOW,
+            timeout_seconds=1,
+            index_path=index_path,
+            evidence_root=evidence_root,
+            max_age_seconds=900,
+        )
+    assert stale.value.code == "CURRENT_INDEX_STALE"
+
+    source.write_bytes(source.read_bytes() + b" ")
+    with pytest.raises(CaptureOneRejected) as changed:
+        bounded_current_race_index(
+            current_time=NOW - timedelta(minutes=20),
+            timeout_seconds=1,
+            index_path=index_path,
+            evidence_root=evidence_root,
+            max_age_seconds=900,
+        )
+    assert changed.value.code == "CURRENT_INDEX_SOURCE_CHANGED"
 
 
 def test_capture_one_success_is_one_capture_one_receipt_and_one_consumption(

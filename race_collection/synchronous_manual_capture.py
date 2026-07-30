@@ -33,7 +33,10 @@ from src.predictor.on_demand import (
 
 ROOT = Path(__file__).resolve().parents[1]
 HANDOFF_SCHEMA = "on_demand_verified_collector_capture_v2"
-MAX_CURRENT_INDEX_RACES = 160
+CURRENT_RACE_INDEX_SCHEMA = "collector_current_race_index_v1"
+CURRENT_RACE_INDEX_FILENAME = "manual_prediction_current_race_index.json"
+MAX_CURRENT_INDEX_RACES = 32
+MAX_CURRENT_INDEX_BYTES = 2 * 1024 * 1024
 CANONICAL_LOCK_RELATIVE_PATH = Path(
     "artifacts/full_evidence_orchestration_20260525/"
     "shadow_autopilot_daemon_runtime/shadow_autopilot.lock"
@@ -267,22 +270,237 @@ def acquire_collector_lock_no_steal(
         ) from exc
 
 
+def current_race_index_path(state_path: Path) -> Path:
+    """Return the fixed collector-owned current-index path for one runtime."""
+
+    return Path(state_path).parent / CURRENT_RACE_INDEX_FILENAME
+
+
+def _safe_file_bytes(
+    path: Path,
+    *,
+    evidence_root: Path,
+    missing_code: str,
+) -> bytes:
+    root = evidence_root.resolve()
+    logical = path.absolute()
+    if path.is_symlink() or not path.is_file():
+        raise CaptureOneRejected(missing_code, path=str(path))
+    resolved = path.resolve()
+    if not resolved.is_relative_to(root):
+        raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path))
+    try:
+        size = path.stat(follow_symlinks=False).st_size
+    except OSError as exc:
+        raise CaptureOneRejected(missing_code, path=str(path)) from exc
+    if size <= 0 or size > MAX_CURRENT_INDEX_BYTES:
+        raise CaptureOneRejected(
+            "CURRENT_INDEX_SIZE_INVALID",
+            path=str(path),
+            size_bytes=size,
+            max_bytes=MAX_CURRENT_INDEX_BYTES,
+        )
+    return logical.read_bytes()
+
+
+def _normalize_current_index_rows(
+    source: Mapping[str, Any],
+    *,
+    max_races: int,
+) -> list[dict[str, Any]]:
+    selected = source.get("selected_races")
+    selected_count = source.get("selected_count")
+    if (
+        not isinstance(selected, list)
+        or isinstance(selected_count, bool)
+        or not isinstance(selected_count, int)
+        or selected_count != len(selected)
+        or len(selected) > max_races
+    ):
+        raise CaptureOneRejected(
+            "CURRENT_INDEX_UNBOUNDED",
+            race_count=len(selected) if isinstance(selected, list) else None,
+            selected_count=selected_count,
+            max_races=max_races,
+        )
+    from scripts.refresh_prejump_upcoming import stable_race_id
+    from utils.csv_metadata import canonical_thedogs_race_identity
+
+    normalized: list[dict[str, Any]] = []
+    identities: set[str] = set()
+    for raw in selected:
+        if not isinstance(raw, Mapping):
+            raise CaptureOneRejected("CURRENT_INDEX_INVALID", reason="race_not_mapping")
+        race_url = str(raw.get("race_url") or "")
+        identity = canonical_thedogs_race_identity(race_url)
+        try:
+            race_number = int(raw["race_number"])
+            jump = datetime.fromisoformat(str(raw["jump_datetime"]))
+        except (KeyError, TypeError, ValueError) as exc:
+            raise CaptureOneRejected(
+                "CURRENT_INDEX_INVALID", reason="race_identity_invalid"
+            ) from exc
+        race_date = str(raw.get("date") or "")
+        venue = str(raw.get("venue") or "")
+        race_id = str(raw.get("race_id") or "")
+        aliases = raw.get("race_id_aliases") or []
+        if (
+            identity is None
+            or identity["race_date"] != race_date
+            or identity["race_number"] != race_number
+            or jump.tzinfo is None
+            or jump.utcoffset() is None
+            or jump.date().isoformat() != race_date
+            or not venue
+            or not race_id
+            or not isinstance(aliases, list)
+            or len(aliases) > 16
+            or any(not isinstance(value, str) or not value for value in aliases)
+        ):
+            raise CaptureOneRejected(
+                "CURRENT_INDEX_INVALID", reason="race_identity_invalid"
+            )
+        row = {
+            "date": race_date,
+            "jump_datetime": jump.isoformat(),
+            "race_id": race_id,
+            "race_id_aliases": list(aliases),
+            "race_number": race_number,
+            "race_time": str(raw.get("race_time") or ""),
+            "race_url": race_url,
+            "venue": venue,
+        }
+        if stable_race_id(row) != race_id or race_id in identities:
+            raise CaptureOneRejected(
+                "CURRENT_INDEX_INVALID", reason="race_id_mismatch_or_duplicate"
+            )
+        identities.add(race_id)
+        normalized.append(row)
+    return normalized
+
+
+def _atomic_replace_canonical(path: Path, payload: Mapping[str, Any]) -> None:
+    if path.is_symlink():
+        raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(temporary, flags, 0o600)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(canonical_bytes(payload))
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        directory = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def publish_current_race_index(
+    *,
+    state_path: Path,
+    evidence_root: Path,
+    source_refresh_report_path: Path,
+    run_id: str,
+    max_races: int = MAX_CURRENT_INDEX_RACES,
+) -> dict[str, Any]:
+    """Seal one finite scheduled-refresh selection at a fixed runtime path."""
+
+    index_path = current_race_index_path(state_path)
+    report: dict[str, Any] = {
+        "schema_version": "collector_current_race_index_publish_v1",
+        "status": "REJECTED",
+        "index_path": str(index_path),
+        "source_refresh_report_path": str(source_refresh_report_path),
+        "run_id": run_id,
+    }
+    try:
+        source_raw = _safe_file_bytes(
+            source_refresh_report_path,
+            evidence_root=evidence_root,
+            missing_code="CURRENT_INDEX_SOURCE_MISSING",
+        )
+        source = json.loads(source_raw)
+        if not isinstance(source, Mapping):
+            raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID")
+        source_generated_at = datetime.fromisoformat(str(source["generated_at"]))
+        if (
+            source_generated_at.tzinfo is None
+            or source_generated_at.utcoffset() is None
+        ):
+            raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID")
+        races = _normalize_current_index_rows(source, max_races=max_races)
+        packet = {
+            "schema_version": CURRENT_RACE_INDEX_SCHEMA,
+            "run_id": run_id,
+            "source_generated_at": source_generated_at.isoformat(),
+            "source_refresh_report_path": str(source_refresh_report_path.resolve()),
+            "source_refresh_report_sha256": sha256_bytes(source_raw),
+            "race_count": len(races),
+            "max_races": max_races,
+            "races": races,
+        }
+        root = evidence_root.resolve()
+        if not index_path.absolute().parent.resolve().is_relative_to(root):
+            raise CaptureOneRejected(
+                "CURRENT_INDEX_PATH_UNSAFE", path=str(index_path)
+            )
+        _atomic_replace_canonical(index_path, packet)
+    except (
+        CaptureOneRejected,
+        KeyError,
+        OSError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as exc:
+        report["reason"] = (
+            exc.code if isinstance(exc, CaptureOneRejected) else type(exc).__name__
+        )
+        return report
+    report.update(
+        {
+            "status": "PUBLISHED",
+            "race_count": len(races),
+            "source_generated_at": source_generated_at.isoformat(),
+            "source_refresh_report_sha256": packet[
+                "source_refresh_report_sha256"
+            ],
+        }
+    )
+    return report
+
+
 def bounded_current_race_index(
     *,
     current_time: datetime,
     timeout_seconds: float,
+    index_path: Path,
+    evidence_root: Path,
+    max_age_seconds: int,
     max_races: int = MAX_CURRENT_INDEX_RACES,
 ) -> list[Mapping[str, Any]]:
-    """Discover only today's finite index, with a hard wall-clock deadline."""
+    """Read one finite collector-owned index with a hard wall-clock deadline."""
 
     if (
         current_time.tzinfo is None
         or current_time.utcoffset() is None
         or timeout_seconds <= 0
+        or isinstance(max_age_seconds, bool)
+        or not isinstance(max_age_seconds, int)
+        or max_age_seconds <= 0
         or max_races <= 0
     ):
         raise CaptureOneRejected("DISCOVERY_BUDGET_INVALID")
-    from upcoming_race_browser import UpcomingRaceBrowser
 
     previous_handler = signal.getsignal(signal.SIGALRM)
 
@@ -293,23 +511,57 @@ def bounded_current_race_index(
     try:
         signal.signal(signal.SIGALRM, timed_out)
         signal.setitimer(signal.ITIMER_REAL, timeout_seconds)
-        with contextlib.redirect_stdout(sys.stderr):
-            races = list(
-                UpcomingRaceBrowser().get_races_for_date(current_time.date())
+        packet_raw = _safe_file_bytes(
+            index_path,
+            evidence_root=evidence_root,
+            missing_code="CURRENT_INDEX_UNAVAILABLE",
+        )
+        packet = json.loads(packet_raw)
+        if (
+            not isinstance(packet, Mapping)
+            or packet.get("schema_version") != CURRENT_RACE_INDEX_SCHEMA
+            or canonical_bytes(packet) != packet_raw
+            or packet.get("max_races") != max_races
+        ):
+            raise CaptureOneRejected("CURRENT_INDEX_INVALID")
+        source_generated_at = datetime.fromisoformat(
+            str(packet["source_generated_at"])
+        )
+        if (
+            source_generated_at.tzinfo is None
+            or source_generated_at.utcoffset() is None
+        ):
+            raise CaptureOneRejected("CURRENT_INDEX_INVALID")
+        age_seconds = (current_time - source_generated_at).total_seconds()
+        if age_seconds < -60 or age_seconds > max_age_seconds:
+            raise CaptureOneRejected(
+                "CURRENT_INDEX_STALE",
+                age_seconds=age_seconds,
+                max_age_seconds=max_age_seconds,
             )
+        source_path = Path(str(packet["source_refresh_report_path"]))
+        source_raw = _safe_file_bytes(
+            source_path,
+            evidence_root=evidence_root,
+            missing_code="CURRENT_INDEX_SOURCE_MISSING",
+        )
+        if sha256_bytes(source_raw) != packet.get("source_refresh_report_sha256"):
+            raise CaptureOneRejected("CURRENT_INDEX_SOURCE_CHANGED")
+        source = json.loads(source_raw)
+        if not isinstance(source, Mapping):
+            raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID")
+        races = _normalize_current_index_rows(source, max_races=max_races)
+        if packet.get("race_count") != len(races) or packet.get("races") != races:
+            raise CaptureOneRejected("CURRENT_INDEX_INVALID")
     except _DiscoveryTimedOut as exc:
         raise CaptureOneRejected(
             "DISCOVERY_TIMEOUT", budget_seconds=timeout_seconds
         ) from exc
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise CaptureOneRejected("CURRENT_INDEX_INVALID") from exc
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, previous_handler)
-    if len(races) > max_races:
-        raise CaptureOneRejected(
-            "CURRENT_INDEX_UNBOUNDED",
-            race_count=len(races),
-            max_races=max_races,
-        )
     return races
 
 
