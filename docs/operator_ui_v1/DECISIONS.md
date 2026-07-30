@@ -125,3 +125,116 @@ supersession.
 - Consequences: R4 produces only non-executing specifications; future execution
   requires a new contract and separate authority.
 - Supersession: none.
+
+## 2026-07-30 — DEC-GHU-000C1-INDEX-READ-SAFETY
+
+- Context: rejected `GHU-000C` checkpoint
+  `3e9f639dfff62ffddd85aa00bab3d5c6b475cdf6` was not integrated after parent
+  focused validation returned `1 failed, 18 passed`.
+- Decision: accept only the bounded `GHU-000C1` correction that converts
+  named-path/`/proc/self/fd` revalidation errors into deterministic
+  `CURRENT_INDEX_PATH_UNSAFE`; do not claim portable non-Linux behavior or
+  detection of same-inode concurrent content mutation.
+- Evidence: implementer run `20260730T173227Z-3e9f639dff-b1c869`, session
+  `019fb415-e17b-7761-84b9-97a96a8fb58d`, child
+  `a1704231395179acca71854ce5ba7acb`; parent `19 passed in 0.86s`; reviewer run
+  `20260730T173456Z-04c32c37fe-4018cf`, session
+  `019fb418-1b23-7fa1-985d-48f0219864e1`, child
+  `6132758c7ecce3222bbf0f2059b29c77`, verdict `ACCEPT_GHU_000C1`; final
+  integration `c77b3be5ad4aa78b70a9ba89f25ee801d50f27c0`, tree
+  `fe5115435d18cbce6be055cf452acdba65518a76`.
+- Consequences: fixed index/source reads fail closed on the supported Linux
+  descriptor/path replacement boundary; `/proc/self/fd` and `O_NOFOLLOW`
+  limitations remain explicit.
+- Supersession: supersedes rejected `GHU-000C`; does not erase it.
+
+## 2026-07-30 — DEC-GHU-000B-FIXED-COLLECTOR-INDEX
+
+- Context: audit run `20260730T172346Z-1bacc67937-3c5f6b`, session
+  `019fb40d-e8ed-7d40-8ab2-8ad2b156552c`, child
+  `4a4c8758a536447e5c001a3a80aa6caa`, verdict
+  `GHU_000B_CORRECTION_REQUIRED`, found contract drift after upstream
+  `f38a125f6364b8a60d17ae9c971b0ce172874eea`.
+- Decision: the collector-owned fixed
+  `shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json`
+  packet and its `current_race_index_publish` plus sealed refresh-report
+  path/SHA chain are authoritative for upcoming/predictor discovery. Predictor
+  packet age may be at most 1200 seconds; UI selection separately remains at
+  most 300 seconds and strictly pre-jump. Browser/UI has no packet/root/path/
+  lock/browser/current-time input or discovery authority.
+- Evidence: schema `collector_current_race_index_v1`, canonical bounded packet
+  implementation in accepted integration
+  `c77b3be5ad4aa78b70a9ba89f25ee801d50f27c0`, and the exact
+  source-to-screen/ticket refinements in unaccepted `GHU-000B`.
+- Consequences: `GHU-022` reads/adapts only the fixed chain; `GHU-031` uses
+  server-owned allowlisted index/root argv; `GHU-035` covers all packet and
+  publication failures plus no-path injection; `GHU-037` preserves packet,
+  source, and publication hashes.
+- Supersession: additively supersedes only source details changed after accepted
+  `GHU-001`; it does not reopen or regress that accepted contract.
+
+## 2026-07-30 — DEC-GHU-000B2-REJECTED-AUTHORITY-CORRECTION
+
+- Context: Parent rejected `GHU-000B`, and independent review rejected its
+  ledger correction `GHU-000B1`; `GHU-000B2` is the unaccepted review-state
+  correction of their decision-ledger evidence.
+- Decision: Neither rejected `GHU-000B` nor rejected `GHU-000B1`, including
+  `DEC-GHU-000B-FIXED-COLLECTOR-INDEX`, ever became accepted authority. Pending
+  parent acceptance of `GHU-000B2`, only the unchanged factual mapping continues
+  into review: the collector-owned fixed
+  `shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json`
+  packet and its `current_race_index_publish` plus sealed refresh-report
+  path/SHA chain are the documented source mapping; predictor packet age is at
+  most 1200 seconds, UI selection remains separately at most 300 seconds and
+  strictly pre-jump, and browser/UI receives no packet/root/path/lock/browser/
+  current-time input or discovery authority.
+- Evidence: rejected `GHU-000B` ticket and parent rejection evidence in
+  `TICKETS.md` and `STATUS.md`; rejected `GHU-000B1` implementer run
+  `20260730T174818Z-c550b81f11-c6ce5a`, session
+  `019fb424-5860-7bc3-9b71-bd0e88b8880a`, child
+  `812c251abd99366b07fc1f9f02f82820`, checkpoint
+  `cc65dca19cd4bb9fa6b8c836dc843c0ba00bed7b`, tree
+  `009129fc2506a1f9d5d867177279c27c4956d113`, correction diff SHA-256
+  `fd2b93a33df15974173f9212449c7ce0c43e22fb303b6112e5d96e20bcd87363`;
+  reviewer run `20260730T175213Z-cc65dca19c-10a89a`, session
+  `019fb427-fb80-7122-91ad-6cd2987b17c4`, child
+  `0f16abbb824ddff3ed7e63f6deba86bc`, verdict `REJECT_GHU_000B1`; current
+  review ticket `GHU-000B2`, run `20260730T175638Z-cc65dca19c-c66202`,
+  session `019fb42d-217a-7fa0-966f-f36ddabd78d5`, child
+  `49e930e41c3a2fa72690df154d3b130c`.
+- Consequences: B and B1 remain blocked historical evidence; B2 remains
+  unaccepted in review. No acceptance, source/code change, runtime proof,
+  prediction, capture, deployment, or terminal `GHU-011`/`GHU-011L` result is
+  claimed.
+- Supersession: supersedes the operative/authority reading of
+  `DEC-GHU-000B-FIXED-COLLECTOR-INDEX` and links `GHU-000B`, `GHU-000B1`, and
+  `GHU-000B2`; preserves that old entry append-only as rejected history and
+  preserves only its unchanged factual fixed-index mapping for B2 review
+  pending parent acceptance.
+
+## 2026-07-30 — DEC-GHU-000B3-STALE-CURRENT-POINTER-CORRECTION
+
+- Context: Independent reviewer run `20260730T180236Z-3271721e5b-bed535`,
+  session `019fb431-732f-7dc2-ade5-45803721691c`, child
+  `fcd20a35022ea048ded40777f364b710`, verdict `REJECT_GHU_000B2`, rejected
+  `GHU-000B2` solely because the `GHU-000B` Next safe action still directed
+  independent review of rejected `GHU-000B1`; all other review axes passed.
+- Decision: `GHU-000B2` is blocked. `GHU-000B3` changes only that stale
+  current pointer and the necessary rejection/closeout bookkeeping, while
+  preserving B2's independently-passed fixed-index mapping and authority
+  correction pending parent acceptance of B3.
+- Evidence: B2 implementer run `20260730T175638Z-cc65dca19c-c66202`, session
+  `019fb42d-217a-7fa0-966f-f36ddabd78d5`, child
+  `49e930e41c3a2fa72690df154d3b130c`, checkpoint
+  `3271721e5b19bc795f775a00a608c557f85b0112`, tree
+  `cc52608ffff88ce784c08da3236b55c82ec753fd`, binary diff SHA-256
+  `0893bde44d28fd9bf24795771947374dca82a3654d76dfdd979dbbb2f85fdc6d`;
+  B3 run `20260730T180514Z-3271721e5b-a531a0`, session
+  `019fb433-d9c0-7b22-b36d-4a832833e4ce`, child
+  `50f7490271d4dd156e56032b72ddb9ab`.
+- Consequences: No substantive source, product, code, test, runtime, data,
+  fixed-index mapping, accepted-contract, or R1 history change is made. No
+  acceptance, deployment/runtime proof, prediction/capture, or terminal
+  `GHU-011`/`GHU-011L` result is claimed.
+- Supersession: This append-only entry records B2's rejection and B3's narrow
+  correction state; it does not delete or rewrite prior decision history.

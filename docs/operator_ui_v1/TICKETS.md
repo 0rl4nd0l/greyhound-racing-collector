@@ -65,6 +65,132 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Next safe action: Preserve the accepted integration evidence; `GHU-010` is dependency-ready and assigned to its fresh bounded implementer.
 - Closeout evidence: Parent accepted correction `GHU-002A` after independent review. Accepted integration commit `73f1e5d041f8d78ee0f48ce13e008f71c20090ca`; parent `aa4b45a004b1f897fc5d4cd06b0a741be6cd2446`; tree `d68116ba72b28f149707d7610821aea02cb35781`; frozen/reviewed base-to-result diff SHA-256 `34bbf4d1b6e6286b143d296183d35064909a614f8bef9dc90553c639b787fdd3`; implementer session `019fb27d-891e-75f1-aea2-fac1565f1db4`; independent reviewer session `019fb285-4b56-7202-a298-206855e4c875`, verdict `ACCEPT_GHU_002A`. Parent decision: accepted the exact reviewed four-file delta, committed it mechanically, and fast-forward integrated it into the clean canonical branch on 2026-07-30. Accepted file SHA-256: `PLAN.md` `6fba2ff2d028f0ae92ee85fe0acb556d4bd70fb19b5129db8b6a5a83828c5e0e`; `TICKETS.md` `9148ed8b3df8ac51d3e157ee1454ae9979d4113c79b3612186de640806c02e92`; `STATUS.md` `e77e671e786da138ee80f157e36ec91235508d12c9ff0921e29329e8465be208`; `DECISIONS.md` `107c05734e4d1ff780c136270afb2331eea69c32ed930ff9cbebf1347656c3bf`. Publication, PR, merge to the repository default branch, deployment, and runtime proof: `NOT_OCCURRED`.
 
+## GHU-000B — Correct collector-owned current-race-index source drift
+
+- Release: `R0`
+- Priority: `P0`
+- Status: `blocked`
+- Dependencies: `GHU-001`, `GHU-000C1`
+- Model routing: GPT-5.6 Sol; fallback GPT-5.6 Terra
+- Session role: Fresh bounded Codex X documentation implementer
+- Outcome: Additively corrects source details changed by upstream `f38a125f` without reopening accepted `GHU-001`.
+- Scope: Correct the historical merge-parent identity.; Record later upstream source drift and local merge/current integration identities.; Make the fixed collector-owned current-race-index packet and publication/source chain authoritative for upcoming/predictor discovery.; Refine only materially affected tickets and ledgers.
+- Non-goals: No product/code/test change, runtime action, acceptance, publication, merge, deployment, prediction, or broad programme change.
+- Acceptance: Contract records schema `collector_current_race_index_v1`, canonical bytes, maximum 32 rows, source path/SHA, timezone-aware generation, maximum age 1200 seconds, exact TheDogs identity/uniqueness, publication statuses, and fail-closed `CURRENT_INDEX_*` handling.; P-UPCOMING-300-PREJUMP remains separately stricter.; UI cannot inject or display path/root/lock/browser/time inputs.; GHU-000C/C1 history and current identities are exact.
+- Validation: Exact base/path checks, exhaustive stale-SHA/source scans, state/count/dependency/cross-reference checks, and `git diff --check` only.
+- Risks: Material risk: accidentally reopening accepted GHU-001, weakening the 300-second/pre-jump UI rule, or granting browser/path authority.
+- Stop conditions: Stop on product/code/test drift, unresolved identity, or need for runtime/external action.
+- Authority: Documentation-only additive correction; parent owns review, acceptance, integration, publication, and deployment.
+- Claims supported: Only the preserved rejected documentation checkpoint and its evidence-backed source mapping.
+- Claims unsupported: Acceptance, terminal GHU-011 result, deployment/runtime proof, prediction, training, promotion, betting, or runtime/data mutation.
+- Next safe action: Preserve this blocked predecessor unchanged; current correction work is only `GHU-000B3`.
+- Closeout evidence: Verified clean base `c77b3be5ad4aa78b70a9ba89f25ee801d50f27c0`, tree `fe5115435d18cbce6be055cf452acdba65518a76`. Transitioned `planned -> ready -> active -> review` in run `20260730T173844Z-c77b3be5ad-37e474`, session `019fb41b-abcb-7110-8b5d-1c6f7857758e`, child `cb1c337f1c00368a51b58ba87b4ccdbe`. Parent rejected the candidate and it transitioned `review -> blocked`; preserved checkpoint `c550b81f111d0e053c1c3dd6014ef0f28b7638c1`, tree `179300b2ddff681a52c9f7ae6fdffbf2c0137c15`, five-file diff SHA-256 `0ea14c1bafef9ca8917a87ac9a1836e4d733e5c36f83543c962a58601add2835`. Exact findings: abbreviated evidence hashes; false missing-session statements; incorrect predecessor failure classification; accepted `GHU-000C1` depending on blocked `GHU-000C`; redundant `GHU-000C1` dependencies in `GHU-035` and `GHU-037`; incorrect new-ledger dates; and missing rejection/correction-ticket ledger state. Audit provenance: run `20260730T172346Z-1bacc67937-3c5f6b`, session `019fb40d-e8ed-7d40-8ab2-8ad2b156552c`, child `4a4c8758a536447e5c001a3a80aa6caa`, verdict `GHU_000B_CORRECTION_REQUIRED`. Parent decision: `REJECTED`. Commit/push/PR/merge/deploy/runtime proof: `NOT_OCCURRED`.
+
+## GHU-000B1 — Correct rejected GHU-000B ledger evidence
+
+- Release: `R0`
+- Priority: `P0`
+- Status: `blocked`
+- Dependencies: `GHU-001`, `GHU-000C1`
+- Model routing: GPT-5.6 Sol; fallback GPT-5.6 Terra
+- Session role: Fresh bounded Codex X ledger-correction implementer
+- Outcome: Corrects only the three ledgers after parent rejection of `GHU-000B`.
+- Scope: Correct `TICKETS.md`, `STATUS.md`, and `DECISIONS.md` evidence identities, failure wording, dependencies, dates, counts, transitions, and cross-references.
+- Non-goals: No `PLAN.md`, `CONTRACTS.md`, product, code, test, runtime, data, database, lock, browser, service, prediction, capture, acceptance, commit, push, merge, deployment, or source-claim change.
+- Acceptance: Exact parent findings are corrected without changing preserved contract bytes.; No accepted ticket depends on a blocked ticket.; Counts, transitions, dates, identities, and cross-references agree.
+- Validation: Exact base/tree and allowed-path checks.; `PLAN.md` and `CONTRACTS.md` byte identity versus base.; Full-hash/no-ellipsis, failure-wording, dependency-graph, count, transition, cross-reference, and date-scope scans.; `git diff --check`.
+- Risks: Material risk: altering the sound fixed-index contract substance or R1 running/failure history.
+- Stop conditions: Stop on any need to edit outside the three allowed ledgers or to perform product/runtime/test/external action.
+- Authority: Documentation-only ledger correction; parent owns review, acceptance, integration, publication, and deployment.
+- Claims supported: Only this preserved rejected three-ledger correction and its exact evidence.
+- Claims unsupported: Acceptance of `GHU-000B1`, acceptance of rejected `GHU-000B`, changes to `PLAN.md`, `CONTRACTS.md`, or source, terminal `GHU-011`/`GHU-011L` result, deployment/runtime proof, prediction, capture, training, promotion, betting, or runtime/data mutation.
+- Next safe action: Preserve this blocked predecessor unchanged; current correction work is only `GHU-000B3`.
+- Closeout evidence: On programme date 2026-07-30, verified predecessor checkpoint/base `c550b81f111d0e053c1c3dd6014ef0f28b7638c1`, tree `179300b2ddff681a52c9f7ae6fdffbf2c0137c15`, and transitioned `planned -> ready -> active -> review` in implementer run `20260730T174818Z-c550b81f11-c6ce5a`, session `019fb424-5860-7bc3-9b71-bd0e88b8880a`, child `812c251abd99366b07fc1f9f02f82820`. Frozen checkpoint `cc65dca19cd4bb9fa6b8c836dc843c0ba00bed7b`, tree `009129fc2506a1f9d5d867177279c27c4956d113`, correction diff SHA-256 `fd2b93a33df15974173f9212449c7ce0c43e22fb303b6112e5d96e20bcd87363`. Independent reviewer run `20260730T175213Z-cc65dca19c-10a89a`, session `019fb427-fb80-7122-91ad-6cd2987b17c4`, child `0f16abbb824ddff3ed7e63f6deba86bc`, verdict `REJECT_GHU_000B1`, found two blockers: the existing `DEC-GHU-000B-FIXED-COLLECTOR-INDEX` still read as operative without an append-only entry recording rejection/correction state, and its accepted-integration identity was abbreviated. Parent rejected `GHU-000B1`; it transitioned `review -> blocked`. Commit/push/PR/merge/deploy/runtime proof: `NOT_OCCURRED`.
+
+## GHU-000B2 — Correct rejected GHU-000B1 decision-ledger evidence
+
+- Release: `R0`
+- Priority: `P0`
+- Status: `blocked`
+- Dependencies: `GHU-001`, `GHU-000C1`
+- Model routing: GPT-5.6 Sol; fallback GPT-5.6 Terra
+- Session role: Fresh bounded Codex X ledger-correction implementer
+- Outcome: Corrects only the three ledgers after parent rejection of `GHU-000B` and independent rejection of `GHU-000B1`.
+- Scope: Correct only `TICKETS.md`, `STATUS.md`, and `DECISIONS.md` bookkeeping and decision supersession for the two reviewer findings.
+- Non-goals: No `PLAN.md`, `CONTRACTS.md`, product, code, test, runtime, data, database, lock, browser, service, prediction, capture, acceptance, commit, push, merge, deployment, or source-claim change.
+- Acceptance: `GHU-000B1` is blocked with exact implementer/reviewer evidence.; A dated append-only decision explicitly supersedes the operative reading of the rejected B/B1 entry while preserving only the unchanged factual fixed-index mapping pending parent acceptance.; The accepted integration identity is full-length.; Counts and current pointers agree.
+- Validation: Exact base/tree and allowed-path checks.; `PLAN.md` and `CONTRACTS.md` byte identity versus base.; Append-only decision, full-hash, count, transition, dependency, cross-reference, and date scans.; `git diff --check`.
+- Risks: Material risk: altering the sound fixed-index mapping, accepted `GHU-001`/`GHU-000C1` claims, or R1 running/failure history.
+- Stop conditions: Stop on any need to edit outside the three allowed ledgers or to perform product/runtime/test/external action.
+- Authority: Documentation-only ledger correction; parent owns review, acceptance, integration, publication, and deployment.
+- Claims supported: Only this preserved rejected three-ledger correction and its exact evidence.
+- Claims unsupported: Acceptance of `GHU-000B2`, `GHU-000B1`, or rejected `GHU-000B`; changes to `PLAN.md`, `CONTRACTS.md`, or source; terminal `GHU-011`/`GHU-011L` result; deployment/runtime proof; prediction, capture, training, promotion, betting, or runtime/data mutation.
+- Next safe action: Preserve this blocked predecessor; independently review `GHU-000B3`.
+- Closeout evidence: On programme date 2026-07-30, verified checkpoint/base `cc65dca19cd4bb9fa6b8c836dc843c0ba00bed7b`, tree `009129fc2506a1f9d5d867177279c27c4956d113`, and transitioned `planned -> ready -> active -> review` in implementer run `20260730T175638Z-cc65dca19c-c66202`, session `019fb42d-217a-7fa0-966f-f36ddabd78d5`, child `49e930e41c3a2fa72690df154d3b130c`. Frozen checkpoint `3271721e5b19bc795f775a00a608c557f85b0112`, tree `cc52608ffff88ce784c08da3236b55c82ec753fd`, binary diff SHA-256 `0893bde44d28fd9bf24795771947374dca82a3654d76dfdd979dbbb2f85fdc6d`. Independent reviewer run `20260730T180236Z-3271721e5b-bed535`, session `019fb431-732f-7dc2-ade5-45803721691c`, child `fcd20a35022ea048ded40777f364b710`, verdict `REJECT_GHU_000B2`: the sole blocker was the exact stale `GHU-000B` current pointer directing review of rejected `GHU-000B1`; all other review axes passed. Parent rejected `GHU-000B2`; it transitioned `review -> blocked`. Commit/push/PR/merge/deploy/runtime proof: `NOT_OCCURRED`.
+
+## GHU-000B3 — Correct rejected GHU-000B2 current-pointer evidence
+
+- Release: `R0`
+- Priority: `P0`
+- Status: `review`
+- Dependencies: `GHU-001`, `GHU-000C1`
+- Model routing: GPT-5.6 Sol; fallback GPT-5.6 Terra
+- Session role: Fresh bounded Codex X ledger-correction implementer
+- Outcome: Corrects the sole stale current pointer found during independent review of `GHU-000B2` and records its rejection/closeout evidence.
+- Scope: Change only the `GHU-000B` current pointer and the necessary `TICKETS.md`, `STATUS.md`, and `DECISIONS.md` rejection/closeout bookkeeping.
+- Non-goals: No change to preserved B2 fixed-index mapping or authority correction; no `PLAN.md`, `CONTRACTS.md`, product, code, test, runtime, data, database, lock, browser, service, prediction, capture, acceptance, commit, push, merge, deployment, or R1 terminal-result claim.
+- Acceptance: Every current pointer names `GHU-000B3` or its independent exact-delta review as appropriate.; `GHU-000B2` is blocked with exact implementer and reviewer evidence and its independently-passed mapping/authority correction is preserved pending parent acceptance of B3.; Counts, transitions, dependencies, dates, and cross-references agree.
+- Validation: Exact base/tree and allowed-path checks.; `PLAN.md` and `CONTRACTS.md` byte identity versus base.; Full-hash, no-stale-current-pointer, count, transition, dependency, cross-reference, date, append-only-decision, and no-supplied-evidence-placeholder scans.; `git diff --check`.
+- Risks: Material risk: changing sound B2 substance, accepted `GHU-001`/`GHU-000C1` claims, or inventing a terminal R1 result.
+- Stop conditions: Stop on any need to edit outside the three allowed ledgers or to perform product/runtime/test/external action.
+- Authority: Documentation-only ledger correction; parent owns review, acceptance, integration, publication, and deployment.
+- Claims supported: Only this frozen uncommitted three-ledger current-pointer and rejection/closeout correction with its exact evidence.
+- Claims unsupported: Acceptance of `GHU-000B3`, `GHU-000B2`, `GHU-000B1`, or rejected `GHU-000B`; changes to `PLAN.md`, `CONTRACTS.md`, product, code, tests, or source; terminal `GHU-011`/`GHU-011L` result; deployment/runtime proof; prediction, capture, training, promotion, betting, or runtime/data mutation.
+- Next safe action: Independent exact-delta review; keep `GHU-000B3` unaccepted.
+- Closeout evidence: On programme date 2026-07-30, verified checkpoint/base `3271721e5b19bc795f775a00a608c557f85b0112`, tree `cc52608ffff88ce784c08da3236b55c82ec753fd`, and transitioned `planned -> ready -> active -> review` in run `20260730T180514Z-3271721e5b-a531a0`, session `019fb433-d9c0-7b22-b36d-4a832833e4ce`, child `50f7490271d4dd156e56032b72ddb9ab`. Reviewer/verdict and parent decision: `PENDING`. Commit/push/PR/merge/deploy/runtime proof: `NOT_OCCURRED`.
+
+## GHU-000C — Harden collector index reads (rejected predecessor)
+
+- Release: `R0`
+- Priority: `P0`
+- Status: `blocked`
+- Dependencies: `GHU-001`
+- Model routing: GPT-5.6 Sol
+- Session role: Preserved predecessor implementation
+- Outcome: Attempted descriptor-bound fixed-index reads before the accepted correction.
+- Scope: Preserved historical candidate only.
+- Non-goals: It is not integration history and grants no accepted behavior.
+- Acceptance: Not met.
+- Validation: Parent-focused result `1 failed, 18 passed`; the post-read `/proc/self/fd` `OSError` was caught by the broad handler and misclassified as caller-missing code `CURRENT_INDEX_SOURCE_MISSING`, rather than the expected `CURRENT_INDEX_PATH_UNSAFE` with reason `path_replaced`.
+- Risks: Unsupported absolute claims about concurrent mutation.
+- Stop conditions: Rejected candidate remains blocked.
+- Authority: Historical evidence only.
+- Claims supported: The recorded rejected checkpoint and exact observed failure.
+- Claims unsupported: Integration, acceptance, or proof that same-inode concurrent content mutation is detected.
+- Next safe action: Preserve; accepted successor GHU-000C1 is authoritative.
+- Closeout evidence: Run `20260730T172828Z-f38a125f63-770b6a`, session `019fb412-36a3-7992-b249-0ba5e635c72c`, child `9f5cd6a19933e2a044a2a3c23c88ec1c`; checkpoint `3e9f639dfff62ffddd85aa00bab3d5c6b475cdf6`, tree `bdf39b69919e07bbfd5d8d330644b665aaa57fc7`; not in integration history.
+
+## GHU-000C1 — Deterministic collector index path-replacement rejection
+
+- Release: `R0`
+- Priority: `P0`
+- Status: `accepted`
+- Dependencies: `GHU-001`
+- Model routing: GPT-5.6 Sol
+- Session role: Parent-accepted bounded correction
+- Outcome: Converts post-open path-revalidation operating-system errors into deterministic fail-closed index rejection.
+- Scope: Accepted prerequisite closeout only.
+- Non-goals: No claim that portable `O_NOFOLLOW` exists outside supporting platforms or that same-inode concurrent content mutation is detected.
+- Acceptance: Focused parent suite passes and independent review accepts the exact correction.
+- Validation: Parent `19 passed in 0.86s`.
+- Risks: Linux `/proc/self/fd` and `O_NOFOLLOW` are platform limitations; descriptor/path replacement checks do not support an absolute same-inode concurrent-mutation claim.
+- Stop conditions: Preserve accepted scope and limitations.
+- Authority: Accepted source prerequisite; no runtime/deployment claim.
+- Claims supported: Exact accepted correction and deterministic path-replacement rejection.
+- Claims unsupported: Portable non-Linux equivalence or same-inode mutation detection.
+- Next safe action: Preserve accepted evidence; `GHU-000B3` is the current documentation-ledger correction.
+- Closeout evidence: Implementer run `20260730T173227Z-3e9f639dff-b1c869`, session `019fb415-e17b-7761-84b9-97a96a8fb58d`, child `a1704231395179acca71854ce5ba7acb`, correction diff identity `86567b5e32177ed0028940cb11158fee6e34a5f876f0903a4ef151458e1e59aa`; reviewer run `20260730T173456Z-04c32c37fe-4018cf`, session `019fb418-1b23-7fa1-985d-48f0219864e1`, child `6132758c7ecce3222bbf0f2059b29c77`, verdict `ACCEPT_GHU_000C1`. Parent accepted final integration `c77b3be5ad4aa78b70a9ba89f25ee801d50f27c0`, tree `fe5115435d18cbce6be055cf452acdba65518a76`, accepted staged diff identity `26886b3fba57cce1369dc45794f563a5ba250fbeadb9f7585bdf3f731ddbe373`.
+
 ## GHU-010 — Design tokens and responsive application shell
 
 - Release: `R1`
@@ -427,11 +553,11 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Release: `R2`
 - Priority: `P2`
 - Status: `planned`
-- Dependencies: `GHU-020`, `GHU-021`
+- Dependencies: `GHU-020`, `GHU-021`, `GHU-000C1`
 - Model routing: GPT-5.6 Sol; fallback GPT-5.6 Terra
 - Session role: Fresh Codex X implementation session
 - Outcome: Populates the race picker from current source-safe upcoming-race evidence.
-- Scope: Return exact race IDs, TheDogs URL, date, venue, race number, jump and runner set.; Expose source timestamp and ambiguity/exclusion reasons.; Never perform a browser scrape from a page request.; Use current source-safe cached/scheduled evidence only.
+- Scope: Read/adapt only the fixed collector-owned `manual_prediction_current_race_index.json` packet and its matching `current_race_index_publish` plus sealed source path/SHA chain.; Return exact race IDs, TheDogs URL, date, venue, race number, jump and runner set.; Apply P-UPCOMING-300-PREJUMP after packet validation.; Never interpret refresh reports independently, browse, scan, fetch, scrape, lock, or start a browser.
 - Non-goals: No live capture, schedule refresh, result access or guessing missing runners/times.
 - Acceptance: Only exact supported races are selectable.; Ambiguous and post-jump races are excluded with reasons.; Runner identity and set are preserved.
 - Validation: Identity, date, venue collision, runner-set and post-jump regressions.
@@ -574,11 +700,11 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Release: `R3`
 - Priority: `P3`
 - Status: `planned`
-- Dependencies: `GHU-030`
+- Dependencies: `GHU-030`, `GHU-000C1`
 - Model routing: GPT-5.6 Sol; fallback GPT-5.6 Terra
 - Session role: Fresh Codex X implementation session
 - Outcome: Introduces a single-purpose local worker that invokes the approved predictor exactly once without shell or browser authority.
-- Scope: Resolve server-side allowlisted race/model/config/odds inputs.; Build an argv list for the existing predictor; never use shell=True.; Capture canonical stdout/stderr and bind the resulting isolated bundle.; Persist PID/start/finish/exit/terminal status.; Never retry or substitute another race.
+- Scope: Resolve server-side allowlisted race/model/config/odds inputs.; Build fixed argv using only the server-owned allowlisted current-index locator and evidence root; never use shell=True.; Capture canonical stdout/stderr and bind the resulting isolated bundle.; Persist PID/start/finish/exit/terminal status.; Never retry or substitute another race.
 - Non-goals: No second collector/browser, direct capture, lock manipulation, current-time override, arbitrary paths or user-provided command fragments.
 - Acceptance: One accepted job launches at most one predictor subprocess.; The predictor remains read-only against canonical history except for normal collector-owned append-only capture.; Worker restart cannot duplicate an already-started job.
 - Validation: Subprocess argv and no-shell tests.; Duplicate/restart/timeout/terminal-status tests.; Forbidden-argument assertions.
@@ -662,7 +788,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Model routing: Pro (GPT-5.6 Sol Pro); fallback Extra High
 - Session role: Fresh independent review and adversarial test session
 - Outcome: Proves the UI cannot bypass the collector, duplicate an attempt, mutate protected data or overstate a result.
-- Scope: Exercise success and every terminal blocker with synthetic/fixture protocol data.; Test no-shell, no-path, no-lock, no-browser, no-current-time, no-retry and no-canonical-write invariants.; Test CSRF/auth/idempotency and cross-user/job isolation.; Review exact diff and validation evidence.
+- Scope: Exercise success and every terminal blocker with synthetic/fixture protocol data.; Test current index missing, stale, unsafe, changed, invalid, noncanonical, oversized, and unbounded evidence; `SKIPPED`, `REJECTED`, and `PUBLISHED` publication states; and packet/root/path injection absence.; Test no-shell, no-path, no-lock, no-browser, no-current-time, no-retry and no-canonical-write invariants.; Test CSRF/auth/idempotency and cross-user/job isolation.; Review exact diff and validation evidence.
 - Non-goals: No real race, deployment or live service action.
 - Acceptance: One UI submission equals at most one predictor invocation.; Collector remains sole capture authority.; No blocking identity, timing, provenance, security or mutation finding.
 - Validation: Classifier-selected focused suites; full forecasting only if required.; Independent exact-head review.
@@ -704,7 +830,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Model routing: GPT-5.6 Sol; fallback GPT-5.6 Terra
 - Session role: New Codex live-runtime session after explicit owner authorization
 - Outcome: Establishes whether the deployed UI can complete one exact request → claim → response → consume → score chain.
-- Scope: Deploy exact reviewed source through the generator.; Observe one natural timer cycle.; Select one suitable upcoming race.; Run exactly one UI prediction and preserve UI, protocol and bundle evidence.; Verify displayed state against raw artifacts.
+- Scope: Deploy exact reviewed source through the generator.; Observe one natural timer cycle.; Select one suitable upcoming race.; Run exactly one UI prediction and preserve the fixed packet, source refresh report, `current_race_index_publish`, and all packet/source/publication hashes with UI, protocol, and bundle evidence.; Verify displayed state against raw artifacts.
 - Non-goals: No second attempt, alternate race, training, promotion, service workaround, outcome access, EV, staking or betting.
 - Acceptance: One click creates one job and one invocation.; UI timeline and terminal result match protocol evidence.; No prohibited mutation occurred.; Runtime-proven is claimed only if scoring completes with valid provenance.
 - Validation: Exact runtime identity, hashes, protocol paths and bundle manifest.; Post-run no-retry/no-outcome/no-prohibited-mutation audit.

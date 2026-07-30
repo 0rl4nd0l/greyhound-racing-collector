@@ -10,12 +10,25 @@ plan `GREYHOUND_OPERATOR_UI_SYSTEM_PLAN.md`, and ticket schema
 `aa4b45a004b1f897fc5d4cd06b0a741be6cd2446`, tree
 `b34eeefdff0ebf74cc4f38d99652bea848488abc`, on the canonical integration branch
 `agent/operator-ui-programme-20260730`. A Codex X worktree branch is ephemeral
-candidate provenance, not the programme branch. Its upstream integration base is
-`51a5287dfc28c8d059df2768534498c4b6321230`,
-merged by `6f4fba42c45c73702efb017a21cbd284b44c1d04`.
+candidate provenance, not the programme branch. Its historical upstream
+integration base was the actual merge parent
+`51a5287d05c790e3855e5b74ce7117a29340135e`, merged by
+`6f4fba42c45c73702efb017a21cbd284b44c1d04`. Later source drift is
+`origin/master` `f38a125f6364b8a60d17ae9c971b0ce172874eea`, tree
+`408a8adbfa2bd436132bc4d2c63e952aeb57c5a5`, parent
+`51a5287d05c790e3855e5b74ce7117a29340135e`; it was incorporated by local merge
+`0b08966b31c15d8b459b9c6b60a48b19030a9ce4`. Current accepted integration is
+`c77b3be5ad4aa78b70a9ba89f25ee801d50f27c0`, tree
+`fe5115435d18cbce6be055cf452acdba65518a76`.
 `CONTRACTS.md` is the accepted source/evidence/authority contract. Live
 repository evidence supersedes stale seed metadata without weakening either
 the approved programme or that contract.
+
+`GHU-000B` is an additive source-drift correction. It supersedes only source
+details changed by `f38a125f` and does not reopen accepted `GHU-001`.
+Parent-accepted prerequisite `GHU-000C1` closes the fixed-packet read-safety
+finding before this documentation correction; its rejected predecessor remains
+preserved and is not part of integration history.
 
 The product is a private Flask/Jinja/static research console rooted at
 `app.py`, `templates/`, and `static/`. It makes no verified market-edge claim.

@@ -141,6 +141,27 @@ These policies are exhaustive; an adapter may not invent or defer a threshold:
   when `age_seconds <= 300` and server observation time is strictly before
   scheduled jump. Selected evidence, runner evidence, and their hashes must
   agree; at or after jump it is expired.
+- **P-CURRENT-INDEX-1200:** predictor discovery reads only the collector-owned
+  fixed packet
+  `shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json`
+  at its server-configured locator beneath the server-owned evidence root. The
+  packet has schema `collector_current_race_index_v1`, canonical bytes, at most
+  32 races, a timezone-aware `source_generated_at`, and the sealed refresh-
+  report path and SHA-256. Its configured maximum age is exactly 1200 seconds.
+  Each row is exactly `date`, timezone-aware `jump_datetime`, stable `race_id`,
+  bounded `race_id_aliases`, integer `race_number`, `race_time`, canonical
+  TheDogs `race_url`, and non-empty `venue`; canonical URL date/race-number,
+  stable ID, and race-ID uniqueness must agree. Daemon
+  `current_race_index_publish` evidence is `SKIPPED`, `REJECTED`, or
+  `PUBLISHED`; only a matching `PUBLISHED` chain is usable. Fail closed with
+  `CURRENT_INDEX_UNAVAILABLE`, `CURRENT_INDEX_STALE`,
+  `CURRENT_INDEX_PATH_UNSAFE`, `CURRENT_INDEX_SOURCE_MISSING`,
+  `CURRENT_INDEX_SOURCE_CHANGED`, `CURRENT_INDEX_SOURCE_INVALID`,
+  `CURRENT_INDEX_INVALID`, `CURRENT_INDEX_SIZE_INVALID`, or
+  `CURRENT_INDEX_UNBOUNDED` as applicable, including noncanonical bytes and
+  oversized/unbounded input. This predictor allowance never relaxes
+  P-UPCOMING-300-PREJUMP: UI selection still requires age no greater than 300
+  seconds and observation strictly pre-jump.
 - **P-CATALOG-60:** repository configs/schemas and deployed/model manifests
   are observed within 60 seconds and every expected SHA-256 matches.
 - **P-BUNDLE-LIST-60:** a directory/index listing observation is fresh for 60
@@ -182,10 +203,10 @@ only supported claim.
 | Collector — full daemon | Read-only installed `shadow-autopilot.timer`/`.service`, server-configured `shadow_autopilot_daemon_runtime/state.json`, and current full-daemon `daemon_run_report.json`, owned by `scripts/shadow_autopilot_daemon.py`. | P-COLLECTOR-FULL-DYNAMIC. Missing cadence/accuracy/timeout or required lane evidence is `DATA_MISSING`; intra-lane conflict is `DIVERGENT`; passed lane deadline is `STALE`. No UI service action. | Last internally consistent full-daemon lifecycle and whether its evidence is within that lane's derived deadline. |
 | Collector — odds only | Read-only installed `shadow-autopilot-odds-capture.timer`/`.service`, server-configured `shadow_autopilot_daemon_runtime/odds_capture_state.json`, current odds-only `odds_capture_only_daemon_report.json`, and its embedded or same-run `odds_capture_refresh_report.json` evidence, owned by `scripts/shadow_autopilot_daemon.py`. | P-COLLECTOR-ODDS-DYNAMIC. Missing cadence/accuracy/timeout or required lane evidence is `DATA_MISSING`; intra-lane conflict is `DIVERGENT`; passed lane deadline is `STALE`. No UI service action. | Last internally consistent odds-only lifecycle and whether its evidence is within that lane's derived deadline. |
 | Collector — aggregate | The two lane envelopes above plus matching installed/deployed source identities. | P-COLLECTOR-AGGREGATE. Show both lanes separately and preserve the unavailable/degraded state of either. Never compare their run IDs for equality. | Whether all plan-required collector lanes are individually fresh/integrity-valid under a consistent deployment identity. |
-| Upcoming races | Collector-produced current-run `refresh_prejump_report.json` and/or `odds_capture_refresh_report.json` selected-race evidence plus validated runner identities and runner-set hash, under collector ownership. | P-UPCOMING-300-PREJUMP. Missing/ambiguous race, jump, source URL, meeting, or runner identity is `UNAVAILABLE`; disagreement is `DIVERGENT`; post-jump is expired. UI/API reads MUST NOT call `UpcomingRaceBrowser`, start a browser, scrape, capture, or acquire a lock. | Exact pre-jump race and ordered validated runner set available for selection. |
+| Upcoming races | Collector-owned fixed packet `shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json`; matching `current_race_index_publish`; sealed source refresh-report path/SHA-256; packet/source hashes; fixed server-owned locator and evidence root. | Validate P-CURRENT-INDEX-1200, then apply stricter P-UPCOMING-300-PREJUMP. Read/adapt only this packet and publication/source chain. Browser/UI never supplies, derives, enumerates, or displays as input `--current-race-index`, evidence root, filesystem path, lock/browser/current-time argument; it never independently interprets a refresh report, browses, scans, fetches, scrapes, locks, or starts a browser. | Exact pre-jump race and ordered validated runner set from one verified collector publication chain. |
 | Model/config catalog | Finite checked-in configs and schemas resolved by `scripts/predict_race_now.py --list-configs`, plus matching frozen model/deployed manifest hashes. | P-CATALOG-60. Hash the exact observed files and normalized finite catalog; all repository, deployed, model, schema, and config identities must agree. Missing is `DATA_MISSING`; mismatch is `DIVERGENT`; invalid schema is `INVALID`. | Finite server-allowlisted model/config choices with exact byte identities. |
 | Bundle list/detail | Private isolated bundle `result.json` and `bundle_manifest.json` produced by `scripts/predict_race_now.py`, with every manifest entry rehashed and exact job/race binding verified. | Listing uses P-BUNDLE-LIST-60; verified detail uses P-IMMUTABLE-HISTORICAL. Tamper/missing bytes are `INVALID`/`UNAVAILABLE`. Historical bundle age never makes it a current prediction. | The verified result of one named historical prediction run. |
-| Prediction progress | Durable UI job plus predictor PID, process-group/session, start/finish/exit, and terminal identity; request, claim, attempt, response, optional receipt, exact-receipt index, and consume records owned by `race_collection/manual_prediction_collector_request.py`; `capture-one` status/output; verified `on_demand_verified_collector_capture_v2` handoff; `collector_run_id`, `request_sha256`, `claim_sha256`, `attempt_sha256`, `response_sha256`, `capture_attempt_sha256`, `append_report_sha256`, `source_report_sha256`, `source_form_sha256`, `source_sidecar_sha256`, `runner_set_sha256`, relevant timestamps and deterministic reason; scoring bundle/result/manifest after protocol completion. | P-JOB-5-DEADLINE. Scan all sources together; validate schemas, hashes, uniqueness, ordering, and exact race/runner/model/config/job/process binding. Missing events remain `WAITING` only before deadline; gaps cannot be fabricated. Browser/path/root/current-time/lock inputs and raw collector process control are not UI evidence or authority. Probabilities require verified `PREDICTION_READY`. | Last persisted UI phase and corresponding exact protocol, capture, and scoring evidence. |
+| Prediction progress | Durable UI job/process identity; protocol and capture records; fixed current-index packet hash; `current_race_index_publish` status/hash; sealed source refresh-report path/SHA-256; runner-set, source, receipt, and bundle hashes; one fixed server-owned packet locator and evidence root. | P-CURRENT-INDEX-1200 and P-JOB-5-DEADLINE. Validate the complete source-to-screen chain and exact race/runner/model/config/job/process binding. Browser/UI never supplies, derives, enumerates, or displays packet/root/path/lock/browser/current-time arguments. No independent refresh-report interpretation, browsing, scan, fetch, scrape, lock, browser, or raw collector control. Probabilities require verified `PREDICTION_READY`. | Last persisted UI phase and exact packet/publication/source, protocol, capture, and scoring evidence. |
 | Corpus readiness | Current matching report-only inventory and scorecard chain built by `scripts/build_race_evidence_inventory_packet.py`, including input population/source identity, exclusions, closure evidence, generated time, and chain hashes. | P-REPORT-24H. Exact input/source identities and all referenced report hashes must match. Missing/stale/mismatch blocks readiness. Raw DB counts never substitute. | Report-defined readiness and exclusions for the exact named population. |
 | Model lineage/evaluation | Immutable model/config/manifest plus the matching named evaluation, rolling comparison, promotion-distance, and refinement-chain hashes and slice identities. | Artifacts use P-IMMUTABLE-HISTORICAL; a “current evaluation” listing uses P-REPORT-24H and must bind the exact model/config/source slice. Missing or mismatch is unavailable/divergent. A historical slice never becomes present quality or promotion evidence because bytes remain available. | Identity and reported evaluation for one explicitly named historical slice. |
 | UI audit | No current store exists. Future separate UI operations store and its scan/integrity/reference-hash observation. | Now: `DATA_MISSING — UI audit store not implemented`. Future: P-OPS-5. Application logs do not substitute. | Future verified UI operation events only. |
@@ -272,7 +293,9 @@ activation, deployment, or promotion execution; EV, edge, staking, best-bet,
 profitability, wagering, or betting output/action; or public/anonymous access.
 
 The R3 worker constructs one fixed argv solely from server-owned allowlists and
-never uses a shell. UI/API code never acquires the collector lock, starts a
+never uses a shell. Its current-index and evidence-root values are fixed,
+server-owned, and allowlisted; neither is browser/UI input or displayed as an
+input. UI/API code never acquires the collector lock, starts a
 browser, calls direct capture, writes canonical racing/history data, or
 directly signals/manipulates collector or browser children. The predictor may
 invoke the one fixed-argv collector-owned `capture-one` entrypoint described in

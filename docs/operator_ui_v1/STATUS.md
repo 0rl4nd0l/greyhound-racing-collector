@@ -1,19 +1,110 @@
 # Greyhound Operator UI V1 status
 
-Observed 2026-07-30 during the uncommitted `GHU-010H` ledger-correction candidate:
+Observed 2026-07-30 during the uncommitted `GHU-000B3` ledger correction:
 
 | Field | State |
 |---|---|
 | Repository | `0rl4nd0l/greyhound-racing-collector` |
-| Branch | Clean integration base; this uncommitted correction is being produced on isolated Codex X branch `codex-x/20260730T134724Z-13cf3a3b54-40caa5` |
-| HEAD / tree | Exact accepted integration `13cf3a3b54a4a411465ac570e5ecb65b1669cdc3` / `cf80477be77676f4e8eec54a8aa23d2fd6917896` |
+| Branch | Rejected `GHU-000B2` checkpoint; this uncommitted correction is being produced on the isolated Codex X launcher branch |
+| HEAD / tree | Exact rejected `GHU-000B2` checkpoint `3271721e5b19bc795f775a00a608c557f85b0112` / `cc52608ffff88ce784c08da3236b55c82ec753fd`; parent accepted integration remains `c77b3be5ad4aa78b70a9ba89f25ee801d50f27c0` |
 | Baseline cleanliness | clean |
-| Upstream base | `origin/master` `51a5287dfc28c8d059df2768534498c4b6321230`, merged by `6f4fba42c45c73702efb017a21cbd284b44c1d04` |
-| Current release / ticket | R1 / `GHU-010H` ledger correction is unaccepted in review; rejected `GHU-010G` is blocked; parent-accepted `GHU-010` and `GHU-010F` are accepted; `GHU-011` is ready and unassigned |
-| Counts | 5 accepted tickets, 1 ready, 2 review, 5 blocked, 2 deferred, 24 planned (plus accepted audit milestone `GHU-000A`) |
-| Assignment | `GHU-010H` transitioned legally `planned -> ready -> active -> review` on 2026-07-30 in run `20260730T134724Z-13cf3a3b54-40caa5`, child `46e2cfc9b75f3ff6170baa9263698df4`; `GHU-011` remains ready with no implementation run |
-| Next safe action | Independent exact ledger review of `GHU-010H`, then assign one fresh bounded `GHU-011` fixture-dashboard implementer |
-| Validation | Exact reviewed product/test bytes retained; prior focused pytest `2 passed` and Playwright `3 passed in 2.1s`; original broad suite remains failed at `24 failed, 518 passed, 40 subtests passed in 4527.96s`; stable diagnostic isolates validation-environment effects without relabeling that command passed |
+| Historical/upstream source | Actual historical merge parent `51a5287d05c790e3855e5b74ce7117a29340135e`; later `origin/master` drift `f38a125f6364b8a60d17ae9c971b0ce172874eea`, tree `408a8adbfa2bd436132bc4d2c63e952aeb57c5a5`, parent `51a5287d05c790e3855e5b74ce7117a29340135e`; local merge `0b08966b31c15d8b459b9c6b60a48b19030a9ce4` |
+| Current release / ticket | R0 ledger correction `GHU-000B3` is unaccepted in review; rejected `GHU-000B`, `GHU-000B1`, `GHU-000B2`, and `GHU-000C` are blocked; accepted `GHU-001` and `GHU-000C1` remain closed |
+| Counts | 6 accepted tickets, 1 ready, 3 review, 9 blocked, 2 deferred, 24 planned (plus accepted audit milestone `GHU-000A`) |
+| Assignment | `GHU-000B3` transitioned `planned -> ready -> active -> review` in run `20260730T180514Z-3271721e5b-a531a0`, session `019fb433-d9c0-7b22-b36d-4a832833e4ce`, child `50f7490271d4dd156e56032b72ddb9ab` |
+| Next safe action | Independent exact-delta review of uncommitted `GHU-000B3`; do not preclaim acceptance or a terminal `GHU-011`/`GHU-011L` result |
+| Validation | Documentation-only exact base/path/scans/count/dependency/cross-reference validation and `git diff --check`; no tests or product/runtime actions |
+
+`GHU-000B` audit run `20260730T172346Z-1bacc67937-3c5f6b`, session
+`019fb40d-e8ed-7d40-8ab2-8ad2b156552c`, child
+`4a4c8758a536447e5c001a3a80aa6caa`, returned
+`GHU_000B_CORRECTION_REQUIRED`. This correction supersedes changed source
+details only; it does not reopen accepted `GHU-001`.
+
+Rejected `GHU-000B` implementer run
+`20260730T173844Z-c77b3be5ad-37e474`, session
+`019fb41b-abcb-7110-8b5d-1c6f7857758e`, child
+`cb1c337f1c00368a51b58ba87b4ccdbe`, produced preserved checkpoint
+`c550b81f111d0e053c1c3dd6014ef0f28b7638c1`, tree
+`179300b2ddff681a52c9f7ae6fdffbf2c0137c15`, five-file diff SHA-256
+`0ea14c1bafef9ca8917a87ac9a1836e4d733e5c36f83543c962a58601add2835`.
+Parent rejected it for abbreviated evidence hashes, false missing-session
+statements, incorrect predecessor failure classification, an accepted ticket
+depending on a blocked ticket, redundant downstream dependencies, incorrect
+new-ledger dates, and missing rejection/correction-ticket ledger state.
+`GHU-000B` therefore transitioned `review -> blocked`.
+
+Rejected `GHU-000B1` implementer run
+`20260730T174818Z-c550b81f11-c6ce5a`, session
+`019fb424-5860-7bc3-9b71-bd0e88b8880a`, child
+`812c251abd99366b07fc1f9f02f82820`, produced checkpoint
+`cc65dca19cd4bb9fa6b8c836dc843c0ba00bed7b`, tree
+`009129fc2506a1f9d5d867177279c27c4956d113`, correction diff SHA-256
+`fd2b93a33df15974173f9212449c7ce0c43e22fb303b6112e5d96e20bcd87363`.
+Independent reviewer run `20260730T175213Z-cc65dca19c-10a89a`, session
+`019fb427-fb80-7122-91ad-6cd2987b17c4`, child
+`0f16abbb824ddff3ed7e63f6deba86bc`, returned `REJECT_GHU_000B1`.
+The exact blockers were that `DEC-GHU-000B-FIXED-COLLECTOR-INDEX` still read as
+operative without an append-only entry recording parent rejection of B,
+independent rejection of B1, and B2 correction state, and that the decision
+abbreviated accepted integration `c77b3be5ad4aa78b70a9ba89f25ee801d50f27c0`.
+Parent rejected `GHU-000B1`; it transitioned `review -> blocked`.
+
+Rejected `GHU-000B2` implementer run
+`20260730T175638Z-cc65dca19c-c66202`, session
+`019fb42d-217a-7fa0-966f-f36ddabd78d5`, child
+`49e930e41c3a2fa72690df154d3b130c`, produced checkpoint
+`3271721e5b19bc795f775a00a608c557f85b0112`, tree
+`cc52608ffff88ce784c08da3236b55c82ec753fd`, binary diff SHA-256
+`0893bde44d28fd9bf24795771947374dca82a3654d76dfdd979dbbb2f85fdc6d`.
+Independent reviewer run `20260730T180236Z-3271721e5b-bed535`, session
+`019fb431-732f-7dc2-ade5-45803721691c`, child
+`fcd20a35022ea048ded40777f364b710`, returned `REJECT_GHU_000B2`. The sole
+blocker was the exact stale `GHU-000B` current pointer directing independent
+review of rejected `GHU-000B1`; all other review axes passed. Parent rejected
+`GHU-000B2`; it transitioned `review -> blocked`.
+
+`GHU-000B3` preserves B2's independently-passed fixed-index mapping and
+authority correction and changes only that stale current pointer plus the
+necessary rejection/closeout bookkeeping. It transitioned
+`planned -> ready -> active -> review` in run
+`20260730T180514Z-3271721e5b-a531a0`, session
+`019fb433-d9c0-7b22-b36d-4a832833e4ce`, child
+`50f7490271d4dd156e56032b72ddb9ab`. It remains unaccepted pending independent
+exact-delta review and parent decision.
+
+Rejected predecessor `GHU-000C` ran as
+`20260730T172828Z-f38a125f63-770b6a`, session
+`019fb412-36a3-7992-b249-0ba5e635c72c`, child
+`9f5cd6a19933e2a044a2a3c23c88ec1c`. Checkpoint
+`3e9f639dfff62ffddd85aa00bab3d5c6b475cdf6`, tree
+`bdf39b69919e07bbfd5d8d330644b665aaa57fc7`, is not in integration history.
+Parent focused validation was exactly `1 failed, 18 passed`: the post-read
+`/proc/self/fd` `OSError` was caught by the broad handler and misclassified as
+caller-missing code `CURRENT_INDEX_SOURCE_MISSING`, rather than the expected
+`CURRENT_INDEX_PATH_UNSAFE` with reason `path_replaced`.
+
+Accepted correction `GHU-000C1` ran as
+`20260730T173227Z-3e9f639dff-b1c869`, session
+`019fb415-e17b-7761-84b9-97a96a8fb58d`, child
+`a1704231395179acca71854ce5ba7acb`, correction diff identity
+`86567b5e32177ed0028940cb11158fee6e34a5f876f0903a4ef151458e1e59aa`.
+Parent validation passed `19 passed in 0.86s`. Independent reviewer run
+`20260730T173456Z-04c32c37fe-4018cf`, session
+`019fb418-1b23-7fa1-985d-48f0219864e1`, child
+`6132758c7ecce3222bbf0f2059b29c77`, returned `ACCEPT_GHU_000C1`. Parent
+accepted final integration `c77b3be5ad4aa78b70a9ba89f25ee801d50f27c0`,
+tree `fe5115435d18cbce6be055cf452acdba65518a76`, accepted staged diff identity
+`26886b3fba57cce1369dc45794f563a5ba250fbeadb9f7585bdf3f731ddbe373`.
+Linux `/proc/self/fd` and `O_NOFOLLOW` remain platform
+limitations; the accepted work does not claim detection of absolute same-inode
+concurrent content mutation.
+
+R1 history remains unchanged. In particular, the `GHU-011L` selected suite is
+still recorded as running and has no invented terminal result; the rejected F
+broad result remains rejected. The distinct post-upstream
+`full_forecasting` selected broader gate remains pending and is not the running
+pre-upstream `GHU-011L` suite. No `GHU-011` acceptance is claimed.
 
 `GHU-000` was accepted at original base
 `9be52ecd589615b4ebd6212bd9595be761520b89`. `GHU-000A` accepted source-delta
