@@ -238,3 +238,45 @@ supersession.
   `GHU-011`/`GHU-011L` result is claimed.
 - Supersession: This append-only entry records B2's rejection and B3's narrow
   correction state; it does not delete or rewrite prior decision history.
+
+## 2026-07-31 — DEC-GHU-R1-ACCEPTED-ATOMIC-FIXTURE-TRANCHE
+
+- Context: Independent acceptance of `GHU-000B3` and `GHU-010H`, followed by
+  `GHU-011M` independent acceptance and the terminal R1 gate review.
+- Decision: Accept `GHU-000B3`, `GHU-010H`, and `GHU-011`; close the R1 gate at
+  frozen checkpoint `e10cff293141569b1a5a169dd05efc8109e3c603`, tree
+  `07f02fc46b88b47bf0ade8ee264505f8b47c7d91`; and ready `GHU-012` through
+  `GHU-015` as one atomic coupled fixture tranche. Each tranche ticket has
+  accepted `GHU-011` as its sole prerequisite, no same-tranche ticket is
+  another's prerequisite, and `GHU-015` acceptance requires all four tranche
+  surfaces in the same frozen delta. `GHU-016` remains planned after
+  `GHU-015`.
+- Evidence: `ACCEPT_GHU_000B3`, reviewer run
+  `20260730T180925Z-44fe9a0875-a94ad1`, session
+  `019fb437-b8d1-7dd3-9e06-f4494603e9d7`, integration
+  `6e0b0d99c296a4c984faf0775bab88f8689e66da`, tree
+  `bff53978cdfeea8f604404432e1d672cba95a692`; `ACCEPT_GHU_010H`, reviewer
+  run `20260730T135324Z-13cf3a3b54-ca20f6`, session
+  `019fb34d-4cd5-7dd2-b7be-d7a8d7c745ff`, integration
+  `1bacc679377f54433ea757f8cbf7045e3ce8526a`, tree
+  `dee68158b8455d898d60807bdc0ff41c8caf1f7f`; `ACCEPT_GHU_011M`, reviewer
+  run `20260730T181807Z-e10cff2931-e22d8c`, session
+  `019fb43f-a9bd-7363-851c-d6a392a44548`; focused pytest `5 passed`,
+  Playwright `3 passed`, classifier `full_forecasting`; gate reviewer run
+  `20260730T222316Z-86f39d54d3-b5f20d`, session
+  `019fb520-39bf-7be0-863e-7c3b8ced34bf`, verdict A `ACCEPT`. The first broad
+  run exited 1 with `1 failed, 550 passed, 40 subtests passed`; diagnostic
+  target/module/full passed 1, 25, and 551 tests with 40 subtests passing in
+  the full run, while root cause remains `UNKNOWN`. Isolated diagnostic
+  checkpoint `86f39d54d3949c7bc2b6f670c809a6e5dea5050d` is excluded and unmerged
+  from integration and retained as isolated diagnostic evidence.
+- Consequences: One fresh bounded implementer owns atomic `GHU-012`–`GHU-015`,
+  followed by independent exact-delta review. Supported claims remain limited
+  to R0 contracts, the fixed collector-owned current-race index, and the R1
+  fixture dashboard. No push, PR, default-branch merge, deployment, runtime
+  mutation, live proof, deployed/live/authenticated dashboard, R2+ proof,
+  prediction/runtime/deployment proof, training, promotion, EV, staking,
+  betting, or public claim occurred.
+- Supersession: Supersedes the pending/current-state reading of
+  `DEC-GHU-000B3-STALE-CURRENT-POINTER-CORRECTION`; preserves all prior entries
+  and detailed history.

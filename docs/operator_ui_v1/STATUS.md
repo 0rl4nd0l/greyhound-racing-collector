@@ -1,18 +1,18 @@
 # Greyhound Operator UI V1 status
 
-Observed 2026-07-30 during the uncommitted `GHU-000B3` ledger correction:
+Observed 2026-07-31 at the frozen accepted R1 product checkpoint:
 
 | Field | State |
 |---|---|
 | Repository | `0rl4nd0l/greyhound-racing-collector` |
-| Branch | Rejected `GHU-000B2` checkpoint; this uncommitted correction is being produced on the isolated Codex X launcher branch |
-| HEAD / tree | Exact rejected `GHU-000B2` checkpoint `3271721e5b19bc795f775a00a608c557f85b0112` / `cc52608ffff88ce784c08da3236b55c82ec753fd`; parent accepted integration remains `c77b3be5ad4aa78b70a9ba89f25ee801d50f27c0` |
+| Branch | Isolated Codex X launcher branch at the frozen accepted R1 product checkpoint |
+| HEAD / tree | `e10cff293141569b1a5a169dd05efc8109e3c603` / `07f02fc46b88b47bf0ade8ee264505f8b47c7d91` |
 | Baseline cleanliness | clean |
 | Historical/upstream source | Actual historical merge parent `51a5287d05c790e3855e5b74ce7117a29340135e`; later `origin/master` drift `f38a125f6364b8a60d17ae9c971b0ce172874eea`, tree `408a8adbfa2bd436132bc4d2c63e952aeb57c5a5`, parent `51a5287d05c790e3855e5b74ce7117a29340135e`; local merge `0b08966b31c15d8b459b9c6b60a48b19030a9ce4` |
-| Current release / ticket | R0 ledger correction `GHU-000B3` is unaccepted in review; rejected `GHU-000B`, `GHU-000B1`, `GHU-000B2`, and `GHU-000C` are blocked; accepted `GHU-001` and `GHU-000C1` remain closed |
-| Counts | 6 accepted tickets, 1 ready, 3 review, 9 blocked, 2 deferred, 24 planned (plus accepted audit milestone `GHU-000A`) |
-| Assignment | `GHU-000B3` transitioned `planned -> ready -> active -> review` in run `20260730T180514Z-3271721e5b-a531a0`, session `019fb433-d9c0-7b22-b36d-4a832833e4ce`, child `50f7490271d4dd156e56032b72ddb9ab` |
-| Next safe action | Independent exact-delta review of uncommitted `GHU-000B3`; do not preclaim acceptance or a terminal `GHU-011`/`GHU-011L` result |
+| Current release / ticket | R1 gate closed: `GHU-000B3`, `GHU-010H`, and `GHU-011` are accepted; `GHU-012`–`GHU-015` are one ready atomic coupled fixture tranche |
+| Counts | 9 accepted tickets, 4 ready, 0 review, 10 blocked, 2 deferred, 20 planned (plus accepted audit milestone `GHU-000A`) |
+| Assignment | No implementation is assigned; the next assignment is one fresh bounded implementer for atomic `GHU-012`–`GHU-015` |
+| Next safe action | Assign one fresh bounded implementer to atomic `GHU-012`–`GHU-015`, then freeze all four surfaces together for independent exact-delta review |
 | Validation | Documentation-only exact base/path/scans/count/dependency/cross-reference validation and `git diff --check`; no tests or product/runtime actions |
 
 `GHU-000B` audit run `20260730T172346Z-1bacc67937-3c5f6b`, session
@@ -305,9 +305,53 @@ cross-ticket fixture-shell claim. `GHU-010G` therefore transitioned
 `review -> blocked`.
 
 `GHU-010H` reproduces the correct `GHU-010G` closeout and restores the accepted
-`GHU-002` Claims supported line byte-for-byte from base `13cf3a3b`. It
+`GHU-002` Claims supported line byte-for-byte from base
+`13cf3a3b54a4a411465ac570e5ecb65b1669cdc3`. It
 transitioned legally `planned -> ready -> active -> review` in run
 `20260730T134724Z-13cf3a3b54-40caa5`, child
 `46e2cfc9b75f3ff6170baa9263698df4`. It remains unaccepted in review pending
 independent exact ledger review. Publication, PR, merge to the repository
 default branch, deployment, and runtime proof remain `NOT_OCCURRED`.
+
+Accepted closeout supersedes the historical pending states above.
+`GHU-000B3` implementer run `20260730T180514Z-3271721e5b-a531a0`, session
+`019fb433-d9c0-7b22-b36d-4a832833e4ce`, was independently reviewed in run
+`20260730T180925Z-44fe9a0875-a94ad1`, session
+`019fb437-b8d1-7dd3-9e06-f4494603e9d7`, verdict `ACCEPT_GHU_000B3`, and
+accepted at integration `6e0b0d99c296a4c984faf0775bab88f8689e66da`, tree
+`bff53978cdfeea8f604404432e1d672cba95a692`. `GHU-010H` implementer run
+`20260730T134724Z-13cf3a3b54-40caa5`, session
+`019fb347-d93d-7e31-a20d-01d41fa1c7f6`, was independently reviewed in run
+`20260730T135324Z-13cf3a3b54-ca20f6`, session
+`019fb34d-4cd5-7dd2-b7be-d7a8d7c745ff`, verdict `ACCEPT_GHU_010H`, and
+accepted at integration `1bacc679377f54433ea757f8cbf7045e3ce8526a`, tree
+`dee68158b8455d898d60807bdc0ff41c8caf1f7f`.
+
+`GHU-011` evidence spans run `20260730T135824Z-1bacc67937-e184ab`, session
+`019fb351-f550-7682-9a15-ba28e7f5e1e0`, and run
+`20260730T181451Z-b836e769ae-738e8d`, session
+`019fb43c-b9e8-7c30-823d-894c79e30695`. Independent review run
+`20260730T181807Z-e10cff2931-e22d8c`, session
+`019fb43f-a9bd-7363-851c-d6a392a44548`, returned `ACCEPT_GHU_011M`.
+Focused pytest passed `5 passed`, Playwright passed `3 passed`, and the
+classifier selected `full_forecasting`. The first broad run exited 1 with
+`1 failed, 550 passed, 40 subtests passed`. Diagnostic target/module/full
+runs passed 1, 25, and 551 tests; the full diagnostic also passed 40 subtests.
+Root cause remains `UNKNOWN`. Gate review run
+`20260730T222316Z-86f39d54d3-b5f20d`, session
+`019fb520-39bf-7be0-863e-7c3b8ced34bf`, returned verdict A `ACCEPT`.
+The accepted frozen checkpoint is `e10cff293141569b1a5a169dd05efc8109e3c603`,
+tree `07f02fc46b88b47bf0ade8ee264505f8b47c7d91`. Isolated diagnostic
+checkpoint `86f39d54d3949c7bc2b6f670c809a6e5dea5050d` is excluded and unmerged
+from integration and retained as isolated diagnostic evidence.
+
+The R1 gate is closed. `GHU-012`, `GHU-013`, `GHU-014`, and `GHU-015` are
+ready as one atomic coupled fixture tranche, each with accepted `GHU-011` as
+its sole prerequisite; no same-tranche ticket is another's prerequisite.
+`GHU-015` acceptance requires all four tranche surfaces in one frozen delta.
+`GHU-016` remains planned and depends on `GHU-015`. Supported claims are
+limited to accepted R0 contracts, the fixed collector-owned current-race
+index, and the R1 fixture dashboard. No push, PR, default-branch merge,
+deployment, runtime mutation, live proof, deployed/live/authenticated
+dashboard, R2+ behavior, prediction/runtime/deployment proof, training,
+promotion, EV, staking, betting, or public claim occurred.
