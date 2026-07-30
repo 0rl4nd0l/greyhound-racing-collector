@@ -6792,12 +6792,17 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
         or load_json(output_dir / "refresh_prejump_report.json")
     )
     if args.enable_autonomous_odds_capture:
+        capture_current_time = (
+            str(manual_request.claim["claimed_at"])
+            if manual_request is not None
+            else current_time
+        )
         autonomous_odds_command = autonomous_live_odds_capture_command(
             input_dirs=odds_capture_input_dirs,
             evidence_root=evidence_root,
             capture_dir=autonomous_odds_capture_dir,
             db_path=args.db,
-            current_time=current_time,
+            current_time=capture_current_time,
             limit=autonomous_odds_capture_limit,
             execute=args.execute_autonomous_odds_capture,
             allow_auto_scrape_odds=args.allow_auto_scrape_odds,

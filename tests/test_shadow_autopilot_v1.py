@@ -739,6 +739,7 @@ def test_capture_only_manual_request_seals_response_without_shadow_model(
     from scripts import predict_race_now
 
     generated_at = datetime.now().astimezone()
+    parent_cycle_time = generated_at - timedelta(seconds=1)
     evidence_root = tmp_path / "artifacts/full_evidence_orchestration_20260525"
     db_path = tmp_path / "greyhound_racing_data.db"
     db_path.write_text("db", encoding="utf-8")
@@ -806,7 +807,12 @@ def test_capture_only_manual_request_seals_response_without_shadow_model(
             context = claimed_protocol.claimed_request(
                 command[command.index("--manual-request-id") + 1]
             )
-            captured_at = datetime.now().astimezone()
+            captured_at = datetime.fromisoformat(
+                command[command.index("--current-time") + 1]
+            )
+            assert captured_at == datetime.fromisoformat(
+                str(context.claim["claimed_at"])
+            )
             claimed_protocol.begin_attempt(
                 context,
                 now=captured_at,
@@ -912,7 +918,7 @@ def test_capture_only_manual_request_seals_response_without_shadow_model(
             "--collector-lock-path",
             str(lock_path),
             "--current-time",
-            generated_at.isoformat(),
+            parent_cycle_time.isoformat(),
             "--db",
             str(db_path),
             "--enable-autonomous-odds-capture",
@@ -956,6 +962,9 @@ def test_capture_only_manual_request_seals_response_without_shadow_model(
     assert capture_commands[0][
         capture_commands[0].index("--collector-run-id") + 1
     ] == "scheduled-capture-only"
+    assert datetime.fromisoformat(
+        capture_commands[0][capture_commands[0].index("--current-time") + 1]
+    ) > parent_cycle_time
 
 
 def test_full_shadow_run_without_model_still_fails_closed(tmp_path, monkeypatch):
