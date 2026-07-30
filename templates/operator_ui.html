@@ -1,0 +1,95 @@
+{% from "operator_ui_components.html" import evidence_reference, freshness, prototype_marker, status %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Operator Console Prototype</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/operator-ui.css') }}">
+</head>
+<body>
+  <a class="skip-link" href="#prototype-content">Skip to prototype content</a>
+  <div class="console-shell">
+    <aside class="sidebar" aria-label="Prototype navigation">
+      <div class="brand">
+        <span class="brand__mark" aria-hidden="true">GH</span>
+        <span>
+          <strong>Greyhound</strong>
+          <small>Operator console</small>
+        </span>
+      </div>
+      <nav aria-label="Console sections">
+        <ul class="nav-list">
+          <li><a href="#overview" aria-current="page">Overview</a></li>
+          <li><a href="#components">Status patterns</a></li>
+          <li><a href="#research-boundary">Research boundary</a></li>
+        </ul>
+      </nav>
+      <p class="sidebar__note">Fixture-only Level 1 presentation. No operational connection.</p>
+    </aside>
+
+    <div class="workspace">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">R1 · application shell</p>
+          <h1>Operator console</h1>
+        </div>
+        <div class="persistent-labels" aria-label="Prototype warnings">
+          {{ prototype_marker() }}
+          <strong class="research-warning">RESEARCH ONLY — NOT FOR BETTING</strong>
+        </div>
+      </header>
+
+      <main id="prototype-content">
+        <section class="hero" id="overview" aria-labelledby="overview-title">
+          <div>
+            {{ prototype_marker("prototype-marker--inline") }}
+            <p class="eyebrow">Fixture-only workspace</p>
+            <h2 id="overview-title">A quiet surface for evidence-led review</h2>
+            <p class="lede">This illustrative shell demonstrates hierarchy, navigation, status, freshness, and evidence-reference presentation. It does not display live or current system state.</p>
+          </div>
+          <div class="boundary-card" id="research-boundary">
+            <span class="boundary-card__icon" aria-hidden="true">i</span>
+            <div>
+              <strong>Presentation boundary</strong>
+              <p>No data adapters, prediction actions, runtime actions, or operational commands are connected.</p>
+            </div>
+          </div>
+        </section>
+
+        <section id="components" aria-labelledby="components-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Reusable patterns</p>
+              <h2 id="components-title">Evidence state components</h2>
+            </div>
+            {{ prototype_marker() }}
+          </div>
+          <div class="panel-grid" data-testid="prototype-panels">
+            {% for panel in prototype_panels %}
+            <article class="panel">
+              {{ prototype_marker("panel__marker") }}
+              <div class="panel__heading">
+                <h3>{{ panel.title }}</h3>
+                {{ status(panel.status, panel.status_tone) }}
+              </div>
+              <p>{{ panel.description }}</p>
+              <div class="panel__metadata">
+                {{ freshness(panel.freshness) }}
+                {{ evidence_reference(panel.evidence) }}
+              </div>
+            </article>
+            {% endfor %}
+          </div>
+        </section>
+      </main>
+
+      <footer>
+        <span>Fixture-only interface preview</span>
+        <strong>RESEARCH ONLY — NOT FOR BETTING</strong>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>

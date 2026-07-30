@@ -935,7 +935,11 @@ def after_request(response):
     try:
         ctype = response.headers.get("Content-Type", "")
         # Only modify regular HTML responses (not streams)
-        if "text/html" in ctype and not getattr(response, "direct_passthrough", False):
+        if (
+            "text/html" in ctype
+            and not getattr(response, "direct_passthrough", False)
+            and not (request.path or "").startswith("/operator-ui/")
+        ):
             # Never mutate error responses; let Flask render its own 4xx/5xx pages
             try:
                 status_code = int(getattr(response, "status_code", 200) or 200)
@@ -9337,6 +9341,38 @@ def index():
         file_stats=file_stats,
         recent_races=recent_races,
     )
+
+
+@app.route("/operator-ui/prototype")
+def operator_ui_prototype():
+    """Render the isolated, fixture-only Level 1 operator console shell."""
+    prototype_panels = (
+        {
+            "title": "Console orientation",
+            "description": "Illustrative shell layout for navigation and review.",
+            "status": "PROTOTYPE — UNAVAILABLE",
+            "status_tone": "unavailable",
+            "freshness": "Illustrative only — no observation",
+            "evidence": "Fixture reference UI-SHELL-01",
+        },
+        {
+            "title": "Evidence posture",
+            "description": "Example treatment for missing or unverified evidence.",
+            "status": "PROTOTYPE — DATA MISSING",
+            "status_tone": "missing",
+            "freshness": "Illustrative only — not current",
+            "evidence": "Fixture reference UI-SHELL-02",
+        },
+        {
+            "title": "Review boundary",
+            "description": "Presentation preview with no operational connection.",
+            "status": "PROTOTYPE — REVIEW ONLY",
+            "status_tone": "review",
+            "freshness": "Illustrative only — not live",
+            "evidence": "Fixture reference UI-SHELL-03",
+        },
+    )
+    return render_template("operator_ui.html", prototype_panels=prototype_panels)
 
 
 @app.route("/races")
