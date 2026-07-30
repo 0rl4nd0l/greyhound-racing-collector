@@ -939,6 +939,49 @@ def test_request_wait_has_finite_deadline_without_lock_attempt(tmp_path: Path):
     assert calls["acquire"] == 0
 
 
+def test_expired_response_after_jump_surfaces_terminal_status(tmp_path: Path):
+    clock = {"value": 0.0}
+    request_root = tmp_path / "collector-requests"
+    protocol = ManualPredictionCollectorProtocol(request_root)
+    collector_response_time = NOW + timedelta(seconds=121)
+
+    def sleep(seconds: float) -> None:
+        clock["value"] += seconds
+        if clock["value"] >= 61:
+            context = protocol.prepare_collector_request(
+                now=collector_response_time,
+                collector_run_id="scheduled-run-1",
+                active_capture=False,
+            )
+            assert context is None
+
+    with pytest.raises(PredictionBlocked) as captured:
+        predict_now._acquire_or_reuse(
+            dependencies(
+                discover=lambda **kwargs: None,
+                monotonic=lambda: clock["value"],
+                sleep=sleep,
+            ),
+            protocol=protocol,
+            target=race("12:01"),
+            odds_source="auto",
+            evidence_roots=(tmp_path / "evidence",),
+            db_path=tmp_path / "source.db",
+            race_id=RACE_ID,
+            jump=NOW + timedelta(minutes=1),
+            current_time=NOW,
+            wait_seconds=120,
+            poll_seconds=61,
+        )
+
+    assert captured.value.code == "REQUEST_EXPIRED"
+    consumed = list((request_root / "consumed").glob("*.json"))
+    assert len(consumed) == 1
+    assert json.loads(consumed[0].read_bytes())["consumed_at"] == (
+        collector_response_time.isoformat()
+    )
+
+
 def test_capture_source_cannot_create_second_capture_authority(tmp_path: Path):
     calls = {"acquire": 0, "fetch": 0}
     deps = dependencies(discover=lambda **kwargs: None)

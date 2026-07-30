@@ -952,16 +952,21 @@ def _acquire_or_reuse(
             sleep=dependencies.sleep,
         )
         elapsed = max(0.0, dependencies.monotonic() - started)
-        observed_time = min(jump, current_time + timedelta(seconds=elapsed))
+        response_observed_time = current_time + timedelta(seconds=elapsed)
         if response is None:
             raise PredictionBlocked(
                 "COLLECTOR_RESPONSE_TIMEOUT",
                 request_id=published["request_id"],
                 wait_seconds=wait_seconds,
             )
+        response_observed_time = max(
+            response_observed_time,
+            datetime.fromisoformat(str(response["responded_at"])),
+        )
+        observed_time = min(jump, response_observed_time)
         consumed = protocol.consume_response(
             str(published["request_id"]),
-            now=observed_time,
+            now=response_observed_time,
         )
         if response["status"] != RECEIPT_READY:
             raise PredictionBlocked(
