@@ -1,4 +1,4 @@
-{% from "operator_ui_components.html" import evidence_reference, freshness, prototype_marker, status %}
+{% from "operator_ui_components.html" import evidence_source, fixture_value, prototype_marker, status, updated_at %}
 <!doctype html>
 <html lang="en">
 <head>
@@ -22,7 +22,13 @@
       <nav aria-label="Console sections">
         <ul class="nav-list">
           <li><a href="#overview" aria-current="page">Overview</a></li>
-          <li><a href="#components">Status patterns</a></li>
+          <li><a href="#next-race">Next race</a></li>
+          <li><a href="#collector-summary">What is happening?</a></li>
+          <li><a href="#corpus-funnel">Evidence</a></li>
+          <li><a href="#model-identity">Which model?</a></li>
+          <li><a href="#recent-predictions">Recent predictions</a></li>
+          <li><a href="#system-health">System health</a></li>
+          <li><a href="#activity-feed">Activity</a></li>
           <li><a href="#research-boundary">Research boundary</a></li>
         </ul>
       </nav>
@@ -46,8 +52,8 @@
           <div>
             {{ prototype_marker("prototype-marker--inline") }}
             <p class="eyebrow">Fixture-only workspace</p>
-            <h2 id="overview-title">A quiet surface for evidence-led review</h2>
-            <p class="lede">This illustrative shell demonstrates hierarchy, navigation, status, freshness, and evidence-reference presentation. It does not display live or current system state.</p>
+            <h2 id="overview-title">Fixture-backed dashboard overview</h2>
+            <p class="lede">Seven navigable prototype areas answer what can run, what is happening, what evidence is accumulating, and what is blocked. Nothing here is live or current system state.</p>
           </div>
           <div class="boundary-card" id="research-boundary">
             <span class="boundary-card__icon" aria-hidden="true">i</span>
@@ -58,30 +64,52 @@
           </div>
         </section>
 
-        <section id="components" aria-labelledby="components-title">
+        <section id="dashboard" aria-labelledby="dashboard-title">
           <div class="section-heading">
             <div>
-              <p class="eyebrow">Reusable patterns</p>
-              <h2 id="components-title">Evidence state components</h2>
+              <p class="eyebrow">Fixture dashboard</p>
+              <h2 id="dashboard-title">Operational questions, illustrative answers</h2>
             </div>
             {{ prototype_marker() }}
           </div>
-          <div class="panel-grid" data-testid="prototype-panels">
-            {% for panel in prototype_panels %}
-            <article class="panel">
+          <div class="panel-grid" data-testid="dashboard-areas">
+            {% for area in dashboard_areas %}
+            <article class="panel" id="{{ area.id }}" data-dashboard-area="{{ area.id }}">
               {{ prototype_marker("panel__marker") }}
               <div class="panel__heading">
-                <h3>{{ panel.title }}</h3>
-                {{ status(panel.status, panel.status_tone) }}
+                <div>
+                  <p class="panel__question">{{ area.question }}</p>
+                  <h3>{{ area.title }}</h3>
+                </div>
+                {{ status(area.status, area.status_tone) }}
               </div>
-              <p>{{ panel.description }}</p>
+              <p>{{ area.description }}</p>
+              <p class="panel__value">{{ fixture_value(area.value) }}</p>
+              {% if area.action %}
+              <button class="launch-preview" type="button" disabled aria-describedby="launch-disabled-reason">
+                Launch prediction
+              </button>
+              <p class="disabled-reason" id="launch-disabled-reason">Disabled — prototype preview is not connected.</p>
+              {% endif %}
               <div class="panel__metadata">
-                {{ freshness(panel.freshness) }}
-                {{ evidence_reference(panel.evidence) }}
+                {{ updated_at(area.updated_at) }}
+                {{ evidence_source(area.evidence_source) }}
               </div>
             </article>
             {% endfor %}
           </div>
+        </section>
+
+        <section class="state-key" aria-labelledby="state-key-title">
+          <div>
+            <p class="eyebrow">Finite fixture vocabulary</p>
+            <h2 id="state-key-title">All six dashboard variants</h2>
+          </div>
+          <ul>
+            {% for tone, label in fixture_states.items() %}
+            <li>{{ status(label, tone) }} {{ prototype_marker() }}</li>
+            {% endfor %}
+          </ul>
         </section>
       </main>
 

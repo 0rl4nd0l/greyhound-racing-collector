@@ -2,6 +2,23 @@ const { test, expect } = require('@playwright/test');
 const AxeBuilder = require('@axe-core/playwright').default;
 
 const route = '/operator-ui/prototype';
+const areaIds = [
+  'next-race',
+  'collector-summary',
+  'corpus-funnel',
+  'model-identity',
+  'recent-predictions',
+  'system-health',
+  'activity-feed',
+];
+const stateLabels = [
+  'AVAILABLE/FRESH',
+  'STALE',
+  'UNAVAILABLE/DATA_MISSING',
+  'WAITING',
+  'RUNNING',
+  'BLOCKED',
+];
 
 function computedTimesInMilliseconds(value) {
   return value.split(',').map((duration) => {
@@ -31,9 +48,22 @@ test.describe('fixture-only operator console shell', () => {
     await expect(page.getByRole('navigation', { name: 'Console sections' })).toBeVisible();
     await expect(page.getByRole('main')).toBeVisible();
     await expect(page.getByRole('contentinfo')).toBeVisible();
-    await expect(page.locator('.status')).toHaveCount(3);
-    await expect(page.getByText('Freshness', { exact: true })).toHaveCount(3);
-    await expect(page.getByText('Evidence reference', { exact: true })).toHaveCount(3);
+    await expect(page.locator('[data-dashboard-area]')).toHaveCount(7);
+    for (const areaId of areaIds) {
+      await expect(page.getByRole('navigation', { name: 'Console sections' }).locator(`a[href="#${areaId}"]`)).toHaveCount(1);
+      const area = page.locator(`[data-dashboard-area="${areaId}"]`);
+      await expect(area).toBeVisible();
+      await expect(area.getByText('Updated at', { exact: true })).toHaveCount(1);
+      await expect(area.getByText('Evidence source', { exact: true })).toHaveCount(1);
+      expect(await area.getByText('PROTOTYPE DATA', { exact: true }).count()).toBeGreaterThanOrEqual(4);
+    }
+    for (const stateLabel of stateLabels) {
+      await expect(page.getByText(stateLabel, { exact: true }).first()).toBeVisible();
+    }
+    const launch = page.getByRole('button', { name: 'Launch prediction' });
+    await expect(launch).toBeDisabled();
+    await expect(page.getByText('Disabled — prototype preview is not connected.')).toBeVisible();
+    await expect(page.getByText('2099-04-01 · Sandown Park · Race 6 · Jump 09:30 UTC · Fixture race ID FIXTURE-RACE-20990401-SANDOWN-R06')).toBeVisible();
     await expectNoHorizontalOverflow(page);
 
     await page.keyboard.press('Tab');
@@ -53,7 +83,19 @@ test.describe('fixture-only operator console shell', () => {
     await expect(page.getByText('PROTOTYPE DATA').first()).toBeVisible();
     await expect(page.getByText('RESEARCH ONLY — NOT FOR BETTING').first()).toBeVisible();
     await expect(page.getByRole('navigation', { name: 'Console sections' })).toBeVisible();
-    await expect(page.locator('[data-testid="prototype-panels"] > article')).toHaveCount(3);
+    await expect(page.locator('[data-dashboard-area]')).toHaveCount(7);
+    for (const areaId of areaIds) {
+      await expect(page.getByRole('navigation', { name: 'Console sections' }).locator(`a[href="#${areaId}"]`)).toHaveCount(1);
+      await expect(page.locator(`[data-dashboard-area="${areaId}"]`)).toBeVisible();
+    }
+    for (const stateLabel of stateLabels) {
+      await expect(page.getByText(stateLabel, { exact: true }).first()).toBeVisible();
+    }
+    await expect(page.getByRole('button', { name: 'Launch prediction' })).toBeDisabled();
+    await expectNoHorizontalOverflow(page);
+
+    await page.locator('[data-dashboard-area="activity-feed"]').scrollIntoViewIfNeeded();
+    await expect(page.getByText('RESEARCH ONLY — NOT FOR BETTING').first()).toBeInViewport();
     await expectNoHorizontalOverflow(page);
   });
 
