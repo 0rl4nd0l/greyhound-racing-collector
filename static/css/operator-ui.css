@@ -459,6 +459,7 @@ main {
 }
 
 .workflow-section {
+  min-width: 0;
   scroll-margin-top: 6rem;
 }
 
@@ -822,7 +823,7 @@ footer strong {
     display: block;
   }
 
-  details > * {
+  details:not([open]) > :not(summary) {
     display: block;
   }
 
