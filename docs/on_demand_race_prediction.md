@@ -43,8 +43,12 @@ unexpired unanswered manual request is supported.
 
 The scheduled collector remains the sole browser and capture-lock authority.
 At the start of a collector cycle, after its daemon parent has acquired the
-existing shared lock, it may atomically claim one request. It never checks or
-claims during an active capture. The normal refresh and fixed-window plan put
+existing shared lock, the daemon passes that exact resolved lock path to its
+direct autopilot child. The child validates the non-symlink regular file,
+parent PID, hostname, and run ID before it may atomically claim one request.
+Direct compatibility invocations without an explicit path continue to infer
+the lock beneath the evidence root. It never checks or claims during an active
+capture. The normal refresh and fixed-window plan put
 the requested exact race first, but the request cannot bypass race, URL, jump,
 runner, time-window, Sportsbet validation, or append-only persistence checks.
 The collector writes one attempt marker before capture and exactly one terminal
