@@ -170,7 +170,11 @@ def resolve_target_race(
 
 
 def _default_schedule(
-    current_time: datetime, timeout_seconds: float
+    current_time: datetime,
+    timeout_seconds: float,
+    index_path: Path,
+    evidence_root: Path,
+    max_age_seconds: int,
 ) -> Sequence[Mapping[str, Any]]:
     from race_collection.synchronous_manual_capture import (
         bounded_current_race_index,
@@ -179,6 +183,9 @@ def _default_schedule(
     return bounded_current_race_index(
         current_time=current_time,
         timeout_seconds=timeout_seconds,
+        index_path=index_path,
+        evidence_root=evidence_root,
+        max_age_seconds=max_age_seconds,
     )
 
 
@@ -756,10 +763,26 @@ def _run_prediction(
     )
 
     latency_budget = LatencyBudget.from_config(config["bundle"]["latency_budget"])
+    evidence_roots = tuple(
+        Path(path)
+        for path in (
+            args.capture_evidence_root or DEFAULT_CAPTURE_EVIDENCE_ROOTS
+        )
+    )
+    primary_evidence_root = evidence_roots[0]
+    current_index_path = getattr(args, "current_race_index", None) or (
+        primary_evidence_root
+        / "shadow_autopilot_daemon_runtime"
+        / "manual_prediction_current_race_index.json"
+    )
     discovery_started = dependencies.monotonic()
     try:
         races = dependencies.schedule(
-            current_time, latency_budget.discovery_seconds
+            current_time,
+            latency_budget.discovery_seconds,
+            Path(current_index_path),
+            primary_evidence_root,
+            int(config["bundle"]["current_index_max_age_seconds"]),
         )
     except CaptureOneRejected as exc:
         raise PredictionBlocked(exc.code, **exc.details) from exc
@@ -835,12 +858,7 @@ def _run_prediction(
         ),
         target=target,
         odds_source=args.odds_source,
-        evidence_roots=tuple(
-            Path(path)
-            for path in (
-                args.capture_evidence_root or DEFAULT_CAPTURE_EVIDENCE_ROOTS
-            )
-        ),
+        evidence_roots=evidence_roots,
         db_path=Path(args.db),
         race_id=race_id,
         jump=jump,
@@ -1218,6 +1236,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         type=Path,
         default=None,
+    )
+    parser.add_argument(
+        "--current-race-index",
+        type=Path,
+        help=(
+            "Collector-owned current-index packet; defaults beneath the first "
+            "--capture-evidence-root"
+        ),
     )
     parser.add_argument("--lock-path", type=Path, default=DEFAULT_LOCK)
     parser.add_argument(

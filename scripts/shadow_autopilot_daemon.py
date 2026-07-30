@@ -3555,6 +3555,24 @@ def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
             int_or_zero(t2_miss_cause_counts.get(str(cause))) + int_or_zero(count)
         )
     t2_lock_skip_fields["t2_miss_cause_counts"] = t2_miss_cause_counts
+    current_race_index_publish: dict[str, Any] = {
+        "schema_version": "collector_current_race_index_publish_v1",
+        "status": "SKIPPED",
+        "reason": "refresh_report_unavailable",
+    }
+    if args.state_path is not None and autopilot_output_dir is not None:
+        from race_collection.synchronous_manual_capture import (
+            publish_current_race_index,
+        )
+
+        current_race_index_publish = publish_current_race_index(
+            state_path=args.state_path,
+            evidence_root=evidence_root,
+            source_refresh_report_path=(
+                autopilot_output_dir / "odds_capture_refresh_report.json"
+            ),
+            run_id=run_id,
+        )
 
     report = {
         "schema_version": "shadow_autopilot_odds_capture_only_daemon_report_v1",
@@ -3587,6 +3605,7 @@ def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
         "t2_capture_miss_examples": list(odds_status.get("t2_miss_examples") or []),
         **t2_lock_skip_fields,
         "odds_capture_refresh_report": refresh_report,
+        "current_race_index_publish": current_race_index_publish,
         "pre_lock_odds_capture_fixed_window_schedule": pre_lock_fixed_window_schedule,
         "odds_capture_fixed_window_schedule": fixed_window_schedule,
         "next_meaningful_action": fixed_window_schedule.get("next_meaningful_action"),
