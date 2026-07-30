@@ -18,8 +18,8 @@ integration base was the actual merge parent
 `408a8adbfa2bd436132bc4d2c63e952aeb57c5a5`, parent
 `51a5287d05c790e3855e5b74ce7117a29340135e`; it was incorporated by local merge
 `0b08966b31c15d8b459b9c6b60a48b19030a9ce4`. Current accepted integration is
-`c77b3be5ad4aa78b70a9ba89f25ee801d50f27c0`, tree
-`fe5115435d18cbce6be055cf452acdba65518a76`.
+`e10cff293141569b1a5a169dd05efc8109e3c603`, tree
+`07f02fc46b88b47bf0ade8ee264505f8b47c7d91`.
 `CONTRACTS.md` is the accepted source/evidence/authority contract. Live
 repository evidence supersedes stale seed metadata without weakening either
 the approved programme or that contract.
