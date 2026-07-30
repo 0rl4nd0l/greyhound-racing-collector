@@ -7,18 +7,26 @@
   <span class="status__dot" aria-hidden="true"></span>
   {{ value }}
 </span>
+{{ prototype_marker() }}
 {%- endmacro %}
 
-{% macro freshness(value) -%}
-<p class="metadata">
-  <span class="metadata__label">Freshness</span>
+{% macro fixture_value(value, extra_class="") -%}
+<span class="fixture-value {{ extra_class }}">
   <span>{{ value }}</span>
+  {{ prototype_marker() }}
+</span>
+{%- endmacro %}
+
+{% macro updated_at(value) -%}
+<p class="metadata">
+  <span class="metadata__label">Updated at</span>
+  {{ fixture_value(value) }}
 </p>
 {%- endmacro %}
 
-{% macro evidence_reference(value) -%}
+{% macro evidence_source(value) -%}
 <p class="metadata">
-  <span class="metadata__label">Evidence reference</span>
-  <span>{{ value }}</span>
+  <span class="metadata__label">Evidence source</span>
+  {{ fixture_value(value) }}
 </p>
 {%- endmacro %}
