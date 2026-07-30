@@ -11,11 +11,11 @@ import sqlite3
 import stat
 import time
 import uuid
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Callable, Mapping, Sequence
-
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 MODEL_ALIASES = {
@@ -72,18 +72,12 @@ class ModelIdentity:
 
 @dataclass
 class Dependencies:
-    schedule: Callable[[int], Sequence[Mapping[str, Any]]]
-    refresh: Callable[[Mapping[str, Any], Path, datetime, int], tuple[Path, Path]]
-    discover_receipt: Callable[..., Mapping[str, Any] | None]
-    fetch_odds: Callable[[Mapping[str, Any], Path, float], Mapping[str, Any]]
-    acquire_lock: Callable[[], Any]
-    release_lock: Callable[[Any], None]
-    lock_busy_type: type[BaseException]
+    schedule: Callable[[datetime, float], Sequence[Mapping[str, Any]]]
     seal_features: Callable[..., Mapping[str, Path]]
     score_residual: Callable[..., Mapping[str, Any]]
     now: Callable[[], datetime]
+    capture_one: Callable[..., Mapping[str, Any]] | None = None
     monotonic: Callable[[], float] = time.monotonic
-    sleep: Callable[[float], None] = time.sleep
 
 
 def canonical_bytes(value: Any) -> bytes:

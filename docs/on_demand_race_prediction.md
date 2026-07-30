@@ -13,46 +13,43 @@ uv run --no-project scripts/predict_race_now.py \
   --odds-source auto
 ```
 
-The race query must resolve to exactly one upcoming race with an exact jump
-timestamp, and scoring must finish before that timestamp. Missing or ambiguous
-identity and post-jump requests fail closed.
+The selector may be an exact named race, canonical race ID, or canonical
+TheDogs race URL. Named selectors are resolved only against today's bounded
+index (maximum 160 races, 12-second default deadline), and scoring must finish
+before the exact jump timestamp. Missing or ambiguous identity, discovery
+overrun, and post-jump requests fail closed.
 
 ## Odds source and collector concurrency
 
-`--odds-source auto` first asks master's PR #56 scorer to discover and validate
-one finalized, current sealed pre-jump packet. The packet is accepted only when
-its race identity, date, race number, distance, grade, jump aliases, runner set,
-form/sidecar provenance, capture report, record-V3 checksum, and
-effective-state-V2 hash agree. The command then copies only the verified packet
-bytes into its private bundle; it does not rescrape or cross a database writer.
+`--odds-source auto` first performs a direct race-keyed lookup for a current
+sealed receipt. The append-only exact-receipt index binds the request, exact
+race identity, runner set, source file paths and hashes, capture attempt, append
+report, and pre-jump timestamp. Lookup is confined to that race's directory and
+rejects unsafe paths, changed bytes, malformed records, or more than 32 indexed
+receipts. `receipt` mode is reuse-only.
 
-If the discovered packet predates the exact target-grade proof contract or its
-implementation hashes do not match the current source, `auto` records that
-candidate and continues to the collector-request path. This exception is
-limited to the known pre-current packet fields and implementation seal:
-ambiguous, conflicting, malformed, post-jump, or otherwise invalid evidence
-remains terminal. `receipt` mode is always reuse-only.
-
-If no reusable receipt exists and a fixed capture window is due, `auto`
-atomically publishes one research-only, one-attempt request under
+If no reusable receipt exists, `auto` or `capture` atomically publishes one
+research-only, one-attempt request under
 `artifacts/full_evidence_orchestration_20260525/manual_prediction_collector_requests_v1`.
 The immutable request binds its UUID, exact TheDogs race identity and URL,
 venue, race number, date, jump, creation and expiry times, requested output
 schemas and statuses, and the expected runner set when available. Only one
 unexpired unanswered manual request is supported.
 
-The scheduled collector remains the sole browser and capture-lock authority.
-At the start of a collector cycle, after its daemon parent has acquired the
-existing shared lock, the daemon passes that exact resolved lock path to its
-direct autopilot child. The child validates the non-symlink regular file,
-parent PID, hostname, and run ID before it may atomically claim one request.
-Direct compatibility invocations without an explicit path continue to infer
-the lock beneath the evidence root. It never checks or claims during an active
-capture. The normal refresh and fixed-window plan put
-the requested exact race first, but the request cannot bypass race, URL, jump,
-runner, time-window, Sportsbet validation, or append-only persistence checks.
-The collector writes one attempt marker before capture and exactly one terminal
-response:
+The predictor then synchronously invokes
+`scripts/shadow_autopilot_daemon.py capture-one`. This collector entry point is
+the only acquisition authority: it claims the request, checks the computed
+pre-jump margin, attempts the canonical daemon lock once without stealing or
+waiting, refreshes only the resolved TheDogs URL, builds one canonical
+fixed-window plan item, and calls the scheduled collector's existing validated
+Sportsbet fetch and append-only `live_odds` persistence code. The background
+timer remains unchanged and is never used as interactive transport.
+
+Contention returns `BUSY` immediately with the existing owner run ID, PID,
+hostname, start time, output directory, and phase where available. No service
+or timer control is attempted. The collector writes one attempt marker before
+capture and exactly one terminal response. Existing V1 protocol statuses
+remain:
 
 - `RECEIPT_READY`
 - `REQUEST_EXPIRED`
@@ -61,27 +58,39 @@ response:
 - `IDENTITY_MISMATCH`
 - `CAPTURE_FAILED`
 
+The synchronous result additionally distinguishes `BUSY`, `CANCELLED`, and
+`INSUFFICIENT_PREJUMP_MARGIN`; the preserved V1 protocol records those
+conditions as `CAPTURE_FAILED` with a deterministic reason.
+
 `RECEIPT_READY` points to a sealed protocol receipt that binds the request and
 claim hashes, exact race, runner identities and runner-set hash, capture and
-response timestamps, source evidence hashes, record and effective-state hashes,
-and the verified master-packet handoff. The predictor waits on a monotonic
-finite deadline (600 seconds in checked-in configs, with a 900-second schema
-maximum), consumes
-the terminal response atomically once, rediscovers the exact packet, verifies
-it against the sealed response, and then enters the unchanged receipt
-validation and scoring path. Timeout, duplicate claim/attempt/response/consume,
-replay, malformed or unknown records, identity disagreement, expiry, post-jump
-state, and hash drift fail closed.
+response timestamps, source evidence hashes, canonical capture attempt and
+append report hashes, and the exact refreshed form/sidecar bytes. The predictor
+receives the terminal result synchronously, consumes it atomically once,
+rediscovers that race-keyed receipt, verifies it against the sealed response,
+and then scores exactly once in its isolated research bundle. A receipt sealed
+before cancellation remains reusable. Cancellation terminates and reaps the
+collector process group so its browser cannot be orphaned; cancellation before
+sealing returns `CANCELLED` and terminalizes the protocol request.
+
+The checked-in latency budget is enforced as six explicit components:
+discovery 12 seconds, lock 1, capture 60, validation 8, scoring 30, and safety
+15. A fresh capture therefore requires more than 114 seconds after resolution
+(126 seconds including discovery), while receipt reuse requires more than 53
+seconds. Failure occurs before the Sportsbet browser starts when the applicable
+margin is not available. The collector recomputes the remaining margin after
+lock acquisition and again after exact TheDogs refresh, immediately before the
+Sportsbet fetch.
 
 The exact TheDogs meeting slug remains authoritative during named-race
 selection. Murray Bridge and Murray Bridge Straight therefore remain distinct
 meeting identities even where downstream compatibility data uses `MURR` for
 both; a shared-code query that matches both is ambiguous and fails closed.
 
-Use `receipt` to prohibit request publication. `capture` is retained only as an
-explicit fail-closed selector and returns `CAPTURE_AUTHORITY_FORBIDDEN`; the
-manual predictor never starts a second capture process or acquires the shared
-collector lock.
+Use `receipt` to prohibit request publication. `capture` uses the same
+collector-owned synchronous path as `auto` and still reuses an exact valid
+receipt first. The predictor contains no browser, capture, database append, or
+lock implementation.
 
 ## Feature cutoff
 

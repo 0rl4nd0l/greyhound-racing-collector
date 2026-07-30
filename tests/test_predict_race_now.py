@@ -6,23 +6,31 @@ import inspect
 import json
 import os
 import sqlite3
+from collections.abc import Mapping
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 import pytest
 
+import race_collection.synchronous_manual_capture as synchronous_capture
 import scripts.predict_race_now as predict_now
 import src.predictor.on_demand as on_demand
 from race_collection.manual_prediction_collector_request import (
     ManualPredictionCollectorProtocol,
 )
+from race_collection.synchronous_manual_capture import (
+    CollectorBusy as CollectorLockBusy,
+)
+from race_collection.synchronous_manual_capture import (
+    acquire_collector_lock_no_steal as _acquire_collector_lock_no_steal,
+)
+from race_collection.synchronous_manual_capture import (
+    release_owned_collector_lock as _release_owned_collector_lock,
+)
 from scripts.predict_market_form_residual import score_from_artifacts
 from scripts.predict_race_now import (
     CaptureHandoffError,
-    CollectorLockBusy,
-    _acquire_collector_lock_no_steal,
-    _release_owned_collector_lock,
     main,
     replay_bundle,
     resolve_target_race,
@@ -32,13 +40,13 @@ from src.predictor.on_demand import (
     Dependencies,
     PredictionBlocked,
     canonical_bytes,
+    receipt_from_handoff,
     resolve_model,
     seal_history_database,
     sha256_bytes,
     sha256_file,
     write_exact_bytes,
 )
-
 
 NOW = datetime.fromisoformat("2026-07-19T12:00:00+10:00")
 RACE_ID = "Race 5 - GUNN - 2026-07-19"
@@ -260,31 +268,70 @@ def refresh(
 
 def dependencies(
     *,
-    discover=lambda **kwargs: handoff(),
-    fetch=lambda context, db, timeout: {
-        "captured_at": NOW.isoformat(),
-        "validation": validation(),
-        "plan_item": {"race_id": RACE_ID},
-    },
-    acquire=lambda: "lock",
-    release=lambda handle: None,
     now=lambda: NOW,
     monotonic=lambda: 0.0,
-    sleep=lambda seconds: None,
+    capture_one=None,
 ) -> Dependencies:
+    def seal_synchronous_receipt(**values: Any) -> Mapping[str, Any]:
+        protocol = ManualPredictionCollectorProtocol(values["protocol_root"])
+        context = protocol.claim_request(
+            values["request_id"],
+            now=NOW,
+            collector_run_id="fixture_capture_one",
+        )
+        protocol.begin_attempt(
+            context,
+            now=NOW,
+            collector_run_id="fixture_capture_one",
+        )
+        value = handoff()
+        output = Path(values["output_dir"])
+        output.mkdir(parents=True)
+        paths = {
+            label: output / name
+            for label, name in (
+                ("report", "capture.json"),
+                ("form", "gunnedah-r5.csv"),
+                ("sidecar", "gunnedah-r5.csv.metadata.json"),
+            )
+        }
+        for label, path in paths.items():
+            path.write_bytes(value[f"_{label}_bytes"])
+            value[f"_{label}_path"] = path.resolve()
+        normalized, _, _, _ = receipt_from_handoff(
+            value,
+            current_time=NOW,
+            max_age_seconds=900,
+        )
+        value.update(
+            {
+                "schema_version": "on_demand_verified_collector_capture_v2",
+                "race": dict(context.request["race"]),
+                "runner_set_sha256": normalized["runner_set_sha256"],
+                "capture_attempt_sha256": "a" * 64,
+                "append_report_sha256": "b" * 64,
+            }
+        )
+        response = protocol.publish_receipt_ready(
+            context,
+            now=NOW,
+            handoff=value,
+            normalized_receipt=normalized,
+        )
+        return {
+            "schema_version": "collector_capture_one_result_v1",
+            "status": response["status"],
+            "request_id": values["request_id"],
+            "appended_attempt_count": 1,
+        }
+
     return Dependencies(
-        schedule=lambda days: [race()],
-        refresh=refresh,
-        discover_receipt=discover,
-        fetch_odds=fetch,
-        acquire_lock=acquire,
-        release_lock=release,
-        lock_busy_type=Busy,
+        schedule=lambda current_time, timeout_seconds: [race()],
         seal_features=fake_seal_features,
         score_residual=fake_score_residual,
         now=now,
+        capture_one=capture_one or seal_synchronous_receipt,
         monotonic=monotonic,
-        sleep=sleep,
     )
 
 
@@ -309,9 +356,9 @@ def args(tmp_path: Path, **overrides: Any) -> argparse.Namespace:
     return argparse.Namespace(**values)
 
 
-def config_with_response_wait(tmp_path: Path, value: Any) -> Path:
+def config_with_discovery_budget(tmp_path: Path, value: Any) -> Path:
     config = json.loads(Path("configs/prediction/manual-default.json").read_bytes())
-    config["bundle"]["collector_response_wait_seconds"] = value
+    config["bundle"]["latency_budget"]["discovery_seconds"] = value
     path = tmp_path / "prediction-config.json"
     path.write_bytes(canonical_bytes(config))
     return path
@@ -406,30 +453,22 @@ def test_master_packet_adapter_reuses_pr56_validated_handoff(
     assert score_calls[0]["capture_path"] == capture
 
 
-def test_default_schedule_uses_current_browser_api_and_cleans_scratch(
+def test_default_schedule_uses_only_bounded_current_date_index(
     monkeypatch: pytest.MonkeyPatch,
 ):
     import upcoming_race_browser
 
-    scratch_paths: list[Path] = []
+    dates: list[Any] = []
 
     class Browser:
-        def __init__(self) -> None:
-            scratch = Path(os.environ["UPCOMING_RACES_DIR"])
-            assert scratch.is_dir()
-            scratch_paths.append(scratch)
-
-        def get_upcoming_races(self, *, days_ahead: int):
-            assert days_ahead == 2
+        def get_races_for_date(self, race_date: Any):
+            dates.append(race_date)
             return [race()]
 
     monkeypatch.setattr(upcoming_race_browser, "UpcomingRaceBrowser", Browser)
-    monkeypatch.setenv("UPCOMING_RACES_DIR", "owner-value")
 
-    assert predict_now._default_schedule(2) == [race()]
-    assert os.environ["UPCOMING_RACES_DIR"] == "owner-value"
-    assert len(scratch_paths) == 1
-    assert not scratch_paths[0].exists()
+    assert predict_now._default_schedule(NOW, 12) == [race()]
+    assert dates == [NOW.date()]
 
 
 def test_default_refresh_downloads_only_exact_target_into_bundle(
@@ -474,10 +513,17 @@ def test_default_refresh_downloads_only_exact_target_into_bundle(
     )
     monkeypatch.setenv("UPCOMING_RACES_DIR", "owner-value")
 
-    form, sidecar = predict_now._default_refresh(race(), tmp_path / "bundle", NOW, 1)
+    from race_collection.synchronous_manual_capture import refresh_exact_race
 
-    assert downloads == [(race()["url"], race())]
-    assert form.parent == tmp_path / "bundle/source/upcoming"
+    target = {
+        **race(),
+        "race_id": RACE_ID,
+        "jump_timestamp": (NOW + timedelta(hours=1)).isoformat(),
+    }
+    form, sidecar = refresh_exact_race(target, tmp_path / "bundle", NOW)
+
+    assert downloads == [(race()["url"], target)]
+    assert form.parent == tmp_path / "bundle/exact_upcoming"
     assert sidecar == form.with_name(form.name + ".metadata.json")
     assert binding_calls[0]["form_csv_path"] == form
     assert os.environ["UPCOMING_RACES_DIR"] == "owner-value"
@@ -585,6 +631,15 @@ def test_murray_bridge_meetings_use_distinct_authoritative_url_identities():
     assert status == "BLOCKED_RACE_AMBIGUOUS"
     assert selected is None
     assert matches == ["Race 1 - MURR - 2030-06-09"]
+    assert (
+        resolve_target_race(
+            [bridge, straight],
+            race_id=None,
+            race_query=None,
+            race_url=straight["url"],
+        )[1]
+        == straight
+    )
 
 
 def test_live_feature_seal_hashes_exact_current_implementation(
@@ -729,6 +784,10 @@ def test_operator_cli_emits_one_canonical_fixture_prediction(
             str(source_db),
             "--output-root",
             str(tmp_path / "bundles"),
+            "--capture-evidence-root",
+            str(tmp_path / "evidence"),
+            "--collector-request-root",
+            str(tmp_path / "collector-requests"),
             "--current-time",
             NOW.isoformat(),
         ]
@@ -748,7 +807,9 @@ def test_unexpected_dependency_error_still_prints_one_canonical_blocker(
     capsys: pytest.CaptureFixture[str],
 ):
     deps = dependencies()
-    deps.schedule = lambda days: (_ for _ in ()).throw(OSError("schedule unavailable"))
+    deps.schedule = lambda *values: (_ for _ in ()).throw(
+        OSError("schedule unavailable")
+    )
     monkeypatch.setattr(predict_now, "default_dependencies", lambda parsed: deps)
 
     exit_code = main(
@@ -781,44 +842,17 @@ def test_operator_dependency_surface_excludes_shadow_writer_and_timer_control():
         assert "subprocess" not in source
 
 
-def test_default_fetch_preserves_master_fixed_window_planning(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    import scripts.autonomous_live_odds_capture as capture
+def test_predictor_has_no_browser_capture_or_lock_implementation():
+    source = Path("scripts/predict_race_now.py").read_text(encoding="utf-8")
 
-    form = tmp_path / "form.csv"
-    form.write_text("dog_name,box_number\nAlpha,1\nBeta,2\n", encoding="utf-8")
-    fetch_calls: list[tuple[Any, ...]] = []
-    monkeypatch.setattr(
-        capture,
-        "build_plan_item",
-        lambda path, current_time: {
-            "race_id": RACE_ID,
-            "blockers": ["outside_capture_windows"],
-        },
-    )
-    monkeypatch.setattr(
-        capture,
-        "fetch_odds_for_target_race_with_timeout",
-        lambda *call_args, **call_kwargs: fetch_calls.append(call_args),
-    )
-
-    with pytest.raises(PredictionBlocked) as captured:
-        predict_now._default_fetch(
-            {
-                "race_id": RACE_ID,
-                "form_csv": str(form),
-                "jump_timestamp": datetime.now().astimezone() + timedelta(hours=2),
-            },
-            tmp_path / "sealed.db",
-            1.0,
-        )
-
-    assert captured.value.code == "CAPTURE_WINDOW_UNAVAILABLE"
-    assert fetch_calls == []
+    assert not hasattr(predict_now, "_default_fetch")
+    assert not hasattr(predict_now, "_default_refresh")
+    assert "UpcomingRaceBrowser" not in source
+    assert "execute_capture_plan" not in source
+    assert "os.open(" not in source
 
 
-def test_existing_receipt_bypasses_request_and_collector_lock(tmp_path: Path):
+def test_synchronous_capture_does_not_use_predictor_lock_hook(tmp_path: Path):
     calls = {"acquire": 0}
     deps = dependencies()
     deps.acquire_lock = lambda: calls.__setitem__("acquire", calls["acquire"] + 1)
@@ -827,173 +861,98 @@ def test_existing_receipt_bypasses_request_and_collector_lock(tmp_path: Path):
 
     assert result["odds_source"] == "verified_autonomous_receipt"
     assert calls["acquire"] == 0
-    assert not (tmp_path / "collector-requests").exists()
+    assert len(list((tmp_path / "collector-requests/requests").glob("*.json"))) == 1
 
 
 def test_request_response_receipt_continues_existing_scoring_once(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ):
-    clock = {"value": 0.0}
-    calls = {"discover": 0, "score": 0, "published": False}
-    request_root = tmp_path / "collector-requests"
-    protocol = ManualPredictionCollectorProtocol(request_root)
-    captured_handoff: dict[str, Any] | None = None
-
-    def discover(**kwargs: Any) -> Mapping[str, Any] | None:
-        calls["discover"] += 1
-        return captured_handoff
-
-    def sleep(seconds: float) -> None:
-        nonlocal captured_handoff
-        clock["value"] += seconds
-        if calls["published"]:
-            return
-        context = protocol.prepare_collector_request(
-            now=NOW + timedelta(seconds=clock["value"]),
-            collector_run_id="scheduled-run-1",
-            active_capture=False,
-        )
-        assert context is not None
-        protocol.begin_attempt(
-            context,
-            now=NOW + timedelta(seconds=clock["value"]),
-            collector_run_id="scheduled-run-1",
-        )
-        captured_handoff = protocol_handoff(
-            NOW + timedelta(seconds=clock["value"])
-        )
-        from scripts.shadow_autopilot_v1 import (
-            finalize_manual_collector_request,
-        )
-
-        monkeypatch.setattr(
-            predict_now,
-            "discover_capture_handoff",
-            lambda **kwargs: captured_handoff,
-        )
-        response = finalize_manual_collector_request(
-            protocol=protocol,
-            context=context,
-            capture_report={
-                "attempts": [
-                    {
-                        "race_id": RACE_ID,
-                        "status": "APPENDED",
-                        "capture_window_minutes": 60,
-                    }
-                ]
-            },
-            evidence_root=tmp_path / "evidence",
-            db_path=tmp_path / "source.db",
-            current_time=NOW + timedelta(seconds=clock["value"]),
-        )
-        assert response["status"] == "RECEIPT_READY"
-        calls["published"] = True
-
-    deps = dependencies(
-        discover=discover,
-        acquire=lambda: pytest.fail("manual predictor must not acquire lock"),
-        monotonic=lambda: clock["value"],
-        sleep=sleep,
-    )
+    calls = {"capture": 0, "score": 0}
+    deps = dependencies()
+    original_capture = deps.capture_one
     original_score = deps.score_residual
+
+    def capture(**kwargs: Any) -> Mapping[str, Any]:
+        calls["capture"] += 1
+        assert original_capture is not None
+        return original_capture(**kwargs)
 
     def score(**kwargs: Any) -> Mapping[str, Any]:
         calls["score"] += 1
         return original_score(**kwargs)
 
+    deps.capture_one = capture
     deps.score_residual = score
     result = run_prediction(args(tmp_path), deps)
 
     assert result["odds_source"] == "verified_autonomous_receipt"
-    assert calls == {"discover": 2, "score": 1, "published": True}
-    consumes = list((request_root / "consumed").glob("*.json"))
+    assert calls == {"capture": 1, "score": 1}
+    consumes = list((tmp_path / "collector-requests/consumed").glob("*.json"))
     assert len(consumes) == 1
 
 
-def test_request_wait_has_finite_deadline_without_lock_attempt(tmp_path: Path):
+def test_slow_discovery_fails_before_capture_or_bundle(tmp_path: Path):
     clock = {"value": 0.0}
-    calls = {"acquire": 0}
+    calls = {"capture": 0}
+    deps = dependencies(monotonic=lambda: clock["value"])
 
-    def sleep(seconds: float) -> None:
-        clock["value"] += seconds
+    def slow_schedule(*values: Any) -> list[dict[str, Any]]:
+        del values
+        clock["value"] = 13.0
+        return [race()]
 
-    with pytest.raises(PredictionBlocked) as captured:
-        run_prediction(
-            args(
-                tmp_path,
-                config=config_with_response_wait(tmp_path, 2),
-            ),
-            dependencies(
-                discover=lambda **kwargs: None,
-                acquire=lambda: calls.__setitem__(
-                    "acquire", calls["acquire"] + 1
-                ),
-                monotonic=lambda: clock["value"],
-                sleep=sleep,
-            ),
-        )
-    assert captured.value.code == "COLLECTOR_RESPONSE_TIMEOUT"
-    assert clock["value"] == 2.0
-    assert calls["acquire"] == 0
-
-
-def test_expired_response_after_jump_surfaces_terminal_status(tmp_path: Path):
-    clock = {"value": 0.0}
-    request_root = tmp_path / "collector-requests"
-    protocol = ManualPredictionCollectorProtocol(request_root)
-    collector_response_time = NOW + timedelta(seconds=121)
-
-    def sleep(seconds: float) -> None:
-        clock["value"] += seconds
-        if clock["value"] >= 61:
-            context = protocol.prepare_collector_request(
-                now=collector_response_time,
-                collector_run_id="scheduled-run-1",
-                active_capture=False,
-            )
-            assert context is None
-
-    with pytest.raises(PredictionBlocked) as captured:
-        predict_now._acquire_or_reuse(
-            dependencies(
-                discover=lambda **kwargs: None,
-                monotonic=lambda: clock["value"],
-                sleep=sleep,
-            ),
-            protocol=protocol,
-            target=race("12:01"),
-            odds_source="auto",
-            evidence_roots=(tmp_path / "evidence",),
-            db_path=tmp_path / "source.db",
-            race_id=RACE_ID,
-            jump=NOW + timedelta(minutes=1),
-            current_time=NOW,
-            wait_seconds=120,
-            poll_seconds=61,
-        )
-
-    assert captured.value.code == "REQUEST_EXPIRED"
-    consumed = list((request_root / "consumed").glob("*.json"))
-    assert len(consumed) == 1
-    assert json.loads(consumed[0].read_bytes())["consumed_at"] == (
-        collector_response_time.isoformat()
+    deps.schedule = slow_schedule
+    deps.capture_one = lambda **kwargs: calls.__setitem__(
+        "capture", calls["capture"] + 1
     )
+    with pytest.raises(PredictionBlocked) as captured:
+        run_prediction(args(tmp_path), deps)
+    assert captured.value.code == "DISCOVERY_TIMEOUT"
+    assert calls["capture"] == 0
+    assert not (tmp_path / "bundles").exists()
 
 
-def test_capture_source_cannot_create_second_capture_authority(tmp_path: Path):
+def test_cancelled_collector_child_leaves_no_live_request(tmp_path: Path):
+    deps = dependencies()
+
+    def cancelled(**kwargs: Any) -> Mapping[str, Any]:
+        del kwargs
+        raise synchronous_capture.CaptureOneRejected("CANCELLED")
+
+    deps.capture_one = cancelled
+    with pytest.raises(PredictionBlocked) as captured:
+        run_prediction(args(tmp_path), deps)
+
+    assert captured.value.code == "CANCELLED"
+    protocol = ManualPredictionCollectorProtocol(tmp_path / "collector-requests")
+    assert not protocol.outstanding_request_ids()
+
+
+def test_insufficient_margin_rejects_before_capture_process(tmp_path: Path):
+    calls = {"capture": 0}
+    deps = dependencies()
+    deps.schedule = lambda *values: [race("12:01")]
+    deps.capture_one = lambda **kwargs: calls.__setitem__(
+        "capture", calls["capture"] + 1
+    )
+    with pytest.raises(PredictionBlocked) as captured:
+        run_prediction(args(tmp_path), deps)
+    assert captured.value.code == "INSUFFICIENT_PREJUMP_MARGIN"
+    assert calls["capture"] == 0
+    assert not (tmp_path / "collector-requests/requests").exists()
+
+
+def test_capture_source_uses_collector_child_not_predictor_hooks(tmp_path: Path):
     calls = {"acquire": 0, "fetch": 0}
-    deps = dependencies(discover=lambda **kwargs: None)
+    deps = dependencies()
     deps.acquire_lock = lambda: calls.__setitem__("acquire", calls["acquire"] + 1)
     deps.fetch_odds = lambda *args, **kwargs: calls.__setitem__(
         "fetch", calls["fetch"] + 1
     )
 
-    with pytest.raises(PredictionBlocked) as captured:
-        run_prediction(args(tmp_path, odds_source="capture"), deps)
+    result = run_prediction(args(tmp_path, odds_source="capture"), deps)
 
-    assert captured.value.code == "CAPTURE_AUTHORITY_FORBIDDEN"
+    assert result["status"] == "PREDICTION_READY"
     assert calls == {"acquire": 0, "fetch": 0}
 
 
@@ -1019,12 +978,11 @@ def test_manual_predictor_does_not_mutate_or_interfere_with_lock_owner(
     lock_path.chmod(0o640)
     before = lock_path.stat(follow_symlinks=False)
 
-    with pytest.raises(PredictionBlocked) as captured:
-        run_prediction(
-            args(tmp_path, odds_source="capture"),
-            dependencies(discover=lambda **kwargs: None),
-        )
-    assert captured.value.code == "CAPTURE_AUTHORITY_FORBIDDEN"
+    result = run_prediction(
+        args(tmp_path, odds_source="capture"),
+        dependencies(),
+    )
+    assert result["status"] == "PREDICTION_READY"
 
     after = lock_path.stat(follow_symlinks=False)
     assert lock_path.read_bytes() == original
@@ -1035,22 +993,46 @@ def test_manual_predictor_does_not_mutate_or_interfere_with_lock_owner(
     )
 
 
-def test_default_dependencies_reject_db_lock_root_mismatch(tmp_path: Path):
+def test_default_dependencies_delegate_exact_capture_to_collector_cli(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    commands: list[tuple[list[str], float]] = []
+    monkeypatch.setattr(
+        synchronous_capture,
+        "invoke_capture_one",
+        lambda *, command, timeout_seconds: (
+            commands.append((list(command), timeout_seconds))
+            or {"status": "RECEIPT_READY"}
+        ),
+    )
     namespace = argparse.Namespace(
         db=tmp_path / "canonical/greyhound_racing_data.db",
         lock_path=tmp_path / "different/shadow_autopilot.lock",
-        lock_output_dir=tmp_path / "bundles",
+        fetch_timeout_seconds=45,
     )
     dependency_set = predict_now.default_dependencies(namespace)
 
-    with pytest.raises(PredictionBlocked) as captured:
-        dependency_set.acquire_lock()
-
-    assert captured.value.code == "LOCK_PATH_DB_ROOT_MISMATCH"
-    assert captured.value.details["expected_lock_path"].endswith(
-        "canonical/artifacts/full_evidence_orchestration_20260525/"
-        "shadow_autopilot_daemon_runtime/shadow_autopilot.lock"
+    assert not hasattr(dependency_set, "acquire_lock")
+    assert not hasattr(dependency_set, "release_lock")
+    assert not hasattr(dependency_set, "fetch_odds")
+    assert not hasattr(dependency_set, "refresh")
+    assert dependency_set.capture_one is not None
+    result = dependency_set.capture_one(
+        protocol_root=tmp_path / "protocol",
+        evidence_root=tmp_path / "evidence",
+        request_id="request-id",
+        output_dir=tmp_path / "evidence/capture",
+        minimum_margin_seconds=114,
+        minimum_post_lock_margin_seconds=113,
+        minimum_fetch_margin_seconds=98,
+        timeout_seconds=84,
     )
+    assert result["status"] == "RECEIPT_READY"
+    command, timeout = commands[0]
+    assert command[2] == "capture-one"
+    assert "--minimum-post-lock-margin-seconds" in command
+    assert "--minimum-fetch-margin-seconds" in command
+    assert timeout == 84
 
 
 def test_default_lock_release_requires_exact_owner_and_inode(tmp_path: Path):
@@ -1075,7 +1057,7 @@ def test_default_lock_acquire_closes_and_removes_own_inode_when_fstat_fails(
         del descriptor
         raise OSError("injected fstat failure")
 
-    monkeypatch.setattr(predict_now.os, "fstat", fail_fstat)
+    monkeypatch.setattr(synchronous_capture.os, "fstat", fail_fstat)
     with pytest.raises(PredictionBlocked) as captured:
         _acquire_collector_lock_no_steal(
             lock_path, run_id="on_demand_test", output_dir=tmp_path / "bundle"
@@ -1085,133 +1067,37 @@ def test_default_lock_acquire_closes_and_removes_own_inode_when_fstat_fails(
     assert not lock_path.exists()
 
 
-@pytest.mark.parametrize(
-    ("discover", "code"),
-    [
-        (lambda **kwargs: handoff(NOW - timedelta(hours=1)), "RECEIPT_STALE"),
-        (
-            lambda **kwargs: (_ for _ in ()).throw(
-                CaptureHandoffError("accepted_capture_attempt_ambiguous")
-            ),
-            "RECEIPT_AMBIGUOUS",
-        ),
-    ],
-)
-def test_stale_and_ambiguous_receipts_fail_closed(
-    tmp_path: Path, discover: Any, code: str
-):
-    with pytest.raises(PredictionBlocked) as captured:
-        run_prediction(args(tmp_path), dependencies(discover=discover))
-    assert captured.value.code == code
+def test_exact_valid_receipt_is_reused_without_second_capture(tmp_path: Path):
+    calls = {"capture": 0, "score": 0}
+    deps = dependencies()
+    original_capture = deps.capture_one
+    original_score = deps.score_residual
+
+    def capture(**kwargs: Any) -> Mapping[str, Any]:
+        calls["capture"] += 1
+        assert original_capture is not None
+        return original_capture(**kwargs)
+
+    def score(**kwargs: Any) -> Mapping[str, Any]:
+        calls["score"] += 1
+        return original_score(**kwargs)
+
+    deps.capture_one = capture
+    deps.score_residual = score
+    run_prediction(args(tmp_path), deps)
+    run_prediction(args(tmp_path), deps)
+
+    assert calls == {"capture": 1, "score": 2}
+    assert len(list((tmp_path / "collector-requests/requests").glob("*.json"))) == 1
 
 
-@pytest.mark.parametrize(
-    "reason",
-    [
-        "sidecar_target_grade_context_schema_missing",
-        "sidecar_target_grade_exact_value_missing",
-        "sidecar_target_grade_equivalence_key_missing",
-        "sidecar_target_grade_race_url_missing",
-        "sidecar_target_grade_source_url_missing",
-        "sidecar_target_grade_source_sha256_missing",
-        "sidecar_target_grade_race_date_missing",
-        "sidecar_target_grade_race_number_missing",
-        "sidecar_target_grade_venue_missing",
-        "feature_generator_implementation_hash_mismatch",
-    ],
-)
-def test_auto_rejects_precurrent_packet_then_requests_collector_without_effects(
-    tmp_path: Path, reason: str
-):
-    clock = {"value": 0.0}
-    calls = {"acquire": 0, "refresh": 0, "score": 0}
+def test_receipt_only_mode_does_not_scan_legacy_evidence(tmp_path: Path):
+    deps = dependencies()
 
-    def rejected_packet(**kwargs: Any) -> Mapping[str, Any]:
-        del kwargs
-        raise CaptureHandoffError(reason)
-
-    deps = dependencies(
-        discover=rejected_packet,
-        monotonic=lambda: clock["value"],
-        sleep=lambda seconds: clock.__setitem__(
-            "value", clock["value"] + seconds
-        ),
-    )
-    deps.refresh = lambda *args, **kwargs: calls.__setitem__(
-        "refresh", calls["refresh"] + 1
-    )
-    deps.score_residual = lambda **kwargs: calls.__setitem__(
-        "score", calls["score"] + 1
-    )
-    deps.acquire_lock = lambda: calls.__setitem__(
-        "acquire", calls["acquire"] + 1
-    )
-    command_args = args(
-        tmp_path,
-        config=config_with_response_wait(tmp_path, 2),
-    )
-    database_before = sha256_file(command_args.db)
-
-    with pytest.raises(PredictionBlocked) as captured:
-        run_prediction(command_args, deps)
-
-    assert captured.value.code == "COLLECTOR_RESPONSE_TIMEOUT"
-    assert calls == {"acquire": 0, "refresh": 0, "score": 0}
-    assert sha256_file(command_args.db) == database_before
-    assert len(list((tmp_path / "collector-requests" / "requests").glob("*.json"))) == 1
-    assert not list(tmp_path.rglob("*.service"))
-    assert not list(tmp_path.rglob("*prediction_history*"))
-
-
-def test_receipt_only_mode_does_not_fallback_from_precurrent_packet(tmp_path: Path):
-    calls = {"acquire": 0, "score": 0}
-
-    def rejected_packet(**kwargs: Any) -> Mapping[str, Any]:
-        del kwargs
-        raise CaptureHandoffError("sidecar_target_grade_context_schema_missing")
-
-    deps = dependencies(discover=rejected_packet)
-    deps.acquire_lock = lambda: calls.__setitem__("acquire", calls["acquire"] + 1)
-    deps.score_residual = lambda **kwargs: calls.__setitem__(
-        "score", calls["score"] + 1
-    )
     with pytest.raises(PredictionBlocked) as captured:
         run_prediction(args(tmp_path, odds_source="receipt"), deps)
 
-    assert captured.value.code == "RECEIPT_INVALID"
-    assert captured.value.details["reason"] == (
-        "sidecar_target_grade_context_schema_missing"
-    )
-    assert calls == {"acquire": 0, "score": 0}
-
-
-@pytest.mark.parametrize(
-    ("reason", "code"),
-    [
-        ("accepted_capture_attempt_ambiguous", "RECEIPT_AMBIGUOUS"),
-        ("target_grade_proof_mismatch", "RECEIPT_INVALID"),
-    ],
-)
-def test_auto_keeps_ambiguous_or_conflicting_receipt_evidence_terminal(
-    tmp_path: Path, reason: str, code: str
-):
-    calls = {"acquire": 0, "score": 0}
-
-    def rejected_packet(**kwargs: Any) -> Mapping[str, Any]:
-        del kwargs
-        raise CaptureHandoffError(reason)
-
-    deps = dependencies(discover=rejected_packet)
-    deps.acquire_lock = lambda: calls.__setitem__("acquire", calls["acquire"] + 1)
-    deps.score_residual = lambda **kwargs: calls.__setitem__(
-        "score", calls["score"] + 1
-    )
-    with pytest.raises(PredictionBlocked) as captured:
-        run_prediction(args(tmp_path), deps)
-
-    assert captured.value.code == code
-    assert captured.value.details["reason"] == reason
-    assert calls == {"acquire": 0, "score": 0}
+    assert captured.value.code == "RECEIPT_UNAVAILABLE"
 
 
 @pytest.mark.parametrize(
@@ -1243,21 +1129,21 @@ def test_dependency_failures_become_canonical_persisted_blockers(
 
 def test_post_jump_blocks_before_bundle_or_lock(tmp_path: Path):
     deps = dependencies()
-    deps.schedule = lambda days: [race("11:59")]
+    deps.schedule = lambda *values: [race("11:59")]
     with pytest.raises(PredictionBlocked) as captured:
         run_prediction(args(tmp_path), deps)
     assert captured.value.code == "POST_JUMP"
     assert not (tmp_path / "bundles").exists()
 
 
-def test_odds_captured_at_or_after_jump_fails_closed(tmp_path: Path):
-    deps = dependencies(
-        discover=lambda **kwargs: handoff(NOW + timedelta(hours=1))
-    )
+def test_exact_receipt_is_rejected_after_jump(tmp_path: Path):
+    deps = dependencies()
+    run_prediction(args(tmp_path), deps)
+    deps.now = lambda: NOW + timedelta(hours=1)
+
     with pytest.raises(PredictionBlocked) as captured:
         run_prediction(args(tmp_path), deps)
-    assert captured.value.code == "RECEIPT_STALE"
-    assert Path(captured.value.details["bundle"], "result.json").is_file()
+    assert captured.value.code == "POST_JUMP"
 
 
 def test_history_seal_excludes_target_and_all_same_or_future_dates(tmp_path: Path):
@@ -1378,9 +1264,10 @@ def test_nonfinite_config_is_rejected_before_any_prediction_side_effect(
 ):
     config = tmp_path / "nonfinite.json"
     raw = (
-        '{"bundle":{"collector_response_wait_seconds":'
-        f"{constant}"
-        ',"poll_seconds":1,"receipt_max_age_seconds":900},'
+        '{"bundle":{"latency_budget":{"capture_seconds":45,'
+        f'"discovery_seconds":{constant},'
+        '"lock_seconds":1,"safety_seconds":15,"scoring_seconds":30,'
+        '"validation_seconds":8},"receipt_max_age_seconds":900},'
         '"model":"market_only_v1",'
         '"schema_version":"on_demand_prediction_config_v1",'
         '"variant":"market_only_implied"}\n'
@@ -1398,14 +1285,9 @@ def test_nonfinite_config_is_rejected_before_any_prediction_side_effect(
     files_before = sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*"))
     calls = {
         "schedule": 0,
-        "refresh": 0,
-        "discover_receipt": 0,
-        "fetch_odds": 0,
-        "acquire_lock": 0,
-        "release_lock": 0,
         "seal_features": 0,
         "score_residual": 0,
-        "sleep": 0,
+        "capture_one": 0,
     }
     deps = dependencies()
     for name in calls:
@@ -1445,16 +1327,18 @@ def test_nonfinite_config_is_rejected_before_any_prediction_side_effect(
         (float("-inf"), "CONFIG_INVALID_JSON"),
     ],
 )
-def test_invalid_response_wait_values_are_rejected(
+def test_invalid_discovery_budget_values_are_rejected(
     tmp_path: Path, value: Any, code: str
 ):
     calls = {"schedule": 0}
     deps = dependencies()
-    deps.schedule = lambda days: calls.__setitem__("schedule", calls["schedule"] + 1)
+    deps.schedule = lambda *values: calls.__setitem__(
+        "schedule", calls["schedule"] + 1
+    )
 
     with pytest.raises(PredictionBlocked) as captured:
         run_prediction(
-            args(tmp_path, config=config_with_response_wait(tmp_path, value)),
+            args(tmp_path, config=config_with_discovery_budget(tmp_path, value)),
             deps,
         )
 
@@ -1462,17 +1346,32 @@ def test_invalid_response_wait_values_are_rejected(
     assert calls["schedule"] == 0
 
 
-def test_checked_in_response_wait_default_and_max_are_bounded():
+def test_checked_in_latency_budget_is_declared_and_bounded():
     for name in ("manual-default.json", "market-only.json"):
         config = json.loads((Path("configs/prediction") / name).read_bytes())
-        assert config["bundle"]["collector_response_wait_seconds"] == 600
+        assert config["bundle"]["latency_budget"] == {
+            "capture_seconds": 60,
+            "discovery_seconds": 12,
+            "lock_seconds": 1,
+            "safety_seconds": 15,
+            "scoring_seconds": 30,
+            "validation_seconds": 8,
+        }
 
     for name in ("market_form_residual_v1.schema.json", "market_only_v1.schema.json"):
         schema = json.loads((Path("configs/prediction/schemas") / name).read_bytes())
-        wait_schema = schema["properties"]["bundle"]["properties"][
-            "collector_response_wait_seconds"
+        budget_schema = schema["properties"]["bundle"]["properties"][
+            "latency_budget"
         ]
-        assert wait_schema == {"maximum": 900, "minimum": 1, "type": "number"}
+        assert budget_schema["additionalProperties"] is False
+        assert set(budget_schema["required"]) == {
+            "discovery_seconds",
+            "lock_seconds",
+            "capture_seconds",
+            "validation_seconds",
+            "scoring_seconds",
+            "safety_seconds",
+        }
 
 
 def test_list_configs_is_finite_validated_and_deterministic(

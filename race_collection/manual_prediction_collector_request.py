@@ -24,6 +24,7 @@ ATTEMPT_SCHEMA = "manual-prediction-collector-attempt-v1"
 RESPONSE_SCHEMA = "manual-prediction-collector-response-v1"
 RECEIPT_SCHEMA = "manual-prediction-collector-receipt-v1"
 CONSUME_SCHEMA = "manual-prediction-collector-consume-v1"
+EXACT_RECEIPT_SCHEMA = "manual-prediction-exact-receipt-index-v1"
 PROTOCOL_DIRECTORY = "manual_prediction_collector_requests_v1"
 
 RECEIPT_READY = "RECEIPT_READY"
@@ -229,6 +230,13 @@ class ManualPredictionCollectorProtocol:
 
     def consumed_path(self, request_id: str) -> Path:
         return self.root / "consumed" / f"{request_id}.json"
+
+    def exact_receipt_directory(self, race_id: str) -> Path:
+        name = hashlib.sha256(race_id.encode()).hexdigest()
+        return self.root / "exact-receipts" / name
+
+    def exact_receipt_path(self, race_id: str, request_id: str) -> Path:
+        return self.exact_receipt_directory(race_id) / f"{request_id}.json"
 
     def _safe_directory(self, path: Path) -> None:
         try:
@@ -554,6 +562,15 @@ class ManualPredictionCollectorProtocol:
                 output.append(request_id)
         return output
 
+    def outstanding_request_ids(self) -> list[str]:
+        output: list[str] = []
+        for path in sorted((self.root / "requests").glob("*.json")):
+            request_id = path.stem
+            self._read_request(request_id)
+            if not self.response_path(request_id).exists():
+                output.append(request_id)
+        return output
+
     def prepare_collector_request(
         self,
         *,
@@ -751,9 +768,13 @@ class ManualPredictionCollectorProtocol:
             for key, value in handoff.items()
             if not str(key).startswith("_")
         }
+        handoff_schema = public_handoff.get("schema_version")
         if (
-            public_handoff.get("schema_version")
-            != "on_demand_verified_master_packet_v1"
+            handoff_schema
+            not in {
+                "on_demand_verified_master_packet_v1",
+                "on_demand_verified_collector_capture_v2",
+            }
             or public_handoff.get("race_id") != context.request["race"]["race_id"]
             or normalized_receipt.get("schema_version") != "on_demand_odds_receipt_v1"
             or normalized_receipt.get("race_id") != context.request["race"]["race_id"]
@@ -778,13 +799,43 @@ class ManualPredictionCollectorProtocol:
                 or sha256_bytes(raw) != source_hashes[hash_key]
             ):
                 raise ProtocolRejected("HASH_DRIFT", field=hash_key)
-        packet_hashes = {
-            key: _hash(public_handoff.get(key), key)
-            for key in (
-                "packet_record_checksum_sha256",
-                "packet_effective_state_sha256",
-            )
-        }
+        if handoff_schema == "on_demand_verified_master_packet_v1":
+            packet_hashes = {
+                key: _hash(public_handoff.get(key), key)
+                for key in (
+                    "packet_record_checksum_sha256",
+                    "packet_effective_state_sha256",
+                )
+            }
+            source_evidence = {
+                "source_url": normalized_receipt.get("source_url"),
+                **source_hashes,
+                "packet_record_schema_version": public_handoff.get(
+                    "packet_record_schema_version"
+                ),
+                "packet_record_checksum_sha256": packet_hashes[
+                    "packet_record_checksum_sha256"
+                ],
+                "packet_effective_state_schema_version": public_handoff.get(
+                    "packet_effective_state_schema_version"
+                ),
+                "packet_effective_state_sha256": packet_hashes[
+                    "packet_effective_state_sha256"
+                ],
+            }
+        else:
+            source_evidence = {
+                "source_url": normalized_receipt.get("source_url"),
+                **source_hashes,
+                "capture_attempt_sha256": _hash(
+                    public_handoff.get("capture_attempt_sha256"),
+                    "capture_attempt_sha256",
+                ),
+                "append_report_sha256": _hash(
+                    public_handoff.get("append_report_sha256"),
+                    "append_report_sha256",
+                ),
+            }
         actual_runner_hash = _hash(
             normalized_receipt.get("runner_set_sha256"),
             "runner_set_sha256",
@@ -825,22 +876,7 @@ class ManualPredictionCollectorProtocol:
             "runner_set_sha256": actual_runner_hash,
             "captured_at": captured_at,
             "emitted_at": emitted_at,
-            "source_evidence": {
-                "source_url": normalized_receipt.get("source_url"),
-                **source_hashes,
-                "packet_record_schema_version": public_handoff.get(
-                    "packet_record_schema_version"
-                ),
-                "packet_record_checksum_sha256": packet_hashes[
-                    "packet_record_checksum_sha256"
-                ],
-                "packet_effective_state_schema_version": public_handoff.get(
-                    "packet_effective_state_schema_version"
-                ),
-                "packet_effective_state_sha256": packet_hashes[
-                    "packet_effective_state_sha256"
-                ],
-            },
+            "source_evidence": source_evidence,
             "sealed_handoff": public_handoff,
         }
         receipt_raw, _ = self._publish_once(
@@ -856,6 +892,54 @@ class ManualPredictionCollectorProtocol:
             .as_posix(),
             "sha256": sha256_bytes(receipt_raw),
         }
+        if handoff_schema == "on_demand_verified_collector_capture_v2":
+            artifacts: dict[str, Any] = {}
+            evidence_root = self.root.parent.resolve()
+            for label, hash_key in (
+                ("report", "source_report_sha256"),
+                ("form", "source_form_sha256"),
+                ("sidecar", "source_sidecar_sha256"),
+            ):
+                path_value = handoff.get(f"_{label}_path")
+                path = Path(path_value) if isinstance(path_value, (str, Path)) else None
+                if (
+                    path is None
+                    or path.is_symlink()
+                    or not path.is_file()
+                    or not path.is_absolute()
+                ):
+                    raise ProtocolRejected("SOURCE_FILE_UNSAFE", field=label)
+                resolved = path.resolve()
+                try:
+                    relative = resolved.relative_to(evidence_root)
+                except ValueError as exc:
+                    raise ProtocolRejected(
+                        "SOURCE_FILE_UNSAFE", field=label
+                    ) from exc
+                raw = path.read_bytes()
+                if sha256_bytes(raw) != source_hashes[hash_key]:
+                    raise ProtocolRejected("HASH_DRIFT", field=hash_key)
+                artifacts[label] = {
+                    "path": relative.as_posix(),
+                    "sha256": source_hashes[hash_key],
+                }
+            exact_payload = {
+                "schema_version": EXACT_RECEIPT_SCHEMA,
+                "race_id": context.request["race"]["race_id"],
+                "request_id": context.request["request_id"],
+                "receipt": receipt_reference,
+                "artifacts": artifacts,
+                "form_name": _known_text(handoff.get("_form_name"), "form_name"),
+            }
+            self._publish_once(
+                self.exact_receipt_path(
+                    context.request["race"]["race_id"],
+                    context.request["request_id"],
+                ),
+                exact_payload,
+                duplicate_code="DUPLICATE_EXACT_RECEIPT",
+                exact_recovery=True,
+            )
         response = self._response_payload(
             context,
             status=RECEIPT_READY,
@@ -1049,45 +1133,202 @@ class ManualPredictionCollectorProtocol:
         ):
             raise ProtocolRejected("TIMESTAMP_ORDER_INVALID")
         source = receipt["source_evidence"]
-        source_keys = {
-            "source_url",
-            "source_report_sha256",
-            "source_form_sha256",
-            "source_sidecar_sha256",
-            "packet_record_schema_version",
-            "packet_record_checksum_sha256",
-            "packet_effective_state_schema_version",
-            "packet_effective_state_sha256",
-        }
+        sealed = receipt["sealed_handoff"]
+        if type(sealed) is not dict:
+            raise ProtocolRejected("RECEIPT_MALFORMED")
+        if sealed.get("schema_version") == "on_demand_verified_master_packet_v1":
+            source_keys = {
+                "source_url",
+                "source_report_sha256",
+                "source_form_sha256",
+                "source_sidecar_sha256",
+                "packet_record_schema_version",
+                "packet_record_checksum_sha256",
+                "packet_effective_state_schema_version",
+                "packet_effective_state_sha256",
+            }
+            text_keys = {
+                "source_url",
+                "packet_record_schema_version",
+                "packet_effective_state_schema_version",
+            }
+        elif (
+            sealed.get("schema_version")
+            == "on_demand_verified_collector_capture_v2"
+        ):
+            source_keys = {
+                "source_url",
+                "source_report_sha256",
+                "source_form_sha256",
+                "source_sidecar_sha256",
+                "capture_attempt_sha256",
+                "append_report_sha256",
+            }
+            text_keys = {"source_url"}
+        else:
+            raise ProtocolRejected("RECEIPT_MALFORMED")
         if type(source) is not dict or set(source) != source_keys:
             raise ProtocolRejected("RECEIPT_MALFORMED")
         _known_text(source["source_url"], "source_evidence.source_url")
-        _known_text(
-            source["packet_record_schema_version"],
-            "source_evidence.packet_record_schema_version",
-        )
-        _known_text(
-            source["packet_effective_state_schema_version"],
-            "source_evidence.packet_effective_state_schema_version",
-        )
-        for key in source_keys - {
-            "source_url",
-            "packet_record_schema_version",
-            "packet_effective_state_schema_version",
-        }:
+        for key in text_keys - {"source_url"}:
+            _known_text(source[key], f"source_evidence.{key}")
+        for key in source_keys - text_keys:
             _hash(source[key], f"source_evidence.{key}")
-        sealed = receipt["sealed_handoff"]
         if (
-            type(sealed) is not dict
-            or sealed.get("schema_version") != "on_demand_verified_master_packet_v1"
-            or sealed.get("race_id") != request["race"]["race_id"]
+            sealed.get("race_id") != request["race"]["race_id"]
             or any(
                 sealed.get(key) != source.get(key)
                 for key in source_keys - {"source_url"}
             )
         ):
             raise ProtocolRejected("HASH_DRIFT")
+        if (
+            sealed.get("schema_version")
+            == "on_demand_verified_collector_capture_v2"
+            and (
+                sealed.get("race") != request["race"]
+                or sealed.get("runner_set_sha256") != runner_hash
+                or sealed.get("append_timestamp") != receipt["captured_at"]
+            )
+        ):
+            raise ProtocolRejected("IDENTITY_MISMATCH")
         return receipt
+
+    def discover_exact_handoff(
+        self,
+        *,
+        race_id: str,
+        current_time: datetime,
+        max_age_seconds: int,
+    ) -> dict[str, Any] | None:
+        """Load the newest exact valid sealed receipt without scanning other races."""
+
+        if max_age_seconds <= 0:
+            raise ProtocolRejected("RECEIPT_MAX_AGE_INVALID")
+        now, _ = _timestamp(current_time, "current_time")
+        directory = self.exact_receipt_directory(
+            _known_text(race_id, "race_id")
+        )
+        if not directory.exists():
+            return None
+        if directory.is_symlink() or not directory.is_dir():
+            raise ProtocolRejected("PROTOCOL_PATH_UNSAFE")
+        paths = sorted(directory.glob("*.json"), reverse=True)
+        if len(paths) > 32:
+            raise ProtocolRejected("EXACT_RECEIPT_INDEX_UNBOUNDED")
+        candidates: list[tuple[datetime, dict[str, Any]]] = []
+        evidence_root = self.root.parent.resolve()
+        for path in paths:
+            index, _ = self._load_object(path, "EXACT_RECEIPT_NOT_FOUND")
+            if (
+                set(index)
+                != {
+                    "schema_version",
+                    "race_id",
+                    "request_id",
+                    "receipt",
+                    "artifacts",
+                    "form_name",
+                }
+                or index.get("schema_version") != EXACT_RECEIPT_SCHEMA
+                or index.get("race_id") != race_id
+            ):
+                raise ProtocolRejected("EXACT_RECEIPT_MALFORMED")
+            request_id = self._request_id(index.get("request_id"))
+            if path != self.exact_receipt_path(race_id, request_id):
+                raise ProtocolRejected("PROTOCOL_PATH_UNSAFE")
+            request, request_raw = self._read_request(request_id)
+            if request["race"]["race_id"] != race_id:
+                raise ProtocolRejected("IDENTITY_MISMATCH")
+            reference = index.get("receipt")
+            if type(reference) is not dict:
+                raise ProtocolRejected("EXACT_RECEIPT_MALFORMED")
+            relative = Path(
+                _known_text(reference.get("path"), "receipt.path")
+            )
+            receipt_path = self.receipt_path(request_id)
+            if relative.is_absolute() or self.root / relative != receipt_path:
+                raise ProtocolRejected("PROTOCOL_PATH_UNSAFE")
+            receipt_value, _ = self._load_object(
+                receipt_path, "RECEIPT_NOT_FOUND"
+            )
+            synthetic_response = {
+                "receipt": reference,
+                "request_sha256": sha256_bytes(request_raw),
+                "responded_at": receipt_value.get("emitted_at"),
+            }
+            receipt = self._receipt_from_response(request, synthetic_response)
+            captured, _ = _timestamp(
+                receipt["captured_at"], "receipt.captured_at"
+            )
+            age = (now - captured).total_seconds()
+            if age < 0:
+                raise ProtocolRejected("TIMESTAMP_ORDER_INVALID")
+            if age > max_age_seconds:
+                continue
+            artifacts = index.get("artifacts")
+            if type(artifacts) is not dict or set(artifacts) != {
+                "report",
+                "form",
+                "sidecar",
+            }:
+                raise ProtocolRejected("EXACT_RECEIPT_MALFORMED")
+            raw_artifacts: dict[str, bytes] = {}
+            artifact_paths: dict[str, Path] = {}
+            for label, source_key in (
+                ("report", "source_report_sha256"),
+                ("form", "source_form_sha256"),
+                ("sidecar", "source_sidecar_sha256"),
+            ):
+                artifact = artifacts[label]
+                if type(artifact) is not dict or set(artifact) != {
+                    "path",
+                    "sha256",
+                }:
+                    raise ProtocolRejected("EXACT_RECEIPT_MALFORMED")
+                relative_artifact = Path(
+                    _known_text(artifact["path"], f"artifacts.{label}.path")
+                )
+                if relative_artifact.is_absolute():
+                    raise ProtocolRejected("PROTOCOL_PATH_UNSAFE")
+                artifact_path = evidence_root / relative_artifact
+                if artifact_path.is_symlink() or not artifact_path.is_file():
+                    raise ProtocolRejected("SOURCE_FILE_UNSAFE", field=label)
+                resolved = artifact_path.resolve()
+                try:
+                    resolved.relative_to(evidence_root)
+                except ValueError as exc:
+                    raise ProtocolRejected("PROTOCOL_PATH_UNSAFE") from exc
+                raw = artifact_path.read_bytes()
+                expected_hash = _hash(
+                    artifact["sha256"], f"artifacts.{label}.sha256"
+                )
+                if (
+                    sha256_bytes(raw) != expected_hash
+                    or expected_hash
+                    != receipt["source_evidence"][source_key]
+                ):
+                    raise ProtocolRejected("HASH_DRIFT", field=label)
+                raw_artifacts[label] = raw
+                artifact_paths[label] = resolved
+            candidates.append(
+                (
+                    captured,
+                    {
+                        **receipt["sealed_handoff"],
+                        "_report_bytes": raw_artifacts["report"],
+                        "_form_bytes": raw_artifacts["form"],
+                        "_sidecar_bytes": raw_artifacts["sidecar"],
+                        "_report_path": artifact_paths["report"],
+                        "_form_path": artifact_paths["form"],
+                        "_sidecar_path": artifact_paths["sidecar"],
+                        "_form_name": _known_text(
+                            index["form_name"], "form_name"
+                        ),
+                    },
+                )
+            )
+        return max(candidates, key=lambda item: item[0])[1] if candidates else None
 
     def consume_response(self, request_id: str, *, now: datetime) -> dict[str, Any]:
         if self.consumed_path(request_id).exists():
