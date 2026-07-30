@@ -169,6 +169,20 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assert_selection("non_forecasting", "", ("M", path))
 
+    def test_only_explicit_license_documentation_paths_are_non_forecasting(self):
+        for path in ("LICENSE", "LICENSE.md", "LICENSE.txt"):
+            with self.subTest(path=path):
+                self.assert_selection("non_forecasting", "", ("M", path))
+
+        for path in ("LICENSE.py", "LICENSE.docs/runtime.py"):
+            with self.subTest(path=path):
+                result = self.assert_selection(
+                    "full_forecasting", "full_forecasting", ("M", path)
+                )
+                self.assertEqual(
+                    result["reason"], "unknown_or_ambiguous_path_forces_full"
+                )
+
     def test_destructive_and_ambiguous_changes_force_full(self):
         for item in (
             ("R100", "scripts/predict_race_now.py", "archive/predict.py"),
