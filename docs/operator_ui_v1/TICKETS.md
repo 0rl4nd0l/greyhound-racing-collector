@@ -69,7 +69,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 
 - Release: `R1`
 - Priority: `P1`
-- Status: `review`
+- Status: `accepted`
 - Dependencies: `GHU-002`
 - Model routing: GPT-5.6 Terra; fallback GPT-5.6 Luna
 - Session role: Fresh Codex X implementation session
@@ -83,8 +83,8 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Level 1 fixture UI only; no operational mutation.
 - Claims supported: Only the ticket outcome after validation, independent review, and parent acceptance; no implementation claim while incomplete.
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: Independent final exact-delta review only; keep `GHU-010` unaccepted in review until parent exact-delta acceptance and integration.
-- Closeout evidence: On 2026-07-30, after the accepted `GHU-002` integration above was verified as candidate base commit/tree, transitioned in order `planned -> ready -> active` and assigned to fresh Codex X launcher run `20260730T101930Z-73f1e5d041-380183`, child identity `c03a66e899ab18c04d650cd106c1598e` (no separate Codex session UUID exposed). Base commit `73f1e5d041f8d78ee0f48ce13e008f71c20090ca`; base tree `d68116ba72b28f149707d7610821aea02cb35781`. After the candidate was frozen, transitioned `active -> review`. The original attempt's static checks passed, while its unprovisioned focused pytest and browser coverage did not execute; the preserved `GHU-010A`, `GHU-010B`, and `GHU-010C` blocked history and the independently accepted-for-diagnostic `GHU-010D` review below record the subsequent correction path. Authoritative current candidate evidence is focused pytest `2 passed` and Playwright `3 passed in 2.1s`. The original broad suite remains failed and is not relabeled passed: `24 failed, 518 passed, 40 subtests passed in 4527.96s`. Stable diagnostic of only those 24 nodes recorded untouched base `24 passed in 709.55s`; the exact uncommitted candidate `21 passed` plus 3 dirty-release-identity failures in `704.25s`; and those same 3 nodes passing in `6.73s` when the exact eight-file candidate was frozen validation-only as commit `eda152192e96f7f89ccfc4ab3e89d5965cbc4055`, tree `ae2a32a5371f8fe73dc83d4e8daab5bcee9b37d6`. This establishes no candidate regression among those nodes without claiming the original broad command passed. `GHU-010` remains unaccepted in review. Final independent reviewer/verdict and parent decision: `PENDING`. Commit/PR/merge/deploy/runtime proof: `NOT_OCCURRED`.
+- Next safe action: Preserve accepted evidence; `GHU-011` is dependency-ready for one fresh bounded fixture-dashboard implementer.
+- Closeout evidence: On 2026-07-30, after the accepted `GHU-002` integration above was verified as candidate base commit/tree, transitioned in order `planned -> ready -> active` and assigned to fresh Codex X launcher run `20260730T101930Z-73f1e5d041-380183`, child identity `c03a66e899ab18c04d650cd106c1598e` (no separate Codex session UUID exposed). Base commit `73f1e5d041f8d78ee0f48ce13e008f71c20090ca`; base tree `d68116ba72b28f149707d7610821aea02cb35781`. After the candidate was frozen, transitioned `active -> review`. The original attempt's static checks passed, while its unprovisioned focused pytest and browser coverage did not execute; the preserved `GHU-010A`, `GHU-010B`, and `GHU-010C` blocked history and the independently accepted-for-diagnostic `GHU-010D` review below record the subsequent correction path. Authoritative current candidate evidence is focused pytest `2 passed` and Playwright `3 passed in 2.1s`. The original broad suite remains failed and is not relabeled passed: `24 failed, 518 passed, 40 subtests passed in 4527.96s`. Stable diagnostic of only those 24 nodes recorded untouched base `24 passed in 709.55s`; the exact uncommitted candidate `21 passed` plus 3 dirty-release-identity failures in `704.25s`; and those same 3 nodes passing in `6.73s` when the exact eight-file candidate was frozen validation-only as commit `eda152192e96f7f89ccfc4ab3e89d5965cbc4055`, tree `ae2a32a5371f8fe73dc83d4e8daab5bcee9b37d6`. This establishes no candidate regression among those nodes without claiming the original broad command passed. Parent accepted `GHU-010` and `GHU-010F` after exact independent review of the eight-file delta in run `20260730T133751Z-73f1e5d041-0d30ea`, session `019fb33f-0f5a-7650-bc0c-1de8cc391704`, child `dbdaf9f23daee7c986a0a59c61aea562`, verdict `ACCEPT_GHU_010F` with no blocking findings. Exact integrated commit `13cf3a3b54a4a411465ac570e5ecb65b1669cdc3`; parent `73f1e5d041f8d78ee0f48ce13e008f71c20090ca`; tree `cf80477be77676f4e8eec54a8aa23d2fd6917896`; accepted cached diff SHA-256 `f6b25bc07f7f1a385154acdb87d1357399d4361c72b338abefc68fbbf2cd6cc8`. Parent decision: accepted the exact reviewed eight-file delta and mechanically committed it on the clean integration branch on 2026-07-30. The medium limitation remains non-blocking: focused coverage does not instrument generic filesystem writes or pre-existing request telemetry. Low delivery fact: both ignored templates were force-staged with verified bytes. Publication, PR, merge to the repository default branch, deployment, and runtime proof: `NOT_OCCURRED`.
 
 ## GHU-010A — Isolate operator shell response assets
 
@@ -195,28 +195,70 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 
 - Release: `R1`
 - Priority: `P1`
-- Status: `review`
+- Status: `accepted`
 - Dependencies: `GHU-002`
 - Model routing: GPT-5.6 Terra; fallback GPT-5.6 Luna
 - Session role: Fresh bounded Codex X ledger-correction implementer
 - Outcome: Produces a consistent final `GHU-010` review candidate by correcting only the stale top-level validation ledger while preserving the accepted-for-correction `GHU-010E` product/test bytes and all validation history.
 - Scope: Reproduce the exact eight `GHU-010E` candidate paths.; Change only `TICKETS.md` and `STATUS.md` relative to `GHU-010E`.; Replace the stale `GHU-010` Next safe action and Closeout evidence with authoritative current candidate evidence.; Record the parent rejection of `GHU-010E` and preserve all prior attempt, correction, review, failure, and diagnostic evidence.
 - Non-goals: No product, Flask, CSS, template, Python-test, Playwright-test, runtime, service, data, lock, browser, collector, pytest, browser test, broad suite, install, commit, integration, publication, merge, deployment, training, promotion, EV, or betting change.
-- Acceptance: The six product/test SHA-256 identities exactly match `GHU-010E`.; Relative to `GHU-010E`, only `TICKETS.md` and `STATUS.md` differ.; The top-level `GHU-010` entry records focused pytest `2 passed`, Playwright `3 passed in 2.1s`, the original broad failure unchanged, and the complete stable diagnostic without contradiction.; `GHU-010E` is blocked after parent rejection and `GHU-010F` is in review pending independent final exact-delta review.; `GHU-010` remains unaccepted in review.
+- Acceptance: The six product/test SHA-256 identities exactly match `GHU-010E`.; Relative to `GHU-010E`, only `TICKETS.md` and `STATUS.md` differ.; The top-level `GHU-010` entry records focused pytest `2 passed`, Playwright `3 passed in 2.1s`, the original broad failure unchanged, and the complete stable diagnostic without contradiction.; `GHU-010E` is blocked after parent rejection.; `GHU-010F` and `GHU-010` become accepted only after independent exact-delta review and parent integration.
 - Validation: Exact base HEAD/tree, allowed-path, reference comparison, supplied six-file SHA-256, Python and Node syntax, and `git diff --check` checks only.; No pytest, browser, broad suite, service, or runtime invocation.
 - Risks: Material risk: The correction could erase historical evidence, relabel the original broad failure passed, alter accepted product/test bytes, or preclaim acceptance. Both ignored templates retain the low delivery risk requiring force-staging with their exact verified bytes.
 - Stop conditions: Stop on base/tree or product/test identity drift, evidence conflict, any path outside the eight allowed paths, any difference from `GHU-010E` outside the two ledgers, any required static failure, or any need to change behavior or rerun tests.
 - Authority: Ledger-only Level 1 evidence reconciliation; no operational mutation. Parent owns acceptance, commit, integration, publication, deployment, and runtime proof.
-- Claims supported: Only that the final candidate ledger consistently records the already-established validation and diagnostic evidence while preserving the exact accepted-for-correction product/test bytes.
-- Claims unsupported: A pass for the original broad command, `GHU-010` acceptance, deployment, runtime proof, market edge, profitability, EV, staking, betting, public exposure, live prediction, training, promotion, and any runtime or data mutation.
-- Next safe action: Independent final exact-delta review only; keep `GHU-010` unaccepted in review until parent exact-delta acceptance and integration.
-- Closeout evidence: On 2026-07-30, after verifying accepted dependency `GHU-002` at base commit `73f1e5d041f8d78ee0f48ce13e008f71c20090ca`, tree `d68116ba72b28f149707d7610821aea02cb35781`, transitioned in order `planned -> ready -> active -> review` and was assigned to fresh Codex X launcher run `20260730T131716Z-73f1e5d041-5989e5`, child identity `2f5201106343bd3e03a2fe631d50d0ae` (no separate Codex session UUID exposed). The exact eight `GHU-010E` candidate paths were reproduced; only these two ledgers differ from that reference. The six product/test files retain SHA-256 identities `fad5de42e5a8ef98cd6ee1eab5b12e98055d198c4bbaa133e9bdfc2f2442664c`, `fa1f2482849e66da3c6eefe999d0e691fe737792d0a052599c73a52adf069f8d`, `9d5c90efc8d5968ef4d893e8d82adf803685a2e36441694385b4ebc8787d7005`, `550cb1b946a9236d10346756b4065daa9de0e6c3e12c779ef2c1c13525ce3759`, `4a7869c759c77aec49210fab6f2f6cd03e3481e18096383a13fdc7bfb1d5c057`, and `753a5a1280fa28bcb072b3dc7b067b8e15fbfbf9c058998d343babcf0aaa47c2` in scope order. Bounded static validation is recorded in the implementer handoff. Independent final reviewer/verdict and parent decision: `PENDING`. Commit/PR/merge/deploy/runtime proof: `NOT_OCCURRED`.
+- Claims supported: The accepted final ledger consistently records the established validation and diagnostic evidence while preserving the exact reviewed product/test bytes.
+- Claims unsupported: A pass for the original broad command, deployment, runtime proof, market edge, profitability, EV, staking, betting, public exposure, live prediction, training, promotion, and any runtime or data mutation.
+- Next safe action: Preserve accepted evidence; no further correction action.
+- Closeout evidence: On 2026-07-30, after verifying accepted dependency `GHU-002` at base commit `73f1e5d041f8d78ee0f48ce13e008f71c20090ca`, tree `d68116ba72b28f149707d7610821aea02cb35781`, transitioned in order `planned -> ready -> active -> review` and was assigned to fresh Codex X launcher run `20260730T131716Z-73f1e5d041-5989e5`, session `019fb339-6c63-7a70-a9a3-1b84f2d269b7`, child identity `2f5201106343bd3e03a2fe631d50d0ae`. The exact eight `GHU-010E` candidate paths were reproduced; only these two ledgers differ from that reference. The six product/test files retain SHA-256 identities `fad5de42e5a8ef98cd6ee1eab5b12e98055d198c4bbaa133e9bdfc2f2442664c`, `fa1f2482849e66da3c6eefe999d0e691fe737792d0a052599c73a52adf069f8d`, `9d5c90efc8d5968ef4d893e8d82adf803685a2e36441694385b4ebc8787d7005`, `550cb1b946a9236d10346756b4065daa9de0e6c3e12c779ef2c1c13525ce3759`, `4a7869c759c77aec49210fab6f2f6cd03e3481e18096383a13fdc7bfb1d5c057`, and `753a5a1280fa28bcb072b3dc7b067b8e15fbfbf9c058998d343babcf0aaa47c2` in scope order. Independent reviewer run `20260730T133751Z-73f1e5d041-0d30ea`, session `019fb33f-0f5a-7650-bc0c-1de8cc391704`, child `dbdaf9f23daee7c986a0a59c61aea562`, returned `ACCEPT_GHU_010F` with no blocking findings. Parent accepted `GHU-010F` and `GHU-010`, then mechanically committed the exact reviewed eight-file delta on the clean integration branch on 2026-07-30: commit `13cf3a3b54a4a411465ac570e5ecb65b1669cdc3`; parent `73f1e5d041f8d78ee0f48ce13e008f71c20090ca`; tree `cf80477be77676f4e8eec54a8aa23d2fd6917896`; accepted cached diff SHA-256 `f6b25bc07f7f1a385154acdb87d1357399d4361c72b338abefc68fbbf2cd6cc8`. The medium limitation remains non-blocking: focused coverage does not instrument generic filesystem writes or pre-existing request telemetry. Low delivery fact: both ignored templates were force-staged with verified bytes. Publication, PR, merge to the repository default branch, deployment, and runtime proof: `NOT_OCCURRED`.
+
+## GHU-010G — Close accepted shell ledger and ready dashboard work
+
+- Release: `R1`
+- Priority: `P1`
+- Status: `blocked`
+- Dependencies: `GHU-010F`
+- Model routing: GPT-5.6 Terra; fallback GPT-5.6 Luna
+- Session role: Fresh bounded Codex X ledger-closeout implementer
+- Outcome: Records parent acceptance of `GHU-010` and `GHU-010F` and makes `GHU-011` ready.
+- Scope: Update only `TICKETS.md` and `STATUS.md` with exact accepted identities, retained limitations, mechanical counts, and readiness handoff.
+- Non-goals: No product, test, runtime, data, service, remote, publication, commit, merge, deployment, or `GHU-011` implementation action.
+- Acceptance: `GHU-010` and `GHU-010F` are accepted with exact review/integration evidence.; `GHU-011` is ready and unassigned.; Counts and next safe action are consistent.
+- Validation: Exact HEAD/tree, allowed-path audit, ledger consistency/counts, and `git diff --check` only.
+- Risks: Material risk: Evidence loss, overstated delivery, or an implementation assignment would invalidate this correction.
+- Stop conditions: Stop on evidence conflict, path drift, any need to alter product/test bytes, or validation failure.
+- Authority: Ledger-only closeout and readiness transition; no operational mutation.
+- Claims supported: Only the accepted ledger identities and readiness of `GHU-011`.
+- Claims unsupported: `GHU-010G` acceptance, `GHU-011` implementation, publication, PR, default-branch merge, deployment, runtime proof, or operational claims.
+- Next safe action: Preserve the rejected candidate as blocked evidence; use `GHU-010H` for the smallest ledger-only correction.
+- Closeout evidence: On 2026-07-30, exact base commit/tree `13cf3a3b54a4a411465ac570e5ecb65b1669cdc3` / `cf80477be77676f4e8eec54a8aa23d2fd6917896` were verified, then `GHU-010G` transitioned legally `planned -> ready -> active -> review` in run `20260730T134255Z-13cf3a3b54-4c8070`, child `e1c1f6cc7c4b53e89595c31dd6328bfb`. Parent diff inspection found that `GHU-010G` accidentally changed the existing accepted `GHU-002` Claims supported line from its base wording to a false cross-ticket fixture-shell claim. Parent review therefore transitioned `GHU-010G` `review -> blocked`. Commit/PR/merge/deploy/runtime proof: `NOT_OCCURRED`.
+
+## GHU-010H — Correct rejected shell ledger closeout
+
+- Release: `R1`
+- Priority: `P1`
+- Status: `review`
+- Dependencies: `GHU-010F`
+- Model routing: GPT-5.6 Terra; fallback GPT-5.6 Luna
+- Session role: Fresh bounded Codex X ledger-correction implementer
+- Outcome: Preserves the correct `GHU-010G` closeout while restoring the accepted `GHU-002` claims boundary byte-for-byte.
+- Scope: Reproduce the exact rejected `GHU-010G` ledgers.; Restore only the accepted base wording of the `GHU-002` Claims supported line.; Record the `GHU-010G` rejection and this correction bookkeeping in `TICKETS.md` and `STATUS.md`.
+- Non-goals: No product, test, runtime, data, service, remote, publication, commit, merge, deployment, or `GHU-011` implementation action.
+- Acceptance: The `GHU-002` Claims supported line exactly matches base `13cf3a3b`.; All correct `GHU-010G` evidence and readiness changes are preserved.; `GHU-010G` is blocked for the exact cross-ticket corruption.; `GHU-010H` remains unaccepted in review pending independent exact-ledger review.; Counts and next safe action are consistent.
+- Validation: Exact HEAD/tree and rejected-reference hashes.; Reference comparison limited to the restored `GHU-002` line and G/H bookkeeping.; Allowed-path and mechanical-count checks.; Stale-claim scan and `git diff --check`.
+- Risks: Material risk: Cross-ticket claims drift, evidence loss, or preclaimed correction acceptance invalidates this correction.
+- Stop conditions: Stop on evidence conflict, path drift, any difference from `GHU-010G` outside the restored line and G/H bookkeeping, or validation failure.
+- Authority: Ledger-only correction; no operational mutation.
+- Claims supported: Only that this candidate restores the accepted `GHU-002` claims boundary while preserving the correct accepted-shell evidence and `GHU-011` readiness handoff.
+- Claims unsupported: `GHU-010H` acceptance, `GHU-011` implementation, publication, PR, default-branch merge, deployment, runtime proof, or operational claims.
+- Next safe action: Independent exact ledger review of `GHU-010H`, then assign one fresh bounded `GHU-011` fixture-dashboard implementer.
+- Closeout evidence: On 2026-07-30, exact base commit/tree `13cf3a3b54a4a411465ac570e5ecb65b1669cdc3` / `cf80477be77676f4e8eec54a8aa23d2fd6917896` and rejected `GHU-010G` ledger hashes were verified. `GHU-010H` transitioned legally `planned -> ready -> active -> review` and was assigned to run `20260730T134724Z-13cf3a3b54-40caa5`, child `46e2cfc9b75f3ff6170baa9263698df4`. Independent ledger reviewer/verdict and parent decision: `PENDING`. Commit/PR/merge/deploy/runtime proof: `NOT_OCCURRED`.
 
 ## GHU-011 — Fixture-backed dashboard overview
 
 - Release: `R1`
 - Priority: `P1`
-- Status: `planned`
+- Status: `ready`
 - Dependencies: `GHU-010`
 - Model routing: GPT-5.6 Terra; fallback GPT-5.6 Luna
 - Session role: Fresh Codex X implementation session
@@ -230,8 +272,8 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Level 1 fixture UI only; no operational mutation.
 - Claims supported: Only the ticket outcome after validation, independent review, and parent acceptance; no implementation claim while incomplete.
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: Wait until every listed prerequisite is accepted/integrated, then parent may mark ready and assign one fresh bounded implementer.
-- Closeout evidence: PENDING: exact base/head/tree/path/diff identities, commands/exits, focused tests, reviewer identity/verdict, parent decision, and applicable commit/PR/merge/deploy/proof fields.
+- Next safe action: Assign one fresh bounded fixture-dashboard implementer; no implementation run is assigned yet.
+- Closeout evidence: On 2026-07-30, accepted dependency `GHU-010` was verified at integrated commit `13cf3a3b54a4a411465ac570e5ecb65b1669cdc3`, tree `cf80477be77676f4e8eec54a8aa23d2fd6917896`, and `GHU-011` transitioned legally `planned -> ready`. Implementation run, child, and session: `UNASSIGNED`. Remaining closeout evidence is pending implementation, review, and parent acceptance.
 
 ## GHU-012 — Exact upcoming-race picker prototype
 

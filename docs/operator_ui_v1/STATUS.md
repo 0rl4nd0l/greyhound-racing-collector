@@ -1,18 +1,18 @@
 # Greyhound Operator UI V1 status
 
-Observed 2026-07-30 during the uncommitted `GHU-010F` ledger-correction candidate:
+Observed 2026-07-30 during the uncommitted `GHU-010H` ledger-correction candidate:
 
 | Field | State |
 |---|---|
 | Repository | `0rl4nd0l/greyhound-racing-collector` |
-| Branch | Canonical integration branch `agent/operator-ui-programme-20260730`; this uncommitted correction is being produced on isolated Codex X branch `codex-x/20260730T131716Z-73f1e5d041-5989e5` |
-| HEAD / tree | Accepted candidate base `73f1e5d041f8d78ee0f48ce13e008f71c20090ca` / `d68116ba72b28f149707d7610821aea02cb35781` |
+| Branch | Clean integration base; this uncommitted correction is being produced on isolated Codex X branch `codex-x/20260730T134724Z-13cf3a3b54-40caa5` |
+| HEAD / tree | Exact accepted integration `13cf3a3b54a4a411465ac570e5ecb65b1669cdc3` / `cf80477be77676f4e8eec54a8aa23d2fd6917896` |
 | Baseline cleanliness | clean |
 | Upstream base | `origin/master` `51a5287dfc28c8d059df2768534498c4b6321230`, merged by `6f4fba42c45c73702efb017a21cbd284b44c1d04` |
-| Current release / ticket | R1 / final `GHU-010F` ledger-correction candidate complete pending independent final review; `GHU-010A`, `GHU-010B`, `GHU-010C`, and rejected `GHU-010E` remain blocked, `GHU-010D` remains review evidence, and `GHU-010` remains unaccepted in review |
-| Counts | 3 accepted tickets, 4 blocked, 3 review, 2 deferred, 25 planned (plus accepted audit milestone `GHU-000A`) |
-| Assignment | `GHU-010F` transitioned in order `planned -> ready -> active -> review` on 2026-07-30 and is assigned to fresh Codex X launcher run `20260730T131716Z-73f1e5d041-5989e5`, child `2f5201106343bd3e03a2fe631d50d0ae`; no separate Codex session UUID is exposed |
-| Next safe action | Independent final exact-delta review only; keep `GHU-010` unaccepted until parent exact-delta acceptance and integration |
+| Current release / ticket | R1 / `GHU-010H` ledger correction is unaccepted in review; rejected `GHU-010G` is blocked; parent-accepted `GHU-010` and `GHU-010F` are accepted; `GHU-011` is ready and unassigned |
+| Counts | 5 accepted tickets, 1 ready, 2 review, 5 blocked, 2 deferred, 24 planned (plus accepted audit milestone `GHU-000A`) |
+| Assignment | `GHU-010H` transitioned legally `planned -> ready -> active -> review` on 2026-07-30 in run `20260730T134724Z-13cf3a3b54-40caa5`, child `46e2cfc9b75f3ff6170baa9263698df4`; `GHU-011` remains ready with no implementation run |
+| Next safe action | Independent exact ledger review of `GHU-010H`, then assign one fresh bounded `GHU-011` fixture-dashboard implementer |
 | Validation | Exact reviewed product/test bytes retained; prior focused pytest `2 passed` and Playwright `3 passed in 2.1s`; original broad suite remains failed at `24 failed, 518 passed, 40 subtests passed in 4527.96s`; stable diagnostic isolates validation-environment effects without relabeling that command passed |
 
 `GHU-000` was accepted at original base
@@ -179,14 +179,44 @@ contradicting the later authoritative focused pytest `2 passed`, Playwright
 a ledger contradiction only; the six product/test files were accepted for
 correction. `GHU-010E` therefore transitioned `review -> blocked`.
 
-`GHU-010F` reproduces all eight `GHU-010E` candidate paths and changes only
+`GHU-010F` reproduced all eight `GHU-010E` candidate paths and changed only
 these two ledgers relative to that reference. It transitioned in order
 `planned -> ready -> active -> review` and is assigned to run
 `20260730T131716Z-73f1e5d041-5989e5`, child
-`2f5201106343bd3e03a2fe631d50d0ae`. The corrected top-level `GHU-010` entry
+`2f5201106343bd3e03a2fe631d50d0ae`, session
+`019fb339-6c63-7a70-a9a3-1b84f2d269b7`. The corrected top-level `GHU-010` entry
 now records the current focused and stable-path evidence while preserving the
 original attempt, blocked A/B/C history, D diagnostic review, and original
-broad failure. This is a ledger-only reconciliation pending independent final
-exact-delta review. `GHU-010` remains unaccepted in review; parent acceptance,
-commit, integration, publication, PR, merge, deployment, and runtime proof
-remain `NOT_OCCURRED`.
+broad failure. Independent reviewer run
+`20260730T133751Z-73f1e5d041-0d30ea`, session
+`019fb33f-0f5a-7650-bc0c-1de8cc391704`, child
+`dbdaf9f23daee7c986a0a59c61aea562`, returned `ACCEPT_GHU_010F` with no
+blocking findings. Parent accepted `GHU-010F` and `GHU-010`, and mechanically
+committed the exact reviewed eight-file delta on the clean integration branch
+on 2026-07-30. Exact commit `13cf3a3b54a4a411465ac570e5ecb65b1669cdc3`,
+parent `73f1e5d041f8d78ee0f48ce13e008f71c20090ca`, tree
+`cf80477be77676f4e8eec54a8aa23d2fd6917896`, accepted cached diff SHA-256
+`f6b25bc07f7f1a385154acdb87d1357399d4361c72b338abefc68fbbf2cd6cc8`.
+The non-blocking medium limitation remains: focused coverage does not
+instrument generic filesystem writes or pre-existing request telemetry. The
+low delivery fact remains: both ignored templates were force-staged with
+verified bytes.
+
+`GHU-010G` was the rejected ledger-only closeout. After exact base verification,
+it transitioned legally `planned -> ready -> active -> review` in run
+`20260730T134255Z-13cf3a3b54-4c8070`, child
+`e1c1f6cc7c4b53e89595c31dd6328bfb`. It correctly recorded the accepted
+closeout above and the satisfied `GHU-010` dependency, so `GHU-011`
+transitioned legally `planned -> ready` and remains unassigned. Parent diff
+inspection found that `GHU-010G` also accidentally changed the existing
+accepted `GHU-002` Claims supported line from its base wording to a false
+cross-ticket fixture-shell claim. `GHU-010G` therefore transitioned
+`review -> blocked`.
+
+`GHU-010H` reproduces the correct `GHU-010G` closeout and restores the accepted
+`GHU-002` Claims supported line byte-for-byte from base `13cf3a3b`. It
+transitioned legally `planned -> ready -> active -> review` in run
+`20260730T134724Z-13cf3a3b54-40caa5`, child
+`46e2cfc9b75f3ff6170baa9263698df4`. It remains unaccepted in review pending
+independent exact ledger review. Publication, PR, merge to the repository
+default branch, deployment, and runtime proof remain `NOT_OCCURRED`.
