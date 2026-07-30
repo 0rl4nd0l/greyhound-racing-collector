@@ -7,6 +7,7 @@ import json
 import os
 import signal
 import socket
+import stat
 import subprocess
 import sys
 import tempfile
@@ -284,23 +285,78 @@ def _safe_file_bytes(
 ) -> bytes:
     root = evidence_root.resolve()
     logical = path.absolute()
-    if path.is_symlink() or not path.is_file():
-        raise CaptureOneRejected(missing_code, path=str(path))
-    resolved = path.resolve()
-    if not resolved.is_relative_to(root):
-        raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path))
     try:
-        size = path.stat(follow_symlinks=False).st_size
+        resolved = logical.resolve(strict=True)
     except OSError as exc:
         raise CaptureOneRejected(missing_code, path=str(path)) from exc
-    if size <= 0 or size > MAX_CURRENT_INDEX_BYTES:
-        raise CaptureOneRejected(
-            "CURRENT_INDEX_SIZE_INVALID",
-            path=str(path),
-            size_bytes=size,
-            max_bytes=MAX_CURRENT_INDEX_BYTES,
-        )
-    return logical.read_bytes()
+    if not resolved.is_relative_to(root):
+        raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path))
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(logical, flags)
+    except OSError as exc:
+        raise CaptureOneRejected(missing_code, path=str(path)) from exc
+    try:
+        opened = os.fstat(descriptor)
+        if not stat.S_ISREG(opened.st_mode):
+            raise CaptureOneRejected(missing_code, path=str(path))
+        if opened.st_size <= 0 or opened.st_size > MAX_CURRENT_INDEX_BYTES:
+            raise CaptureOneRejected(
+                "CURRENT_INDEX_SIZE_INVALID",
+                path=str(path),
+                size_bytes=opened.st_size,
+                max_bytes=MAX_CURRENT_INDEX_BYTES,
+            )
+
+        def reject_replaced_path() -> None:
+            try:
+                descriptor_path = Path(
+                    f"/proc/self/fd/{descriptor}"
+                ).resolve(strict=True)
+                named = os.stat(logical, follow_symlinks=False)
+            except OSError as exc:
+                raise CaptureOneRejected(
+                    "CURRENT_INDEX_PATH_UNSAFE",
+                    path=str(path),
+                    reason="path_replaced",
+                ) from exc
+            if (
+                (named.st_dev, named.st_ino) != (opened.st_dev, opened.st_ino)
+                or not descriptor_path.is_relative_to(root)
+            ):
+                raise CaptureOneRejected(
+                    "CURRENT_INDEX_PATH_UNSAFE",
+                    path=str(path),
+                    reason="path_replaced",
+                )
+
+        reject_replaced_path()
+        chunks: list[bytes] = []
+        remaining = MAX_CURRENT_INDEX_BYTES + 1
+        while remaining:
+            chunk = os.read(descriptor, min(64 * 1024, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        raw = b"".join(chunks)
+        if not raw or len(raw) > MAX_CURRENT_INDEX_BYTES:
+            raise CaptureOneRejected(
+                "CURRENT_INDEX_SIZE_INVALID",
+                path=str(path),
+                size_bytes=len(raw),
+                max_bytes=MAX_CURRENT_INDEX_BYTES,
+            )
+
+        reject_replaced_path()
+        return raw
+    except CaptureOneRejected:
+        raise
+    except OSError as exc:
+        raise CaptureOneRejected(missing_code, path=str(path)) from exc
+    finally:
+        os.close(descriptor)
 
 
 def _normalize_current_index_rows(

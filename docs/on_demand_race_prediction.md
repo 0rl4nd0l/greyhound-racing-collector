@@ -15,7 +15,7 @@ uv run --no-project scripts/predict_race_now.py \
 
 The selector may be an exact named race, canonical race ID, or canonical
 TheDogs race URL. Named selectors are resolved only against today's bounded
-index (maximum 160 races, 12-second default deadline), and scoring must finish
+index (maximum 32 races, 12-second default deadline), and scoring must finish
 before the exact jump timestamp. Missing or ambiguous identity, discovery
 overrun, and post-jump requests fail closed.
 

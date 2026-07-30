@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 
+import race_collection.synchronous_manual_capture as capture
 from race_collection.manual_prediction_collector_request import (
     ManualPredictionCollectorProtocol,
     ProtocolRejected,
@@ -370,6 +371,115 @@ def test_current_race_index_rejects_stale_or_changed_source(tmp_path: Path):
             max_age_seconds=900,
         )
     assert changed.value.code == "CURRENT_INDEX_SOURCE_CHANGED"
+
+
+def test_safe_file_bytes_reads_one_stable_descriptor(tmp_path: Path):
+    evidence_root = tmp_path / "evidence"
+    source = evidence_root / "source.json"
+    source.parent.mkdir()
+    source.write_bytes(b'{"stable":true}\n')
+
+    assert capture._safe_file_bytes(
+        source,
+        evidence_root=evidence_root,
+        missing_code="CURRENT_INDEX_SOURCE_MISSING",
+    ) == b'{"stable":true}\n'
+
+
+@pytest.mark.parametrize("kind", ["outside", "symlink", "oversize", "nonregular"])
+def test_safe_file_bytes_rejects_unsafe_types_and_sizes(
+    tmp_path: Path,
+    kind: str,
+):
+    evidence_root = tmp_path / "evidence"
+    evidence_root.mkdir()
+    source = evidence_root / "source"
+    if kind == "outside":
+        source = tmp_path / "outside"
+        source.write_bytes(b"outside")
+        expected = "CURRENT_INDEX_PATH_UNSAFE"
+    elif kind == "symlink":
+        target = evidence_root / "target"
+        target.write_bytes(b"target")
+        source.symlink_to(target)
+        expected = "CURRENT_INDEX_SOURCE_MISSING"
+    elif kind == "oversize":
+        source.write_bytes(b"x" * (capture.MAX_CURRENT_INDEX_BYTES + 1))
+        expected = "CURRENT_INDEX_SIZE_INVALID"
+    else:
+        source.mkdir()
+        expected = "CURRENT_INDEX_SOURCE_MISSING"
+
+    with pytest.raises(CaptureOneRejected) as rejected:
+        capture._safe_file_bytes(
+            source,
+            evidence_root=evidence_root,
+            missing_code="CURRENT_INDEX_SOURCE_MISSING",
+        )
+
+    assert rejected.value.code == expected
+
+
+def test_safe_file_bytes_rejects_replacement_between_validation_and_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    evidence_root = tmp_path / "evidence"
+    evidence_root.mkdir()
+    source = evidence_root / "source"
+    source.write_bytes(b"original")
+    outside = tmp_path / "outside"
+    outside.write_bytes(b"outside")
+    real_open = os.open
+
+    def replace_then_open(path: Any, flags: int, *args: Any) -> int:
+        source.unlink()
+        source.symlink_to(outside)
+        return real_open(path, flags, *args)
+
+    monkeypatch.setattr(capture.os, "open", replace_then_open)
+
+    with pytest.raises(CaptureOneRejected) as rejected:
+        capture._safe_file_bytes(
+            source,
+            evidence_root=evidence_root,
+            missing_code="CURRENT_INDEX_SOURCE_MISSING",
+        )
+
+    assert rejected.value.code == "CURRENT_INDEX_SOURCE_MISSING"
+
+
+def test_safe_file_bytes_rejects_replacement_after_open_before_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    evidence_root = tmp_path / "evidence"
+    evidence_root.mkdir()
+    source = evidence_root / "source"
+    source.write_bytes(b"original")
+    replacement = evidence_root / "replacement"
+    replacement.write_bytes(b"changed")
+    real_read = os.read
+    replaced = False
+
+    def replace_then_read(descriptor: int, size: int) -> bytes:
+        nonlocal replaced
+        if not replaced:
+            replaced = True
+            os.replace(replacement, source)
+        return real_read(descriptor, size)
+
+    monkeypatch.setattr(capture.os, "read", replace_then_read)
+
+    with pytest.raises(CaptureOneRejected) as rejected:
+        capture._safe_file_bytes(
+            source,
+            evidence_root=evidence_root,
+            missing_code="CURRENT_INDEX_SOURCE_MISSING",
+        )
+
+    assert rejected.value.code == "CURRENT_INDEX_PATH_UNSAFE"
+    assert rejected.value.details["reason"] == "path_replaced"
 
 
 def test_capture_one_success_is_one_capture_one_receipt_and_one_consumption(
