@@ -12857,6 +12857,33 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     odds_parser.add_argument("--lock-stale-seconds", type=int, default=DEFAULT_LOCK_STALE_SECONDS)
     odds_parser.add_argument("--state-path", type=Path, default=DEFAULT_ODDS_CAPTURE_ONLY_STATE_PATH)
 
+    capture_one_parser = subparsers.add_parser(
+        "capture-one",
+        help="Synchronously capture one exact claimed manual request",
+    )
+    capture_one_parser.add_argument(
+        "--evidence-root", type=Path, default=DEFAULT_EVIDENCE_ROOT
+    )
+    capture_one_parser.add_argument("--protocol-root", type=Path, required=True)
+    capture_one_parser.add_argument("--request-id", required=True)
+    capture_one_parser.add_argument(
+        "--db", type=Path, default=ROOT / "greyhound_racing_data.db"
+    )
+    capture_one_parser.add_argument("--lock-path", type=Path, required=True)
+    capture_one_parser.add_argument("--output-dir", type=Path, required=True)
+    capture_one_parser.add_argument(
+        "--minimum-margin-seconds", type=float, required=True
+    )
+    capture_one_parser.add_argument(
+        "--minimum-post-lock-margin-seconds", type=float, required=True
+    )
+    capture_one_parser.add_argument(
+        "--minimum-fetch-margin-seconds", type=float, required=True
+    )
+    capture_one_parser.add_argument(
+        "--fetch-timeout-seconds", type=float, default=45.0
+    )
+
     service_parser = subparsers.add_parser("write-service-files", help="Write systemd unit templates")
     service_parser.add_argument("--service-dir", type=Path, default=DEFAULT_SERVICE_DIR)
     service_parser.add_argument("--repo-path", type=Path, default=Path("/home/l4nd0/greyhound_racing_collector"))
@@ -12901,6 +12928,33 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
+    if args.command == "capture-one":
+        from race_collection.synchronous_manual_capture import (
+            install_cancellation_handlers,
+            restore_signal_handlers,
+            run_capture_one,
+        )
+
+        previous = install_cancellation_handlers()
+        try:
+            result = run_capture_one(
+                protocol_root=args.protocol_root,
+                evidence_root=args.evidence_root,
+                request_id=args.request_id,
+                db_path=args.db,
+                lock_path=args.lock_path,
+                output_dir=args.output_dir,
+                minimum_margin_seconds=args.minimum_margin_seconds,
+                minimum_post_lock_margin_seconds=(
+                    args.minimum_post_lock_margin_seconds
+                ),
+                minimum_fetch_margin_seconds=args.minimum_fetch_margin_seconds,
+                fetch_timeout_seconds=args.fetch_timeout_seconds,
+            )
+        finally:
+            restore_signal_handlers(previous)
+        print(json.dumps(result, sort_keys=True))
+        return 0 if result.get("status") == "RECEIPT_READY" else 2
     if args.command == "run-odds-capture-once":
         result = run_odds_capture_once(args)
         print(json.dumps(result, indent=2, sort_keys=True))
