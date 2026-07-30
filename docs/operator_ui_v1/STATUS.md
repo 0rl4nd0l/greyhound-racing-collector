@@ -140,12 +140,14 @@ Accepted file SHA-256 values: `PLAN.md`
 `DECISIONS.md`
 `107c05734e4d1ff780c136270afb2331eea69c32ed930ff9cbebf1347656c3bf`.
 
-Supported now: the accepted repository/UI/runtime authority inventory, exact
-source/evidence/authority contract, and persistent programme ledger.
-Unsupported now: an accepted or deployed UI,
-UI operations store, live dashboard/API, deployed identity, runtime health,
-manual UI prediction, runtime prediction proof, corpus/model readiness,
-market edge, training, promotion, EV, staking, betting, or public availability.
+At the `GHU-002A` checkpoint, supported then were the accepted repository/UI/
+runtime authority inventory, exact source/evidence/authority contract, and
+persistent programme ledger. Unsupported at that checkpoint were an accepted
+or deployed UI, UI operations store, live dashboard/API, deployed identity,
+runtime health, manual UI prediction, runtime prediction proof, corpus/model
+readiness, market edge, training, promotion, EV, staking, betting, or public
+availability. This paragraph is historical and does not describe the later
+accepted R1 fixture dashboard.
 
 No push, PR, merge, deployment, runtime mutation, or live prediction has
 occurred in this programme yet. Publication, PR, merge to the repository
@@ -327,23 +329,62 @@ accepted at integration `6e0b0d99c296a4c984faf0775bab88f8689e66da`, tree
 accepted at integration `1bacc679377f54433ea757f8cbf7045e3ce8526a`, tree
 `dee68158b8455d898d60807bdc0ff41c8caf1f7f`.
 
-`GHU-011` evidence spans run `20260730T135824Z-1bacc67937-e184ab`, session
+`GHU-011` product evidence spans run `20260730T135824Z-1bacc67937-e184ab`, session
 `019fb351-f550-7682-9a15-ba28e7f5e1e0`, and run
 `20260730T181451Z-b836e769ae-738e8d`, session
 `019fb43c-b9e8-7c30-823d-894c79e30695`. Independent review run
 `20260730T181807Z-e10cff2931-e22d8c`, session
 `019fb43f-a9bd-7363-851c-d6a392a44548`, returned `ACCEPT_GHU_011M`.
-Focused pytest passed `5 passed`, Playwright passed `3 passed`, and the
-classifier selected `full_forecasting`. The first broad run exited 1 with
-`1 failed, 550 passed, 40 subtests passed`. Diagnostic target/module/full
-runs passed 1, 25, and 551 tests; the full diagnostic also passed 40 subtests.
-Root cause remains `UNKNOWN`. Gate review run
+The exact product delta is base
+`6e0b0d99c296a4c984faf0775bab88f8689e66da`, tree
+`bff53978cdfeea8f604404432e1d672cba95a692`, to head/integration
+`e10cff293141569b1a5a169dd05efc8109e3c603`, tree
+`07f02fc46b88b47bf0ade8ee264505f8b47c7d91`, and changes exactly `app.py`,
+`static/css/operator-ui.css`, `templates/operator_ui.html`,
+`templates/operator_ui_components.html`,
+`tests/playwright/operator-ui-shell.spec.js`, and
+`tests/test_operator_ui_shell.py`. Its base-to-head binary diff SHA-256 is
+`7641c45d98a26590e64fff71a50d9dc1b7639b03ee1e6c1fb05aedbecd58681b`;
+the head file SHA-256 values in that order are
+`7d948ad95c314c857b0379f5a2aae63587bf2dfb3a6adc2867f12ac82d23f7f2`,
+`ce995078d9a7bffa8baea4e924f9a55e2dc272908a9574feb7bce21756e8a9b7`,
+`961c8054076b04240285acd0a74ea955f8b4b1af99271ae782092c0c2d1c407d`,
+`203956f714d6e4622ec4c21a1e32d2da62f6c9baf5af6a549297e750543dc17f`,
+`6bc876014659a24ca072cad73e31d298b898445dc7d4e981e47835486ee0a9e4`,
+and `45b8e96df32c64f2d389cbe64ba86d87e487cf28d5c1942d497fe0a921f9a24c`.
+
+Focused command `/tmp/ghu010-validation-73f1e5d/bin/python -m pytest -q
+tests/test_operator_ui_shell.py` exited 0 with `5 passed`. The private browser
+test server command was `PORT=5002 FLASK_ENV=testing MODULE_GUARD_STRICT=0
+PREDICTION_IMPORT_MODE=relaxed ENABLE_ENDPOINT_DROPDOWNS=1 TESTING=1
+TRAINING_MAX_SECS=30 DISABLE_NAV_DROPDOWNS=1
+/tmp/ghu010-validation-73f1e5d/bin/python app.py --host localhost --port 5002`;
+it was stopped after validation. Browser command `NODE_PATH=/tmp/ghu010-node-73f1e5d/node_modules
+PLAYWRIGHT_BROWSERS_PATH=/tmp/ghu010-playwright-browsers
+/tmp/ghu010-node-73f1e5d/node_modules/.bin/playwright test
+tests/playwright/operator-ui-shell.spec.js --config=playwright.config.js
+--project=chromium-desktop --reporter=line --workers=1` exited 0 with
+`3 passed`. Classifier command `python3
+scripts/ci/classify_forecasting_changes.py --base
+f38a125f6364b8a60d17ae9c971b0ce172874eea --head
+e10cff293141569b1a5a169dd05efc8109e3c603` exited 0 and selected
+`full_forecasting`.
+
+The first broad command `TMPDIR=/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/operator-ui-validation-tmp/ghu011m-e10-full
+uv run --no-project --with-requirements requirements/all.in python -m pytest
+-q --noconftest tests/race_collection` exited 1 with `1 failed, 550 passed,
+40 subtests passed in 4945.67s`. Isolated diagnostic checkpoint
+`86f39d54d3949c7bc2b6f670c809a6e5dea5050d`, tree
+`944336f6465bf4d23786d0fcf9ef894cd04565c2`, changes only
+`tests/race_collection/test_phase7_runtime_adapter.py`; target/module/full
+runs passed 1, 25, and 551 tests, with 40 subtests in the full run. It is
+`EXCLUDED`, `UNMERGED`, and `RETAINED`, not discarded; root cause is `UNKNOWN`.
+Gate review run
 `20260730T222316Z-86f39d54d3-b5f20d`, session
 `019fb520-39bf-7be0-863e-7c3b8ced34bf`, returned verdict A `ACCEPT`.
-The accepted frozen checkpoint is `e10cff293141569b1a5a169dd05efc8109e3c603`,
-tree `07f02fc46b88b47bf0ade8ee264505f8b47c7d91`. Isolated diagnostic
-checkpoint `86f39d54d3949c7bc2b6f670c809a6e5dea5050d` is excluded and unmerged
-from integration and retained as isolated diagnostic evidence.
+Parent accepted the exact product checkpoint at the head/integration identity
+above. Publication, push, PR, default-branch merge, deploy, runtime mutation,
+and live proof are all `NOT_OCCURRED`.
 
 The R1 gate is closed. `GHU-012`, `GHU-013`, `GHU-014`, and `GHU-015` are
 ready as one atomic coupled fixture tranche, each with accepted `GHU-011` as

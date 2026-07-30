@@ -241,10 +241,24 @@ supersession.
 
 ## 2026-07-31 — DEC-GHU-R1-ACCEPTED-ATOMIC-FIXTURE-TRANCHE
 
-- Context: Independent acceptance of `GHU-000B3` and `GHU-010H`, followed by
-  `GHU-011M` independent acceptance and the terminal R1 gate review.
-- Decision: Accept `GHU-000B3`, `GHU-010H`, and `GHU-011`; close the R1 gate at
-  frozen checkpoint `e10cff293141569b1a5a169dd05efc8109e3c603`, tree
+- Context: Independent review verdicts for `GHU-000B3`, `GHU-010H`, and
+  `GHU-011M`, followed by parent acceptance and the terminal R1 gate review.
+- Decision: Accept `GHU-000B3`, `GHU-010H`, and `GHU-011`. An accepted
+  delivery may be atomically bound by an independently reviewed exact frozen
+  product/docs/test checkpoint and a subsequent independently reviewed,
+  parent-integrated ledger-only closeout recording its identities, validation,
+  verdict, and parent decision. Both require parent inspection and acceptance/
+  integration; together they form the atomic evidence binding without requiring
+  a self-referential single commit. The closeout changes only programme ledgers,
+  changes no product/test bytes, weakens no evidence, preclaims no parent
+  acceptance, and erases no rejected history. A successor cannot leave
+  `planned` before that closeout is independently reviewed and parent-integrated;
+  a successor `ready` state recorded in that reviewed closeout becomes durable
+  and effective only when the parent integrates the closeout, so an unintegrated
+  candidate neither preclaims acceptance nor mutates durable programme state.
+  Ordinary knowable state transitions remain in the product delta. Close the
+  R1 gate at product checkpoint
+  `e10cff293141569b1a5a169dd05efc8109e3c603`, tree
   `07f02fc46b88b47bf0ade8ee264505f8b47c7d91`; and ready `GHU-012` through
   `GHU-015` as one atomic coupled fixture tranche. Each tranche ticket has
   accepted `GHU-011` as its sole prerequisite, no same-tranche ticket is
@@ -270,6 +284,18 @@ supersession.
   the full run, while root cause remains `UNKNOWN`. Isolated diagnostic
   checkpoint `86f39d54d3949c7bc2b6f670c809a6e5dea5050d` is excluded and unmerged
   from integration and retained as isolated diagnostic evidence.
+- Product identity: base `6e0b0d99c296a4c984faf0775bab88f8689e66da`, tree
+  `bff53978cdfeea8f604404432e1d672cba95a692`, to head/integration
+  `e10cff293141569b1a5a169dd05efc8109e3c603`, tree
+  `07f02fc46b88b47bf0ade8ee264505f8b47c7d91`; exact paths `app.py`,
+  `static/css/operator-ui.css`, `templates/operator_ui.html`,
+  `templates/operator_ui_components.html`,
+  `tests/playwright/operator-ui-shell.spec.js`, and
+  `tests/test_operator_ui_shell.py`; binary diff SHA-256
+  `7641c45d98a26590e64fff71a50d9dc1b7639b03ee1e6c1fb05aedbecd58681b`.
+  Parent accepted this exact product checkpoint. Publication, push, PR,
+  default-branch merge, deploy, runtime mutation, and live proof are
+  `NOT_OCCURRED`.
 - Consequences: One fresh bounded implementer owns atomic `GHU-012`–`GHU-015`,
   followed by independent exact-delta review. Supported claims remain limited
   to R0 contracts, the fixed collector-owned current-race index, and the R1

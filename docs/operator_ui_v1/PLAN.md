@@ -75,15 +75,29 @@ read-only; it never approves itself. Closeout records exact base/head/tree/path/
 diff identities, commands and exits, focused tests, reviewer identity/verdict,
 parent decision, and commit/PR/merge/deploy/proof fields where applicable.
 
-Every successor ticket's bounded candidate updates `TICKETS.md` and `STATUS.md`
-in the same frozen exact delta as its product/docs changes. Before the successor
-can leave `planned`, that candidate records each prerequisite's parent-accepted
-integration using exact commit/tree/reviewer/parent-decision evidence, then
-records the successor's legal `ready -> active` transition. Before freezing for
-review, it records its own `active -> review` state and focused validation
-evidence. Parent exact-delta acceptance/integration binds the product and ledger
-updates atomically; a rejected candidate does not mutate the integrated ledger.
-Append `DECISIONS.md` only for an actual programme, architecture, or authority
+An accepted delivery may be bound atomically by an evidence pair: (A) an exact
+frozen product/docs/test checkpoint and delta that has been independently
+reviewed, and (B) a subsequent independently reviewed ledger-only closeout
+delta, changing only programme ledgers, that records the product checkpoint
+identities, validation, reviewer verdict, and parent acceptance/integration.
+The parent must inspect and accept/integrate both members. The accepted product
+checkpoint plus the accepted ledger-only closeout form the atomic evidence
+binding; they need not be one mechanically self-referential commit.
+
+Ordinary candidate state transitions remain in the product delta whenever the
+required identities are knowable. A successor cannot leave `planned` until the
+ledger-only closeout is independently reviewed and parent-integrated and
+records each prerequisite's accepted evidence pair with exact commit/tree/
+reviewer/parent-decision evidence. A successor `ready` state recorded in the
+reviewed ledger-only closeout becomes durable and effective only when the
+parent integrates that closeout; the unintegrated candidate neither preclaims
+acceptance nor mutates durable programme state. Its assigned candidate then
+records the legal `ready -> active -> review` transitions and focused
+validation evidence before review. A ledger-only closeout must not change
+product/test bytes, weaken evidence, preclaim its own parent acceptance, or
+erase rejected history. A rejected candidate does not mutate the integrated
+ledger. Append
+`DECISIONS.md` only for an actual programme, architecture, or authority
 decision; ordinary state changes belong in `TICKETS.md` and `STATUS.md`.
 
 Specifically, the `GHU-010` bounded candidate must atomically record `GHU-002`
