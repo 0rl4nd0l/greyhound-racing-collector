@@ -1,122 +1,183 @@
-{% from "operator_ui_components.html" import evidence_source, fixture_value, prototype_marker, status, updated_at %}
+{% from "operator_ui_components.html" import fixture_value, prototype_marker, status %}
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <title>Operator Console Prototype</title>
+  <title>Greyhound Operator Console Prototype</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/operator-ui.css') }}">
+  <script src="{{ url_for('static', filename='js/operator-ui-prototype.js') }}" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#prototype-content">Skip to prototype content</a>
   <div class="console-shell">
     <aside class="sidebar" aria-label="Prototype navigation">
-      <div class="brand">
-        <span class="brand__mark" aria-hidden="true">GH</span>
-        <span>
-          <strong>Greyhound</strong>
-          <small>Operator console</small>
-        </span>
-      </div>
+      <div class="brand"><span class="brand__mark" aria-hidden="true">GH</span><span><strong>Greyhound</strong><small>Operator console</small></span></div>
       <nav aria-label="Console sections">
         <ul class="nav-list">
-          <li><a href="#overview" aria-current="page">Overview</a></li>
-          <li><a href="#next-race">Next race</a></li>
-          <li><a href="#collector-summary">What is happening?</a></li>
-          <li><a href="#corpus-funnel">Evidence</a></li>
-          <li><a href="#model-identity">Which model?</a></li>
-          <li><a href="#recent-predictions">Recent predictions</a></li>
-          <li><a href="#system-health">System health</a></li>
-          <li><a href="#activity-feed">Activity</a></li>
-          <li><a href="#research-boundary">Research boundary</a></li>
+          <li><a href="#dashboard" aria-current="page">Dashboard</a></li>
+          <li><a href="#race-picker">Race</a></li>
+          <li><a href="#prediction-lifecycle">Lifecycle</a></li>
+          <li><a href="#prediction-result">Result</a></li>
+          <li><a href="#collector">Collector</a></li>
+          <li><a href="#corpus">Corpus</a></li>
+          <li><a href="#models">Models</a></li>
+          <li><a href="#system">System</a></li>
+          <li><a href="#audit">Audit</a></li>
         </ul>
       </nav>
-      <p class="sidebar__note">Fixture-only Level 1 presentation. No operational connection.</p>
+      <p class="sidebar__note">Fixture-only Level 1 viewer. No operational connection or control.</p>
     </aside>
 
     <div class="workspace">
       <header class="topbar">
-        <div>
-          <p class="eyebrow">R1 · application shell</p>
-          <h1>Operator console</h1>
-        </div>
-        <div class="persistent-labels" aria-label="Prototype warnings">
-          {{ prototype_marker() }}
-          <strong class="research-warning">RESEARCH ONLY — NOT FOR BETTING</strong>
-        </div>
+        <div><p class="eyebrow">R1 · fixture tranche GHU-012–015</p><h1>Operator console</h1></div>
+        <div class="persistent-labels" aria-label="Prototype warnings">{{ prototype_marker() }}<strong class="research-warning">RESEARCH ONLY — NOT FOR BETTING</strong></div>
       </header>
 
       <main id="prototype-content">
-        <section class="hero" id="overview" aria-labelledby="overview-title">
-          <div>
-            {{ prototype_marker("prototype-marker--inline") }}
-            <p class="eyebrow">Fixture-only workspace</p>
-            <h2 id="overview-title">Fixture-backed dashboard overview</h2>
-            <p class="lede">Seven navigable prototype areas answer what can run, what is happening, what evidence is accumulating, and what is blocked. Nothing here is live or current system state.</p>
+        <section class="hero" id="dashboard" aria-labelledby="dashboard-title">
+          <div>{{ prototype_marker("prototype-marker--inline") }}<p class="eyebrow">Start here</p><h2 id="dashboard-title">Choose one exact race. Verify its runners. Follow one prediction.</h2>
+            <p class="lede">This guided fixture demonstrates the complete research workflow without contacting a collector, starting a process, or changing data.</p>
+            <a class="primary-link" href="#race-picker">Choose an exact race</a>
           </div>
-          <div class="boundary-card" id="research-boundary">
-            <span class="boundary-card__icon" aria-hidden="true">i</span>
-            <div>
-              <strong>Presentation boundary</strong>
-              <p>No data adapters, prediction actions, runtime actions, or operational commands are connected.</p>
+          <div class="boundary-card"><span class="boundary-card__icon" aria-hidden="true">i</span><div><strong>Fixture presentation only</strong><p>All values are illustrative. Missing, stale, conflicting, malformed, post-jump, or unavailable evidence fails closed.</p></div></div>
+        </section>
+
+        <section class="workflow-section" id="race-picker" aria-labelledby="race-title">
+          <div class="section-heading"><div><p class="eyebrow">1 · Exact selection</p><h2 id="race-title">Date → meeting → race</h2></div>{{ status("AVAILABLE/FRESH", "healthy") }}</div>
+          <div class="panel split-panel">
+            <div class="picker-controls">
+              <label for="fixture-state">Evidence fixture {{ prototype_marker() }}</label>
+              <select id="fixture-state">
+                <option value="valid">Valid pre-jump race</option>
+                <option value="ambiguous">Ambiguous race identity</option>
+                <option value="post-jump">Post-jump race</option>
+                <option value="missing-runner">Missing runner identity</option>
+                <option value="stale">Stale source evidence</option>
+                <option value="missing-jump">Missing scheduled jump</option>
+                <option value="unsupported">Unsupported window/configuration</option>
+                <option value="conflicting">Conflicting source evidence</option>
+                <option value="unavailable">Evidence unavailable</option>
+              </select>
+              <label for="race-date">Racing date {{ prototype_marker() }}</label>
+              <select id="race-date"><option>1 April 2099</option></select>
+              <label for="meeting">Meeting {{ prototype_marker() }}</label>
+              <select id="meeting"><option>Sandown Park</option></select>
+              <label for="race">Race {{ prototype_marker() }}</label>
+              <select id="race"><option>Race 6 · 515 m · Grade 5</option></select>
+              <p id="selection-reason" class="callout callout--ok" role="status" aria-live="polite">Exact identity and ordered active runner set are verified. {{ prototype_marker() }}</p>
             </div>
+            <div>
+              <h3>Server-issued race binding</h3>
+              <dl class="identity-grid">
+                <div><dt>Race ID</dt><dd>{{ fixture_value("race_01JQ7SANDOWN20990401R06", "mono") }}</dd></div>
+                <div><dt>Canonical / source IDs</dt><dd>{{ fixture_value("CAN-AU-VIC-20990401-SAN-R06 / TD-987654", "mono") }}</dd></div>
+                <div><dt>Venue / meeting slug</dt><dd>{{ fixture_value("Sandown Park / sandown-park") }}</dd></div>
+                <div><dt>Local racing date</dt><dd>{{ fixture_value("2099-04-01") }}</dd></div>
+                <div><dt>Race / distance / grade</dt><dd>{{ fixture_value("6 / 515 m / Grade 5") }}</dd></div>
+                <div><dt>Scheduled jump (AEST)</dt><dd>{{ fixture_value("1 Apr 2099, 8:30 pm AEST") }}</dd></div>
+              </dl>
+              <details><summary>Advanced source and time evidence</summary>
+                <dl class="identity-grid evidence-view">
+                  <div><dt>Source URL</dt><dd>{{ fixture_value("https://fixture.invalid/racing/sandown-park/2099-04-01/6", "mono") }}</dd></div>
+                  <div><dt>UTC</dt><dd>{{ fixture_value("2099-04-01T10:30:00Z", "mono") }}</dd></div>
+                  <div><dt>Source time</dt><dd>{{ fixture_value("2099-04-01T20:30:00+10:00 Australia/Melbourne", "mono") }}</dd></div>
+                  <div><dt>Runner-set SHA-256</dt><dd>{{ fixture_value("90766b65ba7f184d53b57c520fd9af1962797c9370984769d93eecc631716cea", "mono") }}</dd></div>
+                  <div><dt>Source packet</dt><dd>{{ fixture_value("fixture://collector/current-index/packet-with-a-very-long-contained-identity/2099-04-01/sandown-park/race-06", "mono") }}</dd></div>
+                </dl>
+              </details>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel__heading"><div><p class="panel__question">Confirmation checkpoint</p><h3>Ordered active runners</h3></div>{{ prototype_marker() }}</div>
+            <div class="table-scroll"><table><thead><tr><th>Order</th><th>Box</th><th>Canonical / source identity</th><th>Name</th><th>Scratch state</th></tr></thead>
+              <tbody id="runner-rows">
+                <tr><td>{{ fixture_value("1") }}</td><td>{{ fixture_value("1") }}</td><td>{{ fixture_value("dog_ember_01 / TD-DOG-101", "mono") }}</td><td>{{ fixture_value("Ember Lane") }}</td><td>{{ fixture_value("ACTIVE") }}</td></tr>
+                <tr><td>{{ fixture_value("2") }}</td><td>{{ fixture_value("2") }}</td><td>{{ fixture_value("dog_cobalt_02 / TD-DOG-202", "mono") }}</td><td>{{ fixture_value("Cobalt Dash") }}</td><td>{{ fixture_value("ACTIVE") }}</td></tr>
+                <tr><td>{{ fixture_value("3") }}</td><td>{{ fixture_value("4") }}</td><td>{{ fixture_value("dog_orbit_04 / TD-DOG-404", "mono") }}</td><td>{{ fixture_value("Orbit River") }}</td><td>{{ fixture_value("ACTIVE") }}</td></tr>
+              </tbody></table></div>
+            <button id="review-selection" class="primary-button" type="button">Review research-only confirmation</button>
           </div>
         </section>
 
-        <section id="dashboard" aria-labelledby="dashboard-title">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">Fixture dashboard</p>
-              <h2 id="dashboard-title">Operational questions, illustrative answers</h2>
-            </div>
-            {{ prototype_marker() }}
-          </div>
-          <div class="panel-grid" data-testid="dashboard-areas">
-            {% for area in dashboard_areas %}
-            <article class="panel" id="{{ area.id }}" data-dashboard-area="{{ area.id }}">
-              {{ prototype_marker("panel__marker") }}
-              <div class="panel__heading">
-                <div>
-                  <p class="panel__question">{{ area.question }}</p>
-                  <h3>{{ area.title }}</h3>
-                </div>
-                {{ status(area.status, area.status_tone) }}
+        <dialog id="confirmation-dialog" aria-labelledby="confirmation-title">
+          <div class="dialog-warning">RESEARCH ONLY — NOT FOR BETTING</div>
+          <h2 id="confirmation-title">Confirm one fixture prediction</h2>
+          <p>This prototype binds exactly one immutable race and runner set. It cannot retry, substitute a race, fetch evidence, or submit operational work.</p>
+          <p>{{ fixture_value("race_01JQ7SANDOWN20990401R06 · runner hash 90766b65…716cea", "mono") }}</p>
+          <div class="dialog-actions"><button type="button" data-dialog-close>Go back</button><button class="primary-button" type="button" id="confirm-fixture">Confirm fixture lifecycle</button></div>
+        </dialog>
+
+        <section class="workflow-section" id="prediction-lifecycle" aria-labelledby="lifecycle-title">
+          <div class="section-heading"><div><p class="eyebrow">2 · Reconnectable fixture</p><h2 id="lifecycle-title" tabindex="-1">One request, one attempt, no retry</h2></div>{{ status("PREDICTION_READY", "healthy") }}</div>
+          <div class="panel">
+            <p>Reconnect key {{ fixture_value("FIXTURE-JOB-20990401-0006", "mono") }} · Reloading or reconnecting projects the same persisted fixture lifecycle.</p>
+            <ol class="timeline" aria-label="Prediction lifecycle">
+              {% for phase in ["SUBMITTED", "VALIDATED", "WAITING_FOR_CLAIM", "CLAIMED", "ATTEMPT_STARTED", "RESPONSE_RECORDED", "RECEIPT_VERIFIED", "CONSUMED", "SCORING", "PREDICTION_READY"] %}
+              <li class="timeline__item"><span aria-hidden="true">✓</span><strong>{{ phase }}</strong>{{ prototype_marker() }}</li>
+              {% endfor %}
+            </ol>
+            <p class="callout">Collector outcome {{ fixture_value("RECEIPT_READY", "mono") }} is distinct from downstream validation and scoring. Receipt readiness alone is not prediction success.</p>
+            <details><summary>Supported terminal and blocker fixtures</summary>
+              <div class="status-grid">
+                {% for value in ["REQUEST_EXPIRED", "RACE_NOT_FOUND", "CAPTURE_WINDOW_CLOSED", "IDENTITY_MISMATCH", "CAPTURE_FAILED", "BUSY → CAPTURE_FAILED / EXISTING_OWNER", "CANCELLED → CAPTURE_FAILED / CANCELLED", "INSUFFICIENT_PREJUMP_MARGIN → CAPTURE_FAILED / INSUFFICIENT_PREJUMP_MARGIN", "FAILED — RECEIPT_VALIDATION", "REJECTED — BUNDLE_IDENTITY", "EXPIRED", "TIMED_OUT"] %}
+                <div>{{ status(value, "blocked") }}</div>
+                {% endfor %}
               </div>
-              <p>{{ area.description }}</p>
-              <p class="panel__value">{{ fixture_value(area.value) }}</p>
-              {% if area.action %}
-              <button class="launch-preview" type="button" disabled aria-describedby="launch-disabled-reason">
-                Launch prediction
-              </button>
-              <p class="disabled-reason" id="launch-disabled-reason">Disabled — prototype preview is not connected.</p>
-              {% endif %}
-              <div class="panel__metadata">
-                {{ updated_at(area.updated_at) }}
-                {{ evidence_source(area.evidence_source) }}
-              </div>
-            </article>
-            {% endfor %}
+            </details>
+            <a class="primary-link" href="#prediction-result">View ranked probabilities</a>
           </div>
         </section>
 
-        <section class="state-key" aria-labelledby="state-key-title">
-          <div>
-            <p class="eyebrow">Finite fixture vocabulary</p>
-            <h2 id="state-key-title">All six dashboard variants</h2>
+        <section class="workflow-section" id="prediction-result" aria-labelledby="result-title">
+          <div class="section-heading"><div><p class="eyebrow">3 · Verified fixture result</p><h2 id="result-title">Ranked win probabilities</h2></div>{{ status("PREDICTION_READY", "healthy") }}</div>
+          <div class="panel split-panel">
+            <div><ol class="ranking">
+              <li><strong>Ember Lane</strong>{{ fixture_value("0.442") }}</li>
+              <li><strong>Cobalt Dash</strong>{{ fixture_value("0.331") }}</li>
+              <li><strong>Orbit River</strong>{{ fixture_value("0.227") }}</li>
+            </ol><p>No race outcome is present in prediction evidence.</p></div>
+            <details open><summary>Result identity and evidence</summary><dl class="identity-grid evidence-view">
+              <div><dt>Model</dt><dd>{{ fixture_value("baseline-calibrated-v3 / sha256:594b28fb072f97fd86ce6d646ae8e63ec70bc427c68ac7b33a12949294fb55c2", "mono") }}</dd></div>
+              <div><dt>Configuration</dt><dd>{{ fixture_value("research-default-v1 / sha256:855ee9d293542d7ec7d21cd81572d9aaef9c52a2f4ceddb0e42e94111c30cf22", "mono") }}</dd></div>
+              <div><dt>Source</dt><dd>{{ fixture_value("current-index-fixture / sha256:28ec23171f02c00e22888581cbec8320fea6216a6901ba8bfd00e28198c48d32", "mono") }}</dd></div>
+              <div><dt>Bundle</dt><dd>{{ fixture_value("bundle-fixture-20990401-r06 / sha256:9da8a0227a57c9b9493dac8112a33573ca22c40c5d91a068884e05cc0b62f213", "mono") }}</dd></div>
+            </dl></details>
           </div>
-          <ul>
-            {% for tone, label in fixture_states.items() %}
-            <li>{{ status(label, tone) }} {{ prototype_marker() }}</li>
-            {% endfor %}
-          </ul>
+        </section>
+
+        <section class="workflow-section" id="collector" aria-labelledby="collector-title"><div class="section-heading"><div><p class="eyebrow">Monitoring</p><h2 id="collector-title">Collector</h2></div>{{ status("DEGRADED", "stale") }}</div>
+          <div class="panel"><div class="metric-grid">
+            <div><strong>Full-daemon phase</strong>{{ fixture_value("WAITING · age 38 s") }}</div><div><strong>Odds-only phase</strong>{{ fixture_value("CAPTURE_WINDOW_CLOSED · age 74 s") }}</div><div><strong>Lock owner</strong>{{ fixture_value("fixture-owner-17 (validated)") }}</div><div><strong>Next action</strong>{{ fixture_value("Observe next scheduled fixture cycle") }}</div>
+          </div><h3>Recent captures and blockers</h3><ul><li>{{ fixture_value("Race 5 · RECEIPT_READY · 81 s ago") }}</li><li>{{ fixture_value("Race 6 · CAPTURE_WINDOW_CLOSED · blocker remains visible") }}</li></ul><p>Lane run IDs are intentionally independent. No service controls are available.</p></div>
+        </section>
+
+        <section class="workflow-section" id="corpus" aria-labelledby="corpus-title"><div class="section-heading"><div><p class="eyebrow">Governance</p><h2 id="corpus-title">Corpus evidence funnel</h2></div>{{ status("STALE", "stale") }}</div>
+          <div class="panel"><ol class="funnel">{% for stage in ["Observed · 48", "Pre-jump sealed · 42", "Results present · 37", "Admitted · 31", "Closed · 29"] %}<li>{{ fixture_value(stage) }}</li>{% endfor %}</ol>
+            <p>Readiness claim: {{ fixture_value("BLOCKED — report observation is older than P-REPORT-24H") }}</p><p>Report identity: {{ fixture_value("CORPUS-REPORT-ALPHA / sha256:35c4feae86d645233fa33a65efcca1fc65f584c7c4794d7d14fa160c162e9216", "mono") }}</p><p>Exclusions: {{ fixture_value("6 ambiguous outcomes · 4 incomplete provenance · 2 source conflicts") }}</p><p>Counts describe this named fixture population; raw counts do not establish readiness.</p>
+          </div>
+        </section>
+
+        <section class="workflow-section" id="models" aria-labelledby="models-title"><div class="section-heading"><div><p class="eyebrow">Governance</p><h2 id="models-title">Model identities and claims</h2></div>{{ status("AVAILABLE/FRESH", "healthy") }}</div>
+          <div class="panel table-scroll"><table><thead><tr><th>Role</th><th>Immutable identity / lineage</th><th>Evidence quality</th><th>Supported claim</th></tr></thead><tbody>
+            <tr><td>{{ fixture_value("Approved baseline") }}</td><td>{{ fixture_value("baseline-v3 · sha256:594b28fb…55c2 · parent baseline-v2", "mono") }}</td><td>{{ fixture_value("Historical slice verified") }}</td><td>{{ fixture_value("Identity only; no present-quality claim") }}</td></tr>
+            <tr><td>{{ fixture_value("Latest research") }}</td><td>{{ fixture_value("research-v7 · sha256:724081ab…ee91 · corpus CORPUS-ALPHA", "mono") }}</td><td>{{ fixture_value("Evaluation report STALE") }}</td><td>{{ fixture_value("Research comparison unavailable") }}</td></tr>
+            <tr><td>{{ fixture_value("Challenger") }}</td><td>{{ fixture_value("challenger-v2 · sha256:a31d64ef…019c · parent research-v6", "mono") }}</td><td>{{ fixture_value("DIVERGENT report identity") }}</td><td>{{ fixture_value("No quality or role-change claim") }}</td></tr>
+          </tbody></table></div>
+        </section>
+
+        <section class="workflow-section" id="system" aria-labelledby="system-title"><div class="section-heading"><div><p class="eyebrow">Monitoring</p><h2 id="system-title">Component freshness</h2></div>{{ status("DIVERGENT", "blocked") }}</div>
+          <div class="panel"><div class="metric-grid"><div><strong>UI source</strong>{{ fixture_value("commit 5d16d753f842… · tree 4371b18ca156… · FRESH") }}</div><div><strong>Installed UI</strong>{{ fixture_value("manifest unavailable · DATA_MISSING") }}</div><div><strong>Collector full lane</strong>{{ fixture_value("FRESH · deadline in 22 s") }}</div><div><strong>Collector odds lane</strong>{{ fixture_value("STALE · deadline passed 14 s") }}</div><div><strong>Model catalog</strong>{{ fixture_value("INVALID · config hash mismatch") }}</div><div><strong>Corpus report</strong>{{ fixture_value("STALE · age 25 h") }}</div></div><p>Health is component-specific. A fresh component never masks a stale, invalid, or unavailable one.</p></div>
+        </section>
+
+        <section class="workflow-section" id="audit" aria-labelledby="audit-title"><div class="section-heading"><div><p class="eyebrow">Illustrative append-only records</p><h2 id="audit-title">Audit</h2></div>{{ status("DATA_MISSING", "unavailable") }}</div>
+          <div class="panel"><p>The V1 UI audit store is not implemented. These records demonstrate presentation only and do not claim a durable audit trail.</p><ol class="audit-list"><li>{{ fixture_value("AUD-0001 · viewed exact race fixture · previous_hash GENESIS", "mono") }}</li><li>{{ fixture_value("AUD-0002 · opened confirmation preview · previous_hash 70f0…11c2", "mono") }}</li><li>{{ fixture_value("AUD-0003 · reconnected to fixture job · previous_hash 46ac…090e", "mono") }}</li></ol></div>
         </section>
       </main>
-
-      <footer>
-        <span>Fixture-only interface preview</span>
-        <strong>RESEARCH ONLY — NOT FOR BETTING</strong>
-      </footer>
+      <footer><span>Fixture-only interface preview</span><strong>RESEARCH ONLY — NOT FOR BETTING</strong></footer>
     </div>
   </div>
 </body>

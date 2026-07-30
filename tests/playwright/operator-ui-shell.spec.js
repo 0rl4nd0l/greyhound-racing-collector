@@ -1,123 +1,85 @@
 const { test, expect } = require('@playwright/test');
 const AxeBuilder = require('@axe-core/playwright').default;
 
-const route = '/operator-ui/prototype';
-const areaIds = [
-  'next-race',
-  'collector-summary',
-  'corpus-funnel',
-  'model-identity',
-  'recent-predictions',
-  'system-health',
-  'activity-feed',
-];
-const stateLabels = [
-  'AVAILABLE/FRESH',
-  'STALE',
-  'UNAVAILABLE/DATA_MISSING',
-  'WAITING',
-  'RUNNING',
-  'BLOCKED',
-];
+const route = '/operator-ui';
 
-function computedTimesInMilliseconds(value) {
-  return value.split(',').map((duration) => {
-    const match = duration.trim().match(/^([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)\s*(ms|s)$/i);
-    expect(match, `valid computed time: ${duration}`).not.toBeNull();
-    const milliseconds = Number(match[1]) * (match[2].toLowerCase() === 's' ? 1000 : 1);
-    expect(Number.isFinite(milliseconds), `finite computed time: ${duration}`).toBe(true);
-    return milliseconds;
-  });
-}
-
-async function expectNoHorizontalOverflow(page) {
-  const dimensions = await page.evaluate(() => ({
-    scrollWidth: document.documentElement.scrollWidth,
-    clientWidth: document.documentElement.clientWidth,
+async function expectNoOverflow(page) {
+  const width = await page.evaluate(() => ({
+    scroll: document.documentElement.scrollWidth,
+    client: document.documentElement.clientWidth,
   }));
-  expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
+  expect(width.scroll).toBeLessThanOrEqual(width.client);
 }
 
-test.describe('fixture-only operator console shell', () => {
-  test('desktop exposes persistent warnings, landmarks, focus, and accessible components', async ({ page }) => {
-    await page.setViewportSize({ width: 1280, height: 800 });
+test.describe('atomic fixture-only operator workflow', () => {
+  test('golden flow selects, confirms, reconnects, and exposes evidence', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(route);
-
-    await expect(page.getByText('PROTOTYPE DATA').first()).toBeVisible();
     await expect(page.getByText('RESEARCH ONLY — NOT FOR BETTING').first()).toBeVisible();
-    await expect(page.getByRole('navigation', { name: 'Console sections' })).toBeVisible();
-    await expect(page.getByRole('main')).toBeVisible();
-    await expect(page.getByRole('contentinfo')).toBeVisible();
-    await expect(page.locator('[data-dashboard-area]')).toHaveCount(7);
-    for (const areaId of areaIds) {
-      await expect(page.getByRole('navigation', { name: 'Console sections' }).locator(`a[href="#${areaId}"]`)).toHaveCount(1);
-      const area = page.locator(`[data-dashboard-area="${areaId}"]`);
-      await expect(area).toBeVisible();
-      await expect(area.getByText('Updated at', { exact: true })).toHaveCount(1);
-      await expect(area.getByText('Evidence source', { exact: true })).toHaveCount(1);
-      expect(await area.getByText('PROTOTYPE DATA', { exact: true }).count()).toBeGreaterThanOrEqual(4);
-    }
-    for (const stateLabel of stateLabels) {
-      await expect(page.getByText(stateLabel, { exact: true }).first()).toBeVisible();
-    }
-    const launch = page.getByRole('button', { name: 'Launch prediction' });
-    await expect(launch).toBeDisabled();
-    await expect(page.getByText('Disabled — prototype preview is not connected.')).toBeVisible();
-    await expect(page.getByText('2099-04-01 · Sandown Park · Race 6 · Jump 09:30 UTC · Fixture race ID FIXTURE-RACE-20990401-SANDOWN-R06')).toBeVisible();
-    await expectNoHorizontalOverflow(page);
-
+    await page.getByRole('link', { name: 'Choose an exact race' }).click();
+    await expect(page.getByRole('heading', { name: 'Date → meeting → race' })).toBeVisible();
+    await expect(page.getByText('1 Apr 2099, 8:30 pm AEST')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Review research-only confirmation' })).toBeEnabled();
+    await page.getByRole('button', { name: 'Review research-only confirmation' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText('RESEARCH ONLY — NOT FOR BETTING')).toBeVisible();
     await page.keyboard.press('Tab');
-    const skipLink = page.getByRole('link', { name: 'Skip to prototype content' });
-    await expect(skipLink).toBeFocused();
-    const focusOutline = await skipLink.evaluate((element) => getComputedStyle(element).outlineStyle);
-    expect(focusOutline).not.toBe('none');
-
-    const accessibility = await new AxeBuilder({ page }).analyze();
-    expect(accessibility.violations).toEqual([]);
+    await page.getByRole('button', { name: 'Confirm fixture lifecycle' }).click();
+    await expect(page.getByRole('heading', { name: 'One request, one attempt, no retry' })).toBeFocused();
+    await expect(page.getByText('FIXTURE-JOB-20990401-0006')).toBeVisible();
+    await page.reload();
+    await expect(page.getByText('FIXTURE-JOB-20990401-0006')).toBeVisible();
+    await page.getByRole('link', { name: 'View ranked probabilities' }).click();
+    await expect(page.getByRole('heading', { name: 'Ranked win probabilities' })).toBeVisible();
+    await expect(page.getByText('bundle-fixture-20990401-r06')).toBeVisible();
+    await expectNoOverflow(page);
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   });
 
-  test('375px layout has no overflow and preserves warnings and navigation', async ({ page }) => {
+  test('all invalid selection fixtures fail closed with exact distinctions', async ({ page }) => {
+    await page.goto(route);
+    const selector = page.locator('#fixture-state');
+    const review = page.getByRole('button', { name: 'Review research-only confirmation' });
+    const fixtures = {
+      ambiguous: 'ambiguous race identity',
+      'post-jump': 'scheduled jump has passed',
+      'missing-runner': 'active runner identity is missing',
+      stale: '300-second pre-jump freshness policy',
+      'missing-jump': 'scheduled jump identity is missing',
+      unsupported: 'window or model configuration is unsupported',
+      conflicting: 'source and selected-race evidence conflict',
+      unavailable: 'source evidence is unavailable',
+    };
+    for (const [value, reason] of Object.entries(fixtures)) {
+      await selector.selectOption(value);
+      await expect(review).toBeDisabled();
+      await expect(page.getByRole('status')).toContainText(reason);
+    }
+    await selector.selectOption('valid');
+    await expect(review).toBeEnabled();
+  });
+
+  test('mobile contains long identities and preserves navigation and actions', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto(route);
-
-    await expect(page.getByText('PROTOTYPE DATA').first()).toBeVisible();
-    await expect(page.getByText('RESEARCH ONLY — NOT FOR BETTING').first()).toBeVisible();
     await expect(page.getByRole('navigation', { name: 'Console sections' })).toBeVisible();
-    await expect(page.locator('[data-dashboard-area]')).toHaveCount(7);
-    for (const areaId of areaIds) {
-      await expect(page.getByRole('navigation', { name: 'Console sections' }).locator(`a[href="#${areaId}"]`)).toHaveCount(1);
-      await expect(page.locator(`[data-dashboard-area="${areaId}"]`)).toBeVisible();
-    }
-    for (const stateLabel of stateLabels) {
-      await expect(page.getByText(stateLabel, { exact: true }).first()).toBeVisible();
-    }
-    await expect(page.getByRole('button', { name: 'Launch prediction' })).toBeDisabled();
-    await expectNoHorizontalOverflow(page);
-
-    await page.locator('[data-dashboard-area="activity-feed"]').scrollIntoViewIfNeeded();
-    await expect(page.getByText('RESEARCH ONLY — NOT FOR BETTING').first()).toBeInViewport();
-    await expectNoHorizontalOverflow(page);
+    await expect(page.getByRole('button', { name: 'Review research-only confirmation' })).toBeVisible();
+    await page.getByText('90766b65ba7f184d53b57c520fd9af1962797c9370984769d93eecc631716cea').scrollIntoViewIfNeeded();
+    await expectNoOverflow(page);
   });
 
-  test('reduced motion preference disables smooth scrolling and animation', async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: 'reduce' });
+  test('keyboard dialog focus and print evidence view are supported', async ({ page }) => {
     await page.goto(route);
-    expect(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(true);
-    const motion = await page.locator('html').evaluate((element) => {
-      const panel = document.querySelector('.panel');
-      return {
-        scrollBehavior: getComputedStyle(element).scrollBehavior,
-        animationDuration: getComputedStyle(panel).animationDuration,
-        transitionDuration: getComputedStyle(panel).transitionDuration,
-      };
-    });
-
-    expect(motion.scrollBehavior).toBe('auto');
-    for (const duration of [
-      ...computedTimesInMilliseconds(motion.animationDuration),
-      ...computedTimesInMilliseconds(motion.transitionDuration),
-    ]) {
-      expect(duration).toBeLessThanOrEqual(0.01);
-    }
+    await page.keyboard.press('Tab');
+    await expect(page.getByRole('link', { name: 'Skip to prototype content' })).toBeFocused();
+    await page.getByRole('button', { name: 'Review research-only confirmation' }).focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toBeHidden();
+    await page.emulateMedia({ media: 'print' });
+    await expect(page.locator('.sidebar')).toHaveCSS('display', 'none');
+    await expect(page.locator('.evidence-view').first()).toBeVisible();
   });
 });

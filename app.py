@@ -938,7 +938,10 @@ def after_request(response):
         if (
             "text/html" in ctype
             and not getattr(response, "direct_passthrough", False)
-            and not (request.path or "").startswith("/operator-ui/")
+            and not (
+                (request.path or "") == "/operator-ui"
+                or (request.path or "").startswith("/operator-ui/")
+            )
         ):
             # Never mutate error responses; let Flask render its own 4xx/5xx pages
             try:
@@ -9343,97 +9346,11 @@ def index():
     )
 
 
+@app.route("/operator-ui")
 @app.route("/operator-ui/prototype")
 def operator_ui_prototype():
-    """Render the isolated, fixture-only Level 1 operator dashboard."""
-    fixture_states = {
-        "healthy": "AVAILABLE/FRESH",
-        "stale": "STALE",
-        "unavailable": "UNAVAILABLE/DATA_MISSING",
-        "waiting": "WAITING",
-        "running": "RUNNING",
-        "blocked": "BLOCKED",
-    }
-    dashboard_areas = (
-        {
-            "id": "next-race",
-            "title": "Next race",
-            "question": "What is the next race?",
-            "description": "An illustrative fixture-only race identity for the disabled prediction launch preview.",
-            "status_tone": "unavailable",
-            "value": "2099-04-01 · Sandown Park · Race 6 · Jump 09:30 UTC · Fixture race ID FIXTURE-RACE-20990401-SANDOWN-R06",
-            "updated_at": "2099-04-01 09:00 UTC (illustrative)",
-            "evidence_source": "Fixture NEXT-RACE-ALPHA",
-            "action": True,
-        },
-        {
-            "id": "collector-summary",
-            "title": "Collector summary",
-            "question": "What is happening?",
-            "description": "Illustrative collector evidence is intentionally stale, never treated as healthy or zero.",
-            "status_tone": "stale",
-            "value": "Last fixture packet: 17 minutes old",
-            "updated_at": "2099-04-01 08:43 UTC (illustrative)",
-            "evidence_source": "Fixture COLLECTOR-PACKET-BRAVO",
-        },
-        {
-            "id": "corpus-funnel",
-            "title": "Corpus funnel",
-            "question": "What evidence is accumulating?",
-            "description": "Illustrative stages show prototype-only evidence moving through a review funnel.",
-            "status_tone": "healthy",
-            "value": "42 fixture records · 31 reviewed · 18 eligible",
-            "updated_at": "2099-04-01 08:55 UTC (illustrative)",
-            "evidence_source": "Fixture CORPUS-SNAPSHOT-CHARLIE",
-        },
-        {
-            "id": "model-identity",
-            "title": "Model identity",
-            "question": "What evidence is selected?",
-            "description": "No model identity is available; missing evidence fails closed.",
-            "status_tone": "unavailable",
-            "value": "No fixture model selected",
-            "updated_at": "2099-04-01 08:57 UTC (illustrative)",
-            "evidence_source": "Fixture MODEL-CATALOG-DELTA",
-        },
-        {
-            "id": "recent-predictions",
-            "title": "Recent predictions",
-            "question": "What is happening?",
-            "description": "Illustrative nonterminal items only; no prediction was submitted or completed.",
-            "status_tone": "waiting",
-            "value": "Fixture job PX-2099-004 · awaiting illustrative evidence",
-            "updated_at": "2099-04-01 08:58 UTC (illustrative)",
-            "evidence_source": "Fixture PREDICTION-LIST-ECHO",
-        },
-        {
-            "id": "system-health",
-            "title": "System health",
-            "question": "What is happening?",
-            "description": "Illustrative activity is running; this is not service or runtime health.",
-            "status_tone": "running",
-            "value": "Fixture check 3 of 8",
-            "updated_at": "2099-04-01 08:59 UTC (illustrative)",
-            "evidence_source": "Fixture HEALTH-PANEL-FOXTROT",
-        },
-        {
-            "id": "activity-feed",
-            "title": "Activity feed",
-            "question": "What is blocked?",
-            "description": "An illustrative blocker remains visible until evidence becomes available.",
-            "status_tone": "blocked",
-            "value": "Fixture event ACT-2099-07 · model evidence missing",
-            "updated_at": "2099-04-01 08:59 UTC (illustrative)",
-            "evidence_source": "Fixture ACTIVITY-FEED-GOLF",
-        },
-    )
-    for area in dashboard_areas:
-        area["status"] = fixture_states[area["status_tone"]]
-    return render_template(
-        "operator_ui.html",
-        dashboard_areas=dashboard_areas,
-        fixture_states=fixture_states,
-    )
+    """Render the isolated, fixture-only Level 1 operator prototype."""
+    return render_template("operator_ui.html")
 
 
 @app.route("/races")
